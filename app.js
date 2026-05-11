@@ -5,8 +5,6 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const swaggerUi = require('swagger-ui-express');
-
 const swaggerSpec = require('./src/config/swagger.config');
 const routes = require('./src/routes');
 const errorHandler = require('./src/middleware/errorHandler');
@@ -21,7 +19,21 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ── Security headers ──────────────────────────────────────────────────────────
-app.use(helmet());
+// CSP is relaxed for unpkg.com so the /api/docs Swagger UI can load from CDN.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
+        styleSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https://unpkg.com'],
+        connectSrc: ["'self'", 'https://unpkg.com'],
+        workerSrc: ["'self'", 'blob:'],
+      },
+    },
+  })
+);
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 app.use(
@@ -65,19 +77,37 @@ const authLimiter = rateLimit({
 app.use('/api/v1/auth', authLimiter);
 
 // ── Swagger docs ──────────────────────────────────────────────────────────────
-// Use CDN assets so Vercel doesn't need to serve swagger-ui static files.
-// On Vercel all routes go through the serverless function; express.static
-// (used internally by swagger-ui-express) cannot serve files with the correct
-// MIME type, causing blank page / MIME errors in the browser.
-const swaggerUiOptions = {
-  explorer: true,
-  customCssUrl: 'https://unpkg.com/swagger-ui-dist@5/swagger-ui.css',
-  customJs: [
-    'https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js',
-    'https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js',
-  ],
-};
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
+// Custom CDN-based handler — avoids swagger-ui-express's express.static which
+// returns text/html on Vercel (all routes go through the serverless function).
+app.get('/api/docs/swagger.json', (_req, res) => res.json(swaggerSpec));
+app.get(['/api/docs', '/api/docs/'], (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GymsEra API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function () {
+      SwaggerUIBundle({
+        url: '/api/docs/swagger.json',
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: 'StandaloneLayout',
+        deepLinking: true,
+      });
+    };
+  </script>
+</body>
+</html>`);
+});
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/v1', auditLog);
