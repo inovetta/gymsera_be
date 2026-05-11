@@ -1,0 +1,50 @@
+{
+  "name": "gymsera-api",
+  "version": "1.0.0",
+  "description": "GymsEra multi-tenant gym management platform API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "test": "jest --testTimeout=30000 --runInBand --forceExit",
+    "test:watch": "jest --watch --testTimeout=30000 --runInBand"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "bull": "^4.16.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.5.0",
+    "express-validator": "^7.2.0",
+    "google-auth-library": "^9.14.0",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.11.0",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^6.9.15",
+    "pdfkit": "^0.18.0",
+    "qrcode": "^1.5.4",
+    "sequelize": "^6.37.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "axios": "^1.16.0",
+    "eslint": "^9.0.0",
+    "jest": "^30.4.0",
+    "nodemon": "^3.1.7",
+    "prettier": "^3.3.3"
+  }
+}

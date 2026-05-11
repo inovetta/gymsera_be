@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # ── Platform MySQL (identity, routing, admin, discovery) ──────────────────────
+  platform-db:
+    image: mysql:8.0
+    container_name: gymsera-platform-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: gymsera_platform
+      MYSQL_USER: gymsera
+      MYSQL_PASSWORD: gymsera_pass
+    ports:
+      - '3306:3306'
+    volumes:
+      - platform_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Tenant MySQL Server (all per-gym databases live here) ─────────────────────
+  tenant-db:
+    image: mysql:8.0
+    container_name: gymsera-tenant-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      # No default DB — tenant databases are created dynamically on approval
+    ports:
+      - '3307:3306'
+    volumes:
+      - tenant_data:/var/lib/mysql
+      - ./docker/tenant-db-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (cache + Bull job queues) ──────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: gymsera-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  platform_data:
+  tenant_data:
+  redis_data:
