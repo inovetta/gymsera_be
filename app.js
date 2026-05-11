@@ -48,6 +48,7 @@ const apiLimiter = rateLimit({
   max: process.env.NODE_ENV === 'test' ? 10000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { success: false, message: 'Too many requests, please try again later.' },
 });
 app.use('/api', apiLimiter);
@@ -58,6 +59,7 @@ const authLimiter = rateLimit({
   max: process.env.NODE_ENV === 'test' ? 10000 : 20,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { success: false, message: 'Too many auth attempts, please try again later.' },
 });
 app.use('/api/v1/auth', authLimiter);
