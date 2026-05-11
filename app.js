@@ -15,6 +15,11 @@ const appConfig = require('./src/config/app.config');
 
 const app = express();
 
+// ── Trust proxy (required on Vercel / any reverse-proxy host) ─────────────────
+// Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and req.ip returns the proxy IP instead of the real client IP.
+app.set('trust proxy', 1);
+
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet());
 
