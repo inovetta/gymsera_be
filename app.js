@@ -65,7 +65,19 @@ const authLimiter = rateLimit({
 app.use('/api/v1/auth', authLimiter);
 
 // ── Swagger docs ──────────────────────────────────────────────────────────────
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
+// Use CDN assets so Vercel doesn't need to serve swagger-ui static files.
+// On Vercel all routes go through the serverless function; express.static
+// (used internally by swagger-ui-express) cannot serve files with the correct
+// MIME type, causing blank page / MIME errors in the browser.
+const swaggerUiOptions = {
+  explorer: true,
+  customCssUrl: 'https://unpkg.com/swagger-ui-dist@5/swagger-ui.css',
+  customJs: [
+    'https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js',
+    'https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js',
+  ],
+};
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/v1', auditLog);
