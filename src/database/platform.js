@@ -1,4 +1,7 @@
 const { Sequelize } = require('sequelize');
+// Explicit require so Vercel's file tracer (nft) includes mysql2 in the bundle.
+// Sequelize loads it dynamically based on dialect, which static analyzers miss.
+require('mysql2');
 const dbConfig = require('../config/database.config');
 
 const { host, port, database, username, password } = dbConfig.platform;
