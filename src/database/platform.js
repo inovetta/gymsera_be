@@ -32,7 +32,7 @@ const connect = async () => {
   await sequelize.authenticate();
   console.log('[Platform DB] Connected');
 
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === 'development' && !process.env.VERCEL) {
     // Lazy-load models to ensure they're registered before sync
     require('../models/platform');
     await sequelize.sync({ alter: true });
