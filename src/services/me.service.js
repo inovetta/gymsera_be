@@ -1,8 +1,51 @@
 const bcrypt = require('bcrypt');
 const { Op } = require('sequelize');
 
-const { User } = require('../models/platform');
+const { User, UserGymMembership, Tenant } = require('../models/platform');
+const TenantDbManager = require('../database/TenantDbManager');
 const { createError } = require('../utils/response.utils');
+
+const _resolveBySubscriptionId = async (subscriptionId, userId) => {
+  let index = await UserGymMembership.findOne({ where: { subscriptionId, userId } });
+
+  if (!index) {
+    index = await UserGymMembership.findOne({ where: { id: subscriptionId, userId } });
+  }
+
+  if (!index) throw createError('Subscription not found', 404);
+
+  const resolvedSubscriptionId = index.subscriptionId || subscriptionId;
+
+  const tenant = await Tenant.findOne({ where: { id: index.tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+  if (!tenant) throw createError('Gym tenant is not available', 503);
+  const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+  return { models, index, resolvedSubscriptionId };
+};
+
+/**
+ * Load all tenant DBs the user has memberships in.
+ * Returns an array of { tenantId, models } — empty array if no memberships.
+ */
+const _getAllTenantDbs = async (userId) => {
+  const rows = await UserGymMembership.findAll({
+    where: { userId },
+    attributes: ['tenantId'],
+    group: ['tenantId'],
+  });
+  const results = await Promise.all(
+    rows.map(async ({ tenantId }) => {
+      try {
+        const tenant = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+        if (!tenant) return null;
+        const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        return { tenantId, models };
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.filter(Boolean);
+};
 
 const BCRYPT_ROUNDS = 12;
 
@@ -117,73 +160,83 @@ const updateProfileImage = async (userId, imageUrl) => {
 };
 
 /**
- * Get own account statement — subscriptions + payments across the tenant.
+ * Get own account statement — subscriptions + payments across ALL the member's gyms.
+ * Uses cross-tenant lookup via UserGymMembership — no tenantDb arg needed.
  */
-const getMyAccountStatement = async (userId, tenantDb, { page, limit, offset, from, to }) => {
-  if (!tenantDb) throw createError('Tenant context required', 400);
-
-  const { MemberSubscription, Payment, MembershipPlan, Branch } = tenantDb.models;
+const getMyAccountStatement = async (userId, { page, limit, offset, from, to }) => {
+  const tenantDbs = await _getAllTenantDbs(userId);
+  if (tenantDbs.length === 0) return { subscriptions: [], payments: [] };
 
   const dateWhere = {};
   if (from) dateWhere[Op.gte] = new Date(from);
   if (to) dateWhere[Op.lte] = new Date(to);
 
-  const [subscriptions, payments] = await Promise.all([
-    MemberSubscription.findAll({
-      where: { userId, ...(Object.keys(dateWhere).length ? { startDate: dateWhere } : {}) },
-      include: [
-        { model: MembershipPlan, as: 'plan', attributes: ['id', 'name', 'price', 'durationDays'] },
-        { model: Branch, as: 'branch', attributes: ['id', 'branchName'] },
-      ],
-      order: [['subscribedAt', 'DESC']],
-      limit,
-      offset,
-    }),
-    Payment.findAll({
-      where: { userId, ...(Object.keys(dateWhere).length ? { paidAt: dateWhere } : {}) },
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset,
-    }),
-  ]);
+  const perTenant = await Promise.all(
+    tenantDbs.map(async ({ models }) => {
+      const { MemberSubscription, Payment, MembershipPlan, Branch } = models;
+      const [subscriptions, payments] = await Promise.all([
+        MemberSubscription.findAll({
+          where: { userId, ...(Object.keys(dateWhere).length ? { startDate: dateWhere } : {}) },
+          include: [
+            { model: MembershipPlan, as: 'plan', attributes: ['id', 'name', 'price', 'durationType', 'durationValue'] },
+            { model: Branch, as: 'branch', attributes: ['id', 'branchName'] },
+          ],
+          order: [['subscribedAt', 'DESC']],
+        }),
+        Payment.findAll({
+          where: { userId, ...(Object.keys(dateWhere).length ? { paidAt: dateWhere } : {}) },
+          order: [['createdAt', 'DESC']],
+        }),
+      ]);
+      return { subscriptions, payments };
+    })
+  );
+
+  const subscriptions = perTenant.flatMap((r) => r.subscriptions)
+    .sort((a, b) => new Date(b.subscribedAt || b.createdAt) - new Date(a.subscribedAt || a.createdAt))
+    .slice(offset, offset + limit);
+
+  const payments = perTenant.flatMap((r) => r.payments)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(offset, offset + limit);
 
   return { subscriptions, payments };
 };
 
 /**
- * Get own payment requests from the tenant DB.
+ * Get own payments (all statuses) across ALL the member's gyms.
  */
-const getMyPaymentRequests = async (userId, tenantDb, { page, limit, offset }) => {
-  if (!tenantDb) throw createError('Tenant context required', 400);
-  const { Payment } = tenantDb.models;
+const getMyPaymentRequests = async (userId, { page, limit, offset }) => {
+  const tenantDbs = await _getAllTenantDbs(userId);
+  if (tenantDbs.length === 0) return { payments: [], total: 0 };
 
-  const { count, rows } = await Payment.findAndCountAll({
-    where: { userId, status: 'PENDING' },
-    order: [['createdAt', 'DESC']],
-    limit,
-    offset,
-  });
+  const perTenant = await Promise.all(
+    tenantDbs.map(({ models }) =>
+      models.Payment.findAll({ where: { userId }, order: [['createdAt', 'DESC']] })
+    )
+  );
 
-  return { payments: rows, total: count };
+  const all = perTenant.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const payments = all.slice(offset, offset + limit);
+
+  return { payments, total: all.length };
 };
 
 /**
- * Member submits a payment request (manual/bank transfer payment intent).
+ * Member submits a payment request.
+ * Resolves tenant via subscriptionId — no tenantDb arg needed.
  */
-const submitPaymentRequest = async (userId, tenantDb, { subscriptionId, method, amount, notes }) => {
-  if (!tenantDb) throw createError('Tenant context required', 400);
-  const { Payment, MemberSubscription } = tenantDb.models;
+const submitPaymentRequest = async (userId, { subscriptionId, method, amount, notes }) => {
+  const { models, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { Payment, MemberSubscription } = models;
 
-  // Validate subscription belongs to this user
-  const subscription = await MemberSubscription.findOne({
-    where: { id: subscriptionId, userId },
-  });
+  const subscription = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId, userId } });
   if (!subscription) throw createError('Subscription not found or does not belong to you', 404);
 
   const payment = await Payment.create({
     userId,
     paymentFor: 'MEMBERSHIP',
-    referenceEntityId: subscriptionId,
+    referenceEntityId: resolvedSubscriptionId,
     method,
     amount,
     currency: 'PKR',
@@ -195,21 +248,74 @@ const submitPaymentRequest = async (userId, tenantDb, { subscriptionId, method, 
 };
 
 /**
- * Upload bank receipt / proof image for a payment request.
+ * Upload bank receipt / proof image for a payment.
+ * Searches across all user's tenant DBs to find the payment by ID.
  */
-const uploadPaymentProof = async (userId, tenantDb, paymentId, proofUrl) => {
-  if (!tenantDb) throw createError('Tenant context required', 400);
-  const { Payment } = tenantDb.models;
+const uploadPaymentProof = async (userId, paymentId, proofUrl) => {
+  const tenantDbs = await _getAllTenantDbs(userId);
+  if (tenantDbs.length === 0) throw createError('Payment not found or does not belong to you', 404);
 
-  const payment = await Payment.findOne({ where: { id: paymentId, userId } });
-  if (!payment) throw createError('Payment not found or does not belong to you', 404);
-
-  if (payment.status !== 'PENDING') {
-    throw createError('Proof can only be uploaded for pending payments', 400);
+  for (const { models } of tenantDbs) {
+    const payment = await models.Payment.findOne({ where: { id: paymentId, userId } });
+    if (payment) {
+      if (payment.status !== 'PENDING') {
+        throw createError('Proof can only be uploaded for pending payments', 400);
+      }
+      await payment.update({ proofUrl });
+      return { proofUrl };
+    }
   }
 
-  await payment.update({ proofUrl });
-  return { proofUrl };
+  throw createError('Payment not found or does not belong to you', 404);
+};
+
+const _mapAttendanceLogs = (logs) => logs.map((log) => ({
+  id: log.id,
+  checkInTime: log.checkInAt,
+  checkOutTime: log.checkOutAt || null,
+  branch: log.branch ? { branchName: log.branch.branchName } : null,
+}));
+
+/**
+ * Get member's attendance logs. When subscriptionId is provided, scoped to that
+ * subscription. When omitted, returns recent logs across all the member's gyms.
+ */
+const getMyAttendance = async (userId, subscriptionId) => {
+  if (subscriptionId) {
+    const { models, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+    const { AttendanceLog, Branch } = models;
+    const logs = await AttendanceLog.findAll({
+      where: { userId, memberSubscriptionId: resolvedSubscriptionId },
+      include: [{ model: Branch, as: 'branch', attributes: ['id', 'branchName'] }],
+      order: [['checkInAt', 'DESC']],
+      limit: 100,
+    });
+    return _mapAttendanceLogs(logs);
+  }
+
+  // No subscriptionId — aggregate across all gyms the member belongs to
+  const tenantDbs = await _getAllTenantDbs(userId);
+  const nested = await Promise.all(
+    tenantDbs.map(async ({ models }) => {
+      try {
+        const { AttendanceLog, Branch } = models;
+        const logs = await AttendanceLog.findAll({
+          where: { userId },
+          include: [{ model: Branch, as: 'branch', attributes: ['id', 'branchName'] }],
+          order: [['checkInAt', 'DESC']],
+          limit: 50,
+        });
+        return _mapAttendanceLogs(logs);
+      } catch {
+        return [];
+      }
+    })
+  );
+
+  return nested
+    .flat()
+    .sort((a, b) => new Date(b.checkInTime) - new Date(a.checkInTime))
+    .slice(0, 100);
 };
 
 module.exports = {
@@ -221,4 +327,5 @@ module.exports = {
   getMyPaymentRequests,
   submitPaymentRequest,
   uploadPaymentProof,
+  getMyAttendance,
 };

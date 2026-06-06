@@ -127,5 +127,15 @@ const report = async (req, res, next) => {
   }
 };
 
-module.exports = { deviceNotify, qrScan, manual, list, todayLogs, rangeLogs, memberHistory, report };
+// ── PATCH /attendance/:id/check-out ───────────────────────────────────────────
+const checkOut = async (req, res, next) => {
+  try {
+    const log = await attendanceService.checkOut(req.tenantDb, req.params.id);
+    return sendSuccess(res, { log }, 'Check-out recorded');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { deviceNotify, qrScan, manual, list, todayLogs, rangeLogs, memberHistory, report, checkOut };
 

@@ -1,5 +1,6 @@
 const meService = require('../services/me.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
+const storageService = require('../services/storage.service');
 
 // ── GET /me/profile ────────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -44,7 +45,7 @@ const uploadProfileImage = async (req, res, next) => {
       return next(err);
     }
 
-    const imageUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/profiles/${req.user.sub}-${Date.now()}.jpg`;
+    const imageUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'profiles', req.user.sub);
     const result = await meService.updateProfileImage(req.user.sub, imageUrl);
     return sendSuccess(res, result, 'Profile image updated');
   } catch (err) {
@@ -59,7 +60,6 @@ const accountStatement = async (req, res, next) => {
     const { from, to } = req.query;
     const result = await meService.getMyAccountStatement(
       req.user.sub,
-      req.tenantDb || null,
       { page, limit, offset, from, to }
     );
     return sendSuccess(res, result, 'Account statement retrieved');
@@ -74,7 +74,6 @@ const accountStatementExport = async (req, res, next) => {
     const { from, to } = req.query;
     const { subscriptions, payments } = await meService.getMyAccountStatement(
       req.user.sub,
-      req.tenantDb || null,
       { page: 1, limit: 1000, offset: 0, from, to }
     );
 
@@ -123,11 +122,7 @@ const accountStatementExport = async (req, res, next) => {
 const getPaymentRequests = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 50);
-    const result = await meService.getMyPaymentRequests(
-      req.user.sub,
-      req.tenantDb || null,
-      { page, limit, offset }
-    );
+    const result = await meService.getMyPaymentRequests(req.user.sub, { page, limit, offset });
     return sendSuccess(res, { payments: result.payments }, 'OK', 200, {
       total: result.total,
       page,
@@ -142,12 +137,18 @@ const getPaymentRequests = async (req, res, next) => {
 // ── POST /me/payment-request ───────────────────────────────────────────────────
 const submitPaymentRequest = async (req, res, next) => {
   try {
-    const payment = await meService.submitPaymentRequest(
-      req.user.sub,
-      req.tenantDb || null,
-      req.body
-    );
+    const payment = await meService.submitPaymentRequest(req.user.sub, req.body);
     return sendSuccess(res, { payment }, 'Payment request submitted', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /me/attendance ─────────────────────────────────────────────────────────
+const getMyAttendance = async (req, res, next) => {
+  try {
+    const logs = await meService.getMyAttendance(req.user.sub, req.query.subscriptionId);
+    return sendSuccess(res, logs, 'Attendance logs retrieved');
   } catch (err) {
     next(err);
   }
@@ -163,12 +164,7 @@ const uploadPaymentProof = async (req, res, next) => {
     }
 
     const proofUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/payment-proofs/${req.params.id}-${Date.now()}.jpg`;
-    const result = await meService.uploadPaymentProof(
-      req.user.sub,
-      req.tenantDb || null,
-      req.params.id,
-      proofUrl
-    );
+    const result = await meService.uploadPaymentProof(req.user.sub, req.params.id, proofUrl);
     return sendSuccess(res, result, 'Payment proof uploaded');
   } catch (err) {
     next(err);
@@ -185,4 +181,5 @@ module.exports = {
   getPaymentRequests,
   submitPaymentRequest,
   uploadPaymentProof,
+  getMyAttendance,
 };

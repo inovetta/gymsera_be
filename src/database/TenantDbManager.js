@@ -34,6 +34,11 @@ class TenantDbManager {
       dialect: 'mysql',
       logging: false,
       pool: { max: 5, min: 0, acquire: 20000, idle: 10000 },
+      dialectOptions: {
+        connectTimeout: 20000,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000,
+      },
       define: { underscored: true, timestamps: true },
     });
 

@@ -55,7 +55,7 @@ module.exports = (sequelize) => {
         { fields: ['gym_listing_id', 'status'] },
         { fields: ['user_id'] },
         // Prevent duplicate review per user per gym
-        { unique: true, fields: ['gym_listing_id', 'user_id'] },
+        { name: 'gym_reviews_listing_user_unique', unique: true, fields: ['gym_listing_id', 'user_id'] },
       ],
     }
   );

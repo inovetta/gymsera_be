@@ -5,6 +5,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const upload = require('../middleware/upload');
 
 const router = Router();
 
@@ -32,6 +33,11 @@ router.use(authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext)
  *         description: Gym profile
  */
 router.get('/profile', gymsController.getProfile);
+
+router.post('/profile/logo', upload.image('logo'), upload.handleMulterError, gymsController.uploadLogo);
+router.post('/profile/cover', upload.image('cover'), upload.handleMulterError, gymsController.uploadCover);
+router.post('/profile/images', upload.images('images', 10), upload.handleMulterError, gymsController.uploadGymImages);
+router.delete('/profile/images', gymsController.deleteGymImage);
 
 /**
  * @swagger
@@ -210,6 +216,10 @@ router.patch(
  */
 router.delete('/branches/:branchId', authorize('GYM_HOST'), gymsController.deleteBranch);
 
+// ── Branch images ──────────────────────────────────────────────────────────────
+router.post('/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, gymsController.uploadBranchImages);
+router.delete('/branches/:branchId/images', gymsController.deleteBranchImage);
+
 // ── Branch staff ──────────────────────────────────────────────────────────────
 /**
  * @swagger
@@ -298,5 +308,11 @@ router.delete(
   validate(gymsValidators.removeStaff),
   gymsController.removeStaff
 );
+
+// ── Members (tenant-scoped) ───────────────────────────────────────────────────
+// /members/search must be defined before /members to avoid :id conflicts
+router.get('/members/search', gymsController.searchMember);
+router.post('/members/enroll', gymsController.enrollMember);
+router.get('/members', gymsController.listMembers);
 
 module.exports = router;

@@ -47,6 +47,10 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'PENDING',
       },
+      bankTransferRef: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
     },
     {
       tableName: 'tenant_subscriptions',

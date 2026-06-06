@@ -128,4 +128,10 @@ router.get(
   controller.monthlyPrintLayout
 );
 
+// Alias: GET /reports/monthly/export (CMS uses /export, backend has /export-pdf)
+router.get('/monthly/export', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.monthlyExportPdf);
+
+router.get('/yearly', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.yearlyRevenue);
+router.get('/weekly-attendance', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.weeklyAttendance);
+
 module.exports = router;

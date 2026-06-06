@@ -58,7 +58,7 @@ module.exports = (sequelize) => {
       imagesJson: {
         type: DataTypes.JSON,
         allowNull: true,
-        comment: 'Array of image URLs',
+        comment: 'Array of gallery image URLs',
       },
       status: {
         type: DataTypes.ENUM('ACTIVE', 'INACTIVE'),

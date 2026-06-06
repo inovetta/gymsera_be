@@ -153,7 +153,7 @@ router.get(
  */
 router.post(
   '/device-notify',
-  // API-key guard — checked in the handler via x-device-api-key header
+  // API-key guard
   (req, _res, next) => {
     const apiKey = req.headers['x-device-api-key'];
     if (!apiKey || apiKey !== process.env.DEVICE_API_KEY) {
@@ -163,7 +163,33 @@ router.post(
     }
     next();
   },
-  tenantContext,
+  // Device-specific tenant resolver — uses tenantId from body (no JWT available)
+  async (req, res, next) => {
+    try {
+      const tenantId = req.body.tenantId;
+      if (!tenantId) return res.status(400).json({ success: false, message: 'tenantId is required in device payload' });
+
+      const { getRedisClient } = require('../config/redis.config');
+      const TenantDbManager = require('../database/TenantDbManager');
+      const { Tenant } = require('../models/platform');
+
+      const redis = getRedisClient();
+      const cacheKey = `tenant:${tenantId}:connStr`;
+      let encryptedConnStr = await redis.get(cacheKey);
+
+      if (!encryptedConnStr) {
+        const tenant = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+        if (!tenant || !tenant.connectionStringEncrypted) return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+        encryptedConnStr = tenant.connectionStringEncrypted;
+        await redis.setex(cacheKey, 3600, encryptedConnStr);
+      }
+
+      req.tenantDb = await TenantDbManager.getConnection(tenantId, encryptedConnStr);
+      next();
+    } catch (err) {
+      next(err);
+    }
+  },
   controller.deviceNotify
 );
 
@@ -304,6 +330,35 @@ router.get(
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
   controller.report
+);
+
+// Alias: GET /attendance/report?period=xxx (CMS sends period as query param)
+router.get(
+  '/report',
+  authenticate,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  tenantContext,
+  (req, _res, next) => { req.params.period = req.query.period; next(); },
+  controller.report
+);
+
+// Alias: POST /attendance/check-in (CMS uses check-in instead of manual)
+router.post(
+  '/check-in',
+  authenticate,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  tenantContext,
+  validate(validators.manual),
+  controller.manual
+);
+
+// PATCH /attendance/:id/check-out
+router.patch(
+  '/:id/check-out',
+  authenticate,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  tenantContext,
+  controller.checkOut
 );
 
 module.exports = router;

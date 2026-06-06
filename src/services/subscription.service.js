@@ -3,6 +3,7 @@ const { GymListing, Tenant, UserGymMembership, User } = require('../models/platf
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { SubscriptionStatus } = require('../constants/subscription-status');
+const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
 const { notificationsQueue } = require('../jobs/queues');
 
 // ── Notification helper ───────────────────────────────────────────────────────
@@ -43,6 +44,13 @@ const _calcEndDate = (startDate, durationType, durationValue) => {
  */
 const _generateQrToken = () => `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
 
+const _invoiceNo = () => {
+  const d = new Date();
+  const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const rand = Math.random().toString(16).slice(2, 8).toUpperCase();
+  return `INV-${date}-${rand}`;
+};
+
 /**
  * Resolve tenant DB from a GymListing UUID.
  * Returns { models, tenantId, encryptedConnStr }.
@@ -69,13 +77,21 @@ const _resolveTenant = async (gymListingId) => {
 
 /**
  * Resolve tenant DB from a subscriptionId via the Platform cross-tenant index.
- * Ensures the subscription belongs to the requesting user.
+ * Tries subscriptionId field first; falls back to matching by UserGymMembership.id
+ * to handle cases where the client sends the membership record's own PK.
  */
 const _resolveBySubscriptionId = async (subscriptionId, userId) => {
-  const index = await UserGymMembership.findOne({
-    where: { subscriptionId, userId },
-  });
+  let index = await UserGymMembership.findOne({ where: { subscriptionId, userId } });
+
+  if (!index) {
+    index = await UserGymMembership.findOne({ where: { id: subscriptionId, userId } });
+  }
+
   if (!index) throw createError('Subscription not found', 404);
+
+  // Use the real MemberSubscription UUID stored in the index; fall back to the
+  // passed value only if the field was never populated (older records).
+  const resolvedSubscriptionId = index.subscriptionId || subscriptionId;
 
   const tenant = await Tenant.findOne({
     where: { id: index.tenantId, status: 'ACTIVE' },
@@ -87,23 +103,20 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
     tenant.id,
     tenant.connectionStringEncrypted
   );
-  return { models, index };
+  return { models, index, resolvedSubscriptionId };
 };
 
 // ── POST /subscriptions ───────────────────────────────────────────────────────
 const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, sourceChannel }) => {
   const { models, tenantId, gymListing } = await _resolveTenant(gymListingId);
-  const { MembershipPlan, MemberSubscription, MemberProfile } = models;
+  const { MembershipPlan, MemberSubscription, MemberProfile, Payment, Invoice } = models;
 
-  // Verify plan exists and is active
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Membership plan not found or inactive', 404);
 
-  // Verify branch belongs to this gym
   const branch = await models.Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
 
-  // Prevent duplicate active/pending subscription to same branch for this user
   const existing = await MemberSubscription.findOne({
     where: {
       userId,
@@ -117,16 +130,16 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   const endDate = _calcEndDate(startDate, plan.durationType, plan.durationValue);
   const qrCode = _generateQrToken();
 
-  // Upsert member profile (create only if not exists)
   await MemberProfile.findOrCreate({ where: { userId }, defaults: { userId } });
 
+  // Subscription starts PENDING — becomes ACTIVE only after payment is verified
   const subscription = await MemberSubscription.create({
     userId,
     branchId,
     membershipPlanId: planId,
     startDate,
     endDate,
-    status: SubscriptionStatus.ACTIVE,
+    status: SubscriptionStatus.PENDING,
     autoRenew: autoRenew ?? false,
     qrCode,
     subscribedAt: new Date(),
@@ -134,7 +147,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     sourceChannel: sourceChannel ?? 'ONLINE',
   });
 
-  // Write cross-tenant index to Platform DB
+  // Write cross-tenant index (PENDING until payment verified)
   await UserGymMembership.create({
     userId,
     tenantId,
@@ -144,17 +157,46 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     planName: plan.name,
     startDate,
     endDate,
-    status: SubscriptionStatus.ACTIVE,
+    status: SubscriptionStatus.PENDING,
   });
 
-  // Fire-and-forget notification
-  _enqueueNotification(userId, 'SUBSCRIPTION_ACTIVATED', {
+  // Create pending payment + issued invoice
+  const subtotal    = parseFloat(plan.price);
+  const joining     = parseFloat(plan.joiningFee  || 0);
+  const security    = parseFloat(plan.securityFee || 0);
+  const totalAmount = subtotal + joining + security;
+
+  const payment = await Payment.create({
+    userId,
+    paymentFor:        'MEMBERSHIP',
+    referenceEntityId: subscription.id,
+    method:            'BANK_TRANSFER',
+    amount:            totalAmount,
+    currency:          'PKR',
+    status:            PaymentStatus.PENDING,
+  });
+
+  const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const invoice = await Invoice.create({
+    userId,
+    invoiceNo:         _invoiceNo(),
+    invoiceType:       'MEMBERSHIP',
+    referenceEntityId: subscription.id,
+    subtotal,
+    discountAmount: 0,
+    taxAmount:      0,
+    totalAmount,
+    dueDate,
+    status: InvoiceStatus.ISSUED,
+  });
+
+  _enqueueNotification(userId, 'SUBSCRIPTION_PENDING', {
     gymName: gymListing.title,
     planName: plan.name,
     endDate,
   }).catch(() => {});
 
-  return { subscription, qrCode };
+  return { subscription, qrCode, payment, invoice };
 };
 
 // ── GET /me/subscriptions ─────────────────────────────────────────────────────
@@ -177,10 +219,10 @@ const listMySubscriptions = async (userId, { status, page, limit, offset }) => {
 
 // ── POST /subscriptions/:id/freeze ────────────────────────────────────────────
 const freeze = async (userId, subscriptionId, { freezeFrom, freezeTo }) => {
-  const { models, index } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription } = models;
 
-  const sub = await MemberSubscription.findOne({ where: { id: subscriptionId } });
+  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
   if (!sub) throw createError('Subscription not found in tenant database', 404);
   if (sub.status !== SubscriptionStatus.ACTIVE) {
     throw createError(`Cannot freeze a subscription with status: ${sub.status}`, 409);
@@ -206,10 +248,10 @@ const freeze = async (userId, subscriptionId, { freezeFrom, freezeTo }) => {
 
 // ── POST /subscriptions/:id/cancel ────────────────────────────────────────────
 const cancel = async (userId, subscriptionId) => {
-  const { models, index } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription } = models;
 
-  const sub = await MemberSubscription.findOne({ where: { id: subscriptionId } });
+  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
   if (!sub) throw createError('Subscription not found in tenant database', 404);
   if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status)) {
     throw createError(`Subscription is already ${sub.status.toLowerCase()}`, 409);
@@ -223,10 +265,10 @@ const cancel = async (userId, subscriptionId) => {
 
 // ── POST /subscriptions/:id/renew ─────────────────────────────────────────────
 const renew = async (userId, subscriptionId) => {
-  const { models, index } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription } = models;
 
-  const sub = await MemberSubscription.findOne({ where: { id: subscriptionId } });
+  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
   if (!sub) throw createError('Subscription not found in tenant database', 404);
   if (sub.status === SubscriptionStatus.CANCELLED) {
     throw createError('Cancelled subscriptions cannot be renewed', 409);
@@ -267,7 +309,7 @@ const renew = async (userId, subscriptionId) => {
 
 // ── Staff: list all subscriptions in tenant DB ────────────────────────────────
 const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, offset }) => {
-  const { MemberSubscription, MembershipPlan, Branch } = tenantDb.models;
+  const { MemberSubscription, MembershipPlan, Branch, Payment } = tenantDb.models;
 
   const where = {};
   if (status) where.status = status;
@@ -277,40 +319,80 @@ const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, o
   const { count, rows } = await MemberSubscription.findAndCountAll({
     where,
     include: [
-      { model: MembershipPlan, as: 'plan', attributes: ['id', 'name', 'price', 'durationType'] },
+      { model: MembershipPlan, as: 'plan', attributes: ['id', 'name', 'price', 'durationType', 'durationValue'] },
       { model: Branch, as: 'branch', attributes: ['id', 'branchName'] },
     ],
     order: [['subscribedAt', 'DESC']],
     limit,
     offset,
+    distinct: true,
   });
 
+  // Enrich with platform DB user info and latest payment
+  const userIds = [...new Set(rows.map((r) => r.userId))];
+  const users = userIds.length
+    ? await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
+      })
+    : [];
+  const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
+
+  // Fetch latest payment per subscription
+  const subIds = rows.map((r) => r.id);
+  const payments = subIds.length
+    ? await Payment.findAll({
+        where: { referenceEntityId: subIds, paymentFor: 'MEMBERSHIP' },
+        attributes: ['id', 'referenceEntityId', 'status', 'method', 'amount', 'proofUrl', 'createdAt'],
+        order: [['createdAt', 'DESC']],
+      })
+    : [];
+  // Keep only the latest payment per subscription
+  const paymentMap = {};
+  for (const p of payments) {
+    if (!paymentMap[p.referenceEntityId]) paymentMap[p.referenceEntityId] = p.toJSON();
+  }
+
+  const subscriptions = rows.map((r) => ({
+    ...r.toJSON(),
+    user: userMap[r.userId] || null,
+    latestPayment: paymentMap[r.id] || null,
+  }));
+
   return {
-    subscriptions: rows,
+    subscriptions,
     pagination: buildPagination(count, page, limit),
   };
 };
 
 // ── Staff: get single subscription ───────────────────────────────────────────
 const getForStaff = async (tenantDb, subscriptionId) => {
-  const { MemberSubscription, MembershipPlan, Branch, Payment } = tenantDb.models;
+  const { MemberSubscription, MembershipPlan, Branch, Payment, Invoice } = tenantDb.models;
 
   const sub = await MemberSubscription.findOne({
     where: { id: subscriptionId },
     include: [
       { model: MembershipPlan, as: 'plan' },
-      { model: Branch, as: 'branch', attributes: ['id', 'branchName'] },
+      { model: Branch, as: 'branch', attributes: ['id', 'branchName', 'address'] },
     ],
   });
   if (!sub) throw createError('Subscription not found', 404);
 
-  // Fetch latest payment for this subscription
-  const latestPayment = await Payment.findOne({
+  const user = await User.findByPk(sub.userId, {
+    attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
+  });
+
+  const payments = await Payment.findAll({
     where: { referenceEntityId: subscriptionId, paymentFor: 'MEMBERSHIP' },
     order: [['createdAt', 'DESC']],
   });
 
-  return { subscription: sub, latestPayment };
+  const invoice = await Invoice.findOne({
+    where: { referenceEntityId: subscriptionId },
+    order: [['createdAt', 'DESC']],
+  });
+
+  return { subscription: { ...sub.toJSON(), user }, payments, invoice };
 };
 
 // ── Preview: dry-run date + price calculation without DB commit ───────────────
@@ -337,7 +419,65 @@ const previewSubscription = async (tenantDb, { planId, startDate, autoRenew }) =
   };
 };
 
+// ── GET /subscriptions/:id/detail ─────────────────────────────────────────────
+const getMySubscriptionDetail = async (userId, subscriptionId) => {
+  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { MemberSubscription, MembershipPlan, Branch, Payment, Invoice } = models;
+
+  const sub = await MemberSubscription.findOne({
+    where: { id: resolvedSubscriptionId, userId },
+    include: [
+      { model: MembershipPlan, as: 'plan' },
+      { model: Branch, as: 'branch', attributes: ['id', 'branchName', 'address'] },
+    ],
+  });
+  if (!sub) throw createError('Subscription not found', 404);
+
+  const latestPayment = await Payment.findOne({
+    where: { referenceEntityId: resolvedSubscriptionId, paymentFor: 'MEMBERSHIP', userId },
+    order: [['createdAt', 'DESC']],
+  });
+
+  const invoice = await Invoice.findOne({
+    where: { referenceEntityId: resolvedSubscriptionId, userId },
+    order: [['createdAt', 'DESC']],
+  });
+
+  return { subscription: sub, gymMembership: index, payment: latestPayment, invoice };
+};
+
+// ── POST /subscriptions/:id/proof — member uploads payment proof ──────────────
+const uploadSubscriptionProof = async (userId, subscriptionId, proofUrl) => {
+  const { models, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { Payment } = models;
+
+  const payment = await Payment.findOne({
+    where: { referenceEntityId: resolvedSubscriptionId, userId, status: PaymentStatus.PENDING },
+    order: [['createdAt', 'DESC']],
+  });
+  if (!payment) throw createError('No pending payment found for this subscription', 404);
+
+  await payment.update({ proofUrl });
+  return payment.reload();
+};
+
+// ── Staff: POST /subscriptions/staff/:id/activate ─────────────────────────────
+const activateSubscription = async (tenantDb, subscriptionId) => {
+  const { MemberSubscription } = tenantDb.models;
+
+  const sub = await MemberSubscription.findByPk(subscriptionId);
+  if (!sub) throw createError('Subscription not found', 404);
+  if (sub.status === SubscriptionStatus.ACTIVE) throw createError('Subscription is already active', 409);
+  if (sub.status === SubscriptionStatus.CANCELLED) throw createError('Cannot activate a cancelled subscription', 409);
+
+  await sub.update({ status: SubscriptionStatus.ACTIVE });
+  await UserGymMembership.update({ status: SubscriptionStatus.ACTIVE }, { where: { subscriptionId } });
+
+  return sub.reload();
+};
+
 module.exports = {
   subscribe, listMySubscriptions, freeze, cancel, renew,
   listForStaff, getForStaff, previewSubscription,
+  getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
 };

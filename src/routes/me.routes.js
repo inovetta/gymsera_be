@@ -60,6 +60,8 @@ router.get('/profile', meController.getProfile);
  *         description: Updated profile
  */
 router.put('/profile', validate(meValidators.updateProfile), meController.updateProfile);
+// Alias: PATCH /me/profile (web portal sends PATCH)
+router.patch('/profile', validate(meValidators.updateProfile), meController.updateProfile);
 
 /**
  * @swagger
@@ -86,6 +88,8 @@ router.put('/profile', validate(meValidators.updateProfile), meController.update
  *         description: Current password incorrect
  */
 router.post('/password', validate(meValidators.changePassword), meController.changePassword);
+// Alias: POST /me/change-password (web portal uses this path)
+router.post('/change-password', validate(meValidators.changePassword), meController.changePassword);
 
 /**
  * @swagger
@@ -108,6 +112,8 @@ router.post('/password', validate(meValidators.changePassword), meController.cha
  *         description: Profile image updated
  */
 router.post('/profile-image', upload.image('image'), upload.handleMulterError, meController.uploadProfileImage);
+// Alias: POST /me/profile/image (web portal uses this path)
+router.post('/profile/image', upload.image('image'), upload.handleMulterError, meController.uploadProfileImage);
 
 /**
  * @swagger
@@ -245,6 +251,23 @@ router.post(
   upload.handleMulterError,
   meController.uploadPaymentProof
 );
+
+// ── Aliases for web portal (uses /payments instead of /payment-requests) ──────
+router.get('/payments', meController.getPaymentRequests);
+router.post('/payments', validate(meValidators.submitPaymentRequest), meController.submitPaymentRequest);
+router.post(
+  '/payments/:id/proof',
+  validate(meValidators.proofId),
+  upload.image('image'),
+  upload.handleMulterError,
+  meController.uploadPaymentProof
+);
+
+// ── Subscription detail (member self-serve, no tenant context needed) ─────────
+router.get('/subscriptions/:id', subscriptionsController.getMySubscriptionDetail);
+
+// ── Attendance logs (cross-tenant, resolved via subscriptionId query param) ───
+router.get('/attendance', meController.getMyAttendance);
 
 module.exports = router;
 
