@@ -17,7 +17,10 @@ const authenticate = (req, _res, next) => {
   const token = authHeader.slice(7);
 
   try {
-    req.user = verifyToken(token);
+    const decoded = verifyToken(token);
+    // Normalize: JWT uses `sub` for the user ID; expose it as `id` too
+    req.user = decoded;
+    if (decoded.sub && !decoded.id) req.user.id = decoded.sub;
     next();
   } catch (err) {
     // JsonWebTokenError / TokenExpiredError — handled by errorHandler

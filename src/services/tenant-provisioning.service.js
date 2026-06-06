@@ -18,8 +18,8 @@
 const mysql = require('mysql2/promise');
 const { Sequelize } = require('sequelize');
 
-const { Tenant, User, City, GymListing } = require('../models/platform');
-const { registerTenantModels } = require('../models/tenant');
+const { Tenant, User, City, GymListing, TenantSubscription, PlatformPackage } = require('../models/platform');
+const registerTenantModels = require('../models/tenant');
 const { encrypt } = require('../utils/crypto.utils');
 const emailService = require('./email.service');
 const { TenantStatus } = require('../constants/subscription-status');
@@ -104,11 +104,45 @@ const processTenantProvisioning = async (job) => {
     pool: { max: 3, min: 0, acquire: 30000, idle: 10000 },
   });
 
+  let gymId = null;
+
   try {
     await tenantSequelize.authenticate();
     const models = registerTenantModels(tenantSequelize);
     await tenantSequelize.sync({ force: false, alter: false });
     console.log(`[Provisioning] Tenant models synced to '${dbName}'`);
+
+    // ── Step 6b: Create Gym record in tenant DB ────────────────────────────
+    if (tenant.gymName) {
+      const gym = await models.Gym.create({
+        name: tenant.gymName,
+        description: tenant.gymDescription || null,
+        contactPhone: tenant.phone || null,
+        genderType: tenant.genderType || 'MIXED',
+        logoUrl: tenant.logoUrl || null,
+        coverImageUrl: tenant.coverImageUrl || null,
+      });
+      gymId = gym.id;
+      console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${gymId})`);
+
+      // ── Step 6c: Create initial Branch from onboarding data ────────────
+      if (tenant.mainBranchDataJson) {
+        const b = tenant.mainBranchDataJson;
+        await models.Branch.create({
+          gymId,
+          branchName: b.name || tenant.gymName,
+          address: b.address || tenant.address || null,
+          cityId: b.cityId || tenant.cityId || null,
+          latitude: b.latitude != null ? b.latitude : null,
+          longitude: b.longitude != null ? b.longitude : null,
+          phone: b.phone || null,
+          openingTime: b.openingTime || null,
+          closingTime: b.closingTime || null,
+          status: 'ACTIVE',
+        });
+        console.log(`[Provisioning] Initial Branch created in '${dbName}'`);
+      }
+    }
   } finally {
     await tenantSequelize.close();
   }
@@ -127,6 +161,8 @@ const processTenantProvisioning = async (job) => {
       coverImageUrl: tenant.coverImageUrl || null,
       genderType: tenant.genderType || null,
       contactPhone: tenant.phone || null,
+      latitude: tenant.latitude || null,
+      longitude: tenant.longitude || null,
       status: 'ACTIVE',
     });
     console.log(`[Provisioning] GymListing created for tenant ${tenantId}`);
@@ -139,6 +175,38 @@ const processTenantProvisioning = async (job) => {
     connectionStringEncrypted,
   });
   console.log(`[Provisioning] Tenant ${tenantId} status set to ACTIVE`);
+
+  // ── Step 8b: Create subscription from selectedPackageId (if not already done) ─
+  if (tenant.selectedPackageId) {
+    const existingActiveSub = await TenantSubscription.findOne({
+      where: { tenantId: tenant.id },
+    });
+
+    if (!existingActiveSub) {
+      const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
+      if (pkg) {
+        const cycle = pkg.billingCycle || 'MONTHLY';
+        const start = new Date();
+        const end = new Date(start);
+        if (cycle === 'MONTHLY') end.setMonth(end.getMonth() + 1);
+        else if (cycle === 'QUARTERLY') end.setMonth(end.getMonth() + 3);
+        else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
+
+        await TenantSubscription.create({
+          tenantId: tenant.id,
+          platformPackageId: pkg.id,
+          startDate: start.toISOString().split('T')[0],
+          endDate: end.toISOString().split('T')[0],
+          amount: pkg.price,
+          billingCycle: cycle,
+          status: 'ACTIVE',
+          autoRenew: true,
+          paymentStatus: 'PENDING',
+        });
+        console.log(`[Provisioning] Subscription auto-created for tenant ${tenantId} (package: ${pkg.name})`);
+      }
+    }
+  }
 
   // ── Step 9: Send approval email ───────────────────────────────────────────
   if (tenant.owner) {

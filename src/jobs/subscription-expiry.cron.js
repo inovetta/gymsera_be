@@ -1,22 +1,24 @@
 /**
  * subscription-expiry.cron.js
  *
- * Bull cron job — runs daily at 01:00 AM server time.
+ * Runs daily at 01:00 AM server time.
  *
- * For every tenant DB in the TenantDbManager pool:
- *   1. Find all ACTIVE subscriptions whose endDate < today → mark EXPIRED
- *   2. Find all ACTIVE subscriptions expiring in the next 3 days → queue
- *      SUBSCRIPTION_EXPIRING_SOON notification
+ * Platform-level:
+ *   1. Find TenantSubscriptions expiring in 2 days → send warning email to gym host
+ *   2. Find TenantSubscriptions whose endDate < today and still ACTIVE → mark EXPIRED,
+ *      auto-suspend the Tenant, hide GymListing, send suspension email
  *
- * Additionally syncs the Platform `user_gym_memberships` status index.
- *
- * The job is registered in server.js at startup.
+ * Per-tenant (member subscriptions):
+ *   1. Find ACTIVE MemberSubscriptions whose endDate < today → mark EXPIRED
+ *   2. Sync platform UserGymMembership index
+ *   3. Find expiring-soon member subscriptions → queue SUBSCRIPTION_EXPIRING_SOON email
  */
 const { Op } = require('sequelize');
 const TenantDbManager       = require('../database/TenantDbManager');
-const { UserGymMembership, User, Tenant } = require('../models/platform');
+const { UserGymMembership, User, Tenant, TenantSubscription, GymListing, PlatformPackage } = require('../models/platform');
 const { notificationsQueue } = require('./queues');
 const { SubscriptionStatus } = require('../constants/subscription-status');
+const emailService = require('../services/email.service');
 
 const EXPIRY_CRON = '0 1 * * *'; // 01:00 every day
 const WARNING_DAYS = 3;
@@ -92,11 +94,109 @@ const _processTenant = async (tenantId, tenantDb) => {
   }
 };
 
+// ── Platform tenant subscription expiry ────────────────────────────────────────
+/**
+ * Handles platform-level tenant subscription expiry:
+ *  - Sends 2-day warning emails for subscriptions about to expire
+ *  - Marks expired TenantSubscriptions as EXPIRED
+ *  - Auto-suspends the Tenant + hides GymListing
+ *  - Sends suspension email to gym host
+ */
+const _processPlatformSubscriptions = async () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split('T')[0];
+
+  // ── 1. 2-day warning ──────────────────────────────────────────────────────
+  const warningDate = new Date(today);
+  warningDate.setDate(warningDate.getDate() + 2);
+  const warningDateStr = warningDate.toISOString().split('T')[0];
+
+  const expiringSoon = await TenantSubscription.findAll({
+    where: {
+      status: 'ACTIVE',
+      endDate: { [Op.between]: [todayStr, warningDateStr] },
+    },
+    include: [
+      { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['email', 'fullName'] }] },
+      { model: PlatformPackage, as: 'package', attributes: ['name'] },
+    ],
+  });
+
+  for (const sub of expiringSoon) {
+    const owner = sub.tenant?.owner;
+    if (!owner) continue;
+    try {
+      await emailService.sendTenantSubscriptionWarningEmail(owner.email, owner.fullName, {
+        businessName: sub.tenant.businessName,
+        packageName: sub.package?.name || 'Platform',
+        endDate: sub.endDate,
+      });
+      console.log(`[Cron] Sent subscription warning to ${owner.email} (tenant: ${sub.tenantId})`);
+    } catch (err) {
+      console.error(`[Cron] Failed to send warning email to ${owner.email}:`, err.message);
+    }
+  }
+
+  // ── 2. Expire overdue platform subscriptions ──────────────────────────────
+  const expiredSubs = await TenantSubscription.findAll({
+    where: { status: 'ACTIVE', endDate: { [Op.lt]: todayStr } },
+    include: [
+      { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['email', 'fullName'] }] },
+      { model: PlatformPackage, as: 'package', attributes: ['name'] },
+    ],
+  });
+
+  for (const sub of expiredSubs) {
+    try {
+      // Mark subscription expired
+      await sub.update({ status: 'EXPIRED' });
+
+      // Auto-suspend the tenant
+      const tenant = sub.tenant;
+      if (!tenant || tenant.status === 'SUSPENDED') continue;
+
+      await tenant.update({ status: 'SUSPENDED' });
+
+      // Hide their gym listing
+      await GymListing.update(
+        { status: 'INACTIVE' },
+        { where: { tenantId: tenant.id, status: 'ACTIVE' } }
+      );
+
+      console.log(`[Cron] Auto-suspended tenant ${tenant.id} (${tenant.businessName}) — subscription expired`);
+
+      // Send suspension email
+      const owner = tenant.owner;
+      if (owner) {
+        try {
+          await emailService.sendTenantSubscriptionSuspendedEmail(owner.email, owner.fullName, {
+            businessName: tenant.businessName,
+            packageName: sub.package?.name || 'Platform',
+            endDate: sub.endDate,
+          });
+        } catch (emailErr) {
+          console.error(`[Cron] Failed to send suspension email to ${owner.email}:`, emailErr.message);
+        }
+      }
+    } catch (err) {
+      console.error(`[Cron] Failed to process expired subscription ${sub.id}:`, err.message);
+    }
+  }
+
+  if (expiringSoon.length || expiredSubs.length) {
+    console.log(`[Cron] Platform subscriptions: ${expiringSoon.length} warning(s) sent, ${expiredSubs.length} expired & suspended`);
+  }
+};
+
 /**
  * Main cron handler — iterates over all loaded tenant connections.
  */
 const runExpiryCheck = async () => {
   console.log('[Cron] subscription-expiry: starting daily check');
+
+  // ── Platform subscriptions first ─────────────────────────────────────────
+  await _processPlatformSubscriptions();
 
   const entries = TenantDbManager.getAllEntries();
 

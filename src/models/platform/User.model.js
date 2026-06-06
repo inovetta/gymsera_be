@@ -17,7 +17,6 @@ module.exports = (sequelize) => {
       email: {
         type: DataTypes.STRING(150),
         allowNull: false,
-        unique: true,
         validate: { isEmail: true },
       },
       phone: {
@@ -61,10 +60,10 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { unique: true, fields: ['email'] },
-        { fields: ['role'] },
-        { fields: ['status'] },
-        { fields: ['google_id'] },
+        { name: 'users_email_unique', unique: true, fields: ['email'] },
+        { name: 'users_role', fields: ['role'] },
+        { name: 'users_status', fields: ['status'] },
+        { name: 'users_google_id', fields: ['google_id'] },
       ],
     }
   );

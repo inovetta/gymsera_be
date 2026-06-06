@@ -13,6 +13,16 @@ const recordPayment = async (req, res, next) => {
   }
 };
 
+// ── GET /payments/:id ─────────────────────────────────────────────────────────
+const getPaymentById = async (req, res, next) => {
+  try {
+    const payment = await paymentService.getPayment(req.tenantDb, req.params.id);
+    return sendSuccess(res, { payment }, 'Payment retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /payments ──────────────────────────────────────────────────────────────
 const listPayments = async (req, res, next) => {
   try {
@@ -138,6 +148,6 @@ const getInvoice = async (req, res, next) => {
 };
 
 module.exports = {
-  recordPayment, listPayments, verifyPayment, verifyOrReject,
+  recordPayment, listPayments, getPaymentById, verifyPayment, verifyOrReject,
   uploadProof, collectionAction, listInvoices, getInvoice,
 };
