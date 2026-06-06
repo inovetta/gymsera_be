@@ -134,7 +134,11 @@ const register = async ({ fullName, email, password, phone }) => {
     expiresAt: getOtpExpiry(),
   });
 
-  await emailService.sendOtpEmail(email, fullName, code);
+  try {
+    await emailService.sendOtpEmail(email, fullName, code);
+  } catch (emailErr) {
+    console.warn('[Auth] OTP email failed (register):', emailErr.message);
+  }
 
   const result = { userId: user.id, email, otpExpiresAtUtc: otp.expiresAt };
   // Expose the OTP code in dev/test so Postman / integration tests don't need email
@@ -186,7 +190,11 @@ const resendOtp = async ({ email }) => {
     expiresAt: getOtpExpiry(),
   });
 
-  await emailService.sendOtpEmail(email, user.fullName, code);
+  try {
+    await emailService.sendOtpEmail(email, user.fullName, code);
+  } catch (emailErr) {
+    console.warn('[Auth] OTP email failed (resend):', emailErr.message);
+  }
 
   return { message: 'If this email is registered and unverified, a new code has been sent.' };
 };
@@ -217,7 +225,11 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
       type: 'EMAIL_VERIFICATION',
       expiresAt: getOtpExpiry(),
     });
-    await emailService.sendOtpEmail(email, user.fullName, code);
+    try {
+      await emailService.sendOtpEmail(email, user.fullName, code);
+    } catch (emailErr) {
+      console.warn('[Auth] OTP email failed (login):', emailErr.message);
+    }
 
     const payload = {
       email: user.email,

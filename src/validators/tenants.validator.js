@@ -70,6 +70,33 @@ const tenantsValidators = {
       .isUUID(4)
       .withMessage('packageId must be a valid UUID'),
   ],
+
+  updateMyTenant: [
+    body('businessName')
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage('Business name cannot be blank')
+      .isLength({ max: 200 })
+      .withMessage('Business name must be 200 characters or fewer'),
+
+    body('email')
+      .optional()
+      .trim()
+      .toLowerCase()
+      .isEmail()
+      .withMessage('A valid email address is required'),
+
+    body('phone')
+      .optional({ nullable: true, checkFalsy: true })
+      .isMobilePhone()
+      .withMessage('A valid phone number is required'),
+
+    body('cityId')
+      .optional({ nullable: true, checkFalsy: true })
+      .isInt({ min: 1 })
+      .withMessage('cityId must be a positive integer'),
+  ],
 };
 
 module.exports = tenantsValidators;

@@ -1,5 +1,6 @@
 const userService = require('../services/user.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
+const storageService = require('../services/storage.service');
 
 // ── GET /users — paginated search ─────────────────────────────────────────────
 const search = async (req, res, next) => {
@@ -73,10 +74,7 @@ const uploadProfileImage = async (req, res, next) => {
       return next(err);
     }
 
-    // In production, upload req.file.buffer to cloud storage and get URL.
-    // For now we store a placeholder URL and log in dev.
-    const imageUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/profiles/${req.params.id}-${Date.now()}.jpg`;
-
+    const imageUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'profiles', req.params.id);
     const result = await userService.updateProfileImage(req.params.id, imageUrl);
     return sendSuccess(res, result, 'Profile image updated');
   } catch (err) {

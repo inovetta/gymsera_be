@@ -4,6 +4,7 @@ const citiesValidators = require('../validators/cities.validator');
 const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
+const upload = require('../middleware/upload');
 
 const router = Router();
 
@@ -189,6 +190,32 @@ router.patch(
   authorize('PLATFORM_ADMIN'),
   validate(citiesValidators.updateArea),
   citiesController.updateArea
+);
+
+// ── DELETE /cities/:id — delete city (Admin only) ────────────────────────────
+router.delete('/:id', authenticate, authorize('PLATFORM_ADMIN'), citiesController.deleteCity);
+
+// ── DELETE /cities/:id/areas/:areaId — delete area (Admin only) ──────────────
+router.delete('/:id/areas/:areaId', authenticate, authorize('PLATFORM_ADMIN'), citiesController.deleteArea);
+
+// ── POST /cities/:id/image — upload city image (Admin only) ──────────────────
+router.post(
+  '/:id/image',
+  authenticate,
+  authorize('PLATFORM_ADMIN'),
+  upload.image('image'),
+  upload.handleMulterError,
+  citiesController.uploadCityImage
+);
+
+// ── POST /cities/:id/areas/:areaId/image — upload area image (Admin only) ────
+router.post(
+  '/:id/areas/:areaId/image',
+  authenticate,
+  authorize('PLATFORM_ADMIN'),
+  upload.image('image'),
+  upload.handleMulterError,
+  citiesController.uploadAreaImage
 );
 
 module.exports = router;

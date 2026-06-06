@@ -17,6 +17,10 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
+      imageUrl: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+      },
     },
     {
       tableName: 'cities',

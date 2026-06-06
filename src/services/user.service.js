@@ -269,7 +269,7 @@ const getAccountStatement = async (userId, tenantDb, { page, limit, offset, from
         ...(from || to ? { startDate: dateFilter } : {}),
       },
       include: [
-        { model: MembershipPlan, as: 'plan', attributes: ['id', 'name', 'price', 'durationDays'] },
+        { model: MembershipPlan, as: 'plan', attributes: ['id', 'name', 'price', 'durationType', 'durationValue'] },
         { model: Branch, as: 'branch', attributes: ['id', 'branchName'] },
       ],
       order: [['subscribedAt', 'DESC']],

@@ -20,7 +20,7 @@ module.exports = (sequelize) => {
       },
       memberSubscriptionId: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
       },
       attendanceType: {
         type: DataTypes.ENUM('CHECK_IN', 'CHECK_OUT'),
@@ -37,7 +37,7 @@ module.exports = (sequelize) => {
         allowNull: true,
       },
       entryMethod: {
-        type: DataTypes.ENUM('QR_SCAN', 'MANUAL', 'RFID'),
+        type: DataTypes.ENUM('QR_SCAN', 'MANUAL', 'RFID', 'DEVICE'),
         allowNull: false,
         defaultValue: 'MANUAL',
       },

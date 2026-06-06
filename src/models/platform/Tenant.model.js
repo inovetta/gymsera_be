@@ -13,7 +13,6 @@ module.exports = (sequelize) => {
       tenantCode: {
         type: DataTypes.STRING(50),
         allowNull: false,
-        unique: true,
       },
       businessName: {
         type: DataTypes.STRING(200),
@@ -60,6 +59,29 @@ module.exports = (sequelize) => {
       genderType: {
         type: DataTypes.ENUM('MIXED', 'MALE_ONLY', 'FEMALE_ONLY'),
         allowNull: true,
+      },
+      latitude: {
+        type: DataTypes.DECIMAL(10, 8),
+        allowNull: true,
+      },
+      longitude: {
+        type: DataTypes.DECIMAL(11, 8),
+        allowNull: true,
+      },
+      mainBranchDataJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Branch data captured during onboarding; used to auto-create Branch on provisioning',
+      },
+      paymentMethod: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+        comment: 'Onboarding payment method: BANK_TRANSFER or PAY_LATER',
+      },
+      bankTransferRef: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: 'Bank transfer reference number provided by the gym owner',
       },
       // ── Onboarding workflow ──────────────────────────────────────────────────
       status: {
@@ -122,7 +144,7 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { unique: true, fields: ['tenant_code'] },
+        { name: 'tenants_tenant_code_unique', unique: true, fields: ['tenant_code'] },
         { fields: ['owner_user_id'] },
         { fields: ['status'] },
         { fields: ['city_id'] },

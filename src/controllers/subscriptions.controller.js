@@ -117,4 +117,44 @@ const preview = async (req, res, next) => {
   }
 };
 
-module.exports = { subscribe, listMySubscriptions, freeze, cancel, renew, listForStaff, getForStaff, preview };
+// ── GET /subscriptions/:id/detail — member gets full detail (invoice + payment) ─
+const getMySubscriptionDetail = async (req, res, next) => {
+  try {
+    const result = await subscriptionService.getMySubscriptionDetail(req.user.id, req.params.id);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /subscriptions/:id/proof — member uploads payment proof ───────────────
+const uploadSubscriptionProof = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const err = new Error('Proof image file is required');
+      err.statusCode = 422;
+      return next(err);
+    }
+    const proofUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/payment-proofs/sub-${req.params.id}-${Date.now()}.jpg`;
+    const payment = await subscriptionService.uploadSubscriptionProof(req.user.id, req.params.id, proofUrl);
+    return sendSuccess(res, { payment }, 'Proof uploaded successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /subscriptions/staff/:id/activate — staff activates without payment ───
+const activateSubscription = async (req, res, next) => {
+  try {
+    const subscription = await subscriptionService.activateSubscription(req.tenantDb, req.params.id);
+    return sendSuccess(res, { subscription }, 'Subscription activated');
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  subscribe, listMySubscriptions, freeze, cancel, renew,
+  listForStaff, getForStaff, preview,
+  getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
+};

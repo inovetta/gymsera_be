@@ -49,6 +49,13 @@ async function provisionTenant(tenant, dbConfig) {
     );
     console.log(`   ✅ Database '${dbName}' created (or already exists)`);
 
+    // Create the app user if it doesn't exist yet (idempotent on staging servers
+    // where the user may not have been pre-created).
+    await adminConn.execute(
+      `CREATE USER IF NOT EXISTS '${dbConfig.appUser}'@'%' IDENTIFIED BY '${dbConfig.appPassword}'`
+    );
+    console.log(`   ✅ User '${dbConfig.appUser}' ensured`);
+
     await adminConn.execute(
       `GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbConfig.appUser}'@'%'`
     );
