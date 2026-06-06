@@ -14,11 +14,14 @@ const City = require('./City.model')(sequelize);
 const Area = require('./Area.model')(sequelize);
 const PlatformPackage = require('./PlatformPackage.model')(sequelize);
 const TenantSubscription = require('./TenantSubscription.model')(sequelize);
+const PlatformInvoice = require('./PlatformInvoice.model')(sequelize);
 const GymListing = require('./GymListing.model')(sequelize);
 const RefreshToken = require('./RefreshToken.model')(sequelize);
 const Otp = require('./Otp.model')(sequelize);
 const UserGymMembership = require('./UserGymMembership.model')(sequelize);
 const GymReview = require('./GymReview.model')(sequelize);
+const Device = require('./Device.model')(sequelize);
+const DeviceMember = require('./DeviceMember.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -46,9 +49,25 @@ Tenant.belongsTo(City, { foreignKey: 'cityId', as: 'city' });
 Tenant.hasMany(TenantSubscription, { foreignKey: 'tenantId', as: 'subscriptions' });
 TenantSubscription.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 
+// Tenant ↔ PlatformPackage (selected package)
+Tenant.belongsTo(PlatformPackage, { foreignKey: 'selectedPackageId', as: 'selectedPackage' });
+PlatformPackage.hasMany(Tenant, { foreignKey: 'selectedPackageId', as: 'tenants' });
+
+// Tenant ↔ GymListing (one-to-one: each approved tenant has one public gym listing)
+Tenant.hasOne(GymListing, { foreignKey: 'tenantId', as: 'gymListing' });
+GymListing.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
 // PlatformPackage ↔ TenantSubscription
 PlatformPackage.hasMany(TenantSubscription, { foreignKey: 'platformPackageId', as: 'tenantSubscriptions' });
 TenantSubscription.belongsTo(PlatformPackage, { foreignKey: 'platformPackageId', as: 'package' });
+
+// Tenant ↔ PlatformInvoice
+Tenant.hasMany(PlatformInvoice, { foreignKey: 'tenantId', as: 'platformInvoices' });
+PlatformInvoice.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+// TenantSubscription ↔ PlatformInvoice
+TenantSubscription.hasMany(PlatformInvoice, { foreignKey: 'tenantSubscriptionId', as: 'invoices' });
+PlatformInvoice.belongsTo(TenantSubscription, { foreignKey: 'tenantSubscriptionId', as: 'subscription' });
 
 // City / Area ↔ GymListing
 City.hasMany(GymListing, { foreignKey: 'cityId', as: 'gymListings' });
@@ -81,6 +100,18 @@ GymReview.belongsTo(User, { foreignKey: 'userId', as: 'reviewer' });
 Tenant.hasMany(GymReview, { foreignKey: 'tenantId', as: 'gymReviews' });
 GymReview.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 
+// Tenant ↔ Device
+Tenant.hasMany(Device, { foreignKey: 'tenantId', as: 'devices', onDelete: 'CASCADE' });
+Device.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+// Device ↔ DeviceMember
+Device.hasMany(DeviceMember, { foreignKey: 'deviceId', as: 'members', onDelete: 'CASCADE' });
+DeviceMember.belongsTo(Device, { foreignKey: 'deviceId', as: 'device' });
+
+// User ↔ DeviceMember
+User.hasMany(DeviceMember, { foreignKey: 'userId', as: 'deviceMemberships', onDelete: 'CASCADE' });
+DeviceMember.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 module.exports = {
   sequelize,
   User,
@@ -89,9 +120,12 @@ module.exports = {
   Area,
   PlatformPackage,
   TenantSubscription,
+  PlatformInvoice,
   GymListing,
   RefreshToken,
   Otp,
   UserGymMembership,
   GymReview,
+  Device,
+  DeviceMember,
 };

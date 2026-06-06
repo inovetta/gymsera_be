@@ -13,9 +13,14 @@ const sequelize = new Sequelize(database, username, password, {
   logging: process.env.NODE_ENV === 'development' ? (sql) => console.log('[Platform DB]', sql) : false,
   pool: {
     max: 10,
-    min: 2,
+    min: 0,
     acquire: 30000,
     idle: 10000,
+  },
+  dialectOptions: {
+    connectTimeout: 20000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
   },
   define: {
     underscored: true,

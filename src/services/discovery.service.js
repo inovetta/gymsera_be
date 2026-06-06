@@ -53,8 +53,9 @@ const getGym = async (gymListingId) => {
 
   if (!listing || listing.status !== 'ACTIVE') throw createError('Gym not found', 404);
 
-  // Fetch public membership plans from tenant DB
+  // Fetch public membership plans + branches from tenant DB
   let membershipPlans = [];
+  let branches = [];
   try {
     const tenant = await Tenant.findOne({
       where: { id: listing.tenantId, status: 'ACTIVE' },
@@ -63,20 +64,28 @@ const getGym = async (gymListingId) => {
 
     if (tenant && tenant.connectionStringEncrypted) {
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-      const { MembershipPlan } = tenantDb.models;
+      const { MembershipPlan, Branch } = tenantDb.models;
 
-      membershipPlans = await MembershipPlan.findAll({
-        where: { status: 'ACTIVE' },
-        attributes: ['id', 'name', 'description', 'durationType', 'durationValue', 'price', 'joiningFee', 'isTrial'],
-        order: [['price', 'ASC']],
-      });
+      [membershipPlans, branches] = await Promise.all([
+        MembershipPlan.findAll({
+          where: { status: 'ACTIVE' },
+          attributes: ['id', 'name', 'description', 'durationType', 'durationValue', 'price', 'joiningFee', 'securityFee', 'isTrial', 'branchId', 'freezeLimitDays', 'visitLimit'],
+          order: [['price', 'ASC']],
+        }),
+        Branch.findAll({
+          where: { status: 'ACTIVE' },
+          attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
+          order: [['createdAt', 'ASC']],
+        }),
+      ]);
     }
   } catch {
-    // Non-fatal — return gym listing without plans if tenant DB is unreachable
+    // Non-fatal — return gym listing without plans/branches if tenant DB is unreachable
     membershipPlans = [];
+    branches = [];
   }
 
-  return { gym: listing, membershipPlans };
+  return { gym: { ...listing.toJSON(), branches }, membershipPlans };
 };
 
 // ── listCities ────────────────────────────────────────────────────────────────
@@ -107,44 +116,120 @@ const listCities = async () => {
   return cities;
 };
 
+// ── haversineKm ───────────────────────────────────────────────────────────────
+const haversineKm = (lat1, lng1, lat2, lng2) => {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 // ── nearbyGyms ────────────────────────────────────────────────────────────────
 /**
- * Haversine formula in SQL to find gyms within `radiusKm` of (lat, lng).
- * Returns gyms sorted by distance ascending.
+ * Finds gyms within `radiusKm` of (lat, lng).
+ * Searches both the gym's primary lat/lng (platform DB) AND each branch's
+ * lat/lng (tenant DBs) so that a gym appears even if only a branch is nearby.
+ * Results are sorted by distance to the nearest location (gym or branch).
  */
 const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1 }) => {
-  const offset = (page - 1) * limit;
+  const userLat = parseFloat(lat);
+  const userLng = parseFloat(lng);
 
-  // Haversine in MySQL:
-  // 6371 * acos(cos(radians(lat)) * cos(radians(g_lat)) * cos(radians(g_lng) - radians(lng)) + sin(radians(lat)) * sin(radians(g_lat)))
-  const distanceExpr = literal(
-    `(6371 * ACOS(
-       COS(RADIANS(${parseFloat(lat)})) * COS(RADIANS(\`GymListing\`.\`latitude\`))
-       * COS(RADIANS(\`GymListing\`.\`longitude\`) - RADIANS(${parseFloat(lng)}))
-       + SIN(RADIANS(${parseFloat(lat)})) * SIN(RADIANS(\`GymListing\`.\`latitude\`))
-     ))`
-  );
-
-  const rows = await GymListing.findAll({
-    attributes: {
-      include: [[distanceExpr, 'distanceKm']],
-    },
-    where: {
-      status: 'ACTIVE',
-      latitude:  { [Op.not]: null },
-      longitude: { [Op.not]: null },
-    },
+  // Step 1: find all active gyms that have a primary lat/lng set
+  const allActiveGyms = await GymListing.findAll({
+    where: { status: 'ACTIVE' },
     include: [
       { model: City, as: 'city', attributes: ['id', 'name'] },
       { model: Area, as: 'area', attributes: ['id', 'name'] },
     ],
-    having: literal(`distanceKm <= ${parseFloat(radiusKm)}`),
-    order: [[literal('distanceKm'), 'ASC']],
-    limit: parseInt(limit),
-    offset,
   });
 
-  return { gyms: rows };
+  // Step 2: collect tenant IDs for gyms that don't already match by primary location
+  // so we can scan their branches
+  const gymsByPrimary = new Map();
+  const gymsWithoutPrimary = [];
+
+  for (const gym of allActiveGyms) {
+    const gLat = parseFloat(gym.latitude);
+    const gLng = parseFloat(gym.longitude);
+    if (!isNaN(gLat) && !isNaN(gLng) && gLat !== 0 && gLng !== 0) {
+      const dist = haversineKm(userLat, userLng, gLat, gLng);
+      if (dist <= radiusKm) {
+        gymsByPrimary.set(gym.id, { gym, distanceKm: dist });
+      } else {
+        // Primary location is out of range — still check branches
+        gymsWithoutPrimary.push(gym);
+      }
+    } else {
+      // No primary location — rely entirely on branches
+      gymsWithoutPrimary.push(gym);
+    }
+  }
+
+  // Step 3: scan tenant DBs for branch locations of gyms not already matched
+  if (gymsWithoutPrimary.length > 0) {
+    const tenantIds = [...new Set(gymsWithoutPrimary.map((g) => g.tenantId).filter(Boolean))];
+
+    const tenants = await Tenant.findAll({
+      where: { id: tenantIds, status: 'ACTIVE' },
+      attributes: ['id', 'connectionStringEncrypted'],
+    });
+
+    // Build a map from tenantId → gym
+    const tenantToGym = new Map(gymsWithoutPrimary.map((g) => [g.tenantId, g]));
+
+    await Promise.allSettled(
+      tenants.map(async (tenant) => {
+        try {
+          const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+          const { Branch } = tenantDb.models;
+          const branches = await Branch.findAll({
+            where: { status: 'ACTIVE' },
+            attributes: ['id', 'latitude', 'longitude'],
+          });
+
+          for (const branch of branches) {
+            const bLat = parseFloat(branch.latitude);
+            const bLng = parseFloat(branch.longitude);
+            if (isNaN(bLat) || isNaN(bLng) || bLat === 0 || bLng === 0) continue;
+
+            const dist = haversineKm(userLat, userLng, bLat, bLng);
+            if (dist <= radiusKm) {
+              const gym = tenantToGym.get(tenant.id);
+              if (gym && !gymsByPrimary.has(gym.id)) {
+                gymsByPrimary.set(gym.id, { gym, distanceKm: dist });
+              } else if (gym && gymsByPrimary.has(gym.id)) {
+                // Keep the shorter distance
+                const existing = gymsByPrimary.get(gym.id);
+                if (dist < existing.distanceKm) {
+                  gymsByPrimary.set(gym.id, { gym, distanceKm: dist });
+                }
+              }
+            }
+          }
+        } catch {
+          // Non-fatal: skip tenant if its DB is unreachable
+        }
+      })
+    );
+  }
+
+  // Step 4: sort by distance, paginate, and shape the response
+  const sorted = Array.from(gymsByPrimary.values())
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  const offset = (page - 1) * limit;
+  const paginated = sorted.slice(offset, offset + parseInt(limit));
+
+  const gyms = paginated.map(({ gym, distanceKm }) => ({
+    ...gym.toJSON(),
+    distanceKm: Math.round(distanceKm * 10) / 10,
+  }));
+
+  return { gyms };
 };
 
 // ── mapGyms ───────────────────────────────────────────────────────────────────

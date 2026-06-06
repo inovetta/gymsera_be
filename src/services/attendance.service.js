@@ -257,5 +257,17 @@ const aggregateReport = async (tenantDb, period, { branchId, year, month }) => {
   return { period, rows };
 };
 
-module.exports = { qrScan, manual, list, deviceNotify, today, range, memberHistory, aggregateReport };
+// ── PATCH /attendance/:id/check-out ──────────────────────────────────────────
+const checkOut = async (tenantDb, logId) => {
+  const { AttendanceLog } = tenantDb.models;
+
+  const log = await AttendanceLog.findByPk(logId);
+  if (!log) throw createError('Attendance log not found', 404);
+  if (log.checkOutAt) throw createError('Already checked out', 409);
+
+  await log.update({ checkOutAt: new Date(), attendanceType: 'CHECK_OUT' });
+  return log;
+};
+
+module.exports = { qrScan, manual, list, deviceNotify, today, range, memberHistory, aggregateReport, checkOut };
 

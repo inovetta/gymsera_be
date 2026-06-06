@@ -46,6 +46,11 @@ module.exports = (sequelize) => {
         type: DataTypes.JSON,
         allowNull: true,
       },
+      imagesJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Array of gallery image URLs',
+      },
     },
     {
       tableName: 'gyms',

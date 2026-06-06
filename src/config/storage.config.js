@@ -1,9 +1,9 @@
 module.exports = {
-  driver: process.env.STORAGE_DRIVER || 'local',
-  aws: {
-    region: process.env.AWS_REGION || '',
-    accessKey: process.env.AWS_ACCESS_KEY || '',
-    secretKey: process.env.AWS_SECRET_KEY || '',
-    bucket: process.env.AWS_BUCKET || '',
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID || '',
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    bucket: process.env.R2_BUCKET || '',
+    publicUrl: process.env.R2_PUBLIC_URL || '',
   },
 };

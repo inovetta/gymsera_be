@@ -112,6 +112,7 @@ router.post(
  *         description: Paginated list of payments
  */
 router.get('/', validate(validators.listPayments), controller.listPayments);
+router.get('/:id', controller.getPaymentById);
 
 /**
  * @swagger

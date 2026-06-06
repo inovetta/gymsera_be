@@ -83,6 +83,7 @@ const discoveryValidators = {
     param('id').isUUID(4).withMessage('Invalid review ID'),
     body('action')
       .notEmpty()
+      .customSanitizer((v) => (typeof v === 'string' ? v.toLowerCase() : v))
       .isIn(['approve', 'reject'])
       .withMessage('action must be approve or reject'),
     body('adminNote')

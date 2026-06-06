@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
 const { notificationsQueue } = require('../jobs/queues');
-const { User } = require('../models/platform');
+const { User, UserGymMembership } = require('../models/platform');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +45,24 @@ const _createInvoice = async (models, { userId, payment, subscription, plan }) =
   });
 
   return invoice;
+};
+
+/**
+ * Activate a PENDING subscription after payment is confirmed.
+ * Updates both the tenant subscription and the platform cross-tenant index.
+ * Non-fatal — logs a warning if it fails rather than rolling back the payment.
+ */
+const _activateSubscription = async (tenantDb, subscriptionId) => {
+  try {
+    const { MemberSubscription } = tenantDb.models;
+    const sub = await MemberSubscription.findByPk(subscriptionId);
+    if (sub && sub.status === 'PENDING') {
+      await sub.update({ status: 'ACTIVE' });
+      await UserGymMembership.update({ status: 'ACTIVE' }, { where: { subscriptionId } });
+    }
+  } catch (err) {
+    console.warn('[Payment] Failed to activate subscription after payment:', err.message);
+  }
 };
 
 // ── POST /payments ─────────────────────────────────────────────────────────────
@@ -91,6 +109,10 @@ const recordPayment = async (tenantDb, staffUserId, data) => {
           plan,
         });
       }
+      // Auto-complete (CASH/TEST) payments activate the subscription immediately
+      if (autoComplete) {
+        await _activateSubscription(tenantDb, data.referenceEntityId);
+      }
     }
   }
 
@@ -119,6 +141,14 @@ const listPayments = async (tenantDb, { userId, status, method, from, to, page, 
   });
 
   return { payments: rows, pagination: buildPagination(count, page, limit) };
+};
+
+// ── GET /payments/:id ─────────────────────────────────────────────────────────
+const getPayment = async (tenantDb, paymentId) => {
+  const { Payment } = tenantDb.models;
+  const payment = await Payment.findByPk(paymentId);
+  if (!payment) throw createError('Payment not found', 404);
+  return payment;
 };
 
 // ── POST /payments/:id/verify ──────────────────────────────────────────────────
@@ -262,6 +292,11 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, verifiedByUserId, { ac
         { status: InvoiceStatus.PAID, paidAt: new Date() },
         { where: { referenceEntityId: payment.referenceEntityId, status: InvoiceStatus.ISSUED } }
       );
+
+      // Activate the linked subscription if this was a membership payment
+      if (payment.paymentFor === 'MEMBERSHIP') {
+        await _activateSubscription(tenantDb, payment.referenceEntityId);
+      }
     }
   } else if (action === 'reject') {
     await payment.update({
@@ -320,7 +355,7 @@ const collectionAction = async (tenantDb, paymentIds, staffUserId) => {
 
 // Re-export with new methods
 module.exports = {
-  recordPayment, listPayments, verifyPayment, verifyOrRejectPayment,
+  recordPayment, listPayments, getPayment, verifyPayment, verifyOrRejectPayment,
   uploadPaymentProof, collectionAction,
   listInvoices, getInvoice, markPaymentFailed,
 };

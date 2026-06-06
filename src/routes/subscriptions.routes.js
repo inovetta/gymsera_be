@@ -5,6 +5,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const upload = require('../middleware/upload');
 const { UserRole } = require('../constants/roles');
 
 const router = Router();
@@ -142,6 +143,12 @@ router.post('/:id/cancel', validate(validators.cancel), controller.cancel);
  */
 router.post('/:id/renew', validate(validators.renew), controller.renew);
 
+// ── Member: subscription detail with invoice + payment ────────────────────────
+router.get('/:id/detail', controller.getMySubscriptionDetail);
+
+// ── Member: upload payment proof for a pending subscription ───────────────────
+router.post('/:id/proof', upload.image('image'), upload.handleMulterError, controller.uploadSubscriptionProof);
+
 // ── Staff-facing routes (GYM_HOST | BRANCH_MANAGER) ──────────────────────────
 
 const staffRoles = [UserRole.GYM_HOST, UserRole.BRANCH_MANAGER, UserRole.PLATFORM_ADMIN];
@@ -221,5 +228,26 @@ router.get('/staff', authorize(...staffRoles), tenantContext, controller.listFor
  *         description: Subscription not found
  */
 router.get('/staff/:id', authorize(...staffRoles), tenantContext, controller.getForStaff);
+
+/**
+ * @swagger
+ * /subscriptions/staff/{id}/activate:
+ *   post:
+ *     summary: Staff — manually activate a PENDING subscription (bypass payment)
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Subscription activated
+ *       409:
+ *         description: Already active or cancelled
+ */
+router.post('/staff/:id/activate', authorize(...staffRoles), tenantContext, controller.activateSubscription);
 
 module.exports = router;

@@ -137,4 +137,18 @@ const platformSummary = async (req, res, next) => {
   }
 };
 
-module.exports = { hostDashboard, monthlyBreakdown, monthlyExportPdf, monthlyPrintLayout, platformSummary };
+const yearlyRevenue = async (req, res, next) => {
+  try {
+    const data = await reportsService.yearlyRevenue(req.tenantDb, req.query.year);
+    return sendSuccess(res, data);
+  } catch (err) { next(err); }
+};
+
+const weeklyAttendance = async (req, res, next) => {
+  try {
+    const data = await reportsService.weeklyAttendance(req.tenantDb);
+    return sendSuccess(res, data);
+  } catch (err) { next(err); }
+};
+
+module.exports = { hostDashboard, monthlyBreakdown, monthlyExportPdf, monthlyPrintLayout, platformSummary, yearlyRevenue, weeklyAttendance };

@@ -68,4 +68,9 @@ router.use('/reports', require('./reports.routes'));
 // ── Sprint 8 — User management & parity ──────────────────────────────────────
 router.use('/users', require('./users.routes'));
 
+// ── ZKTeco Biometric Device Management ───────────────────────────────────────
+const { adminRouter: devicesAdminRouter, hostRouter: devicesHostRouter } = require('./devices.routes');
+router.use('/admin/devices', devicesAdminRouter);
+router.use('/devices', devicesHostRouter);
+
 module.exports = router;

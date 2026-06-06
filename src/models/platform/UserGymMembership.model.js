@@ -39,7 +39,6 @@ module.exports = (sequelize) => {
       subscriptionId: {
         type: DataTypes.UUID,
         allowNull: false,
-        unique: true,
       },
       // Denormalised fields for fast listing without hitting tenant DB
       gymName: {

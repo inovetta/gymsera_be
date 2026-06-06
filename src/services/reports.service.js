@@ -248,10 +248,74 @@ const monthlyBreakdown = async (tenantDb, { year, month }) => {
   };
 };
 
+// ── Yearly revenue by month ────────────────────────────────────────────────────
+const yearlyRevenue = async (tenantDb, year) => {
+  const seq = tenantDb.sequelize;
+  const y = parseInt(year) || new Date().getFullYear();
+
+  const rows = await tenantDb.models.Payment.findAll({
+    attributes: [
+      [seq.fn('MONTH', seq.col('paid_at')), 'month'],
+      [seq.fn('SUM', seq.col('amount')), 'revenue'],
+    ],
+    where: {
+      status: PaymentStatus.COMPLETED,
+      paidAt: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31, 23, 59, 59)] },
+    },
+    group: [seq.fn('MONTH', seq.col('paid_at'))],
+    order: [[seq.fn('MONTH', seq.col('paid_at')), 'ASC']],
+    raw: true,
+  });
+
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const data = MONTHS.map((month, i) => {
+    const row = rows.find((r) => parseInt(r.month) === i + 1);
+    return { month, revenue: parseFloat(row?.revenue || 0) };
+  });
+
+  return { year: y, data };
+};
+
+// ── Weekly attendance (last 7 days) ───────────────────────────────────────────
+const weeklyAttendance = async (tenantDb) => {
+  const seq = tenantDb.sequelize;
+  const now = new Date();
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+
+  const rows = await tenantDb.models.AttendanceLog.findAll({
+    attributes: [
+      [seq.fn('DATE', seq.col('check_in_at')), 'day'],
+      [seq.fn('COUNT', seq.col('id')), 'count'],
+    ],
+    where: {
+      attendanceType: 'CHECK_IN',
+      checkInAt: { [Op.gte]: new Date(`${days[0]}T00:00:00Z`) },
+    },
+    group: [seq.fn('DATE', seq.col('check_in_at'))],
+    raw: true,
+  });
+
+  const LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const data = days.map((dateStr) => {
+    const row = rows.find((r) => r.day === dateStr);
+    const d = new Date(dateStr);
+    return { day: LABELS[d.getDay()], date: dateStr, count: parseInt(row?.count || 0) };
+  });
+
+  return { data };
+};
+
 // Re-export with new methods
 module.exports = {
   hostDashboard,
   hostDashboardFiltered,
   monthlyBreakdown,
   platformSummary,
+  yearlyRevenue,
+  weeklyAttendance,
 };

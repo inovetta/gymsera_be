@@ -40,7 +40,7 @@ app.use(
   cors({
     origin: appConfig.corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-device-api-key'],
     credentials: true,
   })
 );
@@ -108,6 +108,12 @@ app.get(['/api/docs', '/api/docs/'], (_req, res) => {
 </body>
 </html>`);
 });
+
+// ── ZKTeco ADMS protocol — mounted at /iclock (no /api/v1 prefix) ────────────
+// ZKTeco devices are configured with server URL: https://your-domain.com
+// and ADMS path: /iclock  — the device appends /getrequest and /cdata itself.
+// No rate-limiting or auth middleware here — the service validates by SN.
+app.use('/iclock', require('./src/routes/iclock.routes'));
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/v1', auditLog);

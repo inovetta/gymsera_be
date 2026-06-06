@@ -32,6 +32,49 @@ router.get('/me', authenticate, authorize('GYM_HOST'), tenantsController.getMyTe
 
 /**
  * @swagger
+ * /tenants/me:
+ *   patch:
+ *     summary: Update the current gym host's business profile
+ *     tags: [Tenants]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               businessName:
+ *                 type: string
+ *                 maxLength: 200
+ *                 example: Iron Temple Fitness
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: info@irontemple.com
+ *               phone:
+ *                 type: string
+ *                 example: "+923001234567"
+ *               cityId:
+ *                 type: integer
+ *                 example: 1
+ *     responses:
+ *       200:
+ *         description: Business profile updated
+ *       404:
+ *         description: No tenant registered for this account
+ */
+router.patch(
+  '/me',
+  authenticate,
+  authorize('GYM_HOST'),
+  validate(tenantsValidators.updateMyTenant),
+  tenantsController.updateMyTenant
+);
+
+/**
+ * @swagger
  * /tenants/register:
  *   post:
  *     summary: Register a new gym business (promotes caller to GYM_HOST role)
@@ -165,6 +208,13 @@ router.post(
   authorize('GYM_HOST'),
   validate(tenantsValidators.selectPackage),
   tenantsController.selectPackage
+);
+
+router.post(
+  '/:id/finalize',
+  authenticate,
+  authorize('GYM_HOST'),
+  tenantsController.finalizeApplication
 );
 
 module.exports = router;
