@@ -59,7 +59,31 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
-      // Platform user ID of the staff who verified (cross-DB reference)
+      // Platform user ID who created this payment record
+      createdBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // Role of the creator ('GYM_HOST' | 'BRANCH_MANAGER') — drives auto-complete logic
+      createdByRole: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+      },
+      // Branch this payment belongs to (for branch-level filtering)
+      branchId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // Staff who collected the cash (step 1 of 2-step verification)
+      staffCollectedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      collectedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      // Platform user ID of the tenant who gave final approval (cross-DB reference)
       verifiedBy: {
         type: DataTypes.UUID,
         allowNull: true,
@@ -87,6 +111,8 @@ module.exports = (sequelize) => {
         { fields: ['user_id'] },
         { fields: ['status', 'paid_at'] },
         { fields: ['payment_for', 'reference_entity_id'] },
+        { fields: ['branch_id'] },
+        { fields: ['created_by'] },
       ],
     }
   );

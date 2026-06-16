@@ -315,4 +315,74 @@ router.get('/members/search', gymsController.searchMember);
 router.post('/members/enroll', gymsController.enrollMember);
 router.get('/members', gymsController.listMembers);
 
+// ── Gym-wide staff management (GYM_HOST only) ─────────────────────────────────
+/**
+ * @swagger
+ * /gyms/staff:
+ *   get:
+ *     summary: List all active staff across all branches (GYM_HOST only)
+ *     tags: [Gyms]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all staff members with their branch and user info
+ */
+router.get('/staff', authorize('GYM_HOST'), gymsController.listAllStaff);
+
+/**
+ * @swagger
+ * /gyms/staff:
+ *   post:
+ *     summary: Create a new staff user (BRANCH_MANAGER) and assign to branches (GYM_HOST only)
+ *     tags: [Gyms]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [fullName, email]
+ *             properties:
+ *               fullName:             { type: string }
+ *               email:                { type: string, format: email }
+ *               phone:                { type: string }
+ *               password:             { type: string, description: "Auto-generated if omitted" }
+ *               designation:          { type: string, example: "Receptionist" }
+ *               branchIds:
+ *                 type: array
+ *                 items: { type: string, format: uuid }
+ *                 description: Specific branches to assign (ignored if assignToAllBranches is true)
+ *               assignToAllBranches:
+ *                 type: boolean
+ *                 description: If true, assign staff to all active branches
+ *     responses:
+ *       201:
+ *         description: Staff user created and assigned to branches
+ *       409:
+ *         description: Email already registered
+ */
+router.post('/staff', authorize('GYM_HOST'), gymsController.createStaffUser);
+
+/**
+ * @swagger
+ * /gyms/staff/{userId}:
+ *   delete:
+ *     summary: Remove a staff user from all branches (GYM_HOST only)
+ *     tags: [Gyms]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Staff removed from all branches
+ */
+router.delete('/staff/:userId', authorize('GYM_HOST'), gymsController.removeStaffUser);
+
 module.exports = router;
