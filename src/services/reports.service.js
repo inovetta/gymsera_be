@@ -310,7 +310,126 @@ const weeklyAttendance = async (tenantDb) => {
   return { data };
 };
 
-// Re-export with new methods
+// ── Branch-level report ────────────────────────────────────────────────────────
+/**
+ * Returns KPIs scoped to a single branch: members, revenue, attendance, and plan distribution.
+ */
+const branchReport = async (tenantDb, branchId) => {
+  const { MemberSubscription, AttendanceLog, Payment, MembershipPlan, GymStaff, Branch } = tenantDb.models;
+  const seq = tenantDb.sequelize;
+  const today = new Date().toISOString().split('T')[0];
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+  const branch = await Branch.findByPk(branchId);
+  if (!branch) {
+    const { createError } = require('../utils/response.utils');
+    throw createError('Branch not found', 404);
+  }
+
+  const [
+    activeMembers,
+    frozenMembers,
+    pendingMembers,
+    expiredThisMonth,
+    totalRevenue,
+    revenueThisMonth,
+    staffCollectedPending,
+    pendingCount,
+    checkInsToday,
+    checkInsThisMonth,
+    activeStaff,
+    planDistribution,
+    revenueByDay,
+  ] = await Promise.all([
+    MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.ACTIVE } }),
+    MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.FROZEN } }),
+    MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.PENDING } }),
+    MemberSubscription.count({
+      where: {
+        branchId,
+        status: SubscriptionStatus.EXPIRED,
+        endDate: { [Op.gte]: monthStart.toISOString().split('T')[0] },
+      },
+    }),
+    Payment.sum('amount', { where: { branchId, status: PaymentStatus.COMPLETED } }),
+    Payment.sum('amount', { where: { branchId, status: PaymentStatus.COMPLETED, paidAt: { [Op.gte]: monthStart } } }),
+    Payment.count({ where: { branchId, status: PaymentStatus.STAFF_COLLECTED } }),
+    Payment.count({ where: { branchId, status: PaymentStatus.PENDING } }),
+    AttendanceLog.count({
+      where: {
+        branchId,
+        attendanceType: 'CHECK_IN',
+        checkInAt: { [Op.between]: [new Date(`${today}T00:00:00Z`), new Date(`${today}T23:59:59Z`)] },
+      },
+    }),
+    AttendanceLog.count({
+      where: {
+        branchId,
+        attendanceType: 'CHECK_IN',
+        checkInAt: { [Op.gte]: monthStart },
+      },
+    }),
+    GymStaff.count({ where: { branchId, employmentStatus: 'ACTIVE' } }),
+    MemberSubscription.findAll({
+      attributes: ['membershipPlanId', [seq.fn('COUNT', seq.col('id')), 'count']],
+      where: { branchId, status: SubscriptionStatus.ACTIVE },
+      group: ['membershipPlanId'],
+      raw: true,
+    }),
+    Payment.findAll({
+      attributes: [
+        [seq.fn('DATE', seq.col('paid_at')), 'day'],
+        [seq.fn('SUM', seq.col('amount')), 'totalRevenue'],
+        [seq.fn('COUNT', seq.col('id')), 'count'],
+      ],
+      where: {
+        branchId,
+        status: PaymentStatus.COMPLETED,
+        paidAt: { [Op.gte]: monthStart },
+      },
+      group: [seq.fn('DATE', seq.col('paid_at'))],
+      order: [[seq.fn('DATE', seq.col('paid_at')), 'ASC']],
+      raw: true,
+    }),
+  ]);
+
+  // Enrich plan distribution with plan names
+  const planIds = planDistribution.map((p) => p.membershipPlanId);
+  const plans = planIds.length
+    ? await MembershipPlan.findAll({ where: { id: planIds }, attributes: ['id', 'name'] })
+    : [];
+  const planMap = Object.fromEntries(plans.map((p) => [p.id, p.name]));
+
+  return {
+    branch: { id: branch.id, name: branch.branchName, status: branch.status },
+    members: {
+      active:           activeMembers   || 0,
+      frozen:           frozenMembers   || 0,
+      pending:          pendingMembers  || 0,
+      expiredThisMonth: expiredThisMonth || 0,
+    },
+    revenue: {
+      allTime:              parseFloat(totalRevenue      || 0),
+      thisMonth:            parseFloat(revenueThisMonth  || 0),
+      pendingCount:         pendingCount || 0,
+      staffCollectedCount:  staffCollectedPending || 0,
+    },
+    attendance: {
+      checkInsToday:     checkInsToday     || 0,
+      checkInsThisMonth: checkInsThisMonth || 0,
+    },
+    staff: {
+      active: activeStaff || 0,
+    },
+    planDistribution: planDistribution.map((p) => ({
+      planId:   p.membershipPlanId,
+      planName: planMap[p.membershipPlanId] || 'Unknown',
+      count:    parseInt(p.count || 0),
+    })),
+    revenueByDay,
+  };
+};
+
 module.exports = {
   hostDashboard,
   hostDashboardFiltered,
@@ -318,4 +437,5 @@ module.exports = {
   platformSummary,
   yearlyRevenue,
   weeklyAttendance,
+  branchReport,
 };
