@@ -90,8 +90,12 @@ router.post(
  *         name: userId
  *         schema: { type: string, format: uuid }
  *       - in: query
+ *         name: branchId
+ *         schema: { type: string, format: uuid }
+ *         description: Filter by branch
+ *       - in: query
  *         name: status
- *         schema: { type: string, enum: [PENDING, COMPLETED, FAILED, REFUNDED] }
+ *         schema: { type: string, enum: [PENDING, STAFF_COLLECTED, COMPLETED, FAILED, REFUNDED] }
  *       - in: query
  *         name: method
  *         schema: { type: string, enum: [CASH, BANK_TRANSFER, CARD, WALLET] }
@@ -118,7 +122,7 @@ router.get('/:id', controller.getPaymentById);
  * @swagger
  * /payments/{id}/verify:
  *   post:
- *     summary: Verify a pending payment (marks as COMPLETED)
+ *     summary: Tenant final approval — marks PENDING or STAFF_COLLECTED payment as COMPLETED (GYM_HOST only)
  *     tags: [Payments]
  *     security:
  *       - bearerAuth: []
@@ -129,17 +133,19 @@ router.get('/:id', controller.getPaymentById);
  *         schema: { type: string, format: uuid }
  *     responses:
  *       200:
- *         description: Payment verified; linked invoice marked PAID
+ *         description: Payment verified; linked invoice marked PAID; subscription activated
+ *       403:
+ *         description: Only gym host can verify payments
  *       409:
- *         description: Payment is not in PENDING state
+ *         description: Payment is not in a verifiable state
  */
-router.post('/:id/verify', validate(validators.verifyPayment), controller.verifyPayment);
+router.post('/:id/verify', authorize('GYM_HOST'), validate(validators.verifyPayment), controller.verifyPayment);
 
 /**
  * @swagger
  * /payments/{id}/action:
  *   post:
- *     summary: Verify or reject a pending payment
+ *     summary: Act on a payment — collect (staff step 1), verify (tenant final step 2), or reject
  *     tags: [Payments]
  *     security:
  *       - bearerAuth: []
@@ -156,12 +162,20 @@ router.post('/:id/verify', validate(validators.verifyPayment), controller.verify
  *             type: object
  *             required: [action]
  *             properties:
- *               action: { type: string, enum: [verify, reject] }
+ *               action:
+ *                 type: string
+ *                 enum: [collect, verify, reject]
+ *                 description: |
+ *                   collect — staff marks PENDING → STAFF_COLLECTED (step 1 of 2)
+ *                   verify  — GYM_HOST only; PENDING or STAFF_COLLECTED → COMPLETED (step 2 of 2; activates subscription)
+ *                   reject  — either role; marks as FAILED
  *               notes: { type: string }
  *               rejectedReason: { type: string }
  *     responses:
  *       200:
- *         description: Payment verified or rejected
+ *         description: Payment action applied
+ *       403:
+ *         description: Only gym host can verify payments
  */
 router.post('/:id/action', controller.verifyOrReject);
 
@@ -191,7 +205,7 @@ router.post('/:id/proof', upload.image('image'), upload.handleMulterError, contr
  * @swagger
  * /payments/collection-action:
  *   post:
- *     summary: Staff marks one or more payments as collected (cash)
+ *     summary: Staff batch-marks PENDING payments as STAFF_COLLECTED (step 1 of 2-step verification)
  *     tags: [Payments]
  *     security:
  *       - bearerAuth: []

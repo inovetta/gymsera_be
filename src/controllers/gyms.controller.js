@@ -214,8 +214,38 @@ const searchMember = async (req, res, next) => {
 // ── POST /gyms/members/enroll ─────────────────────────────────────────────────
 const enrollMember = async (req, res, next) => {
   try {
-    const result = await gymService.enrollMember(req.tenantDb, req.user.tenantId, req.body);
+    const result = await gymService.enrollMember(req.tenantDb, req.user.tenantId, req.body, req.user.role);
     return sendSuccess(res, result, 'Member enrolled successfully', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /gyms/staff ───────────────────────────────────────────────────────────
+const listAllStaff = async (req, res, next) => {
+  try {
+    const result = await gymService.listAllStaff(req.tenantDb);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /gyms/staff ──────────────────────────────────────────────────────────
+const createStaffUser = async (req, res, next) => {
+  try {
+    const result = await gymService.createStaffUser(req.tenantDb, req.body);
+    return sendSuccess(res, result, 'Staff user created successfully', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /gyms/staff/:userId ────────────────────────────────────────────────
+const removeStaffUser = async (req, res, next) => {
+  try {
+    const result = await gymService.removeStaffUser(req.tenantDb, req.params.userId);
+    return sendSuccess(res, null, result.message);
   } catch (err) {
     next(err);
   }
@@ -241,4 +271,7 @@ module.exports = {
   listMembers,
   searchMember,
   enrollMember,
+  listAllStaff,
+  createStaffUser,
+  removeStaffUser,
 };

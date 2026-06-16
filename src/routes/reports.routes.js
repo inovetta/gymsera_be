@@ -134,4 +134,25 @@ router.get('/monthly/export', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGE
 router.get('/yearly', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.yearlyRevenue);
 router.get('/weekly-attendance', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.weeklyAttendance);
 
+/**
+ * @swagger
+ * /reports/branch/{branchId}:
+ *   get:
+ *     summary: Branch-specific KPIs — members, revenue, attendance, plan distribution
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: branchId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Branch report data
+ *       404:
+ *         description: Branch not found
+ */
+router.get('/branch/:branchId', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.branchReport);
+
 module.exports = router;

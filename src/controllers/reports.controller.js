@@ -151,4 +151,14 @@ const weeklyAttendance = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { hostDashboard, monthlyBreakdown, monthlyExportPdf, monthlyPrintLayout, platformSummary, yearlyRevenue, weeklyAttendance };
+// ── GET /reports/branch/:branchId ────────────────────────────────────────────
+const branchReport = async (req, res, next) => {
+  try {
+    const data = await reportsService.branchReport(req.tenantDb, req.params.branchId);
+    return sendSuccess(res, data);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { hostDashboard, monthlyBreakdown, monthlyExportPdf, monthlyPrintLayout, platformSummary, yearlyRevenue, weeklyAttendance, branchReport };

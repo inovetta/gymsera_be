@@ -6,7 +6,7 @@ const HOST_ROLES = ['GYM_HOST', 'BRANCH_MANAGER'];
 // ── POST /payments ─────────────────────────────────────────────────────────────
 const recordPayment = async (req, res, next) => {
   try {
-    const result = await paymentService.recordPayment(req.tenantDb, req.user.id, req.body);
+    const result = await paymentService.recordPayment(req.tenantDb, req.user.id, req.user.role, req.body);
     return sendSuccess(res, result, 'Payment recorded', 201);
   } catch (err) {
     next(err);
@@ -27,14 +27,15 @@ const getPaymentById = async (req, res, next) => {
 const listPayments = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { userId, status, method, from, to } = req.query;
+    const { userId, branchId, status, method, from, to } = req.query;
 
     const result = await paymentService.listPayments(req.tenantDb, {
-      userId: userId || null,
-      status: status || null,
-      method: method || null,
-      from:   from   || null,
-      to:     to     || null,
+      userId:   userId   || null,
+      branchId: branchId || null,
+      status:   status   || null,
+      method:   method   || null,
+      from:     from     || null,
+      to:       to       || null,
       page,
       limit,
       offset,
@@ -61,17 +62,18 @@ const verifyPayment = async (req, res, next) => {
   }
 };
 
-// ── POST /payments/:id/verify — verify OR reject ──────────────────────────────
+// ── POST /payments/:id/action — collect / verify / reject ─────────────────────
 const verifyOrReject = async (req, res, next) => {
   try {
     const payment = await paymentService.verifyOrRejectPayment(
       req.tenantDb,
       req.params.id,
       req.user.id,
+      req.user.role,
       req.body
     );
-    const msg = req.body.action === 'verify' ? 'Payment verified' : 'Payment rejected';
-    return sendSuccess(res, { payment }, msg);
+    const msgs = { collect: 'Payment marked as collected', verify: 'Payment verified', reject: 'Payment rejected' };
+    return sendSuccess(res, { payment }, msgs[req.body.action] || 'OK');
   } catch (err) {
     next(err);
   }
