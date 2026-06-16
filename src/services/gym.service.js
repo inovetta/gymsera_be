@@ -312,7 +312,7 @@ const searchMember = async (email) => {
 };
 
 // ── Enroll member (walk-in or staff-assigned) ─────────────────────────────────
-const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate }) => {
+const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate }, enrollerRole = 'GYM_HOST') => {
   const { MemberSubscription, MembershipPlan, MemberProfile } = tenantDb.models;
 
   // Find or create platform user
@@ -341,6 +341,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const start = startDate || new Date().toISOString().split('T')[0];
   const end = _calcEndDate(start, plan.durationType, plan.durationValue);
   const qrCode = `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
+  const autoComplete = enrollerRole === 'GYM_HOST';
 
   await MemberProfile.findOrCreate({ where: { userId: user.id }, defaults: { userId: user.id } });
 
@@ -350,7 +351,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     membershipPlanId: planId,
     startDate: start,
     endDate: end,
-    status: SubscriptionStatus.ACTIVE,
+    status: autoComplete ? SubscriptionStatus.ACTIVE : SubscriptionStatus.PENDING,
     autoRenew: false,
     qrCode,
     subscribedAt: new Date(),
@@ -370,11 +371,12 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
       planName: plan.name,
       startDate: start,
       endDate: end,
-      status: SubscriptionStatus.ACTIVE,
+      status: autoComplete ? SubscriptionStatus.ACTIVE : SubscriptionStatus.PENDING,
     }).catch(() => {}); // ignore duplicate
   }
 
-  // Walk-in enrollment: create completed CASH payment + paid invoice automatically
+  // Walk-in enrollment: create payment record.
+  // GYM_HOST enrollments auto-complete; staff enrollments go to PENDING (collect box).
   const { Payment, Invoice } = tenantDb.models;
   const subtotal    = parseFloat(plan.price);
   const joining     = parseFloat(plan.joiningFee  || 0);
@@ -385,11 +387,13 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     userId:            user.id,
     paymentFor:        'MEMBERSHIP',
     referenceEntityId: subscription.id,
+    branchId,
     method:            'CASH',
     amount:            totalAmount,
     currency:          'PKR',
-    status:            PaymentStatus.COMPLETED,
-    paidAt:            new Date(),
+    status:            autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
+    paidAt:            autoComplete ? new Date() : null,
+    createdByRole:     enrollerRole,
   });
 
   const invoice = await Invoice.create({
@@ -402,11 +406,123 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     taxAmount:      0,
     totalAmount,
     dueDate:  new Date().toISOString().split('T')[0],
-    paidAt:   new Date(),
-    status:   InvoiceStatus.PAID,
+    paidAt:   autoComplete ? new Date() : null,
+    status:   autoComplete ? InvoiceStatus.PAID : InvoiceStatus.ISSUED,
   });
 
   return { user, subscription, userCreated, payment, invoice };
+};
+
+// ── Gym-wide staff management (GYM_HOST) ─────────────────────────────────────
+
+/**
+ * List all active staff across all branches for this gym.
+ * Enriches each GymStaff record with platform user data.
+ */
+const listAllStaff = async (tenantDb) => {
+  const { GymStaff, Branch } = tenantDb.models;
+
+  const staffRecords = await GymStaff.findAll({
+    where: { employmentStatus: 'ACTIVE' },
+    order: [['createdAt', 'ASC']],
+  });
+
+  if (staffRecords.length === 0) return { staff: [] };
+
+  const uniqueUserIds = [...new Set(staffRecords.map((s) => s.userId))];
+  const users = await User.findAll({
+    where: { id: uniqueUserIds },
+    attributes: ['id', 'fullName', 'email', 'phone', 'status', 'role', 'profileImageUrl'],
+  });
+  const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
+
+  const allBranchIds = [...new Set(staffRecords.map((s) => s.branchId))];
+  const branches = await Branch.findAll({ where: { id: allBranchIds }, attributes: ['id', 'branchName'] });
+  const branchMap = Object.fromEntries(branches.map((b) => [b.id, b]));
+
+  const staff = staffRecords.map((s) => ({
+    id: s.id,
+    userId: s.userId,
+    branchId: s.branchId,
+    designation: s.designation,
+    employmentStatus: s.employmentStatus,
+    createdAt: s.createdAt,
+    user: userMap[s.userId] || null,
+    branch: branchMap[s.branchId] || null,
+  }));
+
+  return { staff };
+};
+
+/**
+ * Create a new staff user (BRANCH_MANAGER) and assign them to branches.
+ * assignToAllBranches: if true, assign to every active branch in the gym.
+ * branchIds: specific branch UUIDs to assign to (used when assignToAllBranches is false).
+ */
+const createStaffUser = async (tenantDb, { fullName, email, phone, password, designation, branchIds, assignToAllBranches }) => {
+  const bcrypt = require('bcrypt');
+  const { GymStaff, Branch } = tenantDb.models;
+  const { UserRole } = require('../constants/roles');
+
+  const existing = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+  if (existing) throw createError('An account with this email already exists', 409);
+
+  const rawPassword = password || require('../utils/otp.utils').generateOtpCode(10);
+  const passwordHash = await bcrypt.hash(rawPassword, 12);
+
+  const user = await User.create({
+    fullName,
+    email: email.toLowerCase().trim(),
+    phone: phone || null,
+    passwordHash,
+    role: UserRole.BRANCH_MANAGER,
+    status: 'ACTIVE',
+    isVerified: true,
+  });
+
+  let targetBranchIds = branchIds || [];
+  if (assignToAllBranches) {
+    const allBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+    targetBranchIds = allBranches.map((b) => b.id);
+  }
+
+  const staffAssignments = await Promise.all(
+    targetBranchIds.map((branchId) =>
+      GymStaff.create({
+        userId: user.id,
+        branchId,
+        designation: designation || 'Staff',
+        employmentStatus: 'ACTIVE',
+      }).catch(() => null)
+    )
+  );
+
+  return {
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone || null,
+      role: user.role,
+      status: user.status,
+      ...(process.env.NODE_ENV !== 'production' && { tempPassword: rawPassword }),
+    },
+    assignedBranches: staffAssignments.filter(Boolean).length,
+    ...(process.env.NODE_ENV !== 'production' && { tempPassword: rawPassword }),
+  };
+};
+
+/**
+ * Remove a staff user from all branches (soft-deactivate all GymStaff records).
+ */
+const removeStaffUser = async (tenantDb, staffUserId) => {
+  const { GymStaff } = tenantDb.models;
+  const [updated] = await GymStaff.update(
+    { employmentStatus: 'TERMINATED' },
+    { where: { userId: staffUserId, employmentStatus: 'ACTIVE' } }
+  );
+  if (updated === 0) throw createError('No active staff assignments found for this user', 404);
+  return { message: 'Staff user removed from all branches' };
 };
 
 module.exports = {
@@ -427,4 +543,7 @@ module.exports = {
   listMembers,
   searchMember,
   enrollMember,
+  listAllStaff,
+  createStaffUser,
+  removeStaffUser,
 };

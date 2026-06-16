@@ -1,5 +1,6 @@
 const PaymentStatus = {
   PENDING: 'PENDING',
+  STAFF_COLLECTED: 'STAFF_COLLECTED', // staff confirmed cash received; awaiting tenant final approval
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
   REFUNDED: 'REFUNDED',
