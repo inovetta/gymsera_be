@@ -46,6 +46,15 @@ class TenantDbManager {
 
     const models = registerTenantModels(sequelize);
 
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        await sequelize.sync({ force: false, alter: true });
+        console.log(`[TenantDbManager] Schema auto-synced for tenant: ${tenantId}`);
+      } catch (err) {
+        console.error(`[TenantDbManager] Schema auto-sync failed for tenant ${tenantId}:`, err.message);
+      }
+    }
+
     const entry = { sequelize, models };
     this.pool.set(tenantId, entry);
     return entry;

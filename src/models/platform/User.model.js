@@ -54,6 +54,11 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(500),
         allowNull: true,
       },
+      isHost: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        field: 'is_host',
+      },
     },
     {
       tableName: 'users',

@@ -61,6 +61,7 @@ const _buildTokenPayload = async (user) => {
     email: user.email,
     role: user.role,
     isVerified: user.isVerified,
+    isHost: !!user.isHost,
     tenantId,
     branchId: null,
   };
@@ -99,6 +100,7 @@ const _sanitizeUser = (user, tenantId = null) => ({
   email: user.email,
   role: user.role,
   isVerified: user.isVerified,
+  isHost: !!user.isHost,
   profileImageUrl: user.profileImageUrl || null,
   tenantId,
 });
@@ -404,7 +406,7 @@ const getMe = async (userId) => {
     attributes: [
       'id', 'fullName', 'email', 'phone', 'role',
       'isVerified', 'profileImageUrl', 'status',
-      'googleId', 'lastLoginAt', 'createdAt',
+      'googleId', 'lastLoginAt', 'createdAt', 'isHost',
     ],
   });
 
@@ -428,6 +430,7 @@ const getMe = async (userId) => {
     role: user.role,
     isVerified: user.isVerified,
     status: user.status,
+    isHost: !!user.isHost,
     profileImageUrl: user.profileImageUrl || null,
     provider: user.googleId ? 'GOOGLE' : 'LOCAL',
     tenantId,

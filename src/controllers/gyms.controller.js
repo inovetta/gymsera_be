@@ -251,6 +251,59 @@ const removeStaffUser = async (req, res, next) => {
   }
 };
 
+// ── GET /host/branches/:branchId/listing-content ─────────────────────────────
+const getBranchListingContent = async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    const result = await gymService.getBranch(req.tenantDb, branchId);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /host/branches/:branchId/listing-content ───────────────────────────
+const updateBranchListingContent = async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    const { 
+      branchName, 
+      tagline, 
+      category, 
+      tagsJson, 
+      facilitiesJson, 
+      imagesJson,
+      openingTime,
+      closingTime,
+      address,
+      phone,
+      latitude,
+      longitude,
+      status
+    } = req.body;
+
+    const patch = {};
+    if (branchName !== undefined) patch.branchName = branchName;
+    if (tagline !== undefined) patch.tagline = tagline;
+    if (category !== undefined) patch.category = category;
+    if (tagsJson !== undefined) patch.tagsJson = tagsJson;
+    if (facilitiesJson !== undefined) patch.facilitiesJson = facilitiesJson;
+    if (imagesJson !== undefined) patch.imagesJson = imagesJson;
+    if (openingTime !== undefined) patch.openingTime = openingTime;
+    if (closingTime !== undefined) patch.closingTime = closingTime;
+    if (address !== undefined) patch.address = address;
+    if (phone !== undefined) patch.phone = phone;
+    if (latitude !== undefined) patch.latitude = latitude;
+    if (longitude !== undefined) patch.longitude = longitude;
+    if (status !== undefined) patch.status = status;
+
+    const result = await gymService.updateBranch(req.tenantDb, branchId, patch);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -274,4 +327,7 @@ module.exports = {
   listAllStaff,
   createStaffUser,
   removeStaffUser,
+  getBranchListingContent,
+  updateBranchListingContent,
 };
+

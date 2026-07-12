@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { GymListing, Tenant, User, UserGymMembership } = require('../models/platform');
+const { GymListing, Tenant, User, UserGymMembership, TenantSubscription, PlatformPackage, sequelize } = require('../models/platform');
 const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { SubscriptionStatus } = require('../constants/subscription-status');
@@ -84,7 +84,13 @@ const _syncGymListing = async (tenantId, patch) => {
 
 const getProfile = async (tenantDb, tenantId) => {
   const gym = await _getOrCreateGym(tenantDb, tenantId);
-  return { gym };
+  const tenant = await Tenant.findByPk(tenantId, { attributes: ['paymentDetailsJson'] });
+  return {
+    gym: {
+      ...gym.toJSON(),
+      paymentDetailsJson: tenant ? tenant.paymentDetailsJson : null,
+    }
+  };
 };
 
 const updateProfile = async (tenantDb, tenantId, data) => {
@@ -96,10 +102,24 @@ const updateProfile = async (tenantDb, tenantId, data) => {
   });
   await gym.save();
 
+  // If paymentDetailsJson is provided, update the platform Tenant model
+  if (data.paymentDetailsJson !== undefined) {
+    await Tenant.update(
+      { paymentDetailsJson: data.paymentDetailsJson },
+      { where: { id: tenantId } }
+    );
+  }
+
   // Keep the public gym_listings record in sync
   await _syncGymListing(tenantId, data);
 
-  return { gym };
+  const tenant = await Tenant.findByPk(tenantId, { attributes: ['paymentDetailsJson'] });
+  return {
+    gym: {
+      ...gym.toJSON(),
+      paymentDetailsJson: tenant ? tenant.paymentDetailsJson : null,
+    }
+  };
 };
 
 // ── Branches ──────────────────────────────────────────────────────────────────
@@ -117,25 +137,67 @@ const listBranches = async (tenantDb, tenantId) => {
 };
 
 const createBranch = async (tenantDb, tenantId, data) => {
-  const gym = await _getOrCreateGym(tenantDb, tenantId);
   const { Branch } = tenantDb.models;
 
-  const branch = await Branch.create({
-    gymId: gym.id,
-    branchName: data.branchName,
-    address: data.address || null,
-    cityId: data.cityId || null,
-    areaId: data.areaId || null,
-    latitude: data.latitude || null,
-    longitude: data.longitude || null,
-    openingTime: data.openingTime || null,
-    closingTime: data.closingTime || null,
-    phone: data.phone || null,
-    facilitiesJson: Array.isArray(data.facilities) ? data.facilities : (data.facilitiesJson || null),
-    status: 'ACTIVE',
-  });
+  const platformTx = await sequelize.transaction();
+  try {
+    // Acquire exclusive write lock on Tenant record in platform DB to serialize branch creations for this tenant.
+    const tenant = await Tenant.findByPk(tenantId, {
+      lock: true,
+      transaction: platformTx,
+    });
+    if (!tenant) {
+      throw createError('Tenant not found', 404);
+    }
 
-  return { branch };
+    let maxBranches = 1;
+    const activeSub = await TenantSubscription.findOne({
+      where: { tenantId, status: 'ACTIVE' },
+      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches'] }],
+      transaction: platformTx,
+    });
+
+    if (activeSub && activeSub.package) {
+      maxBranches = activeSub.package.maxBranches;
+    } else if (tenant.selectedPackageId) {
+      const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId, {
+        transaction: platformTx,
+      });
+      if (pkg) maxBranches = pkg.maxBranches;
+    }
+
+    // Count currently active branches in tenant DB
+    const usedBranches = await Branch.count({ where: { status: 'ACTIVE' } });
+
+    if (usedBranches >= maxBranches) {
+      const err = createError('Branch limit reached', 403);
+      err.code = 'branch_limit_reached';
+      throw err;
+    }
+
+    const gym = await _getOrCreateGym(tenantDb, tenantId);
+
+    const branch = await Branch.create({
+      gymId: gym.id,
+      branchName: data.branchName,
+      address: data.address || null,
+      cityId: data.cityId || null,
+      areaId: data.areaId || null,
+      latitude: data.latitude || null,
+      longitude: data.longitude || null,
+      openingTime: data.openingTime || null,
+      closingTime: data.closingTime || null,
+      phone: data.phone || null,
+      facilitiesJson: Array.isArray(data.facilities) ? data.facilities : (data.facilitiesJson || null),
+      status: 'ACTIVE',
+    });
+
+    await platformTx.commit();
+    return { branch };
+  } catch (err) {
+    await platformTx.rollback();
+    throw err;
+  }
 };
 
 const getBranch = async (tenantDb, branchId) => {
@@ -150,12 +212,13 @@ const updateBranch = async (tenantDb, branchId, data) => {
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
 
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'status'];
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'status', 'tagline', 'category', 'tagsJson'];
   fields.forEach((f) => {
     if (data[f] !== undefined) branch[f] = data[f];
   });
   // Support sending facilities as plain array (CMS form sends it as 'facilities')
   if (Array.isArray(data.facilities)) branch.facilitiesJson = data.facilities;
+  if (Array.isArray(data.tags)) branch.tagsJson = data.tags;
   await branch.save();
 
   return { branch };
@@ -340,8 +403,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
 
   const start = startDate || new Date().toISOString().split('T')[0];
   const end = _calcEndDate(start, plan.durationType, plan.durationValue);
-  const qrCode = `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
   const autoComplete = enrollerRole === 'GYM_HOST';
+  const qrCode = autoComplete ? `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}` : null;
 
   await MemberProfile.findOrCreate({ where: { userId: user.id }, defaults: { userId: user.id } });
 

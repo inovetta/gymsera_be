@@ -12,7 +12,7 @@ const _enqueueNotification = async (userId, type, extra) => {
     const user = await User.findByPk(userId, { attributes: ['email', 'fullName', 'fcmToken'] });
     if (!user) return;
     await notificationsQueue.add(
-      { type, email: user.email, fullName: user.fullName, fcmToken: user.fcmToken, ...extra },
+      { type, userId, email: user.email, fullName: user.fullName, fcmToken: user.fcmToken, ...extra },
       { attempts: 3, backoff: { type: 'exponential', delay: 5000 } }
     );
   } catch (err) {
@@ -114,28 +114,36 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Membership plan not found or inactive', 404);
 
-  const branch = await models.Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
+  let branchIdToUse = branchId;
+  if (!branchIdToUse || branchIdToUse === 'branch-1' || branchIdToUse.trim() === '') {
+    const firstBranch = await models.Branch.findOne({ where: { status: 'ACTIVE' }, order: [['createdAt', 'ASC']] });
+    if (firstBranch) {
+      branchIdToUse = firstBranch.id;
+    }
+  }
+
+  const branch = await models.Branch.findOne({ where: { id: branchIdToUse, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
 
   const existing = await MemberSubscription.findOne({
     where: {
       userId,
-      branchId,
+      branchId: branchIdToUse,
       status: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PENDING, SubscriptionStatus.FROZEN],
     },
   });
-  if (existing) throw createError('You already have an active subscription at this branch', 409);
+  if (existing) throw createError('You already have an active or pending subscription at this branch', 409);
 
   const startDate = new Date().toISOString().split('T')[0];
   const endDate = _calcEndDate(startDate, plan.durationType, plan.durationValue);
-  const qrCode = _generateQrToken();
+  const qrCode = null;
 
   await MemberProfile.findOrCreate({ where: { userId }, defaults: { userId } });
 
   // Subscription starts PENDING — becomes ACTIVE only after payment is verified
   const subscription = await MemberSubscription.create({
     userId,
-    branchId,
+    branchId: branchIdToUse,
     membershipPlanId: planId,
     startDate,
     endDate,
@@ -470,7 +478,8 @@ const activateSubscription = async (tenantDb, subscriptionId) => {
   if (sub.status === SubscriptionStatus.ACTIVE) throw createError('Subscription is already active', 409);
   if (sub.status === SubscriptionStatus.CANCELLED) throw createError('Cannot activate a cancelled subscription', 409);
 
-  await sub.update({ status: SubscriptionStatus.ACTIVE });
+  const qrCode = sub.qrCode || `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
+  await sub.update({ status: SubscriptionStatus.ACTIVE, qrCode });
   await UserGymMembership.update({ status: SubscriptionStatus.ACTIVE }, { where: { subscriptionId } });
 
   return sub.reload();

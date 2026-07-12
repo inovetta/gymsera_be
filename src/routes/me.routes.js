@@ -269,5 +269,13 @@ router.get('/subscriptions/:id', subscriptionsController.getMySubscriptionDetail
 // ── Attendance logs (cross-tenant, resolved via subscriptionId query param) ───
 router.get('/attendance', meController.getMyAttendance);
 
+// ── Wishlist / Saved Gyms ────────────────────────────────────────────────────
+router.get('/saved-gyms', meController.getSavedGyms);
+router.post('/saved-gyms/:gymId', meController.saveGym);
+router.delete('/saved-gyms/:gymId', meController.unsaveGym);
+
+// ── Account Deletion Request ──────────────────────────────────────────────────
+router.post('/request-deletion', meController.requestDeletion);
+
 module.exports = router;
 

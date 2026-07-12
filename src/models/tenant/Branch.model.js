@@ -60,6 +60,19 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of gallery image URLs',
       },
+      tagline: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      category: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      tagsJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Array of tag strings',
+      },
       status: {
         type: DataTypes.ENUM('ACTIVE', 'INACTIVE'),
         allowNull: false,

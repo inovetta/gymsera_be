@@ -38,6 +38,44 @@ router.get('/health', (_req, res) => {
   });
 });
 
+router.get('/debug-sync-db', async (_req, res) => {
+  try {
+    const { Sequelize } = require('sequelize');
+    const { Tenant } = require('../models/platform');
+    const registerTenantModels = require('../models/tenant');
+    const { decrypt } = require('../utils/crypto.utils');
+
+    const tenants = await Tenant.findAll();
+    const results = [];
+
+    for (const tenant of tenants) {
+      if (tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+        const connUrl = decrypt(tenant.connectionStringEncrypted);
+        const tenantSeq = new Sequelize(connUrl, {
+          dialect: 'mysql',
+          logging: false,
+        });
+        try {
+          await tenantSeq.authenticate();
+          registerTenantModels(tenantSeq);
+          await tenantSeq.sync({ force: false, alter: true });
+          results.push({ tenant: tenant.tenantCode, status: 'SUCCESS' });
+        } catch (err) {
+          results.push({ tenant: tenant.tenantCode, status: 'FAILED', error: err.message });
+        } finally {
+          await tenantSeq.close();
+        }
+      } else {
+        results.push({ tenant: tenant.tenantCode, status: 'PENDING_PROVISIONING' });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── Sprint 2 — Auth ───────────────────────────────────────────────────────────
 router.use('/auth', require('./auth.routes'));
 
@@ -47,14 +85,15 @@ router.use('/platform-packages', require('./platform-packages.routes'));
 router.use('/tenants',           require('./tenants.routes'));
 router.use('/admin',             require('./admin.routes'));
 
-// ── Sprint 4 — Gym, Branch & Discovery ───────────────────────────────────────
 router.use('/gyms',      require('./gyms.routes'));
 router.use('/discovery', require('./discovery.routes'));
+router.use('/host',      require('./host.routes'));
 
 // ── Sprint 5 — Membership Plans & Subscriptions ───────────────────────────────
 router.use('/membership-plans', require('./membership-plans.routes'));
 router.use('/subscriptions',    require('./subscriptions.routes'));
 router.use('/me',               require('./me.routes'));
+router.use('/notifications',    require('./notifications.routes'));
 
 // ── Sprint 6 — Payments, Attendance & Trainers ────────────────────────────────
 router.use('/payments',   require('./payments.routes'));

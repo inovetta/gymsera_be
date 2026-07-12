@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
@@ -47,7 +48,8 @@ const _activateSubscription = async (tenantDb, subscriptionId) => {
     const { MemberSubscription } = tenantDb.models;
     const sub = await MemberSubscription.findByPk(subscriptionId);
     if (sub && sub.status === 'PENDING') {
-      await sub.update({ status: 'ACTIVE' });
+      const qrCode = sub.qrCode || `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
+      await sub.update({ status: 'ACTIVE', qrCode });
       await UserGymMembership.update({ status: 'ACTIVE' }, { where: { subscriptionId } });
     }
   } catch (err) {
@@ -306,6 +308,7 @@ const markPaymentFailed = async (tenantDb, paymentId, gymName) => {
     if (user) {
       await notificationsQueue.add({
         type:     'PAYMENT_FAILED',
+        userId:   payment.userId,
         email:    user.email,
         fullName: user.fullName,
         fcmToken: user.fcmToken,

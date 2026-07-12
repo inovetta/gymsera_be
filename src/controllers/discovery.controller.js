@@ -15,7 +15,21 @@ const listCities = async (req, res, next) => {
 const listGyms = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 12, 50);
-    const { cityId, areaId, genderType, search, featured } = req.query;
+    const {
+      cityId,
+      areaId,
+      genderType,
+      search,
+      featured,
+      category,
+      priceMin,
+      priceMax,
+      minRating,
+      amenities,
+      sortBy,
+      lat,
+      lng,
+    } = req.query;
 
     const result = await discoveryService.listGyms({
       cityId: cityId ? parseInt(cityId) : null,
@@ -23,6 +37,14 @@ const listGyms = async (req, res, next) => {
       genderType: genderType || null,
       search: search || null,
       featured: featured || null,
+      category: category || null,
+      priceMin: priceMin ? parseFloat(priceMin) : null,
+      priceMax: priceMax ? parseFloat(priceMax) : null,
+      minRating: minRating ? parseFloat(minRating) : null,
+      amenities: amenities || null,
+      sortBy: sortBy || null,
+      lat: lat ? parseFloat(lat) : null,
+      lng: lng ? parseFloat(lng) : null,
       page,
       limit,
       offset,
@@ -94,6 +116,16 @@ const getGym = async (req, res, next) => {
   }
 };
 
+// ── GET /discovery/gyms/:id/payment-details ───────────────────────────────────
+const getPaymentDetails = async (req, res, next) => {
+  try {
+    const result = await discoveryService.getPaymentDetails(req.params.id);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /discovery/gyms/:id/reviews ──────────────────────────────────────────
 const listReviews = async (req, res, next) => {
   try {
@@ -145,6 +177,7 @@ module.exports = {
   featuredGyms,
   topRatedGyms,
   getGym,
+  getPaymentDetails,
   listReviews,
   submitReview,
   adminListReviews,

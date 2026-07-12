@@ -33,7 +33,7 @@ const _uniqueTenantCode = async () => {
  * A verified user registers as a GYM_HOST.
  * Creates a Tenant record (PENDING_REVIEW) and upgrades the user's role.
  */
-const registerTenant = async ({ userId, businessName, email, phone, cityId }) => {
+const registerTenant = async ({ userId, businessName, email, phone, cityId, areaId }) => {
   // Each user may own only one tenant (prevent duplicates)
   const existing = await Tenant.findOne({ where: { ownerUserId: userId } });
   if (existing) throw createError('You have already registered a gym business', 409);
@@ -46,14 +46,15 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId }) =>
     email,
     phone: phone || null,
     cityId: cityId || null,
+    areaId: areaId || null,
     ownerUserId: userId,
-    status: TenantStatus.PENDING_REVIEW,
+    status: TenantStatus.DRAFT,
     kycStatus: KycStatus.NOT_SUBMITTED,
     onboardingStep: 1,
   });
 
-  // Upgrade user role to GYM_HOST
-  await User.update({ role: UserRole.GYM_HOST }, { where: { id: userId } });
+  // Upgrade user role to GYM_HOST and set isHost to true
+  await User.update({ role: UserRole.GYM_HOST, isHost: true }, { where: { id: userId } });
 
   return { tenant };
 };
@@ -67,7 +68,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
   const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
-  if (![TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW].includes(tenant.status)) {
+  if (![TenantStatus.DRAFT, TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW].includes(tenant.status)) {
     throw createError('Gym profile cannot be updated at this stage', 400);
   }
 
@@ -85,7 +86,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     logoUrl: logoUrl || tenant.logoUrl,
     coverImageUrl: coverImageUrl || tenant.coverImageUrl,
     kycStatus: KycStatus.PENDING,
-    onboardingStep: Math.max(tenant.onboardingStep, 2),
+    onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || mainBranchData !== undefined) ? 3 : 2),
   });
 
   return { tenant };
@@ -101,6 +102,7 @@ const selectPackage = async (tenantId, userId, packageId) => {
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   const allowedStatuses = [
+    TenantStatus.DRAFT,
     TenantStatus.PENDING_REVIEW,
     TenantStatus.UNDER_REVIEW,
     TenantStatus.ACTIVE,
@@ -114,7 +116,7 @@ const selectPackage = async (tenantId, userId, packageId) => {
 
   await tenant.update({
     selectedPackageId: packageId,
-    onboardingStep: Math.max(tenant.onboardingStep, 3),
+    onboardingStep: Math.max(tenant.onboardingStep, 4),
   });
 
   return { tenant, package: pkg };
@@ -155,6 +157,8 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
   await tenant.update({
     paymentMethod: paymentMethod || 'BANK_TRANSFER',
     bankTransferRef: bankTransferRef || null,
+    status: TenantStatus.PENDING_REVIEW,
+    onboardingStep: 5,
   });
 
   if (tenant.selectedPackageId) {

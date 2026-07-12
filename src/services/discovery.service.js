@@ -3,19 +3,120 @@ const { GymListing, City, Area, Tenant, GymReview, User, UserGymMembership } = r
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 
+const _normalizeFacilities = (listing) => {
+  if (!listing) return listing;
+  const json = listing.toJSON ? listing.toJSON() : { ...listing };
+  if (json.facilitiesJson) {
+    if (Array.isArray(json.facilitiesJson)) {
+      // Already array
+    } else if (typeof json.facilitiesJson === 'object') {
+      json.facilitiesJson = Object.entries(json.facilitiesJson)
+        .filter(([_, enabled]) => enabled === true || enabled === 'true')
+        .map(([key]) => key);
+    }
+  } else {
+    json.facilitiesJson = [];
+  }
+  return json;
+};
+
 // ── listGyms ──────────────────────────────────────────────────────────────────
 /**
  * Public gym directory — filters on Platform DB gym_listings.
  */
-const listGyms = async ({ cityId, areaId, genderType, search, featured, page, limit, offset }) => {
+const listGyms = async ({
+  cityId,
+  areaId,
+  genderType,
+  search,
+  featured,
+  category,
+  priceMin,
+  priceMax,
+  minRating,
+  amenities,
+  sortBy,
+  lat,
+  lng,
+  page,
+  limit,
+  offset,
+}) => {
   const where = { status: 'ACTIVE' };
 
   if (cityId) where.cityId = cityId;
   if (areaId) where.areaId = areaId;
   if (genderType) where.genderType = genderType;
   if (featured === 'true' || featured === true) where.isFeatured = true;
+  if (category && category !== 'All') {
+    const cats = typeof category === 'string' && category.includes(',')
+      ? category.split(',').map((c) => c.trim())
+      : [category];
+    where.category = { [Op.in]: cats };
+  }
+
   if (search) {
     where.title = { [Op.like]: `%${search}%` };
+  }
+
+  if (priceMin || priceMax) {
+    const minVal = priceMin ? parseFloat(priceMin) : 0;
+    const maxVal = priceMax ? parseFloat(priceMax) : 99999999;
+    where.minPrice = { [Op.between]: [minVal, maxVal] };
+  }
+
+  if (minRating) {
+    where.averageRating = { [Op.gte]: parseFloat(minRating) };
+  }
+
+  if (amenities) {
+    const list = Array.isArray(amenities) ? amenities : amenities.split(',');
+    where[Op.and] = where[Op.and] || [];
+    list.forEach((amenity) => {
+      const key = amenity.trim().toLowerCase();
+      where[Op.and].push(
+        literal(`(
+          JSON_EXTRACT(facilities_json, '$.${key}') = true 
+          OR JSON_EXTRACT(facilities_json, '$.${amenity.trim()}') = true
+          OR JSON_CONTAINS(LOWER(facilities_json), '"${key}"')
+        )`)
+      );
+    });
+  }
+
+  let order = [
+    ['isFeatured', 'DESC'],
+    ['averageRating', 'DESC'],
+    ['createdAt', 'DESC'],
+  ];
+
+  if (sortBy) {
+    const s = sortBy.toLowerCase();
+    if (s === 'toprated' || s === 'top-rated') {
+      order = [
+        ['averageRating', 'DESC'],
+        ['createdAt', 'DESC'],
+      ];
+    } else if (s === 'pricelow' || s === 'price: low' || s === 'price_low') {
+      order = [
+        ['minPrice', 'ASC'],
+        ['createdAt', 'DESC'],
+      ];
+    } else if (s === 'pricehigh' || s === 'price: high' || s === 'price_high') {
+      order = [
+        ['minPrice', 'DESC'],
+        ['createdAt', 'DESC'],
+      ];
+    } else if (s === 'nearest' && lat && lng) {
+      order = [
+        [
+          literal(
+            `(6371 * acos(cos(radians(${parseFloat(lat)})) * cos(radians(latitude)) * cos(radians(longitude) - radians(${parseFloat(lng)})) + sin(radians(${parseFloat(lat)})) * sin(radians(latitude))))`
+          ),
+          'ASC',
+        ],
+      ];
+    }
   }
 
   const { count, rows } = await GymListing.findAndCountAll({
@@ -24,17 +125,15 @@ const listGyms = async ({ cityId, areaId, genderType, search, featured, page, li
       { model: City, as: 'city', attributes: ['id', 'name'] },
       { model: Area, as: 'area', attributes: ['id', 'name'] },
     ],
-    order: [
-      ['isFeatured', 'DESC'],
-      ['averageRating', 'DESC'],
-      ['createdAt', 'DESC'],
-    ],
+    order,
     limit,
     offset,
     distinct: true,
   });
 
-  return { gyms: rows, pagination: buildPagination(count, page, limit) };
+  const normalizedRows = rows.map((listing) => _normalizeFacilities(listing));
+
+  return { gyms: normalizedRows, pagination: buildPagination(count, page, limit) };
 };
 
 // ── getGym ────────────────────────────────────────────────────────────────────
@@ -48,6 +147,18 @@ const getGym = async (gymListingId) => {
     include: [
       { model: City, as: 'city', attributes: ['id', 'name'] },
       { model: Area, as: 'area', attributes: ['id', 'name'] },
+      {
+        model: Tenant,
+        as: 'tenant',
+        attributes: ['id', 'businessName', 'email', 'phone'],
+        include: [
+          {
+            model: User,
+            as: 'owner',
+            attributes: ['id', 'fullName', 'profileImageUrl', 'createdAt'],
+          },
+        ],
+      },
     ],
   });
 
@@ -78,14 +189,35 @@ const getGym = async (gymListingId) => {
           order: [['createdAt', 'ASC']],
         }),
       ]);
+
+      // Resolve branchId -> gymListingId mapping
+      const tenantListings = await GymListing.findAll({
+        where: { tenantId: listing.tenantId, status: 'ACTIVE' },
+        attributes: ['id', 'branchId'],
+      });
+
+      const branchToListingMap = {};
+      for (const tl of tenantListings) {
+        if (tl.branchId) {
+          branchToListingMap[tl.branchId] = tl.id;
+        }
+      }
+
+      branches = branches.map(b => {
+        const plainBranch = b.get({ plain: true });
+        plainBranch.gymListingId = branchToListingMap[plainBranch.id] || null;
+        return plainBranch;
+      });
     }
-  } catch {
+  } catch (error) {
+    console.error('Error fetching tenant details in getGym:', error);
     // Non-fatal — return gym listing without plans/branches if tenant DB is unreachable
     membershipPlans = [];
     branches = [];
   }
 
-  return { gym: { ...listing.toJSON(), branches }, membershipPlans };
+  const normalizedGym = _normalizeFacilities(listing);
+  return { gym: { ...normalizedGym, branches }, membershipPlans };
 };
 
 // ── listCities ────────────────────────────────────────────────────────────────
@@ -224,10 +356,11 @@ const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1 }) => 
   const offset = (page - 1) * limit;
   const paginated = sorted.slice(offset, offset + parseInt(limit));
 
-  const gyms = paginated.map(({ gym, distanceKm }) => ({
-    ...gym.toJSON(),
-    distanceKm: Math.round(distanceKm * 10) / 10,
-  }));
+  const gyms = paginated.map(({ gym, distanceKm }) => {
+    const norm = _normalizeFacilities(gym);
+    norm.distanceKm = Math.round(distanceKm * 10) / 10;
+    return norm;
+  });
 
   return { gyms };
 };
@@ -272,7 +405,7 @@ const featuredGyms = async ({ limit = 12 } = {}) => {
     limit: parseInt(limit),
   });
 
-  return gyms;
+  return gyms.map((gym) => _normalizeFacilities(gym));
 };
 
 // ── topRatedGyms ──────────────────────────────────────────────────────────────
@@ -290,7 +423,7 @@ const topRatedGyms = async ({ cityId, limit = 12 } = {}) => {
     limit: parseInt(limit),
   });
 
-  return gyms;
+  return gyms.map((gym) => _normalizeFacilities(gym));
 };
 
 // ── submitReview ──────────────────────────────────────────────────────────────
@@ -402,9 +535,23 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
   return review;
 };
 
+const getPaymentDetails = async (gymListingId) => {
+  const listing = await GymListing.findByPk(gymListingId);
+  if (!listing) throw createError('Gym not found', 404);
+
+  const tenant = await Tenant.findByPk(listing.tenantId, {
+    attributes: ['paymentDetailsJson'],
+  });
+
+  return {
+    paymentDetails: tenant ? tenant.paymentDetailsJson : null,
+  };
+};
+
 module.exports = {
   listGyms,
   getGym,
+  getPaymentDetails,
   listCities,
   nearbyGyms,
   mapGyms,

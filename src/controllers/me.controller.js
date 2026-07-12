@@ -171,6 +171,46 @@ const uploadPaymentProof = async (req, res, next) => {
   }
 };
 
+// ── GET /me/saved-gyms ────────────────────────────────────────────────────────
+const getSavedGyms = async (req, res, next) => {
+  try {
+    const gyms = await meService.getSavedGyms(req.user.sub);
+    return sendSuccess(res, { gyms }, 'Saved gyms retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /me/saved-gyms/:gymId ───────────────────────────────────────────────
+const saveGym = async (req, res, next) => {
+  try {
+    const saved = await meService.saveGym(req.user.sub, req.params.gymId);
+    return sendSuccess(res, { saved }, 'Gym saved to wishlist', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /me/saved-gyms/:gymId ─────────────────────────────────────────────
+const unsaveGym = async (req, res, next) => {
+  try {
+    await meService.unsaveGym(req.user.sub, req.params.gymId);
+    return sendSuccess(res, null, 'Gym removed from wishlist', 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /me/request-deletion ────────────────────────────────────────────────
+const requestDeletion = async (req, res, next) => {
+  try {
+    await meService.requestAccountDeletion(req.user.sub);
+    return sendSuccess(res, null, 'Account deletion requested. You will be contacted within 7 days.', 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -182,4 +222,8 @@ module.exports = {
   submitPaymentRequest,
   uploadPaymentProof,
   getMyAttendance,
+  getSavedGyms,
+  saveGym,
+  unsaveGym,
+  requestDeletion,
 };

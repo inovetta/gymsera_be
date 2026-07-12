@@ -74,7 +74,11 @@ const errorHandler = (err, req, res, _next) => {
     console.error(`[${new Date().toISOString()}] Unhandled error:`, err);
   }
 
-  return res.status(statusCode).json({ success: false, message });
+  return res.status(statusCode).json({
+    success: false,
+    message,
+    ...(err.code && { error: err.code }),
+  });
 };
 
 module.exports = errorHandler;

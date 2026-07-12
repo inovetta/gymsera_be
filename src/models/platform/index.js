@@ -22,8 +22,22 @@ const UserGymMembership = require('./UserGymMembership.model')(sequelize);
 const GymReview = require('./GymReview.model')(sequelize);
 const Device = require('./Device.model')(sequelize);
 const DeviceMember = require('./DeviceMember.model')(sequelize);
+const SavedGym = require('./SavedGym.model')(sequelize);
+const Notification = require('./Notification.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
+
+// User ↔ Notification
+User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications', onDelete: 'CASCADE' });
+Notification.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// User ↔ SavedGym
+User.hasMany(SavedGym, { foreignKey: 'userId', as: 'savedGyms', onDelete: 'CASCADE' });
+SavedGym.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// GymListing ↔ SavedGym
+GymListing.hasMany(SavedGym, { foreignKey: 'gymListingId', as: 'savedGyms', onDelete: 'CASCADE' });
+SavedGym.belongsTo(GymListing, { foreignKey: 'gymListingId', as: 'gym' });
 
 // User ↔ RefreshToken
 User.hasMany(RefreshToken, { foreignKey: 'userId', as: 'refreshTokens', onDelete: 'CASCADE' });
@@ -128,4 +142,6 @@ module.exports = {
   GymReview,
   Device,
   DeviceMember,
+  SavedGym,
+  Notification,
 };

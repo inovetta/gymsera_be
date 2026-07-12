@@ -38,6 +38,11 @@ const gymsValidators = {
       .optional({ nullable: true })
       .isObject()
       .withMessage('socialLinksJson must be a JSON object'),
+
+    body('paymentDetailsJson')
+      .optional({ nullable: true })
+      .isObject()
+      .withMessage('paymentDetailsJson must be a JSON object'),
   ],
 
   createBranch: [

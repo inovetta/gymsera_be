@@ -80,6 +80,15 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of cover/gallery image URLs shown in the public listing',
       },
+      category: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+      minPrice: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0.0,
+      },
       status: {
         type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'PENDING'),
         allowNull: false,

@@ -239,6 +239,7 @@ router.get('/gyms', validate(validators.listGyms), controller.listGyms);
  *         description: Gym not found
  */
 router.get('/gyms/:id', validate(validators.getGym), controller.getGym);
+router.get('/gyms/:id/payment-details', authenticate, controller.getPaymentDetails);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reviews
