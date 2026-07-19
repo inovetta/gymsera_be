@@ -1,6 +1,7 @@
 const meService = require('../services/me.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
+const inboxService = require('../services/inbox.service');
 
 // ── GET /me/profile ────────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -211,6 +212,53 @@ const requestDeletion = async (req, res, next) => {
   }
 };
 
+// ── GET /me/inbox ──────────────────────────────────────────────────────────────
+const listMyInbox = async (req, res, next) => {
+  try {
+    const conversations = await inboxService.listTravelerConversations(req.user.sub);
+    return sendSuccess(res, { conversations });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /me/inbox/:conversationId ──────────────────────────────────────────────
+const getMyConversation = async (req, res, next) => {
+  try {
+    const result = await inboxService.getTravelerConversationDetail(
+      req.params.conversationId,
+      req.user.sub
+    );
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /me/inbox/:conversationId/reply ───────────────────────────────────────
+const replyToMyConversation = async (req, res, next) => {
+  try {
+    const message = await inboxService.replyAsUser(
+      req.params.conversationId,
+      req.user.sub,
+      req.body.text
+    );
+    return sendSuccess(res, { message }, 'Message sent', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /me/inbox/:conversationId/read ───────────────────────────────────────
+const markMyConversationRead = async (req, res, next) => {
+  try {
+    await inboxService.markTravelerRead(req.params.conversationId, req.user.sub);
+    return sendSuccess(res, {}, 'Marked as read');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -226,4 +274,8 @@ module.exports = {
   saveGym,
   unsaveGym,
   requestDeletion,
+  listMyInbox,
+  getMyConversation,
+  replyToMyConversation,
+  markMyConversationRead,
 };

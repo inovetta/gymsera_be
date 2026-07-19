@@ -24,8 +24,22 @@ const Device = require('./Device.model')(sequelize);
 const DeviceMember = require('./DeviceMember.model')(sequelize);
 const SavedGym = require('./SavedGym.model')(sequelize);
 const Notification = require('./Notification.model')(sequelize);
+const Conversation = require('./Conversation.model')(sequelize);
+const Message = require('./Message.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
+
+// Conversation ↔ Message
+Conversation.hasMany(Message, { foreignKey: 'conversationId', as: 'messages', onDelete: 'CASCADE' });
+Message.belongsTo(Conversation, { foreignKey: 'conversationId', as: 'conversation' });
+
+// User ↔ Conversation
+User.hasMany(Conversation, { foreignKey: 'userId', as: 'conversations', onDelete: 'CASCADE' });
+Conversation.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// GymListing ↔ Conversation
+GymListing.hasMany(Conversation, { foreignKey: 'branchId', sourceKey: 'branchId', as: 'conversations', constraints: false });
+Conversation.belongsTo(GymListing, { foreignKey: 'branchId', targetKey: 'branchId', as: 'gymListing', constraints: false });
 
 // User ↔ Notification
 User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications', onDelete: 'CASCADE' });
@@ -69,6 +83,7 @@ PlatformPackage.hasMany(Tenant, { foreignKey: 'selectedPackageId', as: 'tenants'
 
 // Tenant ↔ GymListing (one-to-one: each approved tenant has one public gym listing)
 Tenant.hasOne(GymListing, { foreignKey: 'tenantId', as: 'gymListing' });
+Tenant.hasMany(GymListing, { foreignKey: 'tenantId', as: 'gymListings' });
 GymListing.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 
 // PlatformPackage ↔ TenantSubscription
@@ -144,4 +159,6 @@ module.exports = {
   DeviceMember,
   SavedGym,
   Notification,
+  Conversation,
+  Message,
 };

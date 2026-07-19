@@ -17,10 +17,12 @@ const _invoiceNo = () => {
 const _createInvoice = async (models, { userId, payment, subscription, plan }) => {
   const { Invoice } = models;
 
-  const subtotal   = parseFloat(plan.price);
-  const joining    = parseFloat(plan.joiningFee  || 0);
-  const security   = parseFloat(plan.securityFee || 0);
-  const totalAmount = subtotal + joining + security;
+  const totalAmount = parseFloat(payment.amount);
+  const subtotal = Math.min(parseFloat(plan.price), totalAmount);
+  const remaining = Math.max(0, totalAmount - subtotal);
+  
+  const security = Math.min(parseFloat(plan.securityFee || 0), remaining);
+  const joining = Math.max(0, remaining - security);
 
   return Invoice.create({
     userId,
@@ -133,7 +135,22 @@ const listPayments = async (tenantDb, { userId, branchId, status, method, from, 
     offset,
   });
 
-  return { payments: rows, pagination: buildPagination(count, page, limit) };
+  // Enrich with User details from Platform DB
+  const userIds = [...new Set(rows.map((r) => r.userId))];
+  const users = userIds.length
+    ? await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
+      })
+    : [];
+  const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
+
+  const payments = rows.map((r) => ({
+    ...r.toJSON(),
+    user: userMap[r.userId] || null,
+  }));
+
+  return { payments, pagination: buildPagination(count, page, limit) };
 };
 
 // ── GET /payments/:id ─────────────────────────────────────────────────────────
@@ -149,8 +166,8 @@ const getPayment = async (tenantDb, paymentId) => {
  * Tenant (GYM_HOST) gives final approval to a PENDING or STAFF_COLLECTED payment.
  * Activates the linked subscription and marks the invoice as PAID.
  */
-const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes) => {
-  const { Payment, Invoice } = tenantDb.models;
+const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waiveJoiningFee = false) => {
+  const { Payment, Invoice, MemberSubscription, MembershipPlan } = tenantDb.models;
 
   const payment = await Payment.findByPk(paymentId);
   if (!payment) throw createError('Payment not found', 404);
@@ -160,8 +177,21 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes) => {
     throw createError(`Payment is already ${payment.status.toLowerCase()}`, 409);
   }
 
+  let finalAmount = parseFloat(payment.amount);
+  if (payment.referenceEntityId && payment.paymentFor === 'MEMBERSHIP' && (waiveJoiningFee === true || waiveJoiningFee === 'true')) {
+    const subscription = await MemberSubscription.findByPk(payment.referenceEntityId);
+    if (subscription) {
+      const plan = await MembershipPlan.findByPk(subscription.membershipPlanId);
+      if (plan && parseFloat(plan.joiningFee) > 0) {
+        const joining = parseFloat(plan.joiningFee);
+        finalAmount = Math.max(0, finalAmount - joining);
+      }
+    }
+  }
+
   await payment.update({
     status:     PaymentStatus.COMPLETED,
+    amount:     finalAmount,
     paidAt:     new Date(),
     verifiedAt: new Date(),
     verifiedBy: verifiedByUserId,
@@ -170,12 +200,32 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes) => {
 
   if (payment.referenceEntityId) {
     await Invoice.update(
-      { status: InvoiceStatus.PAID, paidAt: new Date() },
+      { status: InvoiceStatus.PAID, paidAt: new Date(), totalAmount: finalAmount },
       { where: { referenceEntityId: payment.referenceEntityId, status: InvoiceStatus.ISSUED } }
     );
     if (payment.paymentFor === 'MEMBERSHIP') {
       await _activateSubscription(tenantDb, payment.referenceEntityId);
     }
+  }
+
+  try {
+    const { Tenant } = require('../models/platform');
+    const notificationsService = require('./notifications.service');
+    const tenant = await Tenant.findByPk(tenantDb.tenantId);
+    if (tenant && tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        type: 'payment_update',
+        title: 'Payment Verification Successful',
+        body: `Payment of PKR ${finalAmount} has been successfully verified.`,
+        metadata: {
+          route: '/host/subscriptions',
+          subscriptionId: payment.referenceEntityId,
+        }
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create payment verification notification:', notifErr.message);
   }
 
   return payment.reload();
@@ -190,7 +240,7 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes) => {
  *  verify   → GYM_HOST ONLY: (PENDING | STAFF_COLLECTED) → COMPLETED (step 2)
  *  reject   → BRANCH_MANAGER or GYM_HOST: (PENDING | STAFF_COLLECTED) → FAILED
  */
-const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole, { action, notes, rejectedReason }) => {
+const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole, { action, notes, rejectedReason, waiveJoiningFee }) => {
   const { Payment, Invoice } = tenantDb.models;
 
   const payment = await Payment.findByPk(paymentId);
@@ -211,26 +261,7 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
     if (actorRole !== 'GYM_HOST') {
       throw createError('Only the gym host can give final payment approval', 403);
     }
-    const verifiableStatuses = [PaymentStatus.PENDING, PaymentStatus.STAFF_COLLECTED];
-    if (!verifiableStatuses.includes(payment.status)) {
-      throw createError(`Payment is already ${payment.status.toLowerCase()}`, 409);
-    }
-    await payment.update({
-      status:     PaymentStatus.COMPLETED,
-      paidAt:     new Date(),
-      verifiedAt: new Date(),
-      verifiedBy: actorUserId,
-      notes:      notes || payment.notes,
-    });
-    if (payment.referenceEntityId) {
-      await Invoice.update(
-        { status: InvoiceStatus.PAID, paidAt: new Date() },
-        { where: { referenceEntityId: payment.referenceEntityId, status: InvoiceStatus.ISSUED } }
-      );
-      if (payment.paymentFor === 'MEMBERSHIP') {
-        await _activateSubscription(tenantDb, payment.referenceEntityId);
-      }
-    }
+    return verifyPayment(tenantDb, paymentId, actorUserId, notes, waiveJoiningFee);
 
   } else if (action === 'reject') {
     const rejectableStatuses = [PaymentStatus.PENDING, PaymentStatus.STAFF_COLLECTED];
@@ -244,6 +275,26 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
       rejectedReason: rejectedReason || null,
       notes:          notes || payment.notes,
     });
+
+    try {
+      const { Tenant } = require('../models/platform');
+      const notificationsService = require('./notifications.service');
+      const tenant = await Tenant.findByPk(tenantDb.tenantId);
+      if (tenant && tenant.ownerUserId) {
+        await notificationsService.createNotification({
+          userId: tenant.ownerUserId,
+          type: 'payment_update',
+          title: 'Payment Verification Rejected',
+          body: `Payment of PKR ${payment.amount} was rejected. Reason: ${rejectedReason || 'None'}`,
+          metadata: {
+            route: '/host/subscriptions',
+            subscriptionId: payment.referenceEntityId,
+          }
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Notification Error] Failed to create payment rejection notification:', notifErr.message);
+    }
 
   } else {
     throw createError('action must be "collect", "verify", or "reject"', 400);

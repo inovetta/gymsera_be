@@ -90,9 +90,21 @@ module.exports = (sequelize) => {
         defaultValue: 0.0,
       },
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'PENDING'),
+        type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'PENDING', 'DRAFT', 'REJECTED'),
         allowNull: false,
-        defaultValue: 'PENDING',
+        defaultValue: 'DRAFT',
+      },
+      rejectionReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      rejectedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      rejectedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
     },
     {

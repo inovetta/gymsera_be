@@ -124,12 +124,55 @@ const updateProfile = async (tenantDb, tenantId, data) => {
 
 // ── Branches ──────────────────────────────────────────────────────────────────
 
-const listBranches = async (tenantDb, tenantId) => {
-  const gym = await _getOrCreateGym(tenantDb, tenantId);
-  const { Branch } = tenantDb.models;
+const listBranches = async (tenantDb, tenantId, organizationId) => {
+  const { Gym, Branch } = tenantDb.models;
+  let gym = null;
+  let whereClause = {};
+
+  if (organizationId) {
+    // Check if listing is active on platform DB
+    const listing = await GymListing.findOne({
+      where: { id: organizationId, tenantId, status: 'ACTIVE' }
+    });
+    if (!listing) {
+      return { gym: null, branches: [] };
+    }
+
+    gym = await Gym.findOne({
+      where: {
+        [Op.or]: [
+          { gymListingId: organizationId },
+          { id: organizationId }
+        ]
+      }
+    });
+    if (!gym) {
+      return { gym: null, branches: [] };
+    }
+    whereClause = { gymId: gym.id };
+  } else {
+    // List all branches, but filter by active gym listings only
+    const activeListings = await GymListing.findAll({
+      where: { tenantId, status: 'ACTIVE' },
+      attributes: ['id']
+    });
+    const activeListingIds = activeListings.map(l => l.id);
+
+    const activeGyms = await Gym.findAll({
+      where: { gymListingId: { [Op.in]: activeListingIds } }
+    });
+    const activeGymIds = activeGyms.map(g => g.id);
+
+    if (activeGymIds.length === 0) {
+      return { gym: null, branches: [] };
+    }
+
+    gym = activeGyms[0];
+    whereClause = { gymId: { [Op.in]: activeGymIds } };
+  }
 
   const branches = await Branch.findAll({
-    where: { gymId: gym.id },
+    where: whereClause,
     order: [['createdAt', 'ASC']],
   });
 
@@ -150,6 +193,15 @@ const createBranch = async (tenantDb, tenantId, data) => {
       throw createError('Tenant not found', 404);
     }
 
+    let targetListingId = data.gymListingId;
+    if (!targetListingId) {
+      const firstListing = await GymListing.findOne({
+        where: { tenantId },
+        transaction: platformTx,
+      });
+      if (firstListing) targetListingId = firstListing.id;
+    }
+
     let maxBranches = 1;
     const activeSub = await TenantSubscription.findOne({
       where: { tenantId, status: 'ACTIVE' },
@@ -166,8 +218,13 @@ const createBranch = async (tenantDb, tenantId, data) => {
       if (pkg) maxBranches = pkg.maxBranches;
     }
 
-    // Count currently active branches in tenant DB
-    const usedBranches = await Branch.count({ where: { status: 'ACTIVE' } });
+    // Count currently active branches in tenant DB for this listing/org
+    const usedBranches = await Branch.count({
+      where: {
+        status: 'ACTIVE',
+        gymListingId: targetListingId || null,
+      }
+    });
 
     if (usedBranches >= maxBranches) {
       const err = createError('Branch limit reached', 403);
@@ -175,10 +232,19 @@ const createBranch = async (tenantDb, tenantId, data) => {
       throw err;
     }
 
-    const gym = await _getOrCreateGym(tenantDb, tenantId);
+    let gym = null;
+    if (targetListingId) {
+      gym = await tenantDb.models.Gym.findOne({
+        where: { gymListingId: targetListingId }
+      });
+    }
+    if (!gym) {
+      gym = await _getOrCreateGym(tenantDb, tenantId);
+    }
 
     const branch = await Branch.create({
       gymId: gym.id,
+      gymListingId: targetListingId || null,
       branchName: data.branchName,
       address: data.address || null,
       cityId: data.cityId || null,
@@ -375,7 +441,7 @@ const searchMember = async (email) => {
 };
 
 // ── Enroll member (walk-in or staff-assigned) ─────────────────────────────────
-const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate }, enrollerRole = 'GYM_HOST') => {
+const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate, notes, paymentMethod }, enrollerRole = 'GYM_HOST') => {
   const { MemberSubscription, MembershipPlan, MemberProfile } = tenantDb.models;
 
   // Find or create platform user
@@ -420,6 +486,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     subscribedAt: new Date(),
     remainingVisits: plan.visitLimit ?? null,
     sourceChannel: 'WALK_IN',
+    notes: notes || null,
   });
 
   // Cross-tenant platform index
@@ -451,7 +518,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     paymentFor:        'MEMBERSHIP',
     referenceEntityId: subscription.id,
     branchId,
-    method:            'CASH',
+    method:            paymentMethod || 'CASH',
     amount:            totalAmount,
     currency:          'PKR',
     status:            autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,

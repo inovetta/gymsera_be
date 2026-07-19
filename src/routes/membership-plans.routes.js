@@ -214,6 +214,57 @@ router.post(
 
 /**
  * @swagger
+ * /membership-plans/{id}/public:
+ *   post:
+ *     summary: Toggle whether a plan is visible to travellers in the public listing
+ *     tags: [MembershipPlans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Public visibility toggled
+ */
+router.post(
+  '/:id/public',
+  authenticate,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  tenantContext,
+  controller.togglePublic
+);
+
+/**
+ * @swagger
+ * /membership-plans/{id}/featured:
+ *   post:
+ *     summary: Set (or unset) a plan as the featured "Starting from" price on the gym listing
+ *     tags: [MembershipPlans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Featured status toggled
+ */
+router.post(
+  '/:id/featured',
+  authenticate,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  tenantContext,
+  controller.setFeatured
+);
+
+
+/**
+ * @swagger
  * /membership-plans/{id}/poster:
  *   post:
  *     summary: Upload a poster image for a membership plan

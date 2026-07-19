@@ -51,6 +51,12 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of gallery image URLs',
       },
+      gymListingId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'gym_listing_id',
+        comment: 'Cross-DB reference to GymListing id on the platform DB',
+      },
     },
     {
       tableName: 'gyms',

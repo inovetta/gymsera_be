@@ -70,6 +70,16 @@ const renew = async (req, res, next) => {
   }
 };
 
+// ── POST /subscriptions/:id/change-plan ───────────────────────────────────────
+const changePlan = async (req, res, next) => {
+  try {
+    const result = await subscriptionService.changePlan(req.user.id, req.params.id, req.body.planId);
+    return sendSuccess(res, result, 'Plan change registered');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /subscriptions — staff list all ───────────────────────────────────────
 const listForStaff = async (req, res, next) => {
   try {
@@ -153,8 +163,46 @@ const activateSubscription = async (req, res, next) => {
   }
 };
 
+// ── GET /member/branches/:branchId/subscription-status ────────────────────────
+const getMemberBranchSubscriptionStatus = async (req, res, next) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const result = await subscriptionService.getMemberBranchSubscriptionStatus(
+      req.tenantDb,
+      userId,
+      req.params.branchId
+    );
+    return sendSuccess(res, result, 'Subscription status retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /member/subscriptions/:id/upgrade-options ────────────────────────────
+const getUpgradeOptions = async (req, res, next) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const result = await subscriptionService.getUpgradeOptions(userId, req.params.id);
+    return sendSuccess(res, result, 'Upgrade options retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /member/subscriptions/:id/upgrade ───────────────────────────────────
+const upgradeSubscription = async (req, res, next) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    const result = await subscriptionService.upgradeSubscription(userId, req.params.id, req.body.newPlanId);
+    return sendSuccess(res, result, 'Subscription upgraded');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
-  subscribe, listMySubscriptions, freeze, cancel, renew,
+  subscribe, listMySubscriptions, freeze, cancel, renew, changePlan,
   listForStaff, getForStaff, preview,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
+  getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
 };

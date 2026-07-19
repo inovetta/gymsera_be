@@ -142,6 +142,7 @@ router.post('/:id/cancel', validate(validators.cancel), controller.cancel);
  *         description: Subscription is cancelled or plan no longer available
  */
 router.post('/:id/renew', validate(validators.renew), controller.renew);
+router.post('/:id/change-plan', validate(validators.changePlan), controller.changePlan);
 
 // ── Member: subscription detail with invoice + payment ────────────────────────
 router.get('/:id/detail', controller.getMySubscriptionDetail);

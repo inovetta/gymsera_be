@@ -25,7 +25,8 @@ const updateProfile = async (req, res, next) => {
 // ── GET /gyms/branches ────────────────────────────────────────────────────────
 const listBranches = async (req, res, next) => {
   try {
-    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId);
+    const organizationId = req.params.gymId || req.params.listingId || req.query.organizationId || req.query.gymId;
+    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId, organizationId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -91,6 +92,28 @@ const assignStaff = async (req, res, next) => {
       req.body.userId,
       req.body.designation
     );
+
+    // Notify the host
+    try {
+      const { Tenant } = require('../models/platform');
+      const notificationsService = require('../services/notifications.service');
+      const tenant = await Tenant.findByPk(req.tenantDb.tenantId);
+      if (tenant && tenant.ownerUserId) {
+        await notificationsService.createNotification({
+          userId: tenant.ownerUserId,
+          type: 'staff_update',
+          title: 'New Staff Assigned',
+          body: `A new staff member has been successfully assigned to your branch.`,
+          metadata: {
+            route: '/host/staff',
+            branchId: req.params.branchId,
+          }
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Notification Error] Failed to create staff assignment notification:', notifErr.message);
+    }
+
     return sendSuccess(res, result, 'Staff member assigned to branch', 201);
   } catch (err) {
     next(err);

@@ -92,6 +92,7 @@ router.use('/host',      require('./host.routes'));
 // ── Sprint 5 — Membership Plans & Subscriptions ───────────────────────────────
 router.use('/membership-plans', require('./membership-plans.routes'));
 router.use('/subscriptions',    require('./subscriptions.routes'));
+router.use('/member',           require('./member.routes'));
 router.use('/me',               require('./me.routes'));
 router.use('/notifications',    require('./notifications.routes'));
 

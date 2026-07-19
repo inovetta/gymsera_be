@@ -272,16 +272,37 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
   const subscription = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId, userId } });
   if (!subscription) throw createError('Subscription not found or does not belong to you', 404);
 
-  const payment = await Payment.create({
-    userId,
-    paymentFor: 'MEMBERSHIP',
-    referenceEntityId: resolvedSubscriptionId,
-    method,
-    amount,
-    currency: 'PKR',
-    status: 'PENDING',
-    notes: notes || null,
+  // Check if there is already a PENDING payment for this subscription
+  let payment = await Payment.findOne({
+    where: {
+      referenceEntityId: resolvedSubscriptionId,
+      userId,
+      status: 'PENDING'
+    }
   });
+
+  if (payment) {
+    // Update the existing pending payment instead of creating a duplicate
+    await payment.update({
+      method,
+      amount,
+      branchId: subscription.branchId,
+      notes: notes || payment.notes,
+    });
+  } else {
+    // Fallback: create a new one if none exists
+    payment = await Payment.create({
+      userId,
+      paymentFor: 'MEMBERSHIP',
+      referenceEntityId: resolvedSubscriptionId,
+      branchId: subscription.branchId,
+      method,
+      amount,
+      currency: 'PKR',
+      status: 'PENDING',
+      notes: notes || null,
+    });
+  }
 
   return payment;
 };

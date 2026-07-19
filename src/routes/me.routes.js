@@ -277,5 +277,11 @@ router.delete('/saved-gyms/:gymId', meController.unsaveGym);
 // ── Account Deletion Request ──────────────────────────────────────────────────
 router.post('/request-deletion', meController.requestDeletion);
 
+// ── Traveler Inbox ────────────────────────────────────────────────────────────
+router.get('/inbox', meController.listMyInbox);
+router.get('/inbox/:conversationId', meController.getMyConversation);
+router.post('/inbox/:conversationId/reply', meController.replyToMyConversation);
+router.patch('/inbox/:conversationId/read', meController.markMyConversationRead);
+
 module.exports = router;
 

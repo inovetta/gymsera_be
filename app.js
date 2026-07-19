@@ -5,7 +5,12 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const swaggerSpec = require('./src/config/swagger.config');
+let swaggerSpec = {};
+try {
+  swaggerSpec = require('./src/config/swagger-config');
+} catch (err) {
+  console.warn('[Swagger] Failed to load swagger-config, using stub:', err.message);
+}
 const routes = require('./src/routes');
 const errorHandler = require('./src/middleware/errorHandler');
 const auditLog = require('./src/middleware/auditLog');

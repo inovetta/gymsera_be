@@ -13,6 +13,12 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      gymListingId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'gym_listing_id',
+        comment: 'Cross-DB reference to GymListing id on the platform DB',
+      },
       branchName: {
         type: DataTypes.STRING(200),
         allowNull: false,
@@ -77,6 +83,27 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM('ACTIVE', 'INACTIVE'),
         allowNull: false,
         defaultValue: 'ACTIVE',
+      },
+      travelerVisibilityStatus: {
+        type: DataTypes.ENUM('pending', 'active', 'deactivated'),
+        allowNull: false,
+        defaultValue: 'pending',
+        field: 'traveler_visibility_status',
+      },
+      deactivationReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'deactivation_reason',
+      },
+      deactivatedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deactivated_at',
+      },
+      deactivatedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'deactivated_by',
       },
     },
     {

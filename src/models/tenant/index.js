@@ -18,12 +18,19 @@ const registerTenantModels = (sequelize) => {
   const Payment = require('./Payment.model')(sequelize);
   const Invoice = require('./Invoice.model')(sequelize);
   const Trainer = require('./Trainer.model')(sequelize);
+  const Announcement = require('./Announcement.model')(sequelize);
+  const ClassSchedule = require('./ClassSchedule.model')(sequelize);
+  const BranchVisibilityHistory = require('./BranchVisibilityHistory.model')(sequelize);
 
   // ── Associations ─────────────────────────────────────────────────────────────
 
   // Gym ↔ Branch
   Gym.hasMany(Branch, { foreignKey: 'gymId', as: 'branches', onDelete: 'CASCADE' });
   Branch.belongsTo(Gym, { foreignKey: 'gymId', as: 'gym' });
+
+  // Branch ↔ BranchVisibilityHistory
+  Branch.hasMany(BranchVisibilityHistory, { foreignKey: 'branchId', as: 'visibilityHistory', onDelete: 'CASCADE' });
+  BranchVisibilityHistory.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
 
   // Branch ↔ GymStaff
   Branch.hasMany(GymStaff, { foreignKey: 'branchId', as: 'staff' });
@@ -44,6 +51,7 @@ const registerTenantModels = (sequelize) => {
   // MembershipPlan ↔ MemberSubscription
   MembershipPlan.hasMany(MemberSubscription, { foreignKey: 'membershipPlanId', as: 'subscriptions' });
   MemberSubscription.belongsTo(MembershipPlan, { foreignKey: 'membershipPlanId', as: 'plan' });
+  MemberSubscription.belongsTo(MembershipPlan, { foreignKey: 'pendingPlanId', as: 'pendingPlan' });
 
   // MemberSubscription ↔ AttendanceLog
   MemberSubscription.hasMany(AttendanceLog, { foreignKey: 'memberSubscriptionId', as: 'attendanceLogs' });
@@ -57,6 +65,14 @@ const registerTenantModels = (sequelize) => {
   Branch.hasMany(Trainer, { foreignKey: 'branchId', as: 'trainers' });
   Trainer.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
 
+  // Branch ↔ Announcement
+  Branch.hasMany(Announcement, { foreignKey: 'branchId', as: 'announcements', onDelete: 'CASCADE' });
+  Announcement.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
+
+  // Branch ↔ ClassSchedule
+  Branch.hasMany(ClassSchedule, { foreignKey: 'branchId', as: 'classSchedules', onDelete: 'CASCADE' });
+  ClassSchedule.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
+
   return {
     Gym,
     Branch,
@@ -68,6 +84,9 @@ const registerTenantModels = (sequelize) => {
     Payment,
     Invoice,
     Trainer,
+    Announcement,
+    ClassSchedule,
+    BranchVisibilityHistory,
   };
 };
 

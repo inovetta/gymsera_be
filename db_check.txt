@@ -1,0 +1,104 @@
+=== DATABASE CHECK ===
+
+Database: gymsera_champions
+Plans count: 6
+  - ID: 537696c3-5b96-4392-ad61-b805ee15f33a, Name: Monthly Martial Arts, Price: 5500.00, BranchID: null, Status: ACTIVE
+  - ID: 566ba895-5443-4b98-98fa-37c4d46fd0d8, Name: 1-Day Free Trial, Price: 0.00, BranchID: null, Status: ACTIVE
+  - ID: 890b81cd-2951-48ad-92c7-66b2d96e8ea2, Name: Annual, Price: 44000.00, BranchID: null, Status: ACTIVE
+  - ID: 9f499193-ed83-464b-9afb-2f2fd2ce3945, Name: Monthly General, Price: 3000.00, BranchID: null, Status: ACTIVE
+  - ID: b8e9ac13-f48f-440a-9a5b-da0561d74ece, Name: Quarterly, Price: 13000.00, BranchID: null, Status: ACTIVE
+  - ID: d3587522-dba4-4a41-b227-87233759b298, Name: Day Pass, Price: 300.00, BranchID: null, Status: ACTIVE
+Branches count: 2
+  - ID: 478c9861-a57e-4e26-9ba5-7e8605a9692a, Name: Champions Peoples Colony, Status: ACTIVE
+  - ID: ce4dbcd6-10a7-40ac-bb03-b475d39d9790, Name: Champions Madina Town, Status: ACTIVE
+
+Database: gymsera_fitlife
+Plans count: 6
+  - ID: 0bc96dfc-5242-426d-810c-e9d7b3fbef92, Name: Quarterly, Price: 33000.00, BranchID: null, Status: ACTIVE
+  - ID: 3ec97aae-3a6b-46e6-a31f-bd446635982b, Name: Monthly Wellness, Price: 8000.00, BranchID: null, Status: ACTIVE
+  - ID: 49c06188-9e53-4b25-a745-956745d49550, Name: Monthly Premium, Price: 13000.00, BranchID: null, Status: ACTIVE
+  - ID: 8b110d9e-aa7e-4aee-9197-3977e0e5a3fd, Name: Single Session, Price: 1000.00, BranchID: null, Status: ACTIVE
+  - ID: a234550e-0fab-4cc7-9b4c-9cd18c085369, Name: Starter Trial, Price: 0.00, BranchID: null, Status: ACTIVE
+  - ID: fed19d71-f52f-4b58-9ea8-d7530f7eb60d, Name: Annual, Price: 110000.00, BranchID: null, Status: ACTIVE
+Branches count: 1
+  - ID: ece505bc-f660-4b8a-af2e-04c6cac0ffc9, Name: FitLife F-8 Islamabad, Status: ACTIVE
+
+Database: gymsera_gym_0008c794
+Plans count: 0
+Branches count: 2
+  - ID: bf4b1d7c-8483-4fb7-a67f-2d78cd06e4a6, Name: ironhost, Status: ACTIVE
+  - ID: c2658bf1-2689-4128-b85c-9f4f753404e9, Name: iron gym2, Status: ACTIVE
+
+Database: gymsera_gym_7536c73e
+Plans count: 0
+Branches count: 3
+  - ID: 89984f53-d755-43de-a607-4ca8f2276dd5, Name: iron forge, Status: ACTIVE
+  - ID: c9b42e54-e1a6-43be-9fbd-630775420741, Name: irony, Status: ACTIVE
+  - ID: d477bb62-723e-4369-a6d4-112be7cdf8b5, Name: iron company, Status: ACTIVE
+
+Database: gymsera_gym_8b98cfba
+Plans count: 0
+Branches count: 6
+  - ID: 0188b39e-cf1a-4a23-86c1-eeba363ccf1c, Name: inovetta2.0, Status: ACTIVE
+  - ID: 03dff88d-6772-40c1-966d-a21545549404, Name: inovetta2.0, Status: ACTIVE
+  - ID: 168aeb0a-f943-4ac3-a339-5bb7ee96c379, Name: irongym, Status: ACTIVE
+  - ID: 1c2dc21f-705c-4d0a-a50d-c94a6418ae5f, Name: inovetta2.0, Status: ACTIVE
+  - ID: 80b3edd5-394f-4a19-805c-a1794ceb7480, Name: Hume, Status: ACTIVE
+  - ID: aa34e371-cecb-404d-a307-e25e9a0671ab, Name: inovettafitness, Status: ACTIVE
+
+Database: gymsera_gym_9c4651f4
+Plans count: 0
+Branches count: 1
+  - ID: 6b2646fa-6bcd-45e6-8b2d-17846720035c, Name: ironboxxxx, Status: ACTIVE
+
+Database: gymsera_gym_c6d77760
+Plans count: 1
+  - ID: 4cd0bc64-f5eb-42de-9426-7faa2d56e255, Name: pro premiom, Price: 323223.00, BranchID: 54923adb-dbee-496b-a57b-7acfb3c65ebd, Status: ACTIVE
+Branches count: 2
+  - ID: 3fb38dc4-cf15-4e05-b5aa-7fb95bc1c531, Name: iron for, Status: INACTIVE
+  - ID: 54923adb-dbee-496b-a57b-7acfb3c65ebd, Name: Main make, Status: ACTIVE
+
+Database: gymsera_gym_f63ac92d
+Plans count: 0
+Branches count: 3
+  - ID: 0d971cbb-d4ed-447a-88a5-21572997881e, Name: Khan, Status: ACTIVE
+  - ID: 666d1917-3a3a-4e3f-81aa-702e3a1861ab, Name: gym 1, Status: ACTIVE
+  - ID: 70fa20a7-cbe1-4ce8-8d87-95298b02e430, Name: midsss, Status: ACTIVE
+
+Database: gymsera_ironpeak
+Plans count: 6
+  - ID: 133ce8d6-fb9c-4630-850d-02010f2069c3, Name: Quarterly, Price: 18000.00, BranchID: null, Status: ACTIVE
+  - ID: 148039be-1675-4701-8fed-72581b007c77, Name: 3-Day Trial, Price: 0.00, BranchID: null, Status: ACTIVE
+  - ID: 492e57ee-4be4-4536-8cf8-e42eee0163d1, Name: Annual, Price: 60000.00, BranchID: null, Status: ACTIVE
+  - ID: 640606cf-1d52-4a99-93c4-7f061d8c966a, Name: Monthly Premium, Price: 7000.00, BranchID: null, Status: ACTIVE
+  - ID: 84dc8711-4d12-417e-a63b-c17d74e586ae, Name: Day Pass, Price: 500.00, BranchID: null, Status: ACTIVE
+  - ID: d0ba4d37-df46-4a56-97b0-8227863031d1, Name: Monthly Basic, Price: 4500.00, BranchID: null, Status: ACTIVE
+Branches count: 3
+  - ID: 91feea07-fb58-4d9f-bbc0-528457692f29, Name: Iron Peak Clifton, Status: ACTIVE
+  - ID: bda2049a-41b9-4ccb-9ac6-6c1b3d364220, Name: Iron Peak DHA Phase 5, Status: ACTIVE
+  - ID: e767b8dd-c17b-4ebb-b983-96311904e38a, Name: Iron Peak Gulshan, Status: ACTIVE
+
+Database: gymsera_powerzone
+Plans count: 7
+  - ID: 0e9f4080-5dbd-4cbf-9e11-3a722d1ced14, Name: 2-Day Trial, Price: 0.00, BranchID: null, Status: ACTIVE
+  - ID: 1e277e0a-8d9a-463e-8f5a-ae0c8e0b94b4, Name: Monthly Fighter, Price: 6500.00, BranchID: null, Status: ACTIVE
+  - ID: 326cc0aa-7865-4f1e-9975-8f099ec17ed6, Name: Monthly General, Price: 4000.00, BranchID: null, Status: ACTIVE
+  - ID: 678da371-bf67-4e77-bb26-d7ea6882920d, Name: Day Pass, Price: 400.00, BranchID: null, Status: ACTIVE
+  - ID: c1a17fdb-72b9-40b5-a2e0-b196c2e3bdaf, Name: Quarterly General, Price: 10000.00, BranchID: null, Status: ACTIVE
+  - ID: db58a7b5-f552-46d2-93cf-eb8effd58dcf, Name: Quarterly Fighter, Price: 17000.00, BranchID: null, Status: ACTIVE
+  - ID: f16fa9db-bb15-4403-b84c-1f3747d067d6, Name: Annual All-Access, Price: 55000.00, BranchID: null, Status: ACTIVE
+Branches count: 2
+  - ID: 5113055b-dc9a-4c69-9693-1e112ce58063, Name: PowerZone Bahria Town, Status: ACTIVE
+  - ID: a91ddd42-49a9-4445-8506-85144c70cdfa, Name: PowerZone DHA Rawalpindi, Status: ACTIVE
+
+Database: gymsera_vitalityfit
+Plans count: 6
+  - ID: 0d1b114c-c6b0-4fbc-bdb5-76f42d8e47dc, Name: Monthly Premium, Price: 10000.00, BranchID: null, Status: ACTIVE
+  - ID: 232deee2-be92-40e1-807f-ed7431954f53, Name: Quarterly Premium, Price: 27000.00, BranchID: null, Status: ACTIVE
+  - ID: 65955a0d-aff7-4e57-bc1f-9f0a7e3a4aab, Name: Drop-in Class, Price: 800.00, BranchID: null, Status: ACTIVE
+  - ID: 67381384-f9d1-4a82-b02f-3cd35791ca8a, Name: Yearly Premium, Price: 90000.00, BranchID: null, Status: ACTIVE
+  - ID: 6b1df57d-5c0a-46cd-8ba8-9378e211b5ea, Name: Monthly Starter, Price: 6000.00, BranchID: null, Status: ACTIVE
+  - ID: 747f6be7-6820-492d-af29-489766756d06, Name: Free Trial Week, Price: 0.00, BranchID: null, Status: ACTIVE
+Branches count: 2
+  - ID: 470ac791-2eb2-4645-8305-b8f4d24f6212, Name: Vitality Fit Gulberg, Status: ACTIVE
+  - ID: 89129f09-e0d0-456b-9e49-69499936e1d1, Name: Vitality Fit DHA Lahore, Status: ACTIVE

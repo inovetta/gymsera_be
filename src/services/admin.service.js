@@ -56,41 +56,144 @@ const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessNam
 
 // ── listTenants ───────────────────────────────────────────────────────────────
 const listTenants = async ({ status, page, limit, offset }) => {
-  const where = {};
+  const tenantWhere = {};
   if (status) {
     if (!Object.values(TenantStatus).includes(status)) {
       throw createError(`Invalid status. Valid values: ${Object.values(TenantStatus).join(', ')}`, 400);
     }
-    where.status = status;
+    tenantWhere.status = status;
   }
 
-  const { count, rows } = await Tenant.findAndCountAll({
-    where,
+  // 1. Fetch Tenants
+  const tenants = await Tenant.findAll({
+    where: tenantWhere,
     include: [
       { model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
     ],
     order: [['createdAt', 'DESC']],
-    limit,
-    offset,
-    distinct: true,
   });
 
-  return { tenants: rows, pagination: buildPagination(count, page, limit) };
+  // 2. Fetch all GymListings that match the status filter
+  const gymListingWhere = {};
+  if (status) {
+    if (status === 'PENDING_REVIEW') {
+      gymListingWhere.status = 'PENDING';
+    } else if (status === 'REJECTED') {
+      gymListingWhere.status = 'REJECTED';
+    } else if (status === 'ACTIVE') {
+      gymListingWhere.status = 'ACTIVE';
+    } else {
+      // For other statuses (like UNDER_REVIEW, APPROVED, SUSPENDED), additional listings don't apply
+      gymListingWhere.status = 'NONE';
+    }
+  } else {
+    // If no status filter (All), fetch all except DRAFT/INACTIVE
+    gymListingWhere.status = { [Op.in]: ['PENDING', 'REJECTED', 'ACTIVE'] };
+  }
+
+  const gymListings = await GymListing.findAll({
+    where: gymListingWhere,
+    include: [
+      { model: City, as: 'city', attributes: ['id', 'name'] },
+      { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] }] },
+    ],
+    order: [['createdAt', 'DESC']],
+  });
+
+  // 3. Filter out the first (primary) gym listing for each tenant to avoid duplicates
+  const additionalListings = [];
+  for (const listing of gymListings) {
+    if (!listing.tenant) continue;
+    // Find all listings for this tenant to check if this one is the first
+    const allTenantListings = await GymListing.findAll({
+      where: { tenantId: listing.tenantId },
+      order: [['createdAt', 'ASC']],
+    });
+    if (allTenantListings.length > 1 && allTenantListings[0].id !== listing.id) {
+      additionalListings.push(listing);
+    }
+  }
+
+  // 4. Synthesize Tenant-like objects for additional listings
+  const synthesized = additionalListings.map((listing) => {
+    const tenant = listing.tenant;
+    return {
+      id: `${tenant.id}:${listing.id}`, // Compound ID
+      tenantCode: tenant.tenantCode,
+      businessName: `${listing.title} (Additional Listing)`,
+      ownerUserId: tenant.ownerUserId,
+      email: tenant.email,
+      phone: listing.contactPhone || tenant.phone,
+      cityId: listing.cityId,
+      status: listing.status === 'PENDING' ? 'PENDING_REVIEW' : (listing.status === 'REJECTED' ? 'REJECTED' : 'ACTIVE'),
+      gymName: listing.title,
+      gymDescription: listing.shortDescription,
+      logoUrl: listing.logoUrl,
+      coverImageUrl: listing.coverImageUrl,
+      genderType: listing.genderType,
+      createdAt: listing.createdAt,
+      owner: tenant.owner,
+      user: tenant.owner,
+      city: listing.city,
+      gymListing: {
+        id: listing.id,
+        tenantId: listing.tenantId,
+        title: listing.title,
+        averageRating: listing.averageRating,
+        status: listing.status,
+        isFeatured: listing.isFeatured,
+      },
+    };
+  });
+
+  // 5. Combine and sort by createdAt DESC
+  const combined = [...tenants.map(t => t.toJSON()), ...synthesized];
+  combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // 6. Paginate
+  const count = combined.length;
+  const paginated = combined.slice(offset, offset + limit);
+
+  return { tenants: paginated, pagination: buildPagination(count, page, limit) };
 };
 
 // ── getTenant ─────────────────────────────────────────────────────────────────
 const getTenant = async (tenantId) => {
-  const tenant = await Tenant.findByPk(tenantId, {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+
+  const tenant = await Tenant.findByPk(actualTenantId, {
     include: [
       { model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone', 'status', 'isVerified', 'createdAt'] },
       { model: City, as: 'city', attributes: ['id', 'name'] },
       { model: PlatformPackage, as: 'selectedPackage', attributes: ['id', 'name', 'price', 'billingCycle', 'maxBranches', 'maxTrainers', 'maxMembers'] },
-      { model: GymListing, as: 'gymListing', attributes: ['id', 'title', 'averageRating', 'status', 'isFeatured'] },
     ],
   });
   if (!tenant) throw createError('Tenant not found', 404);
-  return { tenant };
+
+  const tenantJson = tenant.toJSON();
+
+  let gymListing;
+  if (listingId) {
+    gymListing = await GymListing.findByPk(listingId, {
+      include: _getListingIncludes(),
+    });
+  } else {
+    gymListing = await GymListing.findOne({
+      where: { tenantId: actualTenantId },
+      order: [['createdAt', 'ASC']],
+      include: _getListingIncludes(),
+    });
+  }
+
+  tenantJson.gymListing = gymListing ? gymListing.toJSON() : null;
+
+  if (listingId && gymListing) {
+    tenantJson.status = gymListing.status === 'PENDING' ? 'PENDING_REVIEW' : (gymListing.status === 'REJECTED' ? 'REJECTED' : 'ACTIVE');
+    tenantJson.businessName = `${gymListing.title} (Additional Listing)`;
+  }
+
+  return { tenant: tenantJson };
 };
 
 // ── approveTenant ─────────────────────────────────────────────────────────────
@@ -99,7 +202,23 @@ const getTenant = async (tenantId) => {
  * the DB provisioning job. The job will flip status to ACTIVE once done.
  */
 const approveTenant = async (tenantId, adminUserId) => {
-  const tenant = await Tenant.findByPk(tenantId, {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+
+  if (listingId) {
+    const listing = await GymListing.findByPk(listingId);
+    if (!listing) throw createError('Gym listing not found', 404);
+
+    await listing.update({
+      status: 'ACTIVE',
+      rejectionReason: null,
+      rejectedAt: null,
+      rejectedBy: null,
+    });
+
+    return { tenant: { id: tenantId, status: 'ACTIVE' } };
+  }
+
+  const tenant = await Tenant.findByPk(actualTenantId, {
     include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email'] }],
   });
   if (!tenant) throw createError('Tenant not found', 404);
@@ -132,7 +251,27 @@ const approveTenant = async (tenantId, adminUserId) => {
 
 // ── rejectTenant ──────────────────────────────────────────────────────────────
 const rejectTenant = async (tenantId, adminUserId, reason) => {
-  const tenant = await Tenant.findByPk(tenantId, {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+
+  if (!reason || !reason.trim()) {
+    throw createError('A rejection reason is required', 400);
+  }
+
+  if (listingId) {
+    const listing = await GymListing.findByPk(listingId);
+    if (!listing) throw createError('Gym listing not found', 404);
+
+    await listing.update({
+      status: 'REJECTED',
+      rejectionReason: reason.trim(),
+      rejectedAt: new Date(),
+      rejectedBy: adminUserId,
+    });
+
+    return { tenant: { id: tenantId, status: 'REJECTED' } };
+  }
+
+  const tenant = await Tenant.findByPk(actualTenantId, {
     include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email'] }],
   });
   if (!tenant) throw createError('Tenant not found', 404);
@@ -140,10 +279,6 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
   const rejectableStatuses = [TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW, TenantStatus.APPROVED, TenantStatus.ACTIVE];
   if (!rejectableStatuses.includes(tenant.status)) {
     throw createError('Tenant cannot be rejected from its current status', 400);
-  }
-
-  if (!reason || !reason.trim()) {
-    throw createError('A rejection reason is required', 400);
   }
 
   await tenant.update({
@@ -162,6 +297,23 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
       tenant.businessName,
       reason.trim()
     );
+  }
+
+  try {
+    const notificationsService = require('./notifications.service');
+    if (tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        type: 'host_update',
+        title: 'Host Application Rejected',
+        body: `Your application for "${tenant.businessName}" was rejected by admin. Reason: ${reason.trim()}`,
+        metadata: {
+          route: '/host/profile',
+        }
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create rejection notification:', notifErr.message);
   }
 
   return { tenant };
@@ -202,18 +354,27 @@ const reactivateTenant = async (tenantId, adminUserId) => {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const _getTenantDb = async (tenantId) => {
-  const tenant = await Tenant.findByPk(tenantId, {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  const tenant = await Tenant.findByPk(actualTenantId, {
     attributes: ['id', 'connectionStringEncrypted', 'status'],
   });
   if (!tenant) throw createError('Tenant not found', 404);
   if (!tenant.connectionStringEncrypted) throw createError('Tenant database is not provisioned yet', 422);
-  return TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+  return TenantDbManager.getConnection(actualTenantId, tenant.connectionStringEncrypted);
 };
 
 // ── getTenantBranches (admin) ─────────────────────────────────────────────────
 const getTenantBranches = async (tenantId) => {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const { models } = await _getTenantDb(tenantId);
+  
+  const where = {};
+  if (listingId) {
+    where.gymListingId = listingId;
+  }
+
   const branches = await models.Branch.findAll({
+    where,
     include: [{ model: models.Gym, as: 'gym', attributes: ['id', 'name'] }],
     order: [['createdAt', 'DESC']],
   });
@@ -646,20 +807,27 @@ const _getListingIncludes = () => [
 ];
 
 const getGymListing = async (tenantId) => {
-  const listing = await GymListing.findOne({ where: { tenantId }, include: _getListingIncludes() });
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  let listing;
+  if (listingId) {
+    listing = await GymListing.findByPk(listingId, { include: _getListingIncludes() });
+  } else {
+    listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']], include: _getListingIncludes() });
+  }
   if (!listing) throw createError('Gym listing not found', 404);
   return { gymListing: listing };
 };
 
 const createGymListing = async (tenantId, data) => {
-  const existing = await GymListing.findOne({ where: { tenantId } });
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  const existing = await GymListing.findOne({ where: { tenantId: actualTenantId } });
   if (existing) throw createError('Gym listing already exists for this tenant', 409);
 
-  const tenant = await Tenant.findByPk(tenantId);
+  const tenant = await Tenant.findByPk(actualTenantId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   const listing = await GymListing.create({
-    tenantId,
+    tenantId: actualTenantId,
     title: data.title || tenant.businessName,
     shortDescription: data.shortDescription || null,
     genderType: data.genderType || 'MIXED',
@@ -679,7 +847,13 @@ const createGymListing = async (tenantId, data) => {
 };
 
 const updateGymListing = async (tenantId, data) => {
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  let listing;
+  if (listingId) {
+    listing = await GymListing.findByPk(listingId);
+  } else {
+    listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']] });
+  }
   if (!listing) throw createError('Gym listing not found', 404);
 
   const fields = ['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status'];
@@ -691,8 +865,14 @@ const updateGymListing = async (tenantId, data) => {
 };
 
 const uploadGymListingLogo = async (tenantId, fileBuffer, mimetype) => {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const storageService = require('./storage.service');
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  let listing;
+  if (listingId) {
+    listing = await GymListing.findByPk(listingId);
+  } else {
+    listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']] });
+  }
   if (!listing) throw createError('Gym listing not found', 404);
 
   if (listing.logoUrl) await storageService.deleteImage(listing.logoUrl).catch(() => {});
@@ -702,8 +882,14 @@ const uploadGymListingLogo = async (tenantId, fileBuffer, mimetype) => {
 };
 
 const uploadGymListingCover = async (tenantId, fileBuffer, mimetype) => {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const storageService = require('./storage.service');
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  let listing;
+  if (listingId) {
+    listing = await GymListing.findByPk(listingId);
+  } else {
+    listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']] });
+  }
   if (!listing) throw createError('Gym listing not found', 404);
 
   if (listing.coverImageUrl) await storageService.deleteImage(listing.coverImageUrl).catch(() => {});
@@ -713,8 +899,14 @@ const uploadGymListingCover = async (tenantId, fileBuffer, mimetype) => {
 };
 
 const uploadGymListingImages = async (tenantId, files) => {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const storageService = require('./storage.service');
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  let listing;
+  if (listingId) {
+    listing = await GymListing.findByPk(listingId);
+  } else {
+    listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']] });
+  }
   if (!listing) throw createError('Gym listing not found', 404);
 
   const newUrls = await storageService.uploadImages(files, `gym-listings/${listing.id}/images`);
@@ -724,8 +916,14 @@ const uploadGymListingImages = async (tenantId, files) => {
 };
 
 const deleteGymListingImage = async (tenantId, imageUrl) => {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const storageService = require('./storage.service');
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  let listing;
+  if (listingId) {
+    listing = await GymListing.findByPk(listingId);
+  } else {
+    listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']] });
+  }
   if (!listing) throw createError('Gym listing not found', 404);
 
   await storageService.deleteImage(imageUrl).catch(() => {});
@@ -737,16 +935,24 @@ const deleteGymListingImage = async (tenantId, imageUrl) => {
 // ── Admin branch management ───────────────────────────────────────────────────
 
 const createAdminTenantBranch = async (tenantId, data) => {
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
   if (!tenant) throw createError('Tenant not found', 404);
   if (tenant.status !== 'ACTIVE') throw createError('Tenant must be active to manage branches', 400);
 
   const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-  const gym = await models.Gym.findOne();
+  
+  let gym;
+  if (listingId) {
+    gym = await models.Gym.findOne({ where: { gymListingId: listingId } });
+  } else {
+    gym = await models.Gym.findOne();
+  }
   if (!gym) throw createError('Gym profile not found for this tenant', 404);
 
   const branch = await models.Branch.create({
     gymId: gym.id,
+    gymListingId: listingId || null,
     branchName: data.branchName,
     address: data.address || null,
     cityId: data.cityId || null,
@@ -762,7 +968,8 @@ const createAdminTenantBranch = async (tenantId, data) => {
 };
 
 const updateAdminTenantBranch = async (tenantId, branchId, data) => {
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
   if (!tenant) throw createError('Tenant not found', 404);
 
   const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
@@ -777,8 +984,9 @@ const updateAdminTenantBranch = async (tenantId, branchId, data) => {
 };
 
 const uploadAdminBranchImages = async (tenantId, branchId, files) => {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const storageService = require('./storage.service');
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
+  const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted'] });
   if (!tenant) throw createError('Tenant not found', 404);
 
   const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
@@ -793,8 +1001,9 @@ const uploadAdminBranchImages = async (tenantId, branchId, files) => {
 };
 
 const deleteAdminBranchImage = async (tenantId, branchId, imageUrl) => {
+  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const storageService = require('./storage.service');
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
+  const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted'] });
   if (!tenant) throw createError('Tenant not found', 404);
 
   const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
@@ -808,6 +1017,120 @@ const deleteAdminBranchImage = async (tenantId, branchId, imageUrl) => {
   return null;
 };
 
+const updateBranchTravelerVisibility = async (branchId, status, reason, adminUserId) => {
+  const tenants = await Tenant.findAll({
+    where: { status: 'ACTIVE' },
+    attributes: ['id', 'connectionStringEncrypted'],
+  });
+
+  let foundBranch = null;
+  let foundDb = null;
+
+  for (const tenant of tenants) {
+    if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+      try {
+        const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        const branch = await tenantDb.models.Branch.findByPk(branchId);
+        if (branch) {
+          foundBranch = branch;
+          foundDb = tenantDb;
+          break;
+        }
+      } catch (err) {
+        // Ignore unreachable
+      }
+    }
+  }
+
+  if (!foundBranch) {
+    throw createError('Branch not found across active tenants', 404);
+  }
+
+  await foundBranch.update({
+    travelerVisibilityStatus: status,
+    deactivationReason: status === 'deactivated' ? reason : null,
+    deactivatedAt: status === 'deactivated' ? new Date() : null,
+    deactivatedBy: status === 'deactivated' ? adminUserId : null,
+  });
+
+  // Log to BranchVisibilityHistory
+  const { BranchVisibilityHistory } = foundDb.models;
+  if (BranchVisibilityHistory) {
+    await BranchVisibilityHistory.create({
+      branchId: foundBranch.id,
+      status: status,
+      reason: status === 'deactivated' ? reason : null,
+      changedBy: adminUserId,
+      changedAt: new Date(),
+    });
+  }
+
+  // Notify the gym host
+  try {
+    const notificationsService = require('./notifications.service');
+    const tenant = await Tenant.findByPk(foundBranch.tenantId);
+    if (tenant && tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        type: 'branch_visibility',
+        title: status === 'deactivated' ? 'Branch Deactivated by Admin' : 'Branch Approved by Admin',
+        body: status === 'deactivated'
+          ? `Your branch "${foundBranch.branchName}" has been deactivated. Reason: ${reason}`
+          : `Your branch "${foundBranch.branchName}" has been approved and is now visible to travelers.`,
+        metadata: {
+          route: '/host/listings',
+          branchId: foundBranch.id,
+        }
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create notification for visibility change:', notifErr.message);
+  }
+
+  return { branch: foundBranch };
+};
+
+const getBranchVisibilityHistory = async (branchId) => {
+  const tenants = await Tenant.findAll({
+    where: { status: 'ACTIVE' },
+    attributes: ['id', 'connectionStringEncrypted'],
+  });
+
+  let foundBranch = null;
+  let foundDb = null;
+
+  for (const tenant of tenants) {
+    if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+      try {
+        const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        const branch = await tenantDb.models.Branch.findByPk(branchId);
+        if (branch) {
+          foundBranch = branch;
+          foundDb = tenantDb;
+          break;
+        }
+      } catch (err) {
+        // Ignore unreachable
+      }
+    }
+  }
+
+  if (!foundBranch) {
+    throw createError('Branch not found across active tenants', 404);
+  }
+
+  const { BranchVisibilityHistory } = foundDb.models;
+  let history = [];
+  if (BranchVisibilityHistory) {
+    history = await BranchVisibilityHistory.findAll({
+      where: { branchId },
+      order: [['changedAt', 'DESC']],
+    });
+  }
+
+  return { history };
+};
+
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
   reactivateTenant, deleteTenant, getTenantBranches, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
@@ -818,4 +1141,6 @@ module.exports = {
   getTenantSubscriptions, assignTenantSubscription, revokeTenantSubscription,
   getTenantInvoices, createTenantInvoice, updateTenantInvoice,
   getPlatformStats, getPlatformAnalytics,
+  updateBranchTravelerVisibility,
+  getBranchVisibilityHistory,
 };
