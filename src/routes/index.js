@@ -49,7 +49,7 @@ router.get('/debug-sync-db', async (_req, res) => {
     const results = [];
 
     for (const tenant of tenants) {
-      if (tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+      if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
         const connUrl = decrypt(tenant.connectionStringEncrypted);
         const tenantSeq = new Sequelize(connUrl, {
           dialect: 'mysql',
@@ -67,6 +67,92 @@ router.get('/debug-sync-db', async (_req, res) => {
         }
       } else {
         results.push({ tenant: tenant.tenantCode, status: 'PENDING_PROVISIONING' });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/debug-cleanup-indexes', async (_req, res) => {
+  try {
+    const { Tenant } = require('../models/platform');
+    const { decrypt } = require('../utils/crypto.utils');
+    const mysql = require('mysql2/promise');
+
+    const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+    const results = [];
+
+    for (const tenant of tenants) {
+      if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
+        continue;
+      }
+
+      const connUrl = decrypt(tenant.connectionStringEncrypted);
+      const matches = connUrl.match(/mysql:\/\/([^:]+):([^@]*)@([^:]+):(\d+)\/(.+)/);
+      if (!matches) {
+        results.push({ tenant: tenant.tenantCode, status: 'FAILED', error: 'Invalid conn URL format' });
+        continue;
+      }
+
+      const [, dbUser, dbPass, dbHost, dbPort, dbName] = matches;
+      let conn;
+      let droppedCount = 0;
+      try {
+        conn = await mysql.createConnection({
+          host: dbHost,
+          port: parseInt(dbPort),
+          user: dbUser,
+          password: dbPass,
+          database: dbName,
+        });
+
+        const [tables] = await conn.query('SHOW TABLES');
+        const tableNames = tables.map(row => Object.values(row)[0]);
+
+        for (const tableName of tableNames) {
+          const [indexes] = await conn.query(`SHOW INDEX FROM \`${tableName}\``);
+          const indexGroups = {};
+          for (const idx of indexes) {
+            const keyName = idx.Key_name;
+            if (!indexGroups[keyName]) {
+              indexGroups[keyName] = [];
+            }
+            indexGroups[keyName].push(idx.Column_name);
+          }
+
+          const keysToDrop = [];
+          const normalizedGroups = {};
+
+          for (const [keyName, columns] of Object.entries(indexGroups)) {
+            if (keyName === 'PRIMARY') continue;
+            const colStr = columns.sort().join(',');
+            const isSequentialDup = /_\d+$/.test(keyName);
+
+            if (normalizedGroups[colStr] || isSequentialDup) {
+              keysToDrop.push(keyName);
+            } else {
+              normalizedGroups[colStr] = keyName;
+            }
+          }
+
+          for (const keyName of keysToDrop) {
+            try {
+              try {
+                await conn.query(`ALTER TABLE \`${tableName}\` DROP FOREIGN KEY \`${keyName}\``);
+              } catch (e) {}
+              await conn.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${keyName}\``);
+              droppedCount++;
+            } catch (e) {}
+          }
+        }
+        results.push({ tenant: tenant.tenantCode, status: 'SUCCESS', cleanedIndexesCount: droppedCount });
+      } catch (err) {
+        results.push({ tenant: tenant.tenantCode, status: 'FAILED', error: err.message });
+      } finally {
+        if (conn) await conn.end();
       }
     }
 
@@ -105,8 +191,9 @@ router.use('/trainers',   require('./trainers.routes'));
 // ── Sprint 7 — Reports ────────────────────────────────────────────────────────
 router.use('/reports', require('./reports.routes'));
 
-// ── Sprint 8 — User management & parity ──────────────────────────────────────
 router.use('/users', require('./users.routes'));
+router.use('/staff-invites', require('./staff-invites.routes'));
+router.use('/staff', require('./staff-actions.routes'));
 
 // ── ZKTeco Biometric Device Management ───────────────────────────────────────
 const { adminRouter: devicesAdminRouter, hostRouter: devicesHostRouter } = require('./devices.routes');

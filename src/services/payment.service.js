@@ -110,6 +110,42 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
     }
   }
 
+  if (!autoComplete && creatorRole !== 'GYM_HOST') {
+    try {
+      const { Tenant, User } = require('../models/platform');
+      const notificationsService = require('./notifications.service');
+      const tenant = await Tenant.findByPk(tenantDb.tenantId);
+
+      const staffUser = await User.findByPk(staffUserId);
+      const staffName = staffUser ? staffUser.fullName : 'Staff';
+
+      const memberUser = await User.findByPk(data.userId);
+      const memberName = memberUser ? memberUser.fullName : 'Member';
+
+      const branch = await tenantDb.models.Branch.findByPk(data.branchId);
+      const branchName = branch ? branch.branchName : 'Branch';
+
+      const isUpgrade = data.notes && data.notes.startsWith('Upgrade to ');
+      let actionText = 'add member';
+      if (isUpgrade) actionText = 'upgrade';
+      else if (data.notes && data.notes.toLowerCase().includes('renew')) actionText = 'renew';
+
+      if (tenant && tenant.ownerUserId) {
+        await notificationsService.createNotification({
+          userId: tenant.ownerUserId,
+          role: 'host',
+          type: 'staff_action_pending',
+          title: 'Pending Staff Action',
+          message: `${staffName} requested to ${actionText} for ${memberName} at ${branchName} — needs your approval.`,
+          deepLink: '/host/subscriptions',
+          metadataJson: { subscriptionId: data.referenceEntityId, branchId: data.branchId },
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Notification Error] Failed to create staff action pending notification:', notifErr.message);
+    }
+  }
+
   return { payment, invoice };
 };
 
@@ -208,24 +244,92 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
     }
   }
 
+  // Create unified in-app notifications
   try {
-    const { Tenant } = require('../models/platform');
+    const { Tenant, User } = require('../models/platform');
     const notificationsService = require('./notifications.service');
     const tenant = await Tenant.findByPk(tenantDb.tenantId);
+
+    // Load helper objects to construct friendly notification texts
+    const travelerUser = await User.findByPk(payment.userId);
+    const memberName = travelerUser ? travelerUser.fullName : 'Member';
+
+    let planName = 'Membership';
+    let branchName = 'Branch';
+    if (payment.referenceEntityId) {
+      const subscription = await MemberSubscription.findByPk(payment.referenceEntityId);
+      if (subscription) {
+        const plan = await MembershipPlan.findByPk(subscription.membershipPlanId);
+        if (plan) planName = plan.name;
+        const branch = await tenantDb.models.Branch.findByPk(subscription.branchId || payment.branchId);
+        if (branch) branchName = branch.branchName;
+      }
+    }
+
+    const isUpgrade = payment.notes && payment.notes.startsWith('Upgrade to ');
+
+    // 1. Recipient: Traveler
+    await notificationsService.createNotification({
+      userId: payment.userId,
+      role: 'traveler',
+      type: isUpgrade ? 'subscription_upgrade_activated' : 'subscription_activated',
+      title: isUpgrade ? 'Upgrade Active' : 'Subscription Activated',
+      message: isUpgrade
+        ? `Your upgrade to ${planName} is now active!`
+        : `Your subscription to ${planName} is now active!`,
+      deepLink: '/traveler/subscriptions',
+      metadataJson: { subscriptionId: payment.referenceEntityId },
+    });
+
+    // 2. Recipient: Host (keep current notification)
     if (tenant && tenant.ownerUserId) {
       await notificationsService.createNotification({
         userId: tenant.ownerUserId,
+        role: 'host',
         type: 'payment_update',
         title: 'Payment Verification Successful',
-        body: `Payment of PKR ${finalAmount} has been successfully verified.`,
-        metadata: {
-          route: '/host/subscriptions',
-          subscriptionId: payment.referenceEntityId,
-        }
+        message: `Payment of PKR ${finalAmount} has been successfully verified.`,
+        deepLink: '/host/subscriptions',
+        metadataJson: { subscriptionId: payment.referenceEntityId },
+      });
+    }
+
+    // 3. Recipient: Admin (Oversight/Audit)
+    if (tenant) {
+      const hostUser = await User.findByPk(tenant.ownerUserId);
+      const hostName = hostUser ? hostUser.fullName : 'Host';
+      const admins = await User.findAll({ where: { role: 'PLATFORM_ADMIN' } });
+      for (const admin of admins) {
+        await notificationsService.createNotification({
+          userId: admin.id,
+          role: 'admin',
+          type: 'subscription_verified_audit',
+          title: 'Subscription Verified',
+          message: `Subscription verified: ${memberName} → ${planName} at ${branchName} (Host: ${hostName}).`,
+          deepLink: `/admin/tenants/${tenant.id}`,
+          metadataJson: { subscriptionId: payment.referenceEntityId, tenantId: tenant.id },
+        });
+      }
+    }
+
+    // 4. Recipient: Staff (if this payment was recorded by staff)
+    if (payment.createdBy && tenant && payment.createdBy !== tenant.ownerUserId) {
+      let actionText = 'add member';
+      if (isUpgrade) actionText = 'upgrade';
+      else if (payment.notes && payment.notes.toLowerCase().includes('renew')) actionText = 'renew';
+
+      await notificationsService.createNotification({
+        userId: payment.createdBy,
+        role: 'staff',
+        type: 'staff_action_approved',
+        title: 'Request Approved',
+        message: `Your request to ${actionText} for ${memberName} was approved.`,
+        deepLink: '/staff/dashboard',
+        metadataJson: { subscriptionId: payment.referenceEntityId },
       });
     }
   } catch (notifErr) {
-    console.warn('[Notification Error] Failed to create payment verification notification:', notifErr.message);
+    console.warn('[Notification Error] Failed to create payment verification notifications:', notifErr.message);
   }
 
   return payment.reload();
@@ -277,23 +381,66 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
     });
 
     try {
-      const { Tenant } = require('../models/platform');
+      const { Tenant, User, MemberSubscription, MembershipPlan } = require('../models/platform');
       const notificationsService = require('./notifications.service');
       const tenant = await Tenant.findByPk(tenantDb.tenantId);
+
+      const travelerUser = await User.findByPk(payment.userId);
+      const memberName = travelerUser ? travelerUser.fullName : 'Member';
+
+      let planName = 'Membership';
+      if (payment.referenceEntityId) {
+        const subscription = await MemberSubscription.findByPk(payment.referenceEntityId);
+        if (subscription) {
+          const plan = await MembershipPlan.findByPk(subscription.membershipPlanId);
+          if (plan) planName = plan.name;
+        }
+      }
+
+      const isUpgrade = payment.notes && payment.notes.startsWith('Upgrade to ');
+
+      // 1. Recipient: Traveler
+      await notificationsService.createNotification({
+        userId: payment.userId,
+        role: 'traveler',
+        type: 'payment_rejected',
+        title: 'Payment Verification Failed',
+        message: `Your payment for ${planName} was not verified. Please review and resubmit.`,
+        deepLink: '/traveler/subscriptions',
+        metadataJson: { subscriptionId: payment.referenceEntityId },
+      });
+
+      // 2. Recipient: Host (keep current notification)
       if (tenant && tenant.ownerUserId) {
         await notificationsService.createNotification({
           userId: tenant.ownerUserId,
+          role: 'host',
           type: 'payment_update',
           title: 'Payment Verification Rejected',
-          body: `Payment of PKR ${payment.amount} was rejected. Reason: ${rejectedReason || 'None'}`,
-          metadata: {
-            route: '/host/subscriptions',
-            subscriptionId: payment.referenceEntityId,
-          }
+          message: `Payment of PKR ${payment.amount} was rejected. Reason: ${rejectedReason || 'None'}`,
+          deepLink: '/host/subscriptions',
+          metadataJson: { subscriptionId: payment.referenceEntityId },
+        });
+      }
+
+      // 3. Recipient: Staff (if this payment was recorded by staff)
+      if (payment.createdBy && tenant && payment.createdBy !== tenant.ownerUserId) {
+        let actionText = 'add member';
+        if (isUpgrade) actionText = 'upgrade';
+        else if (payment.notes && payment.notes.toLowerCase().includes('renew')) actionText = 'renew';
+
+        await notificationsService.createNotification({
+          userId: payment.createdBy,
+          role: 'staff',
+          type: 'staff_action_rejected',
+          title: 'Request Rejected',
+          message: `Your request to ${actionText} for ${memberName} was rejected.`,
+          deepLink: '/staff/dashboard',
+          metadataJson: { subscriptionId: payment.referenceEntityId },
         });
       }
     } catch (notifErr) {
-      console.warn('[Notification Error] Failed to create payment rejection notification:', notifErr.message);
+      console.warn('[Notification Error] Failed to create payment rejection notifications:', notifErr.message);
     }
 
   } else {

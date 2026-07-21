@@ -259,6 +259,53 @@ const markMyConversationRead = async (req, res, next) => {
   }
 };
 
+// ── GET /me/staff-status ───────────────────────────────────────────────────────
+const getStaffStatus = async (req, res, next) => {
+  try {
+    const { Tenant } = require('../models/platform');
+    const TenantDbManager = require('../database/TenantDbManager');
+
+    const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+    const branches = [];
+
+    for (const tenant of tenants) {
+      try {
+        const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        const { GymStaff, Branch } = tenantDb.models;
+
+        const staffRecords = await GymStaff.findAll({
+          where: {
+            userId: req.user.id,
+            status: 'active'
+          }
+        });
+
+        for (const staff of staffRecords) {
+          const branch = await Branch.findByPk(staff.branchId);
+          if (branch) {
+            branches.push({
+              branchId: branch.id,
+              tenantId: tenant.id,
+              branchName: branch.branchName,
+              gymName: tenant.gymName || tenant.businessName,
+              designation: staff.designation || 'Staff',
+            });
+          }
+        }
+      } catch (err) {
+        // Skip connection or query errors
+      }
+    }
+
+    return sendSuccess(res, {
+      isStaff: branches.length > 0,
+      branches
+    }, 'Staff status retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -278,4 +325,5 @@ module.exports = {
   getMyConversation,
   replyToMyConversation,
   markMyConversationRead,
+  getStaffStatus,
 };

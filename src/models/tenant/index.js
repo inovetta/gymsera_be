@@ -21,6 +21,7 @@ const registerTenantModels = (sequelize) => {
   const Announcement = require('./Announcement.model')(sequelize);
   const ClassSchedule = require('./ClassSchedule.model')(sequelize);
   const BranchVisibilityHistory = require('./BranchVisibilityHistory.model')(sequelize);
+  const StaffActionRequest = require('./StaffActionRequest.model')(sequelize);
 
   // ── Associations ─────────────────────────────────────────────────────────────
 
@@ -73,6 +74,10 @@ const registerTenantModels = (sequelize) => {
   Branch.hasMany(ClassSchedule, { foreignKey: 'branchId', as: 'classSchedules', onDelete: 'CASCADE' });
   ClassSchedule.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
 
+  // GymStaff ↔ StaffActionRequest
+  GymStaff.hasMany(StaffActionRequest, { foreignKey: 'staffId', as: 'actionRequests', onDelete: 'CASCADE' });
+  StaffActionRequest.belongsTo(GymStaff, { foreignKey: 'staffId', as: 'staff' });
+
   return {
     Gym,
     Branch,
@@ -87,6 +92,7 @@ const registerTenantModels = (sequelize) => {
     Announcement,
     ClassSchedule,
     BranchVisibilityHistory,
+    StaffActionRequest,
   };
 };
 

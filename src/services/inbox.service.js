@@ -73,6 +73,26 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId) => {
     unreadCountUser: conversation.unreadCountUser + 1,
   });
 
+  // Create unified Traveler notification
+  try {
+    const { GymListing } = require('../models/platform');
+    const notificationsService = require('./notifications.service');
+    const listing = await GymListing.findByPk(conversation.gymListingId);
+    const tenantName = listing ? listing.title : 'Gymsera Host';
+
+    await notificationsService.createNotification({
+      userId: conversation.userId,
+      role: 'traveler',
+      type: 'inquiry_replied',
+      title: 'New Reply Received',
+      message: `You have a new reply from ${tenantName}.`,
+      deepLink: '/traveler/inbox',
+      metadataJson: { conversationId },
+    });
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create reply notification:', notifErr.message);
+  }
+
   return message;
 };
 
@@ -146,6 +166,30 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text) => {
     text,
     isRead: false,
   });
+
+  // Create unified Host notification
+  try {
+    const { Tenant, User: PlatformUser } = require('../models/platform');
+    const notificationsService = require('./notifications.service');
+    const tenant = await Tenant.findByPk(listing.tenantId);
+
+    const travelerUser = await PlatformUser.findByPk(userId);
+    const travelerName = travelerUser ? travelerUser.fullName : 'Traveler';
+
+    if (tenant && tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        role: 'host',
+        type: 'inquiry_received',
+        title: 'New Inquiry Received',
+        message: `New inquiry from ${travelerName} about ${listing.title}.`,
+        deepLink: '/host/inbox',
+        metadataJson: { conversationId: conversation.id, branchId: finalBranchId },
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create inquiry notification:', notifErr.message);
+  }
 
   return { conversation, message };
 };

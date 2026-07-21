@@ -62,17 +62,17 @@ router.delete(
 );
 
 // Branch-scoped endpoints for Branch Detail screen tabs
-router.get('/branches/:branchId/dashboard', authenticate, authorize('GYM_HOST'), tenantContext, hostController.getBranchDashboard);
-router.get('/branches/:branchId/members/lookup', authenticate, authorize('GYM_HOST'), tenantContext, hostController.lookupBranchMember);
-router.post('/branches/:branchId/members', authenticate, authorize('GYM_HOST'), tenantContext, hostController.createBranchMember);
-router.get('/branches/:branchId/members', authenticate, authorize('GYM_HOST'), tenantContext, hostController.getBranchMembers);
-router.get('/branches/:branchId/checkins', authenticate, authorize('GYM_HOST'), tenantContext, hostController.getBranchCheckins);
-router.get('/branches/:branchId/announcements', authenticate, authorize('GYM_HOST'), tenantContext, hostController.getBranchAnnouncements);
-router.post('/branches/:branchId/announcements', authenticate, authorize('GYM_HOST'), tenantContext, hostController.createBranchAnnouncement);
-router.delete('/branches/:branchId/announcements/:announcementId', authenticate, authorize('GYM_HOST'), tenantContext, hostController.deleteBranchAnnouncement);
-router.get('/branches/:branchId/schedule', authenticate, authorize('GYM_HOST'), tenantContext, hostController.getBranchSchedule);
-router.post('/branches/:branchId/schedule', authenticate, authorize('GYM_HOST'), tenantContext, hostController.createBranchSchedule);
-router.patch('/branches/:branchId/resubmit-visibility', authenticate, authorize('GYM_HOST'), tenantContext, hostController.resubmitBranchReview);
+router.get('/branches/:branchId/dashboard', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchDashboard);
+router.get('/branches/:branchId/members/lookup', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.lookupBranchMember);
+router.post('/branches/:branchId/members', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.createBranchMember);
+router.get('/branches/:branchId/members', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchMembers);
+router.get('/branches/:branchId/checkins', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchCheckins);
+router.get('/branches/:branchId/announcements', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchAnnouncements);
+router.post('/branches/:branchId/announcements', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.createBranchAnnouncement);
+router.delete('/branches/:branchId/announcements/:announcementId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.deleteBranchAnnouncement);
+router.get('/branches/:branchId/schedule', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchSchedule);
+router.post('/branches/:branchId/schedule', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.createBranchSchedule);
+router.patch('/branches/:branchId/resubmit-visibility', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.resubmitBranchReview);
 
 // Inbox & Inquiries
 router.get('/inbox/inquiries', authenticate, authorize('GYM_HOST'), hostController.listInquiries);

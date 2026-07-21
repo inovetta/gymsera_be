@@ -304,12 +304,12 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
     if (tenant.ownerUserId) {
       await notificationsService.createNotification({
         userId: tenant.ownerUserId,
+        role: 'host',
         type: 'host_update',
         title: 'Host Application Rejected',
-        body: `Your application for "${tenant.businessName}" was rejected by admin. Reason: ${reason.trim()}`,
-        metadata: {
-          route: '/host/profile',
-        }
+        message: `Your organization ${tenant.gymName || tenant.businessName} requires changes: ${reason.trim()}.`,
+        deepLink: '/host/profile',
+        metadataJson: { tenantId: tenant.id },
       });
     }
   } catch (notifErr) {
@@ -1072,15 +1072,14 @@ const updateBranchTravelerVisibility = async (branchId, status, reason, adminUse
     if (tenant && tenant.ownerUserId) {
       await notificationsService.createNotification({
         userId: tenant.ownerUserId,
+        role: 'host',
         type: 'branch_visibility',
-        title: status === 'deactivated' ? 'Branch Deactivated by Admin' : 'Branch Approved by Admin',
-        body: status === 'deactivated'
-          ? `Your branch "${foundBranch.branchName}" has been deactivated. Reason: ${reason}`
-          : `Your branch "${foundBranch.branchName}" has been approved and is now visible to travelers.`,
-        metadata: {
-          route: '/host/listings',
-          branchId: foundBranch.id,
-        }
+        title: status === 'deactivated' ? 'Branch Deactivated by Admin' : 'Branch Reactivated by Admin',
+        message: status === 'deactivated'
+          ? `Your listing ${foundBranch.branchName} is no longer visible to travelers. Reason: ${reason}`
+          : `Your listing ${foundBranch.branchName} is now live again.`,
+        deepLink: '/host/listings',
+        metadataJson: { branchId: foundBranch.id }
       });
     }
   } catch (notifErr) {

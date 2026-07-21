@@ -210,12 +210,17 @@ const deleteBranchImage = async (req, res, next) => {
   }
 };
 
-// ── GET /gyms/members ─────────────────────────────────────────────────────────
 const listMembers = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { q, status } = req.query;
-    const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, { q, status, page, limit, offset });
+    let branchId = req.query.branchId;
+
+    if (req.user.role === 'BRANCH_MANAGER') {
+      branchId = req.user.branchId;
+    }
+
+    const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, { q, status, branchId, page, limit, offset });
     return sendSuccess(res, { members: result.members }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
@@ -237,7 +242,7 @@ const searchMember = async (req, res, next) => {
 // ── POST /gyms/members/enroll ─────────────────────────────────────────────────
 const enrollMember = async (req, res, next) => {
   try {
-    const result = await gymService.enrollMember(req.tenantDb, req.user.tenantId, req.body, req.user.role);
+    const result = await gymService.enrollMember(req.tenantDb, req.user.tenantId, req.body, req.user);
     return sendSuccess(res, result, 'Member enrolled successfully', 201);
   } catch (err) {
     next(err);

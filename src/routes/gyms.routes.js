@@ -10,7 +10,7 @@ const upload = require('../middleware/upload');
 const router = Router();
 
 // All /gyms routes require a logged-in GYM_HOST (or BRANCH_MANAGER) + tenant DB
-router.use(authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext);
+router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'));
 
 /**
  * @swagger

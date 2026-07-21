@@ -227,6 +227,23 @@ const createBranch = async (tenantDb, tenantId, data) => {
     });
 
     if (usedBranches >= maxBranches) {
+      try {
+        const notificationsService = require('./notifications.service');
+        if (tenant && tenant.ownerUserId) {
+          await notificationsService.createNotification({
+            userId: tenant.ownerUserId,
+            role: 'host',
+            type: 'branch_quota_reached',
+            title: 'Branch Limit Reached',
+            message: 'You have reached your branch listing quota! Upgrade your package to add more branch listings.',
+            deepLink: '/host/listings',
+            metadataJson: { tenantId }
+          });
+        }
+      } catch (notifErr) {
+        console.warn('[Notification Error] Failed to create branch quota reached notification:', notifErr.message);
+      }
+
       const err = createError('Branch limit reached', 403);
       err.code = 'branch_limit_reached';
       throw err;
@@ -334,6 +351,25 @@ const assignStaff = async (tenantDb, branchId, userId, designation) => {
     employmentStatus: 'ACTIVE',
   });
 
+  try {
+    const { Tenant } = require('../models/platform');
+    const notificationsService = require('./notifications.service');
+    const tenant = await Tenant.findByPk(tenantDb.tenantId);
+    const gymName = tenant ? tenant.gymName : 'your gym';
+    await notificationsService.createNotification({
+      userId,
+      role: 'staff',
+      type: 'staff_invite',
+      title: 'New Staff Assignment',
+      message: `You have been assigned as staff for ${branch.branchName} at ${gymName}.`,
+      priority: 'high',
+      deepLink: '/staff/dashboard',
+      metadataJson: { branchId }
+    });
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create staff assignment notification:', notifErr.message);
+  }
+
   return { staffMember };
 };
 
@@ -396,11 +432,15 @@ const removeBranchImage = async (tenantDb, branchId, imageUrl) => {
  * Returns platform users who have a subscription record in this gym's tenant DB.
  * Gym hosts only ever see their own gym's members.
  */
-const listMembers = async (tenantDb, tenantId, { q, status, page, limit, offset }) => {
+const listMembers = async (tenantDb, tenantId, { q, status, branchId, page, limit, offset }) => {
   const { MemberSubscription } = tenantDb.models;
+
+  const subWhere = {};
+  if (branchId) subWhere.branchId = branchId;
 
   // Get distinct userIds from tenant subscriptions
   const subscriptions = await MemberSubscription.findAll({
+    where: subWhere,
     attributes: ['userId'],
     group: ['userId'],
   });
@@ -441,8 +481,10 @@ const searchMember = async (email) => {
 };
 
 // ── Enroll member (walk-in or staff-assigned) ─────────────────────────────────
-const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate, notes, paymentMethod }, enrollerRole = 'GYM_HOST') => {
+const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate, notes, paymentMethod }, enroller = { role: 'GYM_HOST' }) => {
   const { MemberSubscription, MembershipPlan, MemberProfile } = tenantDb.models;
+  const enrollerRole = typeof enroller === 'string' ? enroller : (enroller?.role || 'GYM_HOST');
+  const enrollerId = enroller?.id || null;
 
   // Find or create platform user
   const [user, userCreated] = await User.findOrCreate({
@@ -488,6 +530,32 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     sourceChannel: 'WALK_IN',
     notes: notes || null,
   });
+
+  // Create unified Host notification for staff action pending approval
+  if (!autoComplete) {
+    try {
+      const { Tenant, User: PlatformUser } = require('../models/platform');
+      const notificationsService = require('./notifications.service');
+      const tenant = await Tenant.findByPk(tenantId);
+      
+      const staffUser = enrollerId ? await PlatformUser.findByPk(enrollerId) : null;
+      const staffName = staffUser ? staffUser.fullName : 'Staff';
+
+      if (tenant && tenant.ownerUserId) {
+        await notificationsService.createNotification({
+          userId: tenant.ownerUserId,
+          role: 'host',
+          type: 'staff_action_pending',
+          title: 'Pending Staff Action',
+          message: `${staffName} requested to add member for ${user.fullName} at ${branch.branchName} — needs your approval.`,
+          deepLink: '/host/subscriptions',
+          metadataJson: { subscriptionId: subscription.id, branchId },
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Notification Error] Failed to create staff enrollment pending notification:', notifErr.message);
+    }
+  }
 
   // Cross-tenant platform index
   const gymListing = await GymListing.findOne({ where: { tenantId } });
@@ -590,25 +658,11 @@ const listAllStaff = async (tenantDb) => {
  * branchIds: specific branch UUIDs to assign to (used when assignToAllBranches is false).
  */
 const createStaffUser = async (tenantDb, { fullName, email, phone, password, designation, branchIds, assignToAllBranches }) => {
-  const bcrypt = require('bcrypt');
   const { GymStaff, Branch } = tenantDb.models;
-  const { UserRole } = require('../constants/roles');
+  const { User } = require('../models/platform');
 
-  const existing = await User.findOne({ where: { email: email.toLowerCase().trim() } });
-  if (existing) throw createError('An account with this email already exists', 409);
-
-  const rawPassword = password || require('../utils/otp.utils').generateOtpCode(10);
-  const passwordHash = await bcrypt.hash(rawPassword, 12);
-
-  const user = await User.create({
-    fullName,
-    email: email.toLowerCase().trim(),
-    phone: phone || null,
-    passwordHash,
-    role: UserRole.BRANCH_MANAGER,
-    status: 'ACTIVE',
-    isVerified: true,
-  });
+  const emailClean = email.toLowerCase().trim();
+  const existingUser = await User.findOne({ where: { email: emailClean } });
 
   let targetBranchIds = branchIds || [];
   if (assignToAllBranches) {
@@ -616,29 +670,71 @@ const createStaffUser = async (tenantDb, { fullName, email, phone, password, des
     targetBranchIds = allBranches.map((b) => b.id);
   }
 
-  const staffAssignments = await Promise.all(
-    targetBranchIds.map((branchId) =>
-      GymStaff.create({
-        userId: user.id,
+  const staffRecords = [];
+  const notificationsService = require('./notifications.service');
+  const { Tenant } = require('../models/platform');
+  const tenant = await Tenant.findByPk(tenantDb.tenantId);
+  const gymName = tenant ? tenant.gymName : 'your gym';
+
+  for (const branchId of targetBranchIds) {
+    // Check if staff assignment already exists
+    const existingStaff = await GymStaff.findOne({
+      where: {
         branchId,
-        designation: designation || 'Staff',
-        employmentStatus: 'ACTIVE',
-      }).catch(() => null)
-    )
-  );
+        ...(existingUser ? { userId: existingUser.id } : { email: emailClean }),
+      }
+    });
+
+    if (existingStaff) {
+      staffRecords.push(existingStaff);
+      continue;
+    }
+
+    const staffMember = await GymStaff.create({
+      userId: existingUser ? existingUser.id : null,
+      email: existingUser ? null : emailClean,
+      branchId,
+      designation: designation || 'Staff',
+      employmentStatus: 'ACTIVE',
+      status: 'pending',
+    });
+    staffRecords.push(staffMember);
+
+    // If user exists, create high-priority notification immediately
+    if (existingUser) {
+      try {
+        const br = await Branch.findByPk(branchId);
+        const brName = br ? br.branchName : 'branch';
+        await notificationsService.createNotification({
+          userId: existingUser.id,
+          role: 'traveler',
+          type: 'staff_invite',
+          title: 'Staff Invitation',
+          message: `You've been invited to join ${brName} as staff by ${gymName}. Tap to view details.`,
+          priority: 'high',
+          deepLink: `/traveler/staff-invite-confirmation?staffId=${staffMember.id}&tenantId=${tenantDb.tenantId}`,
+          metadataJson: { staffId: staffMember.id, branchId, tenantId: tenantDb.tenantId }
+        });
+      } catch (notifErr) {
+        console.warn('[Notification Error] Failed to create staff invite notification:', notifErr.message);
+      }
+    }
+  }
 
   return {
-    user: {
-      id: user.id,
-      fullName: user.fullName,
-      email: user.email,
-      phone: user.phone || null,
-      role: user.role,
-      status: user.status,
-      ...(process.env.NODE_ENV !== 'production' && { tempPassword: rawPassword }),
+    user: existingUser ? {
+      id: existingUser.id,
+      fullName: existingUser.fullName,
+      email: existingUser.email,
+      phone: existingUser.phone || null,
+      role: existingUser.role,
+      status: existingUser.status,
+    } : {
+      email: emailClean,
+      fullName: fullName,
+      status: 'INVITE_PENDING'
     },
-    assignedBranches: staffAssignments.filter(Boolean).length,
-    ...(process.env.NODE_ENV !== 'production' && { tempPassword: rawPassword }),
+    assignedBranches: staffRecords.length,
   };
 };
 
@@ -653,6 +749,53 @@ const removeStaffUser = async (tenantDb, staffUserId) => {
   );
   if (updated === 0) throw createError('No active staff assignments found for this user', 404);
   return { message: 'Staff user removed from all branches' };
+};
+
+const checkAndTriggerPendingStaffInvites = async (user) => {
+  try {
+    const { Tenant } = require('../models/platform');
+    const TenantDbManager = require('../database/TenantDbManager');
+    const notificationsService = require('./notifications.service');
+
+    const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+    for (const tenant of tenants) {
+      try {
+        const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        const { GymStaff, Branch } = models;
+
+        const invites = await GymStaff.findAll({
+          where: {
+            email: user.email.toLowerCase().trim(),
+            status: 'pending',
+            userId: null
+          }
+        });
+
+        for (const invite of invites) {
+          await invite.update({ userId: user.id });
+
+          const br = await Branch.findByPk(invite.branchId);
+          const brName = br ? br.branchName : 'branch';
+          const gymName = tenant.gymName || 'your gym';
+
+          await notificationsService.createNotification({
+            userId: user.id,
+            role: 'traveler',
+            type: 'staff_invite',
+            title: 'Staff Invitation',
+            message: `You've been invited to join ${brName} as staff by ${gymName}. Tap to view details.`,
+            priority: 'high',
+            deepLink: `/traveler/staff-invite-confirmation?staffId=${invite.id}&tenantId=${tenant.id}`,
+            metadataJson: { staffId: invite.id, branchId: invite.branchId, tenantId: tenant.id }
+          });
+        }
+      } catch (err) {
+        console.warn(`[Staff Invite Sync] Failed for tenant ${tenant.id}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[Staff Invite Sync Error] Failed to scan pending invites:', err);
+  }
 };
 
 module.exports = {
@@ -676,4 +819,5 @@ module.exports = {
   listAllStaff,
   createStaffUser,
   removeStaffUser,
+  checkAndTriggerPendingStaffInvites,
 };

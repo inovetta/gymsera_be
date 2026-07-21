@@ -780,7 +780,8 @@ const getBranchMembers = async (req, res, next) => {
         usersList.push({
           ...u,
           planName: sub.plan ? sub.plan.name : 'Daily Pass',
-          endDate: sub.endDate
+          endDate: sub.endDate,
+          subscriptionStatus: sub.status
         });
       }
     }

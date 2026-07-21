@@ -167,6 +167,9 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
     user.update({ isVerified: true, status: 'ACTIVE' }),
   ]);
 
+  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+  checkAndTriggerPendingStaffInvites(user).catch(() => null);
+
   return _issueTokenPair(user, ipAddress, userAgent);
 };
 
@@ -252,6 +255,9 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
 
   await user.update({ lastLoginAt: new Date() });
 
+  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+  checkAndTriggerPendingStaffInvites(user).catch(() => null);
+
   return _issueTokenPair(user, ipAddress, userAgent);
 };
 
@@ -310,6 +316,9 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
   }
 
   await user.update({ lastLoginAt: new Date() });
+
+  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+  checkAndTriggerPendingStaffInvites(user).catch(() => null);
 
   return _issueTokenPair(user, ipAddress, userAgent);
 };

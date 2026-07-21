@@ -161,6 +161,29 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
     onboardingStep: 5,
   });
 
+  // Create unified Admin notification
+  try {
+    const { User } = require('../models/platform');
+    const notificationsService = require('./notifications.service');
+    const hostUser = await User.findByPk(userId);
+    const hostName = hostUser ? hostUser.fullName : 'Host';
+
+    const admins = await User.findAll({ where: { role: 'PLATFORM_ADMIN' } });
+    for (const admin of admins) {
+      await notificationsService.createNotification({
+        userId: admin.id,
+        role: 'admin',
+        type: 'tenant_submitted_review',
+        title: 'New Organization Submitted',
+        message: `New organization pending review: ${tenant.gymName || tenant.businessName} (Host: ${hostName}).`,
+        deepLink: `/admin/tenants/${tenant.id}`,
+        metadataJson: { tenantId: tenant.id },
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create tenant review notification:', notifErr.message);
+  }
+
   if (tenant.selectedPackageId) {
     const existingSub = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
     if (!existingSub) {

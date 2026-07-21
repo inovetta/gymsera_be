@@ -104,7 +104,7 @@ const _resolveTenant = async (gymListingId) => {
 
   const tenant = await Tenant.findOne({
     where: { id: tenantId, status: 'ACTIVE' },
-    attributes: ['id', 'connectionStringEncrypted'],
+    attributes: ['id', 'connectionStringEncrypted', 'ownerUserId'],
   });
   if (!tenant) throw createError('Gym tenant is not available', 503);
 
@@ -260,6 +260,41 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     dueDate,
     status: InvoiceStatus.ISSUED,
   });
+
+  // Create unified in-app notifications
+  try {
+    const notificationsService = require('./notifications.service');
+    const travelerUser = await User.findByPk(userId);
+    const travelerName = travelerUser ? travelerUser.fullName : 'Traveler';
+
+    // 1. Recipient: Traveler
+    await notificationsService.createNotification({
+      userId,
+      role: 'traveler',
+      type: 'subscription_pending',
+      title: 'Subscription Pending',
+      message: "Subscription submitted — awaiting verification. We'll notify you once it's confirmed.",
+      deepLink: '/traveler/subscriptions',
+      metadataJson: { subscriptionId: subscription.id },
+    });
+
+    // 2. Recipient: Host
+    const { Tenant } = require('../models/platform');
+    const tenant = await Tenant.findByPk(tenantId);
+    if (tenant && tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        role: 'host',
+        type: 'subscription_pending',
+        title: 'New Subscription Request',
+        message: `New subscription request from ${travelerName} for ${plan.name} at ${gymListing.title}.`,
+        deepLink: `/host/gyms/${branchIdToUse}/subscriptions`,
+        metadataJson: { subscriptionId: subscription.id, branchId: branchIdToUse },
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create subscription pending notifications:', notifErr.message);
+  }
 
   _enqueueNotification(userId, 'SUBSCRIPTION_PENDING', {
     gymName: gymListing.title,
@@ -687,7 +722,24 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     amount: amountToPay,
     currency: 'PKR',
     status: PaymentStatus.PENDING,
+    notes: `Upgrade to ${newPlan.name}`,
   });
+
+  // Create unified Traveler notification
+  try {
+    const notificationsService = require('./notifications.service');
+    await notificationsService.createNotification({
+      userId: sub.userId,
+      role: 'traveler',
+      type: 'subscription_upgrade_pending',
+      title: 'Upgrade Pending',
+      message: `Upgrade request submitted — Rs ${amountToPay} due, pending verification.`,
+      deepLink: '/traveler/subscriptions',
+      metadataJson: { subscriptionId: sub.id },
+    });
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create upgrade pending notification:', notifErr.message);
+  }
 
   // 3. Create Invoice (status ISSUED)
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

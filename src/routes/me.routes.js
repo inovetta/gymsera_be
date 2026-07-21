@@ -283,5 +283,7 @@ router.get('/inbox/:conversationId', meController.getMyConversation);
 router.post('/inbox/:conversationId/reply', meController.replyToMyConversation);
 router.patch('/inbox/:conversationId/read', meController.markMyConversationRead);
 
+router.get('/staff-status', meController.getStaffStatus);
+
 module.exports = router;
 

@@ -227,12 +227,12 @@ const processTenantProvisioning = async (job) => {
     if (tenant.ownerUserId) {
       await notificationsService.createNotification({
         userId: tenant.ownerUserId,
+        role: 'host',
         type: 'host_update',
         title: 'Host Application Approved',
-        body: `Congratulations! You are now verified as a Host for "${tenant.businessName}".`,
-        metadata: {
-          route: '/host/profile',
-        }
+        message: `Your organization ${tenant.gymName || tenant.businessName} has been approved.`,
+        deepLink: '/host/profile',
+        metadataJson: { tenantId: tenant.id }
       });
     }
   } catch (notifErr) {

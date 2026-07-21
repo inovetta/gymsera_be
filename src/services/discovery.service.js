@@ -900,22 +900,46 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
       adminNote: null,
     });
     await _recalculateAverageRating(gymListingId, branchId);
-    return existing;
+  } else {
+    review = await GymReview.create({
+      gymListingId: gymListingId || null,
+      branchId,
+      userId,
+      tenantId,
+      rating,
+      title: title || null,
+      body: body || null,
+      status: 'APPROVED',
+    });
+    await _recalculateAverageRating(gymListingId, branchId);
   }
 
-  const review = await GymReview.create({
-    gymListingId: gymListingId || null,
-    branchId,
-    userId,
-    tenantId,
-    rating,
-    title: title || null,
-    body: body || null,
-    status: 'APPROVED',
-  });
+  const finalReview = existing || review;
 
-  await _recalculateAverageRating(gymListingId, branchId);
-  return review;
+  // Create unified Host notification
+  try {
+    const { User: PlatformUser } = require('../models/platform');
+    const notificationsService = require('./notifications.service');
+    const travelerUser = await PlatformUser.findByPk(userId);
+    const travelerName = travelerUser ? travelerUser.fullName : 'Traveler';
+    const branchName = matched ? (matched.branchName || matched.name || 'Branch') : 'Branch';
+
+    if (tenant && tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        role: 'host',
+        type: 'review_submitted',
+        title: 'New Review Submitted',
+        message: `New review submitted for ${branchName} by ${travelerName}: ${rating} stars.`,
+        deepLink: '/host/listings',
+        metadataJson: { branchId, reviewId: finalReview.id },
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create review submission notification:', notifErr.message);
+  }
+
+  return finalReview;
 };
 
 // ── listReviews (public) ──────────────────────────────────────────────────────
@@ -1000,6 +1024,52 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
   await review.update({ status: newStatus, adminNote: adminNote || null });
 
   await _recalculateAverageRating(review.gymListingId);
+
+  // Create unified Traveler and Host notifications
+  try {
+    const { Tenant, GymListing } = require('../models/platform');
+    const notificationsService = require('./notifications.service');
+    const listing = await GymListing.findByPk(review.gymListingId);
+    const branchName = listing ? listing.title : 'Gym';
+    const tenant = await Tenant.findByPk(review.tenantId);
+
+    if (action === 'approve') {
+      await notificationsService.createNotification({
+        userId: review.userId,
+        role: 'traveler',
+        type: 'review_approved',
+        title: 'Review Approved',
+        message: `Your review for ${branchName} has been approved.`,
+        deepLink: '/traveler/inbox',
+        metadataJson: { reviewId: review.id },
+      });
+    } else {
+      // Flagged/Rejected
+      await notificationsService.createNotification({
+        userId: review.userId,
+        role: 'traveler',
+        type: 'review_rejected',
+        title: 'Review Flagged',
+        message: `Your review for ${branchName} was flagged and hidden by admin. Reason: ${adminNote || 'None'}.`,
+        deepLink: '/traveler/inbox',
+        metadataJson: { reviewId: review.id },
+      });
+
+      if (tenant && tenant.ownerUserId) {
+        await notificationsService.createNotification({
+          userId: tenant.ownerUserId,
+          role: 'host',
+          type: 'review_rejected',
+          title: 'Review Flagged by Admin',
+          message: `A review for ${branchName} was hidden by admin. Reason: ${adminNote || 'None'}.`,
+          deepLink: '/host/listings',
+          metadataJson: { reviewId: review.id },
+        });
+      }
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create review moderation notifications:', notifErr.message);
+  }
 
   return review;
 };
