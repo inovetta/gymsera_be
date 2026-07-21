@@ -31,8 +31,8 @@ const gymsValidators = {
       .isIn(['MIXED', 'MALE_ONLY', 'FEMALE_ONLY'])
       .withMessage('genderType must be MIXED, MALE_ONLY, or FEMALE_ONLY'),
 
-    body('logoUrl').optional({ nullable: true, checkFalsy: true }).isURL().withMessage('logoUrl must be a valid URL'),
-    body('coverImageUrl').optional({ nullable: true, checkFalsy: true }).isURL().withMessage('coverImageUrl must be a valid URL'),
+    body('logoUrl').optional({ nullable: true, checkFalsy: true }).isString().withMessage('logoUrl must be a string'),
+    body('coverImageUrl').optional({ nullable: true, checkFalsy: true }).isString().withMessage('coverImageUrl must be a string'),
 
     body('socialLinksJson')
       .optional({ nullable: true })
@@ -100,6 +100,17 @@ const gymsValidators = {
       .optional({ nullable: true })
       .isArray()
       .withMessage('imagesJson must be an array of URLs'),
+
+    body('tagline').optional().isString(),
+    body('category').optional().isString(),
+    body('description').optional().isString(),
+    body('establishedYear').optional({ nullable: true, checkFalsy: true }).isInt(),
+    body('floorArea').optional({ nullable: true, checkFalsy: true }).isInt(),
+    body('addressLine1').optional().isString(),
+    body('addressLine2').optional().isString(),
+    body('postalCode').optional().isString(),
+    body('country').optional().isString(),
+    body('packages').optional().isArray(),
   ],
 
   updateBranch: [

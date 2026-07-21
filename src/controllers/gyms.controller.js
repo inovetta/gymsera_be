@@ -307,7 +307,16 @@ const updateBranchListingContent = async (req, res, next) => {
       phone,
       latitude,
       longitude,
-      status
+      status,
+      description,
+      establishedYear,
+      floorArea,
+      addressLine1,
+      addressLine2,
+      postalCode,
+      country,
+      cityId,
+      areaId,
     } = req.body;
 
     const patch = {};
@@ -324,6 +333,15 @@ const updateBranchListingContent = async (req, res, next) => {
     if (latitude !== undefined) patch.latitude = latitude;
     if (longitude !== undefined) patch.longitude = longitude;
     if (status !== undefined) patch.status = status;
+    if (description !== undefined) patch.description = description;
+    if (establishedYear !== undefined) patch.establishedYear = establishedYear;
+    if (floorArea !== undefined) patch.floorArea = floorArea;
+    if (addressLine1 !== undefined) patch.addressLine1 = addressLine1;
+    if (addressLine2 !== undefined) patch.addressLine2 = addressLine2;
+    if (postalCode !== undefined) patch.postalCode = postalCode;
+    if (country !== undefined) patch.country = country;
+    if (cityId !== undefined) patch.cityId = cityId;
+    if (areaId !== undefined) patch.areaId = areaId;
 
     const result = await gymService.updateBranch(req.tenantDb, branchId, patch);
     return sendSuccess(res, result);

@@ -79,6 +79,39 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of tag strings',
       },
+      description: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      establishedYear: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'established_year',
+      },
+      floorArea: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'floor_area',
+      },
+      addressLine1: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'address_line1',
+      },
+      addressLine2: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'address_line2',
+      },
+      postalCode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'postal_code',
+      },
+      country: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
       status: {
         type: DataTypes.ENUM('ACTIVE', 'INACTIVE'),
         allowNull: false,

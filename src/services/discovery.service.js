@@ -125,7 +125,7 @@ const _getAllActiveBranches = async () => {
             title: `${gym.name} - ${b.branchName}`,
             shortDescription: gym.description || b.tagline,
             logoUrl: gym.logoUrl,
-            coverImageUrl: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson[0] : gym.coverImageUrl,
+            coverImageUrl: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson[0] : (gym.coverImageUrl || (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson[0] : null)),
             genderType: gym.genderType,
             averageRating: ratingMap.get(b.id) || 0,
             latitude: b.latitude ? parseFloat(b.latitude) : null,
@@ -134,7 +134,7 @@ const _getAllActiveBranches = async () => {
             contactPhone: b.phone || gym.contactPhone,
             website: gym.website,
             facilitiesJson: b.facilitiesJson || [],
-            imagesJson: b.imagesJson || [],
+            imagesJson: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson : (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson : (gym.coverImageUrl ? [gym.coverImageUrl] : [])),
             category: b.category || gym.category || listing?.category || 'General',
             minPrice,
             gymListingId: b.gymListingId || null,
@@ -418,12 +418,12 @@ const getGym = async (id) => {
         listing.id = branchRecord.id; // Override gymListingId with branchId so client matches
         listing.title = `${gym.name} - ${branchRecord.branchName}`;
         listing.shortDescription = gym.description || branchRecord.tagline;
-        listing.coverImageUrl = (branchRecord.imagesJson && branchRecord.imagesJson.length > 0) ? branchRecord.imagesJson[0] : gym.coverImageUrl;
+        listing.coverImageUrl = (branchRecord.imagesJson && branchRecord.imagesJson.length > 0) ? branchRecord.imagesJson[0] : (gym.coverImageUrl || (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson[0] : listing.coverImageUrl));
         listing.latitude = branchRecord.latitude ? parseFloat(branchRecord.latitude) : listing.latitude;
         listing.longitude = branchRecord.longitude ? parseFloat(branchRecord.longitude) : listing.longitude;
         listing.contactPhone = branchRecord.phone || gym.contactPhone;
-        listing.facilitiesJson = branchRecord.facilitiesJson || listing.facilitiesJson;
-        listing.imagesJson = branchRecord.imagesJson || listing.imagesJson;
+        listing.facilitiesJson = (branchRecord.facilitiesJson && branchRecord.facilitiesJson.length > 0) ? branchRecord.facilitiesJson : listing.facilitiesJson;
+        listing.imagesJson = (branchRecord.imagesJson && branchRecord.imagesJson.length > 0) ? branchRecord.imagesJson : (listing.imagesJson && listing.imagesJson.length > 0 ? listing.imagesJson : (listing.coverImageUrl ? [listing.coverImageUrl] : []));
 
         // Fetch branch-specific average rating
         const branchReviewStats = await GymReview.findOne({
@@ -718,7 +718,7 @@ const listOrganizationBranches = async (gymId) => {
           title: `${gym.name} - ${b.branchName}`,
           shortDescription: gym.description || b.tagline,
           logoUrl: gym.logoUrl,
-          coverImageUrl: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson[0] : gym.coverImageUrl,
+          coverImageUrl: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson[0] : (gym.coverImageUrl || (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson[0] : null)),
           genderType: gym.genderType,
           averageRating: ratingMap.get(b.id) || 0,
           latitude: b.latitude ? parseFloat(b.latitude) : null,
@@ -727,7 +727,7 @@ const listOrganizationBranches = async (gymId) => {
           contactPhone: b.phone || gym.contactPhone,
           website: gym.website,
           facilitiesJson: b.facilitiesJson || [],
-          imagesJson: b.imagesJson || [],
+          imagesJson: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson : (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson : (gym.coverImageUrl ? [gym.coverImageUrl] : [])),
           category: b.category || gym.category || listing?.category || 'General',
           minPrice,
           status: 'ACTIVE',

@@ -84,6 +84,25 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(50),
         allowNull: true,
       },
+      establishedYear: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'established_year',
+      },
+      floorArea: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'floor_area',
+      },
+      postalCode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'postal_code',
+      },
+      country: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
       minPrice: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,

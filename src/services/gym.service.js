@@ -96,7 +96,7 @@ const getProfile = async (tenantDb, tenantId) => {
 const updateProfile = async (tenantDb, tenantId, data) => {
   const gym = await _getOrCreateGym(tenantDb, tenantId);
 
-  const fields = ['name', 'description', 'contactPhone', 'contactEmail', 'website', 'genderType', 'logoUrl', 'coverImageUrl', 'socialLinksJson'];
+  const fields = ['name', 'description', 'contactPhone', 'contactEmail', 'website', 'genderType', 'logoUrl', 'coverImageUrl', 'socialLinksJson', 'imagesJson', 'tagline', 'category', 'establishedYear'];
   fields.forEach((f) => {
     if (data[f] !== undefined) gym[f] = data[f];
   });
@@ -263,7 +263,7 @@ const createBranch = async (tenantDb, tenantId, data) => {
       gymId: gym.id,
       gymListingId: targetListingId || null,
       branchName: data.branchName,
-      address: data.address || null,
+      address: data.address || data.addressLine1 || null,
       cityId: data.cityId || null,
       areaId: data.areaId || null,
       latitude: data.latitude || null,
@@ -272,8 +272,38 @@ const createBranch = async (tenantDb, tenantId, data) => {
       closingTime: data.closingTime || null,
       phone: data.phone || null,
       facilitiesJson: Array.isArray(data.facilities) ? data.facilities : (data.facilitiesJson || null),
+      imagesJson: Array.isArray(data.images) ? data.images : (data.imagesJson || null),
+      tagline: data.tagline || null,
+      category: data.category || null,
+      description: data.description || null,
+      establishedYear: data.establishedYear ? parseInt(data.establishedYear) : null,
+      floorArea: data.floorArea ? parseInt(data.floorArea) : null,
+      addressLine1: data.addressLine1 || data.address || null,
+      addressLine2: data.addressLine2 || null,
+      postalCode: data.postalCode || null,
+      country: data.country || null,
       status: 'ACTIVE',
     });
+
+    // Auto-create initial membership packages if provided
+    if (Array.isArray(data.packages) && data.packages.length > 0) {
+      const membershipPlanService = require('./membership-plan.service');
+      for (const pkg of data.packages) {
+        try {
+          await membershipPlanService.createPlan(tenantDb, {
+            branchId: branch.id,
+            name: pkg.name,
+            price: pkg.price,
+            durationType: pkg.durationType || 'MONTHLY',
+            durationValue: pkg.durationValue || 1,
+            description: pkg.description || null,
+            isPublic: true,
+          });
+        } catch (pkgErr) {
+          console.warn('[Branch Creation] Package creation warning:', pkgErr.message);
+        }
+      }
+    }
 
     await platformTx.commit();
     return { branch };
@@ -295,12 +325,13 @@ const updateBranch = async (tenantDb, branchId, data) => {
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
 
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'status', 'tagline', 'category', 'tagsJson'];
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'status', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
   fields.forEach((f) => {
     if (data[f] !== undefined) branch[f] = data[f];
   });
   // Support sending facilities as plain array (CMS form sends it as 'facilities')
   if (Array.isArray(data.facilities)) branch.facilitiesJson = data.facilities;
+  if (Array.isArray(data.images)) branch.imagesJson = data.images;
   if (Array.isArray(data.tags)) branch.tagsJson = data.tags;
   await branch.save();
 
