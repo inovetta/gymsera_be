@@ -46,6 +46,30 @@ class TenantDbManager {
 
     const models = registerTenantModels(sequelize);
 
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        await sequelize.sync({ force: false, alter: true });
+        console.log(`[TenantDbManager] Schema auto-synced for tenant: ${tenantId}`);
+
+        // Backfill gymListingId for existing branches
+        const { Branch } = models;
+        const nullListingBranches = await Branch.findAll({ where: { gymListingId: null } });
+        if (nullListingBranches.length > 0) {
+          const { GymListing } = require('../models/platform');
+          const firstListing = await GymListing.findOne({ where: { tenantId } });
+          if (firstListing) {
+            await Branch.update(
+              { gymListingId: firstListing.id },
+              { where: { gymListingId: null } }
+            );
+            console.log(`[TenantDbManager] Backfilled gymListingId (${firstListing.id}) for ${nullListingBranches.length} branches`);
+          }
+        }
+      } catch (err) {
+        console.error(`[TenantDbManager] Schema auto-sync failed for tenant ${tenantId}:`, err.message);
+      }
+    }
+
     const entry = { sequelize, models };
     this.pool.set(tenantId, entry);
     return entry;

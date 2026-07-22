@@ -25,7 +25,8 @@ const updateProfile = async (req, res, next) => {
 // ── GET /gyms/branches ────────────────────────────────────────────────────────
 const listBranches = async (req, res, next) => {
   try {
-    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId);
+    const organizationId = req.params.gymId || req.params.listingId || req.query.organizationId || req.query.gymId;
+    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId, organizationId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -91,6 +92,28 @@ const assignStaff = async (req, res, next) => {
       req.body.userId,
       req.body.designation
     );
+
+    // Notify the host
+    try {
+      const { Tenant } = require('../models/platform');
+      const notificationsService = require('../services/notifications.service');
+      const tenant = await Tenant.findByPk(req.tenantDb.tenantId);
+      if (tenant && tenant.ownerUserId) {
+        await notificationsService.createNotification({
+          userId: tenant.ownerUserId,
+          type: 'staff_update',
+          title: 'New Staff Assigned',
+          body: `A new staff member has been successfully assigned to your branch.`,
+          metadata: {
+            route: '/host/staff',
+            branchId: req.params.branchId,
+          }
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Notification Error] Failed to create staff assignment notification:', notifErr.message);
+    }
+
     return sendSuccess(res, result, 'Staff member assigned to branch', 201);
   } catch (err) {
     next(err);
@@ -187,12 +210,17 @@ const deleteBranchImage = async (req, res, next) => {
   }
 };
 
-// ── GET /gyms/members ─────────────────────────────────────────────────────────
 const listMembers = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { q, status } = req.query;
-    const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, { q, status, page, limit, offset });
+    let branchId = req.query.branchId;
+
+    if (req.user.role === 'BRANCH_MANAGER') {
+      branchId = req.user.branchId;
+    }
+
+    const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, { q, status, branchId, page, limit, offset });
     return sendSuccess(res, { members: result.members }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
@@ -214,7 +242,7 @@ const searchMember = async (req, res, next) => {
 // ── POST /gyms/members/enroll ─────────────────────────────────────────────────
 const enrollMember = async (req, res, next) => {
   try {
-    const result = await gymService.enrollMember(req.tenantDb, req.user.tenantId, req.body, req.user.role);
+    const result = await gymService.enrollMember(req.tenantDb, req.user.tenantId, req.body, req.user);
     return sendSuccess(res, result, 'Member enrolled successfully', 201);
   } catch (err) {
     next(err);
@@ -251,6 +279,77 @@ const removeStaffUser = async (req, res, next) => {
   }
 };
 
+// ── GET /host/branches/:branchId/listing-content ─────────────────────────────
+const getBranchListingContent = async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    const result = await gymService.getBranch(req.tenantDb, branchId);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /host/branches/:branchId/listing-content ───────────────────────────
+const updateBranchListingContent = async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    const { 
+      branchName, 
+      tagline, 
+      category, 
+      tagsJson, 
+      facilitiesJson, 
+      imagesJson,
+      openingTime,
+      closingTime,
+      address,
+      phone,
+      latitude,
+      longitude,
+      status,
+      description,
+      establishedYear,
+      floorArea,
+      addressLine1,
+      addressLine2,
+      postalCode,
+      country,
+      cityId,
+      areaId,
+    } = req.body;
+
+    const patch = {};
+    if (branchName !== undefined) patch.branchName = branchName;
+    if (tagline !== undefined) patch.tagline = tagline;
+    if (category !== undefined) patch.category = category;
+    if (tagsJson !== undefined) patch.tagsJson = tagsJson;
+    if (facilitiesJson !== undefined) patch.facilitiesJson = facilitiesJson;
+    if (imagesJson !== undefined) patch.imagesJson = imagesJson;
+    if (openingTime !== undefined) patch.openingTime = openingTime;
+    if (closingTime !== undefined) patch.closingTime = closingTime;
+    if (address !== undefined) patch.address = address;
+    if (phone !== undefined) patch.phone = phone;
+    if (latitude !== undefined) patch.latitude = latitude;
+    if (longitude !== undefined) patch.longitude = longitude;
+    if (status !== undefined) patch.status = status;
+    if (description !== undefined) patch.description = description;
+    if (establishedYear !== undefined) patch.establishedYear = establishedYear;
+    if (floorArea !== undefined) patch.floorArea = floorArea;
+    if (addressLine1 !== undefined) patch.addressLine1 = addressLine1;
+    if (addressLine2 !== undefined) patch.addressLine2 = addressLine2;
+    if (postalCode !== undefined) patch.postalCode = postalCode;
+    if (country !== undefined) patch.country = country;
+    if (cityId !== undefined) patch.cityId = cityId;
+    if (areaId !== undefined) patch.areaId = areaId;
+
+    const result = await gymService.updateBranch(req.tenantDb, branchId, patch);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -274,4 +373,7 @@ module.exports = {
   listAllStaff,
   createStaffUser,
   removeStaffUser,
+  getBranchListingContent,
+  updateBranchListingContent,
 };
+

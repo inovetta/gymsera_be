@@ -92,12 +92,12 @@ const rangeLogs = async (req, res, next) => {
   }
 };
 
-// ── GET /attendance/customer/:userId ──────────────────────────────────────────
 const memberHistory = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-
+    const { branchId } = req.query;
     const result = await attendanceService.memberHistory(req.tenantDb, req.params.userId, {
+      branchId,
       page,
       limit,
       offset,

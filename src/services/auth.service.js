@@ -61,6 +61,7 @@ const _buildTokenPayload = async (user) => {
     email: user.email,
     role: user.role,
     isVerified: user.isVerified,
+    isHost: !!user.isHost,
     tenantId,
     branchId: null,
   };
@@ -99,6 +100,7 @@ const _sanitizeUser = (user, tenantId = null) => ({
   email: user.email,
   role: user.role,
   isVerified: user.isVerified,
+  isHost: !!user.isHost,
   profileImageUrl: user.profileImageUrl || null,
   tenantId,
 });
@@ -164,6 +166,9 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
     otp.update({ isUsed: true }),
     user.update({ isVerified: true, status: 'ACTIVE' }),
   ]);
+
+  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+  checkAndTriggerPendingStaffInvites(user).catch(() => null);
 
   return _issueTokenPair(user, ipAddress, userAgent);
 };
@@ -250,6 +255,9 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
 
   await user.update({ lastLoginAt: new Date() });
 
+  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+  checkAndTriggerPendingStaffInvites(user).catch(() => null);
+
   return _issueTokenPair(user, ipAddress, userAgent);
 };
 
@@ -308,6 +316,9 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
   }
 
   await user.update({ lastLoginAt: new Date() });
+
+  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+  checkAndTriggerPendingStaffInvites(user).catch(() => null);
 
   return _issueTokenPair(user, ipAddress, userAgent);
 };
@@ -404,7 +415,7 @@ const getMe = async (userId) => {
     attributes: [
       'id', 'fullName', 'email', 'phone', 'role',
       'isVerified', 'profileImageUrl', 'status',
-      'googleId', 'lastLoginAt', 'createdAt',
+      'googleId', 'lastLoginAt', 'createdAt', 'isHost',
     ],
   });
 
@@ -428,6 +439,7 @@ const getMe = async (userId) => {
     role: user.role,
     isVerified: user.isVerified,
     status: user.status,
+    isHost: !!user.isHost,
     profileImageUrl: user.profileImageUrl || null,
     provider: user.googleId ? 'GOOGLE' : 'LOCAL',
     tenantId,
