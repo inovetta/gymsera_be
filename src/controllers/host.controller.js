@@ -48,7 +48,7 @@ const getTodaySummary = async (req, res, next) => {
       });
     }
 
-    const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan } = tenantDb.models;
+    const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = tenantDb.models;
 
     const activeBranchesCount = await Branch.count({ where: { status: 'ACTIVE' } });
     if (activeBranchesCount === 0) {
@@ -72,7 +72,7 @@ const getTodaySummary = async (req, res, next) => {
       }
     });
 
-    // 2. This Month Revenue
+    // 2. This Month Revenue & Expenses
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const revenueSum = await Payment.sum('amount', {
       where: {
@@ -81,6 +81,20 @@ const getTodaySummary = async (req, res, next) => {
       }
     });
     const monthlyRevenue = parseFloat(revenueSum || 0);
+    const grossRevenue = monthlyRevenue;
+
+    let totalExpenses = 0;
+    if (Expense) {
+      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
+      const expenseSum = await Expense.sum('amount', {
+        where: {
+          status: 'approved',
+          expenseDate: { [Op.gte]: startOfMonthStr }
+        }
+      });
+      totalExpenses = parseFloat(expenseSum || 0);
+    }
+    const netProfit = grossRevenue - totalExpenses;
 
     // 3. Active Members (count)
     const activeMembers = await MemberSubscription.count({
@@ -167,6 +181,9 @@ const getTodaySummary = async (req, res, next) => {
       hasActiveBranch: true,
       todaysCheckins,
       monthlyRevenue,
+      grossRevenue,
+      totalExpenses,
+      netProfit,
       activeMembers,
       newSubs,
       weeklyPerformance,
@@ -606,7 +623,7 @@ const upgradeSubscription = async (req, res, next) => {
 const getBranchDashboard = async (req, res, next) => {
   try {
     const { branchId } = req.params;
-    const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan } = req.tenantDb.models;
+    const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = req.tenantDb.models;
 
     const branch = await Branch.findOne({ where: { id: branchId } });
     if (!branch) {
@@ -634,6 +651,21 @@ const getBranchDashboard = async (req, res, next) => {
       }
     });
     const monthlyRevenue = parseFloat(revenueSum || 0);
+    const grossRevenue = monthlyRevenue;
+
+    let totalExpenses = 0;
+    if (Expense) {
+      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
+      const expenseSum = await Expense.sum('amount', {
+        where: {
+          branchId,
+          status: 'approved',
+          expenseDate: { [Op.gte]: startOfMonthStr }
+        }
+      });
+      totalExpenses = parseFloat(expenseSum || 0);
+    }
+    const netProfit = grossRevenue - totalExpenses;
 
     const activeMembers = await MemberSubscription.count({
       where: { branchId, status: 'ACTIVE' }
@@ -706,6 +738,9 @@ const getBranchDashboard = async (req, res, next) => {
     return sendSuccess(res, {
       todaysCheckins,
       monthlyRevenue,
+      grossRevenue,
+      totalExpenses,
+      netProfit,
       activeMembers,
       newSubs,
       weeklyPerformance,

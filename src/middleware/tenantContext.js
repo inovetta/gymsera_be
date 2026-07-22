@@ -18,6 +18,7 @@ const CACHE_TTL_SECONDS = 3600; // 1 hour
  */
 const tenantContext = async (req, res, next) => {
   try {
+    const redis = getRedisClient();
     let tenantId = req.user?.tenantId;
 
     if (!tenantId) {
@@ -25,7 +26,6 @@ const tenantContext = async (req, res, next) => {
 
       const branchId = req.params.branchId || req.query.branchId || req.body.branchId;
       if (!tenantId && branchId) {
-        const redis = getRedisClient();
         const branchCacheKey = `branch:${branchId}:tenantId`;
         tenantId = await redis.get(branchCacheKey);
 
@@ -47,6 +47,27 @@ const tenantContext = async (req, res, next) => {
           }
         }
       }
+
+      if (!tenantId && req.user?.id) {
+        const { Tenant } = require('../models/platform');
+        const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+        for (const t of tenants) {
+          try {
+            const tDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
+            const staff = await tDb.models.GymStaff.findOne({
+              where: { userId: req.user.id, status: 'active' },
+            });
+            if (staff) {
+              tenantId = t.id;
+              req.user.role = 'BRANCH_MANAGER';
+              req.user.branchId = staff.branchId;
+              break;
+            }
+          } catch (err) {
+            // Ignore
+          }
+        }
+      }
     }
 
     if (!tenantId) {
@@ -56,7 +77,6 @@ const tenantContext = async (req, res, next) => {
       });
     }
 
-    const redis = getRedisClient();
     const cacheKey = `tenant:${tenantId}:connStr`;
 
     let encryptedConnStr = await redis.get(cacheKey);
@@ -93,7 +113,7 @@ const tenantContext = async (req, res, next) => {
     // If user is a traveler (MEMBER) or BRANCH_MANAGER, verify staff status in the resolved tenant DB
     if (req.user && (req.user.role === 'MEMBER' || req.user.role === 'BRANCH_MANAGER')) {
       const staff = await req.tenantDb.models.GymStaff.findOne({
-        where: { userId: req.user.id, status: 'active' }
+        where: { userId: req.user.id, status: 'active' },
       });
       if (staff) {
         req.user.role = 'BRANCH_MANAGER';

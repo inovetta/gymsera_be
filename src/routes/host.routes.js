@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const hostController = require('../controllers/host.controller');
 const gymsController = require('../controllers/gyms.controller');
+const expensesController = require('../controllers/expenses.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
@@ -8,6 +9,18 @@ const gymsValidators = require('../validators/gyms.validator');
 const validate = require('../middleware/validate');
 
 const router = Router();
+
+// Expense Categories
+router.get('/expense-categories', authenticate, tenantContext, expensesController.listExpenseCategories);
+router.post('/expense-categories', authenticate, tenantContext, expensesController.createExpenseCategory);
+
+// Branch Expenses
+router.get('/branches/:branchId/expenses', authenticate, tenantContext, expensesController.listExpenses);
+router.post('/branches/:branchId/expenses', authenticate, tenantContext, expensesController.createExpense);
+router.get('/branches/:branchId/expenses/summary', authenticate, tenantContext, expensesController.getExpenseSummary);
+router.get('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, expensesController.getExpenseDetail);
+router.patch('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, expensesController.updateExpense);
+router.delete('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, expensesController.deleteExpense);
 
 router.get('/today-summary', authenticate, authorize('GYM_HOST'), hostController.getTodaySummary);
 router.get('/branch-quota', authenticate, authorize('GYM_HOST'), hostController.getBranchQuota);

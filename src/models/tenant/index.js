@@ -22,6 +22,8 @@ const registerTenantModels = (sequelize) => {
   const ClassSchedule = require('./ClassSchedule.model')(sequelize);
   const BranchVisibilityHistory = require('./BranchVisibilityHistory.model')(sequelize);
   const StaffActionRequest = require('./StaffActionRequest.model')(sequelize);
+  const ExpenseCategory = require('./ExpenseCategory.model')(sequelize);
+  const Expense = require('./Expense.model')(sequelize);
 
   // ── Associations ─────────────────────────────────────────────────────────────
 
@@ -78,6 +80,18 @@ const registerTenantModels = (sequelize) => {
   GymStaff.hasMany(StaffActionRequest, { foreignKey: 'staffId', as: 'actionRequests', onDelete: 'CASCADE' });
   StaffActionRequest.belongsTo(GymStaff, { foreignKey: 'staffId', as: 'staff' });
 
+  // Branch ↔ Expense
+  Branch.hasMany(Expense, { foreignKey: 'branchId', as: 'expenses', onDelete: 'CASCADE' });
+  Expense.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
+
+  // ExpenseCategory ↔ Expense
+  ExpenseCategory.hasMany(Expense, { foreignKey: 'categoryId', as: 'expenses' });
+  Expense.belongsTo(ExpenseCategory, { foreignKey: 'categoryId', as: 'category' });
+
+  // Expense ↔ Expense (Self-referencing for recurring templates)
+  Expense.hasMany(Expense, { foreignKey: 'recurringTemplateId', as: 'generatedInstances' });
+  Expense.belongsTo(Expense, { foreignKey: 'recurringTemplateId', as: 'template' });
+
   return {
     Gym,
     Branch,
@@ -93,6 +107,8 @@ const registerTenantModels = (sequelize) => {
     ClassSchedule,
     BranchVisibilityHistory,
     StaffActionRequest,
+    ExpenseCategory,
+    Expense,
   };
 };
 

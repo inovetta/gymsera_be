@@ -18,7 +18,7 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       actionType: {
-        type: DataTypes.ENUM('add_member', 'renew', 'change_plan', 'upgrade'),
+        type: DataTypes.ENUM('add_member', 'renew', 'change_plan', 'upgrade', 'submit_expense'),
         allowNull: false,
       },
       payloadJson: {
@@ -46,6 +46,11 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: true,
         field: 'reviewed_by',
+      },
+      rejectionReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'rejection_reason',
       },
     },
     {

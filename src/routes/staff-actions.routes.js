@@ -50,6 +50,7 @@ const _getActionText = (type) => {
   if (type === 'renew') return 'renew subscription';
   if (type === 'change_plan') return 'change plan';
   if (type === 'upgrade') return 'upgrade package';
+  if (type === 'submit_expense') return 'submit an expense';
   return type;
 };
 
@@ -59,7 +60,7 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
     const { branchId } = req.params;
     const { actionType, payload } = req.body;
 
-    if (!['add_member', 'renew', 'change_plan', 'upgrade'].includes(actionType)) {
+    if (!['add_member', 'renew', 'change_plan', 'upgrade', 'submit_expense'].includes(actionType)) {
       throw createError('Invalid action type', 400);
     }
 
@@ -89,15 +90,23 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
 
     // Notify the Host
     try {
-      let memberName = 'Member';
-      if (actionType === 'add_member') {
-        memberName = payload.fullName || 'Member';
+      let notifMessage = '';
+      if (actionType === 'submit_expense') {
+        const title = payload.title || 'Expense';
+        const amount = payload.amount || 0;
+        notifMessage = `${req.user.fullName} submitted an expense: ${title} — Rs ${amount} — needs your approval.`;
       } else {
-        const memberUserId = payload.memberUserId;
-        if (memberUserId) {
-          const user = await User.findByPk(memberUserId);
-          if (user) memberName = user.fullName;
+        let memberName = 'Member';
+        if (actionType === 'add_member') {
+          memberName = payload.fullName || 'Member';
+        } else {
+          const memberUserId = payload.memberUserId;
+          if (memberUserId) {
+            const user = await User.findByPk(memberUserId);
+            if (user) memberName = user.fullName;
+          }
         }
+        notifMessage = `${req.user.fullName} requested to ${_getActionText(actionType)} for ${memberName} — needs your approval.`;
       }
 
       await notificationsService.createNotification({
@@ -105,7 +114,7 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
         role: 'host',
         type: 'staff_action_requested',
         title: 'Pending Staff Request',
-        message: `${req.user.fullName} requested to ${_getActionText(actionType)} for ${memberName} — needs your approval.`,
+        message: notifMessage,
         priority: 'normal',
         deepLink: `/host/gyms/${branchId}/staff-requests`,
         metadataJson: { requestId: request.id, branchId, tenantId: tenant.id }
@@ -248,6 +257,28 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
         payload.subscriptionId,
         payload.newPlanId
       );
+    } else if (request.actionType === 'submit_expense') {
+      const { Expense } = tenantDb.models;
+      const staffMember = await tenantDb.models.GymStaff.findByPk(request.staffId);
+
+      // Create the real expense row on Host Approval
+      actionResult = await Expense.create({
+        branchId: request.branchId,
+        categoryId: payload.categoryId,
+        title: payload.title,
+        amount: payload.amount,
+        expenseDate: payload.expenseDate,
+        paymentMethod: payload.paymentMethod || 'cash',
+        vendorName: payload.vendorName || null,
+        notes: payload.notes || null,
+        receiptUrl: payload.receiptUrl || null,
+        isRecurring: Boolean(payload.isRecurring),
+        recurrenceFrequency: payload.recurrenceFrequency || null,
+        recurrenceEndDate: payload.recurrenceEndDate || null,
+        status: 'approved',
+        createdBy: staffMember ? staffMember.userId : req.user.id,
+        reviewedBy: req.user.id,
+      });
     }
 
     // Update request state
@@ -289,6 +320,7 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
 router.post('/host/action-requests/:requestId/reject', async (req, res, next) => {
   try {
     const { requestId } = req.params;
+    const { rejectionReason } = req.body || {};
     const { tenantDb, tenant, request } = await _resolveRequestById(requestId);
 
     // Verify caller is host
@@ -300,9 +332,10 @@ router.post('/host/action-requests/:requestId/reject', async (req, res, next) =>
       throw createError('Action request is already resolved', 400);
     }
 
-    // Update request state
+    // Update request state (No expense row is ever created)
     await request.update({
       status: 'rejected',
+      rejectionReason: rejectionReason ? rejectionReason.trim() : null,
       reviewedAt: new Date(),
       reviewedBy: req.user.id,
     });
@@ -319,7 +352,7 @@ router.post('/host/action-requests/:requestId/reject', async (req, res, next) =>
           role: 'traveler',
           type: 'staff_action_rejected',
           title: 'Request Rejected',
-          message: `Your request to ${_getActionText(request.actionType)} at ${branchName} was rejected by the Host.`,
+          message: `Your request to ${_getActionText(request.actionType)} at ${branchName} was rejected by the Host.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
           priority: 'normal',
           deepLink: `/staff/dashboard`,
           metadataJson: { requestId: request.id, branchId: request.branchId, tenantId: tenant.id }
@@ -330,6 +363,68 @@ router.post('/host/action-requests/:requestId/reject', async (req, res, next) =>
     }
 
     return sendSuccess(res, request, 'Request rejected successfully');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── STAFF: GET /staff/branches/:branchId/my-expenses ───────────────────────────
+router.get('/branches/:branchId/my-expenses', async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    const { tenantDb } = await _resolveTenantFromBranch(branchId);
+
+    const staff = await tenantDb.models.GymStaff.findOne({
+      where: {
+        branchId,
+        userId: req.user.id,
+        status: 'active',
+      },
+    });
+
+    if (!staff) {
+      throw createError('Access denied: You are not active staff at this branch', 403);
+    }
+
+    const requests = await tenantDb.models.StaffActionRequest.findAll({
+      where: {
+        staffId: staff.id,
+        branchId,
+        actionType: 'submit_expense',
+      },
+      order: [['requestedAt', 'DESC']],
+    });
+
+    const items = requests.map((r) => {
+      let payload = r.payloadJson;
+      if (typeof payload === 'string') {
+        try {
+          payload = JSON.parse(payload);
+        } catch (e) {
+          payload = {};
+        }
+      }
+
+      return {
+        id: r.id,
+        actionType: r.actionType,
+        status: r.status, // 'pending', 'approved', 'rejected'
+        rejectionReason: r.rejectionReason || null,
+        requestedAt: r.requestedAt,
+        reviewedAt: r.reviewedAt,
+        title: payload.title || 'Expense',
+        amount: payload.amount || 0,
+        categoryId: payload.categoryId,
+        categoryName: payload.categoryName || 'General',
+        expenseDate: payload.expenseDate,
+        paymentMethod: payload.paymentMethod || 'cash',
+        vendorName: payload.vendorName || null,
+        notes: payload.notes || null,
+        receiptUrl: payload.receiptUrl || null,
+      };
+    });
+
+    return sendSuccess(res, items, 'Staff submitted expenses retrieved');
   } catch (err) {
     next(err);
   }
