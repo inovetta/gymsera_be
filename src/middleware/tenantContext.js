@@ -18,7 +18,57 @@ const CACHE_TTL_SECONDS = 3600; // 1 hour
  */
 const tenantContext = async (req, res, next) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const redis = getRedisClient();
+    let tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      tenantId = req.headers['x-tenant-id'] || req.query.tenantId || req.body.tenantId;
+
+      const branchId = req.params.branchId || req.query.branchId || req.body.branchId;
+      if (!tenantId && branchId) {
+        const branchCacheKey = `branch:${branchId}:tenantId`;
+        tenantId = await redis.get(branchCacheKey);
+
+        if (!tenantId) {
+          const { Tenant } = require('../models/platform');
+          const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+          for (const t of tenants) {
+            try {
+              const tDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
+              const exists = await tDb.models.Branch.findByPk(branchId);
+              if (exists) {
+                tenantId = t.id;
+                await redis.setex(branchCacheKey, CACHE_TTL_SECONDS, tenantId);
+                break;
+              }
+            } catch (err) {
+              // Ignore
+            }
+          }
+        }
+      }
+
+      if (!tenantId && req.user?.id) {
+        const { Tenant } = require('../models/platform');
+        const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+        for (const t of tenants) {
+          try {
+            const tDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
+            const staff = await tDb.models.GymStaff.findOne({
+              where: { userId: req.user.id, status: 'active' },
+            });
+            if (staff) {
+              tenantId = t.id;
+              req.user.role = 'BRANCH_MANAGER';
+              req.user.branchId = staff.branchId;
+              break;
+            }
+          } catch (err) {
+            // Ignore
+          }
+        }
+      }
+    }
 
     if (!tenantId) {
       return res.status(400).json({
@@ -27,7 +77,6 @@ const tenantContext = async (req, res, next) => {
       });
     }
 
-    const redis = getRedisClient();
     const cacheKey = `tenant:${tenantId}:connStr`;
 
     let encryptedConnStr = await redis.get(cacheKey);
@@ -60,6 +109,18 @@ const tenantContext = async (req, res, next) => {
     }
 
     req.tenantDb = await TenantDbManager.getConnection(tenantId, encryptedConnStr);
+
+    // If user is a traveler (MEMBER) or BRANCH_MANAGER, verify staff status in the resolved tenant DB
+    if (req.user && (req.user.role === 'MEMBER' || req.user.role === 'BRANCH_MANAGER')) {
+      const staff = await req.tenantDb.models.GymStaff.findOne({
+        where: { userId: req.user.id, status: 'active' },
+      });
+      if (staff) {
+        req.user.role = 'BRANCH_MANAGER';
+        req.user.branchId = staff.branchId;
+      }
+    }
+
     next();
   } catch (err) {
     next(err);

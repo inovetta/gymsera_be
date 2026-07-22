@@ -27,7 +27,12 @@ const getPaymentById = async (req, res, next) => {
 const listPayments = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { userId, branchId, status, method, from, to } = req.query;
+    const { userId, status, method, from, to } = req.query;
+    let branchId = req.query.branchId;
+
+    if (req.user.role === 'BRANCH_MANAGER') {
+      branchId = req.user.branchId;
+    }
 
     const result = await paymentService.listPayments(req.tenantDb, {
       userId:   userId   || null,

@@ -49,6 +49,134 @@ const router = Router();
  */
 router.get('/cities', controller.listCities);
 
+router.get('/seed-conversations', async (req, res, next) => {
+  try {
+    const { Tenant, GymListing, User, Conversation, Message } = require('../models/platform');
+    const { Op } = require('sequelize');
+    const crypto = require('crypto');
+
+    const dummyConversations = [
+      {
+        type: 'MEMBER',
+        messages: [
+          { text: "Hey! Is the squat rack at the Warehouse location free around 5 PM? Looking to get a heavy session in.", senderType: 'USER' },
+          { text: "Hi! Yes, the 5 PM slot is usually quiet on Tuesdays. We have three squat racks, so you should be good.", senderType: 'HOST' },
+          { text: "Awesome. Do I need a new entry code or will my current one work?", senderType: 'USER' },
+          { text: "Your current QR code will work fine. Valid for the next 30 days.", senderType: 'HOST' },
+          { text: "Perfect. One more thing — can I bring a guest tomorrow?", senderType: 'USER' },
+          { text: "Yes! Guests are welcome. Just register them at the reception with your member ID.", senderType: 'HOST' },
+          { text: "Amazing, thanks! See you tomorrow.", senderType: 'USER' },
+          { text: "See you then! Have a great workout 💪", senderType: 'HOST' }
+        ]
+      },
+      {
+        type: 'INQUIRY',
+        messages: [
+          { text: "Hi, I'm interested in joining. Do you offer student discounts on the Premium Monthly plan?", senderType: 'USER' },
+          { text: "Hello! Yes, we offer a 15% discount for students with a valid student ID. You can register at the front desk.", senderType: 'HOST' },
+          { text: "Regarding membership pause policy, what's the limit? Can I pause for 2 weeks?", senderType: 'USER' }
+        ]
+      },
+      {
+        type: 'MEMBER',
+        messages: [
+          { text: "Hey, my locker key isn't working today. Can someone help me at 5pm?", senderType: 'USER' }
+        ]
+      }
+    ];
+
+    const tenants = await Tenant.findAll();
+    const users = await User.findAll({ where: { role: 'MEMBER' } });
+    if (users.length === 0) {
+      return res.json({ success: false, message: "No member users found to seed conversations" });
+    }
+
+    let seededCount = 0;
+
+    for (const tenant of tenants) {
+      const listings = await GymListing.findAll({ where: { tenantId: tenant.id } });
+      for (const listing of listings) {
+        if (!listing.branchId) continue;
+
+        for (let i = 0; i < Math.min(dummyConversations.length, users.length); i++) {
+          const user = users[i];
+          const dummy = dummyConversations[i];
+
+          let conversation = await Conversation.findOne({
+            where: {
+              tenantId: tenant.id,
+              branchId: listing.branchId,
+              userId: user.id,
+              type: dummy.type
+            }
+          });
+
+          if (!conversation) {
+            conversation = await Conversation.create({
+              tenantId: tenant.id,
+              branchId: listing.branchId,
+              userId: user.id,
+              type: dummy.type,
+              unreadCountHost: 0,
+              unreadCountUser: 0
+            });
+          }
+
+          let lastMsg = null;
+          let unreadHost = 0;
+          let unreadUser = 0;
+
+          for (const msgData of dummy.messages) {
+            const existingMsg = await Message.findOne({
+              where: {
+                conversationId: conversation.id,
+                text: msgData.text
+              }
+            });
+
+            if (!existingMsg) {
+              const senderId = msgData.senderType === 'USER' ? user.id : tenant.ownerUserId;
+              const createdMsg = await Message.create({
+                conversationId: conversation.id,
+                senderId: senderId || null,
+                senderType: msgData.senderType,
+                text: msgData.text,
+                isRead: false
+              });
+              lastMsg = createdMsg;
+
+              if (msgData.senderType === 'USER') {
+                unreadHost++;
+              } else if (msgData.senderType === 'HOST') {
+                unreadUser++;
+              }
+            } else {
+              lastMsg = existingMsg;
+            }
+          }
+
+          if (lastMsg) {
+            await conversation.update({
+              lastMessageText: lastMsg.text,
+              lastMessageAt: lastMsg.createdAt,
+              unreadCountHost: unreadHost,
+              unreadCountUser: unreadUser
+            });
+            seededCount++;
+          }
+        }
+      }
+    }
+
+    return res.json({ success: true, seededCount });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Special gym list endpoints — must come BEFORE /gyms/:id to avoid path clash
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,8 +196,10 @@ router.get('/cities', controller.listCities);
  *       200:
  *         description: Featured gym listings
  */
+router.get('/organizations', controller.listOrganizations);
+router.get('/organizations/:gymId/branches', controller.listOrganizationBranches);
+router.get('/top-hosts', controller.getTopHosts);
 router.get('/gyms/featured', controller.featuredGyms);
-
 /**
  * @swagger
  * /discovery/gyms/top-rated:
@@ -239,6 +369,7 @@ router.get('/gyms', validate(validators.listGyms), controller.listGyms);
  *         description: Gym not found
  */
 router.get('/gyms/:id', validate(validators.getGym), controller.getGym);
+router.get('/gyms/:id/payment-details', authenticate, controller.getPaymentDetails);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reviews
@@ -420,4 +551,69 @@ router.get('/gyms', validate(validators.listGyms), controller.listGyms);
  */
 router.get('/gyms/:id', validate(validators.getGym), controller.getGym);
 
+router.post(
+  '/branches/:branchId/inquiries',
+  authenticate,
+  validate(validators.submitInquiry),
+  controller.submitInquiry
+);
+
+router.get(
+  '/branches/:branchId/reviews/summary',
+  validate(validators.getBranchReviewsSummary),
+  controller.getBranchReviewsSummary
+);
+
+router.get(
+  '/branches/:branchId/reviews',
+  validate(validators.getBranchReviews),
+  controller.listBranchReviews
+);
+
+router.post(
+  '/branches/:branchId/reviews',
+  authenticate,
+  validate(validators.submitBranchReview),
+  controller.submitBranchReview
+);
+
+router.get('/debug-activate-branches', async (req, res, next) => {
+  try {
+    const { Tenant } = require('../models/platform');
+    const registerTenantModels = require('../models/tenant');
+    const { decrypt } = require('../utils/crypto.utils');
+    const { Sequelize } = require('sequelize');
+
+    const tenants = await Tenant.findAll();
+    let logs = [];
+
+    for (const tenant of tenants) {
+      if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+        const connUrl = decrypt(tenant.connectionStringEncrypted);
+        const tenantSeq = new Sequelize(connUrl, {
+          dialect: 'mysql',
+          logging: false,
+        });
+        try {
+          await tenantSeq.authenticate();
+          const models = registerTenantModels(tenantSeq);
+          const { Branch } = models;
+
+          const [affectedCount] = await Branch.update(
+            { travelerVisibilityStatus: 'active' },
+            { where: { status: 'ACTIVE' } }
+          );
+          logs.push(`Updated ${affectedCount} active branches to visible on tenant: ${tenant.tenantCode}`);
+        } catch (err) {
+          logs.push(`Failed to update tenant: ${tenant.tenantCode}: ${err.message}`);
+        } finally {
+          await tenantSeq.close();
+        }
+      }
+    }
+    res.json({ success: true, logs });
+  } catch (err) {
+    next(err);
+  }
+});
 module.exports = router;

@@ -97,6 +97,31 @@ const processTenantProvisioning = async (job) => {
   const connUrl = `mysql://${dbConfig.appUser}:${dbConfig.appPassword}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
   const connectionStringEncrypted = encrypt(connUrl);
 
+  // ── Step 7: Create GymListing on platform DB (moved up) ────────────────────
+  let listingId = null;
+  const existingListing = await GymListing.findOne({ where: { tenantId: tenant.id } });
+
+  if (!existingListing && tenant.gymName) {
+    const listing = await GymListing.create({
+      tenantId: tenant.id,
+      cityId: tenant.cityId,
+      areaId: null,
+      title: tenant.gymName,
+      shortDescription: tenant.gymDescription || null,
+      logoUrl: tenant.logoUrl || null,
+      coverImageUrl: tenant.coverImageUrl || null,
+      genderType: tenant.genderType || null,
+      contactPhone: tenant.phone || null,
+      latitude: tenant.latitude || null,
+      longitude: tenant.longitude || null,
+      status: 'ACTIVE',
+    });
+    listingId = listing.id;
+    console.log(`[Provisioning] GymListing created for tenant ${tenantId}`);
+  } else if (existingListing) {
+    listingId = existingListing.id;
+  }
+
   // ── Step 6: Sync tenant models ────────────────────────────────────────────
   const tenantSequelize = new Sequelize(connUrl, {
     dialect: 'mysql',
@@ -121,6 +146,7 @@ const processTenantProvisioning = async (job) => {
         genderType: tenant.genderType || 'MIXED',
         logoUrl: tenant.logoUrl || null,
         coverImageUrl: tenant.coverImageUrl || null,
+        gymListingId: listingId,
       });
       gymId = gym.id;
       console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${gymId})`);
@@ -145,27 +171,6 @@ const processTenantProvisioning = async (job) => {
     }
   } finally {
     await tenantSequelize.close();
-  }
-
-  // ── Step 7: Create GymListing on platform DB ──────────────────────────────
-  const existingListing = await GymListing.findOne({ where: { tenantId: tenant.id } });
-
-  if (!existingListing && tenant.gymName) {
-    await GymListing.create({
-      tenantId: tenant.id,
-      cityId: tenant.cityId,
-      areaId: null,
-      title: tenant.gymName,
-      shortDescription: tenant.gymDescription || null,
-      logoUrl: tenant.logoUrl || null,
-      coverImageUrl: tenant.coverImageUrl || null,
-      genderType: tenant.genderType || null,
-      contactPhone: tenant.phone || null,
-      latitude: tenant.latitude || null,
-      longitude: tenant.longitude || null,
-      status: 'ACTIVE',
-    });
-    console.log(`[Provisioning] GymListing created for tenant ${tenantId}`);
   }
 
   // ── Step 8: Update tenant record ─────────────────────────────────────────
@@ -215,6 +220,23 @@ const processTenantProvisioning = async (job) => {
       tenant.owner.fullName,
       tenant.businessName
     );
+  }
+
+  try {
+    const notificationsService = require('./notifications.service');
+    if (tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        role: 'host',
+        type: 'host_update',
+        title: 'Host Application Approved',
+        message: `Your organization ${tenant.gymName || tenant.businessName} has been approved.`,
+        deepLink: '/host/profile',
+        metadataJson: { tenantId: tenant.id }
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create approval notification:', notifErr.message);
   }
 
   console.log(`[Provisioning] ✅ Tenant ${tenantId} fully provisioned`);

@@ -10,7 +10,7 @@ const upload         = require('../middleware/upload');
 const router = Router();
 
 // All payment routes require auth + tenant context
-router.use(authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext);
+router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'));
 
 /**
  * @swagger

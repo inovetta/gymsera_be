@@ -217,6 +217,19 @@ router.post('/tenants/:id/branches', adminController.createAdminTenantBranch);
 router.patch('/tenants/:id/branches/:branchId', adminController.updateAdminTenantBranch);
 router.post('/tenants/:id/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, adminController.uploadAdminBranchImages);
 router.delete('/tenants/:id/branches/:branchId/images', adminController.deleteAdminBranchImage);
+router.patch(
+  '/branches/:branchId/traveler-visibility',
+  validate([
+    body('status').isIn(['active', 'deactivated']).withMessage('status must be active or deactivated'),
+    body('reason').optional({ nullable: true }).trim(),
+  ]),
+  adminController.updateBranchTravelerVisibility
+);
+
+router.get(
+  '/branches/:branchId/traveler-visibility/history',
+  adminController.getBranchVisibilityHistory
+);
 
 // ── Tenant subscriptions ───────────────────────────────────────────────────────
 router.get('/tenants/:id/subscriptions', adminController.getTenantSubscriptions);
