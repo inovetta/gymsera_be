@@ -62,4 +62,10 @@ const renew = [
   param('id').isUUID(4).withMessage('id must be a valid UUID'),
 ];
 
-module.exports = { subscribe, listMySubscriptions, freeze, cancel, renew };
+// ── POST /subscriptions/:id/change-plan ─────────────────────────────────────────────
+const changePlan = [
+  param('id').isUUID(4).withMessage('id must be a valid UUID'),
+  body('planId').isUUID(4).withMessage('planId must be a valid UUID'),
+];
+
+module.exports = { subscribe, listMySubscriptions, freeze, cancel, renew, changePlan };

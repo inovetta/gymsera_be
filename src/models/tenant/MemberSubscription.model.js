@@ -72,6 +72,18 @@ module.exports = (sequelize) => {
         allowNull: true,
         defaultValue: 'WALK_IN',
       },
+      notes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      pendingPlanId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      pendingChangeEffectiveDate: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
     },
     {
       tableName: 'member_subscriptions',

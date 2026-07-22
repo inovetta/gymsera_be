@@ -1,6 +1,7 @@
 const meService = require('../services/me.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
+const inboxService = require('../services/inbox.service');
 
 // ── GET /me/profile ────────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -171,6 +172,140 @@ const uploadPaymentProof = async (req, res, next) => {
   }
 };
 
+// ── GET /me/saved-gyms ────────────────────────────────────────────────────────
+const getSavedGyms = async (req, res, next) => {
+  try {
+    const gyms = await meService.getSavedGyms(req.user.sub);
+    return sendSuccess(res, { gyms }, 'Saved gyms retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /me/saved-gyms/:gymId ───────────────────────────────────────────────
+const saveGym = async (req, res, next) => {
+  try {
+    const saved = await meService.saveGym(req.user.sub, req.params.gymId);
+    return sendSuccess(res, { saved }, 'Gym saved to wishlist', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /me/saved-gyms/:gymId ─────────────────────────────────────────────
+const unsaveGym = async (req, res, next) => {
+  try {
+    await meService.unsaveGym(req.user.sub, req.params.gymId);
+    return sendSuccess(res, null, 'Gym removed from wishlist', 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /me/request-deletion ────────────────────────────────────────────────
+const requestDeletion = async (req, res, next) => {
+  try {
+    await meService.requestAccountDeletion(req.user.sub);
+    return sendSuccess(res, null, 'Account deletion requested. You will be contacted within 7 days.', 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /me/inbox ──────────────────────────────────────────────────────────────
+const listMyInbox = async (req, res, next) => {
+  try {
+    const conversations = await inboxService.listTravelerConversations(req.user.sub);
+    return sendSuccess(res, { conversations });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /me/inbox/:conversationId ──────────────────────────────────────────────
+const getMyConversation = async (req, res, next) => {
+  try {
+    const result = await inboxService.getTravelerConversationDetail(
+      req.params.conversationId,
+      req.user.sub
+    );
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /me/inbox/:conversationId/reply ───────────────────────────────────────
+const replyToMyConversation = async (req, res, next) => {
+  try {
+    const message = await inboxService.replyAsUser(
+      req.params.conversationId,
+      req.user.sub,
+      req.body.text
+    );
+    return sendSuccess(res, { message }, 'Message sent', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /me/inbox/:conversationId/read ───────────────────────────────────────
+const markMyConversationRead = async (req, res, next) => {
+  try {
+    await inboxService.markTravelerRead(req.params.conversationId, req.user.sub);
+    return sendSuccess(res, {}, 'Marked as read');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /me/staff-status ───────────────────────────────────────────────────────
+const getStaffStatus = async (req, res, next) => {
+  try {
+    const { Tenant } = require('../models/platform');
+    const TenantDbManager = require('../database/TenantDbManager');
+
+    const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+    const branches = [];
+
+    for (const tenant of tenants) {
+      try {
+        const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        const { GymStaff, Branch } = tenantDb.models;
+
+        const staffRecords = await GymStaff.findAll({
+          where: {
+            userId: req.user.id,
+            status: 'active'
+          }
+        });
+
+        for (const staff of staffRecords) {
+          const branch = await Branch.findByPk(staff.branchId);
+          if (branch) {
+            branches.push({
+              branchId: branch.id,
+              tenantId: tenant.id,
+              branchName: branch.branchName,
+              gymName: tenant.gymName || tenant.businessName,
+              designation: staff.designation || 'Staff',
+            });
+          }
+        }
+      } catch (err) {
+        // Skip connection or query errors
+      }
+    }
+
+    return sendSuccess(res, {
+      isStaff: branches.length > 0,
+      branches
+    }, 'Staff status retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -182,4 +317,13 @@ module.exports = {
   submitPaymentRequest,
   uploadPaymentProof,
   getMyAttendance,
+  getSavedGyms,
+  saveGym,
+  unsaveGym,
+  requestDeletion,
+  listMyInbox,
+  getMyConversation,
+  replyToMyConversation,
+  markMyConversationRead,
+  getStaffStatus,
 };

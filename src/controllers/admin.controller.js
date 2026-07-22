@@ -345,6 +345,38 @@ const deleteAdminBranchImage = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const updateBranchTravelerVisibility = async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    const { status, reason } = req.body;
+
+    if (status === 'deactivated' && (!reason || !reason.trim())) {
+      throw createError('Reason is required when deactivating a branch', 400);
+    }
+
+    const result = await adminService.updateBranchTravelerVisibility(
+      branchId,
+      status,
+      reason,
+      req.user.id
+    );
+
+    return sendSuccess(res, result, 'Branch traveler visibility updated successfully.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getBranchVisibilityHistory = async (req, res, next) => {
+  try {
+    const { branchId } = req.params;
+    const result = await adminService.getBranchVisibilityHistory(branchId);
+    return sendSuccess(res, result, 'Branch visibility history retrieved.');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
   reactivateTenant, getTenantBranches, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
@@ -357,4 +389,6 @@ module.exports = {
   sendInvoiceReminder, sendInvoiceConfirmation,
   getPlatformStats, getPlatformAnalytics,
   deleteTenant, syncSubscriptions,
+  updateBranchTravelerVisibility,
+  getBranchVisibilityHistory,
 };

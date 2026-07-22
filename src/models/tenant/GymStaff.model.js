@@ -16,7 +16,11 @@ module.exports = (sequelize) => {
       // Platform user ID (cross-DB reference — no FK constraint)
       userId: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
+      },
+      email: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
       },
       designation: {
         type: DataTypes.STRING(100),
@@ -26,6 +30,11 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'TERMINATED'),
         allowNull: false,
         defaultValue: 'ACTIVE',
+      },
+      status: {
+        type: DataTypes.ENUM('pending', 'active', 'declined'),
+        allowNull: false,
+        defaultValue: 'pending',
       },
     },
     {

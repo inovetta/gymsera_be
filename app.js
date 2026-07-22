@@ -1,11 +1,17 @@
 require('dotenv').config();
 
+const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const swaggerSpec = require('./src/config/swagger.config');
+let swaggerSpec = {};
+try {
+  swaggerSpec = require('./src/config/swagger-config');
+} catch (err) {
+  console.warn('[Swagger] Failed to load swagger-config, using stub:', err.message);
+}
 const routes = require('./src/routes');
 const errorHandler = require('./src/middleware/errorHandler');
 const auditLog = require('./src/middleware/auditLog');
@@ -22,12 +28,13 @@ app.set('trust proxy', 1);
 // CSP is relaxed for unpkg.com so the /api/docs Swagger UI can load from CDN.
 app.use(
   helmet({
+    crossOriginResourcePolicy: false, // allow Flutter / mobile clients to load static assets
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
         styleSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'https://unpkg.com'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https://unpkg.com'],
         connectSrc: ["'self'", 'https://unpkg.com'],
         workerSrc: ["'self'", 'blob:'],
       },
@@ -44,6 +51,9 @@ app.use(
     credentials: true,
   })
 );
+
+// ── Static Files (Uploads) ───────────────────────────────────────────────────
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));

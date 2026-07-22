@@ -35,6 +35,10 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      areaId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       address: {
         type: DataTypes.TEXT,
         allowNull: true,
@@ -87,7 +91,7 @@ module.exports = (sequelize) => {
       status: {
         type: DataTypes.ENUM(...Object.values(TenantStatus)),
         allowNull: false,
-        defaultValue: TenantStatus.PENDING_REVIEW,
+        defaultValue: TenantStatus.DRAFT,
       },
       kycStatus: {
         type: DataTypes.ENUM(...Object.values(KycStatus)),
@@ -137,6 +141,11 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
         comment: 'AES-256-CBC encrypted MySQL connection URL',
+      },
+      paymentDetailsJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Host payment details (bank, IBAN, JazzCash, EasyPaisa)',
       },
     },
     {

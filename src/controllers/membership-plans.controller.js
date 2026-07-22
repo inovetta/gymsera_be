@@ -72,6 +72,30 @@ const toggleStatus = async (req, res, next) => {
   }
 };
 
+// ── POST /membership-plans/:id/public — toggle traveller visibility ────────────
+const togglePublic = async (req, res, next) => {
+  try {
+    const result = await membershipPlanService.togglePublic(req.tenantDb, req.params.id);
+    const msg = result.isPublic ? 'Plan is now visible to travellers' : 'Plan is now hidden from travellers';
+    return sendSuccess(res, result, msg);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /membership-plans/:id/featured — set as "Starting from" price plan ───
+const setFeatured = async (req, res, next) => {
+  try {
+    const result = await membershipPlanService.setFeatured(req.tenantDb, req.params.id);
+    const msg = result.isFeatured
+      ? 'Plan set as the featured "Starting from" price'
+      : 'Plan unfeatured — starting price reverts to cheapest public plan';
+    return sendSuccess(res, result, msg);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── POST /membership-plans/:id/poster — upload plan poster ───────────────────
 const uploadPoster = async (req, res, next) => {
   try {
@@ -89,4 +113,4 @@ const uploadPoster = async (req, res, next) => {
   }
 };
 
-module.exports = { listPublic, getPublic, listForHost, createPlan, updatePlan, deletePlan, toggleStatus, uploadPoster };
+module.exports = { listPublic, getPublic, listForHost, createPlan, updatePlan, deletePlan, toggleStatus, togglePublic, setFeatured, uploadPoster };

@@ -86,6 +86,7 @@ const _processTenant = async (tenantId, tenantDb) => {
 
     await notificationsQueue.add({
       type:     'SUBSCRIPTION_EXPIRING_SOON',
+      userId:   user.id,
       email:    user.email,
       fullName: user.fullName,
       gymName:  index?.gymName || 'your gym',

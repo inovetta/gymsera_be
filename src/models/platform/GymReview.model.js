@@ -13,6 +13,11 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      // Branch-level identifier — reviews are scoped per branch, not per organization
+      branchId: {
+        type: DataTypes.UUID,
+        allowNull: true, // nullable for backward-compat with old reviews
+      },
       // Platform user who submitted the review
       userId: {
         type: DataTypes.UUID,
@@ -39,7 +44,7 @@ module.exports = (sequelize) => {
       // PENDING → admin approves → APPROVED / REJECTED
       status: {
         type: DataTypes.ENUM('PENDING', 'APPROVED', 'REJECTED'),
-        defaultValue: 'PENDING',
+        defaultValue: 'APPROVED',
         allowNull: false,
       },
       adminNote: {
@@ -53,9 +58,10 @@ module.exports = (sequelize) => {
       timestamps: true,
       indexes: [
         { fields: ['gym_listing_id', 'status'] },
+        { fields: ['branch_id', 'status'] },
         { fields: ['user_id'] },
-        // Prevent duplicate review per user per gym
-        { name: 'gym_reviews_listing_user_unique', unique: true, fields: ['gym_listing_id', 'user_id'] },
+        // One review per user per branch (branch-level uniqueness)
+        { name: 'gym_reviews_branch_user_unique', unique: true, fields: ['branch_id', 'user_id'] },
       ],
     }
   );

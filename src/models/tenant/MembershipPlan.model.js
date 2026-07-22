@@ -66,6 +66,19 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'ACTIVE',
       },
+      // Whether this plan is shown to travellers in the public listing
+      isPublic: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      // Whether this plan's price is shown as the "Starting from" price on the listing card
+      // Only one plan per gym should be featured at a time (enforced in service layer)
+      isFeatured: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
       posterUrl: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -79,6 +92,8 @@ module.exports = (sequelize) => {
         { fields: ['gym_id'] },
         { fields: ['branch_id'] },
         { fields: ['status'] },
+        { fields: ['is_public'] },
+        { fields: ['is_featured'] },
       ],
     }
   );
