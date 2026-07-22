@@ -4,13 +4,14 @@ const { sendSuccess } = require('../utils/response.utils');
 // ── POST /tenants/register ────────────────────────────────────────────────────
 const register = async (req, res, next) => {
   try {
-    const { businessName, email, phone, cityId } = req.body;
+    const { businessName, email, phone, cityId, areaId } = req.body;
     const result = await tenantService.registerTenant({
       userId: req.user.sub,
       businessName,
       email,
       phone,
       cityId,
+      areaId,
     });
     return sendSuccess(res, result, 'Gym business registered successfully. Your application is under review.', 201);
   } catch (err) {

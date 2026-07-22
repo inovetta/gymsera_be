@@ -1,5 +1,6 @@
 const emailService = require('../services/email.service');
 const pushService  = require('../services/push.service');
+const notificationsService = require('../services/notifications.service');
 
 /**
  * Notification job processor for the Bull `notifications` queue.
@@ -9,6 +10,7 @@ const pushService  = require('../services/push.service');
  *   type: 'SUBSCRIPTION_ACTIVATED' | 'SUBSCRIPTION_RENEWED' | 'SUBSCRIPTION_EXPIRING_SOON'
  *       | 'SUBSCRIPTION_EXPIRED'   | 'PAYMENT_FAILED'
  *       | 'TENANT_APPROVED'        | 'TENANT_REJECTED',
+ *   userId?: string,           // optional user ID for database notifications
  *   email: string,             // recipient email
  *   fullName: string,          // recipient display name
  *   fcmToken?: string,         // optional Firebase device token
@@ -25,6 +27,67 @@ const processNotification = async (job) => {
   const d = job.data;
 
   console.log(`[Notifications] Processing job ${job.id}: type=${d.type} to=${d.email}`);
+
+  // Create in-app notification if userId is present
+  if (d.userId) {
+    try {
+      let title = 'Notification';
+      let body = '';
+      let type = 'info';
+
+      switch (d.type) {
+        case 'SUBSCRIPTION_ACTIVATED':
+          title = 'Subscription Confirmed';
+          body = `Your ${d.planName || 'membership'} at ${d.gymName || 'your gym'} is now active.`;
+          type = 'subscription';
+          break;
+        case 'SUBSCRIPTION_RENEWED':
+          title = 'Subscription Renewed';
+          body = `Your ${d.planName || 'membership'} at ${d.gymName || 'your gym'} has been renewed until ${d.endDate || ''}.`;
+          type = 'subscription';
+          break;
+        case 'SUBSCRIPTION_EXPIRING_SOON':
+          title = 'Plan Expiring Soon';
+          body = `Your membership at ${d.gymName || 'your gym'} expires on ${d.endDate || ''}. Renew now!`;
+          type = 'expiry';
+          break;
+        case 'SUBSCRIPTION_EXPIRED':
+          title = 'Membership Expired';
+          body = `Your membership at ${d.gymName || 'your gym'} has expired.`;
+          type = 'expiry';
+          break;
+        case 'PAYMENT_FAILED':
+          title = 'Payment Failed';
+          body = `Your payment of ${d.currency || 'PKR'} ${d.amount || '0'} for ${d.gymName || 'your gym'} could not be processed.`;
+          type = 'warning';
+          break;
+        case 'TENANT_APPROVED':
+          title = 'Host Application Approved';
+          body = `Congratulations! You are now verified as a Host for ${d.gymName || 'your gym'}.`;
+          type = 'host_update';
+          break;
+        case 'TENANT_REJECTED':
+          title = 'Host Application Rejected';
+          body = `Your application for ${d.gymName || 'your gym'} was rejected. Reason: ${d.reason || 'None'}`;
+          type = 'warning';
+          break;
+        default:
+          body = `New update on your account: ${d.type}`;
+          type = 'info';
+      }
+
+      await notificationsService.createNotification({
+        userId: d.userId,
+        type,
+        title,
+        body,
+        metadata: d,
+      });
+      console.log(`[Notifications] Created in-app notification for user ${d.userId}`);
+    } catch (err) {
+      console.warn('[Notifications] Failed to save in-app notification:', err.message);
+    }
+  }
 
   switch (d.type) {
 

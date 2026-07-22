@@ -80,10 +80,50 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of cover/gallery image URLs shown in the public listing',
       },
+      category: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+      establishedYear: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'established_year',
+      },
+      floorArea: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'floor_area',
+      },
+      postalCode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'postal_code',
+      },
+      country: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      minPrice: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0.0,
+      },
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'PENDING'),
+        type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'PENDING', 'DRAFT', 'REJECTED'),
         allowNull: false,
-        defaultValue: 'PENDING',
+        defaultValue: 'DRAFT',
+      },
+      rejectionReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      rejectedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      rejectedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
     },
     {

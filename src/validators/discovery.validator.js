@@ -91,6 +91,41 @@ const discoveryValidators = {
       .isString()
       .isLength({ max: 300 }),
   ],
+
+  submitInquiry: [
+    param('branchId').isUUID(4).withMessage('Invalid branch ID'),
+    body('message')
+      .notEmpty().withMessage('message is required')
+      .isString().withMessage('message must be a string')
+      .isLength({ min: 1, max: 2000 }).withMessage('message must be 1-2000 characters'),
+  ],
+
+  getBranchReviewsSummary: [
+    param('branchId').isUUID(4).withMessage('Invalid branch ID'),
+  ],
+
+  getBranchReviews: [
+    param('branchId').isUUID(4).withMessage('Invalid branch ID'),
+    query('page').optional().isInt({ min: 1 }),
+    query('limit').optional().isInt({ min: 1 }),
+    query('sort').optional().isString(),
+    query('filter').optional().isString(),
+  ],
+
+  submitBranchReview: [
+    param('branchId').isUUID(4).withMessage('Invalid branch ID'),
+    body('rating')
+      .notEmpty().withMessage('rating is required')
+      .isInt({ min: 1, max: 5 }).withMessage('rating must be 1–5'),
+    body('text')
+      .notEmpty().withMessage('text is required')
+      .isString()
+      .isLength({ min: 5, max: 2000 }).withMessage('text must be 5-2000 characters'),
+    body('title')
+      .optional({ checkFalsy: true })
+      .isString()
+      .isLength({ max: 150 }),
+  ],
 };
 
 module.exports = discoveryValidators;

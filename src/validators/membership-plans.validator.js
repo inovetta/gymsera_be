@@ -57,6 +57,9 @@ const createPlan = [
   body('isTrial')
     .optional()
     .isBoolean(),
+  body('isPublic')
+    .optional()
+    .isBoolean().withMessage('isPublic must be a boolean'),
 ];
 
 // ── Update plan — PATCH /membership-plans/:id ─────────────────────────────────
@@ -95,6 +98,9 @@ const updatePlan = [
   body('isTrial')
     .optional()
     .isBoolean(),
+  body('isPublic')
+    .optional()
+    .isBoolean().withMessage('isPublic must be a boolean'),
   body('status')
     .optional()
     .isIn(['ACTIVE', 'INACTIVE']).withMessage('status must be ACTIVE or INACTIVE'),

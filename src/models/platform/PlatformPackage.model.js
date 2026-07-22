@@ -26,6 +26,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'MONTHLY',
       },
+      maxOrganizations: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
+      },
       maxBranches: {
         type: DataTypes.INTEGER,
         allowNull: false,

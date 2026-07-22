@@ -1,7 +1,7 @@
 const bcrypt = require('bcrypt');
 const { Op } = require('sequelize');
 
-const { User, UserGymMembership, Tenant } = require('../models/platform');
+const { User, UserGymMembership, Tenant, SavedGym, GymListing, City, Area } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError } = require('../utils/response.utils');
 
@@ -49,18 +49,36 @@ const _getAllTenantDbs = async (userId) => {
 
 const BCRYPT_ROUNDS = 12;
 
-/**
- * Get own full profile — DB lookup, richer than JWT claims.
- */
 const getMyProfile = async (userId, tenantDb = null) => {
   const user = await User.findByPk(userId, {
     attributes: ['id', 'fullName', 'email', 'phone', 'role', 'isVerified', 'status', 'profileImageUrl', 'googleId', 'createdAt', 'lastLoginAt'],
   });
   if (!user) throw createError('User not found', 404);
 
+  let resolvedTenantDb = tenantDb;
+  if (!resolvedTenantDb) {
+    const membership = await UserGymMembership.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+    });
+    if (membership) {
+      const tenant = await Tenant.findOne({
+        where: { id: membership.tenantId, status: 'ACTIVE' },
+        attributes: ['id', 'connectionStringEncrypted'],
+      });
+      if (tenant && tenant.connectionStringEncrypted) {
+        try {
+          resolvedTenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        } catch (err) {
+          console.warn('[Profile Tenant Resolution] Failed to connect to tenant DB:', err.message);
+        }
+      }
+    }
+  }
+
   let profile = null;
-  if (tenantDb) {
-    const { MemberProfile } = tenantDb.models;
+  if (resolvedTenantDb) {
+    const { MemberProfile } = resolvedTenantDb.models;
     profile = await MemberProfile.findOne({ where: { userId } });
   }
 
@@ -105,7 +123,28 @@ const updateMyProfile = async (userId, updates, tenantDb = null) => {
   if (phone !== undefined) platformUpdates.phone = phone;
   if (Object.keys(platformUpdates).length) await user.update(platformUpdates);
 
-  if (tenantDb) {
+  let resolvedTenantDb = tenantDb;
+  if (!resolvedTenantDb) {
+    const membership = await UserGymMembership.findOne({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+    });
+    if (membership) {
+      const tenant = await Tenant.findOne({
+        where: { id: membership.tenantId, status: 'ACTIVE' },
+        attributes: ['id', 'connectionStringEncrypted'],
+      });
+      if (tenant && tenant.connectionStringEncrypted) {
+        try {
+          resolvedTenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        } catch (err) {
+          console.warn('[Profile Tenant Resolution] Failed to connect to tenant DB:', err.message);
+        }
+      }
+    }
+  }
+
+  if (resolvedTenantDb) {
     const profileFields = {};
     if (gender !== undefined) profileFields.gender = gender;
     if (dateOfBirth !== undefined) profileFields.dateOfBirth = dateOfBirth;
@@ -114,12 +153,12 @@ const updateMyProfile = async (userId, updates, tenantDb = null) => {
     if (fitnessGoal !== undefined) profileFields.fitnessGoal = fitnessGoal;
 
     if (Object.keys(profileFields).length) {
-      const { MemberProfile } = tenantDb.models;
+      const { MemberProfile } = resolvedTenantDb.models;
       await MemberProfile.upsert({ userId, ...profileFields });
     }
   }
 
-  return getMyProfile(userId, tenantDb);
+  return getMyProfile(userId, resolvedTenantDb);
 };
 
 /**
@@ -233,16 +272,37 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
   const subscription = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId, userId } });
   if (!subscription) throw createError('Subscription not found or does not belong to you', 404);
 
-  const payment = await Payment.create({
-    userId,
-    paymentFor: 'MEMBERSHIP',
-    referenceEntityId: resolvedSubscriptionId,
-    method,
-    amount,
-    currency: 'PKR',
-    status: 'PENDING',
-    notes: notes || null,
+  // Check if there is already a PENDING payment for this subscription
+  let payment = await Payment.findOne({
+    where: {
+      referenceEntityId: resolvedSubscriptionId,
+      userId,
+      status: 'PENDING'
+    }
   });
+
+  if (payment) {
+    // Update the existing pending payment instead of creating a duplicate
+    await payment.update({
+      method,
+      amount,
+      branchId: subscription.branchId,
+      notes: notes || payment.notes,
+    });
+  } else {
+    // Fallback: create a new one if none exists
+    payment = await Payment.create({
+      userId,
+      paymentFor: 'MEMBERSHIP',
+      referenceEntityId: resolvedSubscriptionId,
+      branchId: subscription.branchId,
+      method,
+      amount,
+      currency: 'PKR',
+      status: 'PENDING',
+      notes: notes || null,
+    });
+  }
 
   return payment;
 };
@@ -318,6 +378,72 @@ const getMyAttendance = async (userId, subscriptionId) => {
     .slice(0, 100);
 };
 
+const getSavedGyms = async (userId) => {
+  const saved = await SavedGym.findAll({
+    where: { userId },
+    include: [
+      {
+        model: GymListing,
+        as: 'gym',
+        include: [
+          { model: City, as: 'city', attributes: ['id', 'name'] },
+          { model: Area, as: 'area', attributes: ['id', 'name'] },
+        ],
+      },
+    ],
+    order: [['createdAt', 'DESC']],
+  });
+
+  return saved
+    .map((s) => {
+      if (s.gym) {
+        const raw = s.gym.toJSON ? s.gym.toJSON() : { ...s.gym };
+        if (raw.facilitiesJson) {
+          if (Array.isArray(raw.facilitiesJson)) {
+            // Already array
+          } else if (typeof raw.facilitiesJson === 'object') {
+            raw.facilitiesJson = Object.entries(raw.facilitiesJson)
+              .filter(([_, enabled]) => enabled === true || enabled === 'true')
+              .map(([key]) => key);
+          }
+        } else {
+          raw.facilitiesJson = [];
+        }
+        return raw;
+      }
+      return null;
+    })
+    .filter(Boolean);
+};
+
+const saveGym = async (userId, gymListingId) => {
+  const gym = await GymListing.findByPk(gymListingId);
+  if (!gym || gym.status !== 'ACTIVE') {
+    throw createError('Gym not found or inactive', 404);
+  }
+
+  const [saved] = await SavedGym.findOrCreate({
+    where: { userId, gymListingId },
+  });
+  return saved;
+};
+
+const unsaveGym = async (userId, gymListingId) => {
+  await SavedGym.destroy({
+    where: { userId, gymListingId },
+  });
+};
+
+const requestAccountDeletion = async (userId) => {
+  const user = await User.findByPk(userId);
+  if (!user) throw createError('User not found', 404);
+
+  // Soft delete or set user as INACTIVE
+  await user.update({ status: 'INACTIVE' });
+  console.log(`[Account Deletion] User ${user.email} (${user.id}) has requested account deletion.`);
+  return { success: true };
+};
+
 module.exports = {
   getMyProfile,
   updateMyProfile,
@@ -328,4 +454,8 @@ module.exports = {
   submitPaymentRequest,
   uploadPaymentProof,
   getMyAttendance,
+  getSavedGyms,
+  saveGym,
+  unsaveGym,
+  requestAccountDeletion,
 };

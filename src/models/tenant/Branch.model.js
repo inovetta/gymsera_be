@@ -13,6 +13,12 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      gymListingId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'gym_listing_id',
+        comment: 'Cross-DB reference to GymListing id on the platform DB',
+      },
       branchName: {
         type: DataTypes.STRING(200),
         allowNull: false,
@@ -60,10 +66,77 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of gallery image URLs',
       },
+      tagline: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      category: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      tagsJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Array of tag strings',
+      },
+      description: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      establishedYear: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'established_year',
+      },
+      floorArea: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'floor_area',
+      },
+      addressLine1: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'address_line1',
+      },
+      addressLine2: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'address_line2',
+      },
+      postalCode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'postal_code',
+      },
+      country: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
       status: {
         type: DataTypes.ENUM('ACTIVE', 'INACTIVE'),
         allowNull: false,
         defaultValue: 'ACTIVE',
+      },
+      travelerVisibilityStatus: {
+        type: DataTypes.ENUM('pending', 'active', 'deactivated'),
+        allowNull: false,
+        defaultValue: 'pending',
+        field: 'traveler_visibility_status',
+      },
+      deactivationReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'deactivation_reason',
+      },
+      deactivatedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deactivated_at',
+      },
+      deactivatedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'deactivated_by',
       },
     },
     {

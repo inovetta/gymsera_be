@@ -183,12 +183,16 @@ const range = async (tenantDb, { from, to, branchId, userId, page, limit, offset
   return { logs: rows, pagination: buildPagination(count, page, limit) };
 };
 
-// ── GET /attendance/customer/:userId — member full history ───────────────────
-const memberHistory = async (tenantDb, userId, { page, limit, offset }) => {
+const memberHistory = async (tenantDb, userId, { branchId, page, limit, offset }) => {
   const { AttendanceLog } = tenantDb.models;
 
+  const where = { userId };
+  if (branchId) {
+    where.branchId = branchId;
+  }
+
   const { count, rows } = await AttendanceLog.findAndCountAll({
-    where: { userId },
+    where,
     order: [['checkInAt', 'DESC']],
     limit,
     offset,

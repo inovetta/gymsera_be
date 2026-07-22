@@ -9,6 +9,7 @@ const { processTenantProvisioning } = require('./src/services/tenant-provisionin
 const { processNotification } = require('./src/jobs/notifications.processor');
 const { runExpiryCheck, EXPIRY_CRON } = require('./src/jobs/subscription-expiry.cron');
 const cron = require('node-cron');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 
@@ -16,6 +17,42 @@ async function bootstrap() {
   try {
     // 1. Connect to Platform MySQL
     await connectPlatformDb();
+
+    // Run one-time payments branchId backfill
+    (async () => {
+      try {
+        console.log('[Backfill] Running payments branchId backfill...');
+        const { Tenant } = require('./src/models/platform');
+        const tenants = await Tenant.findAll();
+        for (const tenant of tenants) {
+          try {
+            const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+            const { Payment, MemberSubscription } = tenantDb.models;
+            const payments = await Payment.findAll({
+              where: { paymentFor: 'MEMBERSHIP', branchId: null }
+            });
+            let updated = 0;
+            for (const payment of payments) {
+              if (payment.referenceEntityId) {
+                const sub = await MemberSubscription.findByPk(payment.referenceEntityId);
+                if (sub && sub.branchId) {
+                  await payment.update({ branchId: sub.branchId });
+                  updated++;
+                }
+              }
+            }
+            if (updated > 0) {
+              console.log(`[Backfill] Backfilled branchId for ${updated} payments in tenant: ${tenant.gymName}`);
+            }
+          } catch (e) {
+            console.error(`[Backfill] Tenant ${tenant.gymName} failed:`, e.message);
+          }
+        }
+        console.log('[Backfill] Payments branchId backfill finished.');
+      } catch (err) {
+        console.error('[Backfill] Global error:', err.message);
+      }
+    })();
 
     // 2. Warm up Redis connection
     getRedisClient();
@@ -64,4 +101,4 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+bootstrap(); // Force nodemon restart again
