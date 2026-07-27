@@ -40,6 +40,11 @@ router.get('/health', (_req, res) => {
 
 router.get('/debug-sync-db', async (_req, res) => {
   try {
+    const { sequelize: platformSeq } = require('../database/platform');
+    require('../models/platform');
+    await platformSeq.sync({ alter: true });
+    const platformStatus = 'Platform DB synced successfully';
+
     const { Sequelize } = require('sequelize');
     const { Tenant } = require('../models/platform');
     const registerTenantModels = require('../models/tenant');
@@ -70,7 +75,7 @@ router.get('/debug-sync-db', async (_req, res) => {
       }
     }
 
-    res.json({ success: true, results });
+    res.json({ success: true, platformStatus, results });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
