@@ -216,12 +216,19 @@ const processTenantProvisioning = async (tenantId) => {
   }
 
   // ── Step 9: Send approval email ───────────────────────────────────────────
+  // Provisioning above already succeeded and the tenant is ACTIVE — a broken
+  // SMTP config must not surface as a "provisioning failed" error, since the
+  // tenant can no longer be re-approved to retry it (status is now ACTIVE).
   if (tenant.owner) {
-    await emailService.sendTenantApprovedEmail(
-      tenant.owner.email,
-      tenant.owner.fullName,
-      tenant.businessName
-    );
+    try {
+      await emailService.sendTenantApprovedEmail(
+        tenant.owner.email,
+        tenant.owner.fullName,
+        tenant.businessName
+      );
+    } catch (err) {
+      console.error(`[Provisioning] Failed to send approval email for tenant ${tenantId}:`, err.message);
+    }
   }
 
   try {
