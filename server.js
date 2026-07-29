@@ -4,8 +4,7 @@ const app = require('./app');
 const { connect: connectPlatformDb } = require('./src/database/platform');
 const { getRedisClient } = require('./src/config/redis.config');
 const TenantDbManager = require('./src/database/TenantDbManager');
-const { tenantProvisioningQueue, notificationsQueue } = require('./src/jobs/queues');
-const { processTenantProvisioning } = require('./src/services/tenant-provisioning.service');
+const { notificationsQueue } = require('./src/jobs/queues');
 const { processNotification } = require('./src/jobs/notifications.processor');
 const { runExpiryCheck, EXPIRY_CRON } = require('./src/jobs/subscription-expiry.cron');
 const cron = require('node-cron');
@@ -58,7 +57,6 @@ async function bootstrap() {
     getRedisClient();
 
     // 3. Register Bull job processors
-    tenantProvisioningQueue.process(1, processTenantProvisioning);
     notificationsQueue.process(5, processNotification);
 
     // 4. Register subscription-expiry cron (node-cron; fallback if Bull repeat not desired)
