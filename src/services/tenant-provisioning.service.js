@@ -1,10 +1,11 @@
 /**
  * TenantProvisioningService
  *
- * Bull job processor for the `tenant-provisioning` queue.
- * Triggered when an admin approves a tenant.
+ * Called synchronously from admin.service.js when an admin approves a tenant.
+ * Runs inline in the request so it works the same on serverless (Vercel) and
+ * on a traditional always-on server — no background worker required.
  *
- * Job flow:
+ * Flow:
  *  1. Load tenant from platform DB
  *  2. Connect to tenant MySQL server with admin credentials
  *  3. CREATE DATABASE `gymsera_{tenantCode}`
@@ -47,10 +48,9 @@ const buildDbName = (tenantCode) => {
 
 /**
  * Provision a tenant database.
- * @param {import('bull').Job} job - Bull job with payload { tenantId }
+ * @param {string} tenantId
  */
-const processTenantProvisioning = async (job) => {
-  const { tenantId } = job.data;
+const processTenantProvisioning = async (tenantId) => {
 
   console.log(`[Provisioning] Starting for tenant ${tenantId}`);
 
@@ -75,6 +75,7 @@ const processTenantProvisioning = async (job) => {
     port: dbConfig.port,
     user: dbConfig.adminUser,
     password: dbConfig.adminPassword,
+    connectTimeout: 20000,
   });
 
   try {
@@ -127,6 +128,7 @@ const processTenantProvisioning = async (job) => {
     dialect: 'mysql',
     logging: false,
     pool: { max: 3, min: 0, acquire: 30000, idle: 10000 },
+    dialectOptions: { connectTimeout: 20000 },
   });
 
   let gymId = null;
