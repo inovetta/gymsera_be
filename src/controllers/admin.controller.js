@@ -37,7 +37,7 @@ const getTenant = async (req, res, next) => {
 const approveTenant = async (req, res, next) => {
   try {
     const result = await adminService.approveTenant(req.params.id, req.user.sub);
-    return sendSuccess(res, result, 'Tenant approved. Database provisioning has been queued.');
+    return sendSuccess(res, result, 'Tenant approved and database provisioned successfully.');
   } catch (err) {
     next(err);
   }
