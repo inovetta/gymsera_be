@@ -205,4 +205,7 @@ const { adminRouter: devicesAdminRouter, hostRouter: devicesHostRouter } = requi
 router.use('/admin/devices', devicesAdminRouter);
 router.use('/devices', devicesHostRouter);
 
+// ── Scheduled job HTTP triggers (Vercel Cron / external scheduler) ──────────
+router.use('/cron', require('./cron.routes'));
+
 module.exports = router;
