@@ -296,14 +296,19 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
     kycStatus: KycStatus.REJECTED,
   });
 
-  // Notify the gym host
+  // Notify the gym host — the rejection itself is already persisted above, so
+  // a broken SMTP config must not surface as a failed request.
   if (tenant.owner) {
-    await emailService.sendTenantRejectedEmail(
-      tenant.owner.email,
-      tenant.owner.fullName,
-      tenant.businessName,
-      reason.trim()
-    );
+    try {
+      await emailService.sendTenantRejectedEmail(
+        tenant.owner.email,
+        tenant.owner.fullName,
+        tenant.businessName,
+        reason.trim()
+      );
+    } catch (err) {
+      console.error(`[rejectTenant] Failed to send rejection email for tenant ${tenant.id}:`, err.message);
+    }
   }
 
   try {
