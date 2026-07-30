@@ -4,7 +4,7 @@ const { Tenant, User, City, Area, PlatformPackage, GymListing, TenantSubscriptio
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
-const { tenantProvisioningQueue } = require('../jobs/queues');
+const { processTenantProvisioning } = require('./tenant-provisioning.service');
 const emailService = require('./email.service');
 const TenantDbManager = require('../database/TenantDbManager');
 
@@ -198,8 +198,15 @@ const getTenant = async (tenantId) => {
 
 // ── approveTenant ─────────────────────────────────────────────────────────────
 /**
- * Admin approves a tenant — updates status to APPROVED and enqueues
- * the DB provisioning job. The job will flip status to ACTIVE once done.
+ * Admin approves a tenant — updates status to APPROVED, then provisions the
+ * tenant database inline (synchronously). Running provisioning as part of the
+ * request — rather than a queued job for a background worker — means this
+ * works the same whether the API runs on Vercel serverless or a traditional
+ * always-on server, with no dependency on a separate worker process.
+ *
+ * If provisioning fails partway, the tenant stays in APPROVED (not ACTIVE)
+ * and re-calling approve safely retries it (CREATE DATABASE IF NOT EXISTS /
+ * sync are idempotent).
  */
 const approveTenant = async (tenantId, adminUserId) => {
   const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
@@ -238,14 +245,14 @@ const approveTenant = async (tenantId, adminUserId) => {
     kycStatus: KycStatus.APPROVED,
   });
 
-  // Enqueue the provisioning job — processed by TenantProvisioningService
-  await tenantProvisioningQueue.add({ tenantId: tenant.id }, {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 5000 },
-    removeOnComplete: false,
-    removeOnFail: false,
-  });
+  try {
+    await processTenantProvisioning(tenant.id);
+  } catch (err) {
+    console.error(`[approveTenant] Provisioning failed for tenant ${tenant.id}:`, err.message);
+    throw createError(`Tenant approved, but database provisioning failed: ${err.message}. Re-approve to retry.`, 502);
+  }
 
+  await tenant.reload();
   return { tenant };
 };
 
@@ -289,14 +296,19 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
     kycStatus: KycStatus.REJECTED,
   });
 
-  // Notify the gym host
+  // Notify the gym host — the rejection itself is already persisted above, so
+  // a broken SMTP config must not surface as a failed request.
   if (tenant.owner) {
-    await emailService.sendTenantRejectedEmail(
-      tenant.owner.email,
-      tenant.owner.fullName,
-      tenant.businessName,
-      reason.trim()
-    );
+    try {
+      await emailService.sendTenantRejectedEmail(
+        tenant.owner.email,
+        tenant.owner.fullName,
+        tenant.businessName,
+        reason.trim()
+      );
+    } catch (err) {
+      console.error(`[rejectTenant] Failed to send rejection email for tenant ${tenant.id}:`, err.message);
+    }
   }
 
   try {
