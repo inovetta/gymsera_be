@@ -1,4 +1,4 @@
-const { getRedisClient } = require('../config/redis.config');
+const { safeRedisGet, safeRedisSetex } = require('../config/redis.config');
 const TenantDbManager = require('../database/TenantDbManager');
 
 const CACHE_TTL_SECONDS = 3600; // 1 hour
@@ -18,7 +18,6 @@ const CACHE_TTL_SECONDS = 3600; // 1 hour
  */
 const tenantContext = async (req, res, next) => {
   try {
-    const redis = getRedisClient();
     let tenantId = req.user?.tenantId;
 
     if (!tenantId) {
@@ -27,7 +26,7 @@ const tenantContext = async (req, res, next) => {
       const branchId = req.params.branchId || req.query.branchId || req.body.branchId;
       if (!tenantId && branchId) {
         const branchCacheKey = `branch:${branchId}:tenantId`;
-        tenantId = await redis.get(branchCacheKey);
+        tenantId = await safeRedisGet(branchCacheKey);
 
         if (!tenantId) {
           const { Tenant } = require('../models/platform');
@@ -38,7 +37,7 @@ const tenantContext = async (req, res, next) => {
               const exists = await tDb.models.Branch.findByPk(branchId);
               if (exists) {
                 tenantId = t.id;
-                await redis.setex(branchCacheKey, CACHE_TTL_SECONDS, tenantId);
+                await safeRedisSetex(branchCacheKey, CACHE_TTL_SECONDS, tenantId);
                 break;
               }
             } catch (err) {
@@ -79,7 +78,7 @@ const tenantContext = async (req, res, next) => {
 
     const cacheKey = `tenant:${tenantId}:connStr`;
 
-    let encryptedConnStr = await redis.get(cacheKey);
+    let encryptedConnStr = await safeRedisGet(cacheKey);
 
     if (!encryptedConnStr) {
       // Lazy-require to avoid circular dependency at module load time
@@ -105,7 +104,7 @@ const tenantContext = async (req, res, next) => {
       }
 
       encryptedConnStr = tenant.connectionStringEncrypted;
-      await redis.setex(cacheKey, CACHE_TTL_SECONDS, encryptedConnStr);
+      await safeRedisSetex(cacheKey, CACHE_TTL_SECONDS, encryptedConnStr);
     }
 
     req.tenantDb = await TenantDbManager.getConnection(tenantId, encryptedConnStr);

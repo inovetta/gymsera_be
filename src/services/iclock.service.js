@@ -22,14 +22,13 @@
 
 const { Device, DeviceMember, User } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
-const { getRedisClient } = require('../config/redis.config');
+const { safeRedisGet, safeRedisSetex } = require('../config/redis.config');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 
 // ── Resolve tenant DB from device ─────────────────────────────────────────────
 const _getTenantDb = async (device) => {
-  const redis = getRedisClient();
   const cacheKey = `tenant:${device.tenantId}:connStr`;
-  let encryptedConnStr = await redis.get(cacheKey);
+  let encryptedConnStr = await safeRedisGet(cacheKey);
 
   if (!encryptedConnStr) {
     const { Tenant } = require('../models/platform');
@@ -39,7 +38,7 @@ const _getTenantDb = async (device) => {
     });
     if (!tenant || !tenant.connectionStringEncrypted) return null;
     encryptedConnStr = tenant.connectionStringEncrypted;
-    await redis.setex(cacheKey, 3600, encryptedConnStr);
+    await safeRedisSetex(cacheKey, 3600, encryptedConnStr);
   }
 
   return TenantDbManager.getConnection(device.tenantId, encryptedConnStr);
