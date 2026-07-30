@@ -169,19 +169,18 @@ router.post(
       const tenantId = req.body.tenantId;
       if (!tenantId) return res.status(400).json({ success: false, message: 'tenantId is required in device payload' });
 
-      const { getRedisClient } = require('../config/redis.config');
+      const { safeRedisGet, safeRedisSetex } = require('../config/redis.config');
       const TenantDbManager = require('../database/TenantDbManager');
       const { Tenant } = require('../models/platform');
 
-      const redis = getRedisClient();
       const cacheKey = `tenant:${tenantId}:connStr`;
-      let encryptedConnStr = await redis.get(cacheKey);
+      let encryptedConnStr = await safeRedisGet(cacheKey);
 
       if (!encryptedConnStr) {
         const tenant = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
         if (!tenant || !tenant.connectionStringEncrypted) return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
         encryptedConnStr = tenant.connectionStringEncrypted;
-        await redis.setex(cacheKey, 3600, encryptedConnStr);
+        await safeRedisSetex(cacheKey, 3600, encryptedConnStr);
       }
 
       req.tenantDb = await TenantDbManager.getConnection(tenantId, encryptedConnStr);
