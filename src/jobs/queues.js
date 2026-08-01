@@ -1,18 +1,65 @@
 const Bull = require('bull');
 
-// Fail fast instead of hanging: if Redis is unreachable/misconfigured, a
-// serverless request awaiting queue.add() must not block until the platform's
-// own function timeout kills it (this previously caused 500s after ~4 min).
-const redisOpts = {
-  redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD || undefined,
-    connectTimeout: 5000,
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-    retryStrategy: (times) => (times > 2 ? null : Math.min(times * 500, 2000)),
-  },
+/**
+ * Creates a safe Bull queue instance wrapper.
+ * If Redis is not configured (e.g. on Vercel without REDIS_HOST) or goes offline,
+ * queue.add() will safely log a warning and return a dummy object without crashing HTTP requests.
+ */
+const createSafeQueue = (queueName) => {
+  let bullQueue = null;
+
+  const redisHost = process.env.REDIS_HOST;
+  const redisUrl = process.env.REDIS_URL;
+  const isRedisConfigured = Boolean(redisHost || redisUrl);
+
+  if (isRedisConfigured) {
+    try {
+      bullQueue = new Bull(queueName, redisUrl || {
+        redis: {
+          host: redisHost,
+          port: parseInt(process.env.REDIS_PORT || '6379'),
+          password: process.env.REDIS_PASSWORD || undefined,
+          connectTimeout: 5000,
+          maxRetriesPerRequest: null, // Required by Bull/ioredis to prevent maxRetries limit errors
+          enableOfflineQueue: false,
+          retryStrategy: (times) => (times > 3 ? null : Math.min(times * 500, 2000)),
+        },
+      });
+
+      bullQueue.on('error', (err) => {
+        console.warn(`[Queue:${queueName}] Redis connection warning:`, err.message);
+      });
+      bullQueue.on('failed', (job, err) => {
+        console.error(`[Queue:${queueName}] Job ${job.id} failed:`, err.message);
+      });
+    } catch (err) {
+      console.warn(`[Queue:${queueName}] Could not initialize Bull queue:`, err.message);
+      bullQueue = null;
+    }
+  } else {
+    console.log(`[Queue:${queueName}] No REDIS_HOST/REDIS_URL. Running with no-op background queue.`);
+  }
+
+  return {
+    add: async (data, opts) => {
+      if (bullQueue) {
+        try {
+          return await bullQueue.add(data, opts);
+        } catch (err) {
+          console.warn(`[Queue:${queueName}] Failed to add job:`, err.message);
+          return { id: 'noop' };
+        }
+      }
+      console.log(`[Queue:${queueName}] (No-op) Skipped job add:`, data?.type || data);
+      return { id: 'noop' };
+    },
+    on: (event, handler) => {
+      if (bullQueue) bullQueue.on(event, handler);
+    },
+    process: (handler) => {
+      if (bullQueue) bullQueue.process(handler);
+    },
+  };
 };
 
 /**
@@ -20,15 +67,6 @@ const redisOpts = {
  * Used in Sprint 7: email/push notification jobs.
  * Job payload: { type, to, subject, templateData }
  */
-const notificationsQueue = new Bull('notifications', redisOpts);
-
-// ── Error logging ─────────────────────────────────────────────────────────────
-notificationsQueue.on('failed', (job, err) => {
-  console.error(`[Queue:notifications] Job ${job.id} failed:`, err.message);
-});
-
-notificationsQueue.on('error', (err) => {
-  console.error('[Queue:notifications] Redis connection error:', err.message);
-});
+const notificationsQueue = createSafeQueue('notifications');
 
 module.exports = { notificationsQueue };
