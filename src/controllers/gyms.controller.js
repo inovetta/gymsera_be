@@ -66,6 +66,24 @@ const updateBranch = async (req, res, next) => {
 // ── DELETE /gyms/branches/:branchId ──────────────────────────────────────────
 const deleteBranch = async (req, res, next) => {
   try {
+    const { password } = req.body;
+    if (!password) {
+      throw createError('Password is required to delete a branch', 400);
+    }
+    
+    const { User: PlatformUser } = require('../models/platform');
+    const bcrypt = require('bcrypt');
+    
+    const user = await PlatformUser.findByPk(req.user.sub);
+    if (!user || !user.passwordHash) {
+      throw createError('Your account uses social login and cannot verify a password. Please contact support to delete the branch.', 400);
+    }
+    
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      throw createError('Incorrect password', 401);
+    }
+
     const result = await gymService.deleteBranch(req.tenantDb, req.params.branchId);
     return sendSuccess(res, null, result.message);
   } catch (err) {

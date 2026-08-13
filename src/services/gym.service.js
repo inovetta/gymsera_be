@@ -172,7 +172,7 @@ const listBranches = async (tenantDb, tenantId, organizationId) => {
   }
 
   const branches = await Branch.findAll({
-    where: whereClause,
+    where: { ...whereClause, status: 'ACTIVE' },
     order: [['createdAt', 'ASC']],
   });
 
@@ -532,8 +532,9 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found or inactive', 404);
 
-  const branch = await tenantDb.models.Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
-  if (!branch) throw createError('Branch not found or inactive', 404);
+  const branch = await tenantDb.models.Branch.findOne({ where: { id: branchId } });
+  if (!branch) throw createError('Branch not found', 404);
+  if (branch.status !== 'ACTIVE') throw createError(`Branch is not active (current status: ${branch.status})`, 404);
 
   const existing = await MemberSubscription.findOne({
     where: { userId: user.id, branchId, status: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN, SubscriptionStatus.PENDING] },
