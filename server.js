@@ -57,7 +57,7 @@ async function bootstrap() {
     getRedisClient();
 
     // 3. Register Bull job processors
-    notificationsQueue.process(5, processNotification);
+    notificationsQueue.process(processNotification);
 
     // 4. Register subscription-expiry cron (node-cron; fallback if Bull repeat not desired)
     cron.schedule(EXPIRY_CRON, () => {

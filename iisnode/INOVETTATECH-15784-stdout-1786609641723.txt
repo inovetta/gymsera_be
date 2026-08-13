@@ -1,0 +1,1 @@
+Shah Alam Dairies frontend is listening on \\.\pipe\5a1fcd0e-cee6-4dce-a801-08bbe4f2456f
