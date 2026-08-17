@@ -37,11 +37,11 @@ const hostDashboard = async (tenantDb) => {
     activePlans,
   ] = await Promise.all([
     // Active subscriptions (distinct members)
-    MemberSubscription.findAll({
+    MemberSubscription.count({
       where: { ...branchFilter, status: SubscriptionStatus.ACTIVE },
-      attributes: ['userId'],
-      group: ['userId'],
-    }).then((rows) => rows.length),
+      distinct: true,
+      col: 'userId',
+    }),
 
     // Frozen subscriptions
     MemberSubscription.count({ where: { ...branchFilter, status: SubscriptionStatus.FROZEN } }),
@@ -101,16 +101,16 @@ const hostDashboard = async (tenantDb) => {
 
   return {
     members: {
-      active:           totalActiveMembers || 0,
-      frozen:           totalFrozenMembers || 0,
+      active: totalActiveMembers || 0,
+      frozen: totalFrozenMembers || 0,
       expiredThisMonth: totalExpiredThisMonth || 0,
     },
     attendance: {
       checkInsToday: checkInsToday || 0,
     },
     revenue: {
-      allTime:      parseFloat(totalRevenue     || 0),
-      thisMonth:    parseFloat(revenueThisMonth || 0),
+      allTime: parseFloat(totalRevenue || 0),
+      thisMonth: parseFloat(revenueThisMonth || 0),
       pendingCount: pendingPayments || 0,
     },
     plans: {
@@ -160,14 +160,14 @@ const platformSummary = async () => {
 
   return {
     gyms: {
-      active:          totalActiveGyms,
-      pendingReview:   totalPendingGyms,
-      suspended:       totalSuspendedGyms,
-      addedThisMonth:  gymsAddedThisMonth,
+      active: totalActiveGyms,
+      pendingReview: totalPendingGyms,
+      suspended: totalSuspendedGyms,
+      addedThisMonth: gymsAddedThisMonth,
     },
     members: {
-      totalActive:      totalActiveMembers,
-      addedThisMonth:   membersAddedThisMonth,
+      totalActive: totalActiveMembers,
+      addedThisMonth: membersAddedThisMonth,
     },
   };
 };
@@ -185,7 +185,7 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
   const m = month ? parseInt(month) - 1 : now.getMonth(); // 0-indexed
 
   const periodStart = new Date(y, m, 1);
-  const periodEnd   = new Date(y, m + 1, 0, 23, 59, 59); // last day of month
+  const periodEnd = new Date(y, m + 1, 0, 23, 59, 59); // last day of month
 
   const subWhere = { startDate: { [Op.between]: [periodStart.toISOString().split('T')[0], periodEnd.toISOString().split('T')[0]] } };
   if (packageId) subWhere.membershipPlanId = packageId;
@@ -198,11 +198,7 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
   const [newSubscriptions, periodRevenue, activeMembers, checkIns] = await Promise.all([
     MemberSubscription.count({ where: subWhere }),
     Payment.sum('amount', { where: payWhere }),
-    MemberSubscription.findAll({
-      where: { status: SubscriptionStatus.ACTIVE },
-      attributes: ['userId'],
-      group: ['userId'],
-    }).then((rows) => rows.length),
+    MemberSubscription.count({ where: { status: SubscriptionStatus.ACTIVE } }),
     AttendanceLog.count({
       where: {
         checkInAt: { [Op.between]: [periodStart, periodEnd] },
@@ -232,7 +228,7 @@ const monthlyBreakdown = async (tenantDb, { year, month }) => {
   const y = parseInt(year) || new Date().getFullYear();
   const m = parseInt(month) || new Date().getMonth() + 1;
   const periodStart = new Date(y, m - 1, 1);
-  const periodEnd   = new Date(y, m, 0, 23, 59, 59);
+  const periodEnd = new Date(y, m, 0, 23, 59, 59);
 
   const [revenueByDay, subscriptionsByDay, checkInsByDay] = await Promise.all([
     models.Payment.findAll({
@@ -296,7 +292,7 @@ const yearlyRevenue = async (tenantDb, year) => {
     raw: true,
   });
 
-  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const data = MONTHS.map((month, i) => {
     const row = rows.find((r) => parseInt(r.month) === i + 1);
     return { month, revenue: parseFloat(row?.revenue || 0) };
@@ -329,7 +325,7 @@ const weeklyAttendance = async (tenantDb) => {
     raw: true,
   });
 
-  const LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const data = days.map((dateStr) => {
     const row = rows.find((r) => r.day === dateStr);
     const d = new Date(dateStr);
@@ -370,11 +366,7 @@ const branchReport = async (tenantDb, branchId) => {
     planDistribution,
     revenueByDay,
   ] = await Promise.all([
-    MemberSubscription.findAll({
-      where: { branchId, status: SubscriptionStatus.ACTIVE },
-      attributes: ['userId'],
-      group: ['userId'],
-    }).then((rows) => rows.length),
+    MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.ACTIVE }, distinct: true, col: 'userId' }),
     MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.FROZEN } }),
     MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.PENDING } }),
     MemberSubscription.count({
@@ -436,28 +428,28 @@ const branchReport = async (tenantDb, branchId) => {
   return {
     branch: { id: branch.id, name: branch.branchName, status: branch.status },
     members: {
-      active:           activeMembers   || 0,
-      frozen:           frozenMembers   || 0,
-      pending:          pendingMembers  || 0,
+      active: activeMembers || 0,
+      frozen: frozenMembers || 0,
+      pending: pendingMembers || 0,
       expiredThisMonth: expiredThisMonth || 0,
     },
     revenue: {
-      allTime:              parseFloat(totalRevenue      || 0),
-      thisMonth:            parseFloat(revenueThisMonth  || 0),
-      pendingCount:         pendingCount || 0,
-      staffCollectedCount:  staffCollectedPending || 0,
+      allTime: parseFloat(totalRevenue || 0),
+      thisMonth: parseFloat(revenueThisMonth || 0),
+      pendingCount: pendingCount || 0,
+      staffCollectedCount: staffCollectedPending || 0,
     },
     attendance: {
-      checkInsToday:     checkInsToday     || 0,
+      checkInsToday: checkInsToday || 0,
       checkInsThisMonth: checkInsThisMonth || 0,
     },
     staff: {
       active: activeStaff || 0,
     },
     planDistribution: planDistribution.map((p) => ({
-      planId:   p.membershipPlanId,
+      planId: p.membershipPlanId,
       planName: planMap[p.membershipPlanId] || 'Unknown',
-      count:    parseInt(p.count || 0),
+      count: parseInt(p.count || 0),
     })),
     revenueByDay,
   };

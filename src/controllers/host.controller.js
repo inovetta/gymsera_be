@@ -120,15 +120,14 @@ const getTodaySummary = async (req, res, next) => {
     const netProfit = grossRevenue - totalExpenses;
 
     // 3. Active Members (distinct member count)
-    const activeMemberRows = await MemberSubscription.findAll({
+    const activeMembers = await MemberSubscription.count({
       where: {
         ...branchFilter,
-        status: SubscriptionStatus.ACTIVE,
+        status: 'ACTIVE'
       },
-      attributes: ['userId'],
-      group: ['userId'],
+      distinct: true,
+      col: 'userId'
     });
-    const activeMembers = activeMemberRows.length;
 
     // 4. New Subs (this period / last 7 days)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
@@ -658,12 +657,11 @@ const getBranchDashboard = async (req, res, next) => {
     }
     const netProfit = grossRevenue - totalExpenses;
 
-    const activeMemberRows = await MemberSubscription.findAll({
-      where: { branchId, status: SubscriptionStatus.ACTIVE },
-      attributes: ['userId'],
-      group: ['userId'],
+    const activeMembers = await MemberSubscription.count({
+      where: { branchId, status: 'ACTIVE' },
+      distinct: true,
+      col: 'userId'
     });
-    const activeMembers = activeMemberRows.length;
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
     const newSubs = await MemberSubscription.count({
