@@ -140,13 +140,27 @@ const getPublic = async (planId, gymListingId) => {
   return plan;
 };
 
-// ── Host: list all plans (active + inactive) for the gym ────────────────────
+// ── Host: list all active plans for the gym ────────────────────
 const listForHost = async (tenantDb, branchId) => {
-  const { MembershipPlan } = tenantDb.models;
-  const where = {};
+  const { MembershipPlan, Branch } = tenantDb.models;
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) {
+    return [];
+  }
+
+  const where = { status: 'ACTIVE' };
   if (branchId) {
+    if (!activeBranchIds.includes(branchId)) return [];
     where.branchId = {
       [Op.or]: [branchId, null],
+    };
+  } else {
+    where.branchId = {
+      [Op.or]: [
+        { [Op.in]: activeBranchIds },
+        null,
+      ],
     };
   }
   const plans = await MembershipPlan.findAll({ where, order: [['createdAt', 'DESC']] });
@@ -158,10 +172,10 @@ const createPlan = async (tenantDb, data) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  // Validate branchId belongs to this gym
+  // Validate branchId belongs to this gym and is active
   if (data.branchId) {
-    const branch = await Branch.findByPk(data.branchId);
-    if (!branch) throw createError('Branch not found in this gym', 404);
+    const branch = await Branch.findOne({ where: { id: data.branchId, status: 'ACTIVE' } });
+    if (!branch) throw createError('Branch not found or has been deleted', 404);
   }
 
   const plan = await MembershipPlan.create({
