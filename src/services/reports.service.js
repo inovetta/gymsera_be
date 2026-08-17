@@ -12,6 +12,20 @@ const hostDashboard = async (tenantDb) => {
   const { MemberSubscription, AttendanceLog, Payment, MembershipPlan, Branch } = tenantDb.models;
   const today = new Date().toISOString().split('T')[0];
 
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const activeBranchIds = activeBranches.map((b) => b.id);
+  const branchFilter = { branchId: { [Op.in]: activeBranchIds } };
+
+  if (activeBranchIds.length === 0) {
+    return {
+      members: { active: 0, frozen: 0, expiredThisMonth: 0 },
+      attendance: { checkInsToday: 0 },
+      revenue: { allTime: 0, thisMonth: 0, pendingCount: 0 },
+      plans: { active: 0 },
+      branches: { active: 0 },
+    };
+  }
+
   const [
     totalActiveMembers,
     totalFrozenMembers,
@@ -21,17 +35,17 @@ const hostDashboard = async (tenantDb) => {
     revenueThisMonth,
     pendingPayments,
     activePlans,
-    totalBranches,
   ] = await Promise.all([
     // Active subscriptions
-    MemberSubscription.count({ where: { status: SubscriptionStatus.ACTIVE } }),
+    MemberSubscription.count({ where: { ...branchFilter, status: SubscriptionStatus.ACTIVE } }),
 
     // Frozen subscriptions
-    MemberSubscription.count({ where: { status: SubscriptionStatus.FROZEN } }),
+    MemberSubscription.count({ where: { ...branchFilter, status: SubscriptionStatus.FROZEN } }),
 
     // Expired this calendar month
     MemberSubscription.count({
       where: {
+        ...branchFilter,
         status: SubscriptionStatus.EXPIRED,
         endDate: {
           [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -43,6 +57,7 @@ const hostDashboard = async (tenantDb) => {
     // Attendance check-ins today
     AttendanceLog.count({
       where: {
+        ...branchFilter,
         checkInAt: {
           [Op.gte]: new Date(`${today}T00:00:00.000Z`),
           [Op.lte]: new Date(`${today}T23:59:59.999Z`),
@@ -52,11 +67,12 @@ const hostDashboard = async (tenantDb) => {
     }),
 
     // All-time completed revenue
-    Payment.sum('amount', { where: { status: PaymentStatus.COMPLETED } }),
+    Payment.sum('amount', { where: { ...branchFilter, status: PaymentStatus.COMPLETED } }),
 
     // Revenue this calendar month
     Payment.sum('amount', {
       where: {
+        ...branchFilter,
         status: PaymentStatus.COMPLETED,
         paidAt: {
           [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -65,13 +81,18 @@ const hostDashboard = async (tenantDb) => {
     }),
 
     // Pending payments count
-    Payment.count({ where: { status: PaymentStatus.PENDING } }),
+    Payment.count({ where: { ...branchFilter, status: PaymentStatus.PENDING } }),
 
     // Active membership plans
-    MembershipPlan.count({ where: { status: 'ACTIVE' } }),
-
-    // Total active branches
-    Branch.count({ where: { status: 'ACTIVE' } }),
+    MembershipPlan.count({
+      where: {
+        status: 'ACTIVE',
+        [Op.or]: [
+          { branchId: { [Op.in]: activeBranchIds } },
+          { branchId: null },
+        ],
+      },
+    }),
   ]);
 
   return {
@@ -92,7 +113,7 @@ const hostDashboard = async (tenantDb) => {
       active: activePlans || 0,
     },
     branches: {
-      active: totalBranches || 0,
+      active: activeBranches.length || 0,
     },
   };
 };
@@ -320,10 +341,10 @@ const branchReport = async (tenantDb, branchId) => {
   const today = new Date().toISOString().split('T')[0];
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
-  const branch = await Branch.findByPk(branchId);
+  const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
   if (!branch) {
     const { createError } = require('../utils/response.utils');
-    throw createError('Branch not found', 404);
+    throw createError('Branch not found or has been deleted', 404);
   }
 
   const [

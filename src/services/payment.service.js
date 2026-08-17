@@ -151,11 +151,18 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
 
 // ── GET /payments ──────────────────────────────────────────────────────────────
 const listPayments = async (tenantDb, { userId, branchId, status, method, from, to, page, limit, offset }) => {
-  const { Payment } = tenantDb.models;
+  const { Payment, Branch } = tenantDb.models;
   const where = {};
 
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const activeBranchIds = activeBranches.map((b) => b.id);
+
   if (userId)   where.userId   = userId;
-  if (branchId) where.branchId = branchId;
+  if (branchId) {
+    where.branchId = branchId;
+  } else {
+    where.branchId = { [Op.or]: [{ [Op.in]: activeBranchIds }, null] };
+  }
   if (status)   where.status   = status;
   if (method)   where.method   = method;
   if (from || to) {

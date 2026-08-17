@@ -50,16 +50,36 @@ const getTodaySummary = async (req, res, next) => {
 
     const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = tenantDb.models;
 
-    const activeBranchesCount = await Branch.count({ where: { status: 'ACTIVE' } });
-    if (activeBranchesCount === 0) {
+    const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+    const activeBranchIds = activeBranches.map((b) => b.id);
+    if (activeBranchIds.length === 0) {
       return sendSuccess(res, {
-        state: 'B',
+        state: 'C',
         applicationStatus: 'APPROVED',
-        hasActiveBranch: false
+        hasActiveBranch: false,
+        activeBranchesCount: 0,
+        todaysCheckins: 0,
+        monthlyRevenue: 0,
+        grossRevenue: 0,
+        totalExpenses: 0,
+        netProfit: 0,
+        activeMembers: 0,
+        newSubs: 0,
+        recentCheckins: [],
+        weeklyPerformance: [
+          { day: 'MON', count: 0 },
+          { day: 'TUE', count: 0 },
+          { day: 'WED', count: 0 },
+          { day: 'THU', count: 0 },
+          { day: 'FRI', count: 0 },
+          { day: 'SAT', count: 0 },
+          { day: 'SUN', count: 0 },
+        ],
       });
     }
 
-    // State C: Approved & active
+    // State C: Approved & active with at least 1 branch
+    const branchFilter = { branchId: { [Op.in]: activeBranchIds } };
     const todayStr = new Date().toISOString().split('T')[0];
     const startOfDay = new Date(`${todayStr}T00:00:00.000Z`);
     const endOfDay = new Date(`${todayStr}T23:59:59.999Z`);
@@ -67,6 +87,7 @@ const getTodaySummary = async (req, res, next) => {
     // 1. Todays check-ins count
     const todaysCheckins = await AttendanceLog.count({
       where: {
+        ...branchFilter,
         checkInAt: { [Op.between]: [startOfDay, endOfDay] },
         attendanceType: 'CHECK_IN'
       }
@@ -76,6 +97,7 @@ const getTodaySummary = async (req, res, next) => {
     const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const revenueSum = await Payment.sum('amount', {
       where: {
+        ...branchFilter,
         status: 'COMPLETED',
         paidAt: { [Op.gte]: startOfMonth }
       }
@@ -88,6 +110,7 @@ const getTodaySummary = async (req, res, next) => {
       const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
       const expenseSum = await Expense.sum('amount', {
         where: {
+          ...branchFilter,
           status: 'approved',
           expenseDate: { [Op.gte]: startOfMonthStr }
         }
@@ -98,13 +121,17 @@ const getTodaySummary = async (req, res, next) => {
 
     // 3. Active Members (count)
     const activeMembers = await MemberSubscription.count({
-      where: { status: 'ACTIVE' }
+      where: {
+        ...branchFilter,
+        status: 'ACTIVE'
+      }
     });
 
     // 4. New Subs (this period / last 7 days)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
     const newSubs = await MemberSubscription.count({
       where: {
+        ...branchFilter,
         status: 'ACTIVE',
         subscribedAt: { [Op.gte]: sevenDaysAgo }
       }
@@ -120,6 +147,7 @@ const getTodaySummary = async (req, res, next) => {
       const dayName = dayStart.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
       const dayCheckins = await AttendanceLog.count({
         where: {
+          ...branchFilter,
           checkInAt: { [Op.between]: [dayStart, dayEnd] },
           attendanceType: 'CHECK_IN'
         }
@@ -128,57 +156,18 @@ const getTodaySummary = async (req, res, next) => {
     }
 
     // 6. Membership inquiries unanswered: query platform database
-    const { Conversation } = require('../models/platform');
-    const unansweredInquiries = await Conversation.count({
-      where: {
-        tenantId,
-        unreadCountHost: { [Op.gt]: 0 }
-      }
-    });
-
-    // 7. Recent Check-ins list (last 10 checkins)
-    const logs = await AttendanceLog.findAll({
-      where: { attendanceType: 'CHECK_IN' },
-      order: [['checkInAt', 'DESC']],
-      limit: 10
-    });
-
-    const recentCheckins = [];
-    const userIds = [...new Set(logs.map((log) => log.userId))];
-
-    if (userIds.length > 0) {
-      const users = await User.findAll({
-        where: { id: { [Op.in]: userIds } },
-        attributes: ['id', 'fullName', 'profileImageUrl']
-      });
-      const userMap = new Map(users.map((u) => [u.id, u]));
-
-      for (const log of logs) {
-        const u = userMap.get(log.userId);
-        let planName = 'Daily Pass';
-        if (log.memberSubscriptionId) {
-          const sub = await MemberSubscription.findByPk(log.memberSubscriptionId, {
-            include: [{ model: MembershipPlan, as: 'plan', attributes: ['name'] }]
-          });
-          if (sub && sub.plan) {
-            planName = sub.plan.name;
-          }
-        }
-
-        recentCheckins.push({
-          id: log.id,
-          name: u ? u.fullName : 'Unknown Athlete',
-          time: log.checkInAt,
-          passType: planName,
-          status: 'ACTIVE'
-        });
-      }
+    let pendingInquiries = 0;
+    try {
+      pendingInquiries = await inboxService.countPendingInquiries(tenantId);
+    } catch (e) {
+      pendingInquiries = 0;
     }
 
     return sendSuccess(res, {
       state: 'C',
-      applicationStatus: tenant.status,
+      applicationStatus: 'APPROVED',
       hasActiveBranch: true,
+      activeBranchesCount: activeBranches.length,
       todaysCheckins,
       monthlyRevenue,
       grossRevenue,
@@ -187,8 +176,7 @@ const getTodaySummary = async (req, res, next) => {
       activeMembers,
       newSubs,
       weeklyPerformance,
-      unansweredInquiries,
-      recentCheckins
+      pendingInquiries,
     });
   } catch (err) {
     next(err);
@@ -228,18 +216,18 @@ const getBranchQuota = async (req, res, next) => {
     if (tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted) {
       try {
         const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-        let targetListingId = organizationId;
-        if (!targetListingId) {
-          const firstListing = await GymListing.findOne({ where: { tenantId } });
-          if (firstListing) targetListingId = firstListing.id;
+        if (organizationId) {
+          usedBranches = await tenantDb.models.Branch.count({
+            where: {
+              status: 'ACTIVE',
+              gymListingId: organizationId,
+            }
+          });
+        } else {
+          usedBranches = await tenantDb.models.Branch.count({
+            where: { status: 'ACTIVE' }
+          });
         }
-
-        usedBranches = await tenantDb.models.Branch.count({
-          where: {
-            status: 'ACTIVE',
-            gymListingId: targetListingId || null,
-          }
-        });
       } catch (err) {
         // ignore
       }
@@ -625,9 +613,9 @@ const getBranchDashboard = async (req, res, next) => {
     const { branchId } = req.params;
     const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -757,9 +745,9 @@ const getBranchMembers = async (req, res, next) => {
     const { q, status, page = 1, limit = 20 } = req.query;
     const { Branch, MemberSubscription, MembershipPlan } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     const subWhere = { branchId };
@@ -836,9 +824,9 @@ const getBranchCheckins = async (req, res, next) => {
     const { page = 1, limit = 20, date } = req.query;
     const { Branch, AttendanceLog, MemberSubscription, MembershipPlan } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     // Build the where clause — optionally filter by a specific date
@@ -903,9 +891,9 @@ const getBranchAnnouncements = async (req, res, next) => {
     const { branchId } = req.params;
     const { Branch, Announcement } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     const announcements = await Announcement.findAll({
@@ -925,9 +913,9 @@ const createBranchAnnouncement = async (req, res, next) => {
     const { title, message, tag, status } = req.body;
     const { Branch, Announcement } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     const announcement = await Announcement.create({
@@ -950,14 +938,14 @@ const deleteBranchAnnouncement = async (req, res, next) => {
     const { branchId, announcementId } = req.params;
     const { Branch, Announcement } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     const announcement = await Announcement.findOne({ where: { id: announcementId, branchId } });
     if (!announcement) {
-      return res.status(404).json({ success: false, message: 'Announcement not found' });
+      throw createError('Announcement not found', 404);
     }
 
     await announcement.destroy();
@@ -973,9 +961,9 @@ const getBranchSchedule = async (req, res, next) => {
     const { branchId } = req.params;
     const { Branch, ClassSchedule } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     const schedule = await ClassSchedule.findAll({
@@ -995,9 +983,9 @@ const createBranchSchedule = async (req, res, next) => {
     const { name, instructor, time, day, maxCapacity } = req.body;
     const { Branch, ClassSchedule } = req.tenantDb.models;
 
-    const branch = await Branch.findOne({ where: { id: branchId } });
+    const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      throw createError('Branch not found or has been deleted', 404);
     }
 
     const cls = await ClassSchedule.create({
