@@ -37,11 +37,11 @@ const hostDashboard = async (tenantDb) => {
     activePlans,
   ] = await Promise.all([
     // Active subscriptions (distinct members)
-    MemberSubscription.count({
+    MemberSubscription.findAll({
       where: { ...branchFilter, status: SubscriptionStatus.ACTIVE },
-      distinct: true,
-      col: 'userId',
-    }),
+      attributes: ['userId'],
+      group: ['userId'],
+    }).then((rows) => rows.length),
 
     // Frozen subscriptions
     MemberSubscription.count({ where: { ...branchFilter, status: SubscriptionStatus.FROZEN } }),
@@ -198,7 +198,11 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
   const [newSubscriptions, periodRevenue, activeMembers, checkIns] = await Promise.all([
     MemberSubscription.count({ where: subWhere }),
     Payment.sum('amount', { where: payWhere }),
-    MemberSubscription.count({ where: { status: SubscriptionStatus.ACTIVE } }),
+    MemberSubscription.findAll({
+      where: { status: SubscriptionStatus.ACTIVE },
+      attributes: ['userId'],
+      group: ['userId'],
+    }).then((rows) => rows.length),
     AttendanceLog.count({
       where: {
         checkInAt: { [Op.between]: [periodStart, periodEnd] },
@@ -366,7 +370,11 @@ const branchReport = async (tenantDb, branchId) => {
     planDistribution,
     revenueByDay,
   ] = await Promise.all([
-    MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.ACTIVE }, distinct: true, col: 'userId' }),
+    MemberSubscription.findAll({
+      where: { branchId, status: SubscriptionStatus.ACTIVE },
+      attributes: ['userId'],
+      group: ['userId'],
+    }).then((rows) => rows.length),
     MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.FROZEN } }),
     MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.PENDING } }),
     MemberSubscription.count({
