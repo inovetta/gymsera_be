@@ -442,10 +442,16 @@ const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, o
 
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) {
+    return { count: 0, rows: [] };
+  }
 
   const where = {};
   if (status) where.status = status;
   if (branchId) {
+    if (!activeBranchIds.includes(branchId)) {
+      return { count: 0, rows: [] };
+    }
     where.branchId = branchId;
   } else {
     where.branchId = { [Op.in]: activeBranchIds };

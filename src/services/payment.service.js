@@ -156,15 +156,21 @@ const listPayments = async (tenantDb, { userId, branchId, status, method, from, 
 
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) {
+    return { count: 0, rows: [] };
+  }
 
-  if (userId)   where.userId   = userId;
+  if (userId) where.userId = userId;
   if (branchId) {
+    if (!activeBranchIds.includes(branchId)) {
+      return { count: 0, rows: [] };
+    }
     where.branchId = branchId;
   } else {
-    where.branchId = { [Op.or]: [{ [Op.in]: activeBranchIds }, null] };
+    where.branchId = { [Op.in]: activeBranchIds };
   }
-  if (status)   where.status   = status;
-  if (method)   where.method   = method;
+  if (status) where.status = status;
+  if (method) where.method = method;
   if (from || to) {
     where.createdAt = {};
     if (from) where.createdAt[Op.gte] = new Date(from);

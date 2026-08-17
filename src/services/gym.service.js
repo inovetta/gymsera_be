@@ -565,12 +565,27 @@ const removeBranchImage = async (tenantDb, branchId, imageUrl) => {
  * Gym hosts only ever see their own gym's members.
  */
 const listMembers = async (tenantDb, tenantId, { q, status, branchId, page, limit, offset }) => {
-  const { MemberSubscription } = tenantDb.models;
+  const { MemberSubscription, Branch } = tenantDb.models;
 
-  const subWhere = {};
-  if (branchId) subWhere.branchId = branchId;
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) {
+    return { members: [], pagination: buildPagination(0, page, limit) };
+  }
 
-  // Get distinct userIds from tenant subscriptions
+  const subWhere = {
+    status: ['ACTIVE', 'PENDING', 'FROZEN'],
+  };
+  if (branchId) {
+    if (!activeBranchIds.includes(branchId)) {
+      return { members: [], pagination: buildPagination(0, page, limit) };
+    }
+    subWhere.branchId = branchId;
+  } else {
+    subWhere.branchId = { [Op.in]: activeBranchIds };
+  }
+
+  // Get distinct userIds from active tenant subscriptions
   const subscriptions = await MemberSubscription.findAll({
     where: subWhere,
     attributes: ['userId'],

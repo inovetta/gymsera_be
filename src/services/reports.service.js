@@ -36,8 +36,12 @@ const hostDashboard = async (tenantDb) => {
     pendingPayments,
     activePlans,
   ] = await Promise.all([
-    // Active subscriptions
-    MemberSubscription.count({ where: { ...branchFilter, status: SubscriptionStatus.ACTIVE } }),
+    // Active subscriptions (distinct members)
+    MemberSubscription.count({
+      where: { ...branchFilter, status: SubscriptionStatus.ACTIVE },
+      distinct: true,
+      col: 'userId',
+    }),
 
     // Frozen subscriptions
     MemberSubscription.count({ where: { ...branchFilter, status: SubscriptionStatus.FROZEN } }),
@@ -362,7 +366,7 @@ const branchReport = async (tenantDb, branchId) => {
     planDistribution,
     revenueByDay,
   ] = await Promise.all([
-    MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.ACTIVE } }),
+    MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.ACTIVE }, distinct: true, col: 'userId' }),
     MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.FROZEN } }),
     MemberSubscription.count({ where: { branchId, status: SubscriptionStatus.PENDING } }),
     MemberSubscription.count({

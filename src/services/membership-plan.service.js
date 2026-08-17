@@ -145,9 +145,13 @@ const listForHost = async (tenantDb, branchId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) {
+    return [];
+  }
 
   const where = { status: 'ACTIVE' };
   if (branchId) {
+    if (!activeBranchIds.includes(branchId)) return [];
     where.branchId = {
       [Op.or]: [branchId, null],
     };
