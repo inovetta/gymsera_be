@@ -172,7 +172,7 @@ const listBranches = async (tenantDb, tenantId, organizationId) => {
   }
 
   const branches = await Branch.findAll({
-    where: whereClause,
+    where: { ...whereClause, status: 'ACTIVE' },
     order: [['createdAt', 'ASC']],
   });
 
@@ -315,8 +315,10 @@ const createBranch = async (tenantDb, tenantId, data) => {
 
 const getBranch = async (tenantDb, branchId) => {
   const { Branch } = tenantDb.models;
-  const branch = await Branch.findByPk(branchId);
-  if (!branch) throw createError('Branch not found', 404);
+  const branch = await Branch.findOne({
+    where: { id: branchId, status: 'ACTIVE' },
+  });
+  if (!branch) throw createError('Branch not found or has been deleted', 404);
   return { branch };
 };
 
@@ -338,22 +340,121 @@ const updateBranch = async (tenantDb, branchId, data) => {
   return { branch };
 };
 
-const deleteBranch = async (tenantDb, branchId) => {
-  const { Branch } = tenantDb.models;
-  const branch = await Branch.findByPk(branchId);
-  if (!branch) throw createError('Branch not found', 404);
+const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
+  const {
+    Branch,
+    MembershipPlan,
+    MemberSubscription,
+    GymStaff,
+    Trainer,
+    Announcement,
+    ClassSchedule,
+    StaffActionRequest,
+  } = tenantDb.models;
 
-  // Soft delete — mark inactive rather than hard delete
-  await branch.update({ status: 'INACTIVE' });
-  return { message: 'Branch deactivated successfully' };
+  const branch = await Branch.findByPk(branchId);
+  if (!branch || branch.status === 'INACTIVE') {
+    throw createError('Branch not found or already deleted', 404);
+  }
+
+  const t = await tenantDb.sequelize.transaction();
+  try {
+    // 1. Mark branch INACTIVE and traveler visibility deactivated
+    await branch.update({
+      status: 'INACTIVE',
+      travelerVisibilityStatus: 'deactivated',
+      deactivatedAt: new Date(),
+      deactivatedBy: deletedByUserId || null,
+      deactivationReason: 'Branch deleted by host/admin',
+    }, { transaction: t });
+
+    // 2. Cascade deactivation to all membership plans for this branch
+    if (MembershipPlan) {
+      await MembershipPlan.update(
+        { status: 'INACTIVE', isPublic: false },
+        { where: { branchId }, transaction: t }
+      );
+    }
+
+    // 3. Cascade cancellation to all active/pending/frozen subscriptions on this branch
+    if (MemberSubscription) {
+      await MemberSubscription.update(
+        { status: 'CANCELLED' },
+        {
+          where: {
+            branchId,
+            status: { [Op.in]: ['ACTIVE', 'PENDING', 'FROZEN', 'PAST_DUE'] },
+          },
+          transaction: t,
+        }
+      );
+    }
+
+    // 4. Terminate active staff assignments on this branch
+    if (GymStaff) {
+      await GymStaff.update(
+        { employmentStatus: 'TERMINATED' },
+        { where: { branchId, employmentStatus: 'ACTIVE' }, transaction: t }
+      );
+    }
+
+    // 5. Cancel any pending staff action requests for this branch
+    if (StaffActionRequest) {
+      await StaffActionRequest.update(
+        { status: 'CANCELLED' },
+        { where: { branchId, status: 'PENDING' }, transaction: t }
+      );
+    }
+
+    // 6. Deactivate/delete announcements, schedules, trainers for this branch
+    if (Announcement) {
+      await Announcement.destroy({ where: { branchId }, transaction: t });
+    }
+    if (ClassSchedule) {
+      await ClassSchedule.destroy({ where: { branchId }, transaction: t });
+    }
+    if (Trainer) {
+      await Trainer.update(
+        { status: 'INACTIVE' },
+        { where: { branchId }, transaction: t }
+      );
+    }
+
+    await t.commit();
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+
+  // 7. Update Platform GymListing cross-DB reference if linked
+  try {
+    const { GymListing } = require('../models/platform');
+    await GymListing.update(
+      { branchId: null },
+      { where: { branchId } }
+    );
+  } catch (platErr) {
+    console.warn('[Branch Deletion] Warning unlinking GymListing branchId:', platErr.message);
+  }
+
+  // 8. Re-sync minPrice for the gym profile
+  try {
+    await _syncMinPrice(tenantDb, branch.gymId);
+  } catch (syncErr) {
+    console.warn('[Branch Deletion] Warning re-syncing minPrice:', syncErr.message);
+  }
+
+  return { message: 'Branch deleted successfully' };
 };
 
 // ── Staff ─────────────────────────────────────────────────────────────────────
 
 const listStaff = async (tenantDb, branchId) => {
   const { Branch, GymStaff } = tenantDb.models;
-  const branch = await Branch.findByPk(branchId);
-  if (!branch) throw createError('Branch not found', 404);
+  const branch = await Branch.findOne({
+    where: { id: branchId, status: 'ACTIVE' },
+  });
+  if (!branch) throw createError('Branch not found or has been deleted', 404);
 
   const staff = await GymStaff.findAll({
     where: { branchId, employmentStatus: 'ACTIVE' },
@@ -464,12 +565,27 @@ const removeBranchImage = async (tenantDb, branchId, imageUrl) => {
  * Gym hosts only ever see their own gym's members.
  */
 const listMembers = async (tenantDb, tenantId, { q, status, branchId, page, limit, offset }) => {
-  const { MemberSubscription } = tenantDb.models;
+  const { MemberSubscription, Branch } = tenantDb.models;
 
-  const subWhere = {};
-  if (branchId) subWhere.branchId = branchId;
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) {
+    return { members: [], pagination: buildPagination(0, page, limit) };
+  }
 
-  // Get distinct userIds from tenant subscriptions
+  const subWhere = {
+    status: ['ACTIVE', 'PENDING', 'FROZEN'],
+  };
+  if (branchId) {
+    if (!activeBranchIds.includes(branchId)) {
+      return { members: [], pagination: buildPagination(0, page, limit) };
+    }
+    subWhere.branchId = branchId;
+  } else {
+    subWhere.branchId = { [Op.in]: activeBranchIds };
+  }
+
+  // Get distinct userIds from active tenant subscriptions
   const subscriptions = await MemberSubscription.findAll({
     where: subWhere,
     attributes: ['userId'],
@@ -532,8 +648,9 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found or inactive', 404);
 
-  const branch = await tenantDb.models.Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
-  if (!branch) throw createError('Branch not found or inactive', 404);
+  const branch = await tenantDb.models.Branch.findOne({ where: { id: branchId } });
+  if (!branch) throw createError('Branch not found', 404);
+  if (branch.status !== 'ACTIVE') throw createError(`Branch is not active (current status: ${branch.status})`, 404);
 
   const existing = await MemberSubscription.findOne({
     where: { userId: user.id, branchId, status: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN, SubscriptionStatus.PENDING] },
@@ -651,8 +768,15 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
 const listAllStaff = async (tenantDb) => {
   const { GymStaff, Branch } = tenantDb.models;
 
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id', 'branchName'] });
+  const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) return { staff: [] };
+
   const staffRecords = await GymStaff.findAll({
-    where: { employmentStatus: 'ACTIVE' },
+    where: {
+      employmentStatus: 'ACTIVE',
+      branchId: { [Op.in]: activeBranchIds },
+    },
     order: [['createdAt', 'ASC']],
   });
 
@@ -664,10 +788,7 @@ const listAllStaff = async (tenantDb) => {
     attributes: ['id', 'fullName', 'email', 'phone', 'status', 'role', 'profileImageUrl'],
   });
   const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
-
-  const allBranchIds = [...new Set(staffRecords.map((s) => s.branchId))];
-  const branches = await Branch.findAll({ where: { id: allBranchIds }, attributes: ['id', 'branchName'] });
-  const branchMap = Object.fromEntries(branches.map((b) => [b.id, b]));
+  const branchMap = Object.fromEntries(activeBranches.map((b) => [b.id, b]));
 
   const staff = staffRecords.map((s) => ({
     id: s.id,

@@ -66,7 +66,23 @@ const updateBranch = async (req, res, next) => {
 // ── DELETE /gyms/branches/:branchId ──────────────────────────────────────────
 const deleteBranch = async (req, res, next) => {
   try {
-    const result = await gymService.deleteBranch(req.tenantDb, req.params.branchId);
+    const { password } = req.body || {};
+    
+    // If password is sent (e.g. mobile confirmation dialog), verify it
+    if (password) {
+      const { User: PlatformUser } = require('../models/platform');
+      const bcrypt = require('bcrypt');
+      
+      const user = await PlatformUser.findByPk(req.user.sub);
+      if (user && user.passwordHash) {
+        const isMatch = await bcrypt.compare(password, user.passwordHash);
+        if (!isMatch) {
+          throw createError('Incorrect password', 401);
+        }
+      }
+    }
+
+    const result = await gymService.deleteBranch(req.tenantDb, req.params.branchId, req.user.sub);
     return sendSuccess(res, null, result.message);
   } catch (err) {
     next(err);

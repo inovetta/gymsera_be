@@ -1,0 +1,87 @@
+<html>
+<head>
+    <title>iisnode logs</title>
+    <style type="text/css">
+        body
+        {
+            font-family: "Trebuchet MS" , Arial, Helvetica, sans-serif;
+        }
+        table
+        {
+            border-collapse: collapse;
+        }
+        td, th
+        {
+            border: 1px solid lightgray;
+            padding: 3px 7px 2px 7px;
+        }
+        th
+        {
+            text-align: left;
+            padding-top: 5px;
+            padding-bottom: 4px;
+            background-color: Gray;
+            color: #ffffff;
+        }
+        td.stderr
+        {
+            color: Red;
+        }
+    </style>
+</head>
+<body>
+    <table id="logFilesTable">
+        <tr>
+            <th>
+                Computer name
+            </th>
+            <th>
+                PID
+            </th>
+            <th>
+                Type
+            </th>
+            <th>
+                Created
+            </th>
+            <th>
+                Link
+            </th>
+        </tr>
+    </table>
+    <p id="lastUpdated"></p>
+    <script type="text/javascript">
+
+        // this is replaced with actual data at runtime by code in interceptor.js
+        var logFiles = [{"file":"INOVETTATECH-12680-stderr-1786605853360.txt","computername":"INOVETTATECH","pid":12680,"type":"stderr","created":1786605853360},{"file":"INOVETTATECH-12680-stdout-1786605853357.txt","computername":"INOVETTATECH","pid":12680,"type":"stdout","created":1786605853357},{"file":"INOVETTATECH-13668-stderr-1786583522992.txt","computername":"INOVETTATECH","pid":13668,"type":"stderr","created":1786583522992},{"file":"INOVETTATECH-13668-stdout-1786583522988.txt","computername":"INOVETTATECH","pid":13668,"type":"stdout","created":1786583522988},{"file":"INOVETTATECH-15784-stderr-1786609641730.txt","computername":"INOVETTATECH","pid":15784,"type":"stderr","created":1786609641730},{"file":"INOVETTATECH-15784-stdout-1786609641723.txt","computername":"INOVETTATECH","pid":15784,"type":"stdout","created":1786609641723},{"file":"INOVETTATECH-20084-stderr-1786588414540.txt","computername":"INOVETTATECH","pid":20084,"type":"stderr","created":1786588414540},{"file":"INOVETTATECH-20084-stdout-1786588414530.txt","computername":"INOVETTATECH","pid":20084,"type":"stdout","created":1786588414530},{"file":"INOVETTATECH-21228-stderr-1786596592536.txt","computername":"INOVETTATECH","pid":21228,"type":"stderr","created":1786596592536},{"file":"INOVETTATECH-21228-stdout-1786596592533.txt","computername":"INOVETTATECH","pid":21228,"type":"stdout","created":1786596592533},{"file":"INOVETTATECH-21344-stderr-1786566862310.txt","computername":"INOVETTATECH","pid":21344,"type":"stderr","created":1786566862310},{"file":"INOVETTATECH-21344-stdout-1786566862308.txt","computername":"INOVETTATECH","pid":21344,"type":"stdout","created":1786566862308},{"file":"INOVETTATECH-2352-stderr-1786557940451.txt","computername":"INOVETTATECH","pid":2352,"type":"stderr","created":1786557940451},{"file":"INOVETTATECH-2352-stdout-1786557940437.txt","computername":"INOVETTATECH","pid":2352,"type":"stdout","created":1786557940437},{"file":"INOVETTATECH-4552-stderr-1786560748076.txt","computername":"INOVETTATECH","pid":4552,"type":"stderr","created":1786560748076},{"file":"INOVETTATECH-4552-stdout-1786560748054.txt","computername":"INOVETTATECH","pid":4552,"type":"stdout","created":1786560748054},{"file":"INOVETTATECH-4600-stderr-1786573511925.txt","computername":"INOVETTATECH","pid":4600,"type":"stderr","created":1786573511925},{"file":"INOVETTATECH-4600-stdout-1786573511920.txt","computername":"INOVETTATECH","pid":4600,"type":"stdout","created":1786573511920},{"file":"INOVETTATECH-5196-stderr-1786571629622.txt","computername":"INOVETTATECH","pid":5196,"type":"stderr","created":1786571629622},{"file":"INOVETTATECH-5196-stdout-1786571629620.txt","computername":"INOVETTATECH","pid":5196,"type":"stdout","created":1786571629620},{"file":"INOVETTATECH-636-stderr-1786556162581.txt","computername":"INOVETTATECH","pid":636,"type":"stderr","created":1786556162581},{"file":"INOVETTATECH-636-stdout-1786556162561.txt","computername":"INOVETTATECH","pid":636,"type":"stdout","created":1786556162561}];
+        var lastUpdated = 1786609644470;
+        var date = new Date();
+
+        date.setTime(lastUpdated);
+        document.getElementById('lastUpdated').innerHTML = 'Index was last updated ' + date;
+
+        logFiles.sort(function (a, b) {
+            return b.created - a.created;
+        });
+
+        var logFilesTable = document.getElementById("logFilesTable");
+        for (var i = 0; i < logFiles.length; i++) {
+            var logFile = logFiles[i];
+            date.setTime(logFile.created);
+            var row = logFilesTable.insertRow(-1);
+            var computerNameCell = row.insertCell(0);
+            var pidCell = row.insertCell(1);
+            var typeCell = row.insertCell(2);
+            var dateCell = row.insertCell(3);
+            var logCell = row.insertCell(4);
+            computerNameCell.innerHTML = logFile.computername;
+            pidCell.innerHTML = logFile.pid.toString();
+            typeCell.innerHTML = logFile.type;
+            typeCell.setAttribute('class', logFile.type);
+            dateCell.innerHTML = date.toString();
+            logCell.innerHTML = '<a href="' + logFile.file + '">log</a>';
+        };
+
+    </script>
+</body>
+</html>

@@ -440,9 +440,22 @@ const changePlan = async (userId, subscriptionId, newPlanId) => {
 const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, offset }) => {
   const { MemberSubscription, MembershipPlan, Branch, Payment } = tenantDb.models;
 
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const activeBranchIds = activeBranches.map((b) => b.id);
+  if (activeBranchIds.length === 0) {
+    return { count: 0, rows: [] };
+  }
+
   const where = {};
   if (status) where.status = status;
-  if (branchId) where.branchId = branchId;
+  if (branchId) {
+    if (!activeBranchIds.includes(branchId)) {
+      return { count: 0, rows: [] };
+    }
+    where.branchId = branchId;
+  } else {
+    where.branchId = { [Op.in]: activeBranchIds };
+  }
   if (userId) where.userId = userId;
 
   const { count, rows } = await MemberSubscription.findAndCountAll({
@@ -450,7 +463,7 @@ const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, o
     include: [
       { model: MembershipPlan, as: 'plan', attributes: ['id', 'name', 'price', 'durationType', 'durationValue'] },
       { model: MembershipPlan, as: 'pendingPlan', attributes: ['id', 'name', 'price', 'durationType', 'durationValue'] },
-      { model: Branch, as: 'branch', attributes: ['id', 'branchName'] },
+      { model: Branch, as: 'branch', attributes: ['id', 'branchName'], where: { status: 'ACTIVE' }, required: false },
     ],
     order: [['subscribedAt', 'DESC']],
     limit,
