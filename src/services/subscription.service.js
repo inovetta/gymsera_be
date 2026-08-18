@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const { GymListing, Tenant, UserGymMembership, User } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError, buildPagination } = require('../utils/response.utils');
@@ -219,7 +220,6 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   });
 
   // Check if they have any past approved/completed subscriptions at this branch
-  const { Op } = require('sequelize');
   const hasPreviousSubscription = await MemberSubscription.findOne({
     where: {
       userId,
@@ -671,7 +671,6 @@ const getUpgradeOptions = async (userId, subscriptionId) => {
   if (!currentPlan) throw createError('Current membership plan not found', 404);
 
   // List all other active membership plans at this branch (including gym-wide plans)
-  const { Op } = require('sequelize');
   const allPlans = await MembershipPlan.findAll({
     where: {
       branchId: {
