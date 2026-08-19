@@ -561,7 +561,22 @@ const listInvoices = async (tenantDb, requestingUserId, isHost, { userId, status
     offset,
   });
 
-  return { invoices: rows, pagination: buildPagination(count, page, limit) };
+  const userIds = [...new Set(rows.map((r) => r.userId).filter(Boolean))];
+  const { User } = require('../models/platform');
+  const users = userIds.length
+    ? await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
+      })
+    : [];
+  const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
+
+  const enrichedInvoices = rows.map((inv) => ({
+    ...inv.toJSON(),
+    user: userMap[inv.userId] || null,
+  }));
+
+  return { invoices: enrichedInvoices, pagination: buildPagination(count, page, limit) };
 };
 
 // ── GET /invoices/:id ──────────────────────────────────────────────────────────
