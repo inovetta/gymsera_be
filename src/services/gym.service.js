@@ -817,7 +817,35 @@ const createStaffUser = async (tenantDb, { fullName, email, phone, password, des
   const notificationsService = require('./notifications.service');
 
   const emailClean = email.toLowerCase().trim();
+
+  // Check if a staff/admin with this email already exists and is active in this gym
+  const existingActiveStaff = await GymStaff.findOne({
+    where: {
+      email: emailClean,
+      employmentStatus: 'ACTIVE',
+    }
+  });
+
   let existingUser = await User.findOne({ where: { email: emailClean } });
+  let userActiveStaff = null;
+  if (existingUser) {
+    userActiveStaff = await GymStaff.findOne({
+      where: {
+        userId: existingUser.id,
+        employmentStatus: 'ACTIVE',
+      }
+    });
+  }
+
+  const conflictStaff = existingActiveStaff || userActiveStaff;
+  if (conflictStaff) {
+    const existingRole = conflictStaff.designation || 'Staff/Admin';
+    throw createError(
+      `User with email "${emailClean}" is already assigned as ${existingRole}. Please remove them from ${existingRole} first before assigning a new role.`,
+      409
+    );
+  }
+
   let tempPasswordGenerated = null;
 
   if (!existingUser) {
@@ -923,9 +951,19 @@ const createStaffUser = async (tenantDb, { fullName, email, phone, password, des
  */
 const removeStaffUser = async (tenantDb, staffUserId) => {
   const { GymStaff } = tenantDb.models;
+  const { Op } = require('sequelize');
+
   const [updated] = await GymStaff.update(
-    { employmentStatus: 'TERMINATED' },
-    { where: { userId: staffUserId, employmentStatus: 'ACTIVE' } }
+    { employmentStatus: 'TERMINATED', status: 'declined' },
+    {
+      where: {
+        [Op.or]: [
+          { userId: staffUserId },
+          { email: String(staffUserId).toLowerCase().trim() }
+        ],
+        employmentStatus: 'ACTIVE'
+      }
+    }
   );
   if (updated === 0) throw createError('No active staff assignments found for this user', 404);
   return { message: 'Staff user removed from all branches' };
