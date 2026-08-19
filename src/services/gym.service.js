@@ -811,10 +811,30 @@ const listAllStaff = async (tenantDb) => {
  */
 const createStaffUser = async (tenantDb, { fullName, email, phone, password, designation, branchIds, assignToAllBranches }) => {
   const { GymStaff, Branch } = tenantDb.models;
-  const { User } = require('../models/platform');
+  const { User, Tenant } = require('../models/platform');
+  const bcrypt = require('bcryptjs');
+  const crypto = require('crypto');
+  const notificationsService = require('./notifications.service');
 
   const emailClean = email.toLowerCase().trim();
-  const existingUser = await User.findOne({ where: { email: emailClean } });
+  let existingUser = await User.findOne({ where: { email: emailClean } });
+  let tempPasswordGenerated = null;
+
+  if (!existingUser) {
+    tempPasswordGenerated = password || (crypto.randomBytes(4).toString('hex') + '!Aa1');
+    const passwordHash = await bcrypt.hash(tempPasswordGenerated, 12);
+    existingUser = await User.create({
+      fullName: fullName || emailClean.split('@')[0],
+      email: emailClean,
+      phone: phone || null,
+      passwordHash,
+      role: 'BRANCH_MANAGER',
+      status: 'ACTIVE',
+      emailVerified: true,
+    });
+  } else if (existingUser.role === 'MEMBER') {
+    await existingUser.update({ role: 'BRANCH_MANAGER' });
+  }
 
   let targetBranchIds = branchIds || [];
   if (assignToAllBranches) {
@@ -823,69 +843,77 @@ const createStaffUser = async (tenantDb, { fullName, email, phone, password, des
   }
 
   const staffRecords = [];
-  const notificationsService = require('./notifications.service');
-  const { Tenant } = require('../models/platform');
   const tenant = await Tenant.findByPk(tenantDb.tenantId);
   const gymName = tenant ? tenant.gymName : 'your gym';
 
   for (const branchId of targetBranchIds) {
     // Check if staff assignment already exists
-    const existingStaff = await GymStaff.findOne({
+    let staffMember = await GymStaff.findOne({
       where: {
         branchId,
-        ...(existingUser ? { userId: existingUser.id } : { email: emailClean }),
+        userId: existingUser.id,
       }
     });
 
-    if (existingStaff) {
-      staffRecords.push(existingStaff);
+    if (!staffMember) {
+      staffMember = await GymStaff.findOne({
+        where: {
+          branchId,
+          email: emailClean,
+        }
+      });
+    }
+
+    if (staffMember) {
+      await staffMember.update({
+        userId: existingUser.id,
+        email: emailClean,
+        designation: designation || staffMember.designation || 'Staff',
+        employmentStatus: 'ACTIVE',
+        status: 'active',
+      });
+      staffRecords.push(staffMember);
       continue;
     }
 
-    const staffMember = await GymStaff.create({
-      userId: existingUser ? existingUser.id : null,
-      email: existingUser ? null : emailClean,
+    staffMember = await GymStaff.create({
+      userId: existingUser.id,
+      email: emailClean,
       branchId,
       designation: designation || 'Staff',
       employmentStatus: 'ACTIVE',
-      status: 'pending',
+      status: 'active',
     });
     staffRecords.push(staffMember);
 
-    // If user exists, create high-priority notification immediately
-    if (existingUser) {
-      try {
-        const br = await Branch.findByPk(branchId);
-        const brName = br ? br.branchName : 'branch';
-        await notificationsService.createNotification({
-          userId: existingUser.id,
-          role: 'traveler',
-          type: 'staff_invite',
-          title: 'Staff Invitation',
-          message: `You've been invited to join ${brName} as staff by ${gymName}. Tap to view details.`,
-          priority: 'high',
-          deepLink: `/traveler/staff-invite-confirmation?staffId=${staffMember.id}&tenantId=${tenantDb.tenantId}`,
-          metadataJson: { staffId: staffMember.id, branchId, tenantId: tenantDb.tenantId }
-        });
-      } catch (notifErr) {
-        console.warn('[Notification Error] Failed to create staff invite notification:', notifErr.message);
-      }
+    // Create notification
+    try {
+      const br = await Branch.findByPk(branchId);
+      const brName = br ? br.branchName : 'branch';
+      await notificationsService.createNotification({
+        userId: existingUser.id,
+        role: 'traveler',
+        type: 'staff_invite',
+        title: 'Staff / Admin Assignment',
+        message: `You've been assigned to ${brName} as ${designation || 'staff'} for ${gymName}.`,
+        priority: 'normal',
+        metadataJson: { staffId: staffMember.id, branchId, tenantId: tenantDb.tenantId }
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Error] Failed to create staff assignment notification:', notifErr.message);
     }
   }
 
   return {
-    user: existingUser ? {
+    user: {
       id: existingUser.id,
       fullName: existingUser.fullName,
       email: existingUser.email,
       phone: existingUser.phone || null,
       role: existingUser.role,
       status: existingUser.status,
-    } : {
-      email: emailClean,
-      fullName: fullName,
-      status: 'INVITE_PENDING'
     },
+    tempPassword: tempPasswordGenerated,
     assignedBranches: staffRecords.length,
   };
 };

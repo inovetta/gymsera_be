@@ -264,25 +264,42 @@ const getStaffStatus = async (req, res, next) => {
   try {
     const { Tenant } = require('../models/platform');
     const TenantDbManager = require('../database/TenantDbManager');
+    const { Op } = require('sequelize');
 
     const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
     const branches = [];
+    const userEmail = req.user.email ? req.user.email.toLowerCase().trim() : '';
 
     for (const tenant of tenants) {
       try {
         const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
         const { GymStaff, Branch } = tenantDb.models;
 
+        const whereCondition = {
+          employmentStatus: 'ACTIVE',
+        };
+
+        if (userEmail) {
+          whereCondition[Op.or] = [
+            { userId: req.user.id },
+            { email: userEmail }
+          ];
+        } else {
+          whereCondition.userId = req.user.id;
+        }
+
         const staffRecords = await GymStaff.findAll({
-          where: {
-            userId: req.user.id,
-            status: 'active'
-          }
+          where: whereCondition
         });
 
         for (const staff of staffRecords) {
+          // If staff was matched by email or was pending, link and activate
+          if (!staff.userId || staff.status !== 'active') {
+            await staff.update({ userId: req.user.id, status: 'active' });
+          }
+
           const branch = await Branch.findByPk(staff.branchId);
-          if (branch) {
+          if (branch && branch.status === 'ACTIVE') {
             branches.push({
               branchId: branch.id,
               tenantId: tenant.id,
@@ -298,7 +315,7 @@ const getStaffStatus = async (req, res, next) => {
     }
 
     return sendSuccess(res, {
-      isStaff: branches.length > 0,
+      isStaff: branches.length > 0 || req.user.role === 'BRANCH_MANAGER' || req.user.role === 'ADMIN',
       branches
     }, 'Staff status retrieved');
   } catch (err) {
