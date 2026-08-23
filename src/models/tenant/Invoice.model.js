@@ -58,6 +58,21 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: InvoiceStatus.DRAFT,
       },
+      // Branch this invoice belongs to
+      branchId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // Platform user ID who created this invoice
+      createdBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // Role of creator ('HOST' | 'ADMIN' | 'STAFF' | 'MEMBER' | 'SYSTEM')
+      createdByRole: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+      },
     },
     {
       tableName: 'invoices',

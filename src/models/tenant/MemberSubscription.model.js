@@ -84,6 +84,16 @@ module.exports = (sequelize) => {
         type: DataTypes.DATEONLY,
         allowNull: true,
       },
+      // Platform user ID who created/initiated this subscription
+      createdBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // Role of creator ('HOST' | 'ADMIN' | 'STAFF' | 'MEMBER' | 'SYSTEM')
+      createdByRole: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+      },
     },
     {
       tableName: 'member_subscriptions',

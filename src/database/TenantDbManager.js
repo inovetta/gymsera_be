@@ -46,6 +46,31 @@ class TenantDbManager {
 
     const models = registerTenantModels(sequelize);
 
+    try {
+      // Safe column migration for audit tracking across tenant tables
+      const queryInterface = sequelize.getQueryInterface();
+      const subCols = await queryInterface.describeTable('member_subscriptions').catch(() => ({}));
+      if (subCols && !subCols.created_by) {
+        await sequelize.query('ALTER TABLE member_subscriptions ADD COLUMN created_by CHAR(36) NULL').catch(() => {});
+      }
+      if (subCols && !subCols.created_by_role) {
+        await sequelize.query('ALTER TABLE member_subscriptions ADD COLUMN created_by_role VARCHAR(30) NULL').catch(() => {});
+      }
+
+      const invCols = await queryInterface.describeTable('invoices').catch(() => ({}));
+      if (invCols && !invCols.branch_id) {
+        await sequelize.query('ALTER TABLE invoices ADD COLUMN branch_id CHAR(36) NULL').catch(() => {});
+      }
+      if (invCols && !invCols.created_by) {
+        await sequelize.query('ALTER TABLE invoices ADD COLUMN created_by CHAR(36) NULL').catch(() => {});
+      }
+      if (invCols && !invCols.created_by_role) {
+        await sequelize.query('ALTER TABLE invoices ADD COLUMN created_by_role VARCHAR(30) NULL').catch(() => {});
+      }
+    } catch (migErr) {
+      console.warn(`[TenantDbManager] Column check warning for tenant ${tenantId}:`, migErr.message);
+    }
+
     if (process.env.NODE_ENV === 'development') {
       try {
         await sequelize.sync({ force: false, alter: true });

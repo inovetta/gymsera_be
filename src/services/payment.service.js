@@ -14,7 +14,7 @@ const _invoiceNo = () => {
   return `INV-${date}-${rand}`;
 };
 
-const _createInvoice = async (models, { userId, payment, subscription, plan }) => {
+const _createInvoice = async (models, { userId, payment, subscription, plan, createdBy, createdByRole, branchId }) => {
   const { Invoice } = models;
 
   const totalAmount = parseFloat(payment.amount);
@@ -29,6 +29,7 @@ const _createInvoice = async (models, { userId, payment, subscription, plan }) =
     invoiceNo: _invoiceNo(),
     invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
+    branchId: branchId || subscription?.branchId || payment?.branchId || null,
     subtotal,
     discountAmount: 0,
     taxAmount: 0,
@@ -38,6 +39,8 @@ const _createInvoice = async (models, { userId, payment, subscription, plan }) =
     status: payment.status === PaymentStatus.COMPLETED
       ? InvoiceStatus.PAID
       : InvoiceStatus.ISSUED,
+    createdBy: createdBy || payment?.createdBy || null,
+    createdByRole: createdByRole || payment?.createdByRole || null,
   });
 };
 
@@ -73,7 +76,9 @@ const _activateSubscription = async (tenantDb, subscriptionId) => {
  */
 const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
   const { Payment, MemberSubscription, MembershipPlan } = tenantDb.models;
+  const { resolveCreatorRole } = require('../utils/audit.utils');
 
+  const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
   const autoComplete = creatorRole === 'GYM_HOST' || data.method === 'TEST';
 
   const payment = await Payment.create({
@@ -91,8 +96,8 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
     status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
     paidAt: autoComplete ? new Date() : null,
     notes: data.notes || null,
-    createdBy: staffUserId,
-    createdByRole: creatorRole,
+    createdBy: staffUserId || null,
+    createdByRole: resolvedRole,
   });
 
   let invoice = null;
@@ -102,7 +107,15 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
     if (subscription) {
       const plan = await MembershipPlan.findByPk(subscription.membershipPlanId);
       if (plan) {
-        invoice = await _createInvoice(tenantDb.models, { userId: data.userId, payment, subscription, plan });
+        invoice = await _createInvoice(tenantDb.models, {
+          userId: data.userId,
+          payment,
+          subscription,
+          plan,
+          createdBy: staffUserId,
+          createdByRole: resolvedRole,
+          branchId: data.branchId || subscription.branchId,
+        });
       }
       if (autoComplete) {
         await _activateSubscription(tenantDb, data.referenceEntityId);
@@ -181,25 +194,10 @@ const listPayments = async (tenantDb, { userId, branchId, status, method, from, 
     where,
     order: [['createdAt', 'DESC']],
     limit,
-    offset,
-  });
+  const { enrichAuditDetails } = require('../utils/audit.utils');
+  const enrichedPayments = await enrichAuditDetails(tenantDb, rows);
 
-  // Enrich with User details from Platform DB
-  const userIds = [...new Set(rows.map((r) => r.userId))];
-  const users = userIds.length
-    ? await User.findAll({
-      where: { id: userIds },
-      attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
-    })
-    : [];
-  const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
-
-  const payments = rows.map((r) => ({
-    ...r.toJSON(),
-    user: userMap[r.userId] || null,
-  }));
-
-  return { payments, pagination: buildPagination(count, page, limit) };
+  return { payments: enrichedPayments, pagination: buildPagination(count, page, limit) };
 };
 
 // ── GET /payments/:id ─────────────────────────────────────────────────────────
@@ -207,7 +205,10 @@ const getPayment = async (tenantDb, paymentId) => {
   const { Payment } = tenantDb.models;
   const payment = await Payment.findByPk(paymentId);
   if (!payment) throw createError('Payment not found', 404);
-  return payment;
+
+  const { enrichAuditDetails } = require('../utils/audit.utils');
+  const [enriched] = await enrichAuditDetails(tenantDb, [payment]);
+  return enriched;
 };
 
 // ── POST /payments/:id/verify ──────────────────────────────────────────────────
@@ -558,23 +559,8 @@ const listInvoices = async (tenantDb, requestingUserId, isHost, { userId, status
     where,
     order: [['createdAt', 'DESC']],
     limit,
-    offset,
-  });
-
-  const userIds = [...new Set(rows.map((r) => r.userId).filter(Boolean))];
-  const { User } = require('../models/platform');
-  const users = userIds.length
-    ? await User.findAll({
-      where: { id: userIds },
-      attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
-    })
-    : [];
-  const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
-
-  const enrichedInvoices = rows.map((inv) => ({
-    ...inv.toJSON(),
-    user: userMap[inv.userId] || null,
-  }));
+  const { enrichAuditDetails } = require('../utils/audit.utils');
+  const enrichedInvoices = await enrichAuditDetails(tenantDb, rows);
 
   return { invoices: enrichedInvoices, pagination: buildPagination(count, page, limit) };
 };
@@ -587,7 +573,10 @@ const getInvoice = async (tenantDb, invoiceId, requestingUserId, isHost) => {
 
   const invoice = await Invoice.findOne({ where });
   if (!invoice) throw createError('Invoice not found', 404);
-  return invoice;
+
+  const { enrichAuditDetails } = require('../utils/audit.utils');
+  const [enriched] = await enrichAuditDetails(tenantDb, [invoice]);
+  return enriched;
 };
 
 module.exports = {

@@ -204,6 +204,8 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     subscribedAt: new Date(),
     remainingVisits: plan.visitLimit ?? null,
     sourceChannel: sourceChannel ?? 'ONLINE',
+    createdBy: userId,
+    createdByRole: 'MEMBER',
   });
 
   // Write cross-tenant index (PENDING until payment verified)
@@ -471,35 +473,29 @@ const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, o
     distinct: true,
   });
 
-  // Enrich with platform DB user info and latest payment
-  const userIds = [...new Set(rows.map((r) => r.userId))];
-  const users = userIds.length
-    ? await User.findAll({
-        where: { id: userIds },
-        attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
-      })
-    : [];
-  const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
+  const { enrichAuditDetails } = require('../utils/audit.utils');
+  const enrichedSubs = await enrichAuditDetails(tenantDb, rows);
 
   // Fetch latest payment per subscription
   const subIds = rows.map((r) => r.id);
   const payments = subIds.length
     ? await Payment.findAll({
         where: { referenceEntityId: subIds, paymentFor: 'MEMBERSHIP' },
-        attributes: ['id', 'referenceEntityId', 'status', 'method', 'amount', 'proofUrl', 'createdAt'],
+        attributes: ['id', 'referenceEntityId', 'status', 'method', 'amount', 'proofUrl', 'createdBy', 'createdByRole', 'verifiedBy', 'verifiedAt', 'createdAt'],
         order: [['createdAt', 'DESC']],
       })
     : [];
+  const enrichedPayments = await enrichAuditDetails(tenantDb, payments);
+
   // Keep only the latest payment per subscription
   const paymentMap = {};
-  for (const p of payments) {
-    if (!paymentMap[p.referenceEntityId]) paymentMap[p.referenceEntityId] = p.toJSON();
+  for (const p of enrichedPayments) {
+    if (!paymentMap[p.referenceEntityId]) paymentMap[p.referenceEntityId] = p;
   }
 
-  const subscriptions = rows.map((r) => ({
-    ...r.toJSON(),
-    user: userMap[r.userId] || null,
-    latestPayment: paymentMap[r.id] || null,
+  const subscriptions = enrichedSubs.map((s) => ({
+    ...s,
+    latestPayment: paymentMap[s.id] || null,
   }));
 
   return {
@@ -521,21 +517,22 @@ const getForStaff = async (tenantDb, subscriptionId) => {
   });
   if (!sub) throw createError('Subscription not found', 404);
 
-  const user = await User.findByPk(sub.userId, {
-    attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
-  });
+  const { enrichAuditDetails } = require('../utils/audit.utils');
+  const [enrichedSub] = await enrichAuditDetails(tenantDb, [sub]);
 
   const payments = await Payment.findAll({
     where: { referenceEntityId: subscriptionId, paymentFor: 'MEMBERSHIP' },
     order: [['createdAt', 'DESC']],
   });
+  const enrichedPayments = await enrichAuditDetails(tenantDb, payments);
 
   const invoice = await Invoice.findOne({
     where: { referenceEntityId: subscriptionId },
     order: [['createdAt', 'DESC']],
   });
+  const [enrichedInvoice] = invoice ? await enrichAuditDetails(tenantDb, [invoice]) : [null];
 
-  return { subscription: { ...sub.toJSON(), user }, payments, invoice };
+  return { subscription: enrichedSub, payments: enrichedPayments, invoice: enrichedInvoice };
 };
 
 // ── Preview: dry-run date + price calculation without DB commit ───────────────

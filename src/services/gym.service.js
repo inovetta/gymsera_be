@@ -664,6 +664,9 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
 
   await MemberProfile.findOrCreate({ where: { userId: user.id }, defaults: { userId: user.id } });
 
+  const { resolveCreatorRole } = require('../utils/audit.utils');
+  const creatorRole = await resolveCreatorRole(tenantDb, enrollerId, enrollerRole, branchId);
+
   const subscription = await MemberSubscription.create({
     userId: user.id,
     branchId,
@@ -677,6 +680,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     remainingVisits: plan.visitLimit ?? null,
     sourceChannel: 'WALK_IN',
     notes: notes || null,
+    createdBy: enrollerId || null,
+    createdByRole: creatorRole,
   });
 
   // Create unified Host notification for staff action pending approval
@@ -739,7 +744,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     currency: 'PKR',
     status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
     paidAt: autoComplete ? new Date() : null,
-    createdByRole: enrollerRole,
+    createdBy: enrollerId || null,
+    createdByRole: creatorRole,
   });
 
   const invoice = await Invoice.create({
@@ -747,6 +753,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     invoiceNo: _invoiceNo(),
     invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
+    branchId,
     subtotal,
     discountAmount: 0,
     taxAmount: 0,
@@ -754,6 +761,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     dueDate: new Date().toISOString().split('T')[0],
     paidAt: autoComplete ? new Date() : null,
     status: autoComplete ? InvoiceStatus.PAID : InvoiceStatus.ISSUED,
+    createdBy: enrollerId || null,
+    createdByRole: creatorRole,
   });
 
   return { user, subscription, userCreated, payment, invoice };
