@@ -194,6 +194,9 @@ const listPayments = async (tenantDb, { userId, branchId, status, method, from, 
     where,
     order: [['createdAt', 'DESC']],
     limit,
+    offset,
+  });
+
   const { enrichAuditDetails } = require('../utils/audit.utils');
   const enrichedPayments = await enrichAuditDetails(tenantDb, rows);
 
@@ -559,6 +562,9 @@ const listInvoices = async (tenantDb, requestingUserId, isHost, { userId, status
     where,
     order: [['createdAt', 'DESC']],
     limit,
+    offset,
+  });
+
   const { enrichAuditDetails } = require('../utils/audit.utils');
   const enrichedInvoices = await enrichAuditDetails(tenantDb, rows);
 
