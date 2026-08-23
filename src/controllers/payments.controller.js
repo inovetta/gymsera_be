@@ -35,12 +35,12 @@ const listPayments = async (req, res, next) => {
     }
 
     const result = await paymentService.listPayments(req.tenantDb, {
-      userId:   userId   || null,
+      userId: userId || null,
       branchId: branchId || null,
-      status:   status   || null,
-      method:   method   || null,
-      from:     from     || null,
-      to:       to       || null,
+      status: status || null,
+      method: method || null,
+      from: from || null,
+      to: to || null,
       page,
       limit,
       offset,
@@ -125,8 +125,8 @@ const listInvoices = async (req, res, next) => {
     const result = await paymentService.listInvoices(req.tenantDb, req.user.id, isHost, {
       userId: userId || null,
       status: status || null,
-      from:   from   || null,
-      to:     to     || null,
+      from: from || null,
+      to: to || null,
       page,
       limit,
       offset,

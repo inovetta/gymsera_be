@@ -67,12 +67,12 @@ const updateBranch = async (req, res, next) => {
 const deleteBranch = async (req, res, next) => {
   try {
     const { password } = req.body || {};
-    
+
     // If password is sent (e.g. mobile confirmation dialog), verify it
     if (password) {
       const { User: PlatformUser } = require('../models/platform');
       const bcrypt = require('bcrypt');
-      
+
       const user = await PlatformUser.findByPk(req.user.sub);
       if (user && user.passwordHash) {
         const isMatch = await bcrypt.compare(password, user.passwordHash);
@@ -151,7 +151,7 @@ const uploadLogo = async (req, res, next) => {
   try {
     if (!req.file) throw createError('Image file is required', 422);
     const { gym } = await gymService.getProfile(req.tenantDb, req.user.tenantId);
-    if (gym.logoUrl) await storageService.deleteImage(gym.logoUrl).catch(() => {});
+    if (gym.logoUrl) await storageService.deleteImage(gym.logoUrl).catch(() => { });
     const logoUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/logos', `gym-${req.user.tenantId}`);
     await gymService.updateProfile(req.tenantDb, req.user.tenantId, { logoUrl });
     return sendSuccess(res, { logoUrl }, 'Logo uploaded');
@@ -165,7 +165,7 @@ const uploadCover = async (req, res, next) => {
   try {
     if (!req.file) throw createError('Image file is required', 422);
     const { gym } = await gymService.getProfile(req.tenantDb, req.user.tenantId);
-    if (gym.coverImageUrl) await storageService.deleteImage(gym.coverImageUrl).catch(() => {});
+    if (gym.coverImageUrl) await storageService.deleteImage(gym.coverImageUrl).catch(() => { });
     const coverImageUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/covers', `gym-${req.user.tenantId}`);
     await gymService.updateProfile(req.tenantDb, req.user.tenantId, { coverImageUrl });
     return sendSuccess(res, { coverImageUrl }, 'Cover image uploaded');
@@ -191,7 +191,7 @@ const deleteGymImage = async (req, res, next) => {
   try {
     const { imageUrl } = req.body;
     if (!imageUrl) throw createError('imageUrl is required', 422);
-    await storageService.deleteImage(imageUrl).catch(() => {});
+    await storageService.deleteImage(imageUrl).catch(() => { });
     const result = await gymService.removeGymImage(req.tenantDb, req.user.tenantId, imageUrl);
     return sendSuccess(res, { gym: result.gym }, 'Image removed');
   } catch (err) {
@@ -218,7 +218,7 @@ const deleteBranchImage = async (req, res, next) => {
     const { imageUrl } = req.body;
     if (!imageUrl) throw createError('imageUrl is required', 422);
     const storageService = require('../services/storage.service');
-    await storageService.deleteImage(imageUrl).catch(() => {});
+    await storageService.deleteImage(imageUrl).catch(() => { });
     const result = await gymService.removeBranchImage(req.tenantDb, req.params.branchId, imageUrl);
     return sendSuccess(res, { branch: result.branch }, 'Image removed');
   } catch (err) {
@@ -310,12 +310,12 @@ const getBranchListingContent = async (req, res, next) => {
 const updateBranchListingContent = async (req, res, next) => {
   try {
     const { branchId } = req.params;
-    const { 
-      branchName, 
-      tagline, 
-      category, 
-      tagsJson, 
-      facilitiesJson, 
+    const {
+      branchName,
+      tagline,
+      category,
+      tagsJson,
+      facilitiesJson,
       imagesJson,
       openingTime,
       closingTime,

@@ -1,9 +1,9 @@
 const { Router } = require('express');
-const controller    = require('../controllers/attendance.controller');
-const validators    = require('../validators/attendance.validator');
-const validate      = require('../middleware/validate');
-const authenticate  = require('../middleware/authenticate');
-const authorize     = require('../middleware/authorize');
+const controller = require('../controllers/attendance.controller');
+const validators = require('../validators/attendance.validator');
+const validate = require('../middleware/validate');
+const authenticate = require('../middleware/authenticate');
+const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
 
 const router = Router();

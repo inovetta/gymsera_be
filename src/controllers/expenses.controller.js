@@ -58,16 +58,37 @@ const createExpenseCategory = async (req, res, next) => {
 };
 
 /**
+ * Helper to check if caller is GYM_HOST or assigned Admin of the branch
+ */
+const isHostOrAdmin = async (req, branchId) => {
+  if (req.user.role === 'GYM_HOST' || req.user.isHost === true) {
+    return true;
+  }
+  if (req.user.role === 'BRANCH_MANAGER') {
+    const staff = await req.tenantDb.models.GymStaff.findOne({
+      where: {
+        branchId,
+        userId: req.user.id,
+        status: 'active',
+      },
+    });
+    if (staff && (staff.designation || '').trim().toLowerCase() === 'admin') {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
  * GET /host/branches/:branchId/expenses
  */
 const listExpenses = async (req, res, next) => {
   try {
-    const isHost = req.user.role === 'GYM_HOST' || req.user.isHost === true;
-    if (!isHost) {
-      throw createError('Access denied: Expense list and financial data are host-only.', 403);
-    }
-
     const { branchId } = req.params;
+    const hasAccess = await isHostOrAdmin(req, branchId);
+    if (!hasAccess) {
+      throw createError('Access denied: Expense list and financial data are host and admin only.', 403);
+    }
     const { category, from, to, status, page = 1, limit = 20 } = req.query;
     const { Expense, ExpenseCategory } = req.tenantDb.models;
 
@@ -163,10 +184,10 @@ const createExpense = async (req, res, next) => {
       throw createError('Expense category not found', 404);
     }
 
-    const isHost = req.user.role === 'GYM_HOST' || req.user.isHost === true;
+    const hasAccess = await isHostOrAdmin(req, branchId);
 
-    // If caller is HOST: Create direct Expense row in DB
-    if (isHost) {
+    // If caller is HOST or ADMIN: Create direct Expense row in DB
+    if (hasAccess) {
       const expense = await Expense.create({
         branchId,
         categoryId,
@@ -267,12 +288,12 @@ const createExpense = async (req, res, next) => {
  */
 const getExpenseDetail = async (req, res, next) => {
   try {
-    const isHost = req.user.role === 'GYM_HOST' || req.user.isHost === true;
-    if (!isHost) {
-      throw createError('Access denied: Expense details are host-only.', 403);
+    const { branchId, expenseId } = req.params;
+    const hasAccess = await isHostOrAdmin(req, branchId);
+    if (!hasAccess) {
+      throw createError('Access denied: Expense details are host and admin only.', 403);
     }
 
-    const { branchId, expenseId } = req.params;
     const { Expense, ExpenseCategory } = req.tenantDb.models;
 
     const expense = await Expense.findOne({
@@ -298,12 +319,12 @@ const getExpenseDetail = async (req, res, next) => {
  */
 const updateExpense = async (req, res, next) => {
   try {
-    const isHost = req.user.role === 'GYM_HOST' || req.user.isHost === true;
-    if (!isHost) {
-      throw createError('Access denied: Modifying expenses is host-only.', 403);
+    const { branchId, expenseId } = req.params;
+    const hasAccess = await isHostOrAdmin(req, branchId);
+    if (!hasAccess) {
+      throw createError('Access denied: Modifying expenses is host and admin only.', 403);
     }
 
-    const { branchId, expenseId } = req.params;
     const { updateSeries = false } = req.query;
     const {
       categoryId,
@@ -385,12 +406,12 @@ const updateExpense = async (req, res, next) => {
  */
 const deleteExpense = async (req, res, next) => {
   try {
-    const isHost = req.user.role === 'GYM_HOST' || req.user.isHost === true;
-    if (!isHost) {
-      throw createError('Access denied: Deleting expenses is host-only.', 403);
+    const { branchId, expenseId } = req.params;
+    const hasAccess = await isHostOrAdmin(req, branchId);
+    if (!hasAccess) {
+      throw createError('Access denied: Deleting expenses is host and admin only.', 403);
     }
 
-    const { branchId, expenseId } = req.params;
     const { deleteSeries = false } = req.query;
     const { Expense } = req.tenantDb.models;
 
@@ -433,11 +454,11 @@ const deleteExpense = async (req, res, next) => {
  */
 const getExpenseSummary = async (req, res, next) => {
   try {
-    const isHost = req.user.role === 'GYM_HOST' || req.user.isHost === true;
-    if (!isHost) {
-      throw createError('Access denied: Financial totals and summaries are host-only.', 403);
-    }
     const { branchId } = req.params;
+    const hasAccess = await isHostOrAdmin(req, branchId);
+    if (!hasAccess) {
+      throw createError('Access denied: Financial totals and summaries are host and admin only.', 403);
+    }
     const { from, to, period = 'month' } = req.query;
     const { Expense, ExpenseCategory, Payment } = req.tenantDb.models;
 

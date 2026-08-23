@@ -11,16 +11,16 @@ const validate = require('../middleware/validate');
 const router = Router();
 
 // Expense Categories
-router.get('/expense-categories', authenticate, tenantContext, expensesController.listExpenseCategories);
-router.post('/expense-categories', authenticate, tenantContext, expensesController.createExpenseCategory);
+router.get('/expense-categories', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.listExpenseCategories);
+router.post('/expense-categories', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.createExpenseCategory);
 
 // Branch Expenses
-router.get('/branches/:branchId/expenses', authenticate, tenantContext, expensesController.listExpenses);
-router.post('/branches/:branchId/expenses', authenticate, tenantContext, expensesController.createExpense);
-router.get('/branches/:branchId/expenses/summary', authenticate, tenantContext, expensesController.getExpenseSummary);
-router.get('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, expensesController.getExpenseDetail);
-router.patch('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, expensesController.updateExpense);
-router.delete('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, expensesController.deleteExpense);
+router.get('/branches/:branchId/expenses', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.listExpenses);
+router.post('/branches/:branchId/expenses', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.createExpense);
+router.get('/branches/:branchId/expenses/summary', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.getExpenseSummary);
+router.get('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.getExpenseDetail);
+router.patch('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.updateExpense);
+router.delete('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.deleteExpense);
 
 router.get('/today-summary', authenticate, authorize('GYM_HOST'), hostController.getTodaySummary);
 router.get('/branch-quota', authenticate, authorize('GYM_HOST'), hostController.getBranchQuota);

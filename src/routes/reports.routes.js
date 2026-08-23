@@ -1,7 +1,7 @@
 const { Router } = require('express');
-const controller    = require('../controllers/reports.controller');
-const authenticate  = require('../middleware/authenticate');
-const authorize     = require('../middleware/authorize');
+const controller = require('../controllers/reports.controller');
+const authenticate = require('../middleware/authenticate');
+const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
 
 const router = Router();

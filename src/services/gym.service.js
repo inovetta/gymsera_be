@@ -15,12 +15,12 @@ const _invoiceNo = () => {
 const _calcEndDate = (startDate, durationType, durationValue) => {
   const d = new Date(startDate);
   switch (durationType) {
-    case 'DAILY':     d.setDate(d.getDate() + durationValue); break;
-    case 'WEEKLY':    d.setDate(d.getDate() + durationValue * 7); break;
-    case 'MONTHLY':   d.setMonth(d.getMonth() + durationValue); break;
+    case 'DAILY': d.setDate(d.getDate() + durationValue); break;
+    case 'WEEKLY': d.setDate(d.getDate() + durationValue * 7); break;
+    case 'MONTHLY': d.setMonth(d.getMonth() + durationValue); break;
     case 'QUARTERLY': d.setMonth(d.getMonth() + durationValue * 3); break;
-    case 'YEARLY':    d.setFullYear(d.getFullYear() + durationValue); break;
-    default:          d.setMonth(d.getMonth() + 1);
+    case 'YEARLY': d.setFullYear(d.getFullYear() + durationValue); break;
+    default: d.setMonth(d.getMonth() + 1);
   }
   return d.toISOString().split('T')[0];
 };
@@ -685,7 +685,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
       const { Tenant, User: PlatformUser } = require('../models/platform');
       const notificationsService = require('./notifications.service');
       const tenant = await Tenant.findByPk(tenantId);
-      
+
       const staffUser = enrollerId ? await PlatformUser.findByPk(enrollerId) : null;
       const staffName = staffUser ? staffUser.fullName : 'Staff';
 
@@ -718,42 +718,42 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
       startDate: start,
       endDate: end,
       status: autoComplete ? SubscriptionStatus.ACTIVE : SubscriptionStatus.PENDING,
-    }).catch(() => {}); // ignore duplicate
+    }).catch(() => { }); // ignore duplicate
   }
 
   // Walk-in enrollment: create payment record.
   // GYM_HOST enrollments auto-complete; staff enrollments go to PENDING (collect box).
   const { Payment, Invoice } = tenantDb.models;
-  const subtotal    = parseFloat(plan.price);
-  const joining     = parseFloat(plan.joiningFee  || 0);
-  const security    = parseFloat(plan.securityFee || 0);
+  const subtotal = parseFloat(plan.price);
+  const joining = parseFloat(plan.joiningFee || 0);
+  const security = parseFloat(plan.securityFee || 0);
   const totalAmount = subtotal + joining + security;
 
   const payment = await Payment.create({
-    userId:            user.id,
-    paymentFor:        'MEMBERSHIP',
+    userId: user.id,
+    paymentFor: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
     branchId,
-    method:            paymentMethod || 'CASH',
-    amount:            totalAmount,
-    currency:          'PKR',
-    status:            autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
-    paidAt:            autoComplete ? new Date() : null,
-    createdByRole:     enrollerRole,
+    method: paymentMethod || 'CASH',
+    amount: totalAmount,
+    currency: 'PKR',
+    status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
+    paidAt: autoComplete ? new Date() : null,
+    createdByRole: enrollerRole,
   });
 
   const invoice = await Invoice.create({
-    userId:            user.id,
-    invoiceNo:         _invoiceNo(),
-    invoiceType:       'MEMBERSHIP',
+    userId: user.id,
+    invoiceNo: _invoiceNo(),
+    invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
     subtotal,
     discountAmount: 0,
-    taxAmount:      0,
+    taxAmount: 0,
     totalAmount,
-    dueDate:  new Date().toISOString().split('T')[0],
-    paidAt:   autoComplete ? new Date() : null,
-    status:   autoComplete ? InvoiceStatus.PAID : InvoiceStatus.ISSUED,
+    dueDate: new Date().toISOString().split('T')[0],
+    paidAt: autoComplete ? new Date() : null,
+    status: autoComplete ? InvoiceStatus.PAID : InvoiceStatus.ISSUED,
   });
 
   return { user, subscription, userCreated, payment, invoice };

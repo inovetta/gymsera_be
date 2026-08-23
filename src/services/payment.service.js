@@ -20,24 +20,24 @@ const _createInvoice = async (models, { userId, payment, subscription, plan }) =
   const totalAmount = parseFloat(payment.amount);
   const subtotal = Math.min(parseFloat(plan.price), totalAmount);
   const remaining = Math.max(0, totalAmount - subtotal);
-  
+
   const security = Math.min(parseFloat(plan.securityFee || 0), remaining);
   const joining = Math.max(0, remaining - security);
 
   return Invoice.create({
     userId,
-    invoiceNo:         _invoiceNo(),
-    invoiceType:       'MEMBERSHIP',
+    invoiceNo: _invoiceNo(),
+    invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
     subtotal,
     discountAmount: 0,
-    taxAmount:      0,
+    taxAmount: 0,
     totalAmount,
-    dueDate:  new Date().toISOString().split('T')[0],
-    paidAt:   payment.status === PaymentStatus.COMPLETED ? new Date() : null,
-    status:   payment.status === PaymentStatus.COMPLETED
-                ? InvoiceStatus.PAID
-                : InvoiceStatus.ISSUED,
+    dueDate: new Date().toISOString().split('T')[0],
+    paidAt: payment.status === PaymentStatus.COMPLETED ? new Date() : null,
+    status: payment.status === PaymentStatus.COMPLETED
+      ? InvoiceStatus.PAID
+      : InvoiceStatus.ISSUED,
   });
 };
 
@@ -77,22 +77,22 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
   const autoComplete = creatorRole === 'GYM_HOST' || data.method === 'TEST';
 
   const payment = await Payment.create({
-    userId:               data.userId,
-    paymentFor:           data.paymentFor   || 'MEMBERSHIP',
-    referenceEntityId:    data.referenceEntityId || null,
-    branchId:             data.branchId || null,
-    method:               data.method,
-    gatewayName:          data.method === 'TEST' ? 'TEST_GATEWAY' : (data.gatewayName || null),
+    userId: data.userId,
+    paymentFor: data.paymentFor || 'MEMBERSHIP',
+    referenceEntityId: data.referenceEntityId || null,
+    branchId: data.branchId || null,
+    method: data.method,
+    gatewayName: data.method === 'TEST' ? 'TEST_GATEWAY' : (data.gatewayName || null),
     gatewayTransactionId: data.method === 'TEST'
       ? `TEST-${Date.now()}`
       : (data.gatewayTransactionId || null),
-    amount:               data.amount,
-    currency:             data.currency || 'PKR',
-    status:               autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
-    paidAt:               autoComplete ? new Date() : null,
-    notes:                data.notes || null,
-    createdBy:            staffUserId,
-    createdByRole:        creatorRole,
+    amount: data.amount,
+    currency: data.currency || 'PKR',
+    status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
+    paidAt: autoComplete ? new Date() : null,
+    notes: data.notes || null,
+    createdBy: staffUserId,
+    createdByRole: creatorRole,
   });
 
   let invoice = null;
@@ -174,12 +174,12 @@ const listPayments = async (tenantDb, { userId, branchId, status, method, from, 
   if (from || to) {
     where.createdAt = {};
     if (from) where.createdAt[Op.gte] = new Date(from);
-    if (to)   where.createdAt[Op.lte] = new Date(to);
+    if (to) where.createdAt[Op.lte] = new Date(to);
   }
 
   const { count, rows } = await Payment.findAndCountAll({
     where,
-    order:  [['createdAt', 'DESC']],
+    order: [['createdAt', 'DESC']],
     limit,
     offset,
   });
@@ -188,9 +188,9 @@ const listPayments = async (tenantDb, { userId, branchId, status, method, from, 
   const userIds = [...new Set(rows.map((r) => r.userId))];
   const users = userIds.length
     ? await User.findAll({
-        where: { id: userIds },
-        attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
-      })
+      where: { id: userIds },
+      attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
+    })
     : [];
   const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
 
@@ -239,12 +239,12 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
   }
 
   await payment.update({
-    status:     PaymentStatus.COMPLETED,
-    amount:     finalAmount,
-    paidAt:     new Date(),
+    status: PaymentStatus.COMPLETED,
+    amount: finalAmount,
+    paidAt: new Date(),
     verifiedAt: new Date(),
     verifiedBy: verifiedByUserId,
-    notes:      notes || payment.notes,
+    notes: notes || payment.notes,
   });
 
   if (payment.referenceEntityId) {
@@ -368,10 +368,10 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
       throw createError(`Cannot collect a payment that is already ${payment.status.toLowerCase()}`, 409);
     }
     await payment.update({
-      status:           PaymentStatus.STAFF_COLLECTED,
+      status: PaymentStatus.STAFF_COLLECTED,
       staffCollectedBy: actorUserId,
-      collectedAt:      new Date(),
-      notes:            notes || payment.notes,
+      collectedAt: new Date(),
+      notes: notes || payment.notes,
     });
 
   } else if (action === 'verify') {
@@ -386,11 +386,11 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
       throw createError(`Payment is already ${payment.status.toLowerCase()}`, 409);
     }
     await payment.update({
-      status:         PaymentStatus.FAILED,
-      verifiedAt:     new Date(),
-      verifiedBy:     actorUserId,
+      status: PaymentStatus.FAILED,
+      verifiedAt: new Date(),
+      verifiedBy: actorUserId,
       rejectedReason: rejectedReason || null,
-      notes:          notes || payment.notes,
+      notes: notes || payment.notes,
     });
 
     try {
@@ -487,13 +487,13 @@ const collectionAction = async (tenantDb, paymentIds, staffUserId) => {
 
   const [updatedCount] = await Payment.update(
     {
-      status:           PaymentStatus.STAFF_COLLECTED,
+      status: PaymentStatus.STAFF_COLLECTED,
       staffCollectedBy: staffUserId,
-      collectedAt:      new Date(),
+      collectedAt: new Date(),
     },
     {
       where: {
-        id:     paymentIds,
+        id: paymentIds,
         status: PaymentStatus.PENDING,
       },
     }
@@ -518,13 +518,13 @@ const markPaymentFailed = async (tenantDb, paymentId, gymName) => {
     const user = await User.findByPk(payment.userId, { attributes: ['email', 'fullName', 'fcmToken'] });
     if (user) {
       await notificationsQueue.add({
-        type:     'PAYMENT_FAILED',
-        userId:   payment.userId,
-        email:    user.email,
+        type: 'PAYMENT_FAILED',
+        userId: payment.userId,
+        email: user.email,
         fullName: user.fullName,
         fcmToken: user.fcmToken,
-        gymName:  gymName || 'your gym',
-        amount:   payment.amount,
+        gymName: gymName || 'your gym',
+        amount: payment.amount,
         currency: payment.currency,
       }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
     }
@@ -551,7 +551,7 @@ const listInvoices = async (tenantDb, requestingUserId, isHost, { userId, status
   if (from || to) {
     where.createdAt = {};
     if (from) where.createdAt[Op.gte] = new Date(`${from}T00:00:00.000Z`);
-    if (to)   where.createdAt[Op.lte] = new Date(`${to}T23:59:59.999Z`);
+    if (to) where.createdAt[Op.lte] = new Date(`${to}T23:59:59.999Z`);
   }
 
   const { count, rows } = await Invoice.findAndCountAll({
@@ -565,9 +565,9 @@ const listInvoices = async (tenantDb, requestingUserId, isHost, { userId, status
   const { User } = require('../models/platform');
   const users = userIds.length
     ? await User.findAll({
-        where: { id: userIds },
-        attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
-      })
+      where: { id: userIds },
+      attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl'],
+    })
     : [];
   const userMap = Object.fromEntries(users.map((u) => [u.id, u.toJSON()]));
 
