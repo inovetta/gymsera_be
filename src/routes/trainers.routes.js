@@ -9,7 +9,7 @@ const tenantContext = require('../middleware/tenantContext');
 const router = Router();
 
 // All trainer management routes require auth + GYM_HOST/BRANCH_MANAGER + tenant context
-router.use(authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext);
+router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'));
 
 /**
  * @swagger

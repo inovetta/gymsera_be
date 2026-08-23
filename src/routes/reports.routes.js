@@ -43,8 +43,8 @@ const router = Router();
 router.get(
   '/dashboard',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.hostDashboard
 );
 
@@ -72,8 +72,8 @@ router.get(
 router.get(
   '/monthly',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.monthlyBreakdown
 );
 
@@ -101,8 +101,8 @@ router.get(
 router.get(
   '/monthly/export-pdf',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.monthlyExportPdf
 );
 
@@ -123,16 +123,16 @@ router.get(
 router.get(
   '/monthly/print-layout',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.monthlyPrintLayout
 );
 
 // Alias: GET /reports/monthly/export (CMS uses /export, backend has /export-pdf)
-router.get('/monthly/export', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.monthlyExportPdf);
+router.get('/monthly/export', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.monthlyExportPdf);
 
-router.get('/yearly', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.yearlyRevenue);
-router.get('/weekly-attendance', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.weeklyAttendance);
+router.get('/yearly', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.yearlyRevenue);
+router.get('/weekly-attendance', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.weeklyAttendance);
 
 /**
  * @swagger
@@ -153,6 +153,6 @@ router.get('/weekly-attendance', authenticate, authorize('GYM_HOST', 'BRANCH_MAN
  *       404:
  *         description: Branch not found
  */
-router.get('/branch/:branchId', authenticate, authorize('GYM_HOST', 'BRANCH_MANAGER'), tenantContext, controller.branchReport);
+router.get('/branch/:branchId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.branchReport);
 
 module.exports = router;

@@ -64,8 +64,8 @@ router.get('/', validate(validators.listPublic), controller.listPublic);
 router.get(
   '/host',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.listForHost
 );
 
@@ -129,8 +129,8 @@ router.get('/:id', validate(validators.getPublic), controller.getPublic);
 router.post(
   '/',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   validate(validators.createPlan),
   controller.createPlan
 );
@@ -155,8 +155,8 @@ router.post(
 router.patch(
   '/:id',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   validate(validators.updatePlan),
   controller.updatePlan
 );
@@ -181,8 +181,8 @@ router.patch(
 router.delete(
   '/:id',
   authenticate,
-  authorize('GYM_HOST'),
   tenantContext,
+  authorize('GYM_HOST'),
   validate(validators.deletePlan),
   controller.deletePlan
 );
@@ -207,8 +207,8 @@ router.delete(
 router.post(
   '/:id/status',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.toggleStatus
 );
 
@@ -232,8 +232,8 @@ router.post(
 router.post(
   '/:id/public',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.togglePublic
 );
 
@@ -257,8 +257,8 @@ router.post(
 router.post(
   '/:id/featured',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   controller.setFeatured
 );
 
@@ -291,8 +291,8 @@ router.post(
 router.post(
   '/:id/poster',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   upload.image('image'),
   upload.handleMulterError,
   controller.uploadPoster

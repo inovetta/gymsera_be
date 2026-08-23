@@ -177,7 +177,7 @@ const staffRoles = [UserRole.GYM_HOST, UserRole.BRANCH_MANAGER, UserRole.PLATFOR
  *       200:
  *         description: Calculated subscription preview
  */
-router.post('/preview', authorize(...staffRoles), tenantContext, controller.preview);
+router.post('/preview', tenantContext, authorize(...staffRoles), controller.preview);
 
 /**
  * @swagger
@@ -207,7 +207,7 @@ router.post('/preview', authorize(...staffRoles), tenantContext, controller.prev
  *       200:
  *         description: Paginated subscription list
  */
-router.get('/staff', authorize(...staffRoles), tenantContext, controller.listForStaff);
+router.get('/staff', tenantContext, authorize(...staffRoles), controller.listForStaff);
 
 /**
  * @swagger
@@ -228,7 +228,7 @@ router.get('/staff', authorize(...staffRoles), tenantContext, controller.listFor
  *       404:
  *         description: Subscription not found
  */
-router.get('/staff/:id', authorize(...staffRoles), tenantContext, controller.getForStaff);
+router.get('/staff/:id', tenantContext, authorize(...staffRoles), controller.getForStaff);
 
 /**
  * @swagger
@@ -249,6 +249,6 @@ router.get('/staff/:id', authorize(...staffRoles), tenantContext, controller.get
  *       409:
  *         description: Already active or cancelled
  */
-router.post('/staff/:id/activate', authorize(...staffRoles), tenantContext, controller.activateSubscription);
+router.post('/staff/:id/activate', tenantContext, authorize(...staffRoles), controller.activateSubscription);
 
 module.exports = router;
