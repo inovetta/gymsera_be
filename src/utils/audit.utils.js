@@ -16,41 +16,25 @@ const resolveCreatorRole = async (tenantDb, userId, userRole, branchId = null) =
     return 'HOST';
   }
 
-  if (userRole === 'MEMBER') {
-    // Check if user has active staff designation in this tenant
-    if (tenantDb && tenantDb.models && tenantDb.models.GymStaff && userId) {
-      try {
-        const staffWhere = { userId, status: 'active' };
-        if (branchId) staffWhere.branchId = branchId;
-        const staff = await tenantDb.models.GymStaff.findOne({ where: staffWhere });
-        if (staff) {
-          const designation = (staff.designation || '').trim().toLowerCase();
-          return designation === 'admin' ? 'ADMIN' : 'STAFF';
-        }
-      } catch (_) {
-        // Fallback to MEMBER
+  // Check if user has active staff/admin designation in this tenant
+  if (tenantDb && tenantDb.models && tenantDb.models.GymStaff && userId) {
+    try {
+      const staffMembers = await tenantDb.models.GymStaff.findAll({
+        where: { userId, status: 'active' },
+      });
+      if (staffMembers && staffMembers.length > 0) {
+        const isAdmin = staffMembers.some(
+          (s) => (s.designation || '').trim().toLowerCase() === 'admin'
+        );
+        return isAdmin ? 'ADMIN' : 'STAFF';
       }
+    } catch (_) {
+      // Fallback
     }
-    return 'MEMBER';
   }
 
-  if (userRole === 'BRANCH_MANAGER' || userRole === 'STAFF' || userRole === 'ADMIN') {
-    if (tenantDb && tenantDb.models && tenantDb.models.GymStaff && userId) {
-      try {
-        const staffWhere = { userId, status: 'active' };
-        if (branchId) staffWhere.branchId = branchId;
-        const staff = await tenantDb.models.GymStaff.findOne({ where: staffWhere });
-        if (staff) {
-          const designation = (staff.designation || '').trim().toLowerCase();
-          return designation === 'admin' ? 'ADMIN' : 'STAFF';
-        }
-      } catch (_) {
-        // Fallback
-      }
-    }
-    return userRole === 'ADMIN' ? 'ADMIN' : 'STAFF';
-  }
-
+  if (userRole === 'ADMIN') return 'ADMIN';
+  if (userRole === 'MEMBER') return 'MEMBER';
   return 'STAFF';
 };
 
@@ -144,7 +128,10 @@ const enrichAuditDetails = async (tenantDb, items) => {
         attributes: ['id', 'userId', 'branchId', 'designation', 'role'],
       });
       for (const s of staffMembers) {
-        staffMap[s.userId] = s.toJSON();
+        // If user has 'admin' in any branch assignment, prioritize 'admin'
+        if (!staffMap[s.userId] || (s.designation || '').trim().toLowerCase() === 'admin') {
+          staffMap[s.userId] = s.toJSON();
+        }
       }
     } catch (err) {
       console.warn('[AuditUtils] Failed to fetch staff info:', err.message);
@@ -162,20 +149,20 @@ const enrichAuditDetails = async (tenantDb, items) => {
     const creatorUser = item.createdBy ? userMap[item.createdBy] : null;
 
     if (creatorUser) {
-      let role = (item.createdByRole || creatorUser.role || '').toUpperCase();
       const staffInfo = staffMap[creatorUser.id];
-      const designation = staffInfo?.designation || null;
+      const designation = (staffInfo?.designation || '').trim().toLowerCase();
+      let role = (item.createdByRole || '').toUpperCase();
 
       if (role === 'GYM_HOST' || role === 'HOST') {
         role = 'HOST';
-      } else if (role === 'BRANCH_MANAGER' || role === 'STAFF' || role === 'ADMIN') {
-        if (designation && designation.toLowerCase() === 'admin') {
-          role = 'ADMIN';
-        } else {
-          role = 'STAFF';
-        }
-      } else if (role === 'MEMBER' || creatorUser.id === item.userId) {
+      } else if (role === 'ADMIN' || designation === 'admin') {
+        role = 'ADMIN';
+      } else if (role === 'BRANCH_MANAGER' || role === 'STAFF' || staffInfo) {
+        role = 'STAFF';
+      } else if (role === 'MEMBER' && creatorUser.id === item.userId) {
         role = 'MEMBER';
+      } else {
+        role = designation === 'admin' ? 'ADMIN' : (staffInfo ? 'STAFF' : (role || 'STAFF'));
       }
 
       creator = {
@@ -186,7 +173,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
         profileImageUrl: creatorUser.profileImageUrl,
         role,
         roleLabel: getRoleLabel(role),
-        designation: designation || getRoleLabel(role),
+        designation: staffInfo?.designation || getRoleLabel(role),
         sourcePlatform: getSourcePlatform(role, item.sourceChannel),
       };
     } else if (item.sourceChannel === 'ONLINE' || item.createdByRole === 'MEMBER') {

@@ -631,7 +631,9 @@ const searchMember = async (email) => {
 const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate, notes, paymentMethod }, enroller = { role: 'GYM_HOST' }) => {
   const { MemberSubscription, MembershipPlan, MemberProfile } = tenantDb.models;
   const enrollerRole = typeof enroller === 'string' ? enroller : (enroller?.role || 'GYM_HOST');
-  const enrollerId = enroller?.id || null;
+  const enrollerId = typeof enroller === 'object' && enroller !== null
+    ? (enroller.id || enroller.sub || enroller.userId || null)
+    : null;
 
   // Find or create platform user
   const [user, userCreated] = await User.findOrCreate({

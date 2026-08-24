@@ -1069,7 +1069,7 @@ const createBranchMember = async (req, res, next) => {
       req.tenantDb,
       req.user.tenantId,
       { ...req.body, branchId },
-      req.user.role
+      req.user
     );
     return sendSuccess(res, result, 'Member enrolled successfully', 201);
   } catch (err) {
