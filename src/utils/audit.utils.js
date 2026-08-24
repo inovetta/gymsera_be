@@ -65,23 +65,23 @@ const getRoleLabel = (role) => {
  * Format platform source name
  */
 const getSourcePlatform = (role, sourceChannel) => {
-  if (sourceChannel === 'ONLINE') return 'User Application';
+  if (sourceChannel === 'ONLINE') return 'User App';
   switch ((role || '').toUpperCase()) {
     case 'HOST':
     case 'GYM_HOST':
       return 'Host Management Area';
     case 'ADMIN':
-      return 'Admin Panel';
+      return 'Admin App';
     case 'STAFF':
     case 'BRANCH_MANAGER':
       return 'Staff App';
     case 'MEMBER':
     case 'USER':
-      return 'User Application';
+      return 'User App';
     case 'SYSTEM':
       return 'System Generated';
     default:
-      return 'Gym Management Hub';
+      return 'Not Available';
   }
 };
 
@@ -94,6 +94,33 @@ const getSourcePlatform = (role, sourceChannel) => {
  */
 const enrichAuditDetails = async (tenantDb, items) => {
   if (!items || !items.length) return items;
+
+  // 1. Backward compatibility: if Payment has no createdBy, try to get it from linked MemberSubscription
+  if (tenantDb?.models?.MemberSubscription) {
+    const missingSubIds = items
+      .filter((it) => !it.createdBy && (it.paymentFor === 'MEMBERSHIP' || it.referenceEntityId))
+      .map((it) => it.referenceEntityId)
+      .filter(Boolean);
+
+    if (missingSubIds.length > 0) {
+      try {
+        const subs = await tenantDb.models.MemberSubscription.findAll({
+          where: { id: missingSubIds },
+          attributes: ['id', 'createdBy', 'createdByRole'],
+        });
+        const subMap = Object.fromEntries(subs.map((s) => [s.id, s]));
+        for (const it of items) {
+          if (!it.createdBy && it.referenceEntityId && subMap[it.referenceEntityId]) {
+            const sub = subMap[it.referenceEntityId];
+            if (sub.createdBy) {
+              it.createdBy = sub.createdBy;
+              if (sub.createdByRole) it.createdByRole = sub.createdByRole;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+  }
 
   // Collect all unique user IDs for lookup
   const userIdsToFetch = new Set();
@@ -119,18 +146,34 @@ const enrichAuditDetails = async (tenantDb, items) => {
     }
   }
 
-  // Fetch GymStaff designations for creator user IDs
+  // Fetch GymStaff designations for creator user IDs and emails
   let staffMap = {};
   if (idList.length > 0 && tenantDb?.models?.GymStaff) {
     try {
+      const emailsToFetch = idList.map((id) => userMap[id]?.email?.toLowerCase().trim()).filter(Boolean);
       const staffMembers = await tenantDb.models.GymStaff.findAll({
-        where: { userId: idList, status: 'active' },
-        attributes: ['id', 'userId', 'branchId', 'designation', 'role'],
+        where: {
+          [Op.or]: [
+            { userId: idList },
+            ...(emailsToFetch.length > 0 ? [{ email: emailsToFetch }] : []),
+          ],
+          status: 'active',
+        },
+        attributes: ['id', 'userId', 'email', 'branchId', 'designation', 'role'],
       });
       for (const s of staffMembers) {
-        // If user has 'admin' in any branch assignment, prioritize 'admin'
-        if (!staffMap[s.userId] || (s.designation || '').trim().toLowerCase() === 'admin') {
-          staffMap[s.userId] = s.toJSON();
+        const staffJson = s.toJSON();
+        const isAdmin = (staffJson.designation || '').trim().toLowerCase() === 'admin';
+        if (staffJson.userId) {
+          if (!staffMap[staffJson.userId] || isAdmin) {
+            staffMap[staffJson.userId] = staffJson;
+          }
+        }
+        if (staffJson.email) {
+          const e = staffJson.email.toLowerCase().trim();
+          if (!staffMap[e] || isAdmin) {
+            staffMap[e] = staffJson;
+          }
         }
       }
     } catch (err) {
@@ -149,15 +192,15 @@ const enrichAuditDetails = async (tenantDb, items) => {
     const creatorUser = item.createdBy ? userMap[item.createdBy] : null;
 
     if (creatorUser) {
-      const staffInfo = staffMap[creatorUser.id];
+      const staffInfo = staffMap[creatorUser.id] || staffMap[creatorUser.email?.toLowerCase().trim()];
       const designation = (staffInfo?.designation || '').trim().toLowerCase();
       let role = (item.createdByRole || '').toUpperCase();
 
-      if (role === 'GYM_HOST' || role === 'HOST') {
+      if (role === 'GYM_HOST' || role === 'HOST' || creatorUser.role === 'GYM_HOST' || creatorUser.role === 'HOST') {
         role = 'HOST';
-      } else if (role === 'ADMIN' || designation === 'admin') {
+      } else if (role === 'ADMIN' || designation === 'admin' || creatorUser.role === 'ADMIN') {
         role = 'ADMIN';
-      } else if (role === 'BRANCH_MANAGER' || role === 'STAFF' || staffInfo) {
+      } else if (role === 'BRANCH_MANAGER' || role === 'STAFF' || staffInfo || creatorUser.role === 'BRANCH_MANAGER') {
         role = 'STAFF';
       } else if (role === 'MEMBER' && creatorUser.id === item.userId) {
         role = 'MEMBER';
@@ -176,7 +219,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
         designation: staffInfo?.designation || getRoleLabel(role),
         sourcePlatform: getSourcePlatform(role, item.sourceChannel),
       };
-    } else if (item.sourceChannel === 'ONLINE' || item.createdByRole === 'MEMBER') {
+    } else if (item.sourceChannel === 'ONLINE') {
       // Member requested directly via User App
       creator = {
         id: memberUser?.id || item.userId || null,
@@ -185,9 +228,9 @@ const enrichAuditDetails = async (tenantDb, items) => {
         role: 'MEMBER',
         roleLabel: 'Member / User',
         designation: 'Member',
-        sourcePlatform: 'User Application',
+        sourcePlatform: 'User App',
       };
-    } else if (item.createdByRole) {
+    } else if (item.createdByRole && item.createdByRole !== 'STAFF' && item.createdByRole !== 'UNKNOWN') {
       const role = item.createdByRole.toUpperCase();
       creator = {
         id: item.createdBy || null,
@@ -228,6 +271,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
       collector = {
         id: collectorUser.id,
         fullName: collectorUser.fullName,
+        email: collectorUser.email,
         role: 'STAFF',
         roleLabel: 'Staff',
         collectedAt: item.collectedAt || null,
@@ -239,8 +283,9 @@ const enrichAuditDetails = async (tenantDb, items) => {
       user: memberUser,
       creator,
       createdByName: creator?.fullName || null,
-      createdByRole: creator?.role || item.createdByRole || null,
-      sourcePlatform: creator?.sourcePlatform || getSourcePlatform(item.createdByRole, item.sourceChannel),
+      createdByEmail: creator?.email || null,
+      createdByRole: creator?.role || null,
+      sourcePlatform: creator?.sourcePlatform || (item.sourceChannel === 'ONLINE' ? 'User App' : null),
       verifier,
       verifiedByName: verifier?.fullName || null,
       collector,
