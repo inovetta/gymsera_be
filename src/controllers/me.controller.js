@@ -268,6 +268,7 @@ const getStaffStatus = async (req, res, next) => {
 
     const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
     const branches = [];
+    const userId = req.user.id || req.user.sub;
     const userEmail = req.user.email ? req.user.email.toLowerCase().trim() : '';
 
     for (const tenant of tenants) {
@@ -279,13 +280,15 @@ const getStaffStatus = async (req, res, next) => {
           employmentStatus: 'ACTIVE',
         };
 
-        if (userEmail) {
+        if (userEmail && userId) {
           whereCondition[Op.or] = [
-            { userId: req.user.id },
+            { userId },
             { email: userEmail }
           ];
-        } else {
-          whereCondition.userId = req.user.id;
+        } else if (userId) {
+          whereCondition.userId = userId;
+        } else if (userEmail) {
+          whereCondition.email = userEmail;
         }
 
         const staffRecords = await GymStaff.findAll({
@@ -294,8 +297,8 @@ const getStaffStatus = async (req, res, next) => {
 
         for (const staff of staffRecords) {
           // If staff was matched by email or was pending, link and activate
-          if (!staff.userId || staff.status !== 'active') {
-            await staff.update({ userId: req.user.id, status: 'active' });
+          if (userId && (!staff.userId || staff.status !== 'active')) {
+            await staff.update({ userId, status: 'active' });
           }
 
           const branch = await Branch.findByPk(staff.branchId);
