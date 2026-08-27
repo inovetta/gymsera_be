@@ -80,6 +80,82 @@ const isHostOrAdmin = async (req, branchId) => {
 };
 
 /**
+ * Helper to enrich expense models with creator user information and resolved role (Owner/Admin/Staff)
+ */
+const enrichExpensesWithCreator = async (expenses, tenantDb, tenantId) => {
+  if (!expenses || expenses.length === 0) return expenses;
+
+  const userIds = [...new Set(expenses.map((e) => (e.createdBy || (e.toJSON && e.toJSON().createdBy))).filter(Boolean))];
+  if (userIds.length === 0) return expenses;
+
+  const users = await User.findAll({
+    where: { id: userIds },
+    attributes: ['id', 'fullName', 'email', 'role', 'isHost', 'profileImageUrl'],
+  });
+
+  const staffRecords = await tenantDb.models.GymStaff.findAll({
+    where: { userId: userIds },
+    attributes: ['userId', 'designation', 'status'],
+  });
+
+  const staffMap = {};
+  for (const s of staffRecords) {
+    staffMap[s.userId] = s;
+  }
+
+  let ownerUserId = null;
+  if (tenantId) {
+    const tenant = await Tenant.findByPk(tenantId);
+    if (tenant) ownerUserId = tenant.ownerUserId;
+  }
+
+  const userMap = {};
+  for (const u of users) {
+    let displayRole = 'Staff';
+    const isOwner = u.id === ownerUserId || u.role === 'GYM_HOST' || u.isHost === true;
+    if (isOwner) {
+      displayRole = 'Owner';
+    } else {
+      const staff = staffMap[u.id];
+      if (staff && staff.designation) {
+        const des = staff.designation.trim();
+        if (des.toLowerCase() === 'admin') {
+          displayRole = 'Admin';
+        } else {
+          displayRole = des;
+        }
+      } else if (u.role === 'BRANCH_MANAGER') {
+        displayRole = 'Admin';
+      } else if (u.role === 'GYM_STAFF') {
+        displayRole = 'Staff';
+      } else {
+        displayRole = u.role;
+      }
+    }
+
+    userMap[u.id] = {
+      id: u.id,
+      fullName: u.fullName || 'Host',
+      email: u.email || '',
+      role: displayRole,
+      rawRole: u.role,
+      profileImageUrl: u.profileImageUrl || null,
+    };
+  }
+
+  return expenses.map((exp) => {
+    const plain = exp.toJSON ? exp.toJSON() : { ...exp };
+    plain.creator = userMap[plain.createdBy] || {
+      id: plain.createdBy,
+      fullName: 'Host',
+      email: '',
+      role: 'Owner',
+    };
+    return plain;
+  });
+};
+
+/**
  * GET /host/branches/:branchId/expenses
  */
 const listExpenses = async (req, res, next) => {
@@ -131,10 +207,16 @@ const listExpenses = async (req, res, next) => {
       offset,
     });
 
+    const enrichedExpenses = await enrichExpensesWithCreator(
+      rows,
+      req.tenantDb,
+      req.user.tenantId
+    );
+
     return sendSuccess(
       res,
       {
-        expenses: rows,
+        expenses: enrichedExpenses,
         total: count,
         page: pageNum,
         limit: limitNum,
@@ -210,7 +292,13 @@ const createExpense = async (req, res, next) => {
         include: [{ model: ExpenseCategory, as: 'category' }],
       });
 
-      return sendSuccess(res, reloaded, 'Expense created successfully', 201);
+      const [enriched] = await enrichExpensesWithCreator(
+        [reloaded],
+        req.tenantDb,
+        req.user.tenantId
+      );
+
+      return sendSuccess(res, enriched, 'Expense created successfully', 201);
     }
 
     // If caller is STAFF: Create StaffActionRequest ONLY (No Expense row created yet!)
@@ -308,7 +396,13 @@ const getExpenseDetail = async (req, res, next) => {
       throw createError('Expense not found', 404);
     }
 
-    return sendSuccess(res, expense, 'Expense details retrieved');
+    const [enriched] = await enrichExpensesWithCreator(
+      [expense],
+      req.tenantDb,
+      req.user.tenantId
+    );
+
+    return sendSuccess(res, enriched, 'Expense details retrieved');
   } catch (err) {
     next(err);
   }
@@ -395,7 +489,13 @@ const updateExpense = async (req, res, next) => {
       include: [{ model: ExpenseCategory, as: 'category' }],
     });
 
-    return sendSuccess(res, reloaded, 'Expense updated successfully');
+    const [enriched] = await enrichExpensesWithCreator(
+      [reloaded],
+      req.tenantDb,
+      req.user.tenantId
+    );
+
+    return sendSuccess(res, enriched, 'Expense updated successfully');
   } catch (err) {
     next(err);
   }

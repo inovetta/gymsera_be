@@ -113,7 +113,40 @@ const _sanitizeUser = (user, tenantId = null) => ({
  */
 const register = async ({ fullName, email, password, phone }) => {
   const existing = await User.findOne({ where: { email } });
-  if (existing) throw createError('An account with this email already exists', 409);
+  if (existing) {
+    if (!existing.isVerified) {
+      // Account exists but was never verified: update credentials and resend fresh OTP
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      await existing.update({
+        fullName: fullName || existing.fullName,
+        phone: phone || existing.phone,
+        passwordHash,
+      });
+
+      await _invalidatePreviousOtps(existing.id, 'EMAIL_VERIFICATION');
+
+      const code = generateOtpCode();
+      const otp = await Otp.create({
+        userId: existing.id,
+        email,
+        code,
+        type: 'EMAIL_VERIFICATION',
+        expiresAt: getOtpExpiry(),
+      });
+
+      try {
+        await emailService.sendOtpEmail(email, fullName || existing.fullName, code);
+      } catch (emailErr) {
+        console.warn('[Auth] OTP email failed (register unverified):', emailErr.message);
+      }
+
+      const result = { userId: existing.id, email, otpExpiresAtUtc: otp.expiresAt };
+      if (process.env.NODE_ENV !== 'production') result.debugCode = code;
+      return result;
+    }
+
+    throw createError('An account with this email already exists', 409);
+  }
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
