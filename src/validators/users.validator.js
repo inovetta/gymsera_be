@@ -47,9 +47,12 @@ const userValidators = {
     param('id').isUUID().withMessage('Invalid user ID'),
     body('fullName')
       .optional().trim().isLength({ max: 100 }),
+    body('email')
+      .optional({ nullable: true, checkFalsy: true })
+      .trim().toLowerCase().isEmail().withMessage('Valid email required'),
     body('phone')
       .optional({ nullable: true, checkFalsy: true })
-      .isMobilePhone().withMessage('Valid phone number required'),
+      .trim().isLength({ max: 25 }),
     body('gender')
       .optional({ nullable: true, checkFalsy: true })
       .isIn(['MALE', 'FEMALE', 'OTHER']),
@@ -59,7 +62,7 @@ const userValidators = {
     body('emergencyContactName').optional().trim().isLength({ max: 100 }),
     body('emergencyContactPhone')
       .optional({ nullable: true, checkFalsy: true })
-      .isMobilePhone(),
+      .trim().isLength({ max: 25 }),
     body('fitnessGoal').optional().trim().isLength({ max: 200 }),
     body('medicalNotes').optional().trim(),
     body('heightCm').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }),

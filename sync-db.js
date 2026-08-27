@@ -6,6 +6,12 @@ const { decrypt } = require('./src/utils/crypto.utils');
 
 async function sync() {
   try {
+    const { sequelize: platformSeq } = require('./src/database/platform');
+    require('./src/models/platform');
+    console.log('Syncing platform database...');
+    await platformSeq.sync({ alter: true });
+    console.log('Platform database synced successfully.');
+
     const tenants = await Tenant.findAll();
     console.log(`Found ${tenants.length} tenants. Syncing...`);
 

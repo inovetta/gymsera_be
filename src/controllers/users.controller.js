@@ -38,7 +38,7 @@ const create = async (req, res, next) => {
 // ── PUT /users/:id ─────────────────────────────────────────────────────────────
 const update = async (req, res, next) => {
   try {
-    const user = await userService.updateUser(req.params.id, req.body, req.tenantDb || null);
+    const user = await userService.updateUser(req.params.id, req.body, req.tenantDb || null, req.user);
     return sendSuccess(res, { user }, 'User updated');
   } catch (err) {
     next(err);
