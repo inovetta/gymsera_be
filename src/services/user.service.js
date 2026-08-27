@@ -163,7 +163,7 @@ const createMember = async (
 const updateUser = async (
   userId,
   {
-    fullName, phone,
+    fullName, email, phone, status,
     gender, dateOfBirth, heightCm, weightKg,
     fitnessGoal, medicalNotes,
     emergencyContactName, emergencyContactPhone,
@@ -177,6 +177,14 @@ const updateUser = async (
   const platformUpdates = {};
   if (fullName !== undefined) platformUpdates.fullName = fullName;
   if (phone !== undefined) platformUpdates.phone = phone;
+  if (status !== undefined) platformUpdates.status = status;
+  if (email !== undefined && email.trim() !== '' && email.toLowerCase() !== (user.email || '').toLowerCase()) {
+    const existing = await User.findOne({ where: { email: email.toLowerCase() } });
+    if (existing && existing.id !== user.id) {
+      throw createError('An account with this email already exists', 409);
+    }
+    platformUpdates.email = email.toLowerCase();
+  }
   if (Object.keys(platformUpdates).length) await user.update(platformUpdates);
 
   // Update tenant profile fields if provided

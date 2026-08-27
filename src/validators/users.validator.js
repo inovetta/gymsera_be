@@ -47,9 +47,15 @@ const userValidators = {
     param('id').isUUID().withMessage('Invalid user ID'),
     body('fullName')
       .optional().trim().isLength({ max: 100 }),
+    body('email')
+      .optional().trim().toLowerCase().isEmail().withMessage('Valid email required'),
     body('phone')
       .optional({ nullable: true, checkFalsy: true })
       .isMobilePhone().withMessage('Valid phone number required'),
+    body('status')
+      .optional()
+      .isIn(['ACTIVE', 'INACTIVE', 'SUSPENDED'])
+      .withMessage('Status must be ACTIVE, INACTIVE or SUSPENDED'),
     body('gender')
       .optional({ nullable: true, checkFalsy: true })
       .isIn(['MALE', 'FEMALE', 'OTHER']),
