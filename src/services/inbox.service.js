@@ -279,12 +279,108 @@ const markTravelerRead = async (conversationId, userId) => {
   return { success: true };
 };
 
+const findOrCreateHostConversation = async (tenantId, userId, branchId, initialMessage = null) => {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    const err = new Error('Member user not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  let finalBranchId = branchId;
+  let listing = null;
+
+  if (finalBranchId) {
+    listing = await GymListing.findOne({
+      where: {
+        [Op.or]: [
+          { branchId: finalBranchId },
+          { id: finalBranchId },
+        ],
+      },
+    });
+  }
+
+  if (!listing) {
+    listing = await GymListing.findOne({ where: { tenantId } });
+    if (listing && listing.branchId && !finalBranchId) {
+      finalBranchId = listing.branchId;
+    }
+  }
+
+  if (!finalBranchId) {
+    finalBranchId = listing ? listing.branchId : tenantId;
+  }
+
+  // Find existing conversation
+  let conversation = await Conversation.findOne({
+    where: {
+      userId,
+      tenantId,
+      branchId: finalBranchId,
+    },
+    include: [
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'fullName', 'profileImageUrl'],
+      },
+      {
+        model: GymListing,
+        as: 'gymListing',
+        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+      },
+    ],
+  });
+
+  if (!conversation) {
+    conversation = await Conversation.create({
+      userId,
+      tenantId,
+      branchId: finalBranchId,
+      type: 'MEMBER',
+      lastMessageText: initialMessage || 'Conversation started',
+      lastMessageAt: new Date(),
+      unreadCountHost: 0,
+      unreadCountUser: initialMessage ? 1 : 0,
+    });
+
+    if (initialMessage) {
+      await Message.create({
+        conversationId: conversation.id,
+        senderId: tenantId,
+        senderType: 'HOST',
+        text: initialMessage,
+        isRead: false,
+      });
+    }
+
+    conversation = await Conversation.findByPk(conversation.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'fullName', 'profileImageUrl'],
+        },
+        {
+          model: GymListing,
+          as: 'gymListing',
+          attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        },
+      ],
+    });
+  }
+
+  return conversation;
+};
+
 module.exports = {
   listInquiries,
   getInquiryDetail,
   replyToInquiry,
   markInquiryRead,
   createTravelerInquiry,
+  findOrCreateHostConversation,
   listTravelerConversations,
   getTravelerConversationDetail,
   replyAsUser,

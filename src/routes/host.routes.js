@@ -89,6 +89,7 @@ router.patch('/branches/:branchId/resubmit-visibility', authenticate, tenantCont
 
 // Inbox & Inquiries
 router.get('/inbox/inquiries', authenticate, authorize('GYM_HOST'), hostController.listInquiries);
+router.post('/inbox/conversations', authenticate, authorize('GYM_HOST'), hostController.findOrCreateConversation);
 router.get('/inbox/inquiries/:inquiryId', authenticate, authorize('GYM_HOST'), hostController.getInquiryDetail);
 router.post('/inbox/inquiries/:inquiryId/reply', authenticate, authorize('GYM_HOST'), hostController.replyToInquiry);
 router.patch('/inbox/inquiries/:inquiryId/read', authenticate, authorize('GYM_HOST'), hostController.markInquiryRead);

@@ -1160,6 +1160,28 @@ const markInquiryRead = async (req, res, next) => {
   }
 };
 
+const findOrCreateConversation = async (req, res, next) => {
+  try {
+    const { userId, branchId, initialMessage } = req.body;
+    if (!userId) {
+      throw createError('userId is required to start a conversation', 400);
+    }
+    const tenantId = req.user.tenantId;
+    if (!tenantId) {
+      throw createError('Tenant not found for host', 404);
+    }
+    const conversation = await inboxService.findOrCreateHostConversation(
+      tenantId,
+      userId,
+      branchId,
+      initialMessage
+    );
+    return sendSuccess(res, conversation, 'Conversation ready', 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getTodaySummary,
   getBranchQuota,
@@ -1184,4 +1206,5 @@ module.exports = {
   getInquiryDetail,
   replyToInquiry,
   markInquiryRead,
+  findOrCreateConversation,
 };
