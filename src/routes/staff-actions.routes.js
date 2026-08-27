@@ -47,7 +47,6 @@ const _resolveRequestById = async (requestId) => {
 // Helper to map type to action text
 const _getActionText = (type) => {
   if (type === 'add_member') return 'add a member';
-  if (type === 'edit_member') return 'edit member details';
   if (type === 'renew') return 'renew subscription';
   if (type === 'change_plan') return 'change plan';
   if (type === 'upgrade') return 'upgrade package';
@@ -61,7 +60,7 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
     const { branchId } = req.params;
     const { actionType, payload } = req.body;
 
-    if (!['add_member', 'edit_member', 'renew', 'change_plan', 'upgrade', 'submit_expense'].includes(actionType)) {
+    if (!['add_member', 'renew', 'change_plan', 'upgrade', 'submit_expense'].includes(actionType)) {
       throw createError('Invalid action type', 400);
     }
 
@@ -101,7 +100,7 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
         if (actionType === 'add_member') {
           memberName = payload.fullName || 'Member';
         } else {
-          const memberUserId = payload.memberUserId || payload.userId;
+          const memberUserId = payload.memberUserId;
           if (memberUserId) {
             const user = await User.findByPk(memberUserId);
             if (user) memberName = user.fullName;
@@ -280,15 +279,6 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
         createdBy: staffMember ? staffMember.userId : req.user.id,
         reviewedBy: req.user.id,
       });
-    } else if (request.actionType === 'edit_member') {
-      const userService = require('../services/user.service');
-      const targetUserId = payload.userId || payload.memberUserId;
-      actionResult = await userService.updateUser(
-        targetUserId,
-        payload.fields || payload,
-        tenantDb,
-        req.user
-      );
     }
 
     // Update request state
@@ -304,7 +294,7 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
       if (staffMember && staffMember.userId) {
         const branch = await tenantDb.models.Branch.findByPk(request.branchId);
         const branchName = branch ? branch.branchName : 'branch';
-        
+
         await notificationsService.createNotification({
           userId: staffMember.userId,
           role: 'traveler', // Send to their traveler-app notification list

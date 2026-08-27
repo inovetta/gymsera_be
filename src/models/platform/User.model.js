@@ -59,11 +59,6 @@ module.exports = (sequelize) => {
         defaultValue: false,
         field: 'is_host',
       },
-      isManual: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
-        field: 'is_manual',
-      },
     },
     {
       tableName: 'users',
@@ -77,4 +72,5 @@ module.exports = (sequelize) => {
       ],
     }
   );
+};
 };

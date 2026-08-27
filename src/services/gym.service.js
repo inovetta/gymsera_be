@@ -644,13 +644,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
       status: 'ACTIVE',
       isVerified: true,
       role: 'MEMBER',
-      isManual: true,
     },
   });
-
-  if (userCreated || (!user.googleId && !user.passwordHash && !user.isManual)) {
-    await user.update({ isManual: true });
-  }
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found or inactive', 404);

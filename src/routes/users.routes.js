@@ -1,7 +1,6 @@
 const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
-const tenantContext = require('../middleware/tenantContext');
 const validate = require('../middleware/validate');
 const upload = require('../middleware/upload');
 const userValidators = require('../validators/users.validator');
@@ -115,7 +114,6 @@ router.post(
 router.get(
   '/:id',
   authorize(...managerRoles),
-  tenantContext,
   validate(userValidators.getId),
   usersController.getById
 );
@@ -132,7 +130,6 @@ router.get(
 router.put(
   '/:id',
   authorize(...managerRoles),
-  tenantContext,
   validate(userValidators.update),
   usersController.update
 );

@@ -62,22 +62,14 @@ const searchUsers = async ({ q, role, status, page, limit, offset }) => {
 
   const { count, rows } = await User.findAndCountAll({
     where,
-    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'isManual', 'createdAt', 'lastLoginAt'],
+    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'createdAt', 'lastLoginAt'],
     order: [['createdAt', 'DESC']],
     limit,
     offset,
   });
 
-  const usersWithManual = rows.map((u) => {
-    const json = u.toJSON();
-    return {
-      ...json,
-      isManual: json.isManual === true || (json.googleId == null && !json.passwordHash),
-    };
-  });
-
   return {
-    users: usersWithManual,
+    users: rows,
     pagination: buildPagination(count, page, limit),
   };
 };
@@ -87,12 +79,11 @@ const searchUsers = async ({ q, role, status, page, limit, offset }) => {
  */
 const getUserById = async (userId, tenantDb = null) => {
   const user = await User.findByPk(userId, {
-    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'googleId', 'passwordHash', 'isManual', 'createdAt', 'lastLoginAt'],
+    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'googleId', 'createdAt', 'lastLoginAt'],
   });
   if (!user) throw createError('User not found', 404);
 
   const memberProfile = await _getMemberProfile(tenantDb, userId);
-  const isManual = user.isManual === true || (user.passwordHash == null && !user.googleId);
 
   return {
     id: user.id,
@@ -104,7 +95,6 @@ const getUserById = async (userId, tenantDb = null) => {
     isVerified: user.isVerified,
     profileImageUrl: user.profileImageUrl || null,
     provider: user.googleId ? 'GOOGLE' : 'LOCAL',
-    isManual: isManual,
     lastLoginAt: user.lastLoginAt || null,
     memberSince: user.createdAt,
     profile: memberProfile
@@ -144,7 +134,6 @@ const createMember = async (
     role: UserRole.MEMBER,
     status: 'ACTIVE',
     isVerified: true, // staff-created accounts bypass OTP
-    isManual: true,
   });
 
   // Create tenant profile if we have a tenant DB connection
@@ -163,7 +152,6 @@ const createMember = async (
     role: user.role,
     status: user.status,
     isVerified: user.isVerified,
-    isManual: true,
     // Return temp password in non-production so staff can share it — omit in prod
     ...(process.env.NODE_ENV !== 'production' && { tempPassword: rawPassword }),
   };
@@ -175,47 +163,20 @@ const createMember = async (
 const updateUser = async (
   userId,
   {
-    fullName, email, phone,
+    fullName, phone,
     gender, dateOfBirth, heightCm, weightKg,
     fitnessGoal, medicalNotes,
     emergencyContactName, emergencyContactPhone,
   },
-  tenantDb = null,
-  currentUser = null
+  tenantDb = null
 ) => {
   const user = await User.findByPk(userId);
   if (!user) throw createError('User not found', 404);
 
-  const isManual = user.isManual === true || (user.passwordHash == null && !user.googleId);
-
-  // If performed by a GYM_HOST or BRANCH_MANAGER, check if user was manually added
-  if (currentUser && [UserRole.GYM_HOST, UserRole.BRANCH_MANAGER].includes(currentUser.role)) {
-    if (!isManual) {
-      throw createError('Only manually added members can be edited by gym staff. Registered users manage their own profile.', 403);
-    }
-  }
-
   // Update platform-level fields
   const platformUpdates = {};
-  if (fullName !== undefined && fullName !== null) platformUpdates.fullName = fullName.trim();
-  if (phone !== undefined) platformUpdates.phone = phone ? phone.trim() : null;
-
-  if (email !== undefined && email !== null) {
-    const normalizedEmail = email.toLowerCase().trim();
-    if (normalizedEmail !== user.email.toLowerCase().trim()) {
-      const existing = await User.findOne({
-        where: {
-          email: normalizedEmail,
-          id: { [Op.ne]: userId },
-        },
-      });
-      if (existing) {
-        throw createError('An account with this email already exists', 409);
-      }
-      platformUpdates.email = normalizedEmail;
-    }
-  }
-
+  if (fullName !== undefined) platformUpdates.fullName = fullName;
+  if (phone !== undefined) platformUpdates.phone = phone;
   if (Object.keys(platformUpdates).length) await user.update(platformUpdates);
 
   // Update tenant profile fields if provided

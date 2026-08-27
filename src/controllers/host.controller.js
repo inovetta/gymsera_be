@@ -794,7 +794,7 @@ const getBranchMembers = async (req, res, next) => {
     const users = userIds.length
       ? await User.findAll({
         where: { id: { [Op.in]: userIds } },
-        attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'googleId', 'passwordHash', 'isManual', 'createdAt']
+        attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'createdAt']
       })
       : [];
 
@@ -804,10 +804,8 @@ const getBranchMembers = async (req, res, next) => {
     for (const sub of subs) {
       const u = userMap.get(sub.userId);
       if (u) {
-        const isManual = u.isManual === true || (u.googleId == null && !u.passwordHash) || sub.sourceChannel === 'WALK_IN' || sub.createdBy != null;
         usersList.push({
           ...u,
-          isManual,
           planName: sub.plan ? sub.plan.name : 'Daily Pass',
           endDate: sub.endDate,
           subscriptionStatus: sub.status
