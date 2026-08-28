@@ -784,7 +784,7 @@ const getBranchMembers = async (req, res, next) => {
     const { count, rows: subs } = await MemberSubscription.findAndCountAll({
       where: subWhere,
       include: [{ model: MembershipPlan, as: 'plan', attributes: ['name'] }],
-      order: [['subscribedAt', 'DESC']],
+      order: [['updatedAt', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset),
       distinct: true
@@ -801,11 +801,15 @@ const getBranchMembers = async (req, res, next) => {
     const userMap = new Map(users.map(u => [u.id, u.toJSON()]));
 
     const usersList = [];
+    const seenUserIds = new Set();
     for (const sub of subs) {
+      if (seenUserIds.has(sub.userId)) continue;
+      seenUserIds.add(sub.userId);
       const u = userMap.get(sub.userId);
       if (u) {
         usersList.push({
           ...u,
+          status: sub.status === 'ACTIVE' ? 'ACTIVE' : (sub.status || u.status),
           planName: sub.plan ? sub.plan.name : 'Daily Pass',
           endDate: sub.endDate,
           subscriptionStatus: sub.status
