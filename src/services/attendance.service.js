@@ -26,19 +26,32 @@ const _validateSubscription = async (models, subscription) => {
 
 // ── POST /attendance/qr-scan ──────────────────────────────────────────────────
 const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
-  const { MemberSubscription, AttendanceLog, Branch } = tenantDb.models;
+  const { MemberSubscription, AttendanceLog, Branch, MembershipPlan } = tenantDb.models;
 
   const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
 
-  const subscription = await MemberSubscription.findOne({ where: { qrCode } });
+  let subscription = await MemberSubscription.findOne({ where: { qrCode } });
+  if (!subscription) {
+    // Try finding by subscription ID (in case the QR encoded the sub id)
+    subscription = await MemberSubscription.findByPk(qrCode);
+  }
+  if (!subscription) {
+    // Try finding active subscription by userId (in case QR encoded user id)
+    subscription = await MemberSubscription.findOne({
+      where: { userId: qrCode, status: SubscriptionStatus.ACTIVE },
+      order: [['subscribedAt', 'DESC']]
+    });
+  }
+
   await _validateSubscription(tenantDb.models, subscription);
 
-  // Ensure subscription belongs to this branch (or a gym-wide subscription)
-  if (subscription.branchId !== branchId) {
-    // Allow gym-wide: if branchId matches another branch under the same gym, still accept
-    // For MVP: strict branch-match
-    throw createError('QR code is not valid for this branch', 403);
+  // Ensure subscription belongs to this branch (or is gym-wide / belongs to same gym)
+  if (subscription.branchId && subscription.branchId !== branchId) {
+    const subBranch = await Branch.findByPk(subscription.branchId);
+    if (!subBranch || (subBranch.gymId && subBranch.gymId !== branch.gymId)) {
+      throw createError('QR code is not valid for this branch', 403);
+    }
   }
 
   const log = await AttendanceLog.create({
