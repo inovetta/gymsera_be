@@ -63,7 +63,7 @@ const cancel = async (req, res, next) => {
 // ── POST /subscriptions/:id/renew ─────────────────────────────────────────────
 const renew = async (req, res, next) => {
   try {
-    const result = await subscriptionService.renew(req.user.id, req.params.id);
+    const result = await subscriptionService.renew(req.user.id, req.params.id, req.body.planId);
     return sendSuccess(res, result, 'Subscription renewed');
   } catch (err) {
     next(err);

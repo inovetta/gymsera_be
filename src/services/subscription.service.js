@@ -372,7 +372,7 @@ const cancel = async (userId, subscriptionId) => {
 };
 
 // ── POST /subscriptions/:id/renew ─────────────────────────────────────────────
-const renew = async (userId, subscriptionId) => {
+const renew = async (userId, subscriptionId, targetPlanId = null) => {
   const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription } = models;
 
@@ -382,7 +382,19 @@ const renew = async (userId, subscriptionId) => {
     throw createError('Cancelled subscriptions cannot be renewed', 409);
   }
 
-  const plan = await models.MembershipPlan.findByPk(sub.membershipPlanId);
+  const effectivePlanId = targetPlanId || sub.membershipPlanId;
+  let plan = await models.MembershipPlan.findByPk(effectivePlanId);
+
+  // If plan is not found or inactive, fallback to any active plan for this branch/gym
+  if (!plan || plan.status !== 'ACTIVE') {
+    if (sub.branchId) {
+      plan = await models.MembershipPlan.findOne({
+        where: { branchId: sub.branchId, status: 'ACTIVE' },
+        order: [['createdAt', 'DESC']],
+      });
+    }
+  }
+
   if (!plan || plan.status !== 'ACTIVE') {
     throw createError('The associated membership plan is no longer available', 409);
   }
@@ -395,6 +407,7 @@ const renew = async (userId, subscriptionId) => {
   const newQr = _generateQrToken();
 
   await sub.update({
+    membershipPlanId: plan.id,
     status: SubscriptionStatus.ACTIVE,
     endDate: newEndDate,
     qrCode: newQr,
@@ -403,7 +416,7 @@ const renew = async (userId, subscriptionId) => {
     freezeTo: null,
     cancelledAt: null,
   });
-  await index.update({ status: SubscriptionStatus.ACTIVE, endDate: newEndDate });
+  await index.update({ status: SubscriptionStatus.ACTIVE, endDate: newEndDate, planName: plan.name });
 
   // Fire-and-forget notification
   _enqueueNotification(userId, 'SUBSCRIPTION_RENEWED', {
