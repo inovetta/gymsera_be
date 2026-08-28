@@ -5,6 +5,17 @@ const { Op } = require('sequelize');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const _ensureSchema = async (tenantDb) => {
+  if (!tenantDb || !tenantDb.query) return;
+  try {
+    await tenantDb.query('ALTER TABLE "membership_plans" ADD COLUMN IF NOT EXISTS "is_deactivated" BOOLEAN NOT NULL DEFAULT false;');
+  } catch (_) {
+    try {
+      await tenantDb.query('ALTER TABLE membership_plans ADD COLUMN IF NOT EXISTS is_deactivated BOOLEAN NOT NULL DEFAULT false;');
+    } catch (__) {}
+  }
+};
+
 /**
  * Resolve a tenant DB connection from a GymListing UUID.
  * Used by public-facing routes that don't have JWT tenantContext.
@@ -56,11 +67,12 @@ const _tenantFromGymListing = async (gymListingId) => {
   });
   if (!tenant) throw createError('Gym tenant not available', 503);
 
-  const { models } = await TenantDbManager.getConnection(
+  const tenantDb = await TenantDbManager.getConnection(
     tenant.id,
     tenant.connectionStringEncrypted
   );
-  return { models, gymListing: listing, branchId };
+  await _ensureSchema(tenantDb);
+  return { tenantDb, models: tenantDb.models, gymListing: listing, branchId };
 };
 
 /**
@@ -142,6 +154,7 @@ const getPublic = async (planId, gymListingId) => {
 
 // ── Host: list all active plans for the gym (including deactivated ones for host management) ──
 const listForHost = async (tenantDb, branchId) => {
+  await _ensureSchema(tenantDb);
   const { MembershipPlan, Branch } = tenantDb.models;
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
@@ -167,6 +180,7 @@ const listForHost = async (tenantDb, branchId) => {
 
 // ── Host: create plan ─────────────────────────────────────────────────────────
 const createPlan = async (tenantDb, data) => {
+  await _ensureSchema(tenantDb);
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
@@ -200,6 +214,7 @@ const createPlan = async (tenantDb, data) => {
 
 // ── Host: update plan ─────────────────────────────────────────────────────────
 const updatePlan = async (tenantDb, planId, data) => {
+  await _ensureSchema(tenantDb);
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
@@ -220,6 +235,7 @@ const updatePlan = async (tenantDb, planId, data) => {
 
 // ── Host: delete (soft delete: set status to INACTIVE) ────────────────────────
 const deletePlan = async (tenantDb, planId) => {
+  await _ensureSchema(tenantDb);
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
@@ -241,6 +257,7 @@ const deletePlan = async (tenantDb, planId) => {
 
 // ── Host: toggle plan deactivation (isDeactivated: true ↔ false) ─────────────
 const toggleStatus = async (tenantDb, planId) => {
+  await _ensureSchema(tenantDb);
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
@@ -262,6 +279,7 @@ const toggleStatus = async (tenantDb, planId) => {
 
 // ── Host: toggle public visibility (isPublic) ─────────────────────────────────
 const togglePublic = async (tenantDb, planId) => {
+  await _ensureSchema(tenantDb);
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
