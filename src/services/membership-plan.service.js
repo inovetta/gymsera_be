@@ -140,22 +140,18 @@ const getPublic = async (planId, gymListingId) => {
   return plan;
 };
 
-// ── Host: list all active plans for the gym ────────────────────
+// ── Host: list all plans for the gym (ACTIVE and INACTIVE) ────────────────────
 const listForHost = async (tenantDb, branchId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
-  if (activeBranchIds.length === 0) {
-    return [];
-  }
 
-  const where = { status: 'ACTIVE' };
+  const where = {};
   if (branchId) {
-    if (!activeBranchIds.includes(branchId)) return [];
     where.branchId = {
       [Op.or]: [branchId, null],
     };
-  } else {
+  } else if (activeBranchIds.length > 0) {
     where.branchId = {
       [Op.or]: [
         { [Op.in]: activeBranchIds },
