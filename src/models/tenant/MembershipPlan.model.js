@@ -62,9 +62,14 @@ module.exports = (sequelize) => {
         defaultValue: false,
       },
       status: {
-        type: DataTypes.STRING(50),
+        type: DataTypes.ENUM('ACTIVE', 'INACTIVE'),
         allowNull: false,
         defaultValue: 'ACTIVE',
+      },
+      isDeactivated: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
       },
       // Whether this plan is shown to travellers in the public listing
       isPublic: {
@@ -92,6 +97,7 @@ module.exports = (sequelize) => {
         { fields: ['gym_id'] },
         { fields: ['branch_id'] },
         { fields: ['status'] },
+        { fields: ['is_deactivated'] },
         { fields: ['is_public'] },
         { fields: ['is_featured'] },
       ],

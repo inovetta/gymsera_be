@@ -85,14 +85,14 @@ const _syncMinPrice = async (tenantDb, gymId) => {
 
     // 1. Check for a manually featured plan
     let featured = await MembershipPlan.findOne({
-      where: { gymId, isFeatured: true, status: 'ACTIVE' },
+      where: { gymId, isFeatured: true, status: 'ACTIVE', isDeactivated: false },
       attributes: ['price'],
     });
 
     // 2. Fall back to cheapest public plan
     if (!featured) {
       featured = await MembershipPlan.findOne({
-        where: { gymId, status: 'ACTIVE', isPublic: true },
+        where: { gymId, status: 'ACTIVE', isPublic: true, isDeactivated: false },
         order: [['price', 'ASC']],
         attributes: ['price'],
       });
@@ -117,7 +117,7 @@ const listPublic = async (gymListingId, branchId) => {
   const { models, branchId: resolvedBranchId } = await _tenantFromGymListing(gymListingId);
   const targetBranchId = branchId || resolvedBranchId;
 
-  const where = { status: 'ACTIVE', isPublic: true };
+  const where = { status: 'ACTIVE', isDeactivated: false, isPublic: true };
   if (targetBranchId) {
     where.branchId = {
       [Op.or]: [targetBranchId, null],
@@ -134,20 +134,20 @@ const listPublic = async (gymListingId, branchId) => {
 const getPublic = async (planId, gymListingId) => {
   const { models } = await _tenantFromGymListing(gymListingId);
   const plan = await models.MembershipPlan.findOne({
-    where: { id: planId, status: 'ACTIVE', isPublic: true },
+    where: { id: planId, status: 'ACTIVE', isDeactivated: false, isPublic: true },
   });
   if (!plan) throw createError('Plan not found', 404);
   return plan;
 };
 
-// ── Host: list all plans for the gym (ACTIVE and INACTIVE) ────────────────────
+// ── Host: list all active plans for the gym (including deactivated ones for host management) ──
 const listForHost = async (tenantDb, branchId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
 
   const where = {
-    status: ['ACTIVE', 'INACTIVE'],
+    status: 'ACTIVE',
   };
   if (branchId) {
     where.branchId = {
@@ -190,6 +190,7 @@ const createPlan = async (tenantDb, data) => {
     freezeLimitDays: data.freezeLimitDays ?? 0,
     isTrial: data.isTrial ?? false,
     isPublic: data.isPublic ?? false,
+    isDeactivated: false,
     status: 'ACTIVE',
   });
 
@@ -202,11 +203,11 @@ const updatePlan = async (tenantDb, planId, data) => {
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
 
   const allowed = ['name', 'description', 'durationType', 'durationValue', 'price',
-    'joiningFee', 'securityFee', 'visitLimit', 'freezeLimitDays', 'isTrial', 'isPublic', 'status'];
+    'joiningFee', 'securityFee', 'visitLimit', 'freezeLimitDays', 'isTrial', 'isPublic', 'isDeactivated', 'status'];
   const patch = {};
   for (const key of allowed) {
     if (data[key] !== undefined) patch[key] = data[key];
@@ -217,68 +218,44 @@ const updatePlan = async (tenantDb, planId, data) => {
   return plan.reload();
 };
 
-// ── Host: delete (soft delete / archive) plan ─────────────────────────────────
+// ── Host: delete (soft delete: set status to INACTIVE) ────────────────────────
 const deletePlan = async (tenantDb, planId) => {
-  const { MembershipPlan, MemberSubscription } = tenantDb.models;
+  const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({
-    where: { id: planId, gymId: gym.id },
+    where: { id: planId, gymId: gym.id, status: 'ACTIVE' },
   });
   if (!plan) throw createError('Plan not found', 404);
 
-  // Attempt to add 'ARCHIVED' to enum if supported
-  try {
-    await tenantDb.query('ALTER TYPE "enum_membership_plans_status" ADD VALUE IF NOT EXISTS \'ARCHIVED\';');
-  } catch (_) {}
-
-  // Check if any subscriptions are linked to this plan
-  let hasSubscriptions = false;
-  try {
-    if (MemberSubscription) {
-      const count = await MemberSubscription.count({ where: { membershipPlanId: planId } });
-      hasSubscriptions = count > 0;
-    }
-  } catch (_) {}
-
-  if (!hasSubscriptions) {
-    // If no subscriptions exist, destroy row safely
-    try {
-      await plan.destroy();
-      await _syncMinPrice(tenantDb, gym.id);
-      return { message: 'Plan deleted successfully' };
-    } catch (_) {}
-  }
-
-  // If subscriptions exist or destroy failed, mark as ARCHIVED / INACTIVE
-  try {
-    await plan.update({
-      status: 'ARCHIVED',
-      isPublic: false,
-      isFeatured: false,
-    });
-  } catch (err) {
-    await plan.update({
-      status: 'INACTIVE',
-      isPublic: false,
-      isFeatured: false,
-    });
-  }
+  // Soft delete: set status to INACTIVE and remove from public listings
+  await plan.update({
+    status: 'INACTIVE',
+    isPublic: false,
+    isFeatured: false,
+  });
 
   await _syncMinPrice(tenantDb, gym.id);
   return { message: 'Plan deleted successfully' };
 };
 
-// ── Host: toggle plan status (ACTIVE ↔ INACTIVE) ─────────────────────────────
+// ── Host: toggle plan deactivation (isDeactivated: true ↔ false) ─────────────
 const toggleStatus = async (tenantDb, planId) => {
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
 
-  const newStatus = plan.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-  await plan.update({ status: newStatus });
+  const newIsDeactivated = !plan.isDeactivated;
+  const patch = { isDeactivated: newIsDeactivated };
+  if (newIsDeactivated) {
+    // If deactivating, unpublish and unfeature
+    patch.isPublic = false;
+    patch.isFeatured = false;
+  }
+
+  await plan.update(patch);
   await _syncMinPrice(tenantDb, gym.id);
   return plan.reload();
 };
