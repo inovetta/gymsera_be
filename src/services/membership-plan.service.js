@@ -146,7 +146,9 @@ const listForHost = async (tenantDb, branchId) => {
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
 
-  const where = {};
+  const where = {
+    status: ['ACTIVE', 'INACTIVE'],
+  };
   if (branchId) {
     where.branchId = {
       [Op.or]: [branchId, null],
@@ -215,7 +217,7 @@ const updatePlan = async (tenantDb, planId, data) => {
   return plan.reload();
 };
 
-// ── Host: delete (archive) plan ───────────────────────────────────────────────
+// ── Host: delete (archive/destroy) plan ───────────────────────────────────────────────
 const deletePlan = async (tenantDb, planId) => {
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
@@ -223,9 +225,16 @@ const deletePlan = async (tenantDb, planId) => {
   const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
 
-  await plan.update({ status: 'INACTIVE' });
+  try {
+    await plan.destroy();
+  } catch (err) {
+    // If FK constraint prevents hard delete, soft delete / archive it
+    await plan.update({ status: 'ARCHIVED', isPublic: false, isFeatured: false }).catch(async () => {
+      await plan.update({ status: 'INACTIVE', isPublic: false, isFeatured: false });
+    });
+  }
   await _syncMinPrice(tenantDb, gym.id);
-  return { message: 'Plan archived successfully' };
+  return { message: 'Plan deleted successfully' };
 };
 
 // ── Host: toggle plan status (ACTIVE ↔ INACTIVE) ─────────────────────────────
