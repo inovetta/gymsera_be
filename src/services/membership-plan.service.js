@@ -219,20 +219,51 @@ const updatePlan = async (tenantDb, planId, data) => {
 
 // ── Host: delete (soft delete / archive) plan ─────────────────────────────────
 const deletePlan = async (tenantDb, planId) => {
-  const { MembershipPlan } = tenantDb.models;
+  const { MembershipPlan, MemberSubscription } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({
-    where: { id: planId, gymId: gym.id, status: ['ACTIVE', 'INACTIVE'] },
+    where: { id: planId, gymId: gym.id },
   });
   if (!plan) throw createError('Plan not found', 404);
 
-  // Strictly soft delete: preserves DB row for subscriptions/audit, but marks ARCHIVED
-  await plan.update({
-    status: 'ARCHIVED',
-    isPublic: false,
-    isFeatured: false,
-  });
+  // Attempt to add 'ARCHIVED' to enum if supported
+  try {
+    await tenantDb.query('ALTER TYPE "enum_membership_plans_status" ADD VALUE IF NOT EXISTS \'ARCHIVED\';');
+  } catch (_) {}
+
+  // Check if any subscriptions are linked to this plan
+  let hasSubscriptions = false;
+  try {
+    if (MemberSubscription) {
+      const count = await MemberSubscription.count({ where: { membershipPlanId: planId } });
+      hasSubscriptions = count > 0;
+    }
+  } catch (_) {}
+
+  if (!hasSubscriptions) {
+    // If no subscriptions exist, destroy row safely
+    try {
+      await plan.destroy();
+      await _syncMinPrice(tenantDb, gym.id);
+      return { message: 'Plan deleted successfully' };
+    } catch (_) {}
+  }
+
+  // If subscriptions exist or destroy failed, mark as ARCHIVED / INACTIVE
+  try {
+    await plan.update({
+      status: 'ARCHIVED',
+      isPublic: false,
+      isFeatured: false,
+    });
+  } catch (err) {
+    await plan.update({
+      status: 'INACTIVE',
+      isPublic: false,
+      isFeatured: false,
+    });
+  }
 
   await _syncMinPrice(tenantDb, gym.id);
   return { message: 'Plan deleted successfully' };
