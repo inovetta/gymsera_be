@@ -243,7 +243,7 @@ const toggleStatus = async (tenantDb, planId) => {
   const newStatus = plan.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
   await plan.update({ status: newStatus });
   await _syncMinPrice(tenantDb, gym.id);
-  return { id: plan.id, status: newStatus };
+  return plan.reload();
 };
 
 // ── Host: toggle public visibility (isPublic) ─────────────────────────────────
@@ -257,7 +257,7 @@ const togglePublic = async (tenantDb, planId) => {
   const newIsPublic = !plan.isPublic;
   await plan.update({ isPublic: newIsPublic });
   await _syncMinPrice(tenantDb, gym.id);
-  return { id: plan.id, isPublic: newIsPublic };
+  return plan.reload();
 };
 
 // ── Host: update plan poster image ────────────────────────────────────────────
@@ -269,7 +269,7 @@ const updatePoster = async (tenantDb, planId, posterUrl) => {
   if (!plan) throw createError('Plan not found', 404);
 
   await plan.update({ posterUrl });
-  return { id: plan.id, posterUrl };
+  return plan.reload();
 };
 
 // ── Host: set a plan as the featured ("Starting from") plan ──────────────────
@@ -296,7 +296,7 @@ const setFeatured = async (tenantDb, planId) => {
   }
 
   await _syncMinPrice(tenantDb, gym.id);
-  return { id: plan.id, isFeatured: newIsFeatured };
+  return plan.reload();
 };
 
 module.exports = {

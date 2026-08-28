@@ -65,8 +65,8 @@ const deletePlan = async (req, res, next) => {
 // ── POST /membership-plans/:id/status — toggle ACTIVE / INACTIVE ──────────────
 const toggleStatus = async (req, res, next) => {
   try {
-    const result = await membershipPlanService.toggleStatus(req.tenantDb, req.params.id);
-    return sendSuccess(res, result, `Plan is now ${result.status}`);
+    const plan = await membershipPlanService.toggleStatus(req.tenantDb, req.params.id);
+    return sendSuccess(res, { plan }, `Plan is now ${plan.status}`);
   } catch (err) {
     next(err);
   }
@@ -75,9 +75,9 @@ const toggleStatus = async (req, res, next) => {
 // ── POST /membership-plans/:id/public — toggle traveller visibility ────────────
 const togglePublic = async (req, res, next) => {
   try {
-    const result = await membershipPlanService.togglePublic(req.tenantDb, req.params.id);
-    const msg = result.isPublic ? 'Plan is now visible to travellers' : 'Plan is now hidden from travellers';
-    return sendSuccess(res, result, msg);
+    const plan = await membershipPlanService.togglePublic(req.tenantDb, req.params.id);
+    const msg = plan.isPublic ? 'Plan is now visible to travellers' : 'Plan is now hidden from travellers';
+    return sendSuccess(res, { plan, isPublic: plan.isPublic }, msg);
   } catch (err) {
     next(err);
   }
@@ -86,11 +86,11 @@ const togglePublic = async (req, res, next) => {
 // ── POST /membership-plans/:id/featured — set as "Starting from" price plan ───
 const setFeatured = async (req, res, next) => {
   try {
-    const result = await membershipPlanService.setFeatured(req.tenantDb, req.params.id);
-    const msg = result.isFeatured
+    const plan = await membershipPlanService.setFeatured(req.tenantDb, req.params.id);
+    const msg = plan.isFeatured
       ? 'Plan set as the featured "Starting from" price'
       : 'Plan unfeatured — starting price reverts to cheapest public plan';
-    return sendSuccess(res, result, msg);
+    return sendSuccess(res, { plan, isFeatured: plan.isFeatured }, msg);
   } catch (err) {
     next(err);
   }
