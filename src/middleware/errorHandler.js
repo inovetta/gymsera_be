@@ -45,10 +45,13 @@ const errorHandler = (err, req, res, _next) => {
 
   // ── Sequelize: generic DB error ───────────────────────────────────────────────
   if (err instanceof DatabaseError) {
-    console.error('[DB Error]', err.message);
+    console.error('[DB Error]', err.message, err.original?.sqlMessage || err.original?.message || err.original);
     return res.status(500).json({
       success: false,
       message: 'A database error occurred',
+      ...(process.env.NODE_ENV !== 'production' && {
+        detail: err.original?.sqlMessage || err.original?.message || err.message,
+      }),
     });
   }
 

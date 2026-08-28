@@ -6,19 +6,17 @@ const { Op, QueryTypes } = require('sequelize');
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const _ensureSchema = async (tenantDb) => {
-  if (!tenantDb || !tenantDb.query) return;
+  const seq = tenantDb?.sequelize || tenantDb;
+  if (!seq || typeof seq.getQueryInterface !== 'function') return;
   try {
-    const queryType = (tenantDb.QueryTypes && tenantDb.QueryTypes.SELECT) || QueryTypes.SELECT;
-    const existing = await tenantDb.query(
-      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'membership_plans' AND COLUMN_NAME = 'is_deactivated'",
-      { type: queryType }
-    );
-    if (!existing || existing.length === 0) {
-      await tenantDb.query('ALTER TABLE `membership_plans` ADD COLUMN `is_deactivated` TINYINT(1) NOT NULL DEFAULT 0');
+    const queryInterface = seq.getQueryInterface();
+    const planCols = await queryInterface.describeTable('membership_plans').catch(() => ({}));
+    if (planCols && !planCols.is_deactivated) {
+      await seq.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated TINYINT(1) NOT NULL DEFAULT 0').catch(() => {});
     }
   } catch (err) {
     try {
-      await tenantDb.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated BOOLEAN NOT NULL DEFAULT false');
+      await seq.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated BOOLEAN NOT NULL DEFAULT false').catch(() => {});
     } catch (_) {}
   }
 };
