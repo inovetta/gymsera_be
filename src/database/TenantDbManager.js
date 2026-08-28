@@ -51,26 +51,26 @@ class TenantDbManager {
       const queryInterface = sequelize.getQueryInterface();
       const subCols = await queryInterface.describeTable('member_subscriptions').catch(() => ({}));
       if (subCols && !subCols.created_by) {
-        await sequelize.query('ALTER TABLE member_subscriptions ADD COLUMN created_by CHAR(36) NULL').catch(() => {});
+        await sequelize.query('ALTER TABLE member_subscriptions ADD COLUMN created_by CHAR(36) NULL').catch(() => { });
       }
       if (subCols && !subCols.created_by_role) {
-        await sequelize.query('ALTER TABLE member_subscriptions ADD COLUMN created_by_role VARCHAR(30) NULL').catch(() => {});
+        await sequelize.query('ALTER TABLE member_subscriptions ADD COLUMN created_by_role VARCHAR(30) NULL').catch(() => { });
       }
 
       const invCols = await queryInterface.describeTable('invoices').catch(() => ({}));
       if (invCols && !invCols.branch_id) {
-        await sequelize.query('ALTER TABLE invoices ADD COLUMN branch_id CHAR(36) NULL').catch(() => {});
+        await sequelize.query('ALTER TABLE invoices ADD COLUMN branch_id CHAR(36) NULL').catch(() => { });
       }
       if (invCols && !invCols.created_by) {
-        await sequelize.query('ALTER TABLE invoices ADD COLUMN created_by CHAR(36) NULL').catch(() => {});
+        await sequelize.query('ALTER TABLE invoices ADD COLUMN created_by CHAR(36) NULL').catch(() => { });
       }
       if (invCols && !invCols.created_by_role) {
-        await sequelize.query('ALTER TABLE invoices ADD COLUMN created_by_role VARCHAR(30) NULL').catch(() => {});
+        await sequelize.query('ALTER TABLE invoices ADD COLUMN created_by_role VARCHAR(30) NULL').catch(() => { });
       }
 
       const planCols = await queryInterface.describeTable('membership_plans').catch(() => ({}));
       if (planCols && !planCols.is_deactivated) {
-        await sequelize.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated TINYINT(1) NOT NULL DEFAULT 0').catch(() => {});
+        await sequelize.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated TINYINT(1) NOT NULL DEFAULT 0').catch(() => { });
       }
     } catch (migErr) {
       console.warn(`[TenantDbManager] Column check warning for tenant ${tenantId}:`, migErr.message);
