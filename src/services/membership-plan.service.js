@@ -1,18 +1,25 @@
 const { GymListing, Tenant } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError } = require('../utils/response.utils');
-const { Op } = require('sequelize');
+const { Op, QueryTypes } = require('sequelize');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const _ensureSchema = async (tenantDb) => {
   if (!tenantDb || !tenantDb.query) return;
   try {
-    await tenantDb.query('ALTER TABLE "membership_plans" ADD COLUMN IF NOT EXISTS "is_deactivated" BOOLEAN NOT NULL DEFAULT false;');
-  } catch (_) {
+    const queryType = (tenantDb.QueryTypes && tenantDb.QueryTypes.SELECT) || QueryTypes.SELECT;
+    const existing = await tenantDb.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'membership_plans' AND COLUMN_NAME = 'is_deactivated'",
+      { type: queryType }
+    );
+    if (!existing || existing.length === 0) {
+      await tenantDb.query('ALTER TABLE `membership_plans` ADD COLUMN `is_deactivated` TINYINT(1) NOT NULL DEFAULT 0');
+    }
+  } catch (err) {
     try {
-      await tenantDb.query('ALTER TABLE membership_plans ADD COLUMN IF NOT EXISTS is_deactivated BOOLEAN NOT NULL DEFAULT false;');
-    } catch (__) {}
+      await tenantDb.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated BOOLEAN NOT NULL DEFAULT false');
+    } catch (_) {}
   }
 };
 
