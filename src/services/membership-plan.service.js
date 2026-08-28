@@ -217,22 +217,23 @@ const updatePlan = async (tenantDb, planId, data) => {
   return plan.reload();
 };
 
-// ── Host: delete (archive/destroy) plan ───────────────────────────────────────────────
+// ── Host: delete (soft delete / archive) plan ─────────────────────────────────
 const deletePlan = async (tenantDb, planId) => {
   const { MembershipPlan } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({
+    where: { id: planId, gymId: gym.id, status: ['ACTIVE', 'INACTIVE'] },
+  });
   if (!plan) throw createError('Plan not found', 404);
 
-  try {
-    await plan.destroy();
-  } catch (err) {
-    // If FK constraint prevents hard delete, soft delete / archive it
-    await plan.update({ status: 'ARCHIVED', isPublic: false, isFeatured: false }).catch(async () => {
-      await plan.update({ status: 'INACTIVE', isPublic: false, isFeatured: false });
-    });
-  }
+  // Strictly soft delete: preserves DB row for subscriptions/audit, but marks ARCHIVED
+  await plan.update({
+    status: 'ARCHIVED',
+    isPublic: false,
+    isFeatured: false,
+  });
+
   await _syncMinPrice(tenantDb, gym.id);
   return { message: 'Plan deleted successfully' };
 };
