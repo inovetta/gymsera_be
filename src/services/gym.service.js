@@ -654,10 +654,23 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   if (!branch) throw createError('Branch not found', 404);
   if (branch.status !== 'ACTIVE') throw createError(`Branch is not active (current status: ${branch.status})`, 404);
 
+  const today = new Date().toISOString().split('T')[0];
   const existing = await MemberSubscription.findOne({
     where: { userId: user.id, branchId, status: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN, SubscriptionStatus.PENDING] },
+    order: [['createdAt', 'DESC']],
   });
-  if (existing) throw createError('Member already has an active subscription at this branch', 409);
+
+  if (existing) {
+    if (existing.status === SubscriptionStatus.ACTIVE && existing.endDate && existing.endDate < today) {
+      // Prior subscription has passed its end date, mark expired so new subscription can be enrolled
+      await existing.update({ status: SubscriptionStatus.EXPIRED });
+    } else if (existing.status === SubscriptionStatus.PENDING && enrollerRole === 'GYM_HOST') {
+      // Pending subscription being enrolled by host: cancel previous pending record
+      await existing.update({ status: SubscriptionStatus.CANCELLED, cancelledAt: new Date() });
+    } else {
+      throw createError(`Member already has an active subscription at this branch (valid until ${existing.endDate || 'active'}). Please use Renew or Change Plan instead.`, 409);
+    }
+  }
 
   const start = startDate || new Date().toISOString().split('T')[0];
   const end = _calcEndDate(start, plan.durationType, plan.durationValue);
