@@ -222,7 +222,11 @@ const getBranchQuota = async (req, res, next) => {
           usedBranches = await tenantDb.models.Branch.count({
             where: {
               status: 'ACTIVE',
-              gymListingId: organizationId,
+              [Op.or]: [
+                { gymListingId: organizationId },
+                { gymListingId: null },
+                { gymId: organizationId },
+              ]
             }
           });
         } else {
