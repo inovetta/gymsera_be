@@ -83,11 +83,14 @@ class TenantDbManager {
         await sequelize.query('ALTER TABLE gyms ADD COLUMN gym_listing_id CHAR(36) NULL').catch(() => { });
       }
 
-      // Unconditional backfill of gym_listing_id for branches with NULL listing
+      // Unconditional backfill of gym_listing_id and ensure active status for primary organization
       const { GymListing } = require('../models/platform');
       const firstListing = await GymListing.findOne({ where: { tenantId } }).catch(() => null);
       if (firstListing) {
-        await sequelize.query(`UPDATE branches SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`).catch(() => { });
+        if (firstListing.status === 'INACTIVE') {
+          await firstListing.update({ status: 'ACTIVE' }).catch(() => {});
+        }
+        await sequelize.query(`UPDATE branches SET status = 'ACTIVE', gym_listing_id = '${firstListing.id}' WHERE status = 'INACTIVE' OR gym_listing_id IS NULL OR gym_listing_id = ''`).catch(() => { });
         await sequelize.query(`UPDATE gyms SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`).catch(() => { });
       }
     } catch (migErr) {
