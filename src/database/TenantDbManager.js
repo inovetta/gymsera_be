@@ -72,6 +72,24 @@ class TenantDbManager {
       if (planCols && !planCols.is_deactivated) {
         await sequelize.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated TINYINT(1) NOT NULL DEFAULT 0').catch(() => { });
       }
+
+      const branchCols = await queryInterface.describeTable('branches').catch(() => ({}));
+      if (branchCols && !branchCols.gym_listing_id) {
+        await sequelize.query('ALTER TABLE branches ADD COLUMN gym_listing_id CHAR(36) NULL').catch(() => { });
+      }
+
+      const gymCols = await queryInterface.describeTable('gyms').catch(() => ({}));
+      if (gymCols && !gymCols.gym_listing_id) {
+        await sequelize.query('ALTER TABLE gyms ADD COLUMN gym_listing_id CHAR(36) NULL').catch(() => { });
+      }
+
+      // Unconditional backfill of gym_listing_id for branches with NULL listing
+      const { GymListing } = require('../models/platform');
+      const firstListing = await GymListing.findOne({ where: { tenantId } }).catch(() => null);
+      if (firstListing) {
+        await sequelize.query(`UPDATE branches SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`).catch(() => { });
+        await sequelize.query(`UPDATE gyms SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`).catch(() => { });
+      }
     } catch (migErr) {
       console.warn(`[TenantDbManager] Column check warning for tenant ${tenantId}:`, migErr.message);
     }

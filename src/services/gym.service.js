@@ -126,57 +126,39 @@ const updateProfile = async (tenantDb, tenantId, data) => {
 
 const listBranches = async (tenantDb, tenantId, organizationId) => {
   const { Gym, Branch } = tenantDb.models;
-  let gym = null;
+  let gym = await Gym.findOne();
+
   let whereClause = {};
 
   if (organizationId) {
-    // Check if listing is active on platform DB
-    const listing = await GymListing.findOne({
-      where: { id: organizationId, tenantId, status: 'ACTIVE' }
-    });
-    if (!listing) {
-      return { gym: null, branches: [] };
-    }
-
-    gym = await Gym.findOne({
-      where: {
-        [Op.or]: [
-          { gymListingId: organizationId },
-          { id: organizationId }
-        ]
-      }
-    });
-    if (!gym) {
-      return { gym: null, branches: [] };
-    }
-    whereClause = { gymId: gym.id };
-  } else {
-    // List all branches, but filter by active gym listings only
-    const activeListings = await GymListing.findAll({
-      where: { tenantId, status: 'ACTIVE' },
-      attributes: ['id']
-    });
-    const activeListingIds = activeListings.map(l => l.id);
-
-    const activeGyms = await Gym.findAll({
-      where: { gymListingId: { [Op.in]: activeListingIds } }
-    });
-    const activeGymIds = activeGyms.map(g => g.id);
-
-    if (activeGymIds.length === 0) {
-      return { gym: null, branches: [] };
-    }
-
-    gym = activeGyms[0];
-    whereClause = { gymId: { [Op.in]: activeGymIds } };
+    whereClause = {
+      [Op.or]: [
+        { gymListingId: organizationId },
+        { gymId: organizationId },
+        { gymListingId: null },
+      ]
+    };
   }
 
   const branches = await Branch.findAll({
-    where: { ...whereClause, status: 'ACTIVE' },
+    where: {
+      ...whereClause,
+      status: { [Op.ne]: 'INACTIVE' },
+    },
     order: [['createdAt', 'ASC']],
   });
 
-  return { gym, branches };
+  // Find default listing for this tenant to ensure every branch has gymListingId populated for frontend mapping
+  const defaultListing = await GymListing.findOne({ where: { tenantId } });
+  const mappedBranches = branches.map(b => {
+    const json = b.toJSON();
+    if (!json.gymListingId && defaultListing) {
+      json.gymListingId = defaultListing.id;
+    }
+    return json;
+  });
+
+  return { gym, branches: mappedBranches };
 };
 
 const createBranch = async (tenantDb, tenantId, data) => {
