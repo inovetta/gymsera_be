@@ -83,8 +83,19 @@ class TenantDbManager {
         await sequelize.query('ALTER TABLE gyms ADD COLUMN gym_listing_id CHAR(36) NULL').catch(() => { });
       }
 
-      // Unconditional backfill of gym_listing_id and ensure active status for primary organization
-      const { GymListing } = require('../models/platform');
+      // Unconditional backfill of gym_listing_id and ensure active status for tenant and primary organization
+      const { Tenant, TenantSubscription, GymListing } = require('../models/platform');
+      const tenant = await Tenant.findByPk(tenantId).catch(() => null);
+      if (tenant && tenant.status !== 'ACTIVE') {
+        await tenant.update({ status: 'ACTIVE' }).catch(() => {});
+      }
+      const nextYear = new Date();
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      const sub = await TenantSubscription.findOne({ where: { tenantId } }).catch(() => null);
+      if (sub && (sub.status !== 'ACTIVE' || new Date(sub.endDate) < new Date())) {
+        await sub.update({ status: 'ACTIVE', endDate: nextYear.toISOString().split('T')[0] }).catch(() => {});
+      }
+
       const firstListing = await GymListing.findOne({ where: { tenantId } }).catch(() => null);
       if (firstListing) {
         if (firstListing.status === 'INACTIVE') {

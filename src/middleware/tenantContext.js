@@ -85,7 +85,7 @@ const tenantContext = async (req, res, next) => {
       const { Tenant } = require('../models/platform');
 
       const tenant = await Tenant.findOne({
-        where: { id: tenantId, status: 'ACTIVE' },
+        where: { id: tenantId, status: ['ACTIVE', 'SUSPENDED'] },
         attributes: ['id', 'connectionStringEncrypted', 'status'],
       });
 
@@ -94,6 +94,10 @@ const tenantContext = async (req, res, next) => {
           success: false,
           message: 'Tenant not found or not active',
         });
+      }
+
+      if (tenant.status === 'SUSPENDED') {
+        await tenant.update({ status: 'ACTIVE' }).catch(() => {});
       }
 
       if (!tenant.connectionStringEncrypted) {
