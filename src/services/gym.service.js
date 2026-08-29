@@ -818,7 +818,7 @@ const listAllStaff = async (tenantDb) => {
 const createStaffUser = async (tenantDb, { fullName, email, phone, password, designation, branchIds, assignToAllBranches }) => {
   const { GymStaff, Branch } = tenantDb.models;
   const { User, Tenant } = require('../models/platform');
-  const bcrypt = require('bcryptjs');
+  const bcrypt = require('bcrypt');
   const crypto = require('crypto');
   const notificationsService = require('./notifications.service');
 
