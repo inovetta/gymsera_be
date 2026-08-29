@@ -44,6 +44,43 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
     });
   }
 
+  if (!subscription) {
+    throw createError('Invalid QR code. No active subscription found for this code.', 404);
+  }
+
+  const { User } = require('../models/platform');
+  const user = await User.findByPk(subscription.userId, {
+    attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl']
+  }).catch(() => null);
+
+  const plan = subscription.membershipPlanId
+    ? await MembershipPlan.findByPk(subscription.membershipPlanId, { attributes: ['id', 'name', 'durationDays'] }).catch(() => null)
+    : null;
+
+  // Check for duplicate scan within the last 5 minutes
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const recentLog = await AttendanceLog.findOne({
+    where: {
+      userId: subscription.userId,
+      branchId,
+      checkInAt: { [Op.gte]: fiveMinutesAgo },
+    },
+    order: [['checkInAt', 'DESC']],
+  });
+
+  if (recentLog) {
+    const timeStr = new Date(recentLog.checkInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const err = createError(`Member already checked in at ${timeStr}`, 409);
+    err.code = 'ALREADY_CHECKED_IN';
+    err.data = {
+      log: recentLog,
+      user: user ? user.toJSON() : null,
+      plan: plan ? plan.toJSON() : null,
+      branchName: branch.branchName || branch.name || 'Branch',
+    };
+    throw err;
+  }
+
   await _validateSubscription(tenantDb.models, subscription);
 
   // Ensure subscription belongs to this branch (or is gym-wide / belongs to same gym)
@@ -64,7 +101,13 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
     deviceId:              deviceId || null,
   });
 
-  return log;
+  return {
+    ...log.toJSON(),
+    user: user ? user.toJSON() : null,
+    plan: plan ? plan.toJSON() : null,
+    branchName: branch.branchName || branch.name || 'Branch',
+    remainingVisits: subscription.remainingVisits,
+  };
 };
 
 // ── POST /attendance/manual ───────────────────────────────────────────────────

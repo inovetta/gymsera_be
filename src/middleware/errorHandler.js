@@ -80,7 +80,8 @@ const errorHandler = (err, req, res, _next) => {
   return res.status(statusCode).json({
     success: false,
     message,
-    ...(err.code && { error: err.code }),
+    ...(err.code && { code: err.code, error: err.code }),
+    ...(err.data && { data: err.data }),
   });
 };
 
