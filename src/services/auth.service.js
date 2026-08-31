@@ -335,12 +335,18 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
     user = await User.findOne({ where: { email } });
 
     if (user) {
-      // Link Google ID to existing account
-      await user.update({ googleId, profileImageUrl: user.profileImageUrl || picture || null });
+      // Link Google ID to existing account and activate it (email verified by Google)
+      const newStatus = user.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
+      await user.update({
+        googleId,
+        profileImageUrl: user.profileImageUrl || picture || null,
+        isVerified: true,
+        status: newStatus,
+      });
     } else {
       // Create brand new user
       user = await User.create({
-        fullName: name || email,
+        fullName: name || email.split('@')[0],
         email,
         googleId,
         profileImageUrl: picture || null,
@@ -350,9 +356,18 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
         passwordHash: null,
       });
     }
+  } else {
+    // Existing Google account: ensure active & verified unless explicitly suspended
+    if (user.status !== 'SUSPENDED') {
+      await user.update({
+        isVerified: true,
+        status: 'ACTIVE',
+        profileImageUrl: user.profileImageUrl || picture || null,
+      });
+    }
   }
 
-  if (user.status !== 'ACTIVE') {
+  if (user.status === 'SUSPENDED') {
     throw createError('Your account has been suspended. Please contact support.', 403);
   }
 
