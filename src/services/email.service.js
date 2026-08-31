@@ -19,24 +19,23 @@ const getTransporter = () => {
 
 /**
  * Send an email using Nodemailer.
- * In development, if SMTP credentials are not set, logs to console instead.
  */
 const sendMail = async ({ to, subject, html, text }) => {
-  const isDev = process.env.NODE_ENV !== 'production';
   const hasSmtp = !!smtpConfig.auth.user;
 
-  if (isDev && !hasSmtp) {
-    console.log('\n╔═══════════════════════════════════════════════════╗');
-    console.log('║              [DEV] EMAIL (not sent)              ║');
-    console.log('╠═══════════════════════════════════════════════════╣');
-    console.log(`  To      : ${to}`);
-    console.log(`  Subject : ${subject}`);
-    console.log(`  Body    : ${text}`);
-    console.log('╚═══════════════════════════════════════════════════╝\n');
+  if (!hasSmtp) {
+    console.warn(`[Email] No SMTP credentials configured. Skipping send to ${to}`);
     return;
   }
 
-  await getTransporter().sendMail({ from: smtpConfig.from, to, subject, html, text });
+  try {
+    const info = await getTransporter().sendMail({ from: smtpConfig.from, to, subject, html, text });
+    console.log(`[Email] Successfully sent email to ${to} (Subject: "${subject}") — MessageId: ${info.messageId}`);
+    return info;
+  } catch (err) {
+    console.error(`[Email Error] Failed to send email to ${to}:`, err.message);
+    throw err;
+  }
 };
 
 // ── Email templates ───────────────────────────────────────────────────────────
