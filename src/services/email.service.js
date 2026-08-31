@@ -11,6 +11,7 @@ const getTransporter = () => {
     port: smtpConfig.port,
     secure: smtpConfig.secure,
     auth: smtpConfig.auth.user ? smtpConfig.auth : undefined,
+    tls: smtpConfig.tls,
   });
 
   return _transporter;

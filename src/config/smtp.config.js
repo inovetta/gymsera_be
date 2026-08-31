@@ -1,15 +1,18 @@
 const port = parseInt(process.env.SMTP_PORT || '587');
-const secure = process.env.SMTP_SECURE === 'true'; // true = port 465 SSL
+const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+
+const cleanStr = (val) => (val || '').replace(/^["']|["']$/g, '').trim();
 
 module.exports = {
-  host: process.env.SMTP_HOST || 'smtp.mailtrap.io',
+  host: cleanStr(process.env.SMTP_HOST) || 'smtp.zoho.com',
   port,
   secure,
-  // On port 587 (STARTTLS), require TLS upgrade; skip cert validation for self-signed certs
-  ...(!secure && { requireTLS: true, tls: { rejectUnauthorized: false } }),
   auth: {
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
+    user: cleanStr(process.env.SMTP_USER),
+    pass: cleanStr(process.env.SMTP_PASS),
   },
-  from: process.env.SMTP_FROM || 'GymsEra <noreply@gymsera.com>',
+  from: cleanStr(process.env.SMTP_FROM) || 'GymsEra <info@inovetta.com>',
+  tls: {
+    rejectUnauthorized: false,
+  },
 };
