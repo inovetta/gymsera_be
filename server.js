@@ -1,3 +1,4 @@
+// GymsEra API Server — Production v1.0.1 (Domain SMTP configured)
 require('dotenv').config();
 
 const app = require('./app');
