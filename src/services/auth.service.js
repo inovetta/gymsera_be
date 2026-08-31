@@ -299,7 +299,14 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
  * On first login, creates a new ACTIVE + verified account automatically.
  */
 const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
-  if (!process.env.GOOGLE_CLIENT_ID) {
+  const audiences = [
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_IOS_CLIENT_ID,
+    '852595980857-akglkibm5auiu093lkrcr3cmqgf0oo3q.apps.googleusercontent.com',
+    '852595980857-s1pss39jidmqk9me80p362eabauc785o.apps.googleusercontent.com',
+  ].filter(Boolean);
+
+  if (audiences.length === 0) {
     throw createError('Google authentication is not configured', 503);
   }
 
@@ -307,10 +314,11 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
   try {
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: audiences,
     });
     payload = ticket.getPayload();
-  } catch {
+  } catch (err) {
+    logger.warn('Google verifyIdToken failed', { error: err.message });
     throw createError('Invalid Google ID token', 401);
   }
 
