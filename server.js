@@ -1,4 +1,11 @@
-// GymsEra API Server — Production v1.0.4 (Fail-proof pre-flight CORS & staging domain config)
+// GymsEra API Server — Production v1.0.5 (Crash-proof Redis handling & process exception safety)
+process.on('uncaughtException', (err) => {
+  console.error('[Process] Prevented crash from uncaught exception:', err?.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process] Prevented crash from unhandled rejection:', reason?.message || reason);
+});
+
 require('dotenv').config();
 
 const app = require('./app');
@@ -18,41 +25,42 @@ async function bootstrap() {
     // 1. Connect to Platform MySQL
     await connectPlatformDb();
 
-    // Run one-time payments branchId backfill
+    // Run one-time payments branchId backfill (only for active tenants with database provisioned)
     (async () => {
-        try {
-          console.log('[Backfill] Running payments branchId backfill...');
-          const { Tenant } = require('./src/models/platform');
-          const tenants = await Tenant.findAll();
-          for (const tenant of tenants) {
-            try {
-              const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-              const { Payment, MemberSubscription } = tenantDb.models;
-              const payments = await Payment.findAll({
-                where: { paymentFor: 'MEMBERSHIP', branchId: null }
-              });
-              let updated = 0;
-              for (const payment of payments) {
-                if (payment.referenceEntityId) {
-                  const sub = await MemberSubscription.findByPk(payment.referenceEntityId);
-                  if (sub && sub.branchId) {
-                    await payment.update({ branchId: sub.branchId });
-                    updated++;
-                  }
+      try {
+        const { Tenant } = require('./src/models/platform');
+        const tenants = await Tenant.findAll();
+        for (const tenant of tenants) {
+          if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
+            continue;
+          }
+          try {
+            const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+            const { Payment, MemberSubscription } = tenantDb.models;
+            const payments = await Payment.findAll({
+              where: { paymentFor: 'MEMBERSHIP', branchId: null },
+            });
+            let updated = 0;
+            for (const payment of payments) {
+              if (payment.referenceEntityId) {
+                const sub = await MemberSubscription.findByPk(payment.referenceEntityId);
+                if (sub && sub.branchId) {
+                  await payment.update({ branchId: sub.branchId });
+                  updated++;
                 }
               }
-              if (updated > 0) {
-                console.log(`[Backfill] Backfilled branchId for ${updated} payments in tenant: ${tenant.gymName}`);
-              }
-            } catch (e) {
-              console.error(`[Backfill] Tenant ${tenant.gymName} failed:`, e.message);
             }
+            if (updated > 0) {
+              console.log(`[Backfill] Backfilled branchId for ${updated} payments in tenant: ${tenant.gymName}`);
+            }
+          } catch (e) {
+            // Silently ignore backfill errors on individual tenants
           }
-          console.log('[Backfill] Payments branchId backfill finished.');
-        } catch (err) {
-          console.error('[Backfill] Global error:', err.message);
         }
-      })();
+      } catch (err) {
+        // Silently ignore global backfill errors
+      }
+    })();
 
     // 2. Warm up Redis connection
     getRedisClient();

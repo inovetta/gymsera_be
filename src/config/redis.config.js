@@ -5,8 +5,8 @@ let isRedisDisabled = false;
 
 /**
  * Returns the singleton Redis client, creating it on first call.
- * If REDIS_HOST / REDIS_URL is not provided (e.g. on Vercel without Redis),
- * Redis caching is cleanly disabled without throwing connection errors.
+ * If REDIS_HOST / REDIS_URL is not provided or Redis is offline,
+ * Redis caching is cleanly disabled without throwing connection errors or crashing.
  */
 const getRedisClient = () => {
   if (isRedisDisabled) return null;
@@ -14,8 +14,8 @@ const getRedisClient = () => {
   const redisHost = process.env.REDIS_HOST;
   const redisUrl = process.env.REDIS_URL;
 
-  // If no Redis host/url is configured, disable Redis caching cleanly
-  if (!redisHost && !redisUrl) {
+  // If no Redis host/url is configured or disabled
+  if ((!redisHost && !redisUrl) || process.env.DISABLE_REDIS === 'true') {
     isRedisDisabled = true;
     console.log('[Redis] No REDIS_HOST or REDIS_URL configured. Redis caching disabled.');
     return null;
@@ -23,23 +23,33 @@ const getRedisClient = () => {
 
   if (!client) {
     client = new Redis(redisUrl || {
-      host: redisHost,
+      host: redisHost || '127.0.0.1',
       port: parseInt(process.env.REDIS_PORT || '6379'),
       password: process.env.REDIS_PASSWORD || undefined,
-      maxRetriesPerRequest: null, // Required to prevent ioredis "Reached the max retries per request limit"
+      maxRetriesPerRequest: null,
       enableOfflineQueue: false,
       connectTimeout: 5000,
       retryStrategy(times) {
         if (times > 3) {
           console.warn('[Redis] Max reconnect attempts reached. Disabling Redis cache.');
+          isRedisDisabled = true;
           return null; // Stop reconnecting
         }
-        return Math.min(times * 200, 2000);
+        return Math.min(times * 200, 1500);
       },
     });
 
     client.on('connect', () => console.log('[Redis] Connected'));
-    client.on('error', (err) => console.warn('[Redis] Connection warning:', err.message));
+    client.on('error', (err) => {
+      console.warn('[Redis] Connection warning:', err.message);
+      if (err.code === 'ECONNREFUSED') {
+        isRedisDisabled = true;
+      }
+    });
+    client.on('end', () => {
+      console.warn('[Redis] Connection ended. Bypassing Redis cache.');
+      isRedisDisabled = true;
+    });
   }
   return client;
 };
@@ -50,6 +60,7 @@ const getRedisClient = () => {
  */
 const safeRedisGet = async (key) => {
   try {
+    if (isRedisDisabled) return null;
     const redis = getRedisClient();
     if (!redis || redis.status !== 'ready') return null;
     return await redis.get(key);
@@ -65,6 +76,7 @@ const safeRedisGet = async (key) => {
  */
 const safeRedisSetex = async (key, ttl, value) => {
   try {
+    if (isRedisDisabled) return;
     const redis = getRedisClient();
     if (!redis || redis.status !== 'ready') return;
     await redis.setex(key, ttl, value);
@@ -79,6 +91,7 @@ const safeRedisSetex = async (key, ttl, value) => {
  */
 const safeRedisDel = async (key) => {
   try {
+    if (isRedisDisabled) return;
     const redis = getRedisClient();
     if (!redis || redis.status !== 'ready') return;
     await redis.del(key);
@@ -88,4 +101,3 @@ const safeRedisDel = async (key) => {
 };
 
 module.exports = { getRedisClient, safeRedisGet, safeRedisSetex, safeRedisDel };
-
