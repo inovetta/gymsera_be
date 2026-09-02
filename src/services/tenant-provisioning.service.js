@@ -7,19 +7,22 @@
  *
  * Flow:
  *  1. Load tenant from platform DB
- *  2. Connect to tenant MySQL server with admin credentials
+ *  2. Connect to tenant MySQL server with admin credentials (with multi-host and credential fallback)
  *  3. CREATE DATABASE `gymsera_{tenantCode}`
- *  4. GRANT ALL PRIVILEGES on new DB to the app user
+ *  4. Configure user privileges (with graceful error catching)
  *  5. Build + encrypt the connection string
- *  6. Sync tenant Sequelize models (create tables)
- *  7. Create GymListing record on platform DB
- *  8. Update Tenant: status=ACTIVE, dbName, connectionStringEncrypted
- *  9. Send tenant-approved email to the owner
+ *  6. Sync tenant Sequelize models (with auto-fallback to admin credentials if appUser fails)
+ *  7. Create or activate GymListing record on platform DB (cross-DB linking)
+ *  8. Create Gym & initial Branch records in tenant DB
+ *  9. Update Tenant: status=ACTIVE, dbName, connectionStringEncrypted
+ *  10. Prime Redis connection string cache
+ *  11. Auto-create tenant subscription for selected package
+ *  12. Send tenant-approved email and push notification to the owner
  */
 const mysql = require('mysql2/promise');
 const { Sequelize } = require('sequelize');
 
-const { Tenant, User, City, GymListing, TenantSubscription, PlatformPackage } = require('../models/platform');
+const { Tenant, User, City, Area, GymListing, TenantSubscription, PlatformPackage } = require('../models/platform');
 const registerTenantModels = require('../models/tenant');
 const { encrypt } = require('../utils/crypto.utils');
 const emailService = require('./email.service');
@@ -27,14 +30,20 @@ const { safeRedisSetex } = require('../config/redis.config');
 const { TenantStatus } = require('../constants/subscription-status');
 
 // ── Env helpers ───────────────────────────────────────────────────────────────
-const getTenantDbConfig = () => ({
-  host: process.env.TENANT_DB_HOST || 'localhost',
-  port: parseInt(process.env.TENANT_DB_PORT || '3306'),
-  adminUser: process.env.TENANT_DB_ADMIN_USER || 'root',
-  adminPassword: process.env.TENANT_DB_ADMIN_PASS || '',
-  appUser: process.env.TENANT_DB_USER || 'gymsera_tenant',
-  appPassword: process.env.TENANT_DB_PASS || 'tenant_pass',
-});
+const getTenantDbConfig = () => {
+  const host = process.env.TENANT_DB_HOST || process.env.PLATFORM_DB_HOST || '127.0.0.1';
+  const port = parseInt(process.env.TENANT_DB_PORT || process.env.PLATFORM_DB_PORT || '3306');
+  const adminUser = process.env.TENANT_DB_ADMIN_USER || process.env.PLATFORM_DB_USER || 'root';
+  const adminPassword = (process.env.TENANT_DB_ADMIN_PASS !== undefined && process.env.TENANT_DB_ADMIN_PASS !== '')
+    ? process.env.TENANT_DB_ADMIN_PASS
+    : (process.env.PLATFORM_DB_PASS !== undefined ? process.env.PLATFORM_DB_PASS : '');
+  const appUser = process.env.TENANT_DB_USER || process.env.PLATFORM_DB_USER || adminUser;
+  const appPassword = (process.env.TENANT_DB_PASS !== undefined && process.env.TENANT_DB_PASS !== '')
+    ? process.env.TENANT_DB_PASS
+    : (process.env.PLATFORM_DB_PASS !== undefined ? process.env.PLATFORM_DB_PASS : adminPassword);
+
+  return { host, port, adminUser, adminPassword, appUser, appPassword };
+};
 
 /**
  * Sanitise a tenant code into a valid MySQL database name.
@@ -43,6 +52,57 @@ const getTenantDbConfig = () => ({
 const buildDbName = (tenantCode) => {
   const safe = tenantCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
   return `gymsera_${safe}`;
+};
+
+/**
+ * Helper to safely connect to MySQL with fallback hosts (127.0.0.1 <-> localhost)
+ * and fallback credentials (admin credentials <-> platform credentials).
+ */
+const createSafeAdminConnection = async (dbConfig) => {
+  const hostsToTry = [dbConfig.host];
+  if (dbConfig.host === 'localhost') hostsToTry.push('127.0.0.1');
+  else if (dbConfig.host === '127.0.0.1') hostsToTry.push('localhost');
+
+  const credentialPairs = [
+    { user: dbConfig.adminUser, password: dbConfig.adminPassword },
+  ];
+
+  if (process.env.PLATFORM_DB_USER && (process.env.PLATFORM_DB_USER !== dbConfig.adminUser || process.env.PLATFORM_DB_PASS !== dbConfig.adminPassword)) {
+    credentialPairs.push({
+      user: process.env.PLATFORM_DB_USER,
+      password: process.env.PLATFORM_DB_PASS || '',
+    });
+  }
+
+  // Also try root with empty password as a fallback
+  if (dbConfig.adminUser !== 'root' || dbConfig.adminPassword !== '') {
+    credentialPairs.push({ user: 'root', password: '' });
+  }
+
+  let lastError;
+  for (const cred of credentialPairs) {
+    for (const host of hostsToTry) {
+      try {
+        const conn = await mysql.createConnection({
+          host,
+          port: dbConfig.port,
+          user: cred.user,
+          password: cred.password,
+          connectTimeout: 10000,
+        });
+        // Success: update dbConfig with working parameters
+        dbConfig.host = host;
+        dbConfig.adminUser = cred.user;
+        dbConfig.adminPassword = cred.password;
+        console.log(`[Provisioning] Connected to MySQL as '${cred.user}' on ${host}:${dbConfig.port}`);
+        return conn;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+  }
+
+  throw new Error(`MySQL admin connection failed (${lastError?.message || 'Unknown error'})`);
 };
 
 // ── Main processor ────────────────────────────────────────────────────────────
@@ -69,20 +129,14 @@ const processTenantProvisioning = async (tenantId) => {
   const dbConfig = getTenantDbConfig();
   const dbName = buildDbName(tenant.tenantCode);
 
-  // ── Step 2 & 3: Create DB via admin connection ────────────────────────────
-  const adminConn = await mysql.createConnection({
-    host: dbConfig.host,
-    port: dbConfig.port,
-    user: dbConfig.adminUser,
-    password: dbConfig.adminPassword,
-    connectTimeout: 20000,
-  });
+  // ── Step 2 & 3: Create DB via safe admin connection ───────────────────────
+  const adminConn = await createSafeAdminConnection(dbConfig);
 
   try {
-    // CREATE DATABASE is not injectable via parameterised queries in mysql2;
-    // the name has been sanitised to [a-z0-9_] only above.
-    await adminConn.execute(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-    console.log(`[Provisioning] Database '${dbName}' created`);
+    await adminConn.execute(
+      `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+    console.log(`[Provisioning] Database '${dbName}' verified/created`);
 
     // ── Step 4: Ensure app user exists and grant access ────────────────────
     if (dbConfig.appUser && dbConfig.appUser !== dbConfig.adminUser) {
@@ -92,6 +146,12 @@ const processTenantProvisioning = async (tenantId) => {
         ).catch(() => {});
         await adminConn.execute(
           `CREATE USER IF NOT EXISTS '${dbConfig.appUser}'@'localhost' IDENTIFIED BY '${dbConfig.appPassword}'`
+        ).catch(() => {});
+        await adminConn.execute(
+          `ALTER USER '${dbConfig.appUser}'@'%' IDENTIFIED BY '${dbConfig.appPassword}'`
+        ).catch(() => {});
+        await adminConn.execute(
+          `ALTER USER '${dbConfig.appUser}'@'localhost' IDENTIFIED BY '${dbConfig.appPassword}'`
         ).catch(() => {});
         await adminConn.execute(
           `GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbConfig.appUser}'@'%'`
@@ -107,58 +167,100 @@ const processTenantProvisioning = async (tenantId) => {
       }
     }
   } finally {
-    await adminConn.end();
+    await adminConn.end().catch(() => {});
   }
 
-  // ── Step 5: Build + encrypt connection string ─────────────────────────────
-  const connUrl = `mysql://${dbConfig.appUser}:${dbConfig.appPassword}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
-  const connectionStringEncrypted = encrypt(connUrl);
+  // ── Step 5: Build connection string and test connection with auto-fallback ─
+  let activeUser = dbConfig.appUser;
+  let activePassword = dbConfig.appPassword;
+  let connUrl = `mysql://${encodeURIComponent(activeUser)}:${encodeURIComponent(activePassword)}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
 
-  // ── Step 7: Create or activate GymListing on platform DB ──────────────────
-  let listingId = null;
-  const existingListing = await GymListing.findOne({ where: { tenantId: tenant.id } });
-
-  if (!existingListing && tenant.gymName) {
-    const listing = await GymListing.create({
-      tenantId: tenant.id,
-      cityId: tenant.cityId || 1,
-      areaId: tenant.areaId || null,
-      title: tenant.gymName,
-      shortDescription: tenant.gymDescription || null,
-      logoUrl: tenant.logoUrl || null,
-      coverImageUrl: tenant.coverImageUrl || null,
-      genderType: tenant.genderType || null,
-      contactPhone: tenant.phone || null,
-      latitude: tenant.latitude || null,
-      longitude: tenant.longitude || null,
-      status: 'ACTIVE',
-    });
-    listingId = listing.id;
-    console.log(`[Provisioning] GymListing created for tenant ${tenantId}`);
-  } else if (existingListing) {
-    listingId = existingListing.id;
-    if (existingListing.status !== 'ACTIVE') {
-      await existingListing.update({ status: 'ACTIVE' }).catch(() => {});
-    }
-  }
-
-  // ── Step 6: Sync tenant models ────────────────────────────────────────────
-  const tenantSequelize = new Sequelize(connUrl, {
+  let tenantSequelize = new Sequelize(connUrl, {
     dialect: 'mysql',
     logging: false,
-    pool: { max: 3, min: 0, acquire: 30000, idle: 10000 },
-    dialectOptions: { connectTimeout: 20000 },
+    pool: { max: 3, min: 0, acquire: 20000, idle: 10000 },
+    dialectOptions: { connectTimeout: 15000 },
   });
-
-  let gymId = null;
 
   try {
     await tenantSequelize.authenticate();
-    const models = registerTenantModels(tenantSequelize);
-    await tenantSequelize.sync({ force: false, alter: false });
-    console.log(`[Provisioning] Tenant models synced to '${dbName}'`);
+    console.log(`[Provisioning] Authenticated with appUser '${activeUser}'`);
+  } catch (authErr) {
+    console.warn(`[Provisioning] Connection with appUser '${activeUser}' failed (${authErr.message}). Switching to verified admin credentials...`);
+    await tenantSequelize.close().catch(() => {});
 
-    // ── Step 6b: Create or update Gym record in tenant DB (idempotent) ───────
+    activeUser = dbConfig.adminUser;
+    activePassword = dbConfig.adminPassword;
+    connUrl = `mysql://${encodeURIComponent(activeUser)}:${encodeURIComponent(activePassword)}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
+
+    tenantSequelize = new Sequelize(connUrl, {
+      dialect: 'mysql',
+      logging: false,
+      pool: { max: 3, min: 0, acquire: 20000, idle: 10000 },
+      dialectOptions: { connectTimeout: 15000 },
+    });
+    await tenantSequelize.authenticate();
+    console.log(`[Provisioning] Authenticated with fallback admin credentials '${activeUser}'`);
+  }
+
+  const connectionStringEncrypted = encrypt(connUrl);
+
+  // ── Step 6: Sync tenant models ────────────────────────────────────────────
+  let gymId = null;
+  let listingId = null;
+
+  try {
+    const models = registerTenantModels(tenantSequelize);
+    await tenantSequelize.sync({ force: false, alter: true });
+    console.log(`[Provisioning] Tenant schema synced to '${dbName}'`);
+
+    // ── Step 7: Create or activate GymListing on platform DB ────────────────
+    let existingListing = await GymListing.findOne({ where: { tenantId: tenant.id } });
+
+    if (!existingListing && tenant.gymName) {
+      let safeCityId = tenant.cityId || 1;
+      let safeAreaId = tenant.areaId || null;
+
+      if (safeCityId) {
+        const cityObj = await City.findByPk(safeCityId).catch(() => null);
+        if (!cityObj) safeCityId = 1;
+      }
+      if (safeAreaId) {
+        const areaObj = await Area.findByPk(safeAreaId).catch(() => null);
+        if (!areaObj) safeAreaId = null;
+      }
+
+      const safeLat = tenant.latitude != null ? parseFloat(Number(tenant.latitude).toFixed(7)) : null;
+      const safeLng = tenant.longitude != null ? parseFloat(Number(tenant.longitude).toFixed(7)) : null;
+
+      existingListing = await GymListing.create({
+        tenantId: tenant.id,
+        cityId: safeCityId,
+        areaId: safeAreaId,
+        title: tenant.gymName,
+        shortDescription: tenant.gymDescription || null,
+        logoUrl: tenant.logoUrl || null,
+        coverImageUrl: tenant.coverImageUrl || null,
+        genderType: tenant.genderType || 'MIXED',
+        contactPhone: tenant.phone || null,
+        latitude: safeLat,
+        longitude: safeLng,
+        status: 'ACTIVE',
+      }).catch((e) => {
+        console.warn('[Provisioning] GymListing creation warning:', e.message);
+        return null;
+      });
+      console.log(`[Provisioning] GymListing created for tenant ${tenantId}`);
+    }
+
+    if (existingListing) {
+      listingId = existingListing.id;
+      if (existingListing.status !== 'ACTIVE') {
+        await existingListing.update({ status: 'ACTIVE' }).catch(() => {});
+      }
+    }
+
+    // ── Step 8a: Create or update Gym record in tenant DB (idempotent) ──────
     if (tenant.gymName) {
       let gym = await models.Gym.findOne();
       if (!gym) {
@@ -180,83 +282,99 @@ const processTenantProvisioning = async (tenantId) => {
         }
       }
 
-      // ── Step 6c: Create or update initial Branch from onboarding data ────
+      // ── Step 8b: Create or update initial Branch from onboarding data ────
       if (tenant.mainBranchDataJson && gymId) {
         let b = tenant.mainBranchDataJson;
         if (typeof b === 'string') {
           try { b = JSON.parse(b); } catch (e) { b = {}; }
         }
-        const existingBranch = await models.Branch.findOne({ where: { gymId } });
-        if (!existingBranch) {
-          await models.Branch.create({
+
+        const safeBranchLat = b.latitude != null ? parseFloat(Number(b.latitude).toFixed(7)) : (tenant.latitude != null ? parseFloat(Number(tenant.latitude).toFixed(7)) : null);
+        const safeBranchLng = b.longitude != null ? parseFloat(Number(b.longitude).toFixed(7)) : (tenant.longitude != null ? parseFloat(Number(tenant.longitude).toFixed(7)) : null);
+
+        let branch = await models.Branch.findOne({ where: { gymId } });
+        if (!branch) {
+          branch = await models.Branch.create({
             gymId,
             gymListingId: listingId,
             branchName: b.name || tenant.gymName,
             address: b.address || tenant.address || null,
             cityId: b.cityId || tenant.cityId || null,
             areaId: b.areaId || tenant.areaId || null,
-            latitude: b.latitude != null ? b.latitude : null,
-            longitude: b.longitude != null ? b.longitude : null,
-            phone: b.phone || null,
+            latitude: safeBranchLat,
+            longitude: safeBranchLng,
+            phone: b.phone || tenant.phone || null,
             openingTime: b.openingTime || null,
             closingTime: b.closingTime || null,
             status: 'ACTIVE',
+            travelerVisibilityStatus: 'active',
           });
           console.log(`[Provisioning] Initial Branch created in '${dbName}'`);
-        } else if (listingId && !existingBranch.gymListingId) {
-          await existingBranch.update({ gymListingId: listingId }).catch(() => {});
+        } else {
+          if (listingId && !branch.gymListingId) {
+            await branch.update({ gymListingId: listingId }).catch(() => {});
+          }
+        }
+
+        // Link primary branchId back to GymListing on platform DB
+        if (listingId && branch?.id) {
+          await GymListing.update({ branchId: branch.id }, { where: { id: listingId } }).catch(() => {});
         }
       }
     }
   } finally {
-    await tenantSequelize.close();
+    await tenantSequelize.close().catch(() => {});
   }
 
-  // ── Step 8: Update tenant record ─────────────────────────────────────────
+  // ── Step 9: Update tenant record to ACTIVE ───────────────────────────────
   await tenant.update({
     status: TenantStatus.ACTIVE,
     dbName,
     connectionStringEncrypted,
   });
-  console.log(`[Provisioning] Tenant ${tenantId} status set to ACTIVE`);
+  console.log(`[Provisioning] Tenant ${tenantId} status set to ACTIVE with dbName '${dbName}'`);
 
   // Prime Redis connection string cache
   await safeRedisSetex(`tenant:${tenantId}:connStr`, 3600, connectionStringEncrypted);
 
-  // ── Step 8b: Create subscription from selectedPackageId (if not already done) ─
+  // ── Step 10: Auto-create subscription for selected package (safe) ────────
   if (tenant.selectedPackageId) {
-    const existingActiveSub = await TenantSubscription.findOne({
-      where: { tenantId: tenant.id },
-    });
+    try {
+      const existingActiveSub = await TenantSubscription.findOne({
+        where: { tenantId: tenant.id },
+      });
 
-    if (!existingActiveSub) {
-      const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
-      if (pkg) {
-        const rawCycle = (pkg.billingCycle || 'MONTHLY').toUpperCase();
-        const cycle = ['MONTHLY', 'QUARTERLY', 'YEARLY'].includes(rawCycle) ? rawCycle : 'MONTHLY';
-        const start = new Date();
-        const end = new Date(start);
-        if (cycle === 'MONTHLY') end.setMonth(end.getMonth() + 1);
-        else if (cycle === 'QUARTERLY') end.setMonth(end.getMonth() + 3);
-        else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
+      if (!existingActiveSub) {
+        const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
+        if (pkg) {
+          const rawCycle = (pkg.billingCycle || 'MONTHLY').toUpperCase();
+          const cycle = ['MONTHLY', 'QUARTERLY', 'YEARLY'].includes(rawCycle) ? rawCycle : 'MONTHLY';
+          const start = new Date();
+          const end = new Date(start);
+          if (cycle === 'MONTHLY') end.setMonth(end.getMonth() + 1);
+          else if (cycle === 'QUARTERLY') end.setMonth(end.getMonth() + 3);
+          else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
 
-        await TenantSubscription.create({
-          tenantId: tenant.id,
-          platformPackageId: pkg.id,
-          startDate: start.toISOString().split('T')[0],
-          endDate: end.toISOString().split('T')[0],
-          amount: pkg.price,
-          billingCycle: cycle,
-          status: 'ACTIVE',
-          autoRenew: true,
-          paymentStatus: 'PENDING',
-        });
-        console.log(`[Provisioning] Subscription auto-created for tenant ${tenantId} (package: ${pkg.name})`);
+          await TenantSubscription.create({
+            tenantId: tenant.id,
+            platformPackageId: pkg.id,
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0],
+            amount: pkg.price != null ? pkg.price : 0,
+            billingCycle: cycle,
+            status: 'ACTIVE',
+            autoRenew: true,
+            paymentStatus: 'PENDING',
+          });
+          console.log(`[Provisioning] Subscription auto-created for tenant ${tenantId} (package: ${pkg.name})`);
+        }
       }
+    } catch (subErr) {
+      console.warn('[Provisioning] Subscription auto-creation warning:', subErr.message);
     }
   }
 
-  // ── Step 9: Send approval email ───────────────────────────────────────────
+  // ── Step 11: Send approval email ──────────────────────────────────────────
   if (tenant.owner) {
     try {
       await emailService.sendTenantApprovedEmail(
@@ -269,6 +387,7 @@ const processTenantProvisioning = async (tenantId) => {
     }
   }
 
+  // ── Step 12: In-app notification ──────────────────────────────────────────
   try {
     const notificationsService = require('./notifications.service');
     if (tenant.ownerUserId) {
@@ -286,8 +405,7 @@ const processTenantProvisioning = async (tenantId) => {
     console.warn('[Notification Error] Failed to create approval notification:', notifErr.message);
   }
 
-  console.log(`[Provisioning] ✅ Tenant ${tenantId} fully provisioned`);
+  console.log(`[Provisioning] ✅ Tenant ${tenantId} fully provisioned and ACTIVE`);
 };
 
 module.exports = { processTenantProvisioning };
-

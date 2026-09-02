@@ -1,4 +1,4 @@
-// GymsEra API Server — Production v1.0.1 (Domain SMTP configured)
+// GymsEra API Server — Production v1.0.2 (Self-healing tenant provisioning & multi-credential fallback)
 require('dotenv').config();
 
 const app = require('./app');
