@@ -43,14 +43,50 @@ app.use(
 );
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
-app.use(
-  cors({
-    origin: appConfig.corsOrigin,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-device-api-key'],
-    credentials: true,
-  })
-);
+const allowedOrigins = [
+  'https://cmsstaging.gymsera.com',
+  'https://cms.gymsera.com',
+  'https://gymsera.com',
+  'https://apistaging.gymsera.com',
+  'https://api.gymsera.com',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  ...(process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+    : []),
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Mobile apps, curl, server-to-server requests don't send an Origin header
+    if (!origin) return callback(null, true);
+
+    try {
+      const url = new URL(origin);
+      const isGymseraDomain = url.hostname === 'gymsera.com' || url.hostname.endsWith('.gymsera.com');
+      const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+      if (isGymseraDomain || isLocalhost || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+    } catch (e) {
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+    }
+
+    console.warn(`[CORS] Blocked request from origin: ${origin}`);
+    callback(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-device-api-key'],
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // ── Static Files (Uploads) ───────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
