@@ -24,6 +24,23 @@ const app = express();
 // and req.ip returns the proxy IP instead of the real client IP.
 app.set('trust proxy', 1);
 
+// ── Fail-proof CORS & Preflight OPTIONS Handler ──────────────────────────────
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-device-api-key, X-Requested-With, Accept, Origin');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // ── Security headers ──────────────────────────────────────────────────────────
 // CSP is relaxed for unpkg.com so the /api/docs Swagger UI can load from CDN.
 app.use(

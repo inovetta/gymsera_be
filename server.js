@@ -1,4 +1,4 @@
-// GymsEra API Server — Production v1.0.3 (Wildcard GymsEra CORS & self-healing provisioning)
+// GymsEra API Server — Production v1.0.4 (Fail-proof pre-flight CORS & staging domain config)
 require('dotenv').config();
 
 const app = require('./app');
