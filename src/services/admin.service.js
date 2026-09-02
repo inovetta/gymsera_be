@@ -7,6 +7,7 @@ const { UserRole } = require('../constants/roles');
 const { processTenantProvisioning } = require('./tenant-provisioning.service');
 const emailService = require('./email.service');
 const TenantDbManager = require('../database/TenantDbManager');
+const { safeRedisDel } = require('../config/redis.config');
 
 // ── createTenant (admin) ──────────────────────────────────────────────────────
 const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessName, email, phone, cityId, packageId }) => {
@@ -296,6 +297,9 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
     kycStatus: KycStatus.REJECTED,
   });
 
+  await safeRedisDel(`tenant:${actualTenantId}:connStr`);
+  await TenantDbManager.release(actualTenantId).catch(() => {});
+
   // Notify the gym host — the rejection itself is already persisted above, so
   // a broken SMTP config must not surface as a failed request.
   if (tenant.owner) {
@@ -347,6 +351,8 @@ const suspendTenant = async (tenantId, adminUserId, reason) => {
   }
 
   await tenant.update({ status: TenantStatus.SUSPENDED });
+  await safeRedisDel(`tenant:${tenantId}:connStr`);
+  await TenantDbManager.release(tenantId).catch(() => {});
 
   return { tenant };
 };
@@ -361,6 +367,7 @@ const reactivateTenant = async (tenantId, adminUserId) => {
   }
 
   await tenant.update({ status: TenantStatus.ACTIVE });
+  await safeRedisDel(`tenant:${tenantId}:connStr`);
   return { tenant };
 };
 

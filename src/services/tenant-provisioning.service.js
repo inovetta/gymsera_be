@@ -23,6 +23,7 @@ const { Tenant, User, City, GymListing, TenantSubscription, PlatformPackage } = 
 const registerTenantModels = require('../models/tenant');
 const { encrypt } = require('../utils/crypto.utils');
 const emailService = require('./email.service');
+const { safeRedisSetex } = require('../config/redis.config');
 const { TenantStatus } = require('../constants/subscription-status');
 
 // ── Env helpers ───────────────────────────────────────────────────────────────
@@ -51,7 +52,6 @@ const buildDbName = (tenantCode) => {
  * @param {string} tenantId
  */
 const processTenantProvisioning = async (tenantId) => {
-
   console.log(`[Provisioning] Starting for tenant ${tenantId}`);
 
   // ── Step 1: Load tenant ───────────────────────────────────────────────────
@@ -84,12 +84,28 @@ const processTenantProvisioning = async (tenantId) => {
     await adminConn.execute(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
     console.log(`[Provisioning] Database '${dbName}' created`);
 
-    // ── Step 4: Grant app user access ──────────────────────────────────────
-    await adminConn.execute(
-      `GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbConfig.appUser}'@'%'`
-    );
-    await adminConn.execute('FLUSH PRIVILEGES');
-    console.log(`[Provisioning] Granted privileges to '${dbConfig.appUser}'`);
+    // ── Step 4: Ensure app user exists and grant access ────────────────────
+    if (dbConfig.appUser && dbConfig.appUser !== dbConfig.adminUser) {
+      try {
+        await adminConn.execute(
+          `CREATE USER IF NOT EXISTS '${dbConfig.appUser}'@'%' IDENTIFIED BY '${dbConfig.appPassword}'`
+        ).catch(() => {});
+        await adminConn.execute(
+          `CREATE USER IF NOT EXISTS '${dbConfig.appUser}'@'localhost' IDENTIFIED BY '${dbConfig.appPassword}'`
+        ).catch(() => {});
+        await adminConn.execute(
+          `GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbConfig.appUser}'@'%'`
+        ).catch(async () => {
+          await adminConn.execute(
+            `GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbConfig.appUser}'@'localhost'`
+          ).catch((err) => console.warn('[Provisioning] Grant warning:', err.message));
+        });
+        await adminConn.execute('FLUSH PRIVILEGES').catch(() => {});
+        console.log(`[Provisioning] Privileges configured for '${dbConfig.appUser}'`);
+      } catch (userErr) {
+        console.warn(`[Provisioning] User setup warning for '${dbConfig.appUser}':`, userErr.message);
+      }
+    }
   } finally {
     await adminConn.end();
   }
@@ -98,15 +114,15 @@ const processTenantProvisioning = async (tenantId) => {
   const connUrl = `mysql://${dbConfig.appUser}:${dbConfig.appPassword}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
   const connectionStringEncrypted = encrypt(connUrl);
 
-  // ── Step 7: Create GymListing on platform DB (moved up) ────────────────────
+  // ── Step 7: Create or activate GymListing on platform DB ──────────────────
   let listingId = null;
   const existingListing = await GymListing.findOne({ where: { tenantId: tenant.id } });
 
   if (!existingListing && tenant.gymName) {
     const listing = await GymListing.create({
       tenantId: tenant.id,
-      cityId: tenant.cityId,
-      areaId: null,
+      cityId: tenant.cityId || 1,
+      areaId: tenant.areaId || null,
       title: tenant.gymName,
       shortDescription: tenant.gymDescription || null,
       logoUrl: tenant.logoUrl || null,
@@ -121,6 +137,9 @@ const processTenantProvisioning = async (tenantId) => {
     console.log(`[Provisioning] GymListing created for tenant ${tenantId}`);
   } else if (existingListing) {
     listingId = existingListing.id;
+    if (existingListing.status !== 'ACTIVE') {
+      await existingListing.update({ status: 'ACTIVE' }).catch(() => {});
+    }
   }
 
   // ── Step 6: Sync tenant models ────────────────────────────────────────────
@@ -139,36 +158,54 @@ const processTenantProvisioning = async (tenantId) => {
     await tenantSequelize.sync({ force: false, alter: false });
     console.log(`[Provisioning] Tenant models synced to '${dbName}'`);
 
-    // ── Step 6b: Create Gym record in tenant DB ────────────────────────────
+    // ── Step 6b: Create or update Gym record in tenant DB (idempotent) ───────
     if (tenant.gymName) {
-      const gym = await models.Gym.create({
-        name: tenant.gymName,
-        description: tenant.gymDescription || null,
-        contactPhone: tenant.phone || null,
-        genderType: tenant.genderType || 'MIXED',
-        logoUrl: tenant.logoUrl || null,
-        coverImageUrl: tenant.coverImageUrl || null,
-        gymListingId: listingId,
-      });
-      gymId = gym.id;
-      console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${gymId})`);
-
-      // ── Step 6c: Create initial Branch from onboarding data ────────────
-      if (tenant.mainBranchDataJson) {
-        const b = tenant.mainBranchDataJson;
-        await models.Branch.create({
-          gymId,
-          branchName: b.name || tenant.gymName,
-          address: b.address || tenant.address || null,
-          cityId: b.cityId || tenant.cityId || null,
-          latitude: b.latitude != null ? b.latitude : null,
-          longitude: b.longitude != null ? b.longitude : null,
-          phone: b.phone || null,
-          openingTime: b.openingTime || null,
-          closingTime: b.closingTime || null,
-          status: 'ACTIVE',
+      let gym = await models.Gym.findOne();
+      if (!gym) {
+        gym = await models.Gym.create({
+          name: tenant.gymName,
+          description: tenant.gymDescription || null,
+          contactPhone: tenant.phone || null,
+          genderType: tenant.genderType || 'MIXED',
+          logoUrl: tenant.logoUrl || null,
+          coverImageUrl: tenant.coverImageUrl || null,
+          gymListingId: listingId,
         });
-        console.log(`[Provisioning] Initial Branch created in '${dbName}'`);
+        gymId = gym.id;
+        console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${gymId})`);
+      } else {
+        gymId = gym.id;
+        if (listingId && !gym.gymListingId) {
+          await gym.update({ gymListingId: listingId }).catch(() => {});
+        }
+      }
+
+      // ── Step 6c: Create or update initial Branch from onboarding data ────
+      if (tenant.mainBranchDataJson && gymId) {
+        let b = tenant.mainBranchDataJson;
+        if (typeof b === 'string') {
+          try { b = JSON.parse(b); } catch (e) { b = {}; }
+        }
+        const existingBranch = await models.Branch.findOne({ where: { gymId } });
+        if (!existingBranch) {
+          await models.Branch.create({
+            gymId,
+            gymListingId: listingId,
+            branchName: b.name || tenant.gymName,
+            address: b.address || tenant.address || null,
+            cityId: b.cityId || tenant.cityId || null,
+            areaId: b.areaId || tenant.areaId || null,
+            latitude: b.latitude != null ? b.latitude : null,
+            longitude: b.longitude != null ? b.longitude : null,
+            phone: b.phone || null,
+            openingTime: b.openingTime || null,
+            closingTime: b.closingTime || null,
+            status: 'ACTIVE',
+          });
+          console.log(`[Provisioning] Initial Branch created in '${dbName}'`);
+        } else if (listingId && !existingBranch.gymListingId) {
+          await existingBranch.update({ gymListingId: listingId }).catch(() => {});
+        }
       }
     }
   } finally {
@@ -183,6 +220,9 @@ const processTenantProvisioning = async (tenantId) => {
   });
   console.log(`[Provisioning] Tenant ${tenantId} status set to ACTIVE`);
 
+  // Prime Redis connection string cache
+  await safeRedisSetex(`tenant:${tenantId}:connStr`, 3600, connectionStringEncrypted);
+
   // ── Step 8b: Create subscription from selectedPackageId (if not already done) ─
   if (tenant.selectedPackageId) {
     const existingActiveSub = await TenantSubscription.findOne({
@@ -192,7 +232,8 @@ const processTenantProvisioning = async (tenantId) => {
     if (!existingActiveSub) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
       if (pkg) {
-        const cycle = pkg.billingCycle || 'MONTHLY';
+        const rawCycle = (pkg.billingCycle || 'MONTHLY').toUpperCase();
+        const cycle = ['MONTHLY', 'QUARTERLY', 'YEARLY'].includes(rawCycle) ? rawCycle : 'MONTHLY';
         const start = new Date();
         const end = new Date(start);
         if (cycle === 'MONTHLY') end.setMonth(end.getMonth() + 1);
@@ -216,9 +257,6 @@ const processTenantProvisioning = async (tenantId) => {
   }
 
   // ── Step 9: Send approval email ───────────────────────────────────────────
-  // Provisioning above already succeeded and the tenant is ACTIVE — a broken
-  // SMTP config must not surface as a "provisioning failed" error, since the
-  // tenant can no longer be re-approved to retry it (status is now ACTIVE).
   if (tenant.owner) {
     try {
       await emailService.sendTenantApprovedEmail(
@@ -252,3 +290,4 @@ const processTenantProvisioning = async (tenantId) => {
 };
 
 module.exports = { processTenantProvisioning };
+

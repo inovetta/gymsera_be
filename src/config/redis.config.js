@@ -73,5 +73,19 @@ const safeRedisSetex = async (key, ttl, value) => {
   }
 };
 
-module.exports = { getRedisClient, safeRedisGet, safeRedisSetex };
+/**
+ * Safely performs a Redis DEL operation.
+ * Silently ignores errors if Redis is offline or if the command fails.
+ */
+const safeRedisDel = async (key) => {
+  try {
+    const redis = getRedisClient();
+    if (!redis || redis.status !== 'ready') return;
+    await redis.del(key);
+  } catch (err) {
+    console.warn(`[Redis Cache] DEL failed for key "${key}":`, err.message);
+  }
+};
+
+module.exports = { getRedisClient, safeRedisGet, safeRedisSetex, safeRedisDel };
 
