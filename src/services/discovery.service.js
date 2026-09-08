@@ -48,18 +48,24 @@ const _getTravelerVisibleListingIds = async () => {
 };
 
 const _getAllActiveBranches = async () => {
-  const tenants = await Tenant.findAll({
-    where: { status: 'ACTIVE' },
-    attributes: ['id', 'connectionStringEncrypted'],
-  });
+  const [tenants, listings, cities, areas] = await Promise.all([
+    Tenant.findAll({
+      where: { status: 'ACTIVE' },
+      attributes: ['id', 'connectionStringEncrypted', 'cityId', 'areaId'],
+    }),
+    GymListing.findAll({
+      where: { status: 'ACTIVE' },
+      include: [
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Area, as: 'area', attributes: ['id', 'name', 'cityId'] },
+      ]
+    }),
+    City.findAll({ attributes: ['id', 'name'] }),
+    Area.findAll({ attributes: ['id', 'name', 'cityId'] }),
+  ]);
 
-  const listings = await GymListing.findAll({
-    where: { status: 'ACTIVE' },
-    include: [
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-      { model: Area, as: 'area', attributes: ['id', 'name'] },
-    ]
-  });
+  const cityMap = new Map(cities.map(c => [c.id, c]));
+  const areaMap = new Map(areas.map(a => [a.id, a]));
 
   // Load branch-level average ratings from platform reviews
   const reviewStats = await GymReview.findAll({
@@ -106,6 +112,9 @@ const _getAllActiveBranches = async () => {
 
           // Compute branch-specific minPrice dynamically based on public plans
           const branchPlans = plans.filter(p => p.branchId === null || p.branchId === b.id);
+          // Only show branches that have at least 1 active public plan
+          if (branchPlans.length === 0) continue;
+
           const featuredPlan = branchPlans.find(p => p.isFeatured);
           let minPrice = 0;
           if (featuredPlan) {
@@ -114,14 +123,17 @@ const _getAllActiveBranches = async () => {
             minPrice = Math.min(...branchPlans.map(p => parseFloat(p.price)));
           }
 
+          const finalCityId = b.cityId || (listing ? listing.cityId : null) || tenant.cityId || 1;
+          const finalAreaId = b.areaId || (listing ? listing.areaId : null) || tenant.areaId || null;
+
           // Map to unified branch object
           const mappedBranch = {
             id: b.id, // primary unit is branch id!
             tenantId: tenant.id,
             branchId: b.id,
             gymId: gym.id,
-            cityId: b.cityId || (listing ? listing.cityId : null),
-            areaId: b.areaId || (listing ? listing.areaId : null),
+            cityId: finalCityId,
+            areaId: finalAreaId,
             title: `${gym.name} - ${b.branchName}`,
             shortDescription: gym.description || b.tagline,
             logoUrl: gym.logoUrl,
@@ -140,8 +152,8 @@ const _getAllActiveBranches = async () => {
             gymListingId: b.gymListingId || null,
             status: 'ACTIVE',
             createdAt: b.createdAt,
-            city: listing ? listing.city : null,
-            area: listing ? listing.area : null,
+            city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
+            area: (listing && listing.area) ? listing.area : (finalAreaId ? (areaMap.get(finalAreaId) || null) : null),
           };
           branchesList.push(mappedBranch);
         }
@@ -632,17 +644,23 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
 const listOrganizationBranches = async (gymId) => {
   const tenants = await Tenant.findAll({
     where: { status: 'ACTIVE' },
-    attributes: ['id', 'connectionStringEncrypted'],
+    attributes: ['id', 'connectionStringEncrypted', 'cityId', 'areaId'],
   });
 
-  const listings = await GymListing.findAll({
-    where: { status: 'ACTIVE' },
-    include: [
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-      { model: Area, as: 'area', attributes: ['id', 'name'] },
-    ]
-  });
+  const [listings, cities, areas] = await Promise.all([
+    GymListing.findAll({
+      where: { status: 'ACTIVE' },
+      include: [
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Area, as: 'area', attributes: ['id', 'name', 'cityId'] },
+      ]
+    }),
+    City.findAll({ attributes: ['id', 'name'] }),
+    Area.findAll({ attributes: ['id', 'name', 'cityId'] }),
+  ]);
   const listingMap = new Map(listings.map(l => [l.id, l]));
+  const cityMap = new Map(cities.map(c => [c.id, c]));
+  const areaMap = new Map(areas.map(a => [a.id, a]));
 
   // Load branch-level average ratings from platform reviews
   const reviewStats = await GymReview.findAll({
@@ -700,6 +718,8 @@ const listOrganizationBranches = async (gymId) => {
 
         // Compute branch-specific minPrice dynamically based on public plans
         const branchPlans = plans.filter(p => p.branchId === null || p.branchId === b.id);
+        if (branchPlans.length === 0) return null;
+
         const featuredPlan = branchPlans.find(p => p.isFeatured);
         let minPrice = 0;
         if (featuredPlan) {
@@ -708,13 +728,16 @@ const listOrganizationBranches = async (gymId) => {
           minPrice = Math.min(...branchPlans.map(p => parseFloat(p.price)));
         }
 
+        const finalCityId = b.cityId || (listing ? listing.cityId : null) || tenant.cityId || 1;
+        const finalAreaId = b.areaId || (listing ? listing.areaId : null) || tenant.areaId || null;
+
         return {
           id: b.id,
           tenantId: tenant.id,
           branchId: b.id,
           gymId: gym.id,
-          cityId: b.cityId || (listing ? listing.cityId : null),
-          areaId: b.areaId || (listing ? listing.areaId : null),
+          cityId: finalCityId,
+          areaId: finalAreaId,
           title: `${gym.name} - ${b.branchName}`,
           shortDescription: gym.description || b.tagline,
           logoUrl: gym.logoUrl,
@@ -732,10 +755,10 @@ const listOrganizationBranches = async (gymId) => {
           minPrice,
           status: 'ACTIVE',
           createdAt: b.createdAt,
-          city: listing ? listing.city : null,
-          area: listing ? listing.area : null,
+          city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
+          area: (listing && listing.area) ? listing.area : (finalAreaId ? (areaMap.get(finalAreaId) || null) : null),
         };
-      });
+      }).filter(Boolean);
 
       return { gyms: mappedBranches, branches: mappedBranches };
     } catch (err) {

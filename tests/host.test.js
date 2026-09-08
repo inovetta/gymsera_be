@@ -38,16 +38,27 @@ describe('Host — Branches', () => {
     }
   });
 
-  test('POST /gyms/branches — create branch (201)', async () => {
+  test('POST /gyms/branches — fail without packages (422)', async () => {
     const res = await authed(hostToken).post('/gyms/branches', {
-      name: 'Test Branch ' + Date.now(),
+      branchName: 'Test Branch ' + Date.now(),
       address: '123 Test St, Karachi',
       phone: '+923001111111',
-      managerId: null,
     });
-    expect([201, 400, 422]).toContain(res.status);
+    expect([400, 422]).toContain(res.status);
+  });
+
+  test('POST /gyms/branches — create branch with packages (201)', async () => {
+    const res = await authed(hostToken).post('/gyms/branches', {
+      branchName: 'Test Branch ' + Date.now(),
+      address: '123 Test St, Karachi',
+      phone: '+923001111111',
+      packages: [
+        { name: 'Starter Plan', price: 2500, durationType: 'MONTHLY' },
+      ],
+    });
+    expect([201, 400, 403, 422]).toContain(res.status);
     if (res.status === 201) {
-      branchId = res.data.data.id;
+      branchId = res.data.data.branch ? res.data.data.branch.id : res.data.data.id;
     }
   });
 

@@ -217,6 +217,29 @@ const createPlan = async (tenantDb, data) => {
   return plan;
 };
 
+const _validateRemainingPlansForBranch = async (tenantDb, plan, actionVerb = 'remove') => {
+  if (!plan.branchId) return;
+  const { Branch, MembershipPlan } = tenantDb.models;
+  const branch = await Branch.findByPk(plan.branchId);
+  if (branch && branch.status === 'ACTIVE') {
+    const remainingCount = await MembershipPlan.count({
+      where: {
+        branchId: plan.branchId,
+        id: { [Op.ne]: plan.id },
+        status: 'ACTIVE',
+        isDeactivated: false,
+        isPublic: true,
+      },
+    });
+    if (remainingCount === 0) {
+      throw createError(
+        `Cannot ${actionVerb} the only active membership plan for an active branch. Every branch must have at least 1 active plan.`,
+        400
+      );
+    }
+  }
+};
+
 // ── Host: update plan ─────────────────────────────────────────────────────────
 const updatePlan = async (tenantDb, planId, data) => {
   await _ensureSchema(tenantDb);
@@ -231,6 +254,10 @@ const updatePlan = async (tenantDb, planId, data) => {
   const patch = {};
   for (const key of allowed) {
     if (data[key] !== undefined) patch[key] = data[key];
+  }
+
+  if (patch.status === 'INACTIVE' || patch.isDeactivated === true || patch.isPublic === false) {
+    await _validateRemainingPlansForBranch(tenantDb, plan, 'modify');
   }
 
   await plan.update(patch);
@@ -248,6 +275,8 @@ const deletePlan = async (tenantDb, planId) => {
     where: { id: planId, gymId: gym.id, status: 'ACTIVE' },
   });
   if (!plan) throw createError('Plan not found', 404);
+
+  await _validateRemainingPlansForBranch(tenantDb, plan, 'delete');
 
   // Soft delete: set status to INACTIVE and remove from public listings
   await plan.update({
@@ -270,6 +299,10 @@ const toggleStatus = async (tenantDb, planId) => {
   if (!plan) throw createError('Plan not found', 404);
 
   const newIsDeactivated = !plan.isDeactivated;
+  if (newIsDeactivated) {
+    await _validateRemainingPlansForBranch(tenantDb, plan, 'deactivate');
+  }
+
   const patch = { isDeactivated: newIsDeactivated };
   if (newIsDeactivated) {
     // If deactivating, unpublish and unfeature
@@ -292,6 +325,10 @@ const togglePublic = async (tenantDb, planId) => {
   if (!plan) throw createError('Plan not found', 404);
 
   const newIsPublic = !plan.isPublic;
+  if (!newIsPublic) {
+    await _validateRemainingPlansForBranch(tenantDb, plan, 'unpublish');
+  }
+
   await plan.update({ isPublic: newIsPublic });
   await _syncMinPrice(tenantDb, gym.id);
   return plan.reload();

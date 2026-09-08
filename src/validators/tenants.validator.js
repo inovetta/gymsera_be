@@ -47,6 +47,11 @@ const tenantsValidators = {
 
     body('address').optional().isString(),
 
+    body('mainBranchData').optional().isObject().withMessage('mainBranchData must be an object'),
+    body('mainBranchData.plans').optional().isArray().withMessage('mainBranchData.plans must be an array'),
+    body('mainBranchData.plans.*.name').optional().trim().notEmpty().withMessage('Plan name cannot be empty'),
+    body('mainBranchData.plans.*.price').optional().isFloat({ min: 0 }).withMessage('Plan price must be a valid number >= 0'),
+
     body('kycDocumentsJson')
       .optional()
       .isArray()

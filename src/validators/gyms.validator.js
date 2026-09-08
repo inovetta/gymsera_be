@@ -109,8 +109,22 @@ const gymsValidators = {
     body('addressLine1').optional().isString(),
     body('addressLine2').optional().isString(),
     body('postalCode').optional().isString(),
-    body('country').optional().isString(),
-    body('packages').optional().isArray(),
+    body('packages')
+      .isArray({ min: 1 })
+      .withMessage('At least 1 membership package/plan is required for every branch'),
+    body('packages.*.name')
+      .trim()
+      .notEmpty()
+      .withMessage('Package name is required'),
+    body('packages.*.price')
+      .notEmpty()
+      .withMessage('Package price is required')
+      .isFloat({ min: 0 })
+      .withMessage('Package price must be a valid number >= 0'),
+    body('packages.*.durationType')
+      .optional()
+      .isString()
+      .withMessage('durationType must be a string'),
   ],
 
   updateBranch: [

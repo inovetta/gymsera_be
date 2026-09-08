@@ -241,6 +241,10 @@ const createBranch = async (tenantDb, tenantId, data) => {
       gym = await _getOrCreateGym(tenantDb, tenantId);
     }
 
+    if (!Array.isArray(data.packages) || data.packages.length === 0) {
+      throw createError('At least 1 membership package/plan is required to create a branch', 400);
+    }
+
     const branch = await Branch.create({
       gymId: gym.id,
       gymListingId: targetListingId || null,
@@ -265,26 +269,33 @@ const createBranch = async (tenantDb, tenantId, data) => {
       postalCode: data.postalCode || null,
       country: data.country || null,
       status: 'ACTIVE',
+      travelerVisibilityStatus: 'active',
     });
 
-    // Auto-create initial membership packages if provided
-    if (Array.isArray(data.packages) && data.packages.length > 0) {
-      const membershipPlanService = require('./membership-plan.service');
-      for (const pkg of data.packages) {
-        try {
-          await membershipPlanService.createPlan(tenantDb, {
-            branchId: branch.id,
-            name: pkg.name,
-            price: pkg.price,
-            durationType: pkg.durationType || 'MONTHLY',
-            durationValue: pkg.durationValue || 1,
-            description: pkg.description || null,
-            isPublic: true,
-          });
-        } catch (pkgErr) {
-          console.warn('[Branch Creation] Package creation warning:', pkgErr.message);
-        }
+    // Create initial membership packages (mandatory: at least 1)
+    const membershipPlanService = require('./membership-plan.service');
+    let createdPlansCount = 0;
+    for (const pkg of data.packages) {
+      if (!pkg.name || pkg.price === undefined || pkg.price === null) continue;
+      try {
+        await membershipPlanService.createPlan(tenantDb, {
+          branchId: branch.id,
+          name: pkg.name,
+          price: pkg.price,
+          durationType: pkg.durationType || 'MONTHLY',
+          durationValue: pkg.durationValue || 1,
+          description: pkg.description || null,
+          isPublic: true,
+        });
+        createdPlansCount++;
+      } catch (pkgErr) {
+        console.warn('[Branch Creation] Package creation error:', pkgErr.message);
+        throw pkgErr;
       }
+    }
+
+    if (createdPlansCount === 0) {
+      throw createError('Failed to create initial membership plan for branch. At least 1 valid plan is required.', 400);
     }
 
     await platformTx.commit();
@@ -305,11 +316,26 @@ const getBranch = async (tenantDb, branchId) => {
 };
 
 const updateBranch = async (tenantDb, branchId, data) => {
-  const { Branch } = tenantDb.models;
+  const { Branch, MembershipPlan } = tenantDb.models;
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
 
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'status', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
+  // If activating or setting traveler visibility active, enforce at least 1 active public plan
+  if (data.status === 'ACTIVE' || data.travelerVisibilityStatus === 'active') {
+    const activePublicPlansCount = await MembershipPlan.count({
+      where: {
+        branchId,
+        status: 'ACTIVE',
+        isPublic: true,
+        isDeactivated: false,
+      }
+    });
+    if (activePublicPlansCount === 0) {
+      throw createError('Cannot publish or activate a branch without at least 1 active public membership plan', 400);
+    }
+  }
+
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'status', 'travelerVisibilityStatus', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
   fields.forEach((f) => {
     if (data[f] !== undefined) branch[f] = data[f];
   });

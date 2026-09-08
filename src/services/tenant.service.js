@@ -74,6 +74,11 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
 
   const { gymName, gymDescription, genderType, address, latitude, longitude, mainBranchData, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
 
+  const mergedMainBranchData = mainBranchData !== undefined ? {
+    ...(tenant.mainBranchDataJson || {}),
+    ...mainBranchData,
+  } : tenant.mainBranchDataJson;
+
   await tenant.update({
     gymName: gymName || tenant.gymName,
     gymDescription: gymDescription !== undefined ? gymDescription : tenant.gymDescription,
@@ -81,7 +86,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     address: address !== undefined ? address : tenant.address,
     latitude: latitude !== undefined ? latitude : tenant.latitude,
     longitude: longitude !== undefined ? longitude : tenant.longitude,
-    mainBranchDataJson: mainBranchData !== undefined ? mainBranchData : tenant.mainBranchDataJson,
+    mainBranchDataJson: mergedMainBranchData,
     kycDocumentsJson: kycDocumentsJson || tenant.kycDocumentsJson,
     logoUrl: logoUrl || tenant.logoUrl,
     coverImageUrl: coverImageUrl || tenant.coverImageUrl,
@@ -153,6 +158,16 @@ const updateMyTenant = async (userId, updates) => {
 const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransferRef }) => {
   const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
+
+  // Validate that the main branch has at least 1 membership plan configured
+  const mainBranch = tenant.mainBranchDataJson;
+  const plans = (mainBranch && Array.isArray(mainBranch.plans))
+    ? mainBranch.plans
+    : (mainBranch && Array.isArray(mainBranch.packages) ? mainBranch.packages : null);
+
+  if (!plans || plans.length === 0) {
+    throw createError('At least 1 membership plan is required before completing listing and submitting for review.', 400);
+  }
 
   await tenant.update({
     paymentMethod: paymentMethod || 'BANK_TRANSFER',
