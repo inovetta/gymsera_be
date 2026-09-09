@@ -283,8 +283,8 @@ const processTenantProvisioning = async (tenantId) => {
       }
 
       // ── Step 8b: Create or update initial Branch from onboarding data ────
-      if (tenant.mainBranchDataJson && gymId) {
-        let b = tenant.mainBranchDataJson;
+      if (gymId) {
+        let b = tenant.mainBranchDataJson || {};
         if (typeof b === 'string') {
           try { b = JSON.parse(b); } catch (e) { b = {}; }
         }
@@ -297,7 +297,7 @@ const processTenantProvisioning = async (tenantId) => {
           branch = await models.Branch.create({
             gymId,
             gymListingId: listingId,
-            branchName: b.name || tenant.gymName,
+            branchName: b.name || tenant.gymName || 'Main Branch',
             address: b.address || tenant.address || null,
             cityId: b.cityId || tenant.cityId || null,
             areaId: b.areaId || tenant.areaId || null,
@@ -309,10 +309,15 @@ const processTenantProvisioning = async (tenantId) => {
             status: 'ACTIVE',
             travelerVisibilityStatus: 'active',
           });
-          console.log(`[Provisioning] Initial Branch created in '${dbName}'`);
+          console.log(`[Provisioning] Initial Branch created in '${dbName}' (id: ${branch.id})`);
         } else {
-          if (listingId && !branch.gymListingId) {
-            await branch.update({ gymListingId: listingId }).catch(() => {});
+          const updates = {};
+          if (listingId && !branch.gymListingId) updates.gymListingId = listingId;
+          if (branch.status !== 'ACTIVE') updates.status = 'ACTIVE';
+          if (b.name && !branch.branchName) updates.branchName = b.name;
+          if (b.address && !branch.address) updates.address = b.address;
+          if (Object.keys(updates).length > 0) {
+            await branch.update(updates).catch(() => {});
           }
         }
 
@@ -334,55 +339,99 @@ const processTenantProvisioning = async (tenantId) => {
             if (!p || !p.name || p.price === undefined || p.price === null) continue;
             try {
               const pPrice = parseFloat(p.price) || 0;
-              await models.MembershipPlan.create({
-                gymId,
-                branchId: branch.id,
-                name: p.name,
-                description: p.description || null,
-                durationType: p.durationType || 'MONTHLY',
-                durationValue: p.durationValue || 1,
-                price: pPrice,
-                joiningFee: parseFloat(p.joiningFee) || 0,
-                securityFee: parseFloat(p.securityFee) || 0,
-                isTrial: Boolean(p.isTrial),
-                isPublic: true,
-                isDeactivated: false,
-                status: 'ACTIVE',
+              let durationType = String(p.durationType || 'MONTHLY').toUpperCase();
+              if (!['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'].includes(durationType)) {
+                if (durationType.includes('DAY') || durationType.includes('DAILY')) durationType = 'DAILY';
+                else if (durationType.includes('WEEK')) durationType = 'WEEKLY';
+                else if (durationType.includes('QUART')) durationType = 'QUARTERLY';
+                else if (durationType.includes('YEAR') || durationType.includes('ANNUAL')) durationType = 'YEARLY';
+                else durationType = 'MONTHLY';
+              }
+              const durationValue = parseInt(p.durationValue, 10) || 1;
+              const joiningFee = parseFloat(p.joiningFee) || 0;
+              const securityFee = parseFloat(p.securityFee) || 0;
+              const visitLimit = (p.visitLimit !== undefined && p.visitLimit !== null && p.visitLimit !== '')
+                ? parseInt(p.visitLimit, 10) : null;
+              const freezeLimitDays = parseInt(p.freezeLimitDays, 10) || 0;
+              const isTrial = Boolean(p.isTrial);
+              const isPublic = p.isPublic !== undefined ? Boolean(p.isPublic) : true;
+
+              const existingPlan = await models.MembershipPlan.findOne({
+                where: {
+                  branchId: branch.id,
+                  name: p.name.trim(),
+                },
               });
+
+              if (existingPlan) {
+                await existingPlan.update({
+                  description: p.description || existingPlan.description,
+                  durationType,
+                  durationValue,
+                  price: pPrice,
+                  joiningFee,
+                  securityFee,
+                  visitLimit,
+                  freezeLimitDays,
+                  isTrial,
+                  isPublic,
+                  status: 'ACTIVE',
+                  isDeactivated: false,
+                });
+                console.log(`[Provisioning] Updated existing MembershipPlan '${p.name}' in '${dbName}'`);
+              } else {
+                await models.MembershipPlan.create({
+                  gymId,
+                  branchId: branch.id,
+                  name: p.name.trim(),
+                  description: p.description || null,
+                  durationType,
+                  durationValue,
+                  price: pPrice,
+                  joiningFee,
+                  securityFee,
+                  visitLimit,
+                  freezeLimitDays,
+                  isTrial,
+                  isPublic,
+                  isDeactivated: false,
+                  status: 'ACTIVE',
+                });
+                console.log(`[Provisioning] Created MembershipPlan '${p.name}' in '${dbName}'`);
+              }
+
               createdPlansCount++;
               if (lowestPrice === null || pPrice < lowestPrice) {
                 lowestPrice = pPrice;
               }
             } catch (pErr) {
-              console.warn('[Provisioning] MembershipPlan creation error:', pErr.message);
+              console.warn('[Provisioning] MembershipPlan creation/update error:', pErr.message);
             }
           }
 
           // Fallback: If no plans were provided or created, ensure at least 1 standard plan exists
-          if (createdPlansCount === 0) {
-            const existingCount = await models.MembershipPlan.count({
-              where: { branchId: branch.id, status: 'ACTIVE' }
-            });
-            if (existingCount === 0) {
-              const defaultPrice = 5000;
-              await models.MembershipPlan.create({
-                gymId,
-                branchId: branch.id,
-                name: 'Standard Membership',
-                description: 'Full access to gym facilities and equipment.',
-                durationType: 'MONTHLY',
-                durationValue: 1,
-                price: defaultPrice,
-                joiningFee: 0,
-                securityFee: 0,
-                isTrial: false,
-                isPublic: true,
-                isDeactivated: false,
-                status: 'ACTIVE',
-              }).catch((pErr) => console.warn('[Provisioning] Fallback plan creation error:', pErr.message));
-              lowestPrice = defaultPrice;
-              console.log(`[Provisioning] Fallback initial MembershipPlan created in '${dbName}'`);
-            }
+          const existingCount = await models.MembershipPlan.count({
+            where: { branchId: branch.id, status: 'ACTIVE' }
+          });
+          if (existingCount === 0) {
+            const defaultPrice = 5000;
+            await models.MembershipPlan.create({
+              gymId,
+              branchId: branch.id,
+              name: 'Standard Membership',
+              description: 'Full access to gym facilities and equipment.',
+              durationType: 'MONTHLY',
+              durationValue: 1,
+              price: defaultPrice,
+              joiningFee: 0,
+              securityFee: 0,
+              isTrial: false,
+              isPublic: true,
+              isDeactivated: false,
+              status: 'ACTIVE',
+            }).catch((pErr) => console.warn('[Provisioning] Fallback plan creation error:', pErr.message));
+            lowestPrice = defaultPrice;
+            console.log(`[Provisioning] Fallback initial MembershipPlan created in '${dbName}'`);
           }
 
           if (listingId && lowestPrice !== null) {
