@@ -59,12 +59,8 @@ module.exports = (sequelize) => {
         defaultValue: false,
         field: 'is_host',
       },
-      fcmToken: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        field: 'fcm_token',
-      },
     },
+
     {
       tableName: 'users',
       underscored: true,

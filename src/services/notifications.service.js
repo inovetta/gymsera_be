@@ -114,9 +114,6 @@ const registerDeviceToken = async ({ userId, token, platform = 'android', device
     await deviceToken.save();
   }
 
-  // Also update User record primary fcmToken
-  await User.update({ fcmToken: token }, { where: { id: userId } });
-
   return { success: true, registered: true };
 };
 
@@ -126,20 +123,14 @@ const registerDeviceToken = async ({ userId, token, platform = 'android', device
 const deleteDeviceToken = async ({ userId, token }) => {
   if (!token) {
     await DeviceToken.destroy({ where: { userId } });
-    await User.update({ fcmToken: null }, { where: { id: userId } });
     return { success: true, clearedAll: true };
   }
 
   await DeviceToken.destroy({ where: { userId, token } });
 
-  const user = await User.findByPk(userId);
-  if (user && user.fcmToken === token) {
-    user.fcmToken = null;
-    await user.save();
-  }
-
   return { success: true, deleted: true };
 };
+
 
 /**
  * Create a new notification record and dispatch real-time push notification.

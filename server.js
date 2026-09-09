@@ -1,4 +1,4 @@
-// GymsEra API Server — Production v1.0.7 (FCM real-time push notifications & token management - 2026-09-09)
+// GymsEra API Server — Production v1.0.8 (Resilient push service & safe token models - 2026-09-09)
 process.on('uncaughtException', (err) => {
   console.error('[Process] Prevented crash from uncaught exception:', err?.message || err);
 });

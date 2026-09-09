@@ -5,21 +5,28 @@
  * Reads credentials from FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH.
  * Gracefully logs and no-ops if credentials are not yet configured.
  */
-const admin = require('firebase-admin');
+let admin = null;
+try {
+  admin = require('firebase-admin');
+} catch (loadErr) {
+  console.warn('[PushService] firebase-admin is not installed on this host. Push notifications will run in stub mode.');
+}
 const fs = require('fs');
 
 let _firebaseApp = null;
 let _initAttempted = false;
 
 const _getFirebaseApp = () => {
+  if (!admin) return null;
   if (_firebaseApp) return _firebaseApp;
   if (_initAttempted) return null;
   _initAttempted = true;
 
-  if (admin.apps.length > 0) {
+  if (admin.apps && admin.apps.length > 0) {
     _firebaseApp = admin.apps[0];
     return _firebaseApp;
   }
+
 
   try {
     let serviceAccount = null;
