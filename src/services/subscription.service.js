@@ -29,37 +29,13 @@ const _enqueueNotification = async (userId, type, extra) => {
  */
 const _calcEndDate = (startDate, durationType, durationValue) => {
   const d = new Date(startDate);
-  const val = parseInt(durationValue) || 1;
   switch (durationType) {
-    case 'DAILY':
-      d.setDate(d.getDate() + val);
-      break;
-    case 'WEEKLY':
-      d.setDate(d.getDate() + val * 7);
-      break;
-    case 'MONTHLY':
-      if (val >= 28 && val <= 31) {
-        d.setMonth(d.getMonth() + 1);
-      } else {
-        d.setMonth(d.getMonth() + val);
-      }
-      break;
-    case 'QUARTERLY':
-      if (val === 3) {
-        d.setMonth(d.getMonth() + 3);
-      } else {
-        d.setMonth(d.getMonth() + val * 3);
-      }
-      break;
-    case 'YEARLY':
-      if (val === 12) {
-        d.setFullYear(d.getFullYear() + 1);
-      } else {
-        d.setFullYear(d.getFullYear() + val);
-      }
-      break;
-    default:
-      d.setMonth(d.getMonth() + 1);
+    case 'DAILY': d.setDate(d.getDate() + durationValue); break;
+    case 'WEEKLY': d.setDate(d.getDate() + durationValue * 7); break;
+    case 'MONTHLY': d.setMonth(d.getMonth() + durationValue); break;
+    case 'QUARTERLY': d.setMonth(d.getMonth() + durationValue * 3); break;
+    case 'YEARLY': d.setFullYear(d.getFullYear() + durationValue); break;
+    default: d.setMonth(d.getMonth() + 1);
   }
   return d.toISOString().split('T')[0];
 };
@@ -257,31 +233,31 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   });
 
   // Create pending payment + issued invoice
-  const subtotal    = parseFloat(plan.price);
-  const joining     = hasPreviousSubscription ? 0.0 : parseFloat(plan.joiningFee  || 0);
-  const security    = parseFloat(plan.securityFee || 0);
+  const subtotal = parseFloat(plan.price);
+  const joining = hasPreviousSubscription ? 0.0 : parseFloat(plan.joiningFee || 0);
+  const security = parseFloat(plan.securityFee || 0);
   const totalAmount = subtotal + joining + security;
 
   const payment = await Payment.create({
     userId,
-    paymentFor:        'MEMBERSHIP',
+    paymentFor: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
-    branchId:          branchIdToUse,
-    method:            'BANK_TRANSFER',
-    amount:            totalAmount,
-    currency:          'PKR',
-    status:            PaymentStatus.PENDING,
+    branchId: branchIdToUse,
+    method: 'BANK_TRANSFER',
+    amount: totalAmount,
+    currency: 'PKR',
+    status: PaymentStatus.PENDING,
   });
 
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const invoice = await Invoice.create({
     userId,
-    invoiceNo:         _invoiceNo(),
-    invoiceType:       'MEMBERSHIP',
+    invoiceNo: _invoiceNo(),
+    invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
     subtotal,
     discountAmount: 0,
-    taxAmount:      0,
+    taxAmount: 0,
     totalAmount,
     dueDate,
     status: InvoiceStatus.ISSUED,
@@ -326,7 +302,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     gymName: gymListing.title,
     planName: plan.name,
     endDate,
-  }).catch(() => {});
+  }).catch(() => { });
 
   return { subscription, qrCode, payment, invoice };
 };
@@ -447,7 +423,7 @@ const renew = async (userId, subscriptionId, targetPlanId = null) => {
     gymName: index.gymName,
     planName: plan.name,
     endDate: newEndDate,
-  }).catch(() => {});
+  }).catch(() => { });
 
   return { subscription: await sub.reload(), qrCode: newQr };
 };
@@ -517,10 +493,10 @@ const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, o
   const subIds = rows.map((r) => r.id);
   const payments = subIds.length
     ? await Payment.findAll({
-        where: { referenceEntityId: subIds, paymentFor: 'MEMBERSHIP' },
-        attributes: ['id', 'referenceEntityId', 'status', 'method', 'amount', 'proofUrl', 'createdBy', 'createdByRole', 'verifiedBy', 'verifiedAt', 'createdAt'],
-        order: [['createdAt', 'DESC']],
-      })
+      where: { referenceEntityId: subIds, paymentFor: 'MEMBERSHIP' },
+      attributes: ['id', 'referenceEntityId', 'status', 'method', 'amount', 'proofUrl', 'createdBy', 'createdByRole', 'verifiedBy', 'verifiedAt', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+    })
     : [];
   const enrichedPayments = await enrichAuditDetails(tenantDb, payments);
 
@@ -809,28 +785,9 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
   };
 };
 
-/**
- * Staff adjusts start date, end date, or notes for a subscription
- */
-const updateSubscriptionDates = async (tenantDb, subscriptionId, { startDate, endDate, notes }) => {
-  const { MemberSubscription } = tenantDb.models;
-  const sub = await MemberSubscription.findByPk(subscriptionId);
-  if (!sub) throw createError('Subscription not found', 404);
-
-  const updates = {};
-  if (startDate) updates.startDate = startDate;
-  if (endDate) updates.endDate = endDate;
-  if (notes !== undefined) updates.notes = notes;
-
-  await sub.update(updates);
-  return sub;
-};
-
 module.exports = {
   subscribe, listMySubscriptions, freeze, cancel, renew, changePlan,
   listForStaff, getForStaff, previewSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
-  updateSubscriptionDates,
 };
-
