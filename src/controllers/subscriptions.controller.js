@@ -200,9 +200,25 @@ const upgradeSubscription = async (req, res, next) => {
   }
 };
 
+const updateSubscriptionDates = async (req, res, next) => {
+  try {
+    const { startDate, endDate, notes } = req.body;
+    const sub = await subscriptionService.updateSubscriptionDates(
+      req.tenantDb,
+      req.params.id,
+      { startDate, endDate, notes }
+    );
+    return sendSuccess(res, { subscription: sub }, 'Subscription dates updated successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   subscribe, listMySubscriptions, freeze, cancel, renew, changePlan,
   listForStaff, getForStaff, preview,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
+  updateSubscriptionDates,
 };
+

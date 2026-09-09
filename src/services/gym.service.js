@@ -14,13 +14,37 @@ const _invoiceNo = () => {
 
 const _calcEndDate = (startDate, durationType, durationValue) => {
   const d = new Date(startDate);
+  const val = parseInt(durationValue) || 1;
   switch (durationType) {
-    case 'DAILY': d.setDate(d.getDate() + durationValue); break;
-    case 'WEEKLY': d.setDate(d.getDate() + durationValue * 7); break;
-    case 'MONTHLY': d.setMonth(d.getMonth() + durationValue); break;
-    case 'QUARTERLY': d.setMonth(d.getMonth() + durationValue * 3); break;
-    case 'YEARLY': d.setFullYear(d.getFullYear() + durationValue); break;
-    default: d.setMonth(d.getMonth() + 1);
+    case 'DAILY':
+      d.setDate(d.getDate() + val);
+      break;
+    case 'WEEKLY':
+      d.setDate(d.getDate() + val * 7);
+      break;
+    case 'MONTHLY':
+      if (val >= 28 && val <= 31) {
+        d.setMonth(d.getMonth() + 1);
+      } else {
+        d.setMonth(d.getMonth() + val);
+      }
+      break;
+    case 'QUARTERLY':
+      if (val === 3) {
+        d.setMonth(d.getMonth() + 3);
+      } else {
+        d.setMonth(d.getMonth() + val * 3);
+      }
+      break;
+    case 'YEARLY':
+      if (val === 12) {
+        d.setFullYear(d.getFullYear() + 1);
+      } else {
+        d.setFullYear(d.getFullYear() + val);
+      }
+      break;
+    default:
+      d.setMonth(d.getMonth() + 1);
   }
   return d.toISOString().split('T')[0];
 };
@@ -643,7 +667,6 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     ? (enroller.id || enroller.sub || enroller.userId || null)
     : null;
 
-  // Find or create platform user
   const [user, userCreated] = await User.findOrCreate({
     where: { email: email.toLowerCase().trim() },
     defaults: {
@@ -654,6 +677,13 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
       role: 'MEMBER',
     },
   });
+
+  if (!userCreated) {
+    const updates = {};
+    if (phone && !user.phone) updates.phone = phone;
+    if (fullName && (user.fullName === email.split('@')[0] || !user.fullName)) updates.fullName = fullName;
+    if (Object.keys(updates).length) await user.update(updates);
+  }
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found or inactive', 404);

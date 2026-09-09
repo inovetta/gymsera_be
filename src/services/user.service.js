@@ -89,7 +89,7 @@ const getUserById = async (userId, tenantDb = null) => {
     id: user.id,
     fullName: user.fullName,
     email: user.email,
-    phone: user.phone || null,
+    phone: user.phone || (memberProfile ? memberProfile.emergencyContactPhone : null) || null,
     role: user.role,
     status: user.status,
     isVerified: user.isVerified,
@@ -97,6 +97,7 @@ const getUserById = async (userId, tenantDb = null) => {
     provider: user.googleId ? 'GOOGLE' : 'LOCAL',
     lastLoginAt: user.lastLoginAt || null,
     memberSince: user.createdAt,
+    createdAt: user.createdAt,
     profile: memberProfile
       ? {
         dateOfBirth: memberProfile.dateOfBirth || null,
