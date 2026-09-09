@@ -25,7 +25,8 @@ const getPublic = async (req, res, next) => {
 // ── GET /membership-plans/host (auth + tenantContext) ─────────────────────────
 const listForHost = async (req, res, next) => {
   try {
-    const plans = await membershipPlanService.listForHost(req.tenantDb, req.query.branchId);
+    const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+    const plans = await membershipPlanService.listForHost(req.tenantDb, req.query.branchId, tenantId);
     return sendSuccess(res, { plans });
   } catch (err) {
     next(err);

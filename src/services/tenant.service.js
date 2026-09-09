@@ -74,8 +74,12 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
 
   const { gymName, gymDescription, genderType, address, latitude, longitude, mainBranchData, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
 
+  let existingMainBranch = tenant.mainBranchDataJson;
+  if (typeof existingMainBranch === 'string') {
+    try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
+  }
   const mergedMainBranchData = mainBranchData !== undefined ? {
-    ...(tenant.mainBranchDataJson || {}),
+    ...(existingMainBranch || {}),
     ...mainBranchData,
   } : tenant.mainBranchDataJson;
 
@@ -160,7 +164,10 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   // Validate that the main branch has at least 1 membership plan configured
-  const mainBranch = tenant.mainBranchDataJson;
+  let mainBranch = tenant.mainBranchDataJson;
+  if (typeof mainBranch === 'string') {
+    try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = {}; }
+  }
   const plans = (mainBranch && Array.isArray(mainBranch.plans))
     ? mainBranch.plans
     : (mainBranch && Array.isArray(mainBranch.packages) ? mainBranch.packages : null);

@@ -157,16 +157,111 @@ const getPublic = async (planId, gymListingId) => {
   return plan;
 };
 
-// ── Host: list all active plans for the gym (including deactivated ones for host management) ──
-const listForHost = async (tenantDb, branchId) => {
+const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
+  if (!tenantId) return;
+  try {
+    const { MembershipPlan, Branch, Gym } = tenantDb.models;
+    const planCount = await MembershipPlan.count();
+    if (planCount > 0) return;
+
+    const tenant = await Tenant.findByPk(tenantId);
+    if (!tenant) return;
+
+    let b = tenant.mainBranchDataJson;
+    if (typeof b === 'string') {
+      try { b = JSON.parse(b); } catch (e) { b = {}; }
+    }
+    b = b || {};
+
+    const rawPlans = (Array.isArray(b.plans) && b.plans.length > 0)
+      ? b.plans
+      : (Array.isArray(b.packages) && b.packages.length > 0 ? b.packages : []);
+
+    let gym = await Gym.findOne();
+    if (!gym && tenant.gymName) {
+      gym = await Gym.create({
+        name: tenant.gymName,
+        description: tenant.gymDescription || null,
+        contactPhone: tenant.phone || null,
+        genderType: tenant.genderType || 'MIXED',
+      });
+    }
+
+    if (gym) {
+      let branch = await Branch.findOne({ where: { gymId: gym.id } }) || await Branch.findOne();
+      if (!branch) {
+        branch = await Branch.create({
+          gymId: gym.id,
+          branchName: b.name || tenant.gymName || 'Main Branch',
+          address: b.address || tenant.address || null,
+          cityId: b.cityId || tenant.cityId || null,
+          status: 'ACTIVE',
+          travelerVisibilityStatus: 'active',
+        });
+      }
+
+      if (branch && rawPlans.length > 0) {
+        for (const p of rawPlans) {
+          if (!p || !p.name || p.price === undefined || p.price === null) continue;
+          try {
+            const pPrice = parseFloat(p.price) || 0;
+            let durationType = String(p.durationType || 'MONTHLY').toUpperCase();
+            if (!['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'].includes(durationType)) {
+              if (durationType.includes('DAY') || durationType.includes('DAILY')) durationType = 'DAILY';
+              else if (durationType.includes('WEEK')) durationType = 'WEEKLY';
+              else if (durationType.includes('QUART')) durationType = 'QUARTERLY';
+              else if (durationType.includes('YEAR') || durationType.includes('ANNUAL')) durationType = 'YEARLY';
+              else durationType = 'MONTHLY';
+            }
+            const durationValue = parseInt(p.durationValue, 10) || 1;
+            const joiningFee = parseFloat(p.joiningFee) || 0;
+            const securityFee = parseFloat(p.securityFee) || 0;
+            const visitLimit = (p.visitLimit !== undefined && p.visitLimit !== null && p.visitLimit !== '')
+              ? parseInt(p.visitLimit, 10) : null;
+            const freezeLimitDays = parseInt(p.freezeLimitDays, 10) || 0;
+            const isTrial = Boolean(p.isTrial);
+            const isPublic = p.isPublic !== undefined ? Boolean(p.isPublic) : true;
+
+            await MembershipPlan.create({
+              gymId: gym.id,
+              branchId: branch.id,
+              name: p.name.trim(),
+              description: p.description || null,
+              durationType,
+              durationValue,
+              price: pPrice,
+              joiningFee,
+              securityFee,
+              visitLimit,
+              freezeLimitDays,
+              isTrial,
+              isPublic,
+              isDeactivated: false,
+              status: 'ACTIVE',
+            });
+            console.log(`[MembershipPlan] Auto-synced onboarding plan '${p.name}' for tenant ${tenantId}`);
+          } catch (err) {
+            console.warn('[MembershipPlan] Auto-sync plan error:', err.message);
+          }
+        }
+        await _syncMinPrice(tenantDb, gym.id).catch(() => {});
+      }
+    }
+  } catch (syncErr) {
+    console.warn('[MembershipPlan] Auto-sync check failed:', syncErr.message);
+  }
+};
+
+// ── Host: list all active and inactive plans for the gym ──────────────────────
+const listForHost = async (tenantDb, branchId, tenantId) => {
   await _ensureSchema(tenantDb);
+  await _ensureTenantOnboardingPlans(tenantDb, tenantId);
+
   const { MembershipPlan, Branch } = tenantDb.models;
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
 
-  const where = {
-    status: 'ACTIVE',
-  };
+  const where = {};
   if (branchId) {
     where.branchId = {
       [Op.or]: [branchId, null],

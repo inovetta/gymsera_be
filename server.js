@@ -1,4 +1,4 @@
-// GymsEra API Server — Production v1.0.5 (Crash-proof Redis handling & process exception safety)
+// GymsEra API Server — Production v1.0.6 (Auto-sync onboarding membership plans & safe branch recovery - 2026-09-09)
 process.on('uncaughtException', (err) => {
   console.error('[Process] Prevented crash from uncaught exception:', err?.message || err);
 });

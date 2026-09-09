@@ -132,7 +132,7 @@ class TenantDbManager {
       }
     }
 
-    const entry = { sequelize, models };
+    const entry = { sequelize, models, tenantId };
     this.pool.set(tenantId, entry);
     return entry;
   }
