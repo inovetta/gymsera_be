@@ -60,7 +60,6 @@ module.exports = (sequelize) => {
         field: 'is_host',
       },
     },
-
     {
       tableName: 'users',
       underscored: true,
