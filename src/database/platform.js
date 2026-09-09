@@ -35,7 +35,20 @@ const sequelize = new Sequelize(database, username, password, {
  */
 const connect = async () => {
   await sequelize.authenticate();
-  console.log('[Platform DB] Connected');
+  try {
+    const queryInterface = sequelize.getQueryInterface();
+    const userCols = await queryInterface.describeTable('users').catch(() => ({}));
+    if (userCols && !userCols.fcm_token) {
+      await sequelize.query('ALTER TABLE users ADD COLUMN fcm_token VARCHAR(500) NULL').catch(() => {});
+      console.log('[Platform DB] Added fcm_token column to users table');
+    }
+    const { DeviceToken } = require('../models/platform');
+    if (DeviceToken && typeof DeviceToken.sync === 'function') {
+      await DeviceToken.sync().catch(() => {});
+    }
+  } catch (migErr) {
+    console.warn('[Platform DB] Push schema sync warning:', migErr.message);
+  }
 
   if (process.env.NODE_ENV === 'development' && !process.env.VERCEL) {
     // Lazy-load models to ensure they're registered before sync

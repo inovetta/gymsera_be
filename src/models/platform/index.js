@@ -26,8 +26,13 @@ const SavedGym = require('./SavedGym.model')(sequelize);
 const Notification = require('./Notification.model')(sequelize);
 const Conversation = require('./Conversation.model')(sequelize);
 const Message = require('./Message.model')(sequelize);
+const DeviceToken = require('./DeviceToken.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
+
+// User ↔ DeviceToken
+User.hasMany(DeviceToken, { foreignKey: 'userId', as: 'deviceTokens', onDelete: 'CASCADE' });
+DeviceToken.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // Conversation ↔ Message
 Conversation.hasMany(Message, { foreignKey: 'conversationId', as: 'messages', onDelete: 'CASCADE' });
@@ -161,4 +166,5 @@ module.exports = {
   Notification,
   Conversation,
   Message,
+  DeviceToken,
 };

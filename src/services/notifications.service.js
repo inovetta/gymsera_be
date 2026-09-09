@@ -1,5 +1,6 @@
-const { Notification } = require('../models/platform');
+const { Notification, DeviceToken, User } = require('../models/platform');
 const { Sequelize } = require('sequelize');
+const pushService = require('./push.service');
 
 /**
  * Maps application-level user roles to notification roles.
@@ -81,7 +82,67 @@ const markAllAsRead = async (userId, backendRole) => {
 };
 
 /**
- * Create a new notification record.
+ * Register or update an FCM device token for a user.
+ */
+const registerDeviceToken = async ({ userId, token, platform = 'android', deviceId = null, deviceName = null }) => {
+  if (!token) {
+    const err = new Error('Token is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const normalizedPlatform = (platform || 'android').toLowerCase();
+
+  const [deviceToken, created] = await DeviceToken.findOrCreate({
+    where: { token },
+    defaults: {
+      userId,
+      token,
+      platform: normalizedPlatform,
+      deviceId,
+      deviceName,
+      lastActiveAt: new Date(),
+    },
+  });
+
+  if (!created) {
+    deviceToken.userId = userId;
+    deviceToken.platform = normalizedPlatform;
+    if (deviceId) deviceToken.deviceId = deviceId;
+    if (deviceName) deviceToken.deviceName = deviceName;
+    deviceToken.lastActiveAt = new Date();
+    await deviceToken.save();
+  }
+
+  // Also update User record primary fcmToken
+  await User.update({ fcmToken: token }, { where: { id: userId } });
+
+  return { success: true, registered: true };
+};
+
+/**
+ * Remove an FCM device token for a user (e.g. on logout).
+ */
+const deleteDeviceToken = async ({ userId, token }) => {
+  if (!token) {
+    await DeviceToken.destroy({ where: { userId } });
+    await User.update({ fcmToken: null }, { where: { id: userId } });
+    return { success: true, clearedAll: true };
+  }
+
+  await DeviceToken.destroy({ where: { userId, token } });
+
+  const user = await User.findByPk(userId);
+  if (user && user.fcmToken === token) {
+    user.fcmToken = null;
+    await user.save();
+  }
+
+  return { success: true, deleted: true };
+};
+
+/**
+ * Create a new notification record and dispatch real-time push notification.
  */
 const createNotification = async ({
   userId,
@@ -95,16 +156,44 @@ const createNotification = async ({
   metadataJson = null,
   metadata = null, // compatibility alias
 }) => {
-  return Notification.create({
+  const finalMessage = message || body || '';
+  const finalMetadata = metadataJson || metadata || null;
+
+  const notification = await Notification.create({
     userId,
     role,
     type,
     title,
-    message: message || body || '',
+    message: finalMessage,
     priority,
     deepLink,
-    metadataJson: metadataJson || metadata || null,
+    metadataJson: finalMetadata,
   });
+
+  // Dispatch FCM push notification asynchronously
+  try {
+    const pushData = {
+      notificationId: String(notification.id),
+      type: type || 'notification',
+      role: role || 'traveler',
+      priority: priority || 'normal',
+      deepLink: deepLink || '',
+      event: (finalMetadata && finalMetadata.event) ? finalMetadata.event : (type || 'new_notification'),
+      ...(finalMetadata && typeof finalMetadata === 'object' ? finalMetadata : {}),
+    };
+
+    pushService.sendToUser(userId, {
+      title: title || 'GymsEra Notification',
+      body: finalMessage,
+      data: pushData,
+    }).catch(pushErr => {
+      console.error(`[notifications.service] Push error for user ${userId}:`, pushErr.message);
+    });
+  } catch (err) {
+    console.error(`[notifications.service] Failed to queue push notification for user ${userId}:`, err.message);
+  }
+
+  return notification;
 };
 
 module.exports = {
@@ -113,5 +202,7 @@ module.exports = {
   markAsRead,
   markAllAsRead,
   createNotification,
+  registerDeviceToken,
+  deleteDeviceToken,
   mapRole,
 };

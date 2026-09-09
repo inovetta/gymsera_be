@@ -48,9 +48,41 @@ const markAllAsRead = async (req, res, next) => {
   }
 };
 
+const registerDeviceToken = async (req, res, next) => {
+  try {
+    const { token, platform, deviceId, deviceName } = req.body;
+    const result = await notificationsService.registerDeviceToken({
+      userId: req.user.id,
+      token,
+      platform,
+      deviceId,
+      deviceName,
+    });
+    return sendSuccess(res, result, 'Device token registered successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteDeviceToken = async (req, res, next) => {
+  try {
+    const { token } = req.body || {};
+    const result = await notificationsService.deleteDeviceToken({
+      userId: req.user.id,
+      token,
+    });
+    return sendSuccess(res, result, 'Device token deleted successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   listNotifications,
   getUnreadCount,
   markAsRead,
   markAllAsRead,
+  registerDeviceToken,
+  deleteDeviceToken,
 };
+

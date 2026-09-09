@@ -8,6 +8,7 @@ const { processTenantProvisioning } = require('./tenant-provisioning.service');
 const emailService = require('./email.service');
 const TenantDbManager = require('../database/TenantDbManager');
 const { safeRedisDel } = require('../config/redis.config');
+const notificationsService = require('./notifications.service');
 
 // ── createTenant (admin) ──────────────────────────────────────────────────────
 const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessName, email, phone, cityId, packageId }) => {
@@ -223,6 +224,19 @@ const approveTenant = async (tenantId, adminUserId) => {
       rejectedBy: null,
     });
 
+    if (listing.hostId) {
+      notificationsService.createNotification({
+        userId: listing.hostId,
+        role: 'host',
+        type: 'listing_approved',
+        title: 'Gym Listing Approved! 🎉',
+        message: `Your listing "${listing.title}" has been approved.`,
+        priority: 'high',
+        deepLink: '/host/branches',
+        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'ACTIVE' },
+      }).catch(err => console.error('[approveTenant listing] Notification error:', err.message));
+    }
+
     return { tenant: { id: tenantId, status: 'ACTIVE' } };
   }
 
@@ -254,6 +268,21 @@ const approveTenant = async (tenantId, adminUserId) => {
   }
 
   await tenant.reload();
+
+  // Real-time notification to Gym Host that their tenant account is active
+  if (tenant.ownerUserId) {
+    notificationsService.createNotification({
+      userId: tenant.ownerUserId,
+      role: 'host',
+      type: 'tenant_approved',
+      title: 'Your Gym has been Approved! 🎉',
+      message: `Congratulations! ${tenant.businessName} has been approved and is now active.`,
+      priority: 'high',
+      deepLink: '/host/today',
+      metadataJson: { event: 'tenant_status_updated', tenantId: tenant.id, status: tenant.status },
+    }).catch(err => console.error('[approveTenant] Notification error:', err.message));
+  }
+
   return { tenant };
 };
 
@@ -275,6 +304,19 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
       rejectedAt: new Date(),
       rejectedBy: adminUserId,
     });
+
+    if (listing.hostId) {
+      notificationsService.createNotification({
+        userId: listing.hostId,
+        role: 'host',
+        type: 'listing_rejected',
+        title: 'Gym Listing Rejected',
+        message: `Your listing "${listing.title}" was not approved: ${reason.trim()}`,
+        priority: 'high',
+        deepLink: '/host/branches',
+        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED' },
+      }).catch(err => console.error('[rejectTenant listing] Notification error:', err.message));
+    }
 
     return { tenant: { id: tenantId, status: 'REJECTED' } };
   }
@@ -315,21 +357,17 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
     }
   }
 
-  try {
-    const notificationsService = require('./notifications.service');
-    if (tenant.ownerUserId) {
-      await notificationsService.createNotification({
-        userId: tenant.ownerUserId,
-        role: 'host',
-        type: 'host_update',
-        title: 'Host Application Rejected',
-        message: `Your organization ${tenant.gymName || tenant.businessName} requires changes: ${reason.trim()}.`,
-        deepLink: '/host/profile',
-        metadataJson: { tenantId: tenant.id },
-      });
-    }
-  } catch (notifErr) {
-    console.warn('[Notification Error] Failed to create rejection notification:', notifErr.message);
+  if (tenant.ownerUserId) {
+    notificationsService.createNotification({
+      userId: tenant.ownerUserId,
+      role: 'host',
+      type: 'tenant_rejected',
+      title: 'Host Application Rejected',
+      message: `Your organization ${tenant.gymName || tenant.businessName} requires changes: ${reason.trim()}.`,
+      priority: 'high',
+      deepLink: '/host/profile',
+      metadataJson: { event: 'tenant_status_updated', tenantId: tenant.id, status: 'REJECTED' },
+    }).catch(err => console.error('[rejectTenant] Notification error:', err.message));
   }
 
   return { tenant };
@@ -354,6 +392,19 @@ const suspendTenant = async (tenantId, adminUserId, reason) => {
   await safeRedisDel(`tenant:${tenantId}:connStr`);
   await TenantDbManager.release(tenantId).catch(() => {});
 
+  if (tenant.ownerUserId) {
+    notificationsService.createNotification({
+      userId: tenant.ownerUserId,
+      role: 'host',
+      type: 'tenant_suspended',
+      title: 'Gym Account Suspended',
+      message: `Your gym organization has been suspended: ${reason.trim()}`,
+      priority: 'high',
+      deepLink: '/host/profile',
+      metadataJson: { event: 'tenant_status_updated', tenantId: tenant.id, status: 'SUSPENDED' },
+    }).catch(err => console.error('[suspendTenant] Notification error:', err.message));
+  }
+
   return { tenant };
 };
 
@@ -368,6 +419,20 @@ const reactivateTenant = async (tenantId, adminUserId) => {
 
   await tenant.update({ status: TenantStatus.ACTIVE });
   await safeRedisDel(`tenant:${tenantId}:connStr`);
+
+  if (tenant.ownerUserId) {
+    notificationsService.createNotification({
+      userId: tenant.ownerUserId,
+      role: 'host',
+      type: 'tenant_reactivated',
+      title: 'Gym Account Reactivated! 🎉',
+      message: `Your gym organization has been reactivated.`,
+      priority: 'high',
+      deepLink: '/host/today',
+      metadataJson: { event: 'tenant_status_updated', tenantId: tenant.id, status: 'ACTIVE' },
+    }).catch(err => console.error('[reactivateTenant] Notification error:', err.message));
+  }
+
   return { tenant };
 };
 
