@@ -237,12 +237,6 @@ const sendToUser = async (userId, { title, body, data = {} }) => {
 
     const tokens = deviceRecords.map((d) => d.token);
 
-    // Also check User.fcmToken if not already present
-    const user = await User.findByPk(userId, { attributes: ['id', 'fcmToken'] });
-    if (user && user.fcmToken && !tokens.includes(user.fcmToken)) {
-      tokens.push(user.fcmToken);
-    }
-
     if (tokens.length === 0) {
       console.log(`[Push] User ${userId} has no registered FCM tokens. Push skipped.`);
       return;
@@ -259,22 +253,21 @@ const sendToUser = async (userId, { title, body, data = {} }) => {
  */
 const _pruneDeadToken = async (token) => {
   try {
-    const { DeviceToken, User } = require('../models/platform');
+    const { DeviceToken } = require('../models/platform');
     await DeviceToken.destroy({ where: { token } });
-    await User.update({ fcmToken: null }, { where: { fcmToken: token } });
     console.log(`[Push] Pruned unregistered token: ${token.slice(0, 16)}...`);
   } catch (_) {}
 };
 
 const _pruneDeadTokens = async (tokens) => {
   try {
-    const { DeviceToken, User } = require('../models/platform');
+    const { DeviceToken } = require('../models/platform');
     const { Op } = require('sequelize');
     await DeviceToken.destroy({ where: { token: { [Op.in]: tokens } } });
-    await User.update({ fcmToken: null }, { where: { fcmToken: { [Op.in]: tokens } } });
     console.log(`[Push] Pruned ${tokens.length} unregistered tokens`);
   } catch (_) {}
 };
+
 
 module.exports = {
   send,
