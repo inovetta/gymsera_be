@@ -169,6 +169,9 @@ const createNotification = async ({
       role: role || 'traveler',
       priority: priority || 'normal',
       deepLink: deepLink || '',
+      title: title || 'GymsEra Notification',
+      body: finalMessage,
+      message: finalMessage,
       event: (finalMetadata && finalMetadata.event) ? finalMetadata.event : (type || 'new_notification'),
       ...(finalMetadata && typeof finalMetadata === 'object' ? finalMetadata : {}),
     };
@@ -187,6 +190,31 @@ const createNotification = async ({
   return notification;
 };
 
+/**
+ * Dispatch an immediate test notification to all registered devices of a user
+ */
+const testPushNotification = async ({ userId, title, body }) => {
+  const pushTitle = title || 'GymsEra Test Push';
+  const pushBody = body || 'This is an end-to-end test notification verifying status bar and real-time delivery.';
+  const testData = {
+    event: 'test_push',
+    type: 'test',
+    deepLink: '/notifications',
+    sentAt: new Date().toISOString(),
+  };
+
+  const pushResult = await pushService.sendToUser(userId, {
+    title: pushTitle,
+    body: pushBody,
+    data: testData,
+  });
+
+  return {
+    pushResult,
+    status: pushService.getPushStatus(),
+  };
+};
+
 module.exports = {
   listNotifications,
   getUnreadCount,
@@ -195,5 +223,6 @@ module.exports = {
   createNotification,
   registerDeviceToken,
   deleteDeviceToken,
+  testPushNotification,
   mapRole,
 };

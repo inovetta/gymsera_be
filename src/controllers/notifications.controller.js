@@ -77,6 +77,20 @@ const deleteDeviceToken = async (req, res, next) => {
   }
 };
 
+const testPush = async (req, res, next) => {
+  try {
+    const { title, body } = req.body || {};
+    const result = await notificationsService.testPushNotification({
+      userId: req.user.id,
+      title,
+      body,
+    });
+    return sendSuccess(res, result, 'Test push notification dispatched');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   listNotifications,
   getUnreadCount,
@@ -84,5 +98,6 @@ module.exports = {
   markAllAsRead,
   registerDeviceToken,
   deleteDeviceToken,
+  testPush,
 };
 

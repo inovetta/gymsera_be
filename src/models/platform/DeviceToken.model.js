@@ -30,6 +30,16 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.NOW,
         field: 'last_active_at',
       },
+      deviceId: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'device_id',
+      },
+      deviceName: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'device_name',
+      },
     },
     {
       tableName: 'device_tokens',

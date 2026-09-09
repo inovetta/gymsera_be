@@ -16,5 +16,8 @@ router.post('/read-all', controller.markAllAsRead);
 router.post('/token', controller.registerDeviceToken);
 router.delete('/token', controller.deleteDeviceToken);
 
+// Real-time FCM push testing endpoint
+router.post('/test-push', controller.testPush);
+
 module.exports = router;
 
