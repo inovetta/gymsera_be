@@ -8,7 +8,9 @@ process.on('unhandledRejection', (reason) => {
 
 require('dotenv').config();
 
+const http = require('http');
 const app = require('./app');
+const socketGateway = require('./src/socket');
 const { connect: connectPlatformDb } = require('./src/database/platform');
 const { getRedisClient } = require('./src/config/redis.config');
 const TenantDbManager = require('./src/database/TenantDbManager');
@@ -75,8 +77,11 @@ async function bootstrap() {
       );
     });
 
-    // 5. Start HTTP server
-    const server = app.listen(PORT, () => {
+    // 5. Start HTTP server and initialize Socket.IO
+    const server = http.createServer(app);
+    socketGateway.init(server);
+
+    server.listen(PORT, () => {
       console.log(`\n🚀 GymsEra API running on port ${PORT}`);
       console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
       console.log(`   API base    : http://localhost:${PORT}/api/v1`);

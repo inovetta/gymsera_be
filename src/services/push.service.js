@@ -137,6 +137,13 @@ const _buildFcmPayload = ({ title, body, data = {} }) => {
 
   const stringData = _sanitizeDataPayload(enrichedData);
 
+  const collapseTag =
+    data.notificationId
+      ? `notif_${data.notificationId}`
+      : data.conversationId
+        ? `chat_${data.conversationId}`
+        : data.type || 'gymsera_update';
+
   return {
     notification: {
       title: title || 'GymsEra',
@@ -145,6 +152,7 @@ const _buildFcmPayload = ({ title, body, data = {} }) => {
     data: stringData,
     android: {
       priority: 'high',
+      collapseKey: collapseTag,
       notification: {
         channelId: 'gymsera_high_importance',
         priority: 'high',
@@ -152,11 +160,13 @@ const _buildFcmPayload = ({ title, body, data = {} }) => {
         defaultVibrateTimings: true,
         visibility: 'public',
         notificationCount: 1,
+        tag: collapseTag,
       },
     },
     apns: {
       headers: {
         'apns-priority': '10',
+        'apns-collapse-id': collapseTag,
       },
       payload: {
         aps: {
@@ -338,4 +348,5 @@ module.exports = {
   sendMulticast,
   sendToUser,
   getPushStatus,
+  _buildFcmPayload,
 };

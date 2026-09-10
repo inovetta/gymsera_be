@@ -290,8 +290,15 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
         type: 'subscription_pending',
         title: 'New Subscription Request',
         message: `New subscription request from ${travelerName} for ${plan.name} at ${gymListing.title}.`,
-        deepLink: `/host/gyms/${branchIdToUse}/subscriptions`,
-        metadataJson: { subscriptionId: subscription.id, branchId: branchIdToUse },
+        deepLink: `/host/gyms/${branchIdToUse}/members/${userId}`,
+        metadataJson: {
+          subscriptionId: subscription.id,
+          branchId: branchIdToUse,
+          userId,
+          customerId: userId,
+          customerName: travelerName,
+          planName: plan.name,
+        },
       });
     }
   } catch (notifErr) {

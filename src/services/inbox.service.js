@@ -93,6 +93,21 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId) => {
     console.warn('[Notification Error] Failed to create reply notification:', notifErr.message);
   }
 
+  // Real-time socket broadcast
+  try {
+    const socketGateway = require('../socket');
+    socketGateway.emitToConversation(conversationId, 'new_message', {
+      message,
+      conversationId,
+    });
+    socketGateway.emitConversationUpdated(conversationId, {
+      lastMessageText: text,
+      lastMessageAt: message.createdAt,
+    });
+  } catch (socketErr) {
+    console.warn('[Socket Broadcast Warning]:', socketErr.message);
+  }
+
   return message;
 };
 
@@ -110,6 +125,16 @@ const markInquiryRead = async (conversationId, tenantId) => {
     { isRead: true },
     { where: { conversationId, senderType: 'USER', isRead: false } }
   );
+
+  try {
+    const socketGateway = require('../socket');
+    socketGateway.emitToConversation(conversationId, 'messages_read', {
+      conversationId,
+      readerRole: 'HOST',
+      readAt: new Date().toISOString(),
+    });
+    socketGateway.emitConversationUpdated(conversationId, { unreadCountHost: 0 });
+  } catch (_) {}
 
   return { success: true };
 };
@@ -166,6 +191,21 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text) => {
     text,
     isRead: false,
   });
+
+  // Real-time socket broadcast
+  try {
+    const socketGateway = require('../socket');
+    socketGateway.emitToConversation(conversation.id, 'new_message', {
+      message,
+      conversationId: conversation.id,
+    });
+    socketGateway.emitConversationUpdated(conversation.id, {
+      lastMessageText: text,
+      lastMessageAt: message.createdAt,
+    });
+  } catch (socketErr) {
+    console.warn('[Socket Broadcast Warning]:', socketErr.message);
+  }
 
   // Create unified Host notification
   try {
@@ -258,6 +298,21 @@ const replyAsUser = async (conversationId, userId, text) => {
     unreadCountHost: conversation.unreadCountHost + 1,
   });
 
+  // Real-time socket broadcast
+  try {
+    const socketGateway = require('../socket');
+    socketGateway.emitToConversation(conversationId, 'new_message', {
+      message,
+      conversationId,
+    });
+    socketGateway.emitConversationUpdated(conversationId, {
+      lastMessageText: text,
+      lastMessageAt: message.createdAt,
+    });
+  } catch (socketErr) {
+    console.warn('[Socket Broadcast Warning]:', socketErr.message);
+  }
+
   return message;
 };
 
@@ -275,6 +330,16 @@ const markTravelerRead = async (conversationId, userId) => {
     { isRead: true },
     { where: { conversationId, senderType: 'HOST', isRead: false } }
   );
+
+  try {
+    const socketGateway = require('../socket');
+    socketGateway.emitToConversation(conversationId, 'messages_read', {
+      conversationId,
+      readerRole: 'USER',
+      readAt: new Date().toISOString(),
+    });
+    socketGateway.emitConversationUpdated(conversationId, { unreadCountUser: 0 });
+  } catch (_) {}
 
   return { success: true };
 };
