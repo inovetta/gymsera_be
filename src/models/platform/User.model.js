@@ -49,10 +49,12 @@ module.exports = (sequelize) => {
       googleId: {
         type: DataTypes.STRING(100),
         allowNull: true,
+        field: 'google_id',
       },
       profileImageUrl: {
         type: DataTypes.STRING(500),
         allowNull: true,
+        field: 'profile_image_url',
       },
       isHost: {
         type: DataTypes.BOOLEAN,
