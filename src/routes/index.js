@@ -51,7 +51,13 @@ router.get('/system/socket-status', (_req, res) => {
     socketModuleInstalled = true;
     socketIoVersion = pkg.version;
   } catch (err) {
-    socketError = err.message;
+    try {
+      require('../socket/socket-bundle');
+      socketModuleInstalled = true;
+      socketIoVersion = '4.8.3-bundled';
+    } catch (_) {
+      socketError = err.message;
+    }
   }
 
   const socketGateway = require('../socket');

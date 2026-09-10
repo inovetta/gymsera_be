@@ -1,4 +1,4 @@
-// GymsEra API Server — Production v1.0.9 (Resilient Google OAuth fallback & schema self-healing - 2026-09-10)
+// GymsEra API Server — Production v1.1.0 (Self-contained WebSocket real-time gateway - 2026-09-10)
 process.on('uncaughtException', (err) => {
   console.error('[Process] Prevented crash from uncaught exception:', err?.message || err);
 });

@@ -9,7 +9,12 @@ let Server = null;
 try {
   Server = require('socket.io').Server;
 } catch (loadErr) {
-  console.warn('[Socket] socket.io package not installed on this host. Real-time sockets will be inactive until npm i socket.io is run.');
+  try {
+    Server = require('./socket-bundle').Server;
+    console.log('[Socket] Loaded Socket.IO from bundled distribution');
+  } catch (bundleErr) {
+    console.warn('[Socket] socket.io package not installed and bundle not found:', bundleErr.message);
+  }
 }
 
 const jwt = require('jsonwebtoken');
