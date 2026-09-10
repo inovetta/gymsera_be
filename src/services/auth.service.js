@@ -48,12 +48,16 @@ const _buildTokenPayload = async (user) => {
   let tenantId = null;
 
   if (user.role === UserRole.GYM_HOST) {
-    const tenant = await Tenant.findOne({
-      where: { ownerUserId: user.id },
-      attributes: ['id'],
-      order: [['createdAt', 'DESC']],
-    });
-    tenantId = tenant ? tenant.id : null;
+    try {
+      const tenant = await Tenant.findOne({
+        where: { ownerUserId: user.id },
+        attributes: ['id'],
+        order: [['createdAt', 'DESC']],
+      });
+      tenantId = tenant ? tenant.id : null;
+    } catch (err) {
+      console.warn('[Auth] Error resolving tenantId for GYM_HOST:', err.message);
+    }
   }
 
   return {
@@ -80,13 +84,17 @@ const _issueTokenPair = async (user, ipAddress, userAgent) => {
   const decoded = jwt.decode(refreshToken);
   const expiresAt = new Date(decoded.exp * 1000);
 
-  await RefreshToken.create({
-    userId: user.id,
-    token: refreshToken,
-    expiresAt,
-    ipAddress: ipAddress || null,
-    userAgent: userAgent || null,
-  });
+  try {
+    await RefreshToken.create({
+      userId: user.id,
+      token: refreshToken,
+      expiresAt,
+      ipAddress: ipAddress || null,
+      userAgent: userAgent || null,
+    });
+  } catch (rfErr) {
+    console.warn('[Auth] Failed to store refresh token record:', rfErr.message);
+  }
 
   return { accessToken, refreshToken, user: _sanitizeUser(user, payload.tenantId) };
 };
@@ -200,8 +208,14 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
     user.update({ isVerified: true, status: 'ACTIVE' }),
   ]);
 
-  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
-  checkAndTriggerPendingStaffInvites(user).catch(() => null);
+  setImmediate(() => {
+    try {
+      const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+      checkAndTriggerPendingStaffInvites(user).catch((err) => {
+        console.warn('[Staff Invite Sync] verifyOtp background check error:', err.message);
+      });
+    } catch (_) {}
+  });
 
   return _issueTokenPair(user, ipAddress, userAgent);
 };
@@ -288,8 +302,14 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
 
   await user.update({ lastLoginAt: new Date() });
 
-  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
-  checkAndTriggerPendingStaffInvites(user).catch(() => null);
+  setImmediate(() => {
+    try {
+      const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+      checkAndTriggerPendingStaffInvites(user).catch((err) => {
+        console.warn('[Staff Invite Sync] login background check error:', err.message);
+      });
+    } catch (_) {}
+  });
 
   return _issueTokenPair(user, ipAddress, userAgent);
 };
@@ -366,7 +386,12 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
   console.log(`[Google Auth] Processing login for ${email} (googleId: ${googleId})`);
 
   // Try to find by googleId first, then fall back to email (to link existing accounts)
-  let user = await User.findOne({ where: { googleId } });
+  let user = null;
+  try {
+    user = await User.findOne({ where: { googleId } });
+  } catch (findErr) {
+    console.warn('[Google Auth] findOne with googleId failed, falling back to email:', findErr.message);
+  }
 
   if (!user) {
     user = await User.findOne({ where: { email } });
@@ -374,34 +399,59 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
     if (user) {
       // Link Google ID to existing account and activate it (email verified by Google)
       const newStatus = user.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
-      await user.update({
-        googleId,
-        profileImageUrl: user.profileImageUrl || picture || null,
+      const baseUpdate = {
         isVerified: true,
         status: newStatus,
-      });
+      };
+      if (picture && user.profileImageUrl !== picture) {
+        baseUpdate.profileImageUrl = user.profileImageUrl || picture;
+      }
+
+      try {
+        await user.update({
+          googleId,
+          ...baseUpdate,
+        });
+      } catch (upErr) {
+        console.warn('[Google Auth] Linking with googleId failed, retrying base fields:', upErr.message);
+        await user.update(baseUpdate).catch(() => null);
+      }
       console.log(`[Google Auth] Linked existing account for ${email}`);
     } else {
       // Create brand new user
-      user = await User.create({
+      const createFields = {
         fullName: name || email.split('@')[0],
         email,
-        googleId,
         profileImageUrl: picture || null,
         role: UserRole.MEMBER,
         status: 'ACTIVE',
         isVerified: true,
         passwordHash: null,
-      });
+      };
+
+      try {
+        user = await User.create({
+          googleId,
+          ...createFields,
+        });
+      } catch (crErr) {
+        console.warn('[Google Auth] User.create with googleId failed, retrying without:', crErr.message);
+        user = await User.create(createFields);
+      }
       console.log(`[Google Auth] Created new user account for ${email} (id: ${user.id})`);
     }
   } else {
     // Existing Google account: ensure active & verified unless explicitly suspended
     if (user.status !== 'SUSPENDED') {
-      await user.update({
+      const updateFields = {
         isVerified: true,
         status: 'ACTIVE',
-        profileImageUrl: user.profileImageUrl || picture || null,
+      };
+      if (picture && !user.profileImageUrl) {
+        updateFields.profileImageUrl = picture;
+      }
+      await user.update(updateFields).catch((upErr) => {
+        console.warn('[Google Auth] Non-fatal user status update failed:', upErr.message);
       });
     }
     console.log(`[Google Auth] Logged in existing Google user ${email} (id: ${user.id})`);
@@ -411,10 +461,16 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
     throw createError('Your account has been suspended. Please contact support.', 403);
   }
 
-  await user.update({ lastLoginAt: new Date() });
+  await user.update({ lastLoginAt: new Date() }).catch(() => null);
 
-  const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
-  checkAndTriggerPendingStaffInvites(user).catch(() => null);
+  setImmediate(() => {
+    try {
+      const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+      checkAndTriggerPendingStaffInvites(user).catch((err) => {
+        console.warn('[Staff Invite Sync] googleLogin background check error:', err.message);
+      });
+    } catch (_) {}
+  });
 
   return _issueTokenPair(user, ipAddress, userAgent);
 };
