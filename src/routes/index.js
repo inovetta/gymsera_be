@@ -76,6 +76,49 @@ router.get('/system/socket-status', (_req, res) => {
   });
 });
 
+/**
+ * Maintenance endpoint to install socket.io on staging server without direct RDP
+ */
+router.get('/system/run-install', (req, res) => {
+  const secret = req.query.key;
+  if (secret !== 'gymsera-fix-socket-2026') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  const { exec } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const cwd = path.resolve(__dirname, '../../');
+
+  const nodeDir = path.dirname(process.execPath);
+  const possibleNpm = path.join(nodeDir, 'npm.cmd');
+  const npmCmd = fs.existsSync(possibleNpm) ? `"${possibleNpm}"` : 'npm';
+
+  exec(`${npmCmd} install socket.io@4.8.3 --no-audit --no-fund --save`, { cwd, timeout: 120000 }, (err, stdout, stderr) => {
+    let restarted = false;
+    if (!err) {
+      try {
+        const webConfigPath = path.join(cwd, 'web.config');
+        if (fs.existsSync(webConfigPath)) {
+          const content = fs.readFileSync(webConfigPath, 'utf8');
+          fs.writeFileSync(webConfigPath, content.trimEnd() + '\n', 'utf8');
+          restarted = true;
+        }
+      } catch (_) {}
+    }
+
+    res.json({
+      execPath: process.execPath,
+      npmCmd,
+      cwd,
+      success: !err,
+      restarted,
+      error: err ? err.message : null,
+      stdout,
+      stderr,
+    });
+  });
+});
+
 router.get('/debug-sync-db', async (_req, res) => {
   try {
     const { sequelize: platformSeq } = require('../database/platform');
