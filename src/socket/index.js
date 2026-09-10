@@ -5,7 +5,13 @@
  * Provides live bi-directional messaging, typing indicators, read receipts,
  * unread badges, and tenant/user room isolation.
  */
-const { Server } = require('socket.io');
+let Server = null;
+try {
+  Server = require('socket.io').Server;
+} catch (loadErr) {
+  console.warn('[Socket] socket.io package not installed on this host. Real-time sockets will be inactive until npm i socket.io is run.');
+}
+
 const jwt = require('jsonwebtoken');
 
 let _io = null;
@@ -14,23 +20,25 @@ let _io = null;
  * Initialize Socket.IO with HTTP server instance.
  */
 const init = (httpServer) => {
+  if (!Server) return null;
   if (_io) return _io;
 
-  const allowedOrigins = (process.env.CORS_ORIGIN || '*')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  try {
+    const allowedOrigins = (process.env.CORS_ORIGIN || '*')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
 
-  _io = new Server(httpServer, {
-    cors: {
-      origin: allowedOrigins.length > 0 && !allowedOrigins.includes('*') ? allowedOrigins : '*',
-      methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-      credentials: true,
-    },
-    pingTimeout: 30000,
-    pingInterval: 25000,
-    transports: ['websocket', 'polling'],
-  });
+    _io = new Server(httpServer, {
+      cors: {
+        origin: allowedOrigins.length > 0 && !allowedOrigins.includes('*') ? allowedOrigins : '*',
+        methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+        credentials: true,
+      },
+      pingTimeout: 30000,
+      pingInterval: 25000,
+      transports: ['websocket', 'polling'],
+    });
 
   // 1. JWT Authentication Middleware
   _io.use((socket, next) => {
@@ -212,6 +220,11 @@ const init = (httpServer) => {
 
   console.log('⚡ Socket.IO real-time messaging gateway initialized');
   return _io;
+  } catch (initErr) {
+    console.warn('[Socket] Socket.IO initialization failed:', initErr.message);
+    _io = null;
+    return null;
+  }
 };
 
 /**

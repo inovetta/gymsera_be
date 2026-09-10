@@ -33,50 +33,9 @@ const sequelize = new Sequelize(database, username, password, {
  * In development, uses `alter: true` to keep schema in sync with model changes.
  * In production, `sync` is a no-op — use migrations.
  */
-const _ensureEssentialColumns = async (sequelizeInstance) => {
-  try {
-    // 1. Check users table columns
-    const [userCols] = await sequelizeInstance.query(`
-      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME IN ('google_id', 'is_host', 'profile_image_url');
-    `);
-    const existingUserCols = (userCols || []).map((c) => (c.COLUMN_NAME || c.column_name || '').toLowerCase());
-    if (!existingUserCols.includes('google_id')) {
-      await sequelizeInstance.query('ALTER TABLE users ADD COLUMN google_id VARCHAR(100) NULL;').catch(() => null);
-      console.log('[Platform DB] Verified / added google_id column to users table');
-    }
-    if (!existingUserCols.includes('is_host')) {
-      await sequelizeInstance.query('ALTER TABLE users ADD COLUMN is_host TINYINT(1) DEFAULT 0;').catch(() => null);
-      console.log('[Platform DB] Verified / added is_host column to users table');
-    }
-    if (!existingUserCols.includes('profile_image_url')) {
-      await sequelizeInstance.query('ALTER TABLE users ADD COLUMN profile_image_url VARCHAR(500) NULL;').catch(() => null);
-      console.log('[Platform DB] Verified / added profile_image_url column to users table');
-    }
-
-    // 2. Check device_tokens table columns
-    const [dtCols] = await sequelizeInstance.query(`
-      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens' AND COLUMN_NAME IN ('device_id', 'device_name');
-    `);
-    const existingDtCols = (dtCols || []).map((c) => (c.COLUMN_NAME || c.column_name || '').toLowerCase());
-    if (!existingDtCols.includes('device_id')) {
-      await sequelizeInstance.query('ALTER TABLE device_tokens ADD COLUMN device_id VARCHAR(255) NULL;').catch(() => null);
-      console.log('[Platform DB] Verified / added device_id column to device_tokens table');
-    }
-    if (!existingDtCols.includes('device_name')) {
-      await sequelizeInstance.query('ALTER TABLE device_tokens ADD COLUMN device_name VARCHAR(255) NULL;').catch(() => null);
-      console.log('[Platform DB] Verified / added device_name column to device_tokens table');
-    }
-  } catch (err) {
-    console.warn('[Platform DB] Non-fatal schema migration check:', err.message);
-  }
-};
-
 const connect = async () => {
   await sequelize.authenticate();
   console.log('[Platform DB] Connected');
-  await _ensureEssentialColumns(sequelize);
 
   if (process.env.NODE_ENV === 'development' && !process.env.VERCEL) {
     // Lazy-load models to ensure they're registered before sync
