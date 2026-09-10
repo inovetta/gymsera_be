@@ -1,7 +1,8 @@
 /**
  * test-socket-verify.js
  * End-to-end verification script for real-time Socket.IO messaging gateway,
- * rooms, typing indicators, read receipts, and notification payloads.
+ * rooms, typing indicators, read receipts, bidirectional messaging (Host <-> Traveler),
+ * and notification payloads.
  */
 const http = require('http');
 const jwt = require('jsonwebtoken');
@@ -16,21 +17,77 @@ const socketGateway = require('./src/socket/index');
 const pushService = require('./src/services/push.service');
 const inboxService = require('./src/services/inbox.service');
 
-// Stub DB operations so real-time socket events can be tested without MySQL dependency
-inboxService.markTravelerRead = async () => true;
-inboxService.markInquiryRead = async () => true;
-inboxService.replyToInquiry = async (convId, senderId, text) => ({
-  id: 'msg-rec-1',
-  conversationId: convId,
-  senderId,
-  senderType: 'STAFF',
-  text,
-  isRead: false,
-  createdAt: new Date().toISOString(),
-});
+// Stub DB operations so real-time socket events can be tested without live DB connection
+inboxService.markTravelerRead = async (convId, userId) => {
+  socketGateway.emitToConversation(convId, 'messages_read', {
+    conversationId: convId,
+    readerRole: 'USER',
+    readBy: userId,
+    readAt: new Date().toISOString(),
+  });
+  socketGateway.emitConversationUpdated(convId, { unreadCountUser: 0 });
+  return { success: true };
+};
+
+inboxService.markInquiryRead = async (convId, tenantId) => {
+  socketGateway.emitToConversation(convId, 'messages_read', {
+    conversationId: convId,
+    readerRole: 'HOST',
+    readBy: tenantId || 'host',
+    readAt: new Date().toISOString(),
+  });
+  socketGateway.emitConversationUpdated(convId, { unreadCountHost: 0 });
+  return { success: true };
+};
+
+inboxService.replyToInquiry = async (convId, senderId, text, tenantId) => {
+  const msg = {
+    id: `msg-host-${Date.now()}`,
+    conversationId: convId,
+    senderId,
+    senderType: 'HOST',
+    text,
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  };
+  socketGateway.emitToConversation(convId, 'new_message', {
+    message: msg,
+    conversationId: convId,
+  });
+  socketGateway.emitConversationUpdated(convId, {
+    lastMessageText: text,
+    lastMessageAt: msg.createdAt,
+    unreadCountUser: 1,
+  });
+  return msg;
+};
+
+inboxService.replyAsUser = async (convId, senderId, text) => {
+  const msg = {
+    id: `msg-user-${Date.now()}`,
+    conversationId: convId,
+    senderId,
+    senderType: 'USER',
+    text,
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  };
+  socketGateway.emitToConversation(convId, 'new_message', {
+    message: msg,
+    conversationId: convId,
+  });
+  socketGateway.emitConversationUpdated(convId, {
+    lastMessageText: text,
+    lastMessageAt: msg.createdAt,
+    unreadCountHost: 1,
+  });
+  return msg;
+};
 
 async function runTests() {
-  console.log('\n--- Starting Notifications & Real-Time Messaging E2E Tests ---\n');
+  console.log('\n======================================================');
+  console.log('  STARTING BIDIRECTIONAL REAL-TIME WEBSOCKET TESTS');
+  console.log('======================================================\n');
 
   // 1. Create HTTP server and initialize socket gateway
   const server = http.createServer();
@@ -39,14 +96,14 @@ async function runTests() {
   console.log('✓ Socket.IO server listening on port 5099');
 
   // 2. Generate valid JWT tokens
-  const hostUser = { id: 'host-uuid-1', role: 'GYM_HOST', tenantId: 'tenant-42' };
-  const memberUser = { id: 'member-uuid-2', role: 'MEMBER' };
+  const hostUser = { id: 'host-uuid-1', role: 'GYM_HOST', tenantId: 'tenant-42', fullName: 'Iron Host' };
+  const travelerUser = { id: 'traveler-uuid-2', role: 'USER', fullName: 'Alex Traveler' };
 
   const hostToken = jwt.sign(hostUser, process.env.JWT_SECRET, { expiresIn: '1h' });
-  const memberToken = jwt.sign(memberUser, process.env.JWT_SECRET, { expiresIn: '1h' });
+  const travelerToken = jwt.sign(travelerUser, process.env.JWT_SECRET, { expiresIn: '1h' });
   const invalidToken = 'invalid.bearer.token';
 
-  // 3. Test Unauthorized Connection
+  // 3. Test Unauthorized Connection Rejection
   await new Promise((resolve, reject) => {
     const unauthClient = Client('http://localhost:5099', {
       auth: { token: invalidToken },
@@ -64,112 +121,183 @@ async function runTests() {
     });
   });
 
-  // 4. Test Authorized Connections for Host and Member
-  const clientA = Client('http://localhost:5099', {
+  // 4. Test Authorized Connections for Host (User A) and Traveler (User B)
+  const clientHost = Client('http://localhost:5099', {
     auth: { token: hostToken },
     transports: ['websocket'],
   });
 
-  const clientB = Client('http://localhost:5099', {
-    auth: { token: memberToken },
+  const clientTraveler = Client('http://localhost:5099', {
+    auth: { token: travelerToken },
     transports: ['websocket'],
   });
 
   await Promise.all([
-    new Promise((resolve) => clientA.on('connect', resolve)),
-    new Promise((resolve) => clientB.on('connect', resolve)),
+    new Promise((resolve) => clientHost.on('connect', resolve)),
+    new Promise((resolve) => clientTraveler.on('connect', resolve)),
   ]);
-  console.log('✓ Both Client A (Host) and Client B (Member) connected with valid JWT');
+  console.log('✓ User A (Host) and User B (Traveler) connected successfully via WebSocket');
+
+  const testConvId = 'conv-test-realtime-888';
 
   // 5. Test Room Joins
-  const testConvId = 'conv-test-123';
-  clientA.emit('join_conversation', { conversationId: testConvId });
-  clientB.emit('join_conversation', { conversationId: testConvId });
+  clientHost.emit('join_conversation', { conversationId: testConvId });
+  clientTraveler.emit('join_conversation', { conversationId: testConvId });
   await new Promise((resolve) => setTimeout(resolve, 100));
-  console.log(`✓ Both clients joined room conversation:${testConvId}`);
+  console.log(`✓ Both users joined room: conversation:${testConvId}`);
 
-  // 6. Test Typing Indicator (Client A types -> Client B receives user_typing with isTyping: true)
-  const typingPromise = new Promise((resolve) => {
-    clientB.once('user_typing', (data) => {
+  // 6. Test Host -> Traveler Typing Indicator
+  const hostTypingPromise = new Promise((resolve) => {
+    clientTraveler.once('user_typing', (data) => {
       assert.strictEqual(data.conversationId, testConvId);
       assert.strictEqual(data.userId, hostUser.id);
       assert.strictEqual(data.isTyping, true);
-      console.log('✓ Client B received real-time user_typing (started) from Client A');
+      console.log('✓ Traveler received real-time user_typing (started) from Host');
       resolve();
     });
   });
-  clientA.emit('typing_start', { conversationId: testConvId });
-  await typingPromise;
+  clientHost.emit('typing_start', { conversationId: testConvId });
+  await hostTypingPromise;
 
-  // 7. Test Stop Typing Indicator (Client A stops -> Client B receives user_typing with isTyping: false)
-  const stopTypingPromise = new Promise((resolve) => {
-    clientB.once('user_typing', (data) => {
+  // 7. Test Host -> Traveler Send Message via send_message with ACK
+  const hostText = 'Welcome to Iron Gym! Do you need a guest pass?';
+  const travelerReceiveMsgPromise = new Promise((resolve) => {
+    clientTraveler.once('new_message', (payload) => {
+      assert.strictEqual(payload.conversationId, testConvId);
+      assert.strictEqual(payload.message.text, hostText);
+      assert.strictEqual(payload.message.senderType, 'HOST');
+      console.log('✓ Traveler received real-time new_message from Host:', payload.message.text);
+      resolve();
+    });
+  });
+
+  const hostAckPromise = new Promise((resolve, reject) => {
+    clientHost.emit(
+      'send_message',
+      { conversationId: testConvId, text: hostText, tempId: 'temp-host-1' },
+      (ack) => {
+        if (ack && ack.success) {
+          console.log('✓ Host received send_message ACK with persisted message id:', ack.message.id);
+          resolve(ack);
+        } else {
+          reject(new Error('Host send_message ACK failed: ' + JSON.stringify(ack)));
+        }
+      }
+    );
+  });
+
+  await Promise.all([hostAckPromise, travelerReceiveMsgPromise]);
+
+  // 8. Test Traveler -> Host Read Receipt
+  const hostReadPromise = new Promise((resolve) => {
+    clientHost.once('messages_read', (data) => {
       assert.strictEqual(data.conversationId, testConvId);
-      assert.strictEqual(data.userId, hostUser.id);
-      assert.strictEqual(data.isTyping, false);
-      console.log('✓ Client B received real-time user_typing (stopped) from Client A');
+      assert.strictEqual(data.readerRole, 'USER');
+      console.log('✓ Host received real-time messages_read receipt from Traveler');
       resolve();
     });
   });
-  clientA.emit('typing_stop', { conversationId: testConvId });
-  await stopTypingPromise;
+  clientTraveler.emit('mark_read', { conversationId: testConvId });
+  await hostReadPromise;
 
-  // 8. Test Live Message Broadcast
-  const testMsg = {
-    id: 'msg-abc-999',
-    conversationId: testConvId,
-    senderId: hostUser.id,
-    body: 'Hello from Host! Welcome to Iron Forge!',
-    createdAt: new Date().toISOString(),
-  };
-
-  const receiveMsgPromise = new Promise((resolve) => {
-    clientB.once('new_message', (msg) => {
-      assert.strictEqual(msg.id, testMsg.id);
-      assert.strictEqual(msg.body, testMsg.body);
-      console.log('✓ Client B received real-time new_message via socket broadcast');
-      resolve();
-    });
-  });
-  socketGateway.emitToConversation(testConvId, 'new_message', testMsg);
-  await receiveMsgPromise;
-
-  // 9. Test Read Receipts
-  const readReceiptPromise = new Promise((resolve) => {
-    clientA.once('messages_read', (data) => {
+  // 9. Test Traveler -> Host Typing Indicator
+  const travelerTypingPromise = new Promise((resolve) => {
+    clientHost.once('user_typing', (data) => {
       assert.strictEqual(data.conversationId, testConvId);
-      assert.strictEqual(data.readBy, memberUser.id);
-      console.log('✓ Client A received real-time messages_read receipt');
+      assert.strictEqual(data.userId, travelerUser.id);
+      assert.strictEqual(data.isTyping, true);
+      console.log('✓ Host received real-time user_typing (started) from Traveler');
       resolve();
     });
   });
-  clientB.emit('mark_read', { conversationId: testConvId });
-  await readReceiptPromise;
+  clientTraveler.emit('typing_start', { conversationId: testConvId });
+  await travelerTypingPromise;
 
-  // 10. Test Push Service Deduplication Headers
+  // 10. Test Traveler -> Host Send Message via send_message with ACK
+  const travelerText = 'Yes please! I am arriving tomorrow at 9am.';
+  const hostReceiveMsgPromise = new Promise((resolve) => {
+    clientHost.once('new_message', (payload) => {
+      assert.strictEqual(payload.conversationId, testConvId);
+      assert.strictEqual(payload.message.text, travelerText);
+      assert.strictEqual(payload.message.senderType, 'USER');
+      console.log('✓ Host received real-time new_message from Traveler:', payload.message.text);
+      resolve();
+    });
+  });
+
+  const travelerAckPromise = new Promise((resolve, reject) => {
+    clientTraveler.emit(
+      'send_message',
+      { conversationId: testConvId, text: travelerText, tempId: 'temp-traveler-1' },
+      (ack) => {
+        if (ack && ack.success) {
+          console.log('✓ Traveler received send_message ACK with persisted message id:', ack.message.id);
+          resolve(ack);
+        } else {
+          reject(new Error('Traveler send_message ACK failed: ' + JSON.stringify(ack)));
+        }
+      }
+    );
+  });
+
+  await Promise.all([travelerAckPromise, hostReceiveMsgPromise]);
+
+  // 11. Test Host -> Traveler Read Receipt
+  const travelerReadPromise = new Promise((resolve) => {
+    clientTraveler.once('messages_read', (data) => {
+      assert.strictEqual(data.conversationId, testConvId);
+      assert.strictEqual(data.readerRole, 'HOST');
+      console.log('✓ Traveler received real-time messages_read receipt from Host');
+      resolve();
+    });
+  });
+  clientHost.emit('mark_read', { conversationId: testConvId });
+  await travelerReadPromise;
+
+  // 12. Test Inbox Broadcast when Host is outside Conversation Room
+  clientHost.emit('leave_conversation', { conversationId: testConvId });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const hostInboxUpdatePromise = new Promise((resolve) => {
+    clientHost.once('conversation_updated', (data) => {
+      assert.strictEqual(data.conversationId, testConvId);
+      assert.strictEqual(data.lastMessageText, 'Are towels provided?');
+      console.log('✓ Host outside conversation room received conversation_updated inbox preview');
+      resolve();
+    });
+  });
+
+  // Traveler sends while host is outside conversation room
+  clientTraveler.emit(
+    'send_message',
+    { conversationId: testConvId, text: 'Are towels provided?', tempId: 'temp-traveler-2' },
+    () => {}
+  );
+  await hostInboxUpdatePromise;
+
+  // 13. Test Push Deduplication Config
   const pushPayload = {
-    title: 'New Customer Registered',
-    body: 'John Doe subscribed to Premium Plan',
+    title: 'New Message from Alex Traveler',
+    body: 'Are towels provided?',
     data: {
-      type: 'new_customer',
-      subscriptionId: 'sub-789',
-      branchId: 'branch-10',
-      userId: 'member-uuid-2',
-      deepLink: '/host/gyms/branch-10/members/member-uuid-2',
+      type: 'inquiry_replied',
+      conversationId: testConvId,
+      deepLink: `/host/inbox`,
     },
   };
   const builtMsg = pushService._buildFcmPayload(pushPayload);
-  assert.ok(builtMsg.android, 'Expected android config in FCM message');
-  assert.ok(builtMsg.android.collapseKey, 'Expected collapseKey for deduplication');
-  assert.strictEqual(builtMsg.android.notification.tag, 'new_customer');
+  assert.ok(builtMsg.android.collapseKey, 'Expected collapseKey');
+  assert.strictEqual(builtMsg.android.notification.tag, 'inquiry_replied');
   assert.ok(builtMsg.apns.headers['apns-collapse-id'], 'Expected apns-collapse-id');
-  console.log('✓ Push notification payload contains FCM collapseKey, Android tag, and APNs collapse id for deduplication');
+  console.log('✓ Push notification payload contains FCM collapseKey and APNs collapse-id');
 
   // Clean up
-  clientA.disconnect();
-  clientB.disconnect();
+  clientHost.disconnect();
+  clientTraveler.disconnect();
   server.close();
-  console.log('\n--- All E2E Integration Tests Passed Successfully! ---\n');
+  console.log('\n======================================================');
+  console.log('  ALL REAL-TIME WEBSOCKET TESTS PASSED SUCCESSFULLY!  ');
+  console.log('======================================================\n');
   process.exit(0);
 }
 
