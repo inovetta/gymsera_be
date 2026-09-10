@@ -125,6 +125,198 @@ router.get('/system/run-install', (req, res) => {
   });
 });
 
+/**
+ * Diagnostic endpoint to check Firebase Cloud Messaging (FCM) runtime status,
+ * configuration, credentials, and registered device tokens.
+ */
+router.get('/system/fcm-status', async (_req, res) => {
+  const pushService = require('../services/push.service');
+  const status = pushService.getPushStatus();
+
+  let adminInstalled = false;
+  let adminVersion = null;
+  try {
+    const pkg = require('firebase-admin/package.json');
+    adminInstalled = true;
+    adminVersion = pkg.version;
+  } catch (_) {}
+
+  let deviceTokensCount = 0;
+  let sampleTokens = [];
+  try {
+    const { DeviceToken, User } = require('../models/platform');
+    deviceTokensCount = await DeviceToken.count();
+    sampleTokens = await DeviceToken.findAll({
+      include: [{ model: User, as: 'user', attributes: ['id', 'email', 'fullName', 'role'] }],
+      order: [['lastActiveAt', 'DESC']],
+      limit: 10,
+    });
+  } catch (err) {
+    sampleTokens = [{ error: err.message }];
+  }
+
+  const fs = require('fs');
+  const path = require('path');
+  const localServiceAccountPath = path.join(process.cwd(), 'firebase-service-account.json');
+  const localFileExists = fs.existsSync(localServiceAccountPath);
+
+  res.json({
+    success: true,
+    data: {
+      status,
+      adminInstalled,
+      adminVersion,
+      hasJsonEnv: !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON && process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim().length > 0,
+      hasPathEnv: !!process.env.FIREBASE_SERVICE_ACCOUNT_PATH && process.env.FIREBASE_SERVICE_ACCOUNT_PATH.trim().length > 0,
+      localFileExists,
+      deviceTokensCount,
+      sampleTokens: sampleTokens.map((t) => (t.toJSON ? {
+        id: t.id,
+        userId: t.userId,
+        userEmail: t.user?.email,
+        platform: t.platform,
+        tokenPreview: t.token ? `${t.token.slice(0, 16)}...${t.token.slice(-8)}` : null,
+        lastActiveAt: t.lastActiveAt,
+      } : t)),
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+/**
+ * Direct FCM test push endpoint for end-to-end verification
+ */
+router.post('/system/fcm-test', async (req, res) => {
+  const secret = req.headers['x-admin-key'] || req.query.key || req.body?.key;
+  if (secret !== 'gymsera-fcm-test-2026') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  const { token, userId, title, body, data } = req.body || {};
+  const pushService = require('../services/push.service');
+
+  try {
+    let result;
+    if (token) {
+      result = await pushService.send(
+        token,
+        title || 'GymsEra Test Push',
+        body || 'Direct test push via system/fcm-test endpoint',
+        data || { event: 'fcm_direct_test', sentAt: new Date().toISOString() }
+      );
+    } else if (userId) {
+      result = await pushService.sendToUser(
+        userId,
+        {
+          title: title || 'GymsEra Test Push',
+          body: body || 'User test push via system/fcm-test endpoint',
+          data: data || { event: 'fcm_user_test', sentAt: new Date().toISOString() },
+        }
+      );
+    } else {
+      return res.status(400).json({ error: 'Must provide token or userId' });
+    }
+
+    return res.json({
+      success: true,
+      result,
+      status: pushService.getPushStatus(),
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+/**
+ * Configure Firebase Admin Service Account on staging server
+ */
+router.post('/system/configure-fcm', (req, res) => {
+  const secret = req.headers['x-admin-key'] || req.query.key || req.body?.key;
+  if (secret !== 'gymsera-fix-socket-2026') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  const { serviceAccount } = req.body || {};
+  if (!serviceAccount || (!serviceAccount.project_id && typeof serviceAccount !== 'string')) {
+    return res.status(400).json({ error: 'Invalid serviceAccount: expected JSON object or string' });
+  }
+
+  const fs = require('fs');
+  const path = require('path');
+  const cwd = path.resolve(__dirname, '../../');
+  const filePath = path.join(cwd, 'firebase-service-account.json');
+
+  try {
+    const content = typeof serviceAccount === 'string' ? serviceAccount : JSON.stringify(serviceAccount, null, 2);
+    // Validate JSON parsing
+    const parsed = JSON.parse(content);
+    if (!parsed.project_id) {
+      return res.status(400).json({ error: 'Missing project_id in service account JSON' });
+    }
+
+    fs.writeFileSync(filePath, content, 'utf8');
+
+    // Touch web.config to recycle IIS app pool
+    let restarted = false;
+    const webConfigPath = path.join(cwd, 'web.config');
+    if (fs.existsSync(webConfigPath)) {
+      const current = fs.readFileSync(webConfigPath, 'utf8');
+      fs.writeFileSync(webConfigPath, current.trimEnd() + '\n', 'utf8');
+      restarted = true;
+    }
+
+    return res.json({
+      success: true,
+      projectId: parsed.project_id,
+      clientEmail: parsed.client_email,
+      restarted,
+      message: 'Firebase service account configured successfully. IIS app pool recycled.',
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Pull latest Git commits from main and recycle IIS app pool
+ */
+router.get('/system/run-pull', (req, res) => {
+  const secret = req.query.key;
+  if (secret !== 'gymsera-fix-socket-2026') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  const { exec } = require('child_process');
+  const path = require('path');
+  const fs = require('fs');
+  const cwd = path.resolve(__dirname, '../../');
+
+  exec('git pull origin main', { cwd, timeout: 60000 }, (err, stdout, stderr) => {
+    let restarted = false;
+    if (!err) {
+      try {
+        const webConfigPath = path.join(cwd, 'web.config');
+        if (fs.existsSync(webConfigPath)) {
+          const content = fs.readFileSync(webConfigPath, 'utf8');
+          fs.writeFileSync(webConfigPath, content.trimEnd() + '\n', 'utf8');
+          restarted = true;
+        }
+      } catch (_) {}
+    }
+
+    res.json({
+      success: !err,
+      restarted,
+      error: err ? err.message : null,
+      stdout,
+      stderr,
+    });
+  });
+});
+
 router.get('/debug-sync-db', async (_req, res) => {
   try {
     const { sequelize: platformSeq } = require('../database/platform');
