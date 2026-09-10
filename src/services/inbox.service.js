@@ -21,8 +21,10 @@ const listInquiries = async (tenantId) => {
 };
 
 const getInquiryDetail = async (conversationId, tenantId) => {
+  const whereClause = { id: conversationId };
+  if (tenantId) whereClause.tenantId = tenantId;
   const conversation = await Conversation.findOne({
-    where: { id: conversationId, tenantId },
+    where: whereClause,
     include: [
       {
         model: User,
@@ -52,7 +54,9 @@ const getInquiryDetail = async (conversationId, tenantId) => {
 };
 
 const replyToInquiry = async (conversationId, senderId, text, tenantId) => {
-  const conversation = await Conversation.findOne({ where: { id: conversationId, tenantId } });
+  const whereClause = { id: conversationId };
+  if (tenantId) whereClause.tenantId = tenantId;
+  const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
     err.statusCode = 404;
@@ -112,7 +116,9 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId) => {
 };
 
 const markInquiryRead = async (conversationId, tenantId) => {
-  const conversation = await Conversation.findOne({ where: { id: conversationId, tenantId } });
+  const whereClause = { id: conversationId };
+  if (tenantId) whereClause.tenantId = tenantId;
+  const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
     err.statusCode = 404;

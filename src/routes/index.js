@@ -31,8 +31,46 @@ router.get('/health', (_req, res) => {
     success: true,
     message: 'GymsEra API is running',
     data: {
-      version: '1.0.0',
+      version: '1.1.0',
       environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+/**
+ * Diagnostic endpoint to check WebSocket / Socket.IO runtime status
+ */
+router.get('/system/socket-status', (_req, res) => {
+  let socketModuleInstalled = false;
+  let socketIoVersion = null;
+  let socketError = null;
+
+  try {
+    const pkg = require('socket.io/package.json');
+    socketModuleInstalled = true;
+    socketIoVersion = pkg.version;
+  } catch (err) {
+    socketError = err.message;
+  }
+
+  const socketGateway = require('../socket');
+  const ioInstance = socketGateway.getIO();
+  let connectedSockets = 0;
+  if (ioInstance && ioInstance.sockets && ioInstance.sockets.sockets) {
+    connectedSockets = ioInstance.sockets.sockets.size || 0;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      socketModuleInstalled,
+      socketIoVersion,
+      socketError,
+      socketIORunning: !!ioInstance,
+      connectedSockets,
+      nodeVersion: process.version,
+      port: process.env.PORT || 3000,
       timestamp: new Date().toISOString(),
     },
   });

@@ -31,13 +31,17 @@ const init = (httpServer) => {
 
     _io = new Server(httpServer, {
       cors: {
-        origin: allowedOrigins.length > 0 && !allowedOrigins.includes('*') ? allowedOrigins : '*',
-        methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+        origin: (origin, callback) => {
+          // Allow all origins, including mobile apps (where origin is null/undefined)
+          callback(null, true);
+        },
+        methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
         credentials: true,
       },
       pingTimeout: 30000,
       pingInterval: 25000,
       transports: ['websocket', 'polling'],
+      allowUpgrades: true,
     });
 
   // 1. JWT Authentication Middleware
@@ -75,7 +79,9 @@ const init = (httpServer) => {
   _io.on('connection', (socket) => {
     const user = socket.user;
     const userId = user.id;
-    console.log(`[Socket] User connected: ${userId} (${user.role || 'USER'}) [socketId: ${socket.id}]`);
+    const role = (user.role || '').toUpperCase();
+    const isHost = role === 'GYM_HOST' || role === 'PLATFORM_ADMIN';
+    console.log(`[Socket] User connected: ${userId} (${role || 'USER'}) [socketId: ${socket.id}]`);
 
     // Auto-join user-specific room
     socket.join(`user:${userId}`);
@@ -111,17 +117,20 @@ const init = (httpServer) => {
         }
 
         const inboxService = require('../services/inbox.service');
-        const role = (user.role || '').toUpperCase();
-        const isHost = role === 'GYM_HOST' || role === 'PLATFORM_ADMIN';
 
         let messageRecord;
         if (isHost) {
-          // If host has tenantId, reply as host
+          let tenantIdToUse = user.tenantId;
+          if (!tenantIdToUse) {
+            const { Conversation } = require('../models/platform');
+            const conv = await Conversation.findByPk(conversationId, { attributes: ['tenantId'] });
+            tenantIdToUse = conv?.tenantId;
+          }
           messageRecord = await inboxService.replyToInquiry(
             conversationId,
             userId,
             text.trim(),
-            user.tenantId
+            tenantIdToUse
           );
         } else {
           // Reply as user/traveler
@@ -143,18 +152,8 @@ const init = (httpServer) => {
           tempId: tempId || null,
         };
 
-        // Broadcast to conversation room (including sender or acknowledge sender)
-        _io.to(`conversation:${conversationId}`).emit('new_message', {
-          message: messageData,
-          conversationId,
-        });
-
-        // Broadcast conversation list preview update to conversation participants
-        emitConversationUpdated(conversationId, {
-          lastMessageText: messageRecord.text,
-          lastMessageAt: messageRecord.createdAt,
-        });
-
+        // Note: inboxService already broadcasts new_message and conversation_updated.
+        // Acknowledge the sender via socket callback
         if (typeof callback === 'function') {
           callback({ success: true, message: messageData, tempId });
         }
@@ -191,23 +190,11 @@ const init = (httpServer) => {
       if (!conversationId) return;
       try {
         const inboxService = require('../services/inbox.service');
-        const role = (user.role || '').toUpperCase();
-        const isHost = role === 'GYM_HOST' || role === 'PLATFORM_ADMIN';
-
-        if (isHost && user.tenantId) {
+        if (isHost) {
           await inboxService.markInquiryRead(conversationId, user.tenantId);
         } else {
           await inboxService.markTravelerRead(conversationId, userId);
         }
-
-        // Notify room that messages are read
-        _io.to(`conversation:${conversationId}`).emit('messages_read', {
-          conversationId,
-          readerId: userId,
-          readBy: userId,
-          readerRole: isHost ? 'HOST' : 'USER',
-          readAt: new Date().toISOString(),
-        });
       } catch (err) {
         console.warn('[Socket mark_read warning]:', err.message);
       }
@@ -264,7 +251,7 @@ const emitToTenant = (tenantId, event, data) => {
 const emitConversationUpdated = async (conversationId, extraData = {}) => {
   if (!_io || !conversationId) return;
   try {
-    const { Conversation } = require('../models/platform');
+    const { Conversation, Tenant } = require('../models/platform');
     const conv = await Conversation.findByPk(conversationId);
     if (!conv) return;
 
@@ -278,15 +265,21 @@ const emitConversationUpdated = async (conversationId, extraData = {}) => {
       ...extraData,
     };
 
-    // Emit to conversation room
+    // 1. Emit to conversation room
     _io.to(`conversation:${conversationId}`).emit('conversation_updated', payload);
-    // Emit to traveler's personal room
+    // 2. Emit to traveler's personal room
     if (conv.userId) {
       _io.to(`user:${conv.userId}`).emit('conversation_updated', payload);
     }
-    // Emit to tenant room for hosts
+    // 3. Emit to tenant room for hosts & staff
     if (conv.tenantId) {
       _io.to(`tenant:${conv.tenantId}`).emit('conversation_updated', payload);
+      try {
+        const tenant = await Tenant.findByPk(conv.tenantId, { attributes: ['ownerUserId'] });
+        if (tenant && tenant.ownerUserId) {
+          _io.to(`user:${tenant.ownerUserId}`).emit('conversation_updated', payload);
+        }
+      } catch (_) {}
     }
   } catch (err) {
     console.warn('[Socket emitConversationUpdated warning]:', err.message);
