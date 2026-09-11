@@ -1,7 +1,62 @@
+const { Op } = require('sequelize');
 const { safeRedisGet, safeRedisSetex } = require('../config/redis.config');
 const TenantDbManager = require('../database/TenantDbManager');
 
 const CACHE_TTL_SECONDS = 3600; // 1 hour
+
+/**
+ * Helper to find active staff record in tenantDb and elevate user role
+ */
+const _findAndElevateStaff = async (tenantDb, user, branchId = null) => {
+  if (!user || !tenantDb?.models?.GymStaff) return null;
+
+  const userId = user.id || user.sub;
+  const userEmail = user.email ? user.email.toLowerCase().trim() : null;
+
+  const userConditions = [];
+  if (userId) userConditions.push({ userId });
+  if (userEmail) userConditions.push({ email: userEmail });
+
+  if (userConditions.length === 0) return null;
+
+  const statusConditions = [
+    { status: 'active' },
+    { employmentStatus: 'ACTIVE' },
+  ];
+
+  const whereClause = {
+    [Op.or]: userConditions,
+    [Op.and]: [{ [Op.or]: statusConditions }],
+  };
+
+  let staff = null;
+  if (branchId) {
+    staff = await tenantDb.models.GymStaff.findOne({
+      where: {
+        ...whereClause,
+        branchId,
+      },
+    });
+  }
+
+  if (!staff) {
+    staff = await tenantDb.models.GymStaff.findOne({
+      where: whereClause,
+    });
+  }
+
+  if (staff) {
+    // If staff was matched by email or was pending, link and activate
+    if (userId && (!staff.userId || staff.status !== 'active')) {
+      await staff.update({ userId, status: 'active' }).catch(() => {});
+    }
+    user.role = 'BRANCH_MANAGER';
+    user.branchId = staff.branchId;
+    return staff;
+  }
+
+  return null;
+};
 
 /**
  * tenantContext — resolves the Sequelize instance for the current request's tenant.
@@ -47,19 +102,15 @@ const tenantContext = async (req, res, next) => {
         }
       }
 
-      if (!tenantId && req.user?.id) {
+      if (!tenantId && (req.user?.id || req.user?.sub || req.user?.email)) {
         const { Tenant } = require('../models/platform');
         const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
         for (const t of tenants) {
           try {
             const tDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
-            const staff = await tDb.models.GymStaff.findOne({
-              where: { userId: req.user.id, status: 'active' },
-            });
+            const staff = await _findAndElevateStaff(tDb, req.user, branchId);
             if (staff) {
               tenantId = t.id;
-              req.user.role = 'BRANCH_MANAGER';
-              req.user.branchId = staff.branchId;
               break;
             }
           } catch (err) {
@@ -115,13 +166,8 @@ const tenantContext = async (req, res, next) => {
 
     // If user is a traveler (MEMBER) or BRANCH_MANAGER, verify staff status in the resolved tenant DB
     if (req.user && (req.user.role === 'MEMBER' || req.user.role === 'BRANCH_MANAGER')) {
-      const staff = await req.tenantDb.models.GymStaff.findOne({
-        where: { userId: req.user.id, status: 'active' },
-      });
-      if (staff) {
-        req.user.role = 'BRANCH_MANAGER';
-        req.user.branchId = staff.branchId;
-      }
+      const branchId = req.params.branchId || req.query.branchId || req.body.branchId;
+      await _findAndElevateStaff(req.tenantDb, req.user, branchId);
     }
 
     next();

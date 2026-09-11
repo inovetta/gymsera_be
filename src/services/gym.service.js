@@ -489,6 +489,7 @@ const assignStaff = async (tenantDb, branchId, userId, designation) => {
     userId,
     designation: designation || null,
     employmentStatus: 'ACTIVE',
+    status: 'active',
   });
 
   try {

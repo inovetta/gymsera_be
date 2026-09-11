@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { Op } = require('sequelize');
 const authenticate = require('../middleware/authenticate');
 const { Tenant, User, Notification } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
@@ -9,6 +10,34 @@ const subscriptionService = require('../services/subscription.service');
 
 const router = Router();
 router.use(authenticate);
+
+// Helper to resolve active staff
+const _resolveActiveStaff = async (tenantDb, branchId, user) => {
+  if (!user || !tenantDb?.models?.GymStaff) return null;
+  const userId = user.id || user.sub;
+  const userEmail = user.email ? user.email.toLowerCase().trim() : null;
+
+  const userConditions = [];
+  if (userId) userConditions.push({ userId });
+  if (userEmail) userConditions.push({ email: userEmail });
+  if (userConditions.length === 0) return null;
+
+  const staff = await tenantDb.models.GymStaff.findOne({
+    where: {
+      branchId,
+      [Op.or]: userConditions,
+      [Op.and]: [
+        { [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }] }
+      ]
+    }
+  });
+
+  if (staff && userId && (!staff.userId || staff.status !== 'active')) {
+    await staff.update({ userId, status: 'active' }).catch(() => {});
+  }
+
+  return staff;
+};
 
 // Helper to resolve Tenant DB from branch ID
 const _resolveTenantFromBranch = async (branchId) => {
@@ -67,13 +96,7 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
     const { tenantDb, tenant, branch } = await _resolveTenantFromBranch(branchId);
 
     // Verify enroller is an active staff member of this branch
-    const staff = await tenantDb.models.GymStaff.findOne({
-      where: {
-        branchId,
-        userId: req.user.id,
-        status: 'active',
-      }
-    });
+    const staff = await _resolveActiveStaff(tenantDb, branchId, req.user);
     if (!staff) {
       throw createError('Access denied: You are not active staff at this branch', 403);
     }
@@ -140,13 +163,7 @@ router.get('/host/branches/:branchId/action-requests', async (req, res, next) =>
 
     // Verify caller is the tenant owner (Host) OR an active staff member of this branch
     const isHost = tenant.ownerUserId === req.user.id;
-    const staff = await tenantDb.models.GymStaff.findOne({
-      where: {
-        branchId,
-        userId: req.user.id,
-        status: 'active',
-      }
-    });
+    const staff = await _resolveActiveStaff(tenantDb, branchId, req.user);
 
     if (!isHost && !staff) {
       throw createError('Access denied: Only the gym host or active branch staff can review staff requests', 403);
@@ -374,13 +391,7 @@ router.get('/branches/:branchId/my-expenses', async (req, res, next) => {
     const { branchId } = req.params;
     const { tenantDb } = await _resolveTenantFromBranch(branchId);
 
-    const staff = await tenantDb.models.GymStaff.findOne({
-      where: {
-        branchId,
-        userId: req.user.id,
-        status: 'active',
-      },
-    });
+    const staff = await _resolveActiveStaff(tenantDb, branchId, req.user);
 
     if (!staff) {
       throw createError('Access denied: You are not active staff at this branch', 403);

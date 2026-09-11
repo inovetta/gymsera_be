@@ -65,11 +65,12 @@ const isHostOrAdmin = async (req, branchId) => {
     return true;
   }
   if (req.user.role === 'BRANCH_MANAGER') {
+    const userId = req.user.id || req.user.sub;
     const staff = await req.tenantDb.models.GymStaff.findOne({
       where: {
         branchId,
-        userId: req.user.id,
-        status: 'active',
+        userId,
+        [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }],
       },
     });
     if (staff && (staff.designation || '').trim().toLowerCase() === 'admin') {
@@ -302,8 +303,13 @@ const createExpense = async (req, res, next) => {
     }
 
     // If caller is STAFF: Create StaffActionRequest ONLY (No Expense row created yet!)
+    const userId = req.user.id || req.user.sub;
     const staffMember = await GymStaff.findOne({
-      where: { branchId, userId: req.user.id, status: 'active' },
+      where: {
+        branchId,
+        userId,
+        [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }],
+      },
     });
 
     if (!staffMember) {
