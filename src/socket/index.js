@@ -135,14 +135,16 @@ const init = (httpServer) => {
             conversationId,
             userId,
             text.trim(),
-            tenantIdToUse
+            tenantIdToUse,
+            { tempId }
           );
         } else {
           // Reply as user/traveler
           messageRecord = await inboxService.replyAsUser(
             conversationId,
             userId,
-            text.trim()
+            text.trim(),
+            { tempId }
           );
         }
 

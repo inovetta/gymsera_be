@@ -53,7 +53,7 @@ const getInquiryDetail = async (conversationId, tenantId) => {
   return { conversation, messages };
 };
 
-const replyToInquiry = async (conversationId, senderId, text, tenantId) => {
+const replyToInquiry = async (conversationId, senderId, text, tenantId, options = {}) => {
   const whereClause = { id: conversationId };
   if (tenantId) whereClause.tenantId = tenantId;
   const conversation = await Conversation.findOne({ where: whereClause });
@@ -100,8 +100,12 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId) => {
   // Real-time socket broadcast
   try {
     const socketGateway = require('../socket');
+    const messagePayload = {
+      ...(typeof message.toJSON === 'function' ? message.toJSON() : message),
+      tempId: options?.tempId || null,
+    };
     socketGateway.emitToConversation(conversationId, 'new_message', {
-      message,
+      message: messagePayload,
       conversationId,
     });
     socketGateway.emitConversationUpdated(conversationId, {
@@ -145,7 +149,7 @@ const markInquiryRead = async (conversationId, tenantId) => {
   return { success: true };
 };
 
-const createTravelerInquiry = async (userId, branchIdOrGymId, text) => {
+const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}) => {
   // Find GymListing mapping to the branchId or gymId
   const listing = await GymListing.findOne({
     where: {
@@ -201,8 +205,12 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text) => {
   // Real-time socket broadcast
   try {
     const socketGateway = require('../socket');
+    const messagePayload = {
+      ...(typeof message.toJSON === 'function' ? message.toJSON() : message),
+      tempId: options?.tempId || null,
+    };
     socketGateway.emitToConversation(conversation.id, 'new_message', {
-      message,
+      message: messagePayload,
       conversationId: conversation.id,
     });
     socketGateway.emitConversationUpdated(conversation.id, {
@@ -282,7 +290,7 @@ const getTravelerConversationDetail = async (conversationId, userId) => {
   return { conversation, messages };
 };
 
-const replyAsUser = async (conversationId, userId, text) => {
+const replyAsUser = async (conversationId, userId, text, options = {}) => {
   const conversation = await Conversation.findOne({ where: { id: conversationId, userId } });
   if (!conversation) {
     const err = new Error('Conversation not found');
@@ -292,7 +300,7 @@ const replyAsUser = async (conversationId, userId, text) => {
 
   const message = await Message.create({
     conversationId,
-    senderId: userId,
+    senderId,
     senderType: 'USER',
     text,
     isRead: false,
@@ -307,8 +315,12 @@ const replyAsUser = async (conversationId, userId, text) => {
   // Real-time socket broadcast
   try {
     const socketGateway = require('../socket');
+    const messagePayload = {
+      ...(typeof message.toJSON === 'function' ? message.toJSON() : message),
+      tempId: options?.tempId || null,
+    };
     socketGateway.emitToConversation(conversationId, 'new_message', {
-      message,
+      message: messagePayload,
       conversationId,
     });
     socketGateway.emitConversationUpdated(conversationId, {
