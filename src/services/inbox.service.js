@@ -300,7 +300,7 @@ const replyAsUser = async (conversationId, userId, text, options = {}) => {
 
   const message = await Message.create({
     conversationId,
-    senderId,
+    senderId: userId,
     senderType: 'USER',
     text,
     isRead: false,
