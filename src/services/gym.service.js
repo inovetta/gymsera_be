@@ -891,6 +891,7 @@ const createStaffUser = async (tenantDb, { fullName, email, phone, password, des
       passwordHash,
       role: 'BRANCH_MANAGER',
       status: 'ACTIVE',
+      isVerified: true,
       emailVerified: true,
     });
   } else if (existingUser.role === 'MEMBER') {
