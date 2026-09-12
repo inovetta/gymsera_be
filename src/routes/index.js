@@ -293,8 +293,11 @@ router.get('/system/run-pull', (req, res) => {
   const path = require('path');
   const fs = require('fs');
   const cwd = path.resolve(__dirname, '../../');
+  const safePath = cwd.replace(/\\/g, '/');
 
-  exec('git pull origin main', { cwd, timeout: 60000 }, (err, stdout, stderr) => {
+  const cmd = `git config --global --add safe.directory "${safePath}" && git config --global --add safe.directory * && git pull origin main`;
+
+  exec(cmd, { cwd, timeout: 60000 }, (err, stdout, stderr) => {
     let restarted = false;
     if (!err) {
       try {
@@ -315,6 +318,25 @@ router.get('/system/run-pull', (req, res) => {
       stderr,
     });
   });
+});
+
+/**
+ * Recycle IIS worker process to immediately reset memory store (rate limits, caches)
+ */
+router.get('/system/recycle', (req, res) => {
+  const secret = req.query.key;
+  if (secret !== 'gymsera-fix-socket-2026') {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  res.json({
+    success: true,
+    message: 'Worker recycling triggered. iisnode will restart worker process immediately.',
+  });
+
+  setTimeout(() => {
+    process.exit(0);
+  }, 300);
 });
 
 router.get('/debug-sync-db', async (_req, res) => {

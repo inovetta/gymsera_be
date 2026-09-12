@@ -118,24 +118,52 @@ if (appConfig.nodeEnv !== 'test') {
 }
 
 // ── Rate limiting (applies to all /api routes) ────────────────────────────────
+const isDevOrTest =
+  appConfig.nodeEnv === 'development' ||
+  appConfig.nodeEnv === 'test' ||
+  process.env.NODE_ENV === 'development' ||
+  process.env.NODE_ENV === 'test';
+
+const apiLimitMax = process.env.API_RATE_LIMIT_MAX
+  ? parseInt(process.env.API_RATE_LIMIT_MAX, 10)
+  : (isDevOrTest ? 100000 : 10000);
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'test' ? 10000 : 200,
+  max: apiLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
   message: { success: false, message: 'Too many requests, please try again later.' },
+  skip: (req) => {
+    const url = (req.originalUrl || req.url || req.path || '').toLowerCase();
+    return (
+      url.includes('/health') ||
+      url.includes('/system/') ||
+      url.includes('/auth/social') ||
+      url.includes('/social/')
+    );
+  },
 });
 app.use('/api', apiLimiter);
 
 // ── Strict auth-route rate limiter (login/register/OTP) ──────────────────────
+const authLimitMax = process.env.AUTH_RATE_LIMIT_MAX
+  ? parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10)
+  : (isDevOrTest ? 10000 : 1000);
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'test' ? 10000 : 20,
+  max: authLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
   message: { success: false, message: 'Too many auth attempts, please try again later.' },
+  skip: (req) => {
+    // Social logins (Google/Apple) are token-verified, do not throttle testers
+    const url = (req.originalUrl || req.url || req.path || '').toLowerCase();
+    return url.includes('/social/') || url.includes('/auth/social');
+  },
 });
 app.use('/api/v1/auth', authLimiter);
 
