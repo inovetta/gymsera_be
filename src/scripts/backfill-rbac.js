@@ -56,7 +56,14 @@ const statusFor = (staff) => {
 /**
  * Ensure the platform-side table and columns exist.
  *
- * Additive DDL only — no existing column is altered or dropped.
+ * Additive DDL only — no existing column is altered or dropped. Runs
+ * unconditionally, even under --dry-run: these statements are idempotent
+ * (`CREATE TABLE IF NOT EXISTS`, an `ADD COLUMN` guarded by an information_schema
+ * check) and touch no row of business data, so there is nothing for --dry-run to
+ * protect here. More importantly, skipping them breaks the run: every Sequelize
+ * model below queries the `permission_version` column unconditionally the moment
+ * it is loaded, because the model's attribute list is what generates the SELECT.
+ * --dry-run only gates the actual data migration further down, in migrateTenant.
  */
 const migratePlatform = async () => {
   const { sequelize } = require('../database/platform');
@@ -79,8 +86,8 @@ const migratePlatform = async () => {
   ];
 
   for (const sql of statements) {
-    if (DRY_RUN) { console.log('  [dry-run] would run:', sql.split('\n')[0].trim()); continue; }
     await sequelize.query(sql);
+    if (DRY_RUN) console.log('  ensured (safe under dry-run):', sql.split('\n')[0].trim());
   }
 
   // permission_version columns — guarded, because ADD COLUMN is not idempotent.
@@ -90,7 +97,6 @@ const migratePlatform = async () => {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND COLUMN_NAME = '${column}'`
     );
     if (Number(rows[0].n) > 0) continue;
-    if (DRY_RUN) { console.log(`  [dry-run] would add ${table}.${column}`); continue; }
     await sequelize.query(`ALTER TABLE ${table} ADD COLUMN ${column} INT NOT NULL DEFAULT 1`);
     console.log(`  added ${table}.${column}`);
   }
