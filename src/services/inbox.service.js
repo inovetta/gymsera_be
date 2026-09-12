@@ -108,6 +108,12 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
       message: messagePayload,
       conversationId,
     });
+    if (conversation.userId) {
+      socketGateway.emitToUser(conversation.userId, 'new_message', {
+        message: messagePayload,
+        conversationId,
+      });
+    }
     socketGateway.emitConversationUpdated(conversationId, {
       lastMessageText: text,
       lastMessageAt: message.createdAt,
@@ -213,6 +219,12 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
       message: messagePayload,
       conversationId: conversation.id,
     });
+    if (listing && listing.tenantId) {
+      socketGateway.emitToTenant(listing.tenantId, 'new_message', {
+        message: messagePayload,
+        conversationId: conversation.id,
+      });
+    }
     socketGateway.emitConversationUpdated(conversation.id, {
       lastMessageText: text,
       lastMessageAt: message.createdAt,

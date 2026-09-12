@@ -93,28 +93,44 @@ const registerDeviceToken = async ({ userId, token, platform = 'android', device
 
   const normalizedPlatform = (platform || 'android').toLowerCase();
 
-  const [deviceToken, created] = await DeviceToken.findOrCreate({
-    where: { token },
-    defaults: {
-      userId,
-      token,
-      platform: normalizedPlatform,
-      deviceId,
-      deviceName,
-      lastActiveAt: new Date(),
-    },
-  });
+  const upsertToken = async () => {
+    const [deviceToken, created] = await DeviceToken.findOrCreate({
+      where: { token },
+      defaults: {
+        userId,
+        token,
+        platform: normalizedPlatform,
+        deviceId,
+        deviceName,
+        lastActiveAt: new Date(),
+      },
+    });
 
-  if (!created) {
-    deviceToken.userId = userId;
-    deviceToken.platform = normalizedPlatform;
-    if (deviceId) deviceToken.deviceId = deviceId;
-    if (deviceName) deviceToken.deviceName = deviceName;
-    deviceToken.lastActiveAt = new Date();
-    await deviceToken.save();
+    if (!created) {
+      deviceToken.userId = userId;
+      deviceToken.platform = normalizedPlatform;
+      if (deviceId) deviceToken.deviceId = deviceId;
+      if (deviceName) deviceToken.deviceName = deviceName;
+      deviceToken.lastActiveAt = new Date();
+      await deviceToken.save();
+    }
+
+    return { success: true, registered: true };
+  };
+
+  try {
+    return await upsertToken();
+  } catch (err) {
+    if (err.message && err.message.includes("doesn't exist")) {
+      try {
+        await DeviceToken.sync();
+        return await upsertToken();
+      } catch (syncErr) {
+        console.warn('[registerDeviceToken] Failed after sync:', syncErr.message);
+      }
+    }
+    throw err;
   }
-
-  return { success: true, registered: true };
 };
 
 /**
@@ -161,7 +177,30 @@ const createNotification = async ({
     metadataJson: finalMetadata,
   });
 
-  // Dispatch FCM push notification asynchronously
+  // 1. Dispatch real-time WebSocket event directly to user room
+  try {
+    const socketGateway = require('../socket');
+    const socketPayload = {
+      id: notification.id,
+      title: notification.title,
+      message: notification.message,
+      body: notification.message,
+      type: notification.type,
+      priority: notification.priority,
+      deepLink: notification.deepLink,
+      isRead: false,
+      createdAt: notification.createdAt,
+      metadataJson: finalMetadata,
+      event: (finalMetadata && finalMetadata.event) || notification.type || 'new_notification',
+    };
+    socketGateway.emitToUser(userId, 'new_notification', socketPayload);
+    socketGateway.emitToUser(userId, 'notification', socketPayload);
+    console.log(`[notifications.service] Emitted new_notification to user:${userId} for "${title}"`);
+  } catch (socketErr) {
+    console.warn('[notifications.service] Socket emission error:', socketErr.message);
+  }
+
+  // 2. Dispatch FCM push notification asynchronously
   try {
     const pushData = {
       notificationId: String(notification.id),

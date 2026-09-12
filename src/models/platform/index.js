@@ -33,6 +33,9 @@ const DeviceToken = require('./DeviceToken.model')(sequelize);
 // User ↔ DeviceToken
 User.hasMany(DeviceToken, { foreignKey: 'userId', as: 'deviceTokens', onDelete: 'CASCADE' });
 DeviceToken.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+DeviceToken.sync().catch((err) => {
+  console.warn('[DeviceToken] Auto-sync notice:', err.message);
+});
 
 // Conversation ↔ Message
 Conversation.hasMany(Message, { foreignKey: 'conversationId', as: 'messages', onDelete: 'CASCADE' });
