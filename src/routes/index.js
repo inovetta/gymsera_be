@@ -497,6 +497,10 @@ router.use('/trainers',   require('./trainers.routes'));
 // ── Sprint 7 — Reports ────────────────────────────────────────────────────────
 router.use('/reports', require('./reports.routes'));
 
+// ── Access control: unified Team & Access + the approval inbox ───────────────
+router.use('/team',      require('./team.routes'));
+router.use('/approvals', require('./approvals.routes'));
+
 router.use('/users', require('./users.routes'));
 router.use('/staff-invites', require('./staff-invites.routes'));
 router.use('/staff', require('./staff-actions.routes'));

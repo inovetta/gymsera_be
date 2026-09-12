@@ -46,6 +46,16 @@ class TenantDbManager {
 
     const models = registerTenantModels(sequelize);
 
+    // Access-control tables. Additive and idempotent, so it is safe to run on
+    // every connection in every environment — including production, where
+    // sequelize.sync() deliberately does not run.
+    try {
+      const { ensureAccessControlTables } = require('./rbac-migration');
+      await ensureAccessControlTables(sequelize, tenantId);
+    } catch (rbacErr) {
+      console.warn(`[TenantDbManager] RBAC table check warning for tenant ${tenantId}:`, rbacErr.message);
+    }
+
     try {
       // Safe column migration for audit tracking across tenant tables
       const queryInterface = sequelize.getQueryInterface();

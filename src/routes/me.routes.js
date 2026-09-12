@@ -285,5 +285,22 @@ router.patch('/inbox/:conversationId/read', meController.markMyConversationRead)
 
 router.get('/staff-status', meController.getStaffStatus);
 
+/**
+ * @swagger
+ * /me/context:
+ *   get:
+ *     summary: Bootstrap context — organizations, branches and effective permissions
+ *     description: >
+ *       One call on login that drives the entire app shell. Returns every
+ *       organization the user belongs to, the branches they can act in, and the
+ *       exact permission keys they hold in each. The client uses this to decide
+ *       what to render; the server still authorizes every request.
+ *     tags: [Me]
+ *     responses:
+ *       200:
+ *         description: User context with organizations, branches and permissions
+ */
+router.get('/context', require('../controllers/context.controller').getContext);
+
 module.exports = router;
 

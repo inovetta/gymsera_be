@@ -147,6 +147,14 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Host payment details (bank, IBAN, JazzCash, EasyPaisa)',
       },
+      // Bumped when a role preset or subscription entitlement changes for the
+      // whole organization. Invalidates every cached permission set in one write.
+      permissionVersion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
+        field: 'permission_version',
+      },
     },
     {
       tableName: 'tenants',

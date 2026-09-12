@@ -27,8 +27,14 @@ const Notification = require('./Notification.model')(sequelize);
 const Conversation = require('./Conversation.model')(sequelize);
 const Message = require('./Message.model')(sequelize);
 const DeviceToken = require('./DeviceToken.model')(sequelize);
+const UserOrgIndex = require('./UserOrgIndex.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
+
+// User ↔ UserOrgIndex (routing index — see UserOrgIndex.model.js)
+User.hasMany(UserOrgIndex, { foreignKey: 'userId', as: 'orgMemberships', onDelete: 'CASCADE' });
+UserOrgIndex.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+UserOrgIndex.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
 
 // User ↔ DeviceToken
 User.hasMany(DeviceToken, { foreignKey: 'userId', as: 'deviceTokens', onDelete: 'CASCADE' });
@@ -170,4 +176,5 @@ module.exports = {
   Conversation,
   Message,
   DeviceToken,
+  UserOrgIndex,
 };

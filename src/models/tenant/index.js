@@ -25,6 +25,14 @@ const registerTenantModels = (sequelize) => {
   const ExpenseCategory = require('./ExpenseCategory.model')(sequelize);
   const Expense = require('./Expense.model')(sequelize);
 
+  // ── Access control (see src/constants/permissions.js) ────────────────────────
+  const RoleAssignment = require('./RoleAssignment.model')(sequelize);
+  const RoleAssignmentBranch = require('./RoleAssignmentBranch.model')(sequelize);
+  const AssignmentOverride = require('./AssignmentOverride.model')(sequelize);
+  const ApprovalRequest = require('./ApprovalRequest.model')(sequelize);
+  const ApprovalPolicy = require('./ApprovalPolicy.model')(sequelize);
+  const AuditLog = require('./AuditLog.model')(sequelize);
+
   // ── Associations ─────────────────────────────────────────────────────────────
 
   // Gym ↔ Branch
@@ -88,6 +96,20 @@ const registerTenantModels = (sequelize) => {
   ExpenseCategory.hasMany(Expense, { foreignKey: 'categoryId', as: 'expenses' });
   Expense.belongsTo(ExpenseCategory, { foreignKey: 'categoryId', as: 'category' });
 
+  // RoleAssignment ↔ RoleAssignmentBranch
+  RoleAssignment.hasMany(RoleAssignmentBranch, { foreignKey: 'assignmentId', as: 'branchLinks', onDelete: 'CASCADE' });
+  RoleAssignmentBranch.belongsTo(RoleAssignment, { foreignKey: 'assignmentId', as: 'assignment' });
+
+  // RoleAssignmentBranch ↔ Branch (no constraint: assignments outlive branch archival)
+  RoleAssignmentBranch.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch', constraints: false });
+
+  // RoleAssignment ↔ AssignmentOverride
+  RoleAssignment.hasMany(AssignmentOverride, { foreignKey: 'assignmentId', as: 'overrides', onDelete: 'CASCADE' });
+  AssignmentOverride.belongsTo(RoleAssignment, { foreignKey: 'assignmentId', as: 'assignment' });
+
+  // ApprovalRequest ↔ Branch
+  ApprovalRequest.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch', constraints: false });
+
   // Expense ↔ Expense (Self-referencing for recurring templates)
   Expense.hasMany(Expense, { foreignKey: 'recurringTemplateId', as: 'generatedInstances' });
   Expense.belongsTo(Expense, { foreignKey: 'recurringTemplateId', as: 'template' });
@@ -109,6 +131,12 @@ const registerTenantModels = (sequelize) => {
     StaffActionRequest,
     ExpenseCategory,
     Expense,
+    RoleAssignment,
+    RoleAssignmentBranch,
+    AssignmentOverride,
+    ApprovalRequest,
+    ApprovalPolicy,
+    AuditLog,
   };
 };
 

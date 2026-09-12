@@ -61,6 +61,15 @@ module.exports = (sequelize) => {
         defaultValue: false,
         field: 'is_host',
       },
+      // Bumped on any change to this user's access. Embedded in the permission
+      // cache key, so bumping it orphans every stale entry instantly — no cache
+      // scanning, and no window in which a revoked manager can still act.
+      permissionVersion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
+        field: 'permission_version',
+      },
     },
     {
       tableName: 'users',
