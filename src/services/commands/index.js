@@ -76,3 +76,5 @@ module.exports = { register, get, has, getOrThrow, registeredKeys };
 require('./member.commands');
 require('./subscription.commands');
 require('./expense.commands');
+require('./announcement.commands');
+require('./schedule.commands');

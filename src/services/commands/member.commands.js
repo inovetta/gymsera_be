@@ -26,15 +26,18 @@ register({
     if (!ctx.branchId) {
       throw createError('A branch is required to enrol a member', 400);
     }
+    if (!payload.planId) {
+      throw createError('A membership plan is required', 400);
+    }
 
     // Re-checked at approval time: the plan may have been archived between the
-    // request and the decision.
-    if (payload.membershipPlanId) {
-      const { MembershipPlan } = ctx.tenantDb.models;
-      const plan = await MembershipPlan.findByPk(payload.membershipPlanId);
-      if (!plan) throw createError('That membership plan no longer exists', 409);
-      if (plan.isDeactivated) throw createError('That membership plan has been archived', 409);
-    }
+    // request and the decision. `enrollMember` itself re-derives this same plan,
+    // so the field name and the ACTIVE check must match it exactly, or a request
+    // that passes validation here could still fail — or worse, silently pass a
+    // plan this check never actually looked at — when execute() runs.
+    const { MembershipPlan } = ctx.tenantDb.models;
+    const plan = await MembershipPlan.findOne({ where: { id: payload.planId, status: 'ACTIVE' } });
+    if (!plan) throw createError('That membership plan no longer exists or is inactive', 409);
   },
 
   execute: async (ctx, payload) => {
