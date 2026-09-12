@@ -2,6 +2,7 @@ const meService = require('../services/me.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
 const inboxService = require('../services/inbox.service');
+const { ROLE_META } = require('../constants/roles');
 
 // ── GET /me/profile ────────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -260,69 +261,137 @@ const markMyConversationRead = async (req, res, next) => {
 };
 
 // ── GET /me/staff-status ───────────────────────────────────────────────────────
+/**
+ * Drives the traveler shell's decision to show the "Gyms" tab: does this account
+ * have team access anywhere, and at which branches?
+ *
+ * Resolved from `user_org_index` — one indexed platform-DB read, then a tenant DB
+ * connection per organization the user is actually in. Previously this scanned
+ * every active tenant's `gym_staff` table on every call, which (a) got slower
+ * with every tenant onboarded and (b) only ever found legacy staff rows — a team
+ * member added through the current Team & Access invite flow has a
+ * `role_assignments` row, not a `gym_staff` one, and was invisible here even
+ * though the notification telling them about their new access had already sent.
+ */
 const getStaffStatus = async (req, res, next) => {
   try {
     const { Tenant } = require('../models/platform');
     const TenantDbManager = require('../database/TenantDbManager');
-    const { Op } = require('sequelize');
+    const membershipService = require('../services/membership.service');
 
-    const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
-    const branches = [];
     const userId = req.user.id || req.user.sub;
-    const userEmail = req.user.email ? req.user.email.toLowerCase().trim() : '';
+    const branches = [];
 
-    for (const tenant of tenants) {
+    const memberships = await membershipService.listUserTenants(userId, { activeOnly: true });
+
+    for (const membership of memberships) {
       try {
-        const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-        const { GymStaff, Branch } = tenantDb.models;
-
-        const whereCondition = {
-          employmentStatus: 'ACTIVE',
-        };
-
-        if (userEmail && userId) {
-          whereCondition[Op.or] = [
-            { userId },
-            { email: userEmail }
-          ];
-        } else if (userId) {
-          whereCondition.userId = userId;
-        } else if (userEmail) {
-          whereCondition.email = userEmail;
+        const tenant = await Tenant.findByPk(membership.tenantId, {
+          attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status'],
+        });
+        if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
+          continue;
         }
 
-        const staffRecords = await GymStaff.findAll({
-          where: whereCondition
+        const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        const { RoleAssignment, RoleAssignmentBranch, Branch } = tenantDb.models;
+
+        const assignments = await RoleAssignment.findAll({
+          where: { userId, status: 'ACTIVE' },
+          include: [{ model: RoleAssignmentBranch, as: 'branchLinks', required: false }],
         });
+        if (assignments.length === 0) continue;
 
-        for (const staff of staffRecords) {
-          // If staff was matched by email or was pending, link and activate
-          if (userId && (!staff.userId || staff.status !== 'active')) {
-            await staff.update({ userId, status: 'active' });
-          }
+        const isOrgScoped = assignments.some((a) => a.scopeType === 'ORG');
+        const designation =
+          assignments.find((a) => a.jobTitle)?.jobTitle ||
+          ROLE_META[assignments[0].roleKey]?.displayName ||
+          assignments[0].roleKey;
 
-          const branch = await Branch.findByPk(staff.branchId);
-          if (branch && branch.status === 'ACTIVE') {
-            branches.push({
-              branchId: branch.id,
-              tenantId: tenant.id,
-              branchName: branch.branchName,
-              gymName: tenant.gymName || tenant.businessName,
-              designation: staff.designation || 'Staff',
-            });
-          }
+        const branchWhere = isOrgScoped
+          ? { status: 'ACTIVE' }
+          : {
+              id: [
+                ...new Set(assignments.flatMap((a) => (a.branchLinks || []).map((l) => l.branchId))),
+              ],
+              status: 'ACTIVE',
+            };
+        if (!isOrgScoped && branchWhere.id.length === 0) continue;
+
+        const branchRows = await Branch.findAll({ where: branchWhere });
+        for (const branch of branchRows) {
+          branches.push({
+            branchId: branch.id,
+            tenantId: tenant.id,
+            branchName: branch.branchName,
+            gymName: tenant.gymName || tenant.businessName,
+            designation,
+          });
         }
       } catch (err) {
-        // Skip connection or query errors
+        // One unreachable tenant must not break the whole status check.
+        console.warn(`[staff-status] tenant ${membership.tenantId} unreachable:`, err.message);
       }
     }
 
+    // Legacy fallback: a tenant not yet backfilled onto role_assignments (see
+    // scripts/backfill-rbac.js) may still only have a gym_staff row. Once every
+    // tenant is migrated this whole branch — and the scan it does — can be
+    // deleted; it deliberately runs only when the indexed lookup found nothing,
+    // so a migrated user never pays for it.
+    if (branches.length === 0) {
+      await _legacyGymStaffScan(userId, req.user.email, branches);
+    }
+
     return sendSuccess(res, {
-      isStaff: branches.length > 0 || req.user.role === 'BRANCH_MANAGER' || req.user.role === 'ADMIN',
-      branches
+      isStaff: branches.length > 0,
+      branches,
     }, 'Staff status retrieved');
   } catch (err) {
     next(err);
+  }
+};
+
+/** @deprecated remove once every tenant has run the RBAC backfill. */
+const _legacyGymStaffScan = async (userId, email, branches) => {
+  const { Tenant } = require('../models/platform');
+  const TenantDbManager = require('../database/TenantDbManager');
+  const { Op } = require('sequelize');
+
+  const userEmail = email ? email.toLowerCase().trim() : '';
+  const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
+
+  for (const tenant of tenants) {
+    try {
+      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+      const { GymStaff, Branch } = tenantDb.models;
+
+      const whereCondition = { employmentStatus: 'ACTIVE' };
+      if (userEmail && userId) whereCondition[Op.or] = [{ userId }, { email: userEmail }];
+      else if (userId) whereCondition.userId = userId;
+      else if (userEmail) whereCondition.email = userEmail;
+      else continue;
+
+      const staffRecords = await GymStaff.findAll({ where: whereCondition });
+
+      for (const staff of staffRecords) {
+        if (userId && (!staff.userId || staff.status !== 'active')) {
+          await staff.update({ userId, status: 'active' }).catch(() => {});
+        }
+        const branch = await Branch.findByPk(staff.branchId);
+        if (branch && branch.status === 'ACTIVE') {
+          branches.push({
+            branchId: branch.id,
+            tenantId: tenant.id,
+            branchName: branch.branchName,
+            gymName: tenant.gymName || tenant.businessName,
+            designation: staff.designation || 'Staff',
+          });
+        }
+      }
+    } catch (err) {
+      // Skip connection or query errors.
+    }
   }
 };
 
