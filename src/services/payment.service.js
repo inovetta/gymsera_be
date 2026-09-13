@@ -252,10 +252,40 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
   });
 
   if (payment.referenceEntityId) {
-    await Invoice.update(
+    const [invoicesUpdated] = await Invoice.update(
       { status: InvoiceStatus.PAID, paidAt: new Date(), totalAmount: finalAmount },
       { where: { referenceEntityId: payment.referenceEntityId, status: InvoiceStatus.ISSUED } }
     );
+
+    // A verified payment with no matching ISSUED invoice to mark PAID used to
+    // just stop here — the update matched zero rows and nothing was logged,
+    // so the payment ended up verified with no invoice ever existing for it.
+    // Every subscription created before invoices were consistently generated
+    // on enrolment hits this. A completed payment should always have a paid
+    // invoice behind it, so this creates the missing one rather than leaving
+    // the gap: same _createInvoice() the direct-payment path already uses.
+    if (invoicesUpdated === 0 && payment.paymentFor === 'MEMBERSHIP') {
+      try {
+        const subscription = await MemberSubscription.findByPk(payment.referenceEntityId);
+        if (subscription) {
+          const plan = await MembershipPlan.findByPk(subscription.membershipPlanId);
+          if (plan) {
+            await _createInvoice(tenantDb.models, {
+              userId: payment.userId,
+              payment,
+              subscription,
+              plan,
+              createdBy: verifiedByUserId,
+              createdByRole: 'HOST',
+              branchId: payment.branchId || subscription.branchId,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[payments] backfill invoice on verify failed:', err.message);
+      }
+    }
+
     if (payment.paymentFor === 'MEMBERSHIP') {
       await _activateSubscription(tenantDb, payment.referenceEntityId);
     }
