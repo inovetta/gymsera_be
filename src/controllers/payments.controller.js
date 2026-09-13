@@ -119,11 +119,12 @@ const collectionAction = async (req, res, next) => {
 const listInvoices = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { userId, status, from, to } = req.query;
+    const { userId, branchId, status, from, to } = req.query;
     const isHost = HOST_ROLES.includes(req.user.role);
 
     const result = await paymentService.listInvoices(req.tenantDb, req.user.id, isHost, {
       userId: userId || null,
+      branchId: branchId || null,
       status: status || null,
       from: from || null,
       to: to || null,

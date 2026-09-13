@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { createError, sendSuccess } = require('../utils/response.utils');
 const { ensureDefaultCategories } = require('../services/expense-category.service');
 const notificationsService = require('../services/notifications.service');
+const accessService = require('../services/access.service');
 const { Tenant, User } = require('../models/platform');
 
 /**
@@ -58,14 +59,34 @@ const createExpenseCategory = async (req, res, next) => {
 };
 
 /**
- * Helper to check if caller is GYM_HOST or assigned Admin of the branch
+ * Whether the caller holds `permissionKey` on this branch.
+ *
+ * This is where the module quietly stopped working for anyone hired through
+ * the Team & Access flow: the old version only recognized a `gym_staff` row
+ * with `designation === 'admin'` — a role_assignments-based Branch Admin has no
+ * such row and was rejected outright, even though the permission catalogue
+ * grants them `expenses.view`. Ownership is still checked first as a fast
+ * path; the legacy designation check stays as a fallback for a tenant that
+ * hasn't run the RBAC backfill yet (see scripts/backfill-rbac.js), so it never
+ * regresses an un-migrated tenant — it just stops being the only answer.
  */
-const isHostOrAdmin = async (req, branchId) => {
+const hasExpenseAccess = async (req, branchId, permissionKey) => {
   if (req.user.role === 'GYM_HOST' || req.user.isHost === true) {
     return true;
   }
+
+  const userId = req.user.id || req.user.sub;
+  const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
+  if (userId && tenantId && req.tenantDb) {
+    try {
+      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+      if (grants.has(permissionKey)) return true;
+    } catch (err) {
+      console.warn('[expenses] permission resolution failed, falling back to legacy check:', err.message);
+    }
+  }
+
   if (req.user.role === 'BRANCH_MANAGER') {
-    const userId = req.user.id || req.user.sub;
     const staff = await req.tenantDb.models.GymStaff.findOne({
       where: {
         branchId,
@@ -162,7 +183,7 @@ const enrichExpensesWithCreator = async (expenses, tenantDb, tenantId) => {
 const listExpenses = async (req, res, next) => {
   try {
     const { branchId } = req.params;
-    const hasAccess = await isHostOrAdmin(req, branchId);
+    const hasAccess = await hasExpenseAccess(req, branchId, 'expenses.view');
     if (!hasAccess) {
       throw createError('Access denied: Expense list and financial data are host and admin only.', 403);
     }
@@ -267,9 +288,15 @@ const createExpense = async (req, res, next) => {
       throw createError('Expense category not found', 404);
     }
 
-    const hasAccess = await isHostOrAdmin(req, branchId);
+    // This legacy endpoint predates the approval engine and still contains its
+    // own direct/request branching. The current app no longer calls it for a
+    // gated write — the workspace's Add Expense flow goes through
+    // POST /actions/expenses.create instead, which shares one code path for
+    // both tiers. This stays permission-aware for any other caller still on
+    // this route, rather than reverting to the legacy-designation-only check.
+    const hasAccess = await hasExpenseAccess(req, branchId, 'expenses.create.direct');
 
-    // If caller is HOST or ADMIN: Create direct Expense row in DB
+    // If caller may create directly: write the Expense row now.
     if (hasAccess) {
       const expense = await Expense.create({
         branchId,
@@ -383,7 +410,7 @@ const createExpense = async (req, res, next) => {
 const getExpenseDetail = async (req, res, next) => {
   try {
     const { branchId, expenseId } = req.params;
-    const hasAccess = await isHostOrAdmin(req, branchId);
+    const hasAccess = await hasExpenseAccess(req, branchId, 'expenses.view');
     if (!hasAccess) {
       throw createError('Access denied: Expense details are host and admin only.', 403);
     }
@@ -420,7 +447,7 @@ const getExpenseDetail = async (req, res, next) => {
 const updateExpense = async (req, res, next) => {
   try {
     const { branchId, expenseId } = req.params;
-    const hasAccess = await isHostOrAdmin(req, branchId);
+    const hasAccess = await hasExpenseAccess(req, branchId, 'expenses.delete');
     if (!hasAccess) {
       throw createError('Access denied: Modifying expenses is host and admin only.', 403);
     }
@@ -513,7 +540,7 @@ const updateExpense = async (req, res, next) => {
 const deleteExpense = async (req, res, next) => {
   try {
     const { branchId, expenseId } = req.params;
-    const hasAccess = await isHostOrAdmin(req, branchId);
+    const hasAccess = await hasExpenseAccess(req, branchId, 'expenses.delete');
     if (!hasAccess) {
       throw createError('Access denied: Deleting expenses is host and admin only.', 403);
     }
@@ -561,7 +588,7 @@ const deleteExpense = async (req, res, next) => {
 const getExpenseSummary = async (req, res, next) => {
   try {
     const { branchId } = req.params;
-    const hasAccess = await isHostOrAdmin(req, branchId);
+    const hasAccess = await hasExpenseAccess(req, branchId, 'expenses.view');
     if (!hasAccess) {
       throw createError('Access denied: Financial totals and summaries are host and admin only.', 403);
     }

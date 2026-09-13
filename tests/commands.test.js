@@ -106,6 +106,43 @@ describe('announcements.create command', () => {
   });
 });
 
+describe('plans.create command', () => {
+  const cmd = commands.get('plans.create');
+
+  it('is registered', () => {
+    expect(cmd).not.toBeNull();
+  });
+
+  it('rejects a payload missing required fields', async () => {
+    const ctx = { branchId: 'b1', tenantDb: { models: {} } };
+    await expect(cmd.validate(ctx, { name: 'Monthly' })).rejects.toThrow(
+      /name, a duration type and a duration value/
+    );
+  });
+
+  it('rejects a negative price', async () => {
+    const ctx = { branchId: 'b1', tenantDb: { models: {} } };
+    await expect(
+      cmd.validate(ctx, { name: 'Monthly', durationType: 'MONTHS', durationValue: 1, price: -5 })
+    ).rejects.toThrow(/non-negative price/);
+  });
+
+  it('falls back to ctx.branchId when the payload has none', async () => {
+    const createPlan = jest.fn().mockResolvedValue({ id: 'p1' });
+    jest.doMock('../src/services/membership-plan.service', () => ({ createPlan }));
+    const freshCmd = require('../src/services/commands').get('plans.create');
+    const ctx = { branchId: 'branch-9', tenantDb: {} };
+
+    await freshCmd.execute(ctx, { name: 'Monthly', durationType: 'MONTHS', durationValue: 1, price: 2000 });
+
+    expect(createPlan).toHaveBeenCalledWith(
+      ctx.tenantDb,
+      expect.objectContaining({ branchId: 'branch-9', name: 'Monthly' })
+    );
+    jest.dontMock('../src/services/membership-plan.service');
+  });
+});
+
 describe('schedule.class.create command', () => {
   const cmd = commands.get('schedule.class.create');
   const ctx = { branchId: 'b1', tenantDb: { models: {} } };

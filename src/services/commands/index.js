@@ -78,3 +78,4 @@ require('./subscription.commands');
 require('./expense.commands');
 require('./announcement.commands');
 require('./schedule.commands');
+require('./plan.commands');

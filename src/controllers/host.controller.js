@@ -4,6 +4,7 @@ const { sendSuccess, createError, buildPagination } = require('../utils/response
 const { Op } = require('sequelize');
 const gymService = require('../services/gym.service');
 const inboxService = require('../services/inbox.service');
+const accessService = require('../services/access.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 
 const getTodaySummary = async (req, res, next) => {
@@ -731,12 +732,29 @@ const getBranchDashboard = async (req, res, next) => {
       }
     }
 
+    // `dashboard.view` and `dashboard.revenue.view` are deliberately separate
+    // permissions in the catalogue — a Trainer or Front Desk clerk should see
+    // today's check-ins without ever seeing takings. The owner fast-path in
+    // resolve() means an owner never pays for this extra query.
+    let canSeeRevenue = true;
+    if (req.user.role !== 'GYM_HOST' && req.user.isHost !== true) {
+      try {
+        const userId = req.user.id || req.user.sub;
+        const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
+        const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+        canSeeRevenue = grants.has('dashboard.revenue.view');
+      } catch (err) {
+        console.warn('[dashboard] revenue-permission check failed, defaulting to hidden:', err.message);
+        canSeeRevenue = false;
+      }
+    }
+
     return sendSuccess(res, {
       todaysCheckins,
-      monthlyRevenue,
-      grossRevenue,
-      totalExpenses,
-      netProfit,
+      monthlyRevenue: canSeeRevenue ? monthlyRevenue : null,
+      grossRevenue: canSeeRevenue ? grossRevenue : null,
+      totalExpenses: canSeeRevenue ? totalExpenses : null,
+      netProfit: canSeeRevenue ? netProfit : null,
       activeMembers,
       newSubs,
       weeklyPerformance,

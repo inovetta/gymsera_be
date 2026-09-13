@@ -540,7 +540,12 @@ const markPaymentFailed = async (tenantDb, paymentId, gymName) => {
 };
 
 // ── GET /invoices ──────────────────────────────────────────────────────────────
-const listInvoices = async (tenantDb, requestingUserId, isHost, { userId, status, from, to, page, limit, offset }) => {
+const listInvoices = async (
+  tenantDb,
+  requestingUserId,
+  isHost,
+  { userId, branchId, status, from, to, page, limit, offset }
+) => {
   const { Invoice } = tenantDb.models;
   const where = {};
 
@@ -549,6 +554,13 @@ const listInvoices = async (tenantDb, requestingUserId, isHost, { userId, status
   } else if (userId) {
     where.userId = userId;
   }
+
+  // Scopes a branch-level team member (a Branch Admin, say) to their own
+  // branch's invoices. Previously unfiltered: "host/manager see all" meant a
+  // Branch Admin — who is a manager only of one branch — saw the whole
+  // organization's billing. The full-organization view stays available by
+  // simply omitting branchId, which is what an ORG-scoped caller does.
+  if (branchId) where.branchId = branchId;
 
   if (status) where.status = status;
 
