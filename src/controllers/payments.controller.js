@@ -1,7 +1,36 @@
 const paymentService = require('../services/payment.service');
-const { sendSuccess, parsePagination } = require('../utils/response.utils');
+const accessService = require('../services/access.service');
+const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
 
 const HOST_ROLES = ['GYM_HOST', 'BRANCH_MANAGER'];
+
+/**
+ * Whether the caller holds `permissionKey` on the branch a payment belongs to.
+ *
+ * The route this guards used to be `authorize('GYM_HOST')` — literally the
+ * platform role string, which is never true for a team member no matter what
+ * the permission catalogue grants them. A Branch Manager holding
+ * `payments.verify` could not verify a single payment. Same shape as
+ * `hasExpenseAccess` in expenses.controller.js: owner fast path, then the real
+ * resolved grant for the payment's own branch — never a client-supplied one,
+ * so nobody can claim a branch they don't work at to pass this check.
+ */
+const hasPaymentAccess = async (req, payment, permissionKey) => {
+  if (req.user.role === 'GYM_HOST' || req.user.isHost === true) return true;
+  if (!payment.branchId) return false;
+
+  const userId = req.user.id || req.user.sub;
+  const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
+  if (!userId || !tenantId || !req.tenantDb) return false;
+
+  try {
+    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, payment.branchId);
+    return grants.has(permissionKey);
+  } catch (err) {
+    console.warn('[payments] permission resolution failed:', err.message);
+    return false;
+  }
+};
 
 // ── POST /payments ─────────────────────────────────────────────────────────────
 const recordPayment = async (req, res, next) => {
@@ -55,6 +84,14 @@ const listPayments = async (req, res, next) => {
 // ── POST /payments/:id/verify ──────────────────────────────────────────────────
 const verifyPayment = async (req, res, next) => {
   try {
+    const { Payment } = req.tenantDb.models;
+    const existing = await Payment.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
+    if (!existing) throw createError('Payment not found', 404);
+
+    if (!(await hasPaymentAccess(req, existing, 'payments.verify'))) {
+      throw createError('You do not have permission to verify payments at this branch', 403);
+    }
+
     const payment = await paymentService.verifyPayment(
       req.tenantDb,
       req.params.id,

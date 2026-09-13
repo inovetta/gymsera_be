@@ -122,7 +122,13 @@ router.get('/:id', controller.getPaymentById);
  * @swagger
  * /payments/{id}/verify:
  *   post:
- *     summary: Tenant final approval — marks PENDING or STAFF_COLLECTED payment as COMPLETED (GYM_HOST only)
+ *     summary: Tenant final approval — marks PENDING or STAFF_COLLECTED payment as COMPLETED
+ *     description: >
+ *       Requires `payments.verify` on the payment's own branch — resolved
+ *       server-side from the payment record, never from a client-supplied
+ *       branchId. The owner always passes. Enforced inside the controller
+ *       (see hasPaymentAccess) rather than here, because the permission is
+ *       branch-scoped and the branch isn't known until the payment is loaded.
  *     tags: [Payments]
  *     security:
  *       - bearerAuth: []
@@ -135,11 +141,11 @@ router.get('/:id', controller.getPaymentById);
  *       200:
  *         description: Payment verified; linked invoice marked PAID; subscription activated
  *       403:
- *         description: Only gym host can verify payments
+ *         description: Caller does not hold payments.verify on this payment's branch
  *       409:
  *         description: Payment is not in a verifiable state
  */
-router.post('/:id/verify', authorize('GYM_HOST'), validate(validators.verifyPayment), controller.verifyPayment);
+router.post('/:id/verify', validate(validators.verifyPayment), controller.verifyPayment);
 
 /**
  * @swagger
