@@ -60,6 +60,49 @@ describe('members.create command', () => {
     expect(cmd.summarize({ fullName: 'Ahmed Raza', planName: 'Monthly' })).toBe('Ahmed Raza — Monthly');
     expect(cmd.summarize({ email: 'a@b.com' })).toBe('a@b.com');
   });
+
+  // Regression: execute() used to pass the payload straight through to
+  // enrollMember without merging ctx.branchId into it. enrollMember
+  // destructures branchId directly off that third argument — never a
+  // separate parameter — so every branch-filtered query inside it (Branch,
+  // MembershipPlan, MemberSubscription lookups) ran with branchId undefined
+  // and failed with a raw Sequelize "invalid undefined value" 500, for every
+  // single enrolment, on both the direct and the approved-request path.
+  it('merges ctx.branchId into the payload enrollMember receives', async () => {
+    jest.resetModules();
+    const enrollMember = jest.fn().mockResolvedValue({ id: 'sub-1' });
+    jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
+    const freshCmd = require('../src/services/commands').get('members.create');
+
+    const ctx = { branchId: 'branch-9', tenantId: 'tenant-1', userId: 'user-1', tenantDb: {} };
+    await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1' });
+
+    expect(enrollMember).toHaveBeenCalledWith(
+      ctx.tenantDb,
+      'tenant-1',
+      expect.objectContaining({ branchId: 'branch-9', fullName: 'Ahmed' }),
+      expect.objectContaining({ id: 'user-1' })
+    );
+    jest.dontMock('../src/services/gym.service');
+  });
+
+  it('lets a branchId already on the payload win over ctx.branchId', async () => {
+    jest.resetModules();
+    const enrollMember = jest.fn().mockResolvedValue({ id: 'sub-1' });
+    jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
+    const freshCmd = require('../src/services/commands').get('members.create');
+
+    const ctx = { branchId: 'branch-ctx', tenantId: 'tenant-1', userId: 'user-1', tenantDb: {} };
+    await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1', branchId: 'branch-explicit' });
+
+    expect(enrollMember).toHaveBeenCalledWith(
+      ctx.tenantDb,
+      'tenant-1',
+      expect.objectContaining({ branchId: 'branch-explicit' }),
+      expect.anything()
+    );
+    jest.dontMock('../src/services/gym.service');
+  });
 });
 
 describe('expenses.create command', () => {

@@ -42,9 +42,18 @@ register({
 
   execute: async (ctx, payload) => {
     const gymService = require('../gym.service');
-    // The enrolling identity is the approver on the approval path and the actor on
-    // the direct path; either way it is someone who holds the permission.
-    return gymService.enrollMember(ctx.tenantDb, ctx.tenantId, payload, {
+    // enrollMember destructures branchId straight off this object — it is not
+    // a separate argument the way ctx.branchId is here. The engine keeps
+    // branch and payload apart everywhere else (the POST body sends them as
+    // sibling keys), so this merge is the one place it has to happen, or
+    // branchId arrives as undefined and every WHERE clause inside
+    // enrollMember that filters by it fails with exactly that error.
+    const enrollPayload = { ...payload, branchId: payload.branchId || ctx.branchId };
+
+    // The enrolling identity is the approver on the approval path and the
+    // actor on the direct path; either way it is someone who holds the
+    // permission, so `enrollMember` is told it is always a host-level enroller.
+    return gymService.enrollMember(ctx.tenantDb, ctx.tenantId, enrollPayload, {
       role: 'GYM_HOST',
       id: ctx.userId,
     });
