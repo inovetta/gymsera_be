@@ -59,3 +59,45 @@ register({
     });
   },
 });
+
+/**
+ * members.update — edit a member's own details (name / email / phone / notes).
+ *
+ * Scoped to `ctx.branchId`: the target must already have some subscription
+ * there, so this can't be used as a back door to edit a member who has never
+ * actually been part of the branch the caller holds this permission on.
+ */
+register({
+  actionKey: 'members.update',
+
+  summarize: (payload) => `Edit — ${payload.fullName || payload.memberUserId || 'member'}`,
+
+  validate: async (ctx, payload) => {
+    if (!payload || !payload.memberUserId) {
+      throw createError('A member is required', 400);
+    }
+    if (!ctx.branchId) {
+      throw createError('A branch is required to edit a member', 400);
+    }
+    const hasAnyField = ['fullName', 'email', 'phone', 'notes'].some((k) => payload[k] !== undefined);
+    if (!hasAnyField) {
+      throw createError('Nothing to update', 400);
+    }
+
+    const { MemberSubscription } = ctx.tenantDb.models;
+    const belongs = await MemberSubscription.findOne({
+      where: { userId: payload.memberUserId, branchId: ctx.branchId },
+    });
+    if (!belongs) throw createError('That member is not part of this branch', 404);
+  },
+
+  execute: async (ctx, payload) => {
+    const gymService = require('../gym.service');
+    return gymService.updateMemberProfile(ctx.tenantDb, payload.memberUserId, {
+      fullName: payload.fullName,
+      email: payload.email,
+      phone: payload.phone,
+      notes: payload.notes,
+    });
+  },
+});

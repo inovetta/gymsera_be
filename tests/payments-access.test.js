@@ -39,6 +39,7 @@ describe('POST /payments/:id/verify — permission-aware, not role-string-only',
     tenantDb: {
       models: {
         Payment: { findByPk: jest.fn().mockResolvedValue({ id: paymentId, branchId }) },
+        GymStaff: { findOne: jest.fn().mockResolvedValue(null) },
       },
     },
     ...overrides,

@@ -1,31 +1,64 @@
+const { Op } = require('sequelize');
 const paymentService = require('../services/payment.service');
 const accessService = require('../services/access.service');
 const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
 
-const HOST_ROLES = ['GYM_HOST', 'BRANCH_MANAGER'];
-
 /**
- * Whether the caller holds `permissionKey` on the branch a payment belongs to.
+ * Whether the caller holds `permissionKey` on `branchId`.
  *
- * The route this guards used to be `authorize('GYM_HOST')` — literally the
- * platform role string, which is never true for a team member no matter what
- * the permission catalogue grants them. A Branch Manager holding
- * `payments.verify` could not verify a single payment. Same shape as
- * `hasExpenseAccess` in expenses.controller.js: owner fast path, then the real
- * resolved grant for the payment's own branch — never a client-supplied one,
- * so nobody can claim a branch they don't work at to pass this check.
+ * The routes this guards used to sit behind a router-level
+ * `authorize('GYM_HOST', 'BRANCH_MANAGER')` — literally the platform role
+ * string, which is never true for a team member no matter what the permission
+ * catalogue grants them, and which rejected the request before any of this
+ * ever ran. A Branch Admin holding `payments.verify` could not verify a single
+ * payment. Same shape as `hasExpenseAccess` in expenses.controller.js: owner
+ * fast path, then the real resolved grant for the branch in question — never
+ * a client-supplied one where the caller could claim a branch they don't work
+ * at — then the legacy `GymStaff` admin-designation fallback for a tenant that
+ * hasn't run the RBAC backfill yet.
  */
-const hasPaymentAccess = async (req, payment, permissionKey) => {
+const hasBranchAccess = async (req, branchId, permissionKey) => {
   if (req.user.role === 'GYM_HOST' || req.user.isHost === true) return true;
-  if (!payment.branchId) return false;
+  if (!branchId) return false;
+
+  const userId = req.user.id || req.user.sub;
+  const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
+  if (userId && tenantId && req.tenantDb) {
+    try {
+      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+      if (grants.has(permissionKey)) return true;
+    } catch (err) {
+      console.warn('[payments] permission resolution failed, falling back to legacy check:', err.message);
+    }
+  }
+
+  if (req.user.role === 'BRANCH_MANAGER') {
+    const staff = await req.tenantDb.models.GymStaff.findOne({
+      where: {
+        branchId,
+        userId,
+        [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }],
+      },
+    });
+    if (staff && (staff.designation || '').trim().toLowerCase() === 'admin') {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** Whether the caller holds the DIRECT-tier twin of `permissionKey` on `branchId`. */
+const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
+  if (req.user.role === 'GYM_HOST' || req.user.isHost === true) return true;
+  if (!branchId) return false;
 
   const userId = req.user.id || req.user.sub;
   const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
   if (!userId || !tenantId || !req.tenantDb) return false;
 
   try {
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, payment.branchId);
-    return grants.has(permissionKey);
+    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+    return grants.has(`${permissionKey}.direct`);
   } catch (err) {
     console.warn('[payments] permission resolution failed:', err.message);
     return false;
@@ -35,7 +68,29 @@ const hasPaymentAccess = async (req, payment, permissionKey) => {
 // ── POST /payments ─────────────────────────────────────────────────────────────
 const recordPayment = async (req, res, next) => {
   try {
-    const result = await paymentService.recordPayment(req.tenantDb, req.user.id, req.user.role, req.body);
+    // The host's own cash-payment screens never send branchId on this call — it's
+    // derived from the subscription being paid for, same fallback
+    // paymentService.recordPayment already uses when it creates the invoice.
+    let branchId = req.body.branchId || null;
+    if (!branchId && req.body.paymentFor === 'MEMBERSHIP' && req.body.referenceEntityId) {
+      const { MemberSubscription } = req.tenantDb.models;
+      const subscription = await MemberSubscription.findByPk(req.body.referenceEntityId, {
+        attributes: ['id', 'branchId'],
+      });
+      branchId = subscription?.branchId || null;
+    }
+
+    if (!(await hasBranchAccess(req, branchId, 'payments.record'))) {
+      throw createError(
+        branchId
+          ? 'You do not have permission to record payments at this branch'
+          : 'A branch is required to record this payment',
+        branchId ? 403 : 400
+      );
+    }
+    const isDirect = await hasDirectBranchAccess(req, branchId, 'payments.record');
+
+    const result = await paymentService.recordPayment(req.tenantDb, req.user.id, req.user.role, req.body, isDirect);
     return sendSuccess(res, result, 'Payment recorded', 201);
   } catch (err) {
     next(err);
@@ -46,6 +101,9 @@ const recordPayment = async (req, res, next) => {
 const getPaymentById = async (req, res, next) => {
   try {
     const payment = await paymentService.getPayment(req.tenantDb, req.params.id);
+    if (!(await hasBranchAccess(req, payment.branchId, 'payments.view'))) {
+      throw createError('You do not have permission to view payments at this branch', 403);
+    }
     return sendSuccess(res, { payment }, 'Payment retrieved');
   } catch (err) {
     next(err);
@@ -57,10 +115,14 @@ const listPayments = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { userId, status, method, from, to } = req.query;
-    let branchId = req.query.branchId;
+    const branchId = req.query.branchId || null;
 
-    if (req.user.role === 'BRANCH_MANAGER') {
-      branchId = req.user.branchId;
+    if (branchId) {
+      if (!(await hasBranchAccess(req, branchId, 'payments.view'))) {
+        throw createError('You do not have permission to view payments at this branch', 403);
+      }
+    } else if (!(req.user.role === 'GYM_HOST' || req.user.isHost === true)) {
+      throw createError('A branch is required to list payments', 400);
     }
 
     const result = await paymentService.listPayments(req.tenantDb, {
@@ -88,7 +150,7 @@ const verifyPayment = async (req, res, next) => {
     const existing = await Payment.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
     if (!existing) throw createError('Payment not found', 404);
 
-    if (!(await hasPaymentAccess(req, existing, 'payments.verify'))) {
+    if (!(await hasBranchAccess(req, existing.branchId, 'payments.verify'))) {
       throw createError('You do not have permission to verify payments at this branch', 403);
     }
 
@@ -104,9 +166,29 @@ const verifyPayment = async (req, res, next) => {
   }
 };
 
+// action → the permission it needs, resolved on the payment's own branch.
+const ACTION_PERMISSION = { collect: 'payments.record', verify: 'payments.verify', reject: 'payments.record' };
+
 // ── POST /payments/:id/action — collect / verify / reject ─────────────────────
 const verifyOrReject = async (req, res, next) => {
   try {
+    const { Payment } = req.tenantDb.models;
+    const existing = await Payment.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
+    if (!existing) throw createError('Payment not found', 404);
+
+    const permissionKey = ACTION_PERMISSION[req.body.action];
+    if (!permissionKey) throw createError('Unknown action', 400);
+
+    // 'reject' is allowed by whoever could have recorded OR verified the payment.
+    const allowed = req.body.action === 'reject'
+      ? (await hasBranchAccess(req, existing.branchId, 'payments.record'))
+        || (await hasBranchAccess(req, existing.branchId, 'payments.verify'))
+      : await hasBranchAccess(req, existing.branchId, permissionKey);
+
+    if (!allowed) {
+      throw createError('You do not have permission to do that with payments at this branch', 403);
+    }
+
     const payment = await paymentService.verifyOrRejectPayment(
       req.tenantDb,
       req.params.id,
@@ -130,6 +212,13 @@ const uploadProof = async (req, res, next) => {
       return next(err);
     }
 
+    const { Payment } = req.tenantDb.models;
+    const existing = await Payment.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
+    if (!existing) throw createError('Payment not found', 404);
+    if (!(await hasBranchAccess(req, existing.branchId, 'payments.record'))) {
+      throw createError('You do not have permission to record payments at this branch', 403);
+    }
+
     const proofUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/payment-proofs/${req.params.id}-${Date.now()}.jpg`;
     const payment = await paymentService.uploadPaymentProof(req.tenantDb, req.params.id, proofUrl);
     return sendSuccess(res, { payment }, 'Proof uploaded');
@@ -141,6 +230,17 @@ const uploadProof = async (req, res, next) => {
 // ── POST /payments/collection-action ──────────────────────────────────────────
 const collectionAction = async (req, res, next) => {
   try {
+    const paymentIds = req.body.paymentIds || [];
+    const { Payment } = req.tenantDb.models;
+    const targets = await Payment.findAll({ where: { id: paymentIds }, attributes: ['id', 'branchId'] });
+    const branchIds = [...new Set(targets.map((p) => p.branchId).filter(Boolean))];
+
+    for (const branchId of branchIds) {
+      if (!(await hasBranchAccess(req, branchId, 'payments.record'))) {
+        throw createError('You do not have permission to collect payments at one or more of these branches', 403);
+      }
+    }
+
     const result = await paymentService.collectionAction(
       req.tenantDb,
       req.body.paymentIds,
@@ -157,7 +257,15 @@ const listInvoices = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { userId, branchId, status, from, to } = req.query;
-    const isHost = HOST_ROLES.includes(req.user.role);
+
+    // `isHost` here really means "viewing as staff, not as the traveler these
+    // invoices belong to" — resolved from invoices.view on the branch in
+    // question rather than the legacy GYM_HOST/BRANCH_MANAGER role string, so
+    // a role_assignments-based team member sees the branch's invoices instead
+    // of being quietly treated as a traveler and shown only their own.
+    const isHost = branchId
+      ? await hasBranchAccess(req, branchId, 'invoices.view')
+      : (req.user.role === 'GYM_HOST' || req.user.isHost === true);
 
     const result = await paymentService.listInvoices(req.tenantDb, req.user.id, isHost, {
       userId: userId || null,
@@ -179,7 +287,12 @@ const listInvoices = async (req, res, next) => {
 // ── GET /invoices/:id ──────────────────────────────────────────────────────────
 const getInvoice = async (req, res, next) => {
   try {
-    const isHost = HOST_ROLES.includes(req.user.role);
+    const { Invoice } = req.tenantDb.models;
+    const existing = await Invoice.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
+    const isHost = existing
+      ? await hasBranchAccess(req, existing.branchId, 'invoices.view')
+      : (req.user.role === 'GYM_HOST' || req.user.isHost === true);
+
     const invoice = await paymentService.getInvoice(
       req.tenantDb,
       req.params.id,

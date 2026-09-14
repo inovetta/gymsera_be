@@ -792,6 +792,43 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   return { user, subscription, userCreated, payment, invoice };
 };
 
+/**
+ * Update a member's own profile fields — the "Edit member" action behind
+ * `members.update`. `memberUserId` must already have some subscription at
+ * `branchId`; the caller checked that in validate() before this ever runs, so
+ * it isn't re-checked here.
+ */
+const updateMemberProfile = async (tenantDb, memberUserId, { fullName, email, phone, notes }) => {
+  const user = await User.findByPk(memberUserId);
+  if (!user) throw createError('Member not found', 404);
+
+  const patch = {};
+  if (fullName !== undefined && fullName !== null && fullName.trim() !== '') patch.fullName = fullName.trim();
+  if (phone !== undefined) patch.phone = phone ? phone.trim() : null;
+  if (email !== undefined && email !== null && email.trim() !== '') {
+    const normalized = email.trim().toLowerCase();
+    if (normalized !== user.email) {
+      const taken = await User.findOne({ where: { email: normalized } });
+      if (taken && taken.id !== user.id) {
+        throw createError('That email address is already in use by another account', 409);
+      }
+      patch.email = normalized;
+    }
+  }
+  if (Object.keys(patch).length > 0) await user.update(patch);
+
+  if (notes !== undefined) {
+    const { MemberProfile } = tenantDb.models;
+    const [profile] = await MemberProfile.findOrCreate({
+      where: { userId: memberUserId },
+      defaults: { userId: memberUserId },
+    });
+    await profile.update({ medicalNotes: notes || null });
+  }
+
+  return user.reload();
+};
+
 // ── Gym-wide staff management (GYM_HOST) ─────────────────────────────────────
 
 /**
@@ -1068,6 +1105,7 @@ module.exports = {
   listMembers,
   searchMember,
   enrollMember,
+  updateMemberProfile,
   listAllStaff,
   createStaffUser,
   removeStaffUser,

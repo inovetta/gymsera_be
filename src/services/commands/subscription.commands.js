@@ -34,7 +34,11 @@ register({
   },
   execute: async (_ctx, payload) => {
     const subscriptionService = require('../subscription.service');
-    return subscriptionService.renew(payload.memberUserId, payload.subscriptionId);
+    // planId/startDate are optional — omitted, renew() extends the current plan
+    // from the current end date, which is what a plain "Renew" action means.
+    // Passed, it doubles as a renew-with-a-different-plan action, matching what
+    // subscriptionService.renew already supports.
+    return subscriptionService.renew(payload.memberUserId, payload.subscriptionId, payload.planId || null, payload.startDate || null);
   },
 });
 

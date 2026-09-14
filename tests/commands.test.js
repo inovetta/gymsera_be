@@ -105,6 +105,60 @@ describe('members.create command', () => {
   });
 });
 
+describe('members.update command', () => {
+  const cmd = commands.get('members.update');
+
+  const fakeCtx = (belongs) => ({
+    branchId: 'branch-1',
+    tenantDb: {
+      models: {
+        MemberSubscription: { findOne: jest.fn().mockResolvedValue(belongs) },
+      },
+    },
+  });
+
+  it('is registered', () => {
+    expect(cmd).not.toBeNull();
+  });
+
+  it('rejects a payload with no memberUserId', async () => {
+    await expect(cmd.validate(fakeCtx(null), { fullName: 'Ahmed' })).rejects.toThrow(/member is required/);
+  });
+
+  it('rejects a payload with no editable field', async () => {
+    await expect(cmd.validate(fakeCtx(null), { memberUserId: 'u1' })).rejects.toThrow(/Nothing to update/);
+  });
+
+  it('rejects editing a member with no subscription at this branch', async () => {
+    const ctx = fakeCtx(null);
+    await expect(cmd.validate(ctx, { memberUserId: 'u1', fullName: 'Ahmed' })).rejects.toThrow(
+      /not part of this branch/
+    );
+  });
+
+  it('passes validation once the member has a subscription at this branch', async () => {
+    const ctx = fakeCtx({ id: 'sub-1' });
+    await expect(cmd.validate(ctx, { memberUserId: 'u1', fullName: 'Ahmed' })).resolves.toBeUndefined();
+  });
+
+  it('execute() forwards the editable fields to gymService.updateMemberProfile', async () => {
+    jest.resetModules();
+    const updateMemberProfile = jest.fn().mockResolvedValue({ id: 'u1', fullName: 'Ahmed Raza' });
+    jest.doMock('../src/services/gym.service', () => ({ updateMemberProfile }));
+    const freshCmd = require('../src/services/commands').get('members.update');
+
+    const ctx = { branchId: 'branch-1', tenantDb: {} };
+    await freshCmd.execute(ctx, { memberUserId: 'u1', fullName: 'Ahmed Raza', email: undefined, phone: undefined, notes: undefined });
+
+    expect(updateMemberProfile).toHaveBeenCalledWith(
+      ctx.tenantDb,
+      'u1',
+      expect.objectContaining({ fullName: 'Ahmed Raza' })
+    );
+    jest.dontMock('../src/services/gym.service');
+  });
+});
+
 describe('expenses.create command', () => {
   const cmd = commands.get('expenses.create');
 

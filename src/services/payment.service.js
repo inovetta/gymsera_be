@@ -74,12 +74,18 @@ const _activateSubscription = async (tenantDb, subscriptionId) => {
  *   Step 1: Staff marks as STAFF_COLLECTED (cash received in hand)
  *   Step 2: Tenant (GYM_HOST) gives final approval → COMPLETED
  */
-const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
+// `isDirect` is the caller's resolved payments.record.direct grant (always true
+// for the owner) — the controller works this out from the permission catalogue,
+// not from a literal role string, so a Branch Admin or Manager holding DIRECT
+// tier gets the same immediate-complete behaviour the owner always got, and a
+// Front Desk holding only REQUEST tier lands the payment as PENDING for
+// approval instead of either being silently blocked or silently auto-completed.
+const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect = false) => {
   const { Payment, MemberSubscription, MembershipPlan } = tenantDb.models;
   const { resolveCreatorRole } = require('../utils/audit.utils');
 
   const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
-  const autoComplete = creatorRole === 'GYM_HOST' || data.method === 'TEST';
+  const autoComplete = isDirect || data.method === 'TEST';
 
   const payment = await Payment.create({
     userId: data.userId,
@@ -123,7 +129,7 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data) => {
     }
   }
 
-  if (!autoComplete && creatorRole !== 'GYM_HOST') {
+  if (!autoComplete) {
     try {
       const { Tenant, User } = require('../models/platform');
       const notificationsService = require('./notifications.service');
@@ -386,10 +392,11 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
 /**
  * Unified action endpoint.
  *
- * Actions:
- *  collect  → BRANCH_MANAGER or GYM_HOST: PENDING → STAFF_COLLECTED (step 1)
- *  verify   → GYM_HOST ONLY: (PENDING | STAFF_COLLECTED) → COMPLETED (step 2)
- *  reject   → BRANCH_MANAGER or GYM_HOST: (PENDING | STAFF_COLLECTED) → FAILED
+ * Actions (permission already checked by the controller against the payment's
+ * own branch — payments.record for collect/reject, payments.verify for verify):
+ *  collect  → PENDING → STAFF_COLLECTED (step 1)
+ *  verify   → (PENDING | STAFF_COLLECTED) → COMPLETED (step 2)
+ *  reject   → (PENDING | STAFF_COLLECTED) → FAILED
  */
 const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole, { action, notes, rejectedReason, waiveJoiningFee }) => {
   const { Payment, Invoice } = tenantDb.models;
@@ -409,9 +416,9 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
     });
 
   } else if (action === 'verify') {
-    if (actorRole !== 'GYM_HOST') {
-      throw createError('Only the gym host can give final payment approval', 403);
-    }
+    // Permission already checked by the controller (payments.verify on this
+    // payment's own branch) — it needs the branch to resolve that, which is why
+    // the check lives there instead of here.
     return verifyPayment(tenantDb, paymentId, actorUserId, notes, waiveJoiningFee);
 
   } else if (action === 'reject') {

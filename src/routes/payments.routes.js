@@ -3,14 +3,20 @@ const controller     = require('../controllers/payments.controller');
 const validators     = require('../validators/payments.validator');
 const validate       = require('../middleware/validate');
 const authenticate   = require('../middleware/authenticate');
-const authorize      = require('../middleware/authorize');
 const tenantContext  = require('../middleware/tenantContext');
 const upload         = require('../middleware/upload');
 
 const router = Router();
 
-// All payment routes require auth + tenant context
-router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'));
+// All payment routes require auth + tenant context. Permission enforcement moved
+// into the controller (see hasBranchAccess in payments.controller.js) — this used
+// to be a blanket `authorize('GYM_HOST', 'BRANCH_MANAGER')` here, which rejected
+// every team member whose access comes from the role_assignments RBAC system
+// (they never carry that literal legacy role string) before the request ever
+// reached a single permission-aware check. That made the entire payments module
+// — record, list, verify, collect, invoices — unusable for any team member no
+// matter what the permission catalogue granted them.
+router.use(authenticate, tenantContext);
 
 /**
  * @swagger
