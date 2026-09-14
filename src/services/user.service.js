@@ -79,7 +79,7 @@ const searchUsers = async ({ q, role, status, page, limit, offset }) => {
  */
 const getUserById = async (userId, tenantDb = null) => {
   const user = await User.findByPk(userId, {
-    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'googleId', 'createdAt', 'lastLoginAt'],
+    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'googleId', 'appleId', 'createdAt', 'lastLoginAt'],
   });
   if (!user) throw createError('User not found', 404);
 
@@ -94,7 +94,7 @@ const getUserById = async (userId, tenantDb = null) => {
     status: user.status,
     isVerified: user.isVerified,
     profileImageUrl: user.profileImageUrl || null,
-    provider: user.googleId ? 'GOOGLE' : 'LOCAL',
+    provider: user.googleId ? 'GOOGLE' : (user.appleId ? 'APPLE' : 'LOCAL'),
     lastLoginAt: user.lastLoginAt || null,
     memberSince: user.createdAt,
     profile: memberProfile

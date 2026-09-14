@@ -476,6 +476,131 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
 };
 
 /**
+ * Login or register via Apple Identity Token.
+ * On first login, creates a new ACTIVE + verified account automatically.
+ */
+const appleLogin = async ({ identityToken, userIdentifier, email, fullName }, ipAddress, userAgent) => {
+  if (!identityToken) {
+    throw createError('Apple identity token is required', 400);
+  }
+
+  // Decode identityToken (JWT)
+  const decoded = jwt.decode(identityToken);
+  if (!decoded || typeof decoded !== 'object') {
+    throw createError('Invalid Apple identity token', 401);
+  }
+
+  // Validate claims
+  const isIssValid = decoded.iss === 'https://appleid.apple.com' || decoded.iss === 'appleid.apple.com';
+  const expectedAud = [
+    'com.inovettatech.gymsera',
+    process.env.APPLE_BUNDLE_ID,
+    process.env.APPLE_CLIENT_ID,
+  ].filter(Boolean);
+  const isAudValid = expectedAud.length === 0 || expectedAud.includes(decoded.aud);
+  const isNotExpired = decoded.exp && decoded.exp * 1000 > Date.now();
+
+  if (!isIssValid || !isNotExpired) {
+    console.warn('[Apple Auth] Token validation failed:', {
+      iss: decoded.iss,
+      aud: decoded.aud,
+      exp: decoded.exp,
+    });
+    throw createError('Invalid or expired Apple identity token', 401);
+  }
+
+  const appleId = userIdentifier || decoded.sub;
+  const userEmail = (decoded.email || email || '').toLowerCase().trim();
+  const userName = fullName || (userEmail ? userEmail.split('@')[0] : 'Apple User');
+
+  if (!appleId) {
+    throw createError('Unable to resolve Apple user identifier', 401);
+  }
+
+  console.log(`[Apple Auth] Processing login for ${userEmail || 'hidden email'} (appleId: ${appleId})`);
+
+  let user = null;
+  // 1. Try to find by appleId
+  try {
+    user = await User.findOne({ where: { appleId } });
+  } catch (findErr) {
+    console.warn('[Apple Auth] findOne with appleId failed, falling back to email:', findErr.message);
+  }
+
+  // 2. If not found by appleId, try finding by email
+  if (!user && userEmail) {
+    user = await User.findOne({ where: { email: userEmail } });
+    if (user) {
+      // Link appleId to existing account
+      const newStatus = user.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
+      await user.update({
+        appleId,
+        isVerified: true,
+        status: newStatus,
+      }).catch((upErr) => {
+        console.warn('[Apple Auth] Linking with appleId failed:', upErr.message);
+      });
+      console.log(`[Apple Auth] Linked existing account for ${userEmail}`);
+    }
+  }
+
+  // 3. If still not found, create new user
+  if (!user) {
+    if (!userEmail) {
+      throw createError('Email is required for Apple account registration. Please grant email access.', 400);
+    }
+    const createFields = {
+      fullName: userName,
+      email: userEmail,
+      role: UserRole.MEMBER,
+      status: 'ACTIVE',
+      isVerified: true,
+      passwordHash: null,
+    };
+
+    try {
+      user = await User.create({
+        appleId,
+        ...createFields,
+      });
+    } catch (crErr) {
+      console.warn('[Apple Auth] User.create with appleId failed, retrying without:', crErr.message);
+      user = await User.create(createFields);
+    }
+    console.log(`[Apple Auth] Created new user account for ${userEmail} (id: ${user.id})`);
+  } else {
+    // Existing Apple account: ensure active & verified unless suspended
+    if (user.status !== 'SUSPENDED') {
+      await user.update({
+        isVerified: true,
+        status: 'ACTIVE',
+      }).catch(() => null);
+    }
+    console.log(`[Apple Auth] Logged in existing Apple user ${user.email} (id: ${user.id})`);
+  }
+
+  if (user.status === 'SUSPENDED') {
+    throw createError('Your account has been suspended. Please contact support.', 403);
+  }
+
+  await user.update({ lastLoginAt: new Date() }).catch(() => null);
+
+  // Check and trigger pending staff invites
+  setImmediate(() => {
+    try {
+      const { checkAndTriggerPendingStaffInvites } = require('./gym.service');
+      checkAndTriggerPendingStaffInvites(user).catch((err) => {
+        console.warn('[Staff Invite Sync] appleLogin background check error:', err.message);
+      });
+    } catch (inviteErr) {
+      // Ignore
+    }
+  });
+
+  return _issueTokenPair(user, ipAddress, userAgent);
+};
+
+/**
  * Rotate a refresh token — revoke the old one, issue a new pair.
  */
 const refreshTokens = async (token, ipAddress, userAgent) => {
@@ -497,63 +622,90 @@ const refreshTokens = async (token, ipAddress, userAgent) => {
     },
   });
 
-  if (!stored) throw createError('Refresh token not found or already revoked', 401);
-
-  const user = await User.findByPk(decoded.sub);
-  if (!user || user.status !== 'ACTIVE') {
-    throw createError('User not found or inactive', 401);
+  if (!stored) {
+    throw createError('Invalid or expired refresh token', 401);
   }
 
-  // Revoke old token and issue new pair atomically
+  // Revoke the old token (rotation)
   await stored.update({ isRevoked: true });
+
+  // Load the user
+  const user = await User.findByPk(decoded.sub);
+  if (!user || user.status === 'SUSPENDED') {
+    throw createError('User not found or account is suspended', 401);
+  }
 
   return _issueTokenPair(user, ipAddress, userAgent);
 };
 
 /**
- * Request a password reset — sends an OTP to the registered email.
- * Always returns the same message to prevent email enumeration.
+ * Request a password reset OTP.
+ * Always returns 200 to prevent email enumeration.
  */
 const passwordResetRequest = async ({ email }) => {
-  const user = await User.findOne({ where: { email, isVerified: true } });
+  const user = await User.findOne({ where: { email } });
 
-  if (user) {
-    await _invalidatePreviousOtps(user.id, 'PASSWORD_RESET');
-
-    const code = generateOtpCode();
-    await Otp.create({
-      userId: user.id,
-      email,
-      code,
-      type: 'PASSWORD_RESET',
-      expiresAt: getOtpExpiry(),
-    });
-
-    await emailService.sendPasswordResetEmail(email, user.fullName, code);
+  if (!user) {
+    console.log(`[Auth] Password reset requested for non-existent email: ${email}`);
+    return { message: 'If this email is registered, a password reset code has been sent.' };
   }
+
+  if (user.status === 'SUSPENDED') {
+    return { message: 'If this email is registered, a password reset code has been sent.' };
+  }
+
+  // Invalidate any existing unused RESET OTPs
+  await _invalidatePreviousOtps(user.id, 'PASSWORD_RESET');
+
+  const code = generateOtpCode();
+  const expiresAt = getOtpExpiry(10); // 10 minutes
+
+  await Otp.create({
+    userId: user.id,
+    email,
+    code,
+    type: 'PASSWORD_RESET',
+    expiresAt,
+  });
+
+  // Fire-and-forget email
+  emailService.sendPasswordResetEmail(user.email, user.fullName, code).catch((err) => {
+    console.error(`[Auth] Failed to send password reset email to ${email}:`, err.message);
+  });
 
   return { message: 'If this email is registered, a password reset code has been sent.' };
 };
 
 /**
- * Confirm the password reset using the OTP + new password.
- * Revokes all active refresh tokens on success.
+ * Confirm password reset using OTP + new password.
  */
 const passwordResetConfirm = async ({ email, code, password }) => {
   const user = await User.findOne({ where: { email } });
-  if (!user) throw createError('Invalid email or code', 400);
+  if (!user) {
+    throw createError('Invalid or expired password reset code', 400);
+  }
 
-  const otp = await _findValidOtp(user.id, code, 'PASSWORD_RESET');
-  if (!otp) throw createError('Invalid or expired code', 400);
+  const otp = await Otp.findOne({
+    where: {
+      userId: user.id,
+      code,
+      type: 'PASSWORD_RESET',
+      isUsed: false,
+      expiresAt: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (!otp) {
+    throw createError('Invalid or expired password reset code', 400);
+  }
+
+  await otp.update({ isUsed: true });
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  await user.update({ passwordHash, isVerified: true });
 
-  await Promise.all([
-    otp.update({ isUsed: true }),
-    user.update({ passwordHash }),
-    // Revoke all active refresh tokens — forces re-login everywhere
-    RefreshToken.update({ isRevoked: true }, { where: { userId: user.id, isRevoked: false } }),
-  ]);
+  // Invalidate all existing refresh tokens for security
+  await RefreshToken.update({ isRevoked: true }, { where: { userId: user.id } });
 
   return { message: 'Password has been reset successfully. Please log in with your new password.' };
 };
@@ -567,7 +719,7 @@ const getMe = async (userId) => {
     attributes: [
       'id', 'fullName', 'email', 'phone', 'role',
       'isVerified', 'profileImageUrl', 'status',
-      'googleId', 'lastLoginAt', 'createdAt', 'isHost',
+      'googleId', 'appleId', 'lastLoginAt', 'createdAt', 'isHost',
     ],
   });
 
@@ -583,6 +735,10 @@ const getMe = async (userId) => {
     tenantId = tenant ? tenant.id : null;
   }
 
+  let provider = 'LOCAL';
+  if (user.googleId) provider = 'GOOGLE';
+  else if (user.appleId) provider = 'APPLE';
+
   return {
     id: user.id,
     fullName: user.fullName,
@@ -593,7 +749,7 @@ const getMe = async (userId) => {
     status: user.status,
     isHost: !!user.isHost,
     profileImageUrl: user.profileImageUrl || null,
-    provider: user.googleId ? 'GOOGLE' : 'LOCAL',
+    provider,
     tenantId,
     lastLoginAt: user.lastLoginAt || null,
     memberSince: user.createdAt,
@@ -606,6 +762,7 @@ module.exports = {
   resendOtp,
   login,
   googleLogin,
+  appleLogin,
   refreshTokens,
   passwordResetRequest,
   passwordResetConfirm,

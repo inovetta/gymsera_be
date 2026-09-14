@@ -51,7 +51,7 @@ const BCRYPT_ROUNDS = 12;
 
 const getMyProfile = async (userId, tenantDb = null) => {
   const user = await User.findByPk(userId, {
-    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'isVerified', 'status', 'profileImageUrl', 'googleId', 'createdAt', 'lastLoginAt'],
+    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'isVerified', 'status', 'profileImageUrl', 'googleId', 'appleId', 'createdAt', 'lastLoginAt'],
   });
   if (!user) throw createError('User not found', 404);
 
@@ -91,7 +91,7 @@ const getMyProfile = async (userId, tenantDb = null) => {
     isVerified: user.isVerified,
     status: user.status,
     profileImageUrl: user.profileImageUrl || null,
-    provider: user.googleId ? 'GOOGLE' : 'LOCAL',
+    provider: user.googleId ? 'GOOGLE' : (user.appleId ? 'APPLE' : 'LOCAL'),
     lastLoginAt: user.lastLoginAt || null,
     memberSince: user.createdAt,
     profile: profile
@@ -166,7 +166,7 @@ const updateMyProfile = async (userId, updates, tenantDb = null) => {
  */
 const changePassword = async (userId, currentPassword, newPassword) => {
   const user = await User.findByPk(userId, {
-    attributes: ['id', 'passwordHash', 'googleId'],
+    attributes: ['id', 'passwordHash', 'googleId', 'appleId'],
   });
   if (!user) throw createError('User not found', 404);
 

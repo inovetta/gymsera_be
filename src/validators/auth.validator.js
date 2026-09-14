@@ -85,6 +85,10 @@ const authValidators = {
     body('idToken').notEmpty().withMessage('Google ID token is required'),
   ],
 
+  appleLogin: [
+    body('identityToken').notEmpty().withMessage('Apple identity token is required'),
+  ],
+
   refreshToken: [
     body('refreshToken').notEmpty().withMessage('Refresh token is required'),
   ],

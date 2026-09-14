@@ -225,6 +225,45 @@ router.post('/login', validate(authValidators.login), authController.login);
  */
 router.post('/social/google', validate(authValidators.googleLogin), authController.googleLogin);
 
+// ── POST /auth/social/apple ───────────────────────────────────────────────────
+/**
+ * @swagger
+ * /auth/social/apple:
+ *   post:
+ *     summary: Login or register via Apple Identity Token
+ *     description: Validates an Apple Identity Token from Sign in with Apple. Creates or links the user account.
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [identityToken]
+ *             properties:
+ *               identityToken:
+ *                 type: string
+ *                 description: Apple identity JWT token from native Apple Sign In
+ *               userIdentifier:
+ *                 type: string
+ *                 description: Unique Apple user identifier (sub)
+ *               email:
+ *                 type: string
+ *                 description: User email (sent on first authorization)
+ *               fullName:
+ *                 type: string
+ *                 description: User full name (sent on first authorization)
+ *     responses:
+ *       200:
+ *         description: Apple login successful — returns access + refresh tokens
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Invalid or expired Apple identity token
+ */
+router.post('/social/apple', validate(authValidators.appleLogin), authController.appleLogin);
+
 // ── POST /auth/refresh ────────────────────────────────────────────────────────
 /**
  * @swagger

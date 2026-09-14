@@ -51,6 +51,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'google_id',
       },
+      appleId: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'apple_id',
+      },
       profileImageUrl: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -80,6 +85,7 @@ module.exports = (sequelize) => {
         { name: 'users_role', fields: ['role'] },
         { name: 'users_status', fields: ['status'] },
         { name: 'users_google_id', fields: ['google_id'] },
+        { name: 'users_apple_id', fields: ['apple_id'] },
       ],
     }
   );

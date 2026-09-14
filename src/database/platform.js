@@ -37,6 +37,11 @@ const connect = async () => {
   await sequelize.authenticate();
   console.log('[Platform DB] Connected');
 
+  // Ensure apple_id column exists on users table
+  try {
+    await sequelize.query('ALTER TABLE `users` ADD COLUMN `apple_id` VARCHAR(100) NULL;');
+  } catch (_) {}
+
   if (process.env.NODE_ENV === 'development' && !process.env.VERCEL) {
     // Lazy-load models to ensure they're registered before sync
     require('../models/platform');

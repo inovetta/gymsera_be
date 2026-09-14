@@ -77,6 +77,20 @@ const googleLogin = async (req, res, next) => {
   }
 };
 
+// ── Apple Social Login ────────────────────────────────────────────────────────
+const appleLogin = async (req, res, next) => {
+  try {
+    const result = await authService.appleLogin(
+      req.body,
+      req.ip,
+      req.headers['user-agent']
+    );
+    return sendSuccess(res, result, 'Apple login successful');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── Refresh Token ─────────────────────────────────────────────────────────────
 const refreshToken = async (req, res, next) => {
   try {
@@ -128,6 +142,7 @@ module.exports = {
   resendOtp,
   login,
   googleLogin,
+  appleLogin,
   refreshToken,
   passwordResetRequest,
   passwordResetConfirm,
