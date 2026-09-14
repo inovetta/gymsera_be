@@ -63,7 +63,12 @@ const cancel = async (req, res, next) => {
 // ── POST /subscriptions/:id/renew ─────────────────────────────────────────────
 const renew = async (req, res, next) => {
   try {
-    const result = await subscriptionService.renew(req.user.id, req.params.id, req.body.planId);
+    const result = await subscriptionService.renew(
+      req.user.id,
+      req.params.id,
+      req.body.planId,
+      req.body.startDate
+    );
     return sendSuccess(res, result, 'Subscription renewed');
   } catch (err) {
     next(err);
@@ -200,9 +205,41 @@ const upgradeSubscription = async (req, res, next) => {
   }
 };
 
+// ── POST /subscriptions/staff ─────────────────────────────────────────────────
+const createStaffSubscription = async (req, res, next) => {
+  try {
+    const { userId, planId, branchId, startDate, notes, paymentMethod } = req.body;
+    const { User } = require('../models/platform');
+    const gymService = require('../services/gym.service');
+    const { createError } = require('../utils/response.utils');
+
+    const user = await User.findByPk(userId);
+    if (!user) return next(createError('User not found', 404));
+
+    const result = await gymService.enrollMember(
+      req.tenantDb,
+      req.tenantId || req.user.tenantId,
+      {
+        email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        planId,
+        branchId,
+        startDate,
+        notes,
+        paymentMethod,
+      },
+      req.user
+    );
+    return sendSuccess(res, result, 'Subscription created for member', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   subscribe, listMySubscriptions, freeze, cancel, renew, changePlan,
-  listForStaff, getForStaff, preview,
+  listForStaff, getForStaff, preview, createStaffSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
 };

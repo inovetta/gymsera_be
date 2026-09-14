@@ -250,5 +250,6 @@ router.get('/staff/:id', tenantContext, authorize(...staffRoles), controller.get
  *         description: Already active or cancelled
  */
 router.post('/staff/:id/activate', tenantContext, authorize(...staffRoles), controller.activateSubscription);
+router.post('/staff', tenantContext, authorize(...staffRoles), controller.createStaffSubscription);
 
 module.exports = router;

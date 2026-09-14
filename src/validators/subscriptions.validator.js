@@ -61,6 +61,7 @@ const cancel = [
 const renew = [
   param('id').isUUID(4).withMessage('id must be a valid UUID'),
   body('planId').optional().isUUID(4).withMessage('planId must be a valid UUID'),
+  body('startDate').optional().isISO8601().withMessage('startDate must be a valid date'),
 ];
 
 // ── POST /subscriptions/:id/change-plan ─────────────────────────────────────────────

@@ -379,7 +379,7 @@ const cancel = async (userId, subscriptionId) => {
 };
 
 // ── POST /subscriptions/:id/renew ─────────────────────────────────────────────
-const renew = async (userId, subscriptionId, targetPlanId = null) => {
+const renew = async (userId, subscriptionId, targetPlanId = null, customStartDate = null) => {
   const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription } = models;
 
@@ -406,16 +406,15 @@ const renew = async (userId, subscriptionId, targetPlanId = null) => {
     throw createError('The associated membership plan is no longer available', 409);
   }
 
-  // Extend from current endDate (or today if already expired)
-  const baseDate = sub.status === SubscriptionStatus.EXPIRED
-    ? new Date().toISOString().split('T')[0]
-    : sub.endDate;
+  // Extend from customStartDate or current endDate (or today if neither is available)
+  const baseDate = customStartDate || sub.endDate || new Date().toISOString().split('T')[0];
   const newEndDate = _calcEndDate(baseDate, plan.durationType, plan.durationValue);
   const newQr = _generateQrToken();
 
   await sub.update({
     membershipPlanId: plan.id,
     status: SubscriptionStatus.ACTIVE,
+    startDate: baseDate,
     endDate: newEndDate,
     qrCode: newQr,
     remainingVisits: plan.visitLimit ?? null,
@@ -423,7 +422,12 @@ const renew = async (userId, subscriptionId, targetPlanId = null) => {
     freezeTo: null,
     cancelledAt: null,
   });
-  await index.update({ status: SubscriptionStatus.ACTIVE, endDate: newEndDate, planName: plan.name });
+  await index.update({
+    status: SubscriptionStatus.ACTIVE,
+    startDate: baseDate,
+    endDate: newEndDate,
+    planName: plan.name,
+  });
 
   // Fire-and-forget notification
   _enqueueNotification(userId, 'SUBSCRIPTION_RENEWED', {

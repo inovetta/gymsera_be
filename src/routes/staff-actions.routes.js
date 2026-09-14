@@ -260,7 +260,9 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
     } else if (request.actionType === 'renew') {
       actionResult = await subscriptionService.renew(
         payload.memberUserId,
-        payload.subscriptionId
+        payload.subscriptionId,
+        payload.planId,
+        payload.startDate
       );
     } else if (request.actionType === 'change_plan') {
       actionResult = await subscriptionService.changePlan(
