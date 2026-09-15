@@ -53,10 +53,24 @@ register({
     // The enrolling identity is the approver on the approval path and the
     // actor on the direct path; either way it is someone who holds the
     // permission, so `enrollMember` is told it is always a host-level enroller.
-    return gymService.enrollMember(ctx.tenantDb, ctx.tenantId, enrollPayload, {
-      role: 'GYM_HOST',
-      id: ctx.userId,
-    });
+    //
+    // ctx.collectedBy is set only when this ran through decide() on a request
+    // someone already marked collected (see approval.service.js#markCollected)
+    // — never present on the direct-tier path, since there's no approval gap
+    // to pre-collect against there. When it is, enrollMember attributes the
+    // resulting payment to the real collector instead of ctx.userId (who, on
+    // this path, is the approver).
+    const collection = ctx.collectedBy
+      ? { collectedBy: ctx.collectedBy, collectedAt: ctx.collectedAt, collectionMethod: ctx.collectionMethod }
+      : null;
+
+    return gymService.enrollMember(
+      ctx.tenantDb,
+      ctx.tenantId,
+      enrollPayload,
+      { role: 'GYM_HOST', id: ctx.userId },
+      collection
+    );
   },
 });
 

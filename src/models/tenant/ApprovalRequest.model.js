@@ -84,6 +84,26 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
+      // Pre-approval collection — someone physically took the cash before this
+      // request was even decided. Set once, by whoever holds `payments.record`
+      // at the request's branch, via markCollected(). Read at execute() time so
+      // the resulting Payment is attributed to *them*, not to the approver.
+      collectedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      collectedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      collectionMethod: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+      },
+      collectionNotes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
     },
     {
       tableName: 'approval_requests',

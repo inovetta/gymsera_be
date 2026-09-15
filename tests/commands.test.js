@@ -81,7 +81,8 @@ describe('members.create command', () => {
       ctx.tenantDb,
       'tenant-1',
       expect.objectContaining({ branchId: 'branch-9', fullName: 'Ahmed' }),
-      expect.objectContaining({ id: 'user-1' })
+      expect.objectContaining({ id: 'user-1' }),
+      null // no pre-approval collection on this ctx
     );
     jest.dontMock('../src/services/gym.service');
   });
@@ -99,7 +100,8 @@ describe('members.create command', () => {
       ctx.tenantDb,
       'tenant-1',
       expect.objectContaining({ branchId: 'branch-explicit' }),
-      expect.anything()
+      expect.anything(),
+      null // no pre-approval collection on this ctx
     );
     jest.dontMock('../src/services/gym.service');
   });

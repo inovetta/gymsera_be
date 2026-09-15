@@ -79,6 +79,32 @@ router.post('/:id/reject', can('approvals.decide', { orgWide: true }), controlle
 
 /**
  * @swagger
+ * /approvals/{id}/collect:
+ *   post:
+ *     summary: Mark a still-PENDING request as collected — cash already in hand
+ *     description: >
+ *       For request-tier "Add member" submissions: lets whoever is physically
+ *       holding the payment mark it collected immediately, rather than that
+ *       attribution silently becoming whoever later approves the request.
+ *       Requires payments.record on the request's own branch — checked inside
+ *       the service, not here, since the branch isn't known from the URL.
+ *     tags: [Approvals]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               method: { type: string, enum: [CASH, BANK_TRANSFER, CARD, WALLET] }
+ *               notes:  { type: string }
+ *     responses:
+ *       200: { description: Marked as collected }
+ *       409: { description: Already collected, or already decided }
+ */
+router.post('/:id/collect', attachGrants({ orgWide: true }), controller.collect);
+
+/**
+ * @swagger
  * /approvals/{id}/cancel:
  *   post:
  *     summary: Withdraw your own pending request

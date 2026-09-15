@@ -53,6 +53,9 @@ const serialize = (r) => {
     decisionReason: r.decisionReason,
     createdAt: r.createdAt,
     expiresAt: r.expiresAt,
+    collectedBy: r.collectedBy,
+    collectedAt: r.collectedAt,
+    collectionMethod: r.collectionMethod,
   };
 };
 
@@ -161,6 +164,28 @@ const reject = async (req, res, next) => {
 };
 
 /**
+ * POST /approvals/:id/collect — mark a still-PENDING request as collected.
+ *
+ * The point of this endpoint: whoever is physically holding the cash for a
+ * REQUEST-tier "Add member" submission shouldn't have to wait for someone
+ * else to approve it before that collection is attributed to them. See
+ * approval.service.js#markCollected for why this can't just create a Payment
+ * row directly.
+ */
+const collect = async (req, res, next) => {
+  try {
+    const ctx = buildCtx(req);
+    const request = await approvalService.markCollected(ctx, req.params.id, {
+      method: req.body.method,
+      notes: req.body.notes,
+    });
+    return sendSuccess(res, { request: serialize(request) }, 'Marked as collected');
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
  * POST /approvals/:id/cancel — the requester withdrawing their own request.
  */
 const cancel = async (req, res, next) => {
@@ -227,6 +252,7 @@ module.exports = {
   listMine,
   approve,
   reject,
+  collect,
   cancel,
   listPolicies,
   upsertPolicy,

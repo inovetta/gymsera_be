@@ -98,6 +98,25 @@ class TenantDbManager {
         await sequelize.query("ALTER TABLE branches ADD COLUMN timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Karachi'").catch(() => { });
       }
 
+      // Pre-approval collection: lets whoever is physically holding the cash mark
+      // a still-PENDING request as collected — from them, correctly attributed —
+      // instead of the eventual approver silently becoming the payment's
+      // collector of record when the request executes. See approval.service.js
+      // #markCollected and gym.service.js#enrollMember's `collection` param.
+      const approvalCols = await queryInterface.describeTable('approval_requests').catch(() => ({}));
+      if (approvalCols && !approvalCols.collected_by) {
+        await sequelize.query('ALTER TABLE approval_requests ADD COLUMN collected_by CHAR(36) NULL').catch(() => { });
+      }
+      if (approvalCols && !approvalCols.collected_at) {
+        await sequelize.query('ALTER TABLE approval_requests ADD COLUMN collected_at DATETIME NULL').catch(() => { });
+      }
+      if (approvalCols && !approvalCols.collection_method) {
+        await sequelize.query('ALTER TABLE approval_requests ADD COLUMN collection_method VARCHAR(30) NULL').catch(() => { });
+      }
+      if (approvalCols && !approvalCols.collection_notes) {
+        await sequelize.query('ALTER TABLE approval_requests ADD COLUMN collection_notes TEXT NULL').catch(() => { });
+      }
+
       // Ledger: the business date a payment is collected on (branch-timezone,
       // stamped once at write time — see ledger.service.js#computeBusinessDate)
       // and an optional idempotency key so a retried/double-tapped submission

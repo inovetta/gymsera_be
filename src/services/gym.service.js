@@ -637,12 +637,23 @@ const searchMember = async (email) => {
 };
 
 // ── Enroll member (walk-in or staff-assigned) ─────────────────────────────────
-const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate, notes, paymentMethod }, enroller = { role: 'GYM_HOST' }) => {
+/**
+ * @param {object|null} collection  Set when a REQUEST-tier submission was
+ *   already marked collected before approval (see approval.service.js
+ *   #markCollected). `{ collectedBy, collectedAt, collectionMethod }`.
+ *   When present, the resulting Payment is attributed to the real collector
+ *   and starts at STAFF_COLLECTED — awaiting the normal payments.verify step —
+ *   instead of fabricating a COMPLETED payment credited to whoever approved
+ *   the member. The subscription likewise stays PENDING until that verify,
+ *   the same as any other collected-not-yet-verified payment in this app.
+ */
+const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId, branchId, startDate, notes, paymentMethod }, enroller = { role: 'GYM_HOST' }, collection = null) => {
   const { MemberSubscription, MembershipPlan, MemberProfile } = tenantDb.models;
   const enrollerRole = typeof enroller === 'string' ? enroller : (enroller?.role || 'GYM_HOST');
   const enrollerId = typeof enroller === 'object' && enroller !== null
     ? (enroller.id || enroller.sub || enroller.userId || null)
     : null;
+  const preCollected = !!(collection && collection.collectedBy);
 
   // Find or create platform user
   const [user, userCreated] = await User.findOrCreate({
@@ -683,7 +694,10 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
 
   const start = startDate || new Date().toISOString().split('T')[0];
   const end = _calcEndDate(start, plan.durationType, plan.durationValue);
-  const autoComplete = enrollerRole === 'GYM_HOST';
+  // A pre-collected payment isn't verified yet — the member and its
+  // subscription can't be more "active" than the payment behind them, no
+  // matter who approved the enrollment itself.
+  const autoComplete = enrollerRole === 'GYM_HOST' && !preCollected;
   const qrCode = autoComplete ? `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}` : null;
 
   await MemberProfile.findOrCreate({ where: { userId: user.id }, defaults: { userId: user.id } });
@@ -761,21 +775,29 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const ledgerService = require('./ledger.service');
   const businessDate = await ledgerService.stampBusinessDate(tenantDb, branchId);
 
+  const paymentStatus = preCollected
+    ? PaymentStatus.STAFF_COLLECTED
+    : (autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING);
+
   const payment = await Payment.create({
     userId: user.id,
     paymentFor: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
     branchId,
-    method: paymentMethod || 'CASH',
+    method: (preCollected && collection.collectionMethod) || paymentMethod || 'CASH',
     amount: totalAmount,
     currency: 'PKR',
-    status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
+    status: paymentStatus,
     paidAt: autoComplete ? new Date() : null,
-    createdBy: enrollerId || null,
-    createdByRole: creatorRole,
+    // Pre-collected: the real collector, not the approver. Otherwise unchanged.
+    createdBy: preCollected ? collection.collectedBy : (enrollerId || null),
+    createdByRole: preCollected ? 'STAFF' : creatorRole,
+    staffCollectedBy: preCollected ? collection.collectedBy : null,
+    collectedAt: preCollected ? collection.collectedAt : null,
+    notes: preCollected ? 'Collected prior to member approval' : null,
     businessDate,
   });
-  if (autoComplete) ledgerService.notifyLedgerUpdated(tenantId, branchId, businessDate);
+  if (autoComplete || preCollected) ledgerService.notifyLedgerUpdated(tenantId, branchId, businessDate);
 
   const invoice = await Invoice.create({
     userId: user.id,

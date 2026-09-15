@@ -214,7 +214,15 @@ const decide = async (ctx, requestId, decision, reason = null) => {
       branchId: request.branchId,
       targetType: 'approval_request',
       targetId: request.id,
-      after: { actionKey: request.actionKey, reason },
+      // If cash was already physically collected before this got rejected,
+      // that fact must survive in the audit trail — it never became a Payment
+      // row (nothing was created for a rejected request), so this line is the
+      // only record that the money needs to be returned to the customer.
+      after: {
+        actionKey: request.actionKey,
+        reason,
+        ...(request.collectedBy ? { hadPreCollection: true, collectedBy: request.collectedBy, collectedAt: request.collectedAt } : {}),
+      },
     });
     await notifyRequester(ctx, request, 'rejected', reason).catch(() => {});
     return { request, result: null };
@@ -227,6 +235,13 @@ const decide = async (ctx, requestId, decision, reason = null) => {
     branchId: request.branchId,
     grants: approverGrants,
     requestedBy: request.requestedBy,
+    // Someone may have already marked this collected — see markCollected()
+    // below. Commands that create a Payment (member.commands.js) read this to
+    // attribute it to the real collector and start it at STAFF_COLLECTED
+    // instead of fabricating a COMPLETED payment credited to the approver.
+    collectedBy: request.collectedBy,
+    collectedAt: request.collectedAt,
+    collectionMethod: request.collectionMethod,
   };
 
   let result;
@@ -272,6 +287,71 @@ const decide = async (ctx, requestId, decision, reason = null) => {
   await notifyRequester(ctx, request, 'approved').catch(() => {});
   await request.reload();
   return { request, result };
+};
+
+/** Actions where "collect the cash before it's approved" is a meaningful step —
+ * ones whose eventual execute() creates a Payment. Extend this list as new
+ * money-creating commands are added; it's deliberately explicit rather than
+ * inferred, so a future action doesn't silently become "collectible" by
+ * accident. */
+const COLLECTIBLE_ACTION_KEYS = new Set(['members.create']);
+
+/**
+ * Mark a still-PENDING request as collected — cash (or a transfer) is already
+ * physically in hand, before anyone has approved the underlying member/
+ * subscription. Race-safe and idempotent the same way close/decide are: the
+ * conditional UPDATE only succeeds once, from `collected_at IS NULL`.
+ *
+ * This never creates a Payment row itself — there may be no User to attach one
+ * to yet (a brand-new member doesn't exist until the request is approved).
+ * It's read back by decide() → execute() so the eventual Payment is created
+ * already attributed to whoever actually took the money.
+ */
+const markCollected = async (ctx, requestId, { method, notes } = {}) => {
+  const { ApprovalRequest } = ctx.tenantDb.models;
+  const request = await ApprovalRequest.findByPk(requestId);
+  if (!request) throw createError('Request not found', 404);
+  if (request.status !== 'PENDING') {
+    throw createError(`This request has already been ${request.status.toLowerCase()}`, 409);
+  }
+  if (!COLLECTIBLE_ACTION_KEYS.has(request.actionKey)) {
+    throw createError(`"${request.actionKey}" has no payment to collect`, 400);
+  }
+
+  // Whoever collects must actually hold payments.record at this branch — the
+  // same gate the ordinary "Mark as collected" action uses on a real Payment
+  // row. Being the original requester isn't required: any authorized
+  // collector at the branch may be the one who ends up holding the cash.
+  const grants = await accessService.resolve(ctx.tenantDb, ctx.tenantId, ctx.userId, request.branchId);
+  if (!grants.isOwner && !grants.has('payments.record')) {
+    throw createError('You do not have permission to collect payments at this branch', 403);
+  }
+
+  const collectedAt = new Date();
+  const [affected] = await ApprovalRequest.update(
+    {
+      collectedBy: ctx.userId,
+      collectedAt,
+      collectionMethod: method || null,
+      collectionNotes: notes || null,
+    },
+    { where: { id: requestId, status: 'PENDING', collectedAt: null } }
+  );
+  if (affected === 0) {
+    throw createError('This request was already marked collected', 409);
+  }
+
+  await request.reload();
+
+  await auditService.record(ctx, {
+    action: 'approvals.collect',
+    branchId: request.branchId,
+    targetType: 'approval_request',
+    targetId: request.id,
+    after: { method: method || null, collectedAt },
+  });
+
+  return request;
 };
 
 /**
@@ -416,6 +496,8 @@ module.exports = {
   perform,
   decide,
   cancel,
+  markCollected,
+  COLLECTIBLE_ACTION_KEYS,
   policyFor,
   listForApprover,
   listMine,
