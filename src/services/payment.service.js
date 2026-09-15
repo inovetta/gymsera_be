@@ -83,9 +83,20 @@ const _activateSubscription = async (tenantDb, subscriptionId) => {
 const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect = false) => {
   const { Payment, MemberSubscription, MembershipPlan } = tenantDb.models;
   const { resolveCreatorRole } = require('../utils/audit.utils');
+  const ledgerService = require('./ledger.service');
+
+  // A retried/double-tapped submit with the same key returns the original
+  // payment instead of recording the collection twice.
+  if (data.idempotencyKey) {
+    const existing = await Payment.findOne({ where: { idempotencyKey: data.idempotencyKey } });
+    if (existing) {
+      return { payment: existing, invoice: null, duplicate: true };
+    }
+  }
 
   const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
   const autoComplete = isDirect || data.method === 'TEST';
+  const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId);
 
   const payment = await Payment.create({
     userId: data.userId,
@@ -104,7 +115,10 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
     notes: data.notes || null,
     createdBy: staffUserId || null,
     createdByRole: resolvedRole,
+    businessDate,
+    idempotencyKey: data.idempotencyKey || null,
   });
+  if (data.branchId) ledgerService.notifyLedgerUpdated(tenantDb.tenantId, data.branchId, businessDate);
 
   let invoice = null;
 
@@ -256,6 +270,10 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
     verifiedBy: verifiedByUserId,
     notes: notes || payment.notes,
   });
+
+  if (payment.branchId && payment.businessDate) {
+    require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, payment.businessDate);
+  }
 
   if (payment.referenceEntityId) {
     const [invoicesUpdated] = await Invoice.update(
@@ -414,6 +432,9 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
       collectedAt: new Date(),
       notes: notes || payment.notes,
     });
+    if (payment.branchId && payment.businessDate) {
+      require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, payment.businessDate);
+    }
 
   } else if (action === 'verify') {
     // Permission already checked by the controller (payments.verify on this

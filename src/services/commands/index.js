@@ -79,3 +79,4 @@ require('./expense.commands');
 require('./announcement.commands');
 require('./schedule.commands');
 require('./plan.commands');
+require('./ledger.commands');

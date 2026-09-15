@@ -291,6 +291,7 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
     });
   } else {
     // Fallback: create a new one if none exists
+    const businessDate = await require('./ledger.service').stampBusinessDate({ models }, subscription.branchId);
     payment = await Payment.create({
       userId,
       paymentFor: 'MEMBERSHIP',
@@ -301,6 +302,7 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
       currency: 'PKR',
       status: 'PENDING',
       notes: notes || null,
+      businessDate,
     });
   }
 

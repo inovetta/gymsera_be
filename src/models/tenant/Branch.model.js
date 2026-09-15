@@ -56,6 +56,13 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(25),
         allowNull: true,
       },
+      // IANA timezone name. Every ledger business-date boundary (today/weekly/
+      // monthly, close-of-day) is computed against this, never server time.
+      timezone: {
+        type: DataTypes.STRING(64),
+        allowNull: false,
+        defaultValue: 'Asia/Karachi',
+      },
       facilitiesJson: {
         type: DataTypes.JSON,
         allowNull: true,

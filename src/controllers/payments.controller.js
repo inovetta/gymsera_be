@@ -90,7 +90,17 @@ const recordPayment = async (req, res, next) => {
     }
     const isDirect = await hasDirectBranchAccess(req, branchId, 'payments.record');
 
-    const result = await paymentService.recordPayment(req.tenantDb, req.user.id, req.user.role, req.body, isDirect);
+    // The resolved branchId (subscription fallback included) must actually reach
+    // the service — req.body.branchId alone is what was missing before, which
+    // meant a payment recorded via the subscription fallback silently got no
+    // branch at all, and with it no ledger business date.
+    const result = await paymentService.recordPayment(
+      req.tenantDb,
+      req.user.id,
+      req.user.role,
+      { ...req.body, branchId },
+      isDirect
+    );
     return sendSuccess(res, result, 'Payment recorded', 201);
   } catch (err) {
     next(err);

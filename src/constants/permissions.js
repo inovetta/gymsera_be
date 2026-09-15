@@ -383,6 +383,30 @@ const CATALOGUE = [
       { key: 'billing.manage', label: 'Manage the GymsEra subscription', dangerous: true, orgOnly: true, tiers: ['D', 'x', 'x', 'x', 'x', 'x', 'x'] },
     ],
   },
+
+  {
+    module: 'ledger',
+    label: 'Collection ledger',
+    permissions: [
+      { key: 'ledger.today.view', label: "View Today's Ledger", tiers: ['F', 'F', 'F', 'F', 'V', 'x', 'x'] },
+      {
+        key: 'ledger.verify',
+        label: 'Verify / reconcile ledger',
+        tiers: ['A', 'A', 'A', 'x', 'x', 'x', 'x'],
+        note: 'Marks collections reviewed and logs discrepancy/variance adjustments. Never edits a payment record.',
+      },
+      {
+        key: 'ledger.close',
+        label: "Close Today's Ledger",
+        approvable: true,
+        dangerous: true,
+        tiers: ['D', 'D', 'R', 'x', 'x', 'x', 'x'],
+        note: 'Finalizes the day. Closed days are immutable — corrections after close are reversal adjustments, never edits.',
+      },
+      { key: 'ledger.weekly.view', label: 'View Weekly Ledger', tiers: ['F', 'F', 'F', 'x', 'x', 'x', 'x'] },
+      { key: 'ledger.monthly.view', label: 'View Monthly Ledger', tiers: ['F', 'F', 'F', 'x', 'x', 'x', 'x'] },
+    ],
+  },
 ];
 
 // ── Derived indexes ──────────────────────────────────────────────────────────

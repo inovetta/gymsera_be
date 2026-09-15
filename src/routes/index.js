@@ -501,6 +501,7 @@ router.use('/reports', require('./reports.routes'));
 router.use('/team',      require('./team.routes'));
 router.use('/approvals', require('./approvals.routes'));
 router.use('/actions',   require('./actions.routes'));
+router.use('/ledger',    require('./ledger.routes'));
 
 router.use('/users', require('./users.routes'));
 router.use('/staff-invites', require('./staff-invites.routes'));

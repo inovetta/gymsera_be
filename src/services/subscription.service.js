@@ -238,6 +238,9 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   const security = parseFloat(plan.securityFee || 0);
   const totalAmount = subtotal + joining + security;
 
+  const ledgerService = require('./ledger.service');
+  const businessDate = await ledgerService.stampBusinessDate({ models }, branchIdToUse);
+
   const payment = await Payment.create({
     userId,
     paymentFor: 'MEMBERSHIP',
@@ -247,6 +250,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     amount: totalAmount,
     currency: 'PKR',
     status: PaymentStatus.PENDING,
+    businessDate,
   });
 
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -746,6 +750,7 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
   });
 
   // 2. Create Payment (status PENDING)
+  const businessDate = await require('./ledger.service').stampBusinessDate({ models }, sub.branchId);
   const payment = await Payment.create({
     userId: sub.userId,
     paymentFor: 'MEMBERSHIP',
@@ -756,6 +761,7 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     currency: 'PKR',
     status: PaymentStatus.PENDING,
     notes: `Upgrade to ${newPlan.name}`,
+    businessDate,
   });
 
   // Create unified Traveler notification

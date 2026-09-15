@@ -758,6 +758,9 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const security = parseFloat(plan.securityFee || 0);
   const totalAmount = subtotal + joining + security;
 
+  const ledgerService = require('./ledger.service');
+  const businessDate = await ledgerService.stampBusinessDate(tenantDb, branchId);
+
   const payment = await Payment.create({
     userId: user.id,
     paymentFor: 'MEMBERSHIP',
@@ -770,7 +773,9 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     paidAt: autoComplete ? new Date() : null,
     createdBy: enrollerId || null,
     createdByRole: creatorRole,
+    businessDate,
   });
+  if (autoComplete) ledgerService.notifyLedgerUpdated(tenantId, branchId, businessDate);
 
   const invoice = await Invoice.create({
     userId: user.id,

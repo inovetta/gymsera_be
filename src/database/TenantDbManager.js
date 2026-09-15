@@ -57,6 +57,13 @@ class TenantDbManager {
     }
 
     try {
+      const { ensureLedgerTables } = require('./ledger-migration');
+      await ensureLedgerTables(sequelize, tenantId);
+    } catch (ledgerErr) {
+      console.warn(`[TenantDbManager] Ledger table check warning for tenant ${tenantId}:`, ledgerErr.message);
+    }
+
+    try {
       // Safe column migration for audit tracking across tenant tables
       const queryInterface = sequelize.getQueryInterface();
       const subCols = await queryInterface.describeTable('member_subscriptions').catch(() => ({}));
@@ -87,6 +94,30 @@ class TenantDbManager {
       if (branchCols && !branchCols.gym_listing_id) {
         await sequelize.query('ALTER TABLE branches ADD COLUMN gym_listing_id CHAR(36) NULL').catch(() => { });
       }
+      if (branchCols && !branchCols.timezone) {
+        await sequelize.query("ALTER TABLE branches ADD COLUMN timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Karachi'").catch(() => { });
+      }
+
+      // Ledger: the business date a payment is collected on (branch-timezone,
+      // stamped once at write time — see ledger.service.js#computeBusinessDate)
+      // and an optional idempotency key so a retried/double-tapped submission
+      // can't record the same collection twice.
+      const paymentCols = await queryInterface.describeTable('payments').catch(() => ({}));
+      if (paymentCols && !paymentCols.business_date) {
+        await sequelize.query('ALTER TABLE payments ADD COLUMN business_date DATE NULL').catch(() => { });
+        await sequelize.query('ALTER TABLE payments ADD INDEX payments_branch_business_date (branch_id, business_date, status)').catch(() => { });
+      }
+      if (paymentCols && !paymentCols.idempotency_key) {
+        await sequelize.query('ALTER TABLE payments ADD COLUMN idempotency_key VARCHAR(120) NULL').catch(() => { });
+        await sequelize.query('ALTER TABLE payments ADD UNIQUE INDEX payments_idempotency_unique (idempotency_key)').catch(() => { });
+      }
+      // One-time backfill for rows that predate the column. Approximate (DB-server
+      // date of paid_at/created_at, not branch-local) — acceptable for historical
+      // records; every payment recorded from here on gets the real branch-timezone
+      // business date at write time, which is what daily close actually depends on.
+      await sequelize.query(
+        "UPDATE payments SET business_date = DATE(COALESCE(paid_at, created_at)) WHERE business_date IS NULL"
+      ).catch(() => { });
 
       const gymCols = await queryInterface.describeTable('gyms').catch(() => ({}));
       if (gymCols && !gymCols.gym_listing_id) {

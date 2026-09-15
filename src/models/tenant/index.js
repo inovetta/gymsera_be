@@ -33,6 +33,10 @@ const registerTenantModels = (sequelize) => {
   const ApprovalPolicy = require('./ApprovalPolicy.model')(sequelize);
   const AuditLog = require('./AuditLog.model')(sequelize);
 
+  // ── Collection ledger (see src/services/ledger.service.js) ───────────────────
+  const LedgerDay = require('./LedgerDay.model')(sequelize);
+  const LedgerAdjustment = require('./LedgerAdjustment.model')(sequelize);
+
   // ── Associations ─────────────────────────────────────────────────────────────
 
   // Gym ↔ Branch
@@ -110,6 +114,14 @@ const registerTenantModels = (sequelize) => {
   // ApprovalRequest ↔ Branch
   ApprovalRequest.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch', constraints: false });
 
+  // LedgerDay ↔ Branch
+  Branch.hasMany(LedgerDay, { foreignKey: 'branchId', as: 'ledgerDays' });
+  LedgerDay.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
+
+  // LedgerDay ↔ LedgerAdjustment
+  LedgerDay.hasMany(LedgerAdjustment, { foreignKey: 'ledgerDayId', as: 'adjustments' });
+  LedgerAdjustment.belongsTo(LedgerDay, { foreignKey: 'ledgerDayId', as: 'ledgerDay' });
+
   // Expense ↔ Expense (Self-referencing for recurring templates)
   Expense.hasMany(Expense, { foreignKey: 'recurringTemplateId', as: 'generatedInstances' });
   Expense.belongsTo(Expense, { foreignKey: 'recurringTemplateId', as: 'template' });
@@ -137,6 +149,8 @@ const registerTenantModels = (sequelize) => {
     ApprovalRequest,
     ApprovalPolicy,
     AuditLog,
+    LedgerDay,
+    LedgerAdjustment,
   };
 };
 

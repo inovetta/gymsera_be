@@ -102,6 +102,20 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      // Branch-timezone calendar date this collection belongs to, stamped once at
+      // creation (see ledger.service.js#computeBusinessDate). Every ledger query —
+      // daily, weekly, monthly, reconciliation — filters on this, never on a
+      // recomputed timezone conversion.
+      businessDate: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
+      // Optional client-supplied key so a retried/double-tapped "record payment"
+      // can't create the same collection twice.
+      idempotencyKey: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
     },
     {
       tableName: 'payments',
