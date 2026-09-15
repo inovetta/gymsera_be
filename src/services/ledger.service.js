@@ -359,6 +359,96 @@ const closeDay = async (ctx, { ledgerDayId }) => {
   return ledgerDay;
 };
 
+/**
+ * Combine several branches' ledger results (each already shaped by
+ * getTodayLedger/getDayLedger/getRangeLedger) into one gym-wide view — the
+ * host's "all collections" read. Each input branch result gets `branchId` +
+ * `branchName` attached by the caller before it reaches here.
+ */
+const mergeBranchLedgers = (perBranch, extra = {}) => {
+  const totals = { expected: 0, collected: 0, verified: 0, pending: 0, variance: 0 };
+  const byMethod = {};
+  const byCollector = {};
+  const payments = [];
+
+  for (const b of perBranch) {
+    for (const k of Object.keys(totals)) totals[k] += b.totals[k] || 0;
+    for (const [method, amount] of Object.entries(b.byMethod)) {
+      byMethod[method] = (byMethod[method] || 0) + amount;
+    }
+    for (const c of b.byCollector) {
+      if (!byCollector[c.collectorId]) {
+        byCollector[c.collectorId] = { collectorId: c.collectorId, collectorName: c.collectorName, total: 0, count: 0 };
+      }
+      byCollector[c.collectorId].total += c.total;
+      byCollector[c.collectorId].count += c.count;
+    }
+    for (const p of b.payments) {
+      const plain = typeof p.get === 'function' ? p.get({ plain: true }) : p;
+      payments.push({ ...plain, branchId: b.branchId, branchName: b.branchName });
+    }
+  }
+
+  payments.sort((a, c) => new Date(c.paidAt || c.businessDate || 0) - new Date(a.paidAt || a.businessDate || 0));
+
+  return {
+    ...extra,
+    branches: perBranch.map((b) => ({
+      branchId: b.branchId,
+      branchName: b.branchName,
+      businessDate: b.businessDate,
+      isMissed: b.isMissed,
+      totals: b.totals,
+    })),
+    totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round2(v)])),
+    byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, round2(v)])),
+    byCollector: Object.values(byCollector).map((c) => ({ ...c, total: round2(c.total) })),
+    payments: payments.slice(0, 300),
+  };
+};
+
+/** Every active branch — the scope of every gym-wide (host) ledger read below. */
+const _activeBranches = async (tenantDb) => {
+  const { Branch } = tenantDb.models;
+  return Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id', 'name'] });
+};
+
+/**
+ * Gym-wide Today's Ledger — every active branch's today, merged. This is what
+ * "host sees all collections" means: not one branch filtered in, everything.
+ * Each branch still resolves "today" in its own timezone (see
+ * computeBusinessDate) before the merge, so a branch that rolled over to a new
+ * business date already reflects that.
+ */
+const getTodayLedgerAllBranches = async (tenantDb) => {
+  const branches = await _activeBranches(tenantDb);
+  const perBranch = await Promise.all(
+    branches.map(async (b) => ({ branchId: b.id, branchName: b.name, ...(await getTodayLedger(tenantDb, b.id)) }))
+  );
+  return mergeBranchLedgers(perBranch);
+};
+
+/** Gym-wide weekly/monthly ledger — identical per-branch reads, merged. */
+const getRangeLedgerAllBranches = async (tenantDb, fromDate, toDate) => {
+  const branches = await _activeBranches(tenantDb);
+  const perBranch = await Promise.all(
+    branches.map(async (b) => ({ branchId: b.id, branchName: b.name, ...(await getRangeLedger(tenantDb, b.id, fromDate, toDate)) }))
+  );
+  return mergeBranchLedgers(perBranch, { fromDate, toDate });
+};
+
+/** Gym-wide reconciliation queue — every OPEN day older than today, any branch. */
+const listOpenDaysAllBranches = async (tenantDb) => {
+  const branches = await _activeBranches(tenantDb);
+  const perBranch = await Promise.all(
+    branches.map(async (b) => {
+      const days = await listOpenDays(tenantDb, b.id);
+      return days.map((d) => ({ ...d.get({ plain: true }), branchId: b.id, branchName: b.name }));
+    })
+  );
+  return perBranch.flat().sort((a, c) => (a.businessDate < c.businessDate ? -1 : 1));
+};
+
 /** Broadcast used by payment.service.js on every collection/verify/reject. */
 const notifyLedgerUpdated = (tenantId, branchId, businessDate) => {
   try {
@@ -376,6 +466,9 @@ module.exports = {
   getDayLedger,
   getRangeLedger,
   listOpenDays,
+  getTodayLedgerAllBranches,
+  getRangeLedgerAllBranches,
+  listOpenDaysAllBranches,
   weekRange,
   monthRange,
   addAdjustment,

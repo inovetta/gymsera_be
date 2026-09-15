@@ -7,6 +7,14 @@
  * `/actions/ledger.close` command instead of a route here — see
  * commands/ledger.commands.js — so a Manager's close request/approval flow is
  * the same engine every other approvable action already uses.
+ *
+ * `branchId` is optional on every GET below. Omit it to ask for the gym-wide
+ * view — every active branch's collections, merged. `can()` resolves grants
+ * for a null branchId same as any other, so this isn't a separate code path
+ * to bypass: a non-owner without a branchId simply matches no assignment and
+ * gets a 403, while the tenant owner's grants short-circuit regardless of
+ * branch (see access.service.js#resolve). That is the entire access rule —
+ * only the owner ever sees collections outside their own assigned branch(es).
  */
 const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
@@ -24,7 +32,7 @@ router.use(authenticate, tenantContext);
  *     summary: Today's Ledger for a branch — collections, OPEN/CLOSED state, adjustments
  *     tags: [Ledger]
  *     parameters:
- *       - { in: query, name: branchId, required: true, schema: { type: string } }
+ *       - { in: query, name: branchId, schema: { type: string }, description: Omit for the gym-wide view across every active branch (owner only) }
  *     responses:
  *       200: { description: Today's ledger }
  */
@@ -37,7 +45,7 @@ router.get('/today', can('ledger.today.view', { branch: 'query.branchId' }), con
  *     summary: Every OPEN business day older than today — the reconciliation queue
  *     tags: [Ledger]
  *     parameters:
- *       - { in: query, name: branchId, required: true, schema: { type: string } }
+ *       - { in: query, name: branchId, schema: { type: string }, description: Omit for the gym-wide view across every active branch (owner only) }
  *     responses:
  *       200: { description: Open (missed) ledger days }
  */
@@ -51,7 +59,7 @@ router.get('/open-days', can('ledger.today.view', { branch: 'query.branchId' }),
  *     tags: [Ledger]
  *     parameters:
  *       - { in: path, name: businessDate, required: true, schema: { type: string, example: '2026-09-01' } }
- *       - { in: query, name: branchId, required: true, schema: { type: string } }
+ *       - { in: query, name: branchId, schema: { type: string }, description: Omit for the gym-wide view across every active branch (owner only) }
  *     responses:
  *       200: { description: One day's ledger }
  */
@@ -64,7 +72,7 @@ router.get('/day/:businessDate', can('ledger.today.view', { branch: 'query.branc
  *     summary: Weekly ledger — derived from finalized daily collections, never separately stored
  *     tags: [Ledger]
  *     parameters:
- *       - { in: query, name: branchId, required: true, schema: { type: string } }
+ *       - { in: query, name: branchId, schema: { type: string }, description: Omit for the gym-wide view across every active branch (owner only) }
  *       - { in: query, name: businessDate, schema: { type: string }, description: Any date inside the target week; defaults to today }
  *     responses:
  *       200: { description: Weekly ledger }
@@ -78,7 +86,7 @@ router.get('/weekly', can('ledger.weekly.view', { branch: 'query.branchId' }), c
  *     summary: Monthly ledger — derived, same shape as weekly over a wider range
  *     tags: [Ledger]
  *     parameters:
- *       - { in: query, name: branchId, required: true, schema: { type: string } }
+ *       - { in: query, name: branchId, schema: { type: string }, description: Omit for the gym-wide view across every active branch (owner only) }
  *       - { in: query, name: businessDate, schema: { type: string }, description: Any date inside the target month; defaults to today }
  *     responses:
  *       200: { description: Monthly ledger }

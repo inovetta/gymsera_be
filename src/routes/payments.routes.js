@@ -215,6 +215,21 @@ router.post('/:id/proof', upload.image('image'), upload.handleMulterError, contr
 
 /**
  * @swagger
+ * /payments/{id}/printed:
+ *   post:
+ *     summary: Record that a thermal receipt was printed for this payment
+ *     description: >
+ *       Fire-and-forget audit ping from the app after a successful print —
+ *       nothing depends on this succeeding; it only closes the "the customer
+ *       says they never got a receipt" dispute path with an actual record.
+ *     tags: [Payments]
+ *     responses:
+ *       200: { description: Recorded }
+ */
+router.post('/:id/printed', controller.markPrinted);
+
+/**
+ * @swagger
  * /payments/collection-action:
  *   post:
  *     summary: Staff batch-marks PENDING payments as STAFF_COLLECTED (step 1 of 2-step verification)

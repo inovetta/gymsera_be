@@ -116,6 +116,19 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(120),
         allowNull: true,
       },
+      // A thermal-printer receipt was handed to the customer for this payment.
+      // Set by a fire-and-forget ping from the app after a successful print —
+      // never required for anything, purely a "was a receipt actually given
+      // out" fact for the one dispute that matters: a customer saying they
+      // never got one.
+      printedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      printedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
     },
     {
       tableName: 'payments',

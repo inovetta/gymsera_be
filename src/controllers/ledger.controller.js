@@ -2,9 +2,14 @@ const ledgerService = require('../services/ledger.service');
 const { sendSuccess, createError } = require('../utils/response.utils');
 
 // ── GET /ledger/today ────────────────────────────────────────────────────────
+// Omitting branchId asks for the gym-wide view — every active branch, merged.
+// The route's permission check already restricts that to the owner (see
+// ledger.routes.js): a non-owner without a branchId resolves no grants at all.
 const getToday = async (req, res, next) => {
   try {
-    const data = await ledgerService.getTodayLedger(req.tenantDb, req.branchId);
+    const data = req.branchId
+      ? await ledgerService.getTodayLedger(req.tenantDb, req.branchId)
+      : await ledgerService.getTodayLedgerAllBranches(req.tenantDb);
     return sendSuccess(res, data, "Today's ledger retrieved");
   } catch (err) {
     next(err);
@@ -19,7 +24,9 @@ const getDay = async (req, res, next) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
       throw createError('businessDate must be YYYY-MM-DD', 400);
     }
-    const data = await ledgerService.getDayLedger(req.tenantDb, req.branchId, businessDate);
+    const data = req.branchId
+      ? await ledgerService.getDayLedger(req.tenantDb, req.branchId, businessDate)
+      : await ledgerService.getRangeLedgerAllBranches(req.tenantDb, businessDate, businessDate);
     return sendSuccess(res, data, 'Ledger day retrieved');
   } catch (err) {
     next(err);
@@ -30,7 +37,9 @@ const getDay = async (req, res, next) => {
 // Every OPEN day older than today — the reconciliation queue.
 const getOpenDays = async (req, res, next) => {
   try {
-    const days = await ledgerService.listOpenDays(req.tenantDb, req.branchId);
+    const days = req.branchId
+      ? await ledgerService.listOpenDays(req.tenantDb, req.branchId)
+      : await ledgerService.listOpenDaysAllBranches(req.tenantDb);
     return sendSuccess(res, { days }, 'Open ledger days retrieved');
   } catch (err) {
     next(err);
@@ -40,9 +49,12 @@ const getOpenDays = async (req, res, next) => {
 // ── GET /ledger/weekly ───────────────────────────────────────────────────────
 const getWeekly = async (req, res, next) => {
   try {
-    const anchor = req.query.businessDate || (await ledgerService.todayBusinessDate(req.tenantDb, req.branchId));
+    const anchor = req.query.businessDate
+      || (req.branchId ? await ledgerService.todayBusinessDate(req.tenantDb, req.branchId) : ledgerService.computeBusinessDate(new Date()));
     const [from, to] = ledgerService.weekRange(anchor);
-    const data = await ledgerService.getRangeLedger(req.tenantDb, req.branchId, from, to);
+    const data = req.branchId
+      ? await ledgerService.getRangeLedger(req.tenantDb, req.branchId, from, to)
+      : await ledgerService.getRangeLedgerAllBranches(req.tenantDb, from, to);
     return sendSuccess(res, data, 'Weekly ledger retrieved');
   } catch (err) {
     next(err);
@@ -52,9 +64,12 @@ const getWeekly = async (req, res, next) => {
 // ── GET /ledger/monthly ──────────────────────────────────────────────────────
 const getMonthly = async (req, res, next) => {
   try {
-    const anchor = req.query.businessDate || (await ledgerService.todayBusinessDate(req.tenantDb, req.branchId));
+    const anchor = req.query.businessDate
+      || (req.branchId ? await ledgerService.todayBusinessDate(req.tenantDb, req.branchId) : ledgerService.computeBusinessDate(new Date()));
     const [from, to] = ledgerService.monthRange(anchor);
-    const data = await ledgerService.getRangeLedger(req.tenantDb, req.branchId, from, to);
+    const data = req.branchId
+      ? await ledgerService.getRangeLedger(req.tenantDb, req.branchId, from, to)
+      : await ledgerService.getRangeLedgerAllBranches(req.tenantDb, from, to);
     return sendSuccess(res, data, 'Monthly ledger retrieved');
   } catch (err) {
     next(err);

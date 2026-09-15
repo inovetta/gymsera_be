@@ -130,6 +130,12 @@ class TenantDbManager {
         await sequelize.query('ALTER TABLE payments ADD COLUMN idempotency_key VARCHAR(120) NULL').catch(() => { });
         await sequelize.query('ALTER TABLE payments ADD UNIQUE INDEX payments_idempotency_unique (idempotency_key)').catch(() => { });
       }
+      if (paymentCols && !paymentCols.printed_at) {
+        await sequelize.query('ALTER TABLE payments ADD COLUMN printed_at DATETIME NULL').catch(() => { });
+      }
+      if (paymentCols && !paymentCols.printed_by) {
+        await sequelize.query('ALTER TABLE payments ADD COLUMN printed_by CHAR(36) NULL').catch(() => { });
+      }
       // One-time backfill for rows that predate the column. Approximate (DB-server
       // date of paid_at/created_at, not branch-local) — acceptable for historical
       // records; every payment recorded from here on gets the real branch-timezone
