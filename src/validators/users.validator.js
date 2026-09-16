@@ -47,6 +47,8 @@ const userValidators = {
     param('id').isUUID().withMessage('Invalid user ID'),
     body('fullName')
       .optional().trim().isLength({ max: 100 }),
+    body('email')
+      .optional().trim().isEmail().withMessage('Valid email required'),
     body('phone')
       .optional({ nullable: true, checkFalsy: true })
       .isMobilePhone().withMessage('Valid phone number required'),

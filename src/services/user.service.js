@@ -79,11 +79,12 @@ const searchUsers = async ({ q, role, status, page, limit, offset }) => {
  */
 const getUserById = async (userId, tenantDb = null) => {
   const user = await User.findByPk(userId, {
-    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'googleId', 'appleId', 'createdAt', 'lastLoginAt'],
+    attributes: ['id', 'fullName', 'email', 'phone', 'role', 'status', 'isVerified', 'profileImageUrl', 'googleId', 'appleId', 'passwordHash', 'createdAt', 'lastLoginAt'],
   });
   if (!user) throw createError('User not found', 404);
 
   const memberProfile = await _getMemberProfile(tenantDb, userId);
+  const isDirectAppUser = Boolean(user.passwordHash || user.googleId || user.appleId || user.lastLoginAt);
 
   return {
     id: user.id,
@@ -97,6 +98,8 @@ const getUserById = async (userId, tenantDb = null) => {
     provider: user.googleId ? 'GOOGLE' : (user.appleId ? 'APPLE' : 'LOCAL'),
     lastLoginAt: user.lastLoginAt || null,
     memberSince: user.createdAt,
+    isManualMember: !isDirectAppUser,
+    isDirectAppUser,
     profile: memberProfile
       ? {
         dateOfBirth: memberProfile.dateOfBirth || null,
@@ -163,20 +166,38 @@ const createMember = async (
 const updateUser = async (
   userId,
   {
-    fullName, phone,
+    fullName, email, phone,
     gender, dateOfBirth, heightCm, weightKg,
     fitnessGoal, medicalNotes,
     emergencyContactName, emergencyContactPhone,
   },
-  tenantDb = null
+  tenantDb = null,
+  requestUser = null
 ) => {
   const user = await User.findByPk(userId);
   if (!user) throw createError('User not found', 404);
+
+  const isDirectAppUser = Boolean(user.passwordHash || user.googleId || user.appleId);
+  const isPlatformAdmin = requestUser?.role === 'PLATFORM_ADMIN' || requestUser?.role === UserRole.PLATFORM_ADMIN;
+
+  if (isDirectAppUser && !isPlatformAdmin) {
+    throw createError('Cannot edit profile of members who registered directly on GymsEra App. Only manually added members can be edited.', 403);
+  }
 
   // Update platform-level fields
   const platformUpdates = {};
   if (fullName !== undefined) platformUpdates.fullName = fullName;
   if (phone !== undefined) platformUpdates.phone = phone;
+  if (email !== undefined && email !== null) {
+    const normalizedEmail = email.toLowerCase().trim();
+    if (normalizedEmail !== user.email) {
+      const existing = await User.findOne({ where: { email: normalizedEmail } });
+      if (existing && existing.id !== userId) {
+        throw createError('An account with this email already exists', 409);
+      }
+      platformUpdates.email = normalizedEmail;
+    }
+  }
   if (Object.keys(platformUpdates).length) await user.update(platformUpdates);
 
   // Update tenant profile fields if provided
