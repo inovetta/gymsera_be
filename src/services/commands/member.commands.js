@@ -64,13 +64,19 @@ register({
       ? { collectedBy: ctx.collectedBy, collectedAt: ctx.collectedAt, collectionMethod: ctx.collectionMethod }
       : null;
 
-    return gymService.enrollMember(
+    const enrolled = await gymService.enrollMember(
       ctx.tenantDb,
       ctx.tenantId,
       enrollPayload,
       { role: 'GYM_HOST', id: ctx.userId },
       collection
     );
+    // The generic engine keys audit entries and approval_requests.resultRef off
+    // a top-level `.id` (see approval.service.js) — enrollMember's own return
+    // has none. The payment is what a viewer of this result actually needs to
+    // act on next (it may still be STAFF_COLLECTED, awaiting verify), so that's
+    // what `id` points to here, not the subscription or the user.
+    return { ...enrolled, id: enrolled.payment.id };
   },
 });
 

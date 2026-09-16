@@ -70,7 +70,7 @@ describe('members.create command', () => {
   // single enrolment, on both the direct and the approved-request path.
   it('merges ctx.branchId into the payload enrollMember receives', async () => {
     jest.resetModules();
-    const enrollMember = jest.fn().mockResolvedValue({ id: 'sub-1' });
+    const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
     jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
     const freshCmd = require('../src/services/commands').get('members.create');
 
@@ -89,7 +89,7 @@ describe('members.create command', () => {
 
   it('lets a branchId already on the payload win over ctx.branchId', async () => {
     jest.resetModules();
-    const enrollMember = jest.fn().mockResolvedValue({ id: 'sub-1' });
+    const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
     jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
     const freshCmd = require('../src/services/commands').get('members.create');
 

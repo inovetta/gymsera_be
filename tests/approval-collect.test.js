@@ -119,7 +119,7 @@ describe('members.create command — pre-collected attribution', () => {
 
   it('passes the pre-collection through to enrollMember when the request was marked collected', async () => {
     jest.resetModules();
-    const enrollMember = jest.fn().mockResolvedValue({ id: 'sub-1' });
+    const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
     jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
     const freshCmd = require('../src/services/commands').get('members.create');
 
@@ -146,7 +146,7 @@ describe('members.create command — pre-collected attribution', () => {
 
   it('passes null collection when the request was never pre-collected (the ordinary case)', async () => {
     jest.resetModules();
-    const enrollMember = jest.fn().mockResolvedValue({ id: 'sub-1' });
+    const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
     jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
     const freshCmd = require('../src/services/commands').get('members.create');
 

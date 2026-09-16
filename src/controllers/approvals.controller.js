@@ -59,19 +59,51 @@ const serialize = (r) => {
   };
 };
 
-/** Attach requester names in one batched query rather than N. */
-const withRequesterNames = async (rows) => {
+/**
+ * Attach requester names, and — for an approved `members.create` request —
+ * the status of the Payment it created, both in one batched query rather
+ * than N each.
+ *
+ * "Approved" on this request only means the member got enrolled; it says
+ * nothing about whether their payment was verified. A pre-collected payment
+ * stays STAFF_COLLECTED until someone with `payments.verify` acts on it
+ * separately (see approval.service.js#decide and member.commands.js), so a
+ * bare "Approved" badge is misleading on its own — this is what lets the
+ * inbox/mine list show the gap instead of hiding it.
+ */
+const withRequesterNames = async (rows, tenantDb) => {
   const { User } = require('../models/platform');
   const ids = [...new Set(rows.map((r) => r.requestedBy).filter(Boolean))];
-  if (ids.length === 0) return rows.map(serialize);
+  const namesById = {};
+  if (ids.length > 0) {
+    const users = await User.findAll({
+      where: { id: { [Op.in]: ids } },
+      attributes: ['id', 'fullName', 'email'],
+    });
+    for (const u of users) namesById[u.id] = u.fullName || u.email;
+  }
 
-  const users = await User.findAll({
-    where: { id: { [Op.in]: ids } },
-    attributes: ['id', 'fullName', 'email'],
-  });
-  const byId = Object.fromEntries(users.map((u) => [u.id, u.fullName || u.email]));
+  const paymentStatusById = {};
+  if (tenantDb) {
+    const paymentIds = [
+      ...new Set(
+        rows
+          .filter((r) => r.actionKey === 'members.create' && r.status === 'APPROVED' && r.resultRef && r.resultRef.id)
+          .map((r) => r.resultRef.id)
+      ),
+    ];
+    if (paymentIds.length > 0) {
+      const { Payment } = tenantDb.models;
+      const payments = await Payment.findAll({ where: { id: { [Op.in]: paymentIds } }, attributes: ['id', 'status'] });
+      for (const p of payments) paymentStatusById[p.id] = p.status;
+    }
+  }
 
-  return rows.map((r) => ({ ...serialize(r), requestedByName: byId[r.requestedBy] || null }));
+  return rows.map((r) => ({
+    ...serialize(r),
+    requestedByName: namesById[r.requestedBy] || null,
+    paymentStatus: r.resultRef && r.resultRef.id ? paymentStatusById[r.resultRef.id] || null : null,
+  }));
 };
 
 /**
@@ -90,7 +122,7 @@ const list = async (req, res, next) => {
       offset,
     });
 
-    const items = await withRequesterNames(rows);
+    const items = await withRequesterNames(rows, req.tenantDb);
     return sendSuccess(res, items, 'Approvals retrieved', 200, {
       total: count,
       page,
@@ -114,7 +146,8 @@ const listMine = async (req, res, next) => {
       limit,
       offset,
     });
-    return sendSuccess(res, rows.map(serialize), 'Your requests retrieved', 200, {
+    const items = await withRequesterNames(rows, req.tenantDb);
+    return sendSuccess(res, items, 'Your requests retrieved', 200, {
       total: count,
       page,
       limit,
