@@ -292,6 +292,11 @@ const processTenantProvisioning = async (tenantId) => {
         const safeBranchLat = b.latitude != null ? parseFloat(Number(b.latitude).toFixed(7)) : (tenant.latitude != null ? parseFloat(Number(tenant.latitude).toFixed(7)) : null);
         const safeBranchLng = b.longitude != null ? parseFloat(Number(b.longitude).toFixed(7)) : (tenant.longitude != null ? parseFloat(Number(tenant.longitude).toFixed(7)) : null);
 
+        // Step 4's photos — see tenant.service.js#addOnboardingImages — live
+        // on this same mainBranchDataJson blob until now, since there was no
+        // Branch row for them to attach to any earlier than this.
+        const onboardingImages = Array.isArray(b.imagesJson) ? b.imagesJson : [];
+
         let branch = await models.Branch.findOne({ where: { gymId } });
         if (!branch) {
           branch = await models.Branch.create({
@@ -306,6 +311,7 @@ const processTenantProvisioning = async (tenantId) => {
             phone: b.phone || tenant.phone || null,
             openingTime: b.openingTime || null,
             closingTime: b.closingTime || null,
+            imagesJson: onboardingImages,
             status: 'ACTIVE',
             travelerVisibilityStatus: 'active',
           });
@@ -316,6 +322,12 @@ const processTenantProvisioning = async (tenantId) => {
           if (branch.status !== 'ACTIVE') updates.status = 'ACTIVE';
           if (b.name && !branch.branchName) updates.branchName = b.name;
           if (b.address && !branch.address) updates.address = b.address;
+          // Only fill in if the branch has no photos of its own yet — never
+          // clobber photos a host already added post-provisioning via the
+          // edit-photos screen with stale onboarding-time data.
+          if (onboardingImages.length > 0 && (!branch.imagesJson || branch.imagesJson.length === 0)) {
+            updates.imagesJson = onboardingImages;
+          }
           if (Object.keys(updates).length > 0) {
             await branch.update(updates).catch(() => {});
           }

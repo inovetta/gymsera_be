@@ -4,6 +4,7 @@ const tenantsValidators = require('../validators/tenants.validator');
 const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
+const upload = require('../middleware/upload');
 
 const router = Router();
 
@@ -208,6 +209,75 @@ router.post(
   authorize('GYM_HOST'),
   validate(tenantsValidators.selectPackage),
   tenantsController.selectPackage
+);
+
+/**
+ * @swagger
+ * /tenants/{id}/onboarding-images:
+ *   post:
+ *     summary: Upload Step 4 (branch photos) images during onboarding
+ *     description: >
+ *       No Branch row exists yet at this point — provisioning only runs on
+ *       admin approval — so these are held on the platform Tenant row's
+ *       mainBranchDataJson.imagesJson until then, same as every other Step
+ *       2/4 field.
+ *     tags: [Tenants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *     responses:
+ *       200: { description: Images uploaded }
+ *   put:
+ *     summary: Replace the full onboarding images list (how a removal round-trips)
+ *     tags: [Tenants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [imagesJson]
+ *             properties:
+ *               imagesJson:
+ *                 type: array
+ *                 items: { type: string, format: uri }
+ *     responses:
+ *       200: { description: Images updated }
+ */
+router.post(
+  '/:id/onboarding-images',
+  authenticate,
+  authorize('GYM_HOST'),
+  upload.images('images', 10),
+  upload.handleMulterError,
+  tenantsController.uploadOnboardingImages
+);
+router.put(
+  '/:id/onboarding-images',
+  authenticate,
+  authorize('GYM_HOST'),
+  tenantsController.replaceOnboardingImages
 );
 
 router.post(
