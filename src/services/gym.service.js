@@ -704,6 +704,13 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
 
   const { resolveCreatorRole } = require('../utils/audit.utils');
   const creatorRole = await resolveCreatorRole(tenantDb, enrollerId, enrollerRole, branchId);
+  // On the approval-execute path `enroller` is always the approver (see
+  // member.commands.js), never the person who actually collected the cash —
+  // resolveCreatorRole has no way to know that and resolves 'HOST' every
+  // time. Same fix as the Payment record below: attribute pre-collected
+  // enrollments to the real collector, not whoever approved them.
+  const recordCreatedBy = preCollected ? collection.collectedBy : (enrollerId || null);
+  const recordCreatedByRole = preCollected ? 'STAFF' : creatorRole;
 
   const subscription = await MemberSubscription.create({
     userId: user.id,
@@ -718,8 +725,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     remainingVisits: plan.visitLimit ?? null,
     sourceChannel: 'WALK_IN',
     notes: notes || null,
-    createdBy: enrollerId || null,
-    createdByRole: creatorRole,
+    createdBy: recordCreatedBy,
+    createdByRole: recordCreatedByRole,
   });
 
   // Create unified Host notification for staff action pending approval
@@ -790,8 +797,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     status: paymentStatus,
     paidAt: autoComplete ? new Date() : null,
     // Pre-collected: the real collector, not the approver. Otherwise unchanged.
-    createdBy: preCollected ? collection.collectedBy : (enrollerId || null),
-    createdByRole: preCollected ? 'STAFF' : creatorRole,
+    createdBy: recordCreatedBy,
+    createdByRole: recordCreatedByRole,
     staffCollectedBy: preCollected ? collection.collectedBy : null,
     collectedAt: preCollected ? collection.collectedAt : null,
     notes: preCollected ? 'Collected prior to member approval' : null,
@@ -812,8 +819,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     dueDate: new Date().toISOString().split('T')[0],
     paidAt: autoComplete ? new Date() : null,
     status: autoComplete ? InvoiceStatus.PAID : InvoiceStatus.ISSUED,
-    createdBy: enrollerId || null,
-    createdByRole: creatorRole,
+    createdBy: recordCreatedBy,
+    createdByRole: recordCreatedByRole,
   });
 
   return { user, subscription, userCreated, payment, invoice };

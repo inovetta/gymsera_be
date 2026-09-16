@@ -1,4 +1,36 @@
 const { User } = require('../models/platform');
+const { ROLE_META } = require('../constants/roles');
+
+/**
+ * The actual Team & Access role display name for a set of users (e.g. "Front
+ * Desk / Staff", "Branch Manager") — never the generic HOST/ADMIN/STAFF/MEMBER
+ * bucket `getRoleLabel()` falls back to below. Batched over every user id that
+ * might need one. A user with no active RoleAssignment (the owner, a bare
+ * platform member, or someone whose role was later revoked) simply gets no
+ * entry — callers keep showing the bucket label for them, same as before this
+ * existed.
+ */
+const resolveRoleDisplayNames = async (tenantDb, userIds) => {
+  const displayNameByUserId = {};
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  if (ids.length === 0 || !tenantDb?.models?.RoleAssignment) return displayNameByUserId;
+
+  try {
+    const assignments = await tenantDb.models.RoleAssignment.findAll({
+      where: { userId: ids, status: 'ACTIVE' },
+      order: [['createdAt', 'DESC']],
+    });
+    for (const a of assignments) {
+      if (displayNameByUserId[a.userId]) continue; // most recent active assignment wins
+      const meta = ROLE_META[a.roleKey];
+      if (meta) displayNameByUserId[a.userId] = meta.displayName;
+    }
+  } catch (_) {
+    // A display name is a UI nicety, never worth failing the read over.
+  }
+
+  return displayNameByUserId;
+};
 
 /**
  * Resolve creator role from user role and tenant GymStaff record
@@ -146,6 +178,10 @@ const enrichAuditDetails = async (tenantDb, items) => {
     }
   }
 
+  // Real Team & Access role names for everyone we're about to show — see
+  // resolveRoleDisplayNames above.
+  const roleDisplayNameMap = await resolveRoleDisplayNames(tenantDb, idList);
+
   // Fetch GymStaff designations for creator user IDs and emails
   let staffMap = {};
   if (idList.length > 0 && tenantDb?.models?.GymStaff) {
@@ -216,6 +252,10 @@ const enrichAuditDetails = async (tenantDb, items) => {
         profileImageUrl: creatorUser.profileImageUrl,
         role,
         roleLabel: getRoleLabel(role),
+        // The real Team & Access role ("Front Desk / Staff", "Branch Manager")
+        // when this person holds one — null for the owner and anyone without
+        // an active assignment, in which case roleLabel above is all there is.
+        roleDisplayName: roleDisplayNameMap[creatorUser.id] || null,
         designation: staffInfo?.designation || getRoleLabel(role),
         sourcePlatform: getSourcePlatform(role, item.sourceChannel),
       };
@@ -274,6 +314,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
         email: collectorUser.email,
         role: 'STAFF',
         roleLabel: 'Staff',
+        roleDisplayName: roleDisplayNameMap[collectorUser.id] || null,
         collectedAt: item.collectedAt || null,
       };
     }
@@ -285,6 +326,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
       createdByName: creator?.fullName || null,
       createdByEmail: creator?.email || null,
       createdByRole: creator?.role || null,
+      createdByRoleDisplayName: creator?.roleDisplayName || null,
       sourcePlatform: creator?.sourcePlatform || (item.sourceChannel === 'ONLINE' ? 'User App' : null),
       verifier,
       verifiedByName: verifier?.fullName || null,
@@ -297,5 +339,6 @@ module.exports = {
   resolveCreatorRole,
   getRoleLabel,
   getSourcePlatform,
+  resolveRoleDisplayNames,
   enrichAuditDetails,
 };
