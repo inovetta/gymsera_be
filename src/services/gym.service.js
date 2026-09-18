@@ -162,9 +162,109 @@ const listBranches = async (tenantDb, tenantId, organizationId) => {
   return { gym, branches: mappedBranches };
 };
 
-const createBranch = async (tenantDb, tenantId, data) => {
+/**
+ * The tenant's total ACTIVE branch count across every organization it owns —
+ * the branch-count subscription is one shared pool for the whole account,
+ * not a separate allowance per organization (see the pricing model discussed
+ * when the IAP staircase plans were built). Counting scoped to a single
+ * gymListingId here would let a host exceed their real total simply by
+ * spreading branches across multiple organizations.
+ */
+const _countActiveBranchesForTenant = async (tenantDb) => {
+  return tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
+};
+
+/**
+ * Creates the Branch row and its mandatory membership plan(s). No quota
+ * check, no transaction/lock management — callers that already hold the
+ * tenant's platformTx lock (createListing, below) call this directly instead
+ * of going through createBranch's own lock, which would otherwise try to
+ * acquire a second lock on the same already-locked tenant row and risk a
+ * deadlock.
+ */
+const _createBranchRecord = async (tenantDb, gym, targetListingId, data) => {
   const { Branch } = tenantDb.models;
 
+  if (!Array.isArray(data.packages) || data.packages.length === 0) {
+    throw createError('At least 1 membership package/plan is required to create a branch', 400);
+  }
+
+  const branch = await Branch.create({
+    gymId: gym.id,
+    gymListingId: targetListingId || null,
+    branchName: data.branchName,
+    address: data.address || data.addressLine1 || null,
+    cityId: data.cityId || null,
+    areaId: data.areaId || null,
+    latitude: data.latitude || null,
+    longitude: data.longitude || null,
+    openingTime: data.openingTime || null,
+    closingTime: data.closingTime || null,
+    phone: data.phone || null,
+    facilitiesJson: Array.isArray(data.facilities) ? data.facilities : (data.facilitiesJson || null),
+    imagesJson: Array.isArray(data.images) ? data.images : (data.imagesJson || null),
+    tagline: data.tagline || null,
+    category: data.category || null,
+    description: data.description || null,
+    establishedYear: data.establishedYear ? parseInt(data.establishedYear) : null,
+    floorArea: data.floorArea ? parseInt(data.floorArea) : null,
+    addressLine1: data.addressLine1 || data.address || null,
+    addressLine2: data.addressLine2 || null,
+    postalCode: data.postalCode || null,
+    country: data.country || null,
+    status: 'ACTIVE',
+    travelerVisibilityStatus: 'active',
+  });
+
+  // Create initial membership packages (mandatory: at least 1)
+  const membershipPlanService = require('./membership-plan.service');
+  let createdPlansCount = 0;
+  for (const pkg of data.packages) {
+    if (!pkg.name || pkg.price === undefined || pkg.price === null) continue;
+    try {
+      await membershipPlanService.createPlan(tenantDb, {
+        branchId: branch.id,
+        name: pkg.name,
+        price: pkg.price,
+        durationType: pkg.durationType || 'MONTHLY',
+        durationValue: pkg.durationValue || 1,
+        description: pkg.description || null,
+        isPublic: true,
+      });
+      createdPlansCount++;
+    } catch (pkgErr) {
+      console.warn('[Branch Creation] Package creation error:', pkgErr.message);
+      throw pkgErr;
+    }
+  }
+
+  if (createdPlansCount === 0) {
+    throw createError('Failed to create initial membership plan for branch. At least 1 valid plan is required.', 400);
+  }
+
+  return branch;
+};
+
+const _notifyBranchLimitReached = async (tenantId, tenant) => {
+  try {
+    const notificationsService = require('./notifications.service');
+    if (tenant && tenant.ownerUserId) {
+      await notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        role: 'host',
+        type: 'branch_quota_reached',
+        title: 'Branch Limit Reached',
+        message: 'You have reached your branch listing quota! Upgrade your package to add more branch listings.',
+        deepLink: '/host/listings',
+        metadataJson: { tenantId }
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Notification Error] Failed to create branch quota reached notification:', notifErr.message);
+  }
+};
+
+const createBranch = async (tenantDb, tenantId, data) => {
   const platformTx = await sequelize.transaction();
   try {
     // Acquire exclusive write lock on Tenant record in platform DB to serialize branch creations for this tenant.
@@ -187,33 +287,10 @@ const createBranch = async (tenantDb, tenantId, data) => {
 
     const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
     const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-
-    // Count currently active branches in tenant DB for this listing/org
-    const usedBranches = await Branch.count({
-      where: {
-        status: 'ACTIVE',
-        gymListingId: targetListingId || null,
-      }
-    });
+    const usedBranches = await _countActiveBranchesForTenant(tenantDb);
 
     if (usedBranches >= maxBranches) {
-      try {
-        const notificationsService = require('./notifications.service');
-        if (tenant && tenant.ownerUserId) {
-          await notificationsService.createNotification({
-            userId: tenant.ownerUserId,
-            role: 'host',
-            type: 'branch_quota_reached',
-            title: 'Branch Limit Reached',
-            message: 'You have reached your branch listing quota! Upgrade your package to add more branch listings.',
-            deepLink: '/host/listings',
-            metadataJson: { tenantId }
-          });
-        }
-      } catch (notifErr) {
-        console.warn('[Notification Error] Failed to create branch quota reached notification:', notifErr.message);
-      }
-
+      await _notifyBranchLimitReached(tenantId, tenant);
       const err = createError('Branch limit reached', 403);
       err.code = 'branch_limit_reached';
       throw err;
@@ -229,62 +306,7 @@ const createBranch = async (tenantDb, tenantId, data) => {
       gym = await _getOrCreateGym(tenantDb, tenantId);
     }
 
-    if (!Array.isArray(data.packages) || data.packages.length === 0) {
-      throw createError('At least 1 membership package/plan is required to create a branch', 400);
-    }
-
-    const branch = await Branch.create({
-      gymId: gym.id,
-      gymListingId: targetListingId || null,
-      branchName: data.branchName,
-      address: data.address || data.addressLine1 || null,
-      cityId: data.cityId || null,
-      areaId: data.areaId || null,
-      latitude: data.latitude || null,
-      longitude: data.longitude || null,
-      openingTime: data.openingTime || null,
-      closingTime: data.closingTime || null,
-      phone: data.phone || null,
-      facilitiesJson: Array.isArray(data.facilities) ? data.facilities : (data.facilitiesJson || null),
-      imagesJson: Array.isArray(data.images) ? data.images : (data.imagesJson || null),
-      tagline: data.tagline || null,
-      category: data.category || null,
-      description: data.description || null,
-      establishedYear: data.establishedYear ? parseInt(data.establishedYear) : null,
-      floorArea: data.floorArea ? parseInt(data.floorArea) : null,
-      addressLine1: data.addressLine1 || data.address || null,
-      addressLine2: data.addressLine2 || null,
-      postalCode: data.postalCode || null,
-      country: data.country || null,
-      status: 'ACTIVE',
-      travelerVisibilityStatus: 'active',
-    });
-
-    // Create initial membership packages (mandatory: at least 1)
-    const membershipPlanService = require('./membership-plan.service');
-    let createdPlansCount = 0;
-    for (const pkg of data.packages) {
-      if (!pkg.name || pkg.price === undefined || pkg.price === null) continue;
-      try {
-        await membershipPlanService.createPlan(tenantDb, {
-          branchId: branch.id,
-          name: pkg.name,
-          price: pkg.price,
-          durationType: pkg.durationType || 'MONTHLY',
-          durationValue: pkg.durationValue || 1,
-          description: pkg.description || null,
-          isPublic: true,
-        });
-        createdPlansCount++;
-      } catch (pkgErr) {
-        console.warn('[Branch Creation] Package creation error:', pkgErr.message);
-        throw pkgErr;
-      }
-    }
-
-    if (createdPlansCount === 0) {
-      throw createError('Failed to create initial membership plan for branch. At least 1 valid plan is required.', 400);
-    }
+    const branch = await _createBranchRecord(tenantDb, gym, targetListingId, data);
 
     await platformTx.commit();
     return { branch };
@@ -1132,4 +1154,7 @@ module.exports = {
   createStaffUser,
   removeStaffUser,
   checkAndTriggerPendingStaffInvites,
+  _countActiveBranchesForTenant,
+  _createBranchRecord,
+  _getOrCreateGym,
 };

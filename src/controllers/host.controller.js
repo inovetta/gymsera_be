@@ -391,11 +391,29 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
+      const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, address, packages } = req.body;
       if (!gymName) throw createError('gymName is required', 400);
+      if (!Array.isArray(packages) || packages.length === 0) {
+        throw createError('At least 1 membership package/plan is required to create an organization', 400);
+      }
 
       const targetCityId = cityId || tenant.cityId;
       if (!targetCityId) throw createError('cityId is required', 400);
+
+      // Organizations are free to create, but every organization comes with
+      // its own first branch, and branches are what the subscription
+      // actually charges for — so this must be gated by the SAME tenant-wide
+      // branch quota as adding a branch to an existing organization
+      // (gym.service.js#createBranch), checked before anything is created so
+      // a rejected request never leaves behind an organization with no
+      // branch in it.
+      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
+      const usedBranches = await gymService._countActiveBranchesForTenant(req.tenantDb);
+      if (usedBranches >= maxBranches) {
+        const err = createError('Branch limit reached', 403);
+        err.code = 'branch_limit_reached';
+        throw err;
+      }
 
       const listing = await GymListing.create({
         tenantId,
@@ -413,7 +431,7 @@ const createListing = async (req, res, next) => {
       }, { transaction: platformTx });
 
       // Create matching Gym row in the tenant DB
-      await req.tenantDb.models.Gym.create({
+      const gym = await req.tenantDb.models.Gym.create({
         name: gymName,
         description: gymDescription || null,
         contactPhone: contactPhone || tenant.phone || null,
@@ -423,8 +441,27 @@ const createListing = async (req, res, next) => {
         gymListingId: listing.id,
       });
 
+      // This organization's first (and, until it grows, only) branch —
+      // reuses the exact same Branch+membership-plan creation gym.service.js
+      // uses for the standalone "add a branch" flow. Not routed through
+      // gymService.createBranch itself: that function opens its own
+      // platformTx and re-locks the same Tenant row, which would deadlock
+      // against the lock this transaction is already holding.
+      const branch = await gymService._createBranchRecord(req.tenantDb, gym, listing.id, {
+        branchName: gymName,
+        address,
+        addressLine1: address,
+        cityId: targetCityId,
+        areaId,
+        latitude,
+        longitude,
+        phone: contactPhone || tenant.phone || null,
+        images: coverImageUrl ? [coverImageUrl] : [],
+        packages,
+      });
+
       await platformTx.commit();
-      return sendSuccess(res, listing, 'Listing created successfully', 201);
+      return sendSuccess(res, { ...listing.toJSON(), branch }, 'Listing created successfully', 201);
     } catch (err) {
       await platformTx.rollback();
       throw err;
