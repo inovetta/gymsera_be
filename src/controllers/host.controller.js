@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const gymService = require('../services/gym.service');
 const inboxService = require('../services/inbox.service');
 const accessService = require('../services/access.service');
+const subscriptionQuotaService = require('../services/subscription-quota.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 
 const getTodaySummary = async (req, res, next) => {
@@ -202,23 +203,8 @@ const getBranchQuota = async (req, res, next) => {
     const tenant = await Tenant.findByPk(tenantId);
     if (!tenant) throw createError('Tenant not found', 404);
 
-    let maxBranches = 1;
-    const activeSub = await TenantSubscription.findOne({
-      where: { tenantId, status: 'ACTIVE' },
-      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches'] }],
-      order: [['createdAt', 'DESC']],
-    });
-
-    if (activeSub && activeSub.branchCount != null) {
-      // Store-verified (IAP/billing-plan) subscription — see the matching
-      // comment in gym.service.js#createBranch for why .package is null here.
-      maxBranches = activeSub.branchCount;
-    } else if (activeSub && activeSub.package) {
-      maxBranches = activeSub.package.maxBranches;
-    } else if (tenant.selectedPackageId) {
-      const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
-      if (pkg) maxBranches = pkg.maxBranches;
-    }
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
 
     let usedBranches = 0;
     if (tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted) {
@@ -273,27 +259,8 @@ const getOrganizationQuota = async (req, res, next) => {
     const tenant = await Tenant.findByPk(tenantId);
     if (!tenant) throw createError('Tenant not found', 404);
 
-    let maxOrganizations = 1;
-    const activeSub = await TenantSubscription.findOne({
-      where: { tenantId, status: 'ACTIVE' },
-      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxOrganizations'] }],
-      order: [['createdAt', 'DESC']],
-    });
-
-    if (activeSub && activeSub.branchCount != null) {
-      // Store-verified (IAP/billing-plan) subscription. Under this model
-      // organizations are free to create — only total branches count against
-      // the subscription — so there's no separate per-org cap to read here.
-      // branchCount is still a correct, safe upper bound: an organization
-      // needs at least 1 branch to be useful, so a host can never usefully
-      // create more organizations than their total branch entitlement.
-      maxOrganizations = activeSub.branchCount;
-    } else if (activeSub && activeSub.package) {
-      maxOrganizations = activeSub.package.maxOrganizations || 1;
-    } else if (tenant.selectedPackageId) {
-      const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
-      if (pkg) maxOrganizations = pkg.maxOrganizations || 1;
-    }
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub);
 
     const allListings = await GymListing.findAll({
       where: {
@@ -393,21 +360,8 @@ const createListing = async (req, res, next) => {
       }
 
       // Check organization quota and sequential approval gate
-      let maxOrganizations = 1;
-      const activeSub = await TenantSubscription.findOne({
-        where: { tenantId, status: 'ACTIVE' },
-        include: [{ model: PlatformPackage, as: 'package', attributes: ['maxOrganizations'] }],
-        transaction: platformTx,
-      });
-
-      if (activeSub && activeSub.package) {
-        maxOrganizations = activeSub.package.maxOrganizations || 1;
-      } else if (tenant.selectedPackageId) {
-        const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId, {
-          transaction: platformTx,
-        });
-        if (pkg) maxOrganizations = pkg.maxOrganizations || 1;
-      }
+      const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+      const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub, { transaction: platformTx });
 
       const existingListings = await GymListing.findAll({
         where: {

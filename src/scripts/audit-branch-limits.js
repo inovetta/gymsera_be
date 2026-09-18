@@ -1,5 +1,6 @@
 const TenantDbManager = require('../database/TenantDbManager');
-const { Tenant, TenantSubscription, PlatformPackage } = require('../models/platform');
+const { Tenant } = require('../models/platform');
+const subscriptionQuotaService = require('../services/subscription-quota.service');
 
 const audit = async () => {
   console.log('--- Starting Branch Limit Audit ---');
@@ -15,18 +16,8 @@ const audit = async () => {
       }
 
       // 1. Get max branches limit
-      let maxBranches = 1;
-      const activeSub = await TenantSubscription.findOne({
-        where: { tenantId: tenant.id, status: 'ACTIVE' },
-        include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches'] }]
-      });
-
-      if (activeSub && activeSub.package) {
-        maxBranches = activeSub.package.maxBranches;
-      } else if (tenant.selectedPackageId) {
-        const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
-        if (pkg) maxBranches = pkg.maxBranches;
-      }
+      const activeSub = await subscriptionQuotaService.getActiveSubscription(tenant.id);
+      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
 
       // 2. Connect to tenant DB & count active branches
       let usedBranches = 0;

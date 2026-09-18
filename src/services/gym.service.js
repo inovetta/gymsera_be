@@ -1,9 +1,10 @@
 const crypto = require('crypto');
-const { GymListing, Tenant, User, UserGymMembership, TenantSubscription, PlatformPackage, sequelize } = require('../models/platform');
+const { GymListing, Tenant, User, UserGymMembership, sequelize } = require('../models/platform');
 const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
+const subscriptionQuotaService = require('./subscription-quota.service');
 
 const _invoiceNo = () => {
   const d = new Date();
@@ -184,29 +185,8 @@ const createBranch = async (tenantDb, tenantId, data) => {
       if (firstListing) targetListingId = firstListing.id;
     }
 
-    let maxBranches = 1;
-    const activeSub = await TenantSubscription.findOne({
-      where: { tenantId, status: 'ACTIVE' },
-      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches'] }],
-      order: [['createdAt', 'DESC']],
-      transaction: platformTx,
-    });
-
-    if (activeSub && activeSub.branchCount != null) {
-      // Store-verified (IAP/billing-plan) subscription — branchCount is the
-      // real entitlement, snapshotted from BillingPlan at purchase time.
-      // platformPackageId/package are deliberately null on this path (see
-      // TenantSubscription.model.js), so checking .package here would always
-      // miss it and fall through to the legacy 1-branch default.
-      maxBranches = activeSub.branchCount;
-    } else if (activeSub && activeSub.package) {
-      maxBranches = activeSub.package.maxBranches;
-    } else if (tenant.selectedPackageId) {
-      const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId, {
-        transaction: platformTx,
-      });
-      if (pkg) maxBranches = pkg.maxBranches;
-    }
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+    const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
 
     // Count currently active branches in tenant DB for this listing/org
     const usedBranches = await Branch.count({
