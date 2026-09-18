@@ -37,10 +37,25 @@ const connect = async () => {
   await sequelize.authenticate();
   console.log('[Platform DB] Connected');
 
+  // These migrations are expected to fail with a "duplicate column" /
+  // "already exists"-style error on every boot after the first — that's
+  // normal and stays silent. Any OTHER failure (wrong privileges, an FK
+  // blocking a MODIFY, a syntax difference on this MySQL version) must not
+  // vanish the way it used to: a swallowed failure here once left
+  // platform_package_id NOT NULL for weeks with zero signal, until a real
+  // purchase hit it in production.
+  const _logIfUnexpected = (label, err) => {
+    const msg = (err.original?.sqlMessage || err.message || '').toLowerCase();
+    const benign = msg.includes('duplicate column') || msg.includes('duplicate key name') || msg.includes('already exists');
+    if (!benign) console.warn(`[Platform DB] Migration step "${label}" failed unexpectedly:`, err.original?.sqlMessage || err.message);
+  };
+
   // Ensure apple_id column exists on users table
   try {
     await sequelize.query('ALTER TABLE `users` ADD COLUMN `apple_id` VARCHAR(100) NULL;');
-  } catch (_) {}
+  } catch (err) {
+    _logIfUnexpected('users.apple_id', err);
+  }
 
   // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
   // store-verified-purchase columns. Additive and idempotent — safe to run on
@@ -70,7 +85,9 @@ const connect = async () => {
         INDEX billing_plans_is_active (is_active)
       );
     `);
-  } catch (_) {}
+  } catch (err) {
+    _logIfUnexpected('CREATE TABLE billing_plans', err);
+  }
   try {
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS billing_offers (
@@ -94,10 +111,14 @@ const connect = async () => {
         INDEX billing_offers_platform (platform)
       );
     `);
-  } catch (_) {}
+  } catch (err) {
+    _logIfUnexpected('CREATE TABLE billing_offers', err);
+  }
   try {
     await sequelize.query('ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `platform_package_id` CHAR(36) NULL;');
-  } catch (_) {}
+  } catch (err) {
+    _logIfUnexpected('tenant_subscriptions.platform_package_id -> NULL', err);
+  }
   const tenantSubBillingColumns = [
     "ADD COLUMN `billing_plan_id` CHAR(36) NULL",
     "ADD COLUMN `platform` ENUM('MANUAL','IOS','ANDROID','STRIPE') NOT NULL DEFAULT 'MANUAL'",
@@ -111,13 +132,17 @@ const connect = async () => {
   for (const clause of tenantSubBillingColumns) {
     try {
       await sequelize.query(`ALTER TABLE \`tenant_subscriptions\` ${clause};`);
-    } catch (_) {}
+    } catch (err) {
+      _logIfUnexpected(`tenant_subscriptions ${clause}`, err);
+    }
   }
   try {
     await sequelize.query(
       'ALTER TABLE `tenant_subscriptions` ADD INDEX `tenant_subscriptions_external_original_transaction_id` (`external_original_transaction_id`);'
     );
-  } catch (_) {}
+  } catch (err) {
+    _logIfUnexpected('tenant_subscriptions external_original_transaction_id index', err);
+  }
 
   // Seed the branch-count pricing staircase — real production data, not
   // sample content, so this runs in every environment (unlike the dev-only
