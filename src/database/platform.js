@@ -29,6 +29,82 @@ const sequelize = new Sequelize(database, username, password, {
 });
 
 /**
+ * Migrations below are expected to fail with a "duplicate column" /
+ * "already exists"-style error on every boot after the first — that's
+ * normal and stays silent. Any OTHER failure (wrong privileges, an FK
+ * blocking a MODIFY, a syntax difference on this MySQL version) must not
+ * vanish the way it used to: a swallowed failure here once left
+ * platform_package_id NOT NULL for weeks with zero signal, until a real
+ * purchase hit it in production.
+ */
+const _logIfUnexpected = (label, err) => {
+  const msg = (err.original?.sqlMessage || err.message || '').toLowerCase();
+  const benign = msg.includes('duplicate column') || msg.includes('duplicate key name') || msg.includes('already exists');
+  if (!benign) console.warn(`[Platform DB] Migration step "${label}" failed unexpectedly:`, err.original?.sqlMessage || err.message);
+};
+
+/**
+ * MySQL refuses a plain MODIFY COLUMN on a column that's part of a foreign
+ * key ("Cannot change column 'x': used in a foreign key constraint") — seen
+ * live on the platform_package_id column, which some deployments have an FK
+ * on and some don't (it was added before FKs were consistently used here).
+ * When that happens: look up the FK's exact definition (referenced table/
+ * column, ON DELETE/ON UPDATE rules) via information_schema, drop it, apply
+ * the column change, then recreate the FK identically — never regenerate it
+ * with default rules, which would silently weaken referential integrity if
+ * the original had CASCADE/SET NULL. If a database has no FK on this column
+ * at all, the plain MODIFY just succeeds on the first try and none of this
+ * runs.
+ */
+const _makeColumnNullableAroundForeignKey = async (sequelize, { table, column, columnType, logLabel }) => {
+  const plainAlter = `ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ${columnType} NULL;`;
+  try {
+    await sequelize.query(plainAlter);
+    return;
+  } catch (err) {
+    const msg = err.original?.sqlMessage || err.message || '';
+    if (!/foreign key constraint/i.test(msg)) {
+      _logIfUnexpected(logLabel, err);
+      return;
+    }
+  }
+
+  // Column change failed because of an FK — find it and work around it.
+  try {
+    const [fkRows] = await sequelize.query(
+      `SELECT kcu.CONSTRAINT_NAME, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME,
+              rc.UPDATE_RULE, rc.DELETE_RULE
+       FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+       JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+         ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+       WHERE kcu.TABLE_SCHEMA = DATABASE() AND kcu.TABLE_NAME = ? AND kcu.COLUMN_NAME = ?
+         AND kcu.REFERENCED_TABLE_NAME IS NOT NULL`,
+      { replacements: [table, column] }
+    );
+
+    if (fkRows.length === 0) {
+      console.warn(`[Platform DB] Migration step "${logLabel}" failed with an FK error but no FK was found via information_schema — leaving as-is.`);
+      return;
+    }
+
+    const fk = fkRows[0];
+    await sequelize.query(`ALTER TABLE \`${table}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\`;`);
+    await sequelize.query(plainAlter);
+    await sequelize.query(
+      `ALTER TABLE \`${table}\` ADD CONSTRAINT \`${fk.CONSTRAINT_NAME}\` FOREIGN KEY (\`${column}\`) ` +
+        `REFERENCES \`${fk.REFERENCED_TABLE_NAME}\` (\`${fk.REFERENCED_COLUMN_NAME}\`) ` +
+        `ON DELETE ${fk.DELETE_RULE} ON UPDATE ${fk.UPDATE_RULE};`
+    );
+    console.log(`[Platform DB] Migration step "${logLabel}" succeeded after dropping/recreating FK "${fk.CONSTRAINT_NAME}".`);
+  } catch (err2) {
+    console.error(
+      `[Platform DB] Migration step "${logLabel}" failed while working around its foreign key — ` +
+        `check whether the FK is still in place: ${err2.original?.sqlMessage || err2.message}`
+    );
+  }
+};
+
+/**
  * Authenticate and sync the platform database.
  * In development, uses `alter: true` to keep schema in sync with model changes.
  * In production, `sync` is a no-op — use migrations.
@@ -36,19 +112,6 @@ const sequelize = new Sequelize(database, username, password, {
 const connect = async () => {
   await sequelize.authenticate();
   console.log('[Platform DB] Connected');
-
-  // These migrations are expected to fail with a "duplicate column" /
-  // "already exists"-style error on every boot after the first — that's
-  // normal and stays silent. Any OTHER failure (wrong privileges, an FK
-  // blocking a MODIFY, a syntax difference on this MySQL version) must not
-  // vanish the way it used to: a swallowed failure here once left
-  // platform_package_id NOT NULL for weeks with zero signal, until a real
-  // purchase hit it in production.
-  const _logIfUnexpected = (label, err) => {
-    const msg = (err.original?.sqlMessage || err.message || '').toLowerCase();
-    const benign = msg.includes('duplicate column') || msg.includes('duplicate key name') || msg.includes('already exists');
-    if (!benign) console.warn(`[Platform DB] Migration step "${label}" failed unexpectedly:`, err.original?.sqlMessage || err.message);
-  };
 
   // Ensure apple_id column exists on users table
   try {
@@ -114,11 +177,12 @@ const connect = async () => {
   } catch (err) {
     _logIfUnexpected('CREATE TABLE billing_offers', err);
   }
-  try {
-    await sequelize.query('ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `platform_package_id` CHAR(36) NULL;');
-  } catch (err) {
-    _logIfUnexpected('tenant_subscriptions.platform_package_id -> NULL', err);
-  }
+  await _makeColumnNullableAroundForeignKey(sequelize, {
+    table: 'tenant_subscriptions',
+    column: 'platform_package_id',
+    columnType: 'CHAR(36)',
+    logLabel: 'tenant_subscriptions.platform_package_id -> NULL',
+  });
   const tenantSubBillingColumns = [
     "ADD COLUMN `billing_plan_id` CHAR(36) NULL",
     "ADD COLUMN `platform` ENUM('MANUAL','IOS','ANDROID','STRIPE') NOT NULL DEFAULT 'MANUAL'",
@@ -281,4 +345,4 @@ const connect = async () => {
   }
 };
 
-module.exports = { sequelize, connect };
+module.exports = { sequelize, connect, _makeColumnNullableAroundForeignKey };
