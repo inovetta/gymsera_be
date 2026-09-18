@@ -28,6 +28,8 @@ const Conversation = require('./Conversation.model')(sequelize);
 const Message = require('./Message.model')(sequelize);
 const DeviceToken = require('./DeviceToken.model')(sequelize);
 const UserOrgIndex = require('./UserOrgIndex.model')(sequelize);
+const BillingPlan = require('./BillingPlan.model')(sequelize);
+const BillingOffer = require('./BillingOffer.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -100,9 +102,13 @@ Tenant.hasOne(GymListing, { foreignKey: 'tenantId', as: 'gymListing' });
 Tenant.hasMany(GymListing, { foreignKey: 'tenantId', as: 'gymListings' });
 GymListing.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 
-// PlatformPackage ↔ TenantSubscription
+// PlatformPackage ↔ TenantSubscription (legacy manual/Enterprise path only)
 PlatformPackage.hasMany(TenantSubscription, { foreignKey: 'platformPackageId', as: 'tenantSubscriptions' });
 TenantSubscription.belongsTo(PlatformPackage, { foreignKey: 'platformPackageId', as: 'package' });
+
+// BillingPlan ↔ TenantSubscription (real store-verified purchases)
+BillingPlan.hasMany(TenantSubscription, { foreignKey: 'billingPlanId', as: 'tenantSubscriptions' });
+TenantSubscription.belongsTo(BillingPlan, { foreignKey: 'billingPlanId', as: 'billingPlan' });
 
 // Tenant ↔ PlatformInvoice
 Tenant.hasMany(PlatformInvoice, { foreignKey: 'tenantId', as: 'platformInvoices' });
@@ -177,4 +183,6 @@ module.exports = {
   Message,
   DeviceToken,
   UserOrgIndex,
+  BillingPlan,
+  BillingOffer,
 };

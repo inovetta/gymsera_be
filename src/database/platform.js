@@ -42,6 +42,115 @@ const connect = async () => {
     await sequelize.query('ALTER TABLE `users` ADD COLUMN `apple_id` VARCHAR(100) NULL;');
   } catch (_) {}
 
+  // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
+  // store-verified-purchase columns. Additive and idempotent — safe to run on
+  // every boot, in every environment, same as the block above. See
+  // BillingPlan.model.js / BillingOffer.model.js / TenantSubscription.model.js
+  // for what each column is for.
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS billing_plans (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        branch_count INT NOT NULL,
+        ios_monthly_product_id VARCHAR(150) NULL,
+        ios_annual_product_id VARCHAR(150) NULL,
+        android_product_id VARCHAR(150) NULL,
+        android_monthly_base_plan_id VARCHAR(150) NULL,
+        android_annual_base_plan_id VARCHAR(150) NULL,
+        stripe_monthly_price_id VARCHAR(150) NULL,
+        stripe_annual_price_id VARCHAR(150) NULL,
+        monthly_price DECIMAL(12,2) NOT NULL,
+        annual_price DECIMAL(12,2) NOT NULL,
+        currency VARCHAR(3) NOT NULL DEFAULT 'PKR',
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL,
+        INDEX billing_plans_branch_count (branch_count),
+        INDEX billing_plans_is_active (is_active)
+      );
+    `);
+  } catch (_) {}
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS billing_offers (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        name VARCHAR(150) NOT NULL,
+        description TEXT NULL,
+        discount_type ENUM('PERCENTAGE','FIXED_AMOUNT','FREE_PERIOD') NOT NULL,
+        discount_value DECIMAL(12,2) NOT NULL,
+        applies_to_branch_min INT NULL,
+        applies_to_branch_max INT NULL,
+        platform ENUM('ALL','IOS','ANDROID','WEB') NOT NULL DEFAULT 'ALL',
+        apple_offer_id VARCHAR(150) NULL,
+        android_offer_id VARCHAR(150) NULL,
+        stripe_coupon_id VARCHAR(150) NULL,
+        valid_from DATETIME NULL,
+        valid_until DATETIME NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL,
+        INDEX billing_offers_is_active (is_active),
+        INDEX billing_offers_platform (platform)
+      );
+    `);
+  } catch (_) {}
+  try {
+    await sequelize.query('ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `platform_package_id` CHAR(36) NULL;');
+  } catch (_) {}
+  const tenantSubBillingColumns = [
+    "ADD COLUMN `billing_plan_id` CHAR(36) NULL",
+    "ADD COLUMN `platform` ENUM('MANUAL','IOS','ANDROID','STRIPE') NOT NULL DEFAULT 'MANUAL'",
+    "ADD COLUMN `branch_count` INT NULL",
+    "ADD COLUMN `product_id` VARCHAR(150) NULL",
+    "ADD COLUMN `external_original_transaction_id` VARCHAR(150) NULL",
+    "ADD COLUMN `external_transaction_id` VARCHAR(150) NULL",
+    "ADD COLUMN `environment` ENUM('SANDBOX','PRODUCTION') NULL",
+    "ADD COLUMN `last_verified_at` DATETIME NULL",
+  ];
+  for (const clause of tenantSubBillingColumns) {
+    try {
+      await sequelize.query(`ALTER TABLE \`tenant_subscriptions\` ${clause};`);
+    } catch (_) {}
+  }
+  try {
+    await sequelize.query(
+      'ALTER TABLE `tenant_subscriptions` ADD INDEX `tenant_subscriptions_external_original_transaction_id` (`external_original_transaction_id`);'
+    );
+  } catch (_) {}
+
+  // Seed the branch-count pricing staircase — real production data, not
+  // sample content, so this runs in every environment (unlike the dev-only
+  // block below). Only ever inserts; never overwrites a row a human has
+  // since edited (e.g. after correcting a price to what the store actually
+  // accepted — see BillingPlan.model.js's per-platform product ID columns).
+  try {
+    const { BillingPlan } = require('../models/platform');
+    const existing = await BillingPlan.count();
+    if (existing === 0) {
+      const iosAnnualPrices = {
+        1: 47999, 2: 95900, 3: 144900, 4: 189999, 5: 239900,
+        6: 289900, 7: 300000, 8: 300000, 9: 300000, 10: 300000,
+      };
+      const rows = [];
+      for (let n = 1; n <= 10; n++) {
+        rows.push({
+          branchCount: n,
+          iosMonthlyProductId: `branches_${n}_monthly`,
+          iosAnnualProductId: `branches_${n}_annual`,
+          monthlyPrice: n * 5000,
+          annualPrice: iosAnnualPrices[n],
+          currency: 'PKR',
+          sortOrder: n,
+        });
+      }
+      await BillingPlan.bulkCreate(rows);
+      console.log('[Platform DB] Seeded billing_plans (branches 1-10, iOS product IDs).');
+    }
+  } catch (seedErr) {
+    console.warn('[Platform DB] BillingPlan seed skipped:', seedErr.message);
+  }
+
   if (process.env.NODE_ENV === 'development' && !process.env.VERCEL) {
     // Lazy-load models to ensure they're registered before sync
     require('../models/platform');

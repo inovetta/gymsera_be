@@ -6,3 +6,6 @@ dist/
 coverage/
 *.log
 .DS_Store
+
+# App Store Connect API private keys — never committed.
+*.p8
