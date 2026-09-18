@@ -205,10 +205,15 @@ const getBranchQuota = async (req, res, next) => {
     let maxBranches = 1;
     const activeSub = await TenantSubscription.findOne({
       where: { tenantId, status: 'ACTIVE' },
-      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches'] }]
+      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches'] }],
+      order: [['createdAt', 'DESC']],
     });
 
-    if (activeSub && activeSub.package) {
+    if (activeSub && activeSub.branchCount != null) {
+      // Store-verified (IAP/billing-plan) subscription — see the matching
+      // comment in gym.service.js#createBranch for why .package is null here.
+      maxBranches = activeSub.branchCount;
+    } else if (activeSub && activeSub.package) {
       maxBranches = activeSub.package.maxBranches;
     } else if (tenant.selectedPackageId) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
@@ -271,10 +276,19 @@ const getOrganizationQuota = async (req, res, next) => {
     let maxOrganizations = 1;
     const activeSub = await TenantSubscription.findOne({
       where: { tenantId, status: 'ACTIVE' },
-      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxOrganizations'] }]
+      include: [{ model: PlatformPackage, as: 'package', attributes: ['maxOrganizations'] }],
+      order: [['createdAt', 'DESC']],
     });
 
-    if (activeSub && activeSub.package) {
+    if (activeSub && activeSub.branchCount != null) {
+      // Store-verified (IAP/billing-plan) subscription. Under this model
+      // organizations are free to create — only total branches count against
+      // the subscription — so there's no separate per-org cap to read here.
+      // branchCount is still a correct, safe upper bound: an organization
+      // needs at least 1 branch to be useful, so a host can never usefully
+      // create more organizations than their total branch entitlement.
+      maxOrganizations = activeSub.branchCount;
+    } else if (activeSub && activeSub.package) {
       maxOrganizations = activeSub.package.maxOrganizations || 1;
     } else if (tenant.selectedPackageId) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);

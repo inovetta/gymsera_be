@@ -188,10 +188,18 @@ const createBranch = async (tenantDb, tenantId, data) => {
     const activeSub = await TenantSubscription.findOne({
       where: { tenantId, status: 'ACTIVE' },
       include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches'] }],
+      order: [['createdAt', 'DESC']],
       transaction: platformTx,
     });
 
-    if (activeSub && activeSub.package) {
+    if (activeSub && activeSub.branchCount != null) {
+      // Store-verified (IAP/billing-plan) subscription — branchCount is the
+      // real entitlement, snapshotted from BillingPlan at purchase time.
+      // platformPackageId/package are deliberately null on this path (see
+      // TenantSubscription.model.js), so checking .package here would always
+      // miss it and fall through to the legacy 1-branch default.
+      maxBranches = activeSub.branchCount;
+    } else if (activeSub && activeSub.package) {
       maxBranches = activeSub.package.maxBranches;
     } else if (tenant.selectedPackageId) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId, {
