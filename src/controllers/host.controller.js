@@ -6,6 +6,7 @@ const gymService = require('../services/gym.service');
 const inboxService = require('../services/inbox.service');
 const accessService = require('../services/access.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
+const storageService = require('../services/storage.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 
 const getTodaySummary = async (req, res, next) => {
@@ -331,6 +332,35 @@ const getListings = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /host/listings/staging-images
+ *
+ * Uploads photos to storage and hands back their URLs — nothing else.
+ * Deliberately writes to no database field at all. This exists specifically
+ * for the "create a new organization" wizard: the organization (and its
+ * first branch, which is what the photos actually belong to) doesn't exist
+ * yet while the host is still filling out the form, so there's no real
+ * entity to attach photos to until createListing runs. Reusing the
+ * tenant-level onboarding-images staging field here (as this briefly did)
+ * was wrong — that field is a single shared blob for the whole tenant, so a
+ * second organization's photos ended up merged with the first organization's
+ * already-live photos. Each call here is independent and stateless;
+ * whatever URLs the client collects across calls, it holds client-side and
+ * sends as `images` to createListing itself.
+ */
+const uploadListingStagingImages = async (req, res, next) => {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw createError('Tenant not found', 404);
+    if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
+
+    const urls = await storageService.uploadImages(req.files, `hosts/${tenantId}/organizations/staging`);
+    return sendSuccess(res, { urls }, 'Images uploaded');
+  } catch (err) {
+    next(err);
+  }
+};
+
 const createListing = async (req, res, next) => {
   try {
     const tenantId = req.user.tenantId;
@@ -391,7 +421,7 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, address, packages } = req.body;
+      const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, address, packages, images } = req.body;
       if (!gymName) throw createError('gymName is required', 400);
       if (!Array.isArray(packages) || packages.length === 0) {
         throw createError('At least 1 membership package/plan is required to create an organization', 400);
@@ -456,7 +486,9 @@ const createListing = async (req, res, next) => {
         latitude,
         longitude,
         phone: contactPhone || tenant.phone || null,
-        images: coverImageUrl ? [coverImageUrl] : [],
+        images: Array.isArray(images) && images.length > 0
+          ? images
+          : (coverImageUrl ? [coverImageUrl] : []),
         packages,
       });
 
@@ -1218,6 +1250,7 @@ module.exports = {
   getBranchQuota,
   getOrganizationQuota,
   getListings,
+  uploadListingStagingImages,
   createListing,
   updateListing,
   getCurrentSubscription,

@@ -7,6 +7,7 @@ const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
 const gymsValidators = require('../validators/gyms.validator');
 const validate = require('../middleware/validate');
+const upload = require('../middleware/upload');
 
 const router = Router();
 
@@ -26,6 +27,14 @@ router.get('/today-summary', authenticate, authorize('GYM_HOST'), hostController
 router.get('/branch-quota', authenticate, authorize('GYM_HOST'), hostController.getBranchQuota);
 router.get('/organization-quota', authenticate, authorize('GYM_HOST'), hostController.getOrganizationQuota);
 router.get('/listings', authenticate, authorize('GYM_HOST'), hostController.getListings);
+router.post(
+  '/listings/staging-images',
+  authenticate,
+  authorize('GYM_HOST'),
+  upload.images('images', 10),
+  upload.handleMulterError,
+  hostController.uploadListingStagingImages
+);
 router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, hostController.createListing);
 router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, hostController.updateListing);
 router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, hostController.updateListing);
