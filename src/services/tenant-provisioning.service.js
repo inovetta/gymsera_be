@@ -352,6 +352,23 @@ const processTenantProvisioning = async (tenantId) => {
             const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
             const extraSlots = maxBranches - 1; // 1 branch was just built above
             if (extraSlots > 0) {
+              // A fresh GymListing always starts at reservedSlots: 0 (model
+              // default) and this only ever runs once, during this org's own
+              // creation — nothing else could have touched it yet.
+              await subscriptionQuotaService.recordCapacityEvent(
+                {
+                  tenantId,
+                  listingId,
+                  action: 'SLOT_ATTRIBUTED_UPGRADE',
+                  delta: extraSlots,
+                  reservedSlotsBefore: 0,
+                  reservedSlotsAfter: extraSlots,
+                  actorType: 'SYSTEM',
+                  reason: `Initial provisioning: ${extraSlots} unbuilt slot(s) from a ${maxBranches}-branch plan attributed to the host's first organization`,
+                  idempotencyKey: `slot_attribute_provisioning:${listingId}`,
+                },
+                { transaction: null }
+              );
               await GymListing.update({ reservedSlots: extraSlots }, { where: { id: listingId } });
               console.log(`[Provisioning] Attributed ${extraSlots} unbuilt slot(s) to GymListing ${listingId}`);
             }

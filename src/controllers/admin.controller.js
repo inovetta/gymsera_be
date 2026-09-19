@@ -86,7 +86,12 @@ const getTenantBranches = async (req, res, next) => {
 // ── PATCH /admin/tenants/:id/branches/:branchId/status ───────────────────────
 const updateTenantBranchStatus = async (req, res, next) => {
   try {
-    const result = await adminService.updateTenantBranchStatus(req.params.id, req.params.branchId, req.body.status);
+    const result = await adminService.updateTenantBranchStatus(
+      req.params.id,
+      req.params.branchId,
+      req.body.status,
+      req.user.sub || req.user.id
+    );
     return sendSuccess(res, result, 'Branch status updated.');
   } catch (err) {
     next(err);
@@ -316,14 +321,14 @@ const deleteGymListingImage = async (req, res, next) => {
 // ── Admin branch management ───────────────────────────────────────────────────
 const createAdminTenantBranch = async (req, res, next) => {
   try {
-    const result = await adminService.createAdminTenantBranch(req.params.id, req.body);
+    const result = await adminService.createAdminTenantBranch(req.params.id, req.body, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch created', 201);
   } catch (err) { next(err); }
 };
 
 const updateAdminTenantBranch = async (req, res, next) => {
   try {
-    const result = await adminService.updateAdminTenantBranch(req.params.id, req.params.branchId, req.body);
+    const result = await adminService.updateAdminTenantBranch(req.params.id, req.params.branchId, req.body, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch updated');
   } catch (err) { next(err); }
 };

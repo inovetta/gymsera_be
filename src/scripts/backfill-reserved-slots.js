@@ -50,6 +50,20 @@ const subscriptionQuotaService = require('../services/subscription-quota.service
 
         if (unattributed > 0) {
           const target = listings[0]; // oldest organization — where the original purchase happened
+          await subscriptionQuotaService.recordCapacityEvent(
+            {
+              tenantId: tenant.id,
+              listingId: target.id,
+              action: 'SLOT_ATTRIBUTED_UPGRADE',
+              delta: unattributed,
+              reservedSlotsBefore: target.reservedSlots,
+              reservedSlotsAfter: target.reservedSlots + unattributed,
+              actorType: 'SYSTEM',
+              reason: `Backfill: ${unattributed} previously-unattributed slot(s) found and attributed to oldest organization`,
+              idempotencyKey: `slot_attribute_backfill:${tenant.id}:${target.id}:${require('crypto').randomUUID()}`,
+            },
+            { transaction: null }
+          );
           await target.increment('reservedSlots', { by: unattributed });
           console.log(`[Backfill] Tenant ${tenant.businessName || tenant.id}: attributed ${unattributed} slot(s) to "${target.title}" (${target.id})`);
           updated++;

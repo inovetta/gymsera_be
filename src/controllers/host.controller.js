@@ -496,6 +496,28 @@ const createListing = async (req, res, next) => {
         reservedSlots: branchSource === 'reserve' ? 1 : 0,
       }, { transaction: platformTx });
 
+      if (branchSource === 'reserve') {
+        // Drawing 1 unit of already-available tenant-wide capacity (checked
+        // above) into this brand-new organization as an unbuilt slot — same
+        // shape as any other slot attribution, so it gets the same audit
+        // trail treatment.
+        await subscriptionQuotaService.recordCapacityEvent(
+          {
+            tenantId,
+            listingId: listing.id,
+            action: 'SLOT_ATTRIBUTED_UPGRADE',
+            delta: 1,
+            reservedSlotsBefore: 0,
+            reservedSlotsAfter: 1,
+            actorUserId: req.user.sub || req.user.id,
+            actorType: 'HOST',
+            reason: `Organization "${gymName}" created with a reserved slot (build later)`,
+            idempotencyKey: `slot_attribute_reserve:${listing.id}`,
+          },
+          { transaction: platformTx }
+        );
+      }
+
       // Every organization gets its own Gym row immediately, regardless of
       // branchSource — gym.service.js#_getOrCreateGym's fallback (used when
       // building a branch into an organization with no dedicated Gym row
@@ -749,6 +771,27 @@ const upgradeSubscription = async (req, res, next) => {
 
     const tenant = await Tenant.findByPk(tenantId);
     if (!tenant) throw createError('Tenant not found', 404);
+
+    // This is the legacy manual/PlatformPackage path (bank transfer / pay-
+    // later, from before store-verified IAP billing existed) — it has no
+    // concept of reservedSlots or overQuotaCount and never calls
+    // reconcileCapacity. Found during a final capacity-path audit: a host
+    // already on a store-verified plan (branchCount set) who reached this
+    // endpoint would have their IAP subscription cancelled and replaced by
+    // a legacy one with a completely different, unreconciled branch limit —
+    // silently orphaning any reservedSlots and leaving a real over-capacity
+    // state with no overQuotaCount ever set to reflect it. Blocked outright
+    // rather than taught to reconcile a transition the product doesn't
+    // otherwise support self-serve.
+    const existingActiveSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    if (existingActiveSub && existingActiveSub.branchCount != null) {
+      const err = createError(
+        'Your plan is managed through the app\'s in-app purchase — upgrade or change your branch count from there instead.',
+        409
+      );
+      err.code = 'iap_subscription_active';
+      throw err;
+    }
 
     // Cancel existing subscriptions
     await TenantSubscription.update(
