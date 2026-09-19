@@ -351,6 +351,14 @@ const getBranch = async (tenantDb, branchId) => {
  * target organization's own Gym row: Branch.gymId must always match the
  * organization it's actually in, the same reason every organization gets
  * its own Gym row immediately at creation (host.controller.js#createListing).
+ *
+ * Also keeps GymListing.branchId (the "primary branch" pointer discovery,
+ * inbox, and membership-plan defaults all read) in sync on both ends —
+ * this was the actual bug behind a moved branch appearing to show up under
+ * both its old and new organization at once: the branch's own gymListingId
+ * was correctly updated, but the OLD listing's branchId kept pointing at
+ * it, a second, unsynchronized "which branch is this" reference that never
+ * agreed with the first once branches could move between organizations.
  */
 const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
   const { Branch } = tenantDb.models;
@@ -358,7 +366,8 @@ const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
   if (!branch || branch.status !== 'ACTIVE') {
     throw createError('Branch not found', 404);
   }
-  if (branch.gymListingId === targetListingId) {
+  const sourceListingId = branch.gymListingId;
+  if (sourceListingId === targetListingId) {
     return { branch };
   }
 
@@ -373,6 +382,25 @@ const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
   }
 
   await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
+
+  // The source listing's branchId pointer, if it was pointing at this
+  // branch, is now stale — reassign it to another branch still left there,
+  // or clear it if this was the last one.
+  if (sourceListingId) {
+    const sourceListing = await GymListing.findOne({ where: { id: sourceListingId, tenantId } });
+    if (sourceListing && sourceListing.branchId === branchId) {
+      const remainingBranch = await Branch.findOne({ where: { gymListingId: sourceListingId, status: 'ACTIVE' } });
+      await sourceListing.update({ branchId: remainingBranch ? remainingBranch.id : null });
+    }
+  }
+
+  // The target listing may never have had a primary branch (e.g. it was
+  // created bare and had a branch moved into it) — give it one now rather
+  // than leaving branchId null while it visibly has a real branch.
+  if (!targetListing.branchId) {
+    await targetListing.update({ branchId: branch.id });
+  }
+
   return { branch };
 };
 
@@ -579,7 +607,15 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
       if (!targetGym) targetGym = await _getOrCreateGym(tenantDb, tenantId);
 
       for (const branch of branches) {
+        // eslint-disable-next-line no-await-in-loop
         await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
+      }
+      // Give the target a primary-branch pointer if it never had one — same
+      // reasoning as moveBranch above. The source is about to be marked
+      // INACTIVE below, so its own (now-stale) branchId doesn't need
+      // reassigning here the way moveBranch does for a live organization.
+      if (!target.branchId && branches.length > 0) {
+        await target.update({ branchId: branches[0].id });
       }
       if (listing.reservedSlots > 0) {
         await target.increment('reservedSlots', { by: listing.reservedSlots });
