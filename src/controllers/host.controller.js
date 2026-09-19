@@ -308,11 +308,13 @@ const getOrganizationQuota = async (req, res, next) => {
     }
 
     const remainingOrganizations = Math.max(0, maxOrganizations - usedOrganizations);
+    const hasOrganizationLimit = maxOrganizations !== subscriptionQuotaService.UNLIMITED_ORGANIZATIONS;
 
     return sendSuccess(res, {
       maxOrganizations,
       usedOrganizations,
       remainingOrganizations,
+      hasOrganizationLimit,
       canCreateNext,
       blockingListingStatus,
       blockingOrganizationStatus: blockingListingStatus,

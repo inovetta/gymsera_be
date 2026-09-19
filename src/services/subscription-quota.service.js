@@ -50,17 +50,25 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
   return 1; // legacy default, matches every pre-billing-plan tenant
 };
 
+// JSON-safe stand-in for "no limit" — Infinity itself serializes to `null`
+// over JSON (sendSuccess(res, {...}) would ship maxOrganizations: null,
+// which the Flutter side would then default back down to 1, the opposite
+// of what this is supposed to mean), so a very large finite number is used
+// instead. Never compared against anything real; existingListings.length is
+// never going to approach it.
+const UNLIMITED_ORGANIZATIONS = Number.MAX_SAFE_INTEGER;
+
 /**
  * Max organizations (GymListings) this tenant may create. Under the IAP
- * branch-count pricing model, organizations are free — only total branches
- * count against the subscription — so branchCount is used as a safe upper
- * bound: an organization needs at least 1 branch to be useful, so a host can
- * never usefully create more organizations than their total branch
- * entitlement anyway.
+ * branch-count pricing model, organizations are genuinely free — creating
+ * one costs nothing and consumes no capacity by itself (only building a
+ * real branch into it does) — so there's no cap here at all for that path.
+ * The legacy manual/PlatformPackage path still enforces whatever that
+ * package's real maxOrganizations was.
  */
 const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) => {
   if (activeSub && activeSub.branchCount != null) {
-    return activeSub.branchCount;
+    return UNLIMITED_ORGANIZATIONS;
   }
   if (activeSub && activeSub.package) {
     return activeSub.package.maxOrganizations || 1;
@@ -96,4 +104,4 @@ const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
   return activeBranches + (reservedTotal || 0);
 };
 
-module.exports = { getActiveSubscription, resolveMaxBranches, resolveMaxOrganizations, getUsedCapacity };
+module.exports = { getActiveSubscription, resolveMaxBranches, resolveMaxOrganizations, getUsedCapacity, UNLIMITED_ORGANIZATIONS };
