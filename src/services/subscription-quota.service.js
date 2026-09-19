@@ -1,4 +1,4 @@
-const { TenantSubscription, PlatformPackage } = require('../models/platform');
+const { TenantSubscription, PlatformPackage, GymListing } = require('../models/platform');
 
 /**
  * Single source of truth for "what does this tenant's active subscription
@@ -71,4 +71,24 @@ const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) 
   return 1;
 };
 
-module.exports = { getActiveSubscription, resolveMaxBranches, resolveMaxOrganizations };
+/**
+ * How much of the tenant's branch-count subscription is already spoken for
+ * — real ACTIVE branches (tenant DB, one shared pool across every
+ * organization) plus every organization's reservedSlots (platform DB, units
+ * earmarked but not yet built). Both count against the same total; a
+ * reserved slot that later gets built increments the branch count and
+ * decrements reservedSlots in the same operation, so this sum never double-
+ * counts it. This is what every capacity check (createBranch, createListing,
+ * getBranchQuota, reserving/moving a slot) must compare against maxBranches
+ * — never just the raw active-branch count, which alone would let a host's
+ * unbuilt reservations silently vanish from enforcement.
+ */
+const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
+  const [activeBranches, reservedTotal] = await Promise.all([
+    tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }),
+    GymListing.sum('reservedSlots', { where: { tenantId }, transaction }),
+  ]);
+  return activeBranches + (reservedTotal || 0);
+};
+
+module.exports = { getActiveSubscription, resolveMaxBranches, resolveMaxOrganizations, getUsedCapacity };

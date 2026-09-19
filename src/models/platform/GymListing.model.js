@@ -113,6 +113,22 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'DRAFT',
       },
+      // Units of the tenant's branch-count subscription earmarked for this
+      // organization but not yet built into a real Branch — e.g. a host buys
+      // a 2-branch plan, builds 1 branch immediately, and the other unit sits
+      // here until they either build it (gym.service.js#createBranch consumes
+      // one reservedSlot instead of fresh capacity when this org has any) or
+      // move it to a different organization. Deliberately just a count, not
+      // individually-tracked rows: an unbuilt slot has no branchName/address/
+      // anything yet to distinguish one from another, and every real branch
+      // already lives in a separate per-tenant database — adding a new
+      // "unbuilt" status there would mean a schema migration across every
+      // tenant's database for a distinction that carries no real data.
+      reservedSlots: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
       rejectionReason: {
         type: DataTypes.TEXT,
         allowNull: true,

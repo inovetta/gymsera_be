@@ -285,15 +285,29 @@ const createBranch = async (tenantDb, tenantId, data) => {
       if (firstListing) targetListingId = firstListing.id;
     }
 
-    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
-    const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-    const usedBranches = await _countActiveBranchesForTenant(tenantDb);
+    // Building into an organization that already has a reserved (paid,
+    // unbuilt) slot converts that reservation into a real branch — it
+    // doesn't consume any NEW capacity, since that unit was already counted
+    // as used the moment it was reserved (see subscription-quota.service.js
+    // #getUsedCapacity). Only check fresh capacity when there's no
+    // reservation to draw on.
+    let targetListing = null;
+    if (targetListingId) {
+      targetListing = await GymListing.findByPk(targetListingId, { lock: true, transaction: platformTx });
+    }
+    const consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
 
-    if (usedBranches >= maxBranches) {
-      await _notifyBranchLimitReached(tenantId, tenant);
-      const err = createError('Branch limit reached', 403);
-      err.code = 'branch_limit_reached';
-      throw err;
+    if (!consumingReservedSlot) {
+      const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
+      const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb, { transaction: platformTx });
+
+      if (usedCapacity >= maxBranches) {
+        await _notifyBranchLimitReached(tenantId, tenant);
+        const err = createError('Branch limit reached', 403);
+        err.code = 'branch_limit_reached';
+        throw err;
+      }
     }
 
     let gym = null;
@@ -307,6 +321,10 @@ const createBranch = async (tenantDb, tenantId, data) => {
     }
 
     const branch = await _createBranchRecord(tenantDb, gym, targetListingId, data);
+
+    if (consumingReservedSlot) {
+      await targetListing.decrement('reservedSlots', { by: 1, transaction: platformTx });
+    }
 
     await platformTx.commit();
     return { branch };
@@ -323,6 +341,67 @@ const getBranch = async (tenantDb, branchId) => {
   });
   if (!branch) throw createError('Branch not found or has been deleted', 404);
   return { branch };
+};
+
+/**
+ * Reassigns an existing branch to a different organization (GymListing)
+ * owned by the same tenant. Doesn't touch the branch-count subscription at
+ * all — the branch already counted against it wherever it was, and moving
+ * it doesn't change the tenant's total usage. Also reassigns gymId to the
+ * target organization's own Gym row: Branch.gymId must always match the
+ * organization it's actually in, the same reason every organization gets
+ * its own Gym row immediately at creation (host.controller.js#createListing).
+ */
+const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
+  const { Branch } = tenantDb.models;
+  const branch = await Branch.findByPk(branchId);
+  if (!branch || branch.status !== 'ACTIVE') {
+    throw createError('Branch not found', 404);
+  }
+  if (branch.gymListingId === targetListingId) {
+    return { branch };
+  }
+
+  const targetListing = await GymListing.findOne({ where: { id: targetListingId, tenantId } });
+  if (!targetListing) {
+    throw createError('Target organization not found', 404);
+  }
+
+  let targetGym = await tenantDb.models.Gym.findOne({ where: { gymListingId: targetListingId } });
+  if (!targetGym) {
+    targetGym = await _getOrCreateGym(tenantDb, tenantId);
+  }
+
+  await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
+  return { branch };
+};
+
+/**
+ * Moves `count` units of unbuilt (paid, reserved but not yet a real branch)
+ * capacity from one organization to another. Also doesn't change total
+ * usage — see moveBranch above.
+ */
+const transferReservedSlots = async (tenantId, fromListingId, toListingId, count = 1) => {
+  if (fromListingId === toListingId) {
+    throw createError('Source and target organization must be different', 400);
+  }
+  const t = await sequelize.transaction();
+  try {
+    const from = await GymListing.findOne({ where: { id: fromListingId, tenantId }, lock: true, transaction: t });
+    const to = await GymListing.findOne({ where: { id: toListingId, tenantId }, lock: true, transaction: t });
+    if (!from || !to) throw createError('Organization not found', 404);
+    if (from.reservedSlots < count) throw createError('Not enough unbuilt slots on the source organization to move', 400);
+
+    await from.decrement('reservedSlots', { by: count, transaction: t });
+    await to.increment('reservedSlots', { by: count, transaction: t });
+    await t.commit();
+
+    await Promise.all([from.reload(), to.reload()]);
+    return { from, to };
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
 };
 
 const updateBranch = async (tenantDb, branchId, data) => {
@@ -463,6 +542,65 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
   }
 
   return { message: 'Branch deleted successfully' };
+};
+
+/**
+ * Deletes an organization (GymListing). Never silently drops branches: if it
+ * has any real branches or unbuilt reserved slots, the caller must say what
+ * happens to them first — 'moveBranches' reassigns everything (branches and
+ * reservedSlots) to targetListingId, 'deleteBranches' soft-deletes each
+ * branch the same way deleteBranch already does above (handling active
+ * members/subscriptions properly, never a hard delete). Either way the
+ * organization itself is soft-deleted (status INACTIVE), same as a branch.
+ */
+const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, targetListingId, deletedByUserId }) => {
+  const listing = await GymListing.findOne({ where: { id: listingId, tenantId } });
+  if (!listing || listing.status === 'INACTIVE') {
+    throw createError('Organization not found or already deleted', 404);
+  }
+
+  const { Branch } = tenantDb.models;
+  const branches = await Branch.findAll({ where: { gymListingId: listingId, status: 'ACTIVE' } });
+
+  if (branches.length > 0 || listing.reservedSlots > 0) {
+    if (strategy === 'moveBranches') {
+      if (!targetListingId) throw createError('targetListingId is required to move branches', 400);
+      if (targetListingId === listing.id) throw createError('Target organization must be different', 400);
+      const target = await GymListing.findOne({ where: { id: targetListingId, tenantId } });
+      if (!target) throw createError('Target organization not found', 404);
+
+      let targetGym = await tenantDb.models.Gym.findOne({ where: { gymListingId: targetListingId } });
+      if (!targetGym) targetGym = await _getOrCreateGym(tenantDb, tenantId);
+
+      for (const branch of branches) {
+        await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
+      }
+      if (listing.reservedSlots > 0) {
+        await target.increment('reservedSlots', { by: listing.reservedSlots });
+        await listing.update({ reservedSlots: 0 });
+      }
+    } else if (strategy === 'deleteBranches') {
+      for (const branch of branches) {
+        // eslint-disable-next-line no-await-in-loop
+        await deleteBranch(tenantDb, branch.id, deletedByUserId);
+      }
+      // reservedSlots are simply released back to the shared pool by
+      // deleting the organization itself below — getUsedCapacity only sums
+      // reservedSlots for organizations that still exist.
+    } else {
+      const err = createError(
+        `This organization has ${branches.length} branch(es)` +
+          `${listing.reservedSlots > 0 ? ` and ${listing.reservedSlots} unbuilt slot(s)` : ''}. ` +
+          'Choose whether to move them to another organization or delete them.',
+        409
+      );
+      err.code = 'organization_has_branches';
+      throw err;
+    }
+  }
+
+  await listing.update({ status: 'INACTIVE' });
+  return { message: 'Organization deleted successfully' };
 };
 
 // ── Staff ─────────────────────────────────────────────────────────────────────
@@ -1141,6 +1279,9 @@ module.exports = {
   getBranch,
   updateBranch,
   deleteBranch,
+  moveBranch,
+  transferReservedSlots,
+  deleteOrganization,
   listStaff,
   assignStaff,
   removeStaff,

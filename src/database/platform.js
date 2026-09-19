@@ -120,6 +120,14 @@ const connect = async () => {
     _logIfUnexpected('users.apple_id', err);
   }
 
+  // Unbuilt branch capacity earmarked for an organization — see the comment
+  // on GymListing.model.js#reservedSlots.
+  try {
+    await sequelize.query("ALTER TABLE `gym_listings` ADD COLUMN `reserved_slots` INT NOT NULL DEFAULT 0;");
+  } catch (err) {
+    _logIfUnexpected('gym_listings.reserved_slots', err);
+  }
+
   // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
   // store-verified-purchase columns. Additive and idempotent — safe to run on
   // every boot, in every environment, same as the block above. See

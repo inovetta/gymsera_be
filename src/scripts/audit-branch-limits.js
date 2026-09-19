@@ -19,11 +19,13 @@ const audit = async () => {
       const activeSub = await subscriptionQuotaService.getActiveSubscription(tenant.id);
       const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
 
-      // 2. Connect to tenant DB & count active branches
+      // 2. Connect to tenant DB & count real branches + reserved (paid,
+      // unbuilt) slots across every organization — both count against the
+      // same shared pool.
       let usedBranches = 0;
       try {
         const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-        usedBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
+        usedBranches = await subscriptionQuotaService.getUsedCapacity(tenant.id, tenantDb);
       } catch (err) {
         console.error(`[Error] Failed to connect to database for tenant ${tenant.name || tenant.id}: ${err.message}`);
         continue;

@@ -38,6 +38,9 @@ router.post(
 router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, hostController.createListing);
 router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, hostController.updateListing);
 router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, hostController.updateListing);
+router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, hostController.deleteListing);
+router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), hostController.transferReservedSlots);
+router.post('/branches/:branchId/move', authenticate, authorize('GYM_HOST'), tenantContext, hostController.moveBranchToOrganization);
 router.get('/subscription/current', authenticate, authorize('GYM_HOST'), hostController.getCurrentSubscription);
 router.post('/subscription/upgrade', authenticate, authorize('GYM_HOST'), hostController.upgradeSubscription);
 

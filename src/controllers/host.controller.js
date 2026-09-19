@@ -207,25 +207,33 @@ const getBranchQuota = async (req, res, next) => {
     const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
     const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
 
+    // usedBranches/remainingBranches are always tenant-wide — the branch-
+    // count subscription is one shared pool across every organization, and
+    // includes every organization's reservedSlots (paid, unbuilt) alongside
+    // real ACTIVE branches, since a reservation already counts as used the
+    // moment it's made (subscription-quota.service.js#getUsedCapacity).
+    // organizationBranches/organizationReservedSlots (only present with
+    // ?organizationId=) are additive: what THIS specific organization holds,
+    // for the Gyms tab's per-organization "N branches, M unbuilt slots" view
+    // — a real number now, not a generic slice of tenant-wide leftovers.
     let usedBranches = 0;
+    let organizationBranches = 0;
+    let organizationReservedSlots = 0;
+
     if (tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted) {
       try {
         const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+        usedBranches = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+
         if (organizationId) {
-          usedBranches = await tenantDb.models.Branch.count({
-            where: {
-              status: 'ACTIVE',
-              [Op.or]: [
-                { gymListingId: organizationId },
-                { gymListingId: null },
-                { gymId: organizationId },
-              ]
-            }
+          organizationBranches = await tenantDb.models.Branch.count({
+            where: { status: 'ACTIVE', gymListingId: organizationId },
           });
-        } else {
-          usedBranches = await tenantDb.models.Branch.count({
-            where: { status: 'ACTIVE' }
+          const orgListing = await GymListing.findOne({
+            where: { id: organizationId, tenantId },
+            attributes: ['reservedSlots'],
           });
+          organizationReservedSlots = orgListing ? orgListing.reservedSlots : 0;
         }
       } catch (err) {
         // ignore
@@ -237,7 +245,8 @@ const getBranchQuota = async (req, res, next) => {
     return sendSuccess(res, {
       maxBranches,
       usedBranches,
-      remainingBranches
+      remainingBranches,
+      ...(organizationId ? { organizationBranches, organizationReservedSlots } : {}),
     });
   } catch (err) {
     next(err);
@@ -320,9 +329,13 @@ const getListings = async (req, res, next) => {
       return sendSuccess(res, []);
     }
 
-    // Return all listings (any status) so hosts see PENDING/INACTIVE listings too
+    // Return every non-deleted listing (any status but INACTIVE) so hosts
+    // still see DRAFT/PENDING listings under review — INACTIVE is a deleted
+    // organization (gym.service.js#deleteOrganization), which should
+    // disappear from here the same way a deleted branch disappears from
+    // its own list.
     const listings = await GymListing.findAll({
-      where: { tenantId },
+      where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
       order: [['updated_at', 'DESC']]
     });
 
@@ -423,7 +436,20 @@ const createListing = async (req, res, next) => {
 
       const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, address, packages, images } = req.body;
       if (!gymName) throw createError('gymName is required', 400);
-      if (!Array.isArray(packages) || packages.length === 0) {
+
+      // How this organization's first branch gets filled:
+      //   'new'     (default) — build a real branch immediately, same as
+      //             before; requires packages, consumes 1 unit of capacity.
+      //   'reserve' — no branch yet, just earmark 1 unit of capacity on this
+      //             organization (a "slot") to be built later from the Gyms
+      //             tab, or moved to a different organization first.
+      //   'none'    — bare organization, consumes no capacity at all. Used
+      //             right before the client separately calls the move-branch
+      //             or transfer-reserved-slot endpoints to attach something
+      //             this tenant already owns — moving doesn't change the
+      //             tenant's total usage, so there's nothing to check here.
+      const branchSource = ['new', 'reserve', 'none'].includes(req.body.branchSource) ? req.body.branchSource : 'new';
+      if (branchSource === 'new' && (!Array.isArray(packages) || packages.length === 0)) {
         throw createError('At least 1 membership package/plan is required to create an organization', 400);
       }
 
@@ -431,18 +457,19 @@ const createListing = async (req, res, next) => {
       if (!targetCityId) throw createError('cityId is required', 400);
 
       // Organizations are free to create, but every organization comes with
-      // its own first branch, and branches are what the subscription
-      // actually charges for — so this must be gated by the SAME tenant-wide
-      // branch quota as adding a branch to an existing organization
-      // (gym.service.js#createBranch), checked before anything is created so
-      // a rejected request never leaves behind an organization with no
-      // branch in it.
-      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-      const usedBranches = await gymService._countActiveBranchesForTenant(req.tenantDb);
-      if (usedBranches >= maxBranches) {
-        const err = createError('Branch limit reached', 403);
-        err.code = 'branch_limit_reached';
-        throw err;
+      // its own first branch, and branches (real or reserved) are what the
+      // subscription actually charges for — so 'new'/'reserve' must be
+      // gated by the SAME tenant-wide capacity createBranch uses, checked
+      // before anything is created so a rejected request never leaves behind
+      // an organization with no branch and no reservation in it.
+      if (branchSource !== 'none') {
+        const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
+        const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, req.tenantDb, { transaction: platformTx });
+        if (usedCapacity >= maxBranches) {
+          const err = createError('Branch limit reached', 403);
+          err.code = 'branch_limit_reached';
+          throw err;
+        }
       }
 
       const listing = await GymListing.create({
@@ -458,9 +485,16 @@ const createListing = async (req, res, next) => {
         latitude: latitude || null,
         longitude: longitude || null,
         status: 'PENDING',
+        reservedSlots: branchSource === 'reserve' ? 1 : 0,
       }, { transaction: platformTx });
 
-      // Create matching Gym row in the tenant DB
+      // Every organization gets its own Gym row immediately, regardless of
+      // branchSource — gym.service.js#_getOrCreateGym's fallback (used when
+      // building a branch into an organization with no dedicated Gym row
+      // yet) grabs the tenant's FIRST Gym row with no listing filter at all,
+      // which would misattribute a branch built later into this organization
+      // to a completely different one if this step were skipped for
+      // 'reserve'/'none'.
       const gym = await req.tenantDb.models.Gym.create({
         name: gymName,
         description: gymDescription || null,
@@ -471,26 +505,29 @@ const createListing = async (req, res, next) => {
         gymListingId: listing.id,
       });
 
-      // This organization's first (and, until it grows, only) branch —
-      // reuses the exact same Branch+membership-plan creation gym.service.js
-      // uses for the standalone "add a branch" flow. Not routed through
-      // gymService.createBranch itself: that function opens its own
-      // platformTx and re-locks the same Tenant row, which would deadlock
-      // against the lock this transaction is already holding.
-      const branch = await gymService._createBranchRecord(req.tenantDb, gym, listing.id, {
-        branchName: gymName,
-        address,
-        addressLine1: address,
-        cityId: targetCityId,
-        areaId,
-        latitude,
-        longitude,
-        phone: contactPhone || tenant.phone || null,
-        images: Array.isArray(images) && images.length > 0
-          ? images
-          : (coverImageUrl ? [coverImageUrl] : []),
-        packages,
-      });
+      let branch = null;
+      if (branchSource === 'new') {
+        // This organization's first (and, until it grows, only) branch —
+        // reuses the exact same Branch+membership-plan creation gym.service.js
+        // uses for the standalone "add a branch" flow. Not routed through
+        // gymService.createBranch itself: that function opens its own
+        // platformTx and re-locks the same Tenant row, which would deadlock
+        // against the lock this transaction is already holding.
+        branch = await gymService._createBranchRecord(req.tenantDb, gym, listing.id, {
+          branchName: gymName,
+          address,
+          addressLine1: address,
+          cityId: targetCityId,
+          areaId,
+          latitude,
+          longitude,
+          phone: contactPhone || tenant.phone || null,
+          images: Array.isArray(images) && images.length > 0
+            ? images
+            : (coverImageUrl ? [coverImageUrl] : []),
+          packages,
+        });
+      }
 
       await platformTx.commit();
       return sendSuccess(res, { ...listing.toJSON(), branch }, 'Listing created successfully', 201);
@@ -551,6 +588,72 @@ const updateListing = async (req, res, next) => {
     }
 
     return sendSuccess(res, listing, 'Organization updated successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /host/listings/:id
+ * Body (only required if the organization has branches or unbuilt slots):
+ *   { strategy: 'moveBranches', targetListingId } | { strategy: 'deleteBranches' }
+ */
+const deleteListing = async (req, res, next) => {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw createError('Tenant not found', 404);
+    const { id } = req.params;
+    const { strategy, targetListingId } = req.body;
+
+    const result = await gymService.deleteOrganization(req.tenantDb, tenantId, id, {
+      strategy,
+      targetListingId,
+      deletedByUserId: req.user.sub || req.user.id,
+    });
+    return sendSuccess(res, result, result.message);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /host/branches/:branchId/move
+ * Body: { targetListingId }
+ */
+const moveBranchToOrganization = async (req, res, next) => {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw createError('Tenant not found', 404);
+    const { branchId } = req.params;
+    const { targetListingId } = req.body;
+    if (!targetListingId) throw createError('targetListingId is required', 400);
+
+    const result = await gymService.moveBranch(req.tenantDb, tenantId, branchId, targetListingId);
+    return sendSuccess(res, result, 'Branch moved successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /host/listings/:id/reserved-slots/transfer
+ * Body: { toListingId, count }
+ * Moves unbuilt (paid, not-yet-a-real-branch) capacity from :id to
+ * toListingId — used both from the Gyms tab's "swap branches between
+ * organizations" and from the "create new organization" wizard's option to
+ * assign an already-owned unused slot to the new organization instead of
+ * building/buying a fresh branch.
+ */
+const transferReservedSlots = async (req, res, next) => {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw createError('Tenant not found', 404);
+    const { id } = req.params;
+    const { toListingId, count } = req.body;
+    if (!toListingId) throw createError('toListingId is required', 400);
+
+    const result = await gymService.transferReservedSlots(tenantId, id, toListingId, count ? parseInt(count, 10) : 1);
+    return sendSuccess(res, result, 'Slot moved successfully');
   } catch (err) {
     next(err);
   }
@@ -1253,6 +1356,9 @@ module.exports = {
   uploadListingStagingImages,
   createListing,
   updateListing,
+  deleteListing,
+  moveBranchToOrganization,
+  transferReservedSlots,
   getCurrentSubscription,
   upgradeSubscription,
   getBranchDashboard,
