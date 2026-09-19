@@ -523,13 +523,19 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
     throw err;
   }
 
-  // 7. Update Platform GymListing cross-DB reference if linked
+  // 7. Update Platform GymListing cross-DB reference if linked, and give the
+  // organization back the capacity this branch was using as an unbuilt slot
+  // — the host already paid for it, deleting the branch shouldn't make it
+  // disappear from their account, just from being built out right now.
   try {
     const { GymListing } = require('../models/platform');
     await GymListing.update(
       { branchId: null },
       { where: { branchId } }
     );
+    if (branch.gymListingId) {
+      await GymListing.increment('reservedSlots', { by: 1, where: { id: branch.gymListingId } });
+    }
   } catch (platErr) {
     console.warn('[Branch Deletion] Warning unlinking GymListing branchId:', platErr.message);
   }

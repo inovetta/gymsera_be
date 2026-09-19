@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { TenantSubscription, PlatformPackage, GymListing } = require('../models/platform');
 
 /**
@@ -86,7 +87,11 @@ const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) 
 const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
   const [activeBranches, reservedTotal] = await Promise.all([
     tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }),
-    GymListing.sum('reservedSlots', { where: { tenantId }, transaction }),
+    // Excludes deleted (INACTIVE) organizations — otherwise a reservedSlots
+    // count left on a deleted organization would permanently lock that
+    // capacity out of the pool forever, since nothing else ever reads or
+    // clears reservedSlots on a listing once it's gone.
+    GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.ne]: 'INACTIVE' } }, transaction }),
   ]);
   return activeBranches + (reservedTotal || 0);
 };
