@@ -23,6 +23,7 @@ const mysql = require('mysql2/promise');
 const { Sequelize } = require('sequelize');
 
 const { Tenant, User, City, Area, GymListing, TenantSubscription, PlatformPackage } = require('../models/platform');
+const subscriptionQuotaService = require('./subscription-quota.service');
 const registerTenantModels = require('../models/tenant');
 const { encrypt } = require('../utils/crypto.utils');
 const emailService = require('./email.service');
@@ -336,6 +337,27 @@ const processTenantProvisioning = async (tenantId) => {
         // Link primary branchId back to GymListing on platform DB
         if (listingId && branch?.id) {
           await GymListing.update({ branchId: branch.id }, { where: { id: listingId } }).catch(() => {});
+        }
+
+        // A host can subscribe to more branches than they build right away
+        // (e.g. bought a 2-branch plan, this provisioning step only ever
+        // builds the 1 main branch) — whatever's left over belongs to this,
+        // their first and at this point only, organization, as a slot ready
+        // to build later. Never left unattributed: that's what made "how
+        // many branches do I still have" impossible to answer per
+        // organization once a host had more than one.
+        if (listingId) {
+          try {
+            const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+            const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
+            const extraSlots = maxBranches - 1; // 1 branch was just built above
+            if (extraSlots > 0) {
+              await GymListing.update({ reservedSlots: extraSlots }, { where: { id: listingId } });
+              console.log(`[Provisioning] Attributed ${extraSlots} unbuilt slot(s) to GymListing ${listingId}`);
+            }
+          } catch (slotErr) {
+            console.warn('[Provisioning] Failed to attribute reserved slots:', slotErr.message);
+          }
         }
 
         // ── Step 8c: Create initial membership plans for the initial branch ────
