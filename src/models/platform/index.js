@@ -30,6 +30,7 @@ const DeviceToken = require('./DeviceToken.model')(sequelize);
 const UserOrgIndex = require('./UserOrgIndex.model')(sequelize);
 const BillingPlan = require('./BillingPlan.model')(sequelize);
 const BillingOffer = require('./BillingOffer.model')(sequelize);
+const CapacityEvent = require('./CapacityEvent.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -101,6 +102,15 @@ PlatformPackage.hasMany(Tenant, { foreignKey: 'selectedPackageId', as: 'tenants'
 Tenant.hasOne(GymListing, { foreignKey: 'tenantId', as: 'gymListing' });
 Tenant.hasMany(GymListing, { foreignKey: 'tenantId', as: 'gymListings' });
 GymListing.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+// Tenant / GymListing ↔ CapacityEvent (audit trail — see CapacityEvent.model.js).
+// constraints: false on both associations deliberately — an append-only
+// audit log should never be blocked from writing, or have its own rows
+// cascade-deleted, by referential churn on the rows it describes.
+Tenant.hasMany(CapacityEvent, { foreignKey: 'tenantId', as: 'capacityEvents', constraints: false });
+CapacityEvent.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
+GymListing.hasMany(CapacityEvent, { foreignKey: 'listingId', as: 'capacityEvents', constraints: false });
+CapacityEvent.belongsTo(GymListing, { foreignKey: 'listingId', as: 'listing', constraints: false });
 
 // PlatformPackage ↔ TenantSubscription (legacy manual/Enterprise path only)
 PlatformPackage.hasMany(TenantSubscription, { foreignKey: 'platformPackageId', as: 'tenantSubscriptions' });
@@ -185,4 +195,5 @@ module.exports = {
   UserOrgIndex,
   BillingPlan,
   BillingOffer,
+  CapacityEvent,
 };

@@ -104,6 +104,18 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(100),
         allowNull: true,
       },
+      // Set by the downgrade-trim logic (subscription-quota.service.js) when
+      // a subscription shrinks below the tenant's real ACTIVE branch count
+      // even after every unbuilt reservedSlots has been trimmed to zero.
+      // Real branches are never auto-deleted to resolve this — it's a host-
+      // facing "you're over your new plan" flag that blocks new branches/
+      // restores until they upgrade or close branches themselves. 0 = in
+      // good standing.
+      overQuotaCount: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
     },
     {
       tableName: 'tenant_subscriptions',

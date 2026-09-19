@@ -95,8 +95,19 @@ const _getGym = async (models) => {
  *   1. If a plan is marked isFeatured, use its price.
  *   2. Otherwise fall back to the cheapest ACTIVE + public plan.
  *   3. If no qualifying plans exist, set minPrice to null.
+ *
+ * `transaction` — pass the caller's own platform-DB transaction when one is
+ * already open (e.g. gym.service.js#createBranch holds a row lock on this
+ * exact GymListing via `FOR UPDATE` for its whole duration). Without this,
+ * the plain UPDATE below opens a SECOND, unrelated connection and blocks on
+ * its own caller's still-held lock until MySQL's innodb_lock_wait_timeout
+ * (50s by default) — a real, reproducible ~50s tax on every branch creation
+ * that includes a membership plan, found via live end-to-end testing, not
+ * something the try/catch's silent failure ever surfaced. Passing the same
+ * transaction through makes this UPDATE part of the same unit of work
+ * instead of a competing one.
  */
-const _syncMinPrice = async (tenantDb, gymId) => {
+const _syncMinPrice = async (tenantDb, gymId, { transaction } = {}) => {
   try {
     const { MembershipPlan } = tenantDb.models;
 
@@ -121,7 +132,7 @@ const _syncMinPrice = async (tenantDb, gymId) => {
 
     await GymListing.update(
       { minPrice: featured ? parseFloat(featured.price) : null },
-      { where: { id: gym.gymListingId } }
+      { where: { id: gym.gymListingId }, transaction }
     );
   } catch (err) {
     // Non-fatal: log and continue — minPrice sync failure shouldn't block the plan operation
@@ -279,7 +290,11 @@ const listForHost = async (tenantDb, branchId, tenantId) => {
 };
 
 // ── Host: create plan ─────────────────────────────────────────────────────────
-const createPlan = async (tenantDb, data) => {
+// `transaction` — forwarded to _syncMinPrice; pass the caller's open
+// platform-DB transaction when creating a plan as part of a larger unit of
+// work that already holds a lock on this gym's GymListing (see
+// _syncMinPrice's doc comment for exactly why this matters).
+const createPlan = async (tenantDb, data, { transaction } = {}) => {
   await _ensureSchema(tenantDb);
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
@@ -308,7 +323,7 @@ const createPlan = async (tenantDb, data) => {
     status: 'ACTIVE',
   });
 
-  await _syncMinPrice(tenantDb, gym.id);
+  await _syncMinPrice(tenantDb, gym.id, { transaction });
   return plan;
 };
 
@@ -472,4 +487,8 @@ module.exports = {
   listPublic, getPublic, listForHost,
   createPlan, updatePlan, deletePlan,
   toggleStatus, togglePublic, setFeatured, updatePoster,
+  // Exported so other services (gym.service.js#deleteBranch/restoreBranch)
+  // can re-sync minPrice after an operation that changes which plans are
+  // active, without duplicating this logic.
+  syncMinPrice: _syncMinPrice,
 };

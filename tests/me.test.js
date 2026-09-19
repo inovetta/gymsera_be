@@ -8,7 +8,7 @@ const { authed, loginAs, api } = require('./helpers');
 let memberToken, memberUser;
 
 beforeAll(async () => {
-  const session = await loginAs('ali.hassan@example.com', 'Member@1234!');
+  const session = await loginAs('ali.hassan@example.com', 'Member@1234');
   memberToken = session.accessToken;
   memberUser = session.user;
 });

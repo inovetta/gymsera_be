@@ -9,7 +9,7 @@ const { authed, loginAs, api } = require('./helpers');
 let hostToken, branchId, planId;
 
 beforeAll(async () => {
-  const session = await loginAs('ahmed@ironpeak.com', 'Host@1234!');
+  const session = await loginAs('ahmed@ironpeak.com', 'GymHost@1234');
   hostToken = session.accessToken;
 });
 
@@ -188,7 +188,7 @@ describe('Host — Guard checks', () => {
   });
 
   test('GET /reports/dashboard — member role (403)', async () => {
-    const session = await loginAs('ali.hassan@example.com', 'Member@1234!');
+    const session = await loginAs('ali.hassan@example.com', 'Member@1234');
     const res = await authed(session.accessToken).get('/reports/dashboard');
     expect(res.status).toBe(403);
   });

@@ -8,7 +8,7 @@ const { api, authed, loginAs } = require('./helpers');
 let adminToken, tenants, reviewId;
 
 beforeAll(async () => {
-  const session = await loginAs('admin@gymsera.com', 'Admin@1234!');
+  const session = await loginAs('admin@gymsera.com', 'Admin@GymsEra1');
   adminToken = session.accessToken;
 });
 
@@ -121,7 +121,7 @@ describe('Admin — Auth Guard', () => {
   });
 
   test('GET /admin/tenants — non-admin role (403)', async () => {
-    const session = await loginAs('ali.hassan@example.com', 'Member@1234!');
+    const session = await loginAs('ali.hassan@example.com', 'Member@1234');
     const res = await authed(session.accessToken).get('/admin/tenants');
     expect(res.status).toBe(403);
   });

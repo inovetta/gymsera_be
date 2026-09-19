@@ -62,7 +62,7 @@ describe('Auth — Login', () => {
   test('POST /auth/login — seeded admin (200)', async () => {
     const res = await api.post('/auth/login', {
       email: 'admin@gymsera.com',
-      password: 'Admin@1234!',
+      password: 'Admin@GymsEra1',
     });
     expect(res.status).toBe(200);
     expect(res.data.data).toHaveProperty('accessToken');
@@ -71,7 +71,7 @@ describe('Auth — Login', () => {
   test('POST /auth/login — seeded gym host (200)', async () => {
     const res = await api.post('/auth/login', {
       email: 'ahmed@ironpeak.com',
-      password: 'Host@1234!',
+      password: 'GymHost@1234',
     });
     expect(res.status).toBe(200);
   });
@@ -95,7 +95,7 @@ describe('Auth — Login', () => {
 
 describe('Auth — Token & Session', () => {
   test('POST /auth/refresh — valid token (200)', async () => {
-    const session = await loginAs('omar.farooq@example.com', 'Member@1234!');
+    const session = await loginAs('omar.farooq@example.com', 'Member@1234');
     const res = await api.post('/auth/refresh', { refreshToken: session.refreshToken });
     expect(res.status).toBe(200);
     expect(res.data.data).toHaveProperty('accessToken');
@@ -107,7 +107,7 @@ describe('Auth — Token & Session', () => {
   });
 
   test('GET /auth/me — authenticated (200)', async () => {
-    const session = await loginAs('admin@gymsera.com', 'Admin@1234!');
+    const session = await loginAs('admin@gymsera.com', 'Admin@GymsEra1');
     const res = await api.get('/auth/me', {
       headers: { Authorization: `Bearer ${session.accessToken}` },
     });

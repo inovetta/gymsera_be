@@ -29,6 +29,34 @@ const _calcEndDate = (startDate, durationType, durationValue) => {
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /**
+ * Runs a platform-DB capacity mutation (its own transaction, separate from
+ * whatever tenant-DB transaction already committed) with a few retries on
+ * transient failure — replaces the bare fire-and-forget try/catch this used
+ * to be, which silently dropped a returned slot if the platform DB hiccuped
+ * right after the tenant-DB commit succeeded. `fn` must be idempotent (via
+ * subscriptionQuotaService.recordCapacityEvent) so a retry after a partial
+ * failure can never double-apply. Only logs (never throws) on final
+ * failure — the branch/org action itself already succeeded and committed;
+ * losing the slot bookkeeping here is a data-integrity issue for the daily
+ * reconciliation job to catch, not a reason to tell the host their delete
+ * failed.
+ */
+const _applyPlatformCapacityStep = async (fn, failureLogPrefix, attempts = 3) => {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await fn();
+      return;
+    } catch (err) {
+      if (attempt === attempts) {
+        console.error(`${failureLogPrefix}:`, err.message);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+    }
+  }
+};
+
+/**
  * Get the single Gym record from the tenant DB.
  * On first access (just after provisioning) there may be no Gym row yet —
  * we auto-create one from the Platform Tenant snapshot.
@@ -125,7 +153,7 @@ const updateProfile = async (tenantDb, tenantId, data) => {
 
 // ── Branches ──────────────────────────────────────────────────────────────────
 
-const listBranches = async (tenantDb, tenantId, organizationId) => {
+const listBranches = async (tenantDb, tenantId, organizationId, { includeInactive = false } = {}) => {
   const { Gym, Branch } = tenantDb.models;
   let gym = await Gym.findOne();
 
@@ -144,9 +172,12 @@ const listBranches = async (tenantDb, tenantId, organizationId) => {
   const branches = await Branch.findAll({
     where: {
       ...whereClause,
-      status: { [Op.ne]: 'INACTIVE' },
+      // includeInactive surfaces deleted branches too (status ordering puts
+      // ACTIVE ones first) — used only by the "restore a deleted branch" UI,
+      // never by any default listing.
+      ...(includeInactive ? {} : { status: { [Op.ne]: 'INACTIVE' } }),
     },
-    order: [['createdAt', 'ASC']],
+    order: [['status', 'ASC'], ['createdAt', 'ASC']],
   });
 
   // Find default listing for this tenant to ensure every branch has gymListingId populated for frontend mapping
@@ -181,8 +212,16 @@ const _countActiveBranchesForTenant = async (tenantDb) => {
  * of going through createBranch's own lock, which would otherwise try to
  * acquire a second lock on the same already-locked tenant row and risk a
  * deadlock.
+ *
+ * `transaction` — the caller's own open platform-DB transaction, if any.
+ * Forwarded to membershipPlanService.createPlan so its minPrice sync writes
+ * through the SAME connection instead of a second one contending for a lock
+ * this transaction already holds on the target GymListing — omitting this
+ * doesn't error, it just silently costs ~50s per branch (MySQL's
+ * innodb_lock_wait_timeout) waiting on itself before giving up. Both current
+ * callers (createBranch, createListing) always have one open.
  */
-const _createBranchRecord = async (tenantDb, gym, targetListingId, data) => {
+const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { transaction } = {}) => {
   const { Branch } = tenantDb.models;
 
   if (!Array.isArray(data.packages) || data.packages.length === 0) {
@@ -230,7 +269,7 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data) => {
         durationValue: pkg.durationValue || 1,
         description: pkg.description || null,
         isPublic: true,
-      });
+      }, { transaction });
       createdPlansCount++;
     } catch (pkgErr) {
       console.warn('[Branch Creation] Package creation error:', pkgErr.message);
@@ -264,7 +303,7 @@ const _notifyBranchLimitReached = async (tenantId, tenant) => {
   }
 };
 
-const createBranch = async (tenantDb, tenantId, data) => {
+const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) => {
   const platformTx = await sequelize.transaction();
   try {
     // Acquire exclusive write lock on Tenant record in platform DB to serialize branch creations for this tenant.
@@ -299,6 +338,22 @@ const createBranch = async (tenantDb, tenantId, data) => {
 
     if (!consumingReservedSlot) {
       const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+
+      // A recent downgrade can leave real ACTIVE branches alone exceeding
+      // the new plan (see subscription-quota.service.js#reconcileCapacity)
+      // — never resolved by touching those branches, only by blocking
+      // further NEW consumption until the host upgrades or closes some
+      // themselves. Filling an already-reserved slot above is still allowed
+      // even in this state since it doesn't add to the overage.
+      if (activeSub && activeSub.overQuotaCount > 0) {
+        const err = createError(
+          'Your account is over its current plan\'s branch capacity following a recent downgrade. Upgrade your plan or close another branch before adding a new one.',
+          403
+        );
+        err.code = 'account_over_quota';
+        throw err;
+      }
+
       const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
       const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb, { transaction: platformTx });
 
@@ -320,9 +375,30 @@ const createBranch = async (tenantDb, tenantId, data) => {
       gym = await _getOrCreateGym(tenantDb, tenantId);
     }
 
-    const branch = await _createBranchRecord(tenantDb, gym, targetListingId, data);
+    const branch = await _createBranchRecord(tenantDb, gym, targetListingId, data, { transaction: platformTx });
 
     if (consumingReservedSlot) {
+      // Completes the audit trail for the reverse of BRANCH_DELETED: this
+      // reserved slot — paid for, previously unbuilt — has now become a
+      // real branch. Doesn't change usedCapacity (reservedSlots-1,
+      // activeBranches+1, net zero) but every OTHER capacity-changing
+      // action gets a capacity_events row, so this one should too.
+      await subscriptionQuotaService.recordCapacityEvent(
+        {
+          tenantId,
+          listingId: targetListing.id,
+          branchId: branch.id,
+          action: 'SLOT_CONSUMED_BUILD',
+          delta: -1,
+          reservedSlotsBefore: targetListing.reservedSlots,
+          reservedSlotsAfter: targetListing.reservedSlots - 1,
+          actorUserId: createdByUserId,
+          actorType: createdByUserId ? 'HOST' : 'SYSTEM',
+          reason: `Branch "${branch.branchName}" built into a reserved slot`,
+          idempotencyKey: `slot_consumed_build:${branch.id}`,
+        },
+        { transaction: platformTx }
+      );
       await targetListing.decrement('reservedSlots', { by: 1, transaction: platformTx });
     }
 
@@ -409,7 +485,7 @@ const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
  * capacity from one organization to another. Also doesn't change total
  * usage — see moveBranch above.
  */
-const transferReservedSlots = async (tenantId, fromListingId, toListingId, count = 1) => {
+const transferReservedSlots = async (tenantId, fromListingId, toListingId, count = 1, actorUserId = null) => {
   if (fromListingId === toListingId) {
     throw createError('Source and target organization must be different', 400);
   }
@@ -420,8 +496,29 @@ const transferReservedSlots = async (tenantId, fromListingId, toListingId, count
     if (!from || !to) throw createError('Organization not found', 404);
     if (from.reservedSlots < count) throw createError('Not enough unbuilt slots on the source organization to move', 400);
 
-    await from.decrement('reservedSlots', { by: count, transaction: t });
-    await to.increment('reservedSlots', { by: count, transaction: t });
+    const { applied } = await subscriptionQuotaService.recordCapacityEvent(
+      {
+        tenantId,
+        listingId: fromListingId,
+        action: 'SLOT_TRANSFERRED',
+        delta: -count,
+        reservedSlotsBefore: from.reservedSlots,
+        reservedSlotsAfter: from.reservedSlots - count,
+        actorUserId,
+        actorType: actorUserId ? 'HOST' : 'SYSTEM',
+        reason: `${count} slot(s) moved to organization ${toListingId}`,
+        // Single-transaction, platform-DB-only action (unlike deleteBranch's
+        // cross-DB step) — a failure here rolls back everything atomically,
+        // so there's no partial-failure state to dedupe against. The key
+        // only needs to be unique, not tied to a retryable external event.
+        idempotencyKey: `slot_transfer:${crypto.randomUUID()}`,
+      },
+      { transaction: t }
+    );
+    if (applied) {
+      await from.decrement('reservedSlots', { by: count, transaction: t });
+      await to.increment('reservedSlots', { by: count, transaction: t });
+    }
     await t.commit();
 
     await Promise.all([from.reload(), to.reload()]);
@@ -477,13 +574,22 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
     StaffActionRequest,
   } = tenantDb.models;
 
-  const branch = await Branch.findByPk(branchId);
-  if (!branch || branch.status === 'INACTIVE') {
-    throw createError('Branch not found or already deleted', 404);
-  }
-
   const t = await tenantDb.sequelize.transaction();
+  let branch;
   try {
+    // Row-locked fetch + guard, both inside the transaction — found via
+    // concurrency testing that two near-simultaneous deletes of the same
+    // branch (a duplicate client request, a retried tap) could BOTH pass an
+    // unlocked "already deleted?" check before either committed, each then
+    // independently crediting a reservedSlot for the same branch — a real
+    // double-credit path, not just a display glitch. Locking here forces the
+    // second call to wait for the first to commit, so it then correctly
+    // sees INACTIVE and is rejected before ever reaching the capacity step.
+    branch = await Branch.findByPk(branchId, { lock: true, transaction: t });
+    if (!branch || branch.status === 'INACTIVE') {
+      throw createError('Branch not found or already deleted', 404);
+    }
+
     // 1. Mark branch INACTIVE and traveler visibility deactivated
     await branch.update({
       status: 'INACTIVE',
@@ -551,31 +657,185 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
     throw err;
   }
 
-  // 7. Update Platform GymListing cross-DB reference if linked, and give the
-  // organization back the capacity this branch was using as an unbuilt slot
-  // — the host already paid for it, deleting the branch shouldn't make it
-  // disappear from their account, just from being built out right now.
-  try {
-    const { GymListing } = require('../models/platform');
-    await GymListing.update(
-      { branchId: null },
-      { where: { branchId } }
-    );
-    if (branch.gymListingId) {
-      await GymListing.increment('reservedSlots', { by: 1, where: { id: branch.gymListingId } });
+  // 7. Give the organization back the capacity this branch was using, as an
+  // unbuilt slot — the host already paid for it, deleting the branch
+  // shouldn't make it disappear from their account, just from being built
+  // out right now. This is a SEPARATE database (platform, not tenant), so it
+  // can't share the transaction above — instead it's made idempotent
+  // (keyed on this exact delete, via the deactivatedAt just committed) and
+  // retried on transient failure, so a retry can never double-credit the
+  // slot and a failure here never silently loses it the way a bare
+  // try/catch would. See CapacityEvent.model.js.
+  await _applyPlatformCapacityStep(async () => {
+    const platformTx = await sequelize.transaction();
+    try {
+      await GymListing.update({ branchId: null }, { where: { branchId }, transaction: platformTx });
+      if (branch.gymListingId) {
+        const listing = await GymListing.findByPk(branch.gymListingId, { lock: true, transaction: platformTx });
+        if (listing) {
+          const { applied } = await subscriptionQuotaService.recordCapacityEvent(
+            {
+              tenantId: listing.tenantId,
+              listingId: listing.id,
+              branchId: branch.id,
+              action: 'BRANCH_DELETED',
+              delta: 1,
+              reservedSlotsBefore: listing.reservedSlots,
+              reservedSlotsAfter: listing.reservedSlots + 1,
+              actorUserId: deletedByUserId || null,
+              actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
+              reason: `Branch "${branch.branchName}" deleted`,
+              idempotencyKey: `branch_delete:${branch.id}:${branch.deactivatedAt.getTime()}`,
+            },
+            { transaction: platformTx }
+          );
+          if (applied) {
+            await listing.increment('reservedSlots', { by: 1, transaction: platformTx });
+          }
+        }
+      }
+      await platformTx.commit();
+    } catch (err) {
+      await platformTx.rollback();
+      throw err;
     }
-  } catch (platErr) {
-    console.warn('[Branch Deletion] Warning unlinking GymListing branchId:', platErr.message);
-  }
+  }, '[Branch Deletion] Failed to return capacity to the organization after 3 attempts — reservedSlots may be understated until the reconciliation job corrects it');
 
-  // 8. Re-sync minPrice for the gym profile
+  // 8. Re-sync minPrice for the gym profile — this deleted branch's plans
+  // are now INACTIVE and shouldn't factor into the gym's displayed minPrice.
+  // Found broken during live end-to-end testing: this called a function
+  // that was never in scope here (only ever defined, unexported, in
+  // membership-plan.service.js), so it had silently no-op'd via the
+  // catch below on every branch deletion — minPrice was never actually
+  // updated after a delete.
   try {
-    await _syncMinPrice(tenantDb, branch.gymId);
+    const membershipPlanService = require('./membership-plan.service');
+    await membershipPlanService.syncMinPrice(tenantDb, branch.gymId);
   } catch (syncErr) {
     console.warn('[Branch Deletion] Warning re-syncing minPrice:', syncErr.message);
   }
 
   return { message: 'Branch deleted successfully' };
+};
+
+/**
+ * Restores a branch previously closed via deleteBranch, flipping it back to
+ * ACTIVE. Re-consumes exactly one unit of capacity, through the identical
+ * check createBranch uses (this organization's own reserved slot first, else
+ * fresh tenant-wide capacity) — restoring is "build again", not a free
+ * undo. Deliberately does NOT restore member subscriptions, staff
+ * employment, or republish membership plans/schedules: those all carry real
+ * consent/legal/pricing weight and must be deliberate follow-up actions, not
+ * a side effect of un-archiving the branch shell. No time limit on how long
+ * after deletion this can happen — the branch's data is never purged — the
+ * only gate is whether the capacity it used to hold is still available.
+ */
+const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => {
+  const { Branch } = tenantDb.models;
+
+  // Row-locked for the branch's entire duration (held across the platform-DB
+  // work below too) — same reasoning as deleteBranch's lock: an unlocked
+  // "is this still INACTIVE?" check let two concurrent restores of the same
+  // branch both pass, each independently consuming a capacity unit for what
+  // is logically a single restore.
+  const tt = await tenantDb.sequelize.transaction();
+  let branch;
+  try {
+    branch = await Branch.findByPk(branchId, { lock: true, transaction: tt });
+    if (!branch || branch.status !== 'INACTIVE') {
+      throw createError('Branch not found or not currently deleted', 404);
+    }
+    if (!branch.gymListingId) {
+      throw createError('This branch has no organization to restore into', 400);
+    }
+  } catch (err) {
+    await tt.rollback();
+    throw err;
+  }
+
+  const platformTx = await sequelize.transaction();
+  try {
+    const tenant = await Tenant.findByPk(tenantId, { lock: true, transaction: platformTx });
+    if (!tenant) throw createError('Tenant not found', 404);
+
+    const listing = await GymListing.findByPk(branch.gymListingId, { lock: true, transaction: platformTx });
+    if (!listing || listing.status === 'INACTIVE') {
+      throw createError('This branch\'s organization no longer exists — move it to another organization instead', 409);
+    }
+
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+    if (activeSub && activeSub.overQuotaCount > 0) {
+      const err = createError(
+        'Your account is over its current plan\'s branch capacity following a recent downgrade. Upgrade your plan or close another branch before restoring this one.',
+        403
+      );
+      err.code = 'account_over_quota';
+      throw err;
+    }
+
+    const consumingReservedSlot = listing.reservedSlots > 0;
+    if (!consumingReservedSlot) {
+      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
+      const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb, { transaction: platformTx });
+      if (usedCapacity >= maxBranches) {
+        const err = createError('No free capacity to restore this branch — move an unused slot here or add capacity first', 403);
+        err.code = 'branch_limit_reached';
+        throw err;
+      }
+    }
+
+    const { applied } = await subscriptionQuotaService.recordCapacityEvent(
+      {
+        tenantId,
+        listingId: listing.id,
+        branchId: branch.id,
+        action: 'BRANCH_RESTORED',
+        delta: consumingReservedSlot ? -1 : 0,
+        reservedSlotsBefore: listing.reservedSlots,
+        reservedSlotsAfter: consumingReservedSlot ? listing.reservedSlots - 1 : listing.reservedSlots,
+        actorUserId: restoredByUserId || null,
+        actorType: restoredByUserId ? 'HOST' : 'SYSTEM',
+        reason: `Branch "${branch.branchName}" restored`,
+        // Not timestamp-based (found broken: tenant DBs store deactivatedAt
+        // as plain DATETIME with no fractional seconds, so two delete-then-
+        // restore cycles on the same branch within the same wall-clock
+        // second produced the SAME key — the second restore silently read
+        // as "already applied" and skipped its own reservedSlots decrement,
+        // leaving a phantom slot stuck forever). A random key is safe here
+        // — unlike deleteBranch's capacity step, this one is a single
+        // all-or-nothing platform-DB transaction (`platformTx` + the tenant-
+        // DB `tt` both roll back together on any failure), so there's no
+        // cross-transaction retry that needs a stable key to deduplicate
+        // against; the row lock on `branch` acquired above already prevents
+        // two concurrent restores of the same branch from both proceeding.
+        idempotencyKey: `branch_restore:${branch.id}:${crypto.randomUUID()}`,
+      },
+      { transaction: platformTx }
+    );
+    if (applied && consumingReservedSlot) {
+      await listing.decrement('reservedSlots', { by: 1, transaction: platformTx });
+    }
+
+    await platformTx.commit();
+  } catch (err) {
+    await platformTx.rollback();
+    await tt.rollback();
+    throw err;
+  }
+
+  // Still inside `tt` — the branch row lock acquired above has been held
+  // this whole time, so no concurrent restore of this same branch could
+  // have gotten this far in the meantime.
+  await branch.update({
+    status: 'ACTIVE',
+    travelerVisibilityStatus: 'deactivated', // host re-publishes visibility explicitly, same as a brand-new branch
+    deactivatedAt: null,
+    deactivatedBy: null,
+    deactivationReason: null,
+  }, { transaction: tt });
+  await tt.commit();
+
+  return { branch };
 };
 
 /**
@@ -617,10 +877,37 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
       if (!target.branchId && branches.length > 0) {
         await target.update({ branchId: branches[0].id });
       }
-      if (listing.reservedSlots > 0) {
-        await target.increment('reservedSlots', { by: listing.reservedSlots });
-        await listing.update({ reservedSlots: 0 });
+
+      const reservedToMove = listing.reservedSlots;
+      const platformTx = await sequelize.transaction();
+      try {
+        const lockedTarget = await GymListing.findByPk(targetListingId, { lock: true, transaction: platformTx });
+        const lockedListing = await GymListing.findByPk(listingId, { lock: true, transaction: platformTx });
+        const { applied } = await subscriptionQuotaService.recordCapacityEvent(
+          {
+            tenantId,
+            listingId,
+            action: 'ORG_BRANCHES_MOVED',
+            delta: -(reservedToMove),
+            reservedSlotsBefore: lockedListing.reservedSlots,
+            reservedSlotsAfter: 0,
+            actorUserId: deletedByUserId || null,
+            actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
+            reason: `Organization deleted: ${branches.length} branch(es) and ${reservedToMove} slot(s) moved to ${targetListingId}`,
+            idempotencyKey: `org_branches_moved:${listingId}:${crypto.randomUUID()}`,
+          },
+          { transaction: platformTx }
+        );
+        if (applied && reservedToMove > 0) {
+          await lockedTarget.increment('reservedSlots', { by: reservedToMove, transaction: platformTx });
+          await lockedListing.update({ reservedSlots: 0 }, { transaction: platformTx });
+        }
+        await platformTx.commit();
+      } catch (err) {
+        await platformTx.rollback();
+        throw err;
       }
+      await listing.reload();
     } else if (strategy === 'deleteBranches') {
       for (const branch of branches) {
         // eslint-disable-next-line no-await-in-loop
@@ -642,6 +929,21 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
   }
 
   await listing.update({ status: 'INACTIVE' });
+  await subscriptionQuotaService.recordCapacityEvent(
+    {
+      tenantId,
+      listingId,
+      action: 'ORG_DELETED',
+      delta: 0,
+      reservedSlotsBefore: listing.reservedSlots,
+      reservedSlotsAfter: listing.reservedSlots,
+      actorUserId: deletedByUserId || null,
+      actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
+      reason: `Organization "${listing.title}" deleted`,
+      idempotencyKey: `org_deleted:${listingId}`,
+    },
+    { transaction: null }
+  );
   return { message: 'Organization deleted successfully' };
 };
 
@@ -1321,6 +1623,7 @@ module.exports = {
   getBranch,
   updateBranch,
   deleteBranch,
+  restoreBranch,
   moveBranch,
   transferReservedSlots,
   deleteOrganization,

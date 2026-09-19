@@ -114,7 +114,7 @@ describe('Discovery — Gym Detail & Reviews', () => {
 
   test('POST /discovery/gyms/:id/reviews — authenticated member (201 or 400/409)', async () => {
     if (!gymId) return;
-    const session = await loginAs('ali.hassan@example.com', 'Member@1234!');
+    const session = await loginAs('ali.hassan@example.com', 'Member@1234');
     const res = await authed(session.accessToken).post('/discovery/gyms/' + gymId + '/reviews', {
       rating: 5,
       title: 'Excellent gym!',

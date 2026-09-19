@@ -21,8 +21,11 @@
  */
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const { BillingPlan } = require('../models/platform');
+const { BillingPlan, Tenant } = require('../models/platform');
+const { sequelize } = require('../database/platform');
 const { createError } = require('../utils/response.utils');
+const subscriptionQuotaService = require('./subscription-quota.service');
+const TenantDbManager = require('../database/TenantDbManager');
 
 // Apple Root CA - G3, fetched and fingerprint-verified against Apple's
 // published SHA-1 (b5:2c:b0:2f:d5:67:e0:35:9f:e8:fa:4d:4c:41:03:79:70:fe:01:b0)
@@ -157,8 +160,19 @@ const findPlanForProductId = async (productId) => {
  * transaction. Keyed on externalOriginalTransactionId — stable across
  * renewals and tier upgrades — so this is safe to call repeatedly (every
  * app-sync call, every webhook notification) without creating duplicates.
+ *
+ * Also this is the single choke point where branchCount ever changes for a
+ * store-verified subscription, so it's where capacity reconciliation lives
+ * too (subscription-quota.service.js#reconcileCapacity): a downgrade trims
+ * unbuilt reservedSlots (or flags the account over-quota) and an upgrade
+ * attributes the new headroom as a spendable slot, both inside the same
+ * transaction as the branchCount write itself so the two can never drift
+ * apart. `originListingId` — the organization the purchase was made from,
+ * when the app-initiated sync call knows it — is where new capacity from an
+ * upgrade lands; the webhook path (no such context) falls back to the
+ * tenant's oldest organization inside reconcileCapacity.
  */
-const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction) => {
+const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { originListingId = null } = {}) => {
   const { TenantSubscription } = require('../models/platform');
   const plan = await findPlanForProductId(decodedTransaction.productId);
 
@@ -166,34 +180,66 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction) => 
   const isAnnual = decodedTransaction.productId === plan.iosAnnualProductId;
   const revoked = !!decodedTransaction.revocationDate;
 
-  const existing = await TenantSubscription.findOne({
-    where: { externalOriginalTransactionId: String(decodedTransaction.originalTransactionId) },
-  });
+  const platformTx = await sequelize.transaction();
+  try {
+    const existing = await TenantSubscription.findOne({
+      where: { externalOriginalTransactionId: String(decodedTransaction.originalTransactionId) },
+      transaction: platformTx,
+      lock: true,
+    });
+    const previousMaxBranches = existing ? existing.branchCount : null;
 
-  const values = {
-    tenantId,
-    platform: 'IOS',
-    billingPlanId: plan.id,
-    branchCount: plan.branchCount,
-    productId: decodedTransaction.productId,
-    externalOriginalTransactionId: String(decodedTransaction.originalTransactionId),
-    externalTransactionId: String(decodedTransaction.transactionId),
-    environment: decodedTransaction.environment === 'Production' ? 'PRODUCTION' : 'SANDBOX',
-    startDate: new Date(Number(decodedTransaction.purchaseDate)).toISOString().split('T')[0],
-    endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-    amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
-    billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
-    status: revoked ? 'CANCELLED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
-    autoRenew: !revoked,
-    paymentStatus: 'PAID',
-    lastVerifiedAt: new Date(),
-  };
+    const values = {
+      tenantId,
+      platform: 'IOS',
+      billingPlanId: plan.id,
+      branchCount: plan.branchCount,
+      productId: decodedTransaction.productId,
+      externalOriginalTransactionId: String(decodedTransaction.originalTransactionId),
+      externalTransactionId: String(decodedTransaction.transactionId),
+      environment: decodedTransaction.environment === 'Production' ? 'PRODUCTION' : 'SANDBOX',
+      startDate: new Date(Number(decodedTransaction.purchaseDate)).toISOString().split('T')[0],
+      endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
+      amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+      billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+      status: revoked ? 'CANCELLED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
+      autoRenew: !revoked,
+      paymentStatus: 'PAID',
+      lastVerifiedAt: new Date(),
+    };
 
-  if (existing) {
-    await existing.update(values);
-    return existing;
+    let subscription;
+    if (existing) {
+      await existing.update(values, { transaction: platformTx });
+      subscription = existing;
+    } else {
+      subscription = await TenantSubscription.create(values, { transaction: platformTx });
+    }
+
+    // Only reconcile for an ACTIVE, store-verified entitlement with a real
+    // branch-count change to react to — a cancellation/expiry/refund is
+    // handled by the expiry cron (it doesn't shrink branchCount, it ends
+    // the subscription entirely) and needs no slot trimming here.
+    if (values.status === 'ACTIVE' && values.branchCount != null) {
+      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
+      if (tenant?.connectionStringEncrypted) {
+        const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
+          transaction: platformTx,
+          previousMaxBranches,
+          originListingId,
+          idempotencyPrefix: values.externalTransactionId,
+          actorType: 'SYSTEM',
+        });
+      }
+    }
+
+    await platformTx.commit();
+    return subscription;
+  } catch (err) {
+    await platformTx.rollback();
+    throw err;
   }
-  return TenantSubscription.create(values);
 };
 
 /**

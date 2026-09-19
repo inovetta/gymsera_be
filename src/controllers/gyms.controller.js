@@ -26,7 +26,8 @@ const updateProfile = async (req, res, next) => {
 const listBranches = async (req, res, next) => {
   try {
     const organizationId = req.params.gymId || req.params.listingId || req.query.organizationId || req.query.gymId;
-    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId, organizationId);
+    const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1';
+    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId, organizationId, { includeInactive });
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -36,7 +37,7 @@ const listBranches = async (req, res, next) => {
 // ── POST /gyms/branches ───────────────────────────────────────────────────────
 const createBranch = async (req, res, next) => {
   try {
-    const result = await gymService.createBranch(req.tenantDb, req.user.tenantId, req.body);
+    const result = await gymService.createBranch(req.tenantDb, req.user.tenantId, req.body, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch created successfully', 201);
   } catch (err) {
     next(err);

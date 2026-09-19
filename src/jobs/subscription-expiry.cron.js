@@ -15,10 +15,12 @@
  */
 const { Op } = require('sequelize');
 const TenantDbManager       = require('../database/TenantDbManager');
+const { sequelize: platformSequelize } = require('../database/platform');
 const { UserGymMembership, User, Tenant, TenantSubscription, GymListing, PlatformPackage } = require('../models/platform');
 const { notificationsQueue } = require('./queues');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const emailService = require('../services/email.service');
+const subscriptionQuotaService = require('../services/subscription-quota.service');
 
 const EXPIRY_CRON = '0 1 * * *'; // 01:00 every day
 const WARNING_DAYS = 3;
@@ -191,6 +193,62 @@ const _processPlatformSubscriptions = async () => {
 };
 
 /**
+ * Safety-net pass for the capacity invariant every branch/slot operation
+ * depends on (activeBranches + Σ reservedSlots <= maxBranches — see
+ * subscription-quota.service.js#reconcileCapacity). The synchronous check in
+ * apple-billing.service.js#syncSubscriptionFromTransaction handles this at
+ * the moment a subscription's branchCount actually changes; this covers
+ * everything that check can't see — a webhook that never arrived, a race
+ * between two concurrent requests, a manual DB correction. Idempotency key
+ * is scoped to today's date, so running this twice in one day never
+ * double-trims, but a violation that's still present tomorrow gets
+ * re-evaluated (and re-corrected) fresh rather than being permanently
+ * skipped after the first fix attempt.
+ */
+const _reconcileCapacityForAllTenants = async () => {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const activeSubs = await TenantSubscription.findAll({
+    where: { status: 'ACTIVE', branchCount: { [Op.ne]: null } },
+    attributes: ['id', 'tenantId', 'branchCount'],
+  });
+
+  let reconciled = 0;
+  for (const sub of activeSubs) {
+    const tenant = await Tenant.findByPk(sub.tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
+    if (!tenant?.connectionStringEncrypted) continue;
+
+    try {
+      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+      const platformTx = await platformSequelize.transaction();
+      try {
+        const result = await subscriptionQuotaService.reconcileCapacity(sub.tenantId, tenantDb, sub.branchCount, {
+          transaction: platformTx,
+          idempotencyPrefix: `cron:${todayStr}`,
+          actorType: 'SYSTEM',
+        });
+        await platformTx.commit();
+        if (result.trimmedSlots > 0 || result.overQuotaCount > 0) {
+          reconciled++;
+          console.log(
+            `[Cron] Tenant ${sub.tenantId}: capacity reconciliation trimmed ${result.trimmedSlots} slot(s)` +
+              `${result.overQuotaCount > 0 ? `, over-quota by ${result.overQuotaCount}` : ''}`
+          );
+        }
+      } catch (err) {
+        await platformTx.rollback();
+        throw err;
+      }
+    } catch (err) {
+      console.error(`[Cron] Capacity reconciliation failed for tenant ${sub.tenantId}:`, err.message);
+    }
+  }
+
+  if (reconciled > 0) {
+    console.log(`[Cron] Capacity reconciliation: corrected drift for ${reconciled} tenant(s)`);
+  }
+};
+
+/**
  * Main cron handler — iterates over all loaded tenant connections.
  */
 const runExpiryCheck = async () => {
@@ -198,6 +256,9 @@ const runExpiryCheck = async () => {
 
   // ── Platform subscriptions first ─────────────────────────────────────────
   await _processPlatformSubscriptions();
+
+  // ── Capacity invariant safety net ────────────────────────────────────────
+  await _reconcileCapacityForAllTenants();
 
   const entries = TenantDbManager.getAllEntries();
 

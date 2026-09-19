@@ -11,8 +11,8 @@ let memberToken, hostToken, planId, gymId, subscriptionId;
 
 beforeAll(async () => {
   const [memberSession, hostSession] = await Promise.all([
-    loginAs('ali.hassan@example.com', 'Member@1234!'),
-    loginAs('ahmed@ironpeak.com', 'Host@1234!'),
+    loginAs('ali.hassan@example.com', 'Member@1234'),
+    loginAs('ahmed@ironpeak.com', 'GymHost@1234'),
   ]);
   memberToken = memberSession.accessToken;
   hostToken = hostSession.accessToken;

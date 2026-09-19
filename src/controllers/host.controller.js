@@ -246,6 +246,12 @@ const getBranchQuota = async (req, res, next) => {
       maxBranches,
       usedBranches,
       remainingBranches,
+      // > 0 means a downgrade left more real ACTIVE branches than the
+      // current plan covers, after every unbuilt slot was already trimmed —
+      // see subscription-quota.service.js#reconcileCapacity. Real branches
+      // are never touched to resolve this; the host needs to upgrade or
+      // close branches themselves. Drives the over-quota banner in the app.
+      overQuotaCount: activeSub?.overQuotaCount || 0,
       ...(organizationId ? { organizationBranches, organizationReservedSlots } : {}),
     });
   } catch (err) {
@@ -528,7 +534,7 @@ const createListing = async (req, res, next) => {
             ? images
             : (coverImageUrl ? [coverImageUrl] : []),
           packages,
-        });
+        }, { transaction: platformTx });
       }
 
       await platformTx.commit();
@@ -638,6 +644,26 @@ const moveBranchToOrganization = async (req, res, next) => {
 };
 
 /**
+ * POST /host/branches/:branchId/restore
+ * Re-activates a previously deleted branch. Re-consumes one unit of
+ * capacity the same way building a new branch does — see
+ * gymService.restoreBranch for exactly what is and isn't restored (member
+ * subscriptions and staff employment are deliberately NOT resurrected).
+ */
+const restoreBranch = async (req, res, next) => {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw createError('Tenant not found', 404);
+    const { branchId } = req.params;
+
+    const result = await gymService.restoreBranch(req.tenantDb, tenantId, branchId, req.user.sub || req.user.id);
+    return sendSuccess(res, result, 'Branch restored successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /host/listings/:id/reserved-slots/transfer
  * Body: { toListingId, count }
  * Moves unbuilt (paid, not-yet-a-real-branch) capacity from :id to
@@ -654,7 +680,13 @@ const transferReservedSlots = async (req, res, next) => {
     const { toListingId, count } = req.body;
     if (!toListingId) throw createError('toListingId is required', 400);
 
-    const result = await gymService.transferReservedSlots(tenantId, id, toListingId, count ? parseInt(count, 10) : 1);
+    const result = await gymService.transferReservedSlots(
+      tenantId,
+      id,
+      toListingId,
+      count ? parseInt(count, 10) : 1,
+      req.user.sub || req.user.id
+    );
     return sendSuccess(res, result, 'Slot moved successfully');
   } catch (err) {
     next(err);
@@ -1360,6 +1392,7 @@ module.exports = {
   updateListing,
   deleteListing,
   moveBranchToOrganization,
+  restoreBranch,
   transferReservedSlots,
   getCurrentSubscription,
   upgradeSubscription,

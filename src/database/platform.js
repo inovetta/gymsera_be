@@ -133,10 +133,19 @@ const connect = async () => {
   // every boot, in every environment, same as the block above. See
   // BillingPlan.model.js / BillingOffer.model.js / TenantSubscription.model.js
   // for what each column is for.
+  //
+  // The `id` columns below are pinned to utf8mb4_bin, matching exactly what
+  // Sequelize generates for a DataTypes.UUID column (verified empirically —
+  // it is NOT the table's default collation). A plain `CHAR(36)` here is
+  // otherwise collation-incompatible with a `DataTypes.UUID` foreign key
+  // column on another table's model-driven sync, and MySQL refuses to create
+  // that FK ("... are incompatible"). Production never hits this (it never
+  // calls sequelize.sync()), but any fresh dev/CI database bootstrapped via
+  // sync({alter:true}) did, until this was pinned.
   try {
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS billing_plans (
-        id CHAR(36) NOT NULL PRIMARY KEY,
+        id CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
         branch_count INT NOT NULL,
         ios_monthly_product_id VARCHAR(150) NULL,
         ios_annual_product_id VARCHAR(150) NULL,
@@ -162,7 +171,7 @@ const connect = async () => {
   try {
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS billing_offers (
-        id CHAR(36) NOT NULL PRIMARY KEY,
+        id CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
         name VARCHAR(150) NOT NULL,
         description TEXT NULL,
         discount_type ENUM('PERCENTAGE','FIXED_AMOUNT','FREE_PERIOD') NOT NULL,
@@ -188,7 +197,13 @@ const connect = async () => {
   await _makeColumnNullableAroundForeignKey(sequelize, {
     table: 'tenant_subscriptions',
     column: 'platform_package_id',
-    columnType: 'CHAR(36)',
+    // Must match what Sequelize generates for a DataTypes.UUID column (see
+    // the capacity_events/billing_plans note above) — a plain CHAR(36) here
+    // silently drops the column back to the table's default collation on
+    // every boot, which is how this was found: it left platform_package_id
+    // collation-mismatched against platform_packages.id, invisible until
+    // something tried to (re)create the FK against it via a stricter check.
+    columnType: 'CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin',
     logLabel: 'tenant_subscriptions.platform_package_id -> NULL',
   });
   const tenantSubBillingColumns = [
@@ -214,6 +229,56 @@ const connect = async () => {
     );
   } catch (err) {
     _logIfUnexpected('tenant_subscriptions external_original_transaction_id index', err);
+  }
+
+  // Set when a subscription downgrade leaves more real ACTIVE branches than
+  // the new plan covers, after every unbuilt reservedSlots has already been
+  // trimmed to zero — see subscription-quota.service.js#reconcileCapacity.
+  // Real branches are NEVER auto-deleted to close this gap; it's surfaced to
+  // the host instead and only new consumption (branches/restores) is blocked
+  // until they upgrade or close branches themselves.
+  try {
+    await sequelize.query(
+      'ALTER TABLE `tenant_subscriptions` ADD COLUMN `over_quota_count` INT NOT NULL DEFAULT 0;'
+    );
+  } catch (err) {
+    _logIfUnexpected('tenant_subscriptions.over_quota_count', err);
+  }
+
+  // Append-only capacity audit/idempotency ledger — see CapacityEvent.model.js.
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS capacity_events (
+        id CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
+        tenant_id CHAR(36) NOT NULL,
+        listing_id CHAR(36) NULL,
+        branch_id CHAR(36) NULL,
+        action ENUM('BRANCH_DELETED','BRANCH_RESTORED','SLOT_TRANSFERRED','SLOT_TRIMMED_DOWNGRADE','SLOT_ATTRIBUTED_UPGRADE','SLOT_CONSUMED_BUILD','ORG_DELETED','ORG_BRANCHES_MOVED') NOT NULL,
+        delta INT NOT NULL,
+        reserved_slots_before INT NULL,
+        reserved_slots_after INT NULL,
+        actor_user_id CHAR(36) NULL,
+        actor_type ENUM('HOST','ADMIN','SYSTEM') NOT NULL DEFAULT 'HOST',
+        reason VARCHAR(255) NULL,
+        idempotency_key VARCHAR(255) NOT NULL,
+        created_at DATETIME NOT NULL,
+        UNIQUE INDEX capacity_events_idempotency_key (idempotency_key),
+        INDEX capacity_events_tenant_id (tenant_id),
+        INDEX capacity_events_listing_id (listing_id)
+      );
+    `);
+  } catch (err) {
+    _logIfUnexpected('CREATE TABLE capacity_events', err);
+  }
+  // Widen the action ENUM if this table was already created (e.g. a local/
+  // staging boot) before SLOT_CONSUMED_BUILD existed — CREATE TABLE IF NOT
+  // EXISTS above never retroactively adds it.
+  try {
+    await sequelize.query(
+      "ALTER TABLE `capacity_events` MODIFY COLUMN `action` ENUM('BRANCH_DELETED','BRANCH_RESTORED','SLOT_TRANSFERRED','SLOT_TRIMMED_DOWNGRADE','SLOT_ATTRIBUTED_UPGRADE','SLOT_CONSUMED_BUILD','ORG_DELETED','ORG_BRANCHES_MOVED') NOT NULL;"
+    );
+  } catch (err) {
+    _logIfUnexpected('capacity_events.action widen ENUM', err);
   }
 
   // Seed the branch-count pricing staircase — real production data, not

@@ -60,14 +60,21 @@ const getPlans = async (req, res, next) => {
  */
 const syncIosPurchase = async (req, res, next) => {
   try {
-    const { transactionId } = req.body;
+    const { transactionId, organizationId } = req.body;
     if (!transactionId) throw createError('transactionId is required', 400);
 
     const tenantId = req.user?.tenantId;
     if (!tenantId) throw createError('No tenant context for this account', 400);
 
     const decodedTransaction = await appleBilling.getTransactionInfo(transactionId);
-    const subscription = await appleBilling.syncSubscriptionFromTransaction(tenantId, decodedTransaction);
+    // organizationId is optional — the org the purchase was initiated from,
+    // if the app knows it (e.g. the upsell flow reached from a specific
+    // organization's "need more capacity" prompt). Used only to decide where
+    // an upgrade's new capacity lands as a spendable slot; a downgrade never
+    // reads it.
+    const subscription = await appleBilling.syncSubscriptionFromTransaction(tenantId, decodedTransaction, {
+      originListingId: organizationId || null,
+    });
 
     return sendSuccess(res, { subscription }, 'Subscription synced');
   } catch (err) {
