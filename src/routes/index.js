@@ -476,6 +476,7 @@ router.use('/cities',            require('./cities.routes'));
 router.use('/platform-packages', require('./platform-packages.routes'));
 router.use('/tenants',           require('./tenants.routes'));
 router.use('/billing',           require('./billing.routes'));
+router.use('/admin/billing-plans', require('./billing-plans.routes'));
 router.use('/admin',             require('./admin.routes'));
 
 router.use('/gyms',      require('./gyms.routes'));

@@ -86,8 +86,17 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM('MONTHLY', 'QUARTERLY', 'YEARLY'),
         allowNull: false,
       },
+      // PENDING_MIGRATION: transient, only set mid-transaction on the row
+      // being replaced by a different-provider purchase — never observed
+      // outside that transaction (rolled back to ACTIVE if the new purchase
+      // fails verification). PENDING_CANCEL: the old row after a completed
+      // migration away from Apple/Google, which we cannot cancel server-side
+      // — statusNote carries the guidance shown to the host. SCHEDULED: the
+      // old row after a completed migration away from Stripe, which we CAN
+      // cancel server-side (cancel_at_period_end) — flips to CANCELLED once
+      // Stripe's webhook confirms. See subscription-migration.service.js.
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED'),
+        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED'),
         allowNull: false,
         defaultValue: 'ACTIVE',
       },
@@ -115,6 +124,13 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
+      },
+      // Context for a transitional status — e.g. "Migrated to STRIPE on
+      // 2026-09-20 — cancel your Apple subscription in Settings to avoid
+      // being charged again." Null for a plain ACTIVE/EXPIRED/CANCELLED row.
+      statusNote: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
       },
     },
     {

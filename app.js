@@ -109,7 +109,12 @@ app.options('*', cors(corsOptions));
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+// `verify` stashes the exact raw bytes onto req.rawBody before JSON-parsing
+// mutates req.body — needed for Stripe webhook signature verification
+// (stripe.webhooks.constructEvent requires the untouched raw body; the
+// parsed req.body would no longer match what Stripe actually signed). See
+// billing.controller.js#stripeWebhook.
+app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Request logging ───────────────────────────────────────────────────────────

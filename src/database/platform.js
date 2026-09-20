@@ -215,6 +215,9 @@ const connect = async () => {
     "ADD COLUMN `external_transaction_id` VARCHAR(150) NULL",
     "ADD COLUMN `environment` ENUM('SANDBOX','PRODUCTION') NULL",
     "ADD COLUMN `last_verified_at` DATETIME NULL",
+    // Human-readable context for a transitional status — e.g. what a
+    // PENDING_CANCEL row is waiting on. See subscription-migration.service.js.
+    "ADD COLUMN `status_note` VARCHAR(255) NULL",
   ];
   for (const clause of tenantSubBillingColumns) {
     try {
@@ -243,6 +246,64 @@ const connect = async () => {
     );
   } catch (err) {
     _logIfUnexpected('tenant_subscriptions.over_quota_count', err);
+  }
+
+  // Widen `status` for provider-aware migration (subscription-migration.service.js):
+  // PENDING_MIGRATION is the brief in-transaction state on a row being
+  // replaced by a different-provider purchase (rolled back if that purchase's
+  // verification fails); PENDING_CANCEL is a terminated-but-still-possibly-
+  // billing Apple/Google subscription we cannot cancel server-side, awaiting
+  // the host's own store-side cancellation; SCHEDULED is a Stripe subscription
+  // we've told Stripe to cancel at period end, awaiting its webhook
+  // confirmation. Safe to widen repeatedly — MODIFY COLUMN on an ENUM is
+  // idempotent as long as the target list only ever grows.
+  try {
+    await sequelize.query(
+      "ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `status` ENUM('ACTIVE','EXPIRED','CANCELLED','PENDING_MIGRATION','PENDING_CANCEL','SCHEDULED') NOT NULL DEFAULT 'ACTIVE';"
+    );
+  } catch (err) {
+    _logIfUnexpected('tenant_subscriptions.status widen ENUM', err);
+  }
+
+  // Per-provider catalog sync status (billing-plan-catalog.service.js) — lets
+  // Super Admin see when App Store Connect / Play Console / Stripe's actual
+  // configured price has fallen behind BillingPlan's own catalog price. Only
+  // Stripe's is ever set by a real API call (sync-stripe); iOS/Android are
+  // admin-attested since neither store exposes a safe price-write API.
+  const billingPlanSyncColumns = [
+    "ADD COLUMN `stripe_product_id` VARCHAR(150) NULL",
+    "ADD COLUMN `ios_sync_status` ENUM('SYNCED','PENDING','MISMATCH','NOT_CONFIGURED') NOT NULL DEFAULT 'NOT_CONFIGURED'",
+    "ADD COLUMN `android_sync_status` ENUM('SYNCED','PENDING','MISMATCH','NOT_CONFIGURED') NOT NULL DEFAULT 'NOT_CONFIGURED'",
+    "ADD COLUMN `stripe_sync_status` ENUM('SYNCED','PENDING','MISMATCH','NOT_CONFIGURED') NOT NULL DEFAULT 'NOT_CONFIGURED'",
+    "ADD COLUMN `ios_last_synced_at` DATETIME NULL",
+    "ADD COLUMN `android_last_synced_at` DATETIME NULL",
+    "ADD COLUMN `stripe_last_synced_at` DATETIME NULL",
+  ];
+  for (const clause of billingPlanSyncColumns) {
+    try {
+      await sequelize.query(`ALTER TABLE \`billing_plans\` ${clause};`);
+    } catch (err) {
+      _logIfUnexpected(`billing_plans ${clause}`, err);
+    }
+  }
+
+  // Backfill placeholder Android product/base-plan IDs onto any row that
+  // doesn't have real ones yet — never overwrites a row an admin has since
+  // pointed at a real Play Console product (the WHERE clause only ever
+  // touches NULL columns). Purely local string data, unlike Stripe's price
+  // IDs below, which must come from a real Stripe API call
+  // (billing-plan-catalog.service.js#syncStripePrice) and so are left NULL
+  // here for `sync-stripe` to fill in once a Stripe account exists.
+  try {
+    await sequelize.query(`
+      UPDATE billing_plans
+      SET android_product_id = CONCAT('PLACEHOLDER_branches_', branch_count),
+          android_monthly_base_plan_id = CONCAT('PLACEHOLDER_branches_', branch_count, '_monthly'),
+          android_annual_base_plan_id = CONCAT('PLACEHOLDER_branches_', branch_count, '_annual')
+      WHERE android_product_id IS NULL;
+    `);
+  } catch (err) {
+    _logIfUnexpected('billing_plans placeholder android IDs backfill', err);
   }
 
   // Append-only capacity audit/idempotency ledger — see CapacityEvent.model.js.

@@ -34,7 +34,11 @@ module.exports = (sequelize) => {
       androidProductId: { type: DataTypes.STRING(150), allowNull: true },
       androidMonthlyBasePlanId: { type: DataTypes.STRING(150), allowNull: true },
       androidAnnualBasePlanId: { type: DataTypes.STRING(150), allowNull: true },
-      // Web — Stripe Price IDs.
+      // Web — Stripe Price IDs, plus the one Stripe Product both prices
+      // belong to (created once by billing-plan-catalog.service.js#syncStripePrice
+      // and reused on every re-sync, so a price edit creates a new Price
+      // under the same Product rather than a new Product each time).
+      stripeProductId: { type: DataTypes.STRING(150), allowNull: true },
       stripeMonthlyPriceId: { type: DataTypes.STRING(150), allowNull: true },
       stripeAnnualPriceId: { type: DataTypes.STRING(150), allowNull: true },
       // Display/reference prices — the actual charge always comes from
@@ -47,6 +51,33 @@ module.exports = (sequelize) => {
       currency: { type: DataTypes.STRING(3), allowNull: false, defaultValue: 'PKR' },
       isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
       sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+      // Whether each provider's own live price configuration matches this
+      // row's monthlyPrice/annualPrice — three separate, deliberately never-
+      // conflated prices (see billing-plan-catalog.service.js): this catalog
+      // price, each provider's own configured price, and (on TenantSubscription)
+      // what an existing subscriber actually locked in. Editing monthlyPrice/
+      // annualPrice here flips all three to PENDING; only `sync-stripe` (a
+      // real API call) can set stripeSyncStatus back to SYNCED — iOS/Android
+      // have no safe price-write API, so an admin flips those by hand after
+      // updating App Store Connect / Play Console themselves.
+      iosSyncStatus: {
+        type: DataTypes.ENUM('SYNCED', 'PENDING', 'MISMATCH', 'NOT_CONFIGURED'),
+        allowNull: false,
+        defaultValue: 'NOT_CONFIGURED',
+      },
+      androidSyncStatus: {
+        type: DataTypes.ENUM('SYNCED', 'PENDING', 'MISMATCH', 'NOT_CONFIGURED'),
+        allowNull: false,
+        defaultValue: 'NOT_CONFIGURED',
+      },
+      stripeSyncStatus: {
+        type: DataTypes.ENUM('SYNCED', 'PENDING', 'MISMATCH', 'NOT_CONFIGURED'),
+        allowNull: false,
+        defaultValue: 'NOT_CONFIGURED',
+      },
+      iosLastSyncedAt: { type: DataTypes.DATE, allowNull: true },
+      androidLastSyncedAt: { type: DataTypes.DATE, allowNull: true },
+      stripeLastSyncedAt: { type: DataTypes.DATE, allowNull: true },
     },
     {
       tableName: 'billing_plans',

@@ -25,6 +25,7 @@ const { BillingPlan, Tenant } = require('../models/platform');
 const { sequelize } = require('../database/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
+const subscriptionMigrationService = require('./subscription-migration.service');
 const TenantDbManager = require('../database/TenantDbManager');
 
 // Apple Root CA - G3, fetched and fingerprint-verified against Apple's
@@ -188,6 +189,10 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
       lock: true,
     });
     const previousMaxBranches = existing ? existing.branchCount : null;
+    // A genuinely new row, or a real plan change (upgrade/downgrade) — as
+    // opposed to a plain renewal of the same plan, which must NOT recompute
+    // amount/billingCycle below (see that field's comment).
+    const planChanged = !existing || existing.billingPlanId !== plan.id;
 
     const values = {
       tenantId,
@@ -200,8 +205,15 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
       environment: decodedTransaction.environment === 'Production' ? 'PRODUCTION' : 'SANDBOX',
       startDate: new Date(Number(decodedTransaction.purchaseDate)).toISOString().split('T')[0],
       endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-      amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
-      billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+      // Captured only on a new row or a real plan change, then left alone on
+      // every subsequent renewal sync — otherwise a later BillingPlan catalog
+      // price edit would silently overwrite what this subscriber actually
+      // locked in, even though Apple never re-charged them at the new rate.
+      // This is what keeps "existing subscriber price" a real, distinct
+      // concept from "current catalog price" (see BillingPlan.model.js).
+      ...(planChanged
+        ? { amount: isAnnual ? plan.annualPrice : plan.monthlyPrice, billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY' }
+        : {}),
       status: revoked ? 'CANCELLED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
       autoRenew: !revoked,
       paymentStatus: 'PAID',
@@ -209,18 +221,50 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     };
 
     let subscription;
+    // True whenever requestProviderChange handled this row (fresh signup or
+    // a real cross-provider migration) — either way it already called
+    // reconcileCapacity itself, so the shared block below must skip it.
+    // Named for what it means here, not for whether a migration literally
+    // happened; the post-commit Stripe-cancel hook below keys off
+    // `migratedFrom` instead, which is only ever set for a real migration.
+    let reconciledByActivation = false;
+    let migratedFrom = null;
     if (existing) {
       await existing.update(values, { transaction: platformTx });
       subscription = existing;
     } else {
-      subscription = await TenantSubscription.create(values, { transaction: platformTx });
+      // A brand-new Apple subscription for this tenant — first-ever signup
+      // or a cross-provider migration. requestProviderChange decides which,
+      // under a tenant-row lock so no concurrent purchase/webhook for this
+      // same tenant can race this decision. See subscription-migration.service.js.
+      let tenantDb = null;
+      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
+      if (tenant?.connectionStringEncrypted) {
+        tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+      }
+      const activation = await subscriptionMigrationService.requestProviderChange(
+        tenantId,
+        { newPlatform: 'IOS', newSubscriptionValues: values },
+        {
+          transaction: platformTx,
+          tenantDb,
+          originListingId,
+          idempotencyPrefix: values.externalTransactionId,
+          actorType: 'SYSTEM',
+        }
+      );
+      subscription = activation.subscription;
+      reconciledByActivation = true;
+      migratedFrom = activation.migratedFrom;
     }
 
     // Only reconcile for an ACTIVE, store-verified entitlement with a real
     // branch-count change to react to — a cancellation/expiry/refund is
     // handled by the expiry cron (it doesn't shrink branchCount, it ends
-    // the subscription entirely) and needs no slot trimming here.
-    if (values.status === 'ACTIVE' && values.branchCount != null) {
+    // the subscription entirely) and needs no slot trimming here. The
+    // `!existing` branch above already reconciled via requestProviderChange,
+    // so it's skipped here.
+    if (!reconciledByActivation && values.status === 'ACTIVE' && values.branchCount != null) {
       const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
       if (tenant?.connectionStringEncrypted) {
         const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
@@ -235,6 +279,19 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     }
 
     await platformTx.commit();
+
+    // A real Stripe API call must never happen inside a DB transaction that
+    // might still roll back — done here, only after commit, only when this
+    // sync just migrated the tenant away from a Stripe subscription.
+    if (migratedFrom?.platform === 'STRIPE' && migratedFrom.externalOriginalTransactionId) {
+      try {
+        const stripeBilling = require('./stripe-billing.service');
+        await stripeBilling.cancelAtPeriodEnd(migratedFrom.externalOriginalTransactionId);
+      } catch (err) {
+        console.warn('[Apple Billing] Failed to schedule Stripe cancellation after migration:', err.message);
+      }
+    }
+
     return subscription;
   } catch (err) {
     await platformTx.rollback();
