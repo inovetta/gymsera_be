@@ -772,17 +772,21 @@ const upgradeSubscription = async (req, res, next) => {
     const tenant = await Tenant.findByPk(tenantId);
     if (!tenant) throw createError('Tenant not found', 404);
 
-    // This is the legacy manual/PlatformPackage path (bank transfer / pay-
-    // later, from before store-verified IAP billing existed) — it has no
-    // concept of reservedSlots or overQuotaCount and never calls
-    // reconcileCapacity. Found during a final capacity-path audit: a host
-    // already on a store-verified plan (branchCount set) who reached this
-    // endpoint would have their IAP subscription cancelled and replaced by
-    // a legacy one with a completely different, unreconciled branch limit —
-    // silently orphaning any reservedSlots and leaving a real over-capacity
-    // state with no overQuotaCount ever set to reflect it. Blocked outright
-    // rather than taught to reconcile a transition the product doesn't
-    // otherwise support self-serve.
+    // INTENTIONAL PRODUCT RULE: this is the legacy manual/PlatformPackage
+    // path (bank transfer / pay-later, from before store-verified IAP
+    // billing existed). It has no concept of reservedSlots or
+    // overQuotaCount and never calls reconcileCapacity — it is NOT unified
+    // with the IAP reconciliation workflow, only kept from colliding with
+    // it. A host already on a store-verified plan (branchCount set) who
+    // reached this endpoint would have their IAP subscription cancelled and
+    // replaced by a legacy one with a completely different, unreconciled
+    // branch limit — silently orphaning any reservedSlots and leaving a
+    // real over-capacity state with no overQuotaCount ever set to reflect
+    // it. Blocked outright rather than taught to reconcile a transition the
+    // product doesn't otherwise support self-serve. If a genuine IAP <->
+    // manual transition is ever needed, it should be a deliberate,
+    // explicitly-reconciled admin operation of its own — not something this
+    // endpoint (or assignTenantSubscription's matching guard) attempts.
     const existingActiveSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
     if (existingActiveSub && existingActiveSub.branchCount != null) {
       const err = createError(

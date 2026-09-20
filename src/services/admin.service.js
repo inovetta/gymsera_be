@@ -584,14 +584,16 @@ const assignTenantSubscription = async (tenantId, { packageId, startDate, billin
   const pkg = await PlatformPackage.findByPk(packageId);
   if (!pkg) throw createError('Package not found', 404);
 
-  // Same reasoning as host.controller.js#upgradeSubscription's guard: this
-  // legacy manual/PlatformPackage path has no concept of reservedSlots or
-  // overQuotaCount, and — unlike that endpoint — doesn't even cancel the
-  // tenant's existing ACTIVE subscription first, so assigning one to a
-  // tenant already on a store-verified plan would leave two simultaneously
-  // "ACTIVE" rows and silently strand their reservedSlots. Block it; a
-  // genuine IAP-to-manual transition needs its own deliberate reconciliation
-  // step, not a side effect of this form.
+  // INTENTIONAL PRODUCT RULE — same as host.controller.js#upgradeSubscription's
+  // guard: this legacy manual/PlatformPackage path has no concept of
+  // reservedSlots or overQuotaCount and is NOT unified with the IAP
+  // reconciliation workflow, only kept from colliding with it. Unlike that
+  // endpoint, this one doesn't even cancel the tenant's existing ACTIVE
+  // subscription first, so assigning one to a tenant already on a
+  // store-verified plan would leave two simultaneously "ACTIVE" rows and
+  // silently strand their reservedSlots. Blocked outright; a genuine
+  // IAP-to-manual transition needs its own deliberate, explicitly-reconciled
+  // admin operation, not a side effect of this form.
   const subscriptionQuotaService = require('./subscription-quota.service');
   const existingActiveSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
   if (existingActiveSub && existingActiveSub.branchCount != null) {
@@ -669,6 +671,19 @@ const assignTenantSubscription = async (tenantId, { packageId, startDate, billin
 };
 
 // ── revokeTenantSubscription ──────────────────────────────────────────────────
+// INTENTIONAL PRODUCT RULE, not an oversight: revoking never touches
+// reservedSlots or any real Branch. The tenant's branch-count entitlement
+// simply drops to the legacy default (1) going forward — resolveMaxBranches
+// falls through once no ACTIVE subscription remains — so new consumption
+// (createBranch, restoreBranch) is naturally blocked without this function
+// having to compute or trim anything itself. Real branches are NEVER
+// auto-deleted or deactivated by a revoke, and reservedSlots are NEVER
+// stripped, even though this is a punitive admin action: capacity the host
+// already paid for is not destroyed by revocation, matching the same "never
+// touch what already exists" rule reconcileCapacity enforces for a plain
+// downgrade (see subscription-quota.service.js#reconcileCapacity). If a
+// genuine "claw back paid capacity" admin action is ever needed, it should
+// be its own explicit, deliberate operation — not a side effect of revoke.
 const revokeTenantSubscription = async (tenantId, subscriptionId) => {
   const sub = await TenantSubscription.findOne({ where: { id: subscriptionId, tenantId } });
   if (!sub) throw createError('Subscription not found', 404);
