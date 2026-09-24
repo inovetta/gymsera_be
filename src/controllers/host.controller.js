@@ -217,6 +217,7 @@ const getBranchQuota = async (req, res, next) => {
     // for the Gyms tab's per-organization "N branches, M unbuilt slots" view
     // — a real number now, not a generic slice of tenant-wide leftovers.
     let usedBranches = 0;
+    let activeBranches = 0;
     let organizationBranches = 0;
     let organizationReservedSlots = 0;
 
@@ -224,6 +225,7 @@ const getBranchQuota = async (req, res, next) => {
       try {
         const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
         usedBranches = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+        activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
 
         if (organizationId) {
           organizationBranches = await tenantDb.models.Branch.count({
@@ -246,6 +248,15 @@ const getBranchQuota = async (req, res, next) => {
       maxBranches,
       usedBranches,
       remainingBranches,
+      // activeBranches / buildableBranches are the host-facing pair: real
+      // built branches, and how many more they can still build. That's
+      // deliberately NOT remainingBranches above — an unbuilt reservedSlot
+      // counts as "used" for the invariant's purposes but is still very
+      // much buildable, so remainingBranches understates what the host can
+      // actually do. Where a slot happens to be parked is internal
+      // bookkeeping the app no longer surfaces.
+      activeBranches,
+      buildableBranches: Math.max(0, maxBranches - activeBranches),
       // > 0 means a downgrade left more real ACTIVE branches than the
       // current plan covers, after every unbuilt slot was already trimmed —
       // see subscription-quota.service.js#reconcileCapacity. Real branches
