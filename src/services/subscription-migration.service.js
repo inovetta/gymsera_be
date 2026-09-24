@@ -54,6 +54,7 @@
  *     themselves in Settings / Play Store to avoid being charged again.
  *     GymsEra cannot and does not silently do this for them.
  */
+const { Op } = require('sequelize');
 const { Tenant, TenantSubscription } = require('../models/platform');
 const subscriptionQuotaService = require('./subscription-quota.service');
 
@@ -205,4 +206,96 @@ const requestProviderChange = async (
   return { subscription: newSubscription, migratedFrom: currentActive, isMigration: true };
 };
 
-module.exports = { requestProviderChange };
+/**
+ * Guards the *renewal* path — an already-known row's own status being
+ * refreshed from what its provider reports right now — against resurrecting
+ * a row that a prior requestProviderChange call already superseded.
+ *
+ * requestProviderChange enforces "at most one ACTIVE row per tenant" only
+ * at the moment a NEW external subscription id is first activated. It has
+ * no say over what happens afterwards, when that same external
+ * subscription's own provider reports its live status again — a renewal, an
+ * RTDN, a resync — and every provider's own sync function (apple-
+ * billing.service.js, google-play-billing.service.js) writes that status to
+ * an already-known row directly, with no invariant check at all, because
+ * bypassing requestProviderChange there is deliberate: a plain renewal on
+ * the tenant's own current entitlement must not re-run migration logic.
+ *
+ * The gap: a row requestProviderChange demoted to PENDING_CANCEL/CANCELLED/
+ * SCHEDULED can still be a real, live, billing subscription at the store —
+ * this happens whenever the "supersession" wasn't an actual store-confirmed
+ * replacement (e.g. two independent purchases rather than a true in-app
+ * plan change), so the store never really cancelled the old one. Without
+ * this guard, the very next renewal notification for that still-billing old
+ * subscription flips it straight back to ACTIVE, producing two ACTIVE rows
+ * for the same tenant — silently reintroducing the exact bug
+ * requestProviderChange exists to prevent, just on a delay. (Found during
+ * live Android testing: a tenant who bought two branch tiers as separate
+ * purchases, rather than through in-app plan-change, ended up with both
+ * subscriptions genuinely billing at Google, and the older one's renewal
+ * RTDN silently resurrected it to ACTIVE alongside the newer one.)
+ *
+ * The one legitimate case where a demoted row SHOULD become ACTIVE again is
+ * when it is no longer actually superseded — whatever replaced it has
+ * itself since left ACTIVE, and this row is, in fact, the only live
+ * entitlement left. That case is let through untouched; refusing it would
+ * leave a tenant who is genuinely paying with no active entitlement at all.
+ *
+ * @param {string} tenantId
+ * @param {object} existingRow - the TenantSubscription row about to be updated (Sequelize instance, already locked by the caller).
+ * @param {object} incomingValues - the values object the caller is about to pass to existingRow.update(...).
+ * @param {object} opts
+ * @param {import('sequelize').Transaction} opts.transaction - REQUIRED, the same transaction existingRow was locked and will be updated under.
+ * @returns {Promise<object>} incomingValues, unmodified — or with status/statusNote overridden to keep this row in its superseded state.
+ */
+const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { transaction }) => {
+  if (!transaction) throw new Error('reconcileRenewalStatus requires a platform-DB transaction');
+
+  if (incomingValues.status !== 'ACTIVE' || existingRow.status === 'ACTIVE') {
+    // Not a resurrection attempt: either the provider itself says this
+    // subscription is no longer active (always safe to record as-is — a
+    // terminal status can never violate the one-ACTIVE-row invariant), or
+    // this row was already ACTIVE and is just renewing normally.
+    return incomingValues;
+  }
+
+  // Same serialization point every other activation decision in this file
+  // uses, and for the identical reason: two renewal events for two
+  // different superseded rows of the same tenant must not both
+  // independently conclude "no other ACTIVE row exists" and both resurrect.
+  await Tenant.findByPk(tenantId, { transaction, lock: true });
+
+  const otherActive = await TenantSubscription.findOne({
+    where: { tenantId, status: 'ACTIVE', id: { [Op.ne]: existingRow.id } },
+    transaction,
+    lock: true,
+  });
+
+  if (!otherActive) {
+    // Nothing else is claiming to be this tenant's active entitlement, so
+    // this one legitimately is — let the normal write proceed.
+    return incomingValues;
+  }
+
+  // A different row is this tenant's one authoritative entitlement. Refuse
+  // to resurrect this one to ACTIVE regardless of what the provider says —
+  // and log loudly, because this means the store still considers BOTH
+  // subscriptions live (real money on both), which the app cannot fix on
+  // its own; it needs a human to cancel one at the store.
+  console.warn(
+    `[subscription-migration] Refused to resurrect superseded TenantSubscription ${existingRow.id} ` +
+    `(tenant ${tenantId}, platform ${existingRow.platform}) to ACTIVE — TenantSubscription ${otherActive.id} ` +
+    `is already this tenant's active entitlement. The provider still reports this subscription as live, ` +
+    `which likely means both are genuinely billing at the store and a human needs to cancel one.`
+  );
+
+  return {
+    ...incomingValues,
+    status: existingRow.status,
+    statusNote:
+      existingRow.statusNote ||
+      `Still billing at the store, but superseded by another active GymsEra subscription — cancel this one at the store if you don't need both.`,
+  };
+};
+
+module.exports = { requestProviderChange, reconcileRenewalStatus };

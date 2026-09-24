@@ -166,7 +166,21 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
     let reconciledByActivation = false;
     let migratedFrom = null;
     if (existing) {
-      await existing.update(values, { transaction: platformTx });
+      // A renewal/resync for a token already on file — never a migration
+      // decision (that only ever runs once, in the `else` branch below, the
+      // first time a given purchase token is seen). But Google's own report
+      // for THIS token could still say ACTIVE even after a prior purchase
+      // superseded it locally, if that "supersession" wasn't a real in-app
+      // replacement and this subscription genuinely kept billing at the
+      // store — see subscription-migration.service.js#reconcileRenewalStatus
+      // for why blindly trusting that would resurrect a second ACTIVE row.
+      const reconciledValues = await subscriptionMigrationService.reconcileRenewalStatus(
+        tenantId,
+        existing,
+        values,
+        { transaction: platformTx }
+      );
+      await existing.update(reconciledValues, { transaction: platformTx });
       subscription = existing;
     } else {
       let tenantDb = null;
@@ -201,7 +215,12 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
       migratedFrom = activation.migratedFrom;
     }
 
-    if (!reconciledByActivation && values.status === 'ACTIVE' && values.branchCount != null) {
+    // subscription.status, not values.status — reconcileRenewalStatus above
+    // can override what was about to be written, and .update() leaves the
+    // instance holding whatever was actually persisted. Reading values.status
+    // here would reconcile capacity for a row that just got refused ACTIVE
+    // status, double-counting a superseded row's branchCount.
+    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
       const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
       if (tenant?.connectionStringEncrypted) {
         const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);

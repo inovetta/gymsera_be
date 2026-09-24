@@ -289,7 +289,20 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
     let reconciledByActivation = false;
     let migratedFrom = null;
     if (existing) {
-      await existing.update(values, { transaction: platformTx });
+      // A renewal/resync for a Stripe subscription id already on file —
+      // never a migration decision. But Stripe's own object could still say
+      // ACTIVE even after a prior purchase superseded this row locally —
+      // see subscription-migration.service.js#reconcileRenewalStatus for
+      // why blindly trusting that would resurrect a second ACTIVE row.
+      // Mirrors the identical guard in apple-billing.service.js and
+      // google-play-billing.service.js.
+      const reconciledValues = await subscriptionMigrationService.reconcileRenewalStatus(
+        tenantId,
+        existing,
+        values,
+        { transaction: platformTx }
+      );
+      await existing.update(reconciledValues, { transaction: platformTx });
       subscription = existing;
     } else {
       let tenantDb = null;
@@ -313,7 +326,9 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
       migratedFrom = activation.migratedFrom;
     }
 
-    if (!reconciledByActivation && values.status === 'ACTIVE' && values.branchCount != null) {
+    // subscription.status, not values.status — see the identical comment in
+    // apple-billing.service.js / google-play-billing.service.js.
+    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
       const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
       if (tenant?.connectionStringEncrypted) {
         const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);

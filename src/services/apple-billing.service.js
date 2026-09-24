@@ -230,7 +230,26 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     let reconciledByActivation = false;
     let migratedFrom = null;
     if (existing) {
-      await existing.update(values, { transaction: platformTx });
+      // A renewal/resync for an originalTransactionId already on file —
+      // never a migration decision (that only ever runs once, in the `else`
+      // branch below, the first time a given id is seen). But Apple's own
+      // report for THIS transaction could still say ACTIVE even after a
+      // prior purchase superseded it locally, if that "supersession" wasn't
+      // a real in-app replacement within the same subscription group and
+      // this one genuinely kept billing — see subscription-
+      // migration.service.js#reconcileRenewalStatus for why blindly
+      // trusting that would resurrect a second ACTIVE row. (Confirmed
+      // happening on Android's equivalent path during live testing; the two
+      // services mirror each other function-for-function, so the same gap
+      // applies here even though Apple's stable originalTransactionId makes
+      // it rarer in practice.)
+      const reconciledValues = await subscriptionMigrationService.reconcileRenewalStatus(
+        tenantId,
+        existing,
+        values,
+        { transaction: platformTx }
+      );
+      await existing.update(reconciledValues, { transaction: platformTx });
       subscription = existing;
     } else {
       // A brand-new Apple subscription for this tenant — first-ever signup
@@ -264,7 +283,12 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     // the subscription entirely) and needs no slot trimming here. The
     // `!existing` branch above already reconciled via requestProviderChange,
     // so it's skipped here.
-    if (!reconciledByActivation && values.status === 'ACTIVE' && values.branchCount != null) {
+    // subscription.status, not values.status — reconcileRenewalStatus above
+    // can override what was about to be written, and .update() leaves the
+    // instance holding whatever was actually persisted. Reading values.status
+    // here would reconcile capacity for a row that just got refused ACTIVE
+    // status, double-counting a superseded row's branchCount.
+    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
       const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
       if (tenant?.connectionStringEncrypted) {
         const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
