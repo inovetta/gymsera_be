@@ -303,6 +303,94 @@ const _notifyBranchLimitReached = async (tenantId, tenant) => {
   }
 };
 
+/**
+ * How many ACTIVE branches an organization still has. Used both for the
+ * advisory "this is the last one" warning before a destructive action, and
+ * for the cascade decision after it.
+ */
+const _countActiveBranchesInListing = async (tenantDb, listingId) => {
+  if (!listingId) return 0;
+  return tenantDb.models.Branch.count({ where: { gymListingId: listingId, status: 'ACTIVE' } });
+};
+
+/**
+ * Business rule: an organization must never exist without at least one
+ * branch. Called after the last branch leaves one (deleted or moved away)
+ * to take the now-empty organization down with it.
+ *
+ * Deliberately re-counts rather than trusting the caller's earlier check:
+ * branches live in the tenant DB and organizations in the platform DB, so
+ * the two can't share a transaction (the same reason deleteBranch's capacity
+ * step is already split out and made idempotent). Re-counting here, after
+ * the branch change has committed, means two concurrent deletions of the
+ * last two branches both arrive at the correct answer instead of each
+ * seeing the other's branch as still alive — and the ORG_DELETED event's
+ * idempotency key makes the duplicate attempt a no-op.
+ *
+ * Any reservedSlots left on the organization are intentionally left in
+ * place and simply go inert: getUsedCapacity only sums reservedSlots for
+ * organizations that aren't INACTIVE, so the capacity returns to the
+ * tenant's shared pool — exactly the behaviour deleteOrganization already
+ * documents and relies on. Nothing the host paid for is lost: what they can
+ * still build is maxBranches - activeBranches, which this doesn't touch.
+ */
+const _deactivateOrganizationIfEmpty = async (tenantDb, listingId, actorUserId, reason) => {
+  if (!listingId) return false;
+  const remaining = await _countActiveBranchesInListing(tenantDb, listingId);
+  if (remaining > 0) return false;
+
+  // Looked up by id alone and the tenant read off the row itself — the
+  // callers below are already operating on this organization's own branch,
+  // so re-deriving the tenant here is both simpler and one less thing a
+  // caller can get wrong.
+  const listing = await GymListing.findByPk(listingId);
+  if (!listing || listing.status === 'INACTIVE') return false;
+
+  await listing.update({ status: 'INACTIVE', branchId: null });
+  await subscriptionQuotaService.recordCapacityEvent(
+    {
+      tenantId: listing.tenantId,
+      listingId,
+      action: 'ORG_DELETED',
+      delta: 0,
+      reservedSlotsBefore: listing.reservedSlots,
+      reservedSlotsAfter: listing.reservedSlots,
+      actorUserId: actorUserId || null,
+      actorType: actorUserId ? 'HOST' : 'SYSTEM',
+      reason,
+      idempotencyKey: `org_deleted:${listingId}`,
+    },
+    { transaction: null }
+  );
+  return true;
+};
+
+/**
+ * Advisory guard for the two destructive paths below (delete a branch, move
+ * a branch out). Throws a 409 the client can recognise and turn into an
+ * "are you sure?" dialog, unless the caller has already confirmed. Purely a
+ * warning mechanism — the actual cascade is decided by
+ * _deactivateOrganizationIfEmpty after the fact, so losing this race just
+ * means the host wasn't prompted, never that the data ends up wrong.
+ */
+const _guardLastBranchInOrganization = async (tenantDb, branch, confirmed) => {
+  if (confirmed || !branch.gymListingId) return;
+  const activeInListing = await _countActiveBranchesInListing(tenantDb, branch.gymListingId);
+  if (activeInListing > 1) return;
+
+  const listing = await GymListing.findByPk(branch.gymListingId);
+  const err = createError(
+    `This is the last branch in "${listing?.title || 'this organization'}". ` +
+      'Continuing will also remove the organization.',
+    409
+  );
+  err.code = 'last_branch_in_organization';
+  // `data` (not `details`) — that's the key errorHandler.js actually
+  // forwards to the client alongside `code`.
+  err.data = { listingId: branch.gymListingId, organizationName: listing?.title || null };
+  throw err;
+};
+
 const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) => {
   const platformTx = await sequelize.transaction();
   try {
@@ -436,7 +524,13 @@ const getBranch = async (tenantDb, branchId) => {
  * it, a second, unsynchronized "which branch is this" reference that never
  * agreed with the first once branches could move between organizations.
  */
-const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
+const moveBranch = async (
+  tenantDb,
+  tenantId,
+  branchId,
+  targetListingId,
+  { confirmOrganizationDeletion = false, movedByUserId = null } = {}
+) => {
   const { Branch } = tenantDb.models;
   const branch = await Branch.findByPk(branchId);
   if (!branch || branch.status !== 'ACTIVE') {
@@ -451,6 +545,10 @@ const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
   if (!targetListing) {
     throw createError('Target organization not found', 404);
   }
+
+  // Moving the last branch out empties the source organization just as
+  // surely as deleting it does — same rule, same warning, same cascade.
+  await _guardLastBranchInOrganization(tenantDb, branch, confirmOrganizationDeletion);
 
   let targetGym = await tenantDb.models.Gym.findOne({ where: { gymListingId: targetListingId } });
   if (!targetGym) {
@@ -475,6 +573,18 @@ const moveBranch = async (tenantDb, tenantId, branchId, targetListingId) => {
   // than leaving branchId null while it visibly has a real branch.
   if (!targetListing.branchId) {
     await targetListing.update({ branchId: branch.id });
+  }
+
+  // If that emptied the source organization, it goes too.
+  try {
+    await _deactivateOrganizationIfEmpty(
+      tenantDb,
+      sourceListingId,
+      movedByUserId,
+      `Organization emptied by moving its last branch "${branch.branchName}" to another organization`
+    );
+  } catch (orgErr) {
+    console.warn('[Branch Move] Failed to deactivate the now-empty source organization:', orgErr.message);
   }
 
   return { branch };
@@ -562,7 +672,7 @@ const updateBranch = async (tenantDb, branchId, data) => {
   return { branch };
 };
 
-const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
+const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrganizationDeletion = false } = {}) => {
   const {
     Branch,
     MembershipPlan,
@@ -589,6 +699,12 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
     if (!branch || branch.status === 'INACTIVE') {
       throw createError('Branch not found or already deleted', 404);
     }
+
+    // An organization must never be left without a branch — warn before
+    // taking its last one, unless the host has already confirmed they
+    // understand the organization goes with it. Runs before any mutation so
+    // a declined confirmation changes nothing.
+    await _guardLastBranchInOrganization(tenantDb, branch, confirmOrganizationDeletion);
 
     // 1. Mark branch INACTIVE and traveler visibility deactivated
     await branch.update({
@@ -700,6 +816,20 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId) => {
       throw err;
     }
   }, '[Branch Deletion] Failed to return capacity to the organization after 3 attempts — reservedSlots may be understated until the reconciliation job corrects it');
+
+  // 7b. If that was the organization's last branch, the organization goes
+  // with it — see _deactivateOrganizationIfEmpty for why the capacity the
+  // host paid for survives this untouched.
+  try {
+    await _deactivateOrganizationIfEmpty(
+      tenantDb,
+      branch.gymListingId,
+      deletedByUserId,
+      `Organization emptied by deletion of its last branch "${branch.branchName}"`
+    );
+  } catch (orgErr) {
+    console.warn('[Branch Deletion] Failed to deactivate the now-empty organization:', orgErr.message);
+  }
 
   // 8. Re-sync minPrice for the gym profile — this deleted branch's plans
   // are now INACTIVE and shouldn't factor into the gym's displayed minPrice.
@@ -910,8 +1040,11 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
       await listing.reload();
     } else if (strategy === 'deleteBranches') {
       for (const branch of branches) {
+        // Already an explicit "delete this whole organization" instruction —
+        // the last-branch confirmation has effectively been given, so skip
+        // the guard that would otherwise 409 on the final branch.
         // eslint-disable-next-line no-await-in-loop
-        await deleteBranch(tenantDb, branch.id, deletedByUserId);
+        await deleteBranch(tenantDb, branch.id, deletedByUserId, { confirmOrganizationDeletion: true });
       }
       // reservedSlots are simply released back to the shared pool by
       // deleting the organization itself below — getUsedCapacity only sums

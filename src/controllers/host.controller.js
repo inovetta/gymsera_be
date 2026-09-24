@@ -648,17 +648,24 @@ const deleteListing = async (req, res, next) => {
 
 /**
  * POST /host/branches/:branchId/move
- * Body: { targetListingId }
+ * Body: { targetListingId, confirmOrganizationDeletion? }
+ *
+ * confirmOrganizationDeletion is the client acknowledging the 409
+ * `last_branch_in_organization` warning — moving this branch out will leave
+ * its source organization empty, so that organization is removed too.
  */
 const moveBranchToOrganization = async (req, res, next) => {
   try {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw createError('Tenant not found', 404);
     const { branchId } = req.params;
-    const { targetListingId } = req.body;
+    const { targetListingId, confirmOrganizationDeletion } = req.body;
     if (!targetListingId) throw createError('targetListingId is required', 400);
 
-    const result = await gymService.moveBranch(req.tenantDb, tenantId, branchId, targetListingId);
+    const result = await gymService.moveBranch(req.tenantDb, tenantId, branchId, targetListingId, {
+      confirmOrganizationDeletion: confirmOrganizationDeletion === true,
+      movedByUserId: req.user.sub,
+    });
     return sendSuccess(res, result, 'Branch moved successfully');
   } catch (err) {
     next(err);
