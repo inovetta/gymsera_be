@@ -481,13 +481,49 @@ const createListing = async (req, res, next) => {
       // gated by the SAME tenant-wide capacity createBranch uses, checked
       // before anything is created so a rejected request never leaves behind
       // an organization with no branch and no reservation in it.
+      // Set when this organization's unit has to come from an unbuilt slot
+      // parked on a sibling organization rather than from free capacity.
+      // Released below, once there's a listing id to attribute it to.
+      let slotDonorListing = null;
+
       if (branchSource !== 'none') {
         const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
         const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, req.tenantDb, { transaction: platformTx });
         if (usedCapacity >= maxBranches) {
-          const err = createError('Branch limit reached', 403);
-          err.code = 'branch_limit_reached';
-          throw err;
+          // Every paid unit is allocated — but "allocated" includes unbuilt
+          // reservedSlots parked on other organizations, and one of those is
+          // exactly the unit this organization needs. A host who paid for 3
+          // branches, built 1, and holds 2 parked slots is not out of
+          // capacity; the capacity is just sitting somewhere else.
+          //
+          // Before the slot concept was removed from the UI, the host fixed
+          // this by hand ("move an unused slot here") through
+          // transferReservedSlots. There's no such flow to send them to any
+          // more — the app presents one tenant-wide pool — so the same
+          // transfer happens here instead, invisibly and atomically.
+          //
+          // Capacity-neutral by construction: the donor loses exactly the
+          // one unit this organization consumes (a real branch for 'new', a
+          // reservation for 'reserve'), so getUsedCapacity is unchanged
+          // either way and the subscription's limit is never exceeded.
+          slotDonorListing = await GymListing.findOne({
+            where: {
+              tenantId,
+              status: { [Op.ne]: 'INACTIVE' },
+              reservedSlots: { [Op.gt]: 0 },
+            },
+            // Draw from whichever organization is hoarding the most, so a
+            // host with slots spread around keeps the widest spread.
+            order: [['reservedSlots', 'DESC']],
+            lock: true,
+            transaction: platformTx,
+          });
+
+          if (!slotDonorListing) {
+            const err = createError('Branch limit reached', 403);
+            err.code = 'branch_limit_reached';
+            throw err;
+          }
         }
       }
 
@@ -527,6 +563,32 @@ const createListing = async (req, res, next) => {
           },
           { transaction: platformTx }
         );
+      }
+
+      if (slotDonorListing) {
+        // The other half of the transfer decided during the capacity check
+        // above. Same action/shape gym.service.js#transferReservedSlots
+        // records, so a slot moved automatically is indistinguishable in the
+        // audit trail from one a host moved by hand — one ledger, one story.
+        // Keyed on the new listing so a retried create can never release two.
+        const { applied } = await subscriptionQuotaService.recordCapacityEvent(
+          {
+            tenantId,
+            listingId: slotDonorListing.id,
+            action: 'SLOT_TRANSFERRED',
+            delta: -1,
+            reservedSlotsBefore: slotDonorListing.reservedSlots,
+            reservedSlotsAfter: slotDonorListing.reservedSlots - 1,
+            actorUserId: req.user.sub || req.user.id,
+            actorType: 'HOST',
+            reason: `1 unbuilt slot released to new organization "${gymName}" (${listing.id})`,
+            idempotencyKey: `slot_transfer:new_org:${listing.id}`,
+          },
+          { transaction: platformTx }
+        );
+        if (applied) {
+          await slotDonorListing.decrement('reservedSlots', { by: 1, transaction: platformTx });
+        }
       }
 
       // Every organization gets its own Gym row immediately, regardless of
