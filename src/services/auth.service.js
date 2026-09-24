@@ -315,10 +315,13 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
 };
 
 /**
- * Login or register via Google ID Token.
- * On first login, creates a new ACTIVE + verified account automatically.
+ * The actual Google idToken verification — shared by googleLogin (a brand
+ * new or returning session) and verifyReauthCredential below (re-confirming
+ * an already-signed-in account for a sensitive action, e.g. deleting a
+ * branch). Same claims, same network-timeout-tolerant fallback either way;
+ * the two callers differ only in what they do with the resulting payload.
  */
-const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
+const _verifyGoogleIdToken = async (idToken) => {
   const audiences = [
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_IOS_CLIENT_ID,
@@ -382,6 +385,15 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
     throw createError('Google account email is not verified', 401);
   }
 
+  return payload;
+};
+
+/**
+ * Login or register via Google ID Token.
+ * On first login, creates a new ACTIVE + verified account automatically.
+ */
+const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
+  const payload = await _verifyGoogleIdToken(idToken);
   const { sub: googleId, email, name, picture } = payload;
   console.log(`[Google Auth] Processing login for ${email} (googleId: ${googleId})`);
 
@@ -756,6 +768,60 @@ const getMe = async (userId) => {
   };
 };
 
+/**
+ * Re-confirms an already-signed-in user's identity for a sensitive in-app
+ * action (currently: deleting a branch) using whichever provider they
+ * actually authenticate with — the password-confirmation dialog only ever
+ * worked for LOCAL accounts, since a GOOGLE/APPLE-only user has no
+ * passwordHash to check (see gyms.controller.js#deleteBranch, which
+ * silently skips the password check entirely when one was never set,
+ * rather than actually confirming anything for that user).
+ *
+ * This is deliberately NOT googleLogin/appleLogin — it never touches
+ * RefreshToken, never issues a new session, and never creates or links an
+ * account. It only asks "does this fresh idToken belong to the SAME
+ * provider identity already on this user's own User row" — proving they
+ * could re-authenticate as themselves just now, the same guarantee a
+ * correct password gives for a LOCAL account.
+ *
+ * @param {string} userId
+ * @param {{ provider: 'GOOGLE'|'APPLE', idToken: string }} credential
+ */
+const verifyReauthCredential = async (userId, { provider, idToken }) => {
+  if (!idToken) throw createError('A fresh sign-in is required to confirm this action', 400);
+
+  const user = await User.findByPk(userId);
+  if (!user) throw createError('User not found', 404);
+
+  if (provider === 'GOOGLE') {
+    if (!user.googleId) throw createError('This account is not linked to a Google sign-in', 400);
+    const payload = await _verifyGoogleIdToken(idToken);
+    if (payload.sub !== user.googleId) {
+      throw createError('That Google account does not match your GymsEra account', 401);
+    }
+    return true;
+  }
+
+  if (provider === 'APPLE') {
+    if (!user.appleId) throw createError('This account is not linked to an Apple sign-in', 400);
+    const decoded = jwt.decode(idToken);
+    if (!decoded || typeof decoded !== 'object') {
+      throw createError('Invalid Apple identity token', 401);
+    }
+    const isIssValid = decoded.iss === 'https://appleid.apple.com' || decoded.iss === 'appleid.apple.com';
+    const isNotExpired = decoded.exp && decoded.exp * 1000 > Date.now();
+    if (!isIssValid || !isNotExpired) {
+      throw createError('Invalid or expired Apple identity token', 401);
+    }
+    if (decoded.sub !== user.appleId) {
+      throw createError('That Apple account does not match your GymsEra account', 401);
+    }
+    return true;
+  }
+
+  throw createError(`Unsupported re-authentication provider "${provider}"`, 400);
+};
+
 module.exports = {
   register,
   verifyOtp,
@@ -767,4 +833,5 @@ module.exports = {
   passwordResetRequest,
   passwordResetConfirm,
   getMe,
+  verifyReauthCredential,
 };

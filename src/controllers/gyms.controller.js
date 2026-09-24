@@ -67,7 +67,7 @@ const updateBranch = async (req, res, next) => {
 // ── DELETE /gyms/branches/:branchId ──────────────────────────────────────────
 const deleteBranch = async (req, res, next) => {
   try {
-    const { password } = req.body || {};
+    const { password, provider: reauthProvider, idToken: reauthIdToken } = req.body || {};
 
     // If password is sent (e.g. mobile confirmation dialog), verify it
     if (password) {
@@ -81,6 +81,19 @@ const deleteBranch = async (req, res, next) => {
           throw createError('Incorrect password', 401);
         }
       }
+    }
+
+    // A GOOGLE/APPLE-signed-in host has no passwordHash for the check above
+    // to verify — the client sends a fresh provider idToken instead (see
+    // listing_branches_screen.dart's delete dialog), confirmed here against
+    // this user's own linked account. See auth.service.js#verifyReauthCredential
+    // for why this is a separate, narrower thing than a real login.
+    if (reauthProvider && reauthIdToken) {
+      const authService = require('../services/auth.service');
+      await authService.verifyReauthCredential(req.user.sub, {
+        provider: reauthProvider,
+        idToken: reauthIdToken,
+      });
     }
 
     // confirmOrganizationDeletion is the client acknowledging the 409
