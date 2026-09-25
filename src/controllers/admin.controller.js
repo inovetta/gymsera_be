@@ -83,6 +83,16 @@ const getTenantBranches = async (req, res, next) => {
   }
 };
 
+// ── GET /admin/tenants/:id/capacity-audit ────────────────────────────────────
+const getTenantCapacityAudit = async (req, res, next) => {
+  try {
+    const result = await adminService.getTenantCapacityAudit(req.params.id);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── PATCH /admin/tenants/:id/branches/:branchId/status ───────────────────────
 const updateTenantBranchStatus = async (req, res, next) => {
   try {
@@ -384,7 +394,7 @@ const getBranchVisibilityHistory = async (req, res, next) => {
 
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
-  reactivateTenant, getTenantBranches, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
+  reactivateTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,

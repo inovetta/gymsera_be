@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { TenantSubscription, PlatformPackage, GymListing, CapacityEvent } = require('../models/platform');
+const { Tenant, TenantSubscription, PlatformPackage, GymListing, CapacityEvent } = require('../models/platform');
 
 /**
  * Single source of truth for "what does this tenant's active subscription
@@ -278,6 +278,113 @@ const reconcileCapacity = async (
   return { overQuotaCount: Math.max(0, remaining), trimmedSlots };
 };
 
+/**
+ * Read-only integrity check for one tenant's capacity. Writes nothing,
+ * repairs nothing — it answers "are these numbers actually correct?", which
+ * until now had no answer at all.
+ *
+ * Two independent things are verified:
+ *
+ *   1. LEDGER vs STATE. capacity_events is an append-only record of every
+ *      mutation to GymListing.reservedSlots, so replaying Σ(delta) per
+ *      listing must reproduce that listing's current reservedSlots exactly.
+ *      A mismatch means a mutation happened that the ledger doesn't explain
+ *      — or, more likely, that a credit was lost: deleteBranch commits the
+ *      tenant-DB transaction first and only then applies the platform-DB
+ *      slot credit, with retries, and on final failure it logs and gives up
+ *      "for the reconciliation job to correct". No such job existed, and
+ *      reconcileCapacity doesn't do this — it compares totals against the
+ *      plan, it never rebuilds reservedSlots from history. So that loss was
+ *      previously permanent AND invisible. This is what makes it visible.
+ *
+ *   2. INVARIANT. activeBranches + Σ reservedSlots <= maxBranches, and
+ *      overQuotaCount matches the real overage. A tenant can legitimately
+ *      be over (a downgrade never closes real branches), so being over is
+ *      only reported as a problem when overQuotaCount doesn't agree with it.
+ *
+ * Returns a plain object rather than throwing, so the daily cron can log it,
+ * an admin endpoint can render it, and a CLI script can print it — all from
+ * the same computation, with no risk of a check accidentally mutating.
+ */
+const auditCapacity = async (tenantId, tenantDb) => {
+  const tenant = await Tenant.findByPk(tenantId);
+  if (!tenant) return { tenantId, ok: false, error: 'Tenant not found' };
+
+  const activeSub = await getActiveSubscription(tenantId);
+  const maxBranches = await resolveMaxBranches(tenant, activeSub);
+
+  const listings = await GymListing.findAll({
+    where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
+    attributes: ['id', 'title', 'reservedSlots'],
+    order: [['createdAt', 'ASC']],
+  });
+
+  // Ledger totals per listing. Deliberately includes events for listings
+  // that are now INACTIVE too — we only compare the ones still counted, but
+  // summing everything first means a listing deleted mid-history can't skew
+  // a live listing's total.
+  const events = await CapacityEvent.findAll({
+    where: { tenantId },
+    attributes: ['listingId', 'delta'],
+  });
+  const ledgerByListing = new Map();
+  for (const e of events) {
+    if (!e.listingId) continue;
+    ledgerByListing.set(e.listingId, (ledgerByListing.get(e.listingId) || 0) + e.delta);
+  }
+
+  const listingReports = listings.map((l) => {
+    const expected = ledgerByListing.get(l.id) || 0;
+    const actual = l.reservedSlots;
+    return {
+      listingId: l.id,
+      title: l.title,
+      actualReservedSlots: actual,
+      ledgerReservedSlots: expected,
+      drift: actual - expected,
+    };
+  });
+
+  const driftedListings = listingReports.filter((r) => r.drift !== 0);
+  const totalDrift = listingReports.reduce((sum, r) => sum + r.drift, 0);
+
+  let activeBranches = null;
+  let usedCapacity = null;
+  let invariantHolds = null;
+  let expectedOverQuota = null;
+
+  if (tenantDb) {
+    activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
+    const reservedTotal = listings.reduce((sum, l) => sum + l.reservedSlots, 0);
+    usedCapacity = activeBranches + reservedTotal;
+    invariantHolds = usedCapacity <= maxBranches;
+    // Real branches alone beyond the plan — what overQuotaCount should be
+    // once every unbuilt slot has already been trimmed.
+    expectedOverQuota = Math.max(0, activeBranches - maxBranches);
+  }
+
+  const recordedOverQuota = activeSub?.overQuotaCount ?? 0;
+  const overQuotaMismatch =
+    expectedOverQuota !== null && expectedOverQuota !== recordedOverQuota;
+
+  return {
+    tenantId,
+    businessName: tenant.businessName,
+    maxBranches,
+    activeBranches,
+    usedCapacity,
+    invariantHolds,
+    recordedOverQuota,
+    expectedOverQuota,
+    overQuotaMismatch,
+    listings: listingReports,
+    driftedListings,
+    totalDrift,
+    // The single field a cron or dashboard should branch on.
+    ok: driftedListings.length === 0 && !overQuotaMismatch && invariantHolds !== false,
+  };
+};
+
 module.exports = {
   recordCapacityEvent,
   getActiveSubscription,
@@ -285,5 +392,6 @@ module.exports = {
   resolveMaxOrganizations,
   getUsedCapacity,
   reconcileCapacity,
+  auditCapacity,
   UNLIMITED_ORGANIZATIONS,
 };

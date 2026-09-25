@@ -657,6 +657,20 @@ const transferReservedSlots = async (tenantId, fromListingId, toListingId, count
     if (!from || !to) throw createError('Organization not found', 404);
     if (from.reservedSlots < count) throw createError('Not enough unbuilt slots on the source organization to move', 400);
 
+    // Both sides of the move get their own event. A transfer mutates two
+    // listings' reservedSlots, so recording only the source's -count (as
+    // this did) left the target's +count with nothing in the ledger to
+    // account for it — which meant Σ(events) for that listing no longer
+    // equalled its reservedSlots, and any audit replaying the ledger would
+    // report drift on a perfectly healthy tenant. See
+    // subscription-quota.service.js#auditCapacity, which depends on the
+    // ledger being a complete record of every mutation.
+    //
+    // Single-transaction, platform-DB-only action (unlike deleteBranch's
+    // cross-DB step) — a failure rolls back everything atomically, so there's
+    // no partial-failure state to dedupe against. The keys only need to be
+    // unique; they share one transfer id so the pair can never half-apply.
+    const transferId = crypto.randomUUID();
     const { applied } = await subscriptionQuotaService.recordCapacityEvent(
       {
         tenantId,
@@ -668,15 +682,26 @@ const transferReservedSlots = async (tenantId, fromListingId, toListingId, count
         actorUserId,
         actorType: actorUserId ? 'HOST' : 'SYSTEM',
         reason: `${count} slot(s) moved to organization ${toListingId}`,
-        // Single-transaction, platform-DB-only action (unlike deleteBranch's
-        // cross-DB step) — a failure here rolls back everything atomically,
-        // so there's no partial-failure state to dedupe against. The key
-        // only needs to be unique, not tied to a retryable external event.
-        idempotencyKey: `slot_transfer:${crypto.randomUUID()}`,
+        idempotencyKey: `slot_transfer_out:${transferId}`,
       },
       { transaction: t }
     );
     if (applied) {
+      await subscriptionQuotaService.recordCapacityEvent(
+        {
+          tenantId,
+          listingId: toListingId,
+          action: 'SLOT_TRANSFERRED',
+          delta: count,
+          reservedSlotsBefore: to.reservedSlots,
+          reservedSlotsAfter: to.reservedSlots + count,
+          actorUserId,
+          actorType: actorUserId ? 'HOST' : 'SYSTEM',
+          reason: `${count} slot(s) received from organization ${fromListingId}`,
+          idempotencyKey: `slot_transfer_in:${transferId}`,
+        },
+        { transaction: t }
+      );
       await from.decrement('reservedSlots', { by: count, transaction: t });
       await to.increment('reservedSlots', { by: count, transaction: t });
     }
@@ -1135,6 +1160,10 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
       try {
         const lockedTarget = await GymListing.findByPk(targetListingId, { lock: true, transaction: platformTx });
         const lockedListing = await GymListing.findByPk(listingId, { lock: true, transaction: platformTx });
+        // Two-sided, so two events — same reasoning as transferReservedSlots
+        // above: the target's +reservedToMove needs its own ledger row or
+        // auditCapacity sees unexplained slots on it.
+        const moveId = crypto.randomUUID();
         const { applied } = await subscriptionQuotaService.recordCapacityEvent(
           {
             tenantId,
@@ -1146,11 +1175,26 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
             actorUserId: deletedByUserId || null,
             actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
             reason: `Organization deleted: ${branches.length} branch(es) and ${reservedToMove} slot(s) moved to ${targetListingId}`,
-            idempotencyKey: `org_branches_moved:${listingId}:${crypto.randomUUID()}`,
+            idempotencyKey: `org_branches_moved_out:${listingId}:${moveId}`,
           },
           { transaction: platformTx }
         );
         if (applied && reservedToMove > 0) {
+          await subscriptionQuotaService.recordCapacityEvent(
+            {
+              tenantId,
+              listingId: targetListingId,
+              action: 'ORG_BRANCHES_MOVED',
+              delta: reservedToMove,
+              reservedSlotsBefore: lockedTarget.reservedSlots,
+              reservedSlotsAfter: lockedTarget.reservedSlots + reservedToMove,
+              actorUserId: deletedByUserId || null,
+              actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
+              reason: `Received ${reservedToMove} slot(s) from deleted organization ${listingId}`,
+              idempotencyKey: `org_branches_moved_in:${listingId}:${moveId}`,
+            },
+            { transaction: platformTx }
+          );
           await lockedTarget.increment('reservedSlots', { by: reservedToMove, transaction: platformTx });
           await lockedListing.update({ reservedSlots: 0 }, { transaction: platformTx });
         }

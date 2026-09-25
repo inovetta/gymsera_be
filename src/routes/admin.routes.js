@@ -233,6 +233,11 @@ router.get(
 
 // ── Tenant subscriptions ───────────────────────────────────────────────────────
 router.get('/tenants/:id/subscriptions', adminController.getTenantSubscriptions);
+
+// Read-only capacity integrity report — does this tenant's reservedSlots
+// agree with the capacity_events ledger, and does overQuotaCount match
+// reality? Reports only; repairing is a deliberate human decision.
+router.get('/tenants/:id/capacity-audit', adminController.getTenantCapacityAudit);
 router.post(
   '/tenants/:id/subscriptions',
   validate([

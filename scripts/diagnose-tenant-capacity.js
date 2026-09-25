@@ -132,6 +132,48 @@ const line = (n = 74) => console.log('─'.repeat(n));
       console.log('  (tenant DB unavailable — cannot compute usage)');
     }
 
+    // ── Integrity audit ──────────────────────────────────────────────────
+    // Same computation the daily cron and the Super Admin endpoint use —
+    // not a second copy of the logic that could drift from them.
+    try {
+      const tenantDbForAudit =
+        tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted
+          ? await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted)
+          : null;
+      const audit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDbForAudit);
+
+      console.log('');
+      line();
+      console.log(`INTEGRITY AUDIT  ${audit.ok ? 'PASS' : '*** FAIL ***'}`);
+      line();
+      for (const l of audit.listings) {
+        console.log(
+          `  ${(l.title || l.listingId).padEnd(24)} reservedSlots ${l.actualReservedSlots}` +
+          `  ledger ${l.ledgerReservedSlots}` +
+          (l.drift !== 0 ? `   <== DRIFT ${l.drift > 0 ? '+' : ''}${l.drift}` : '')
+        );
+      }
+      if (audit.totalDrift !== 0) {
+        console.log('');
+        console.log(`  Total ledger drift: ${audit.totalDrift > 0 ? '+' : ''}${audit.totalDrift}`);
+        console.log('  reservedSlots and capacity_events disagree. Most likely a slot');
+        console.log('  credit lost when a cross-database step failed after the branch');
+        console.log('  delete had already committed. Reported, never auto-repaired —');
+        console.log('  rewriting either side would destroy the evidence.');
+      }
+      if (audit.overQuotaMismatch) {
+        console.log('');
+        console.log(`  overQuotaCount recorded ${audit.recordedOverQuota}, should be ${audit.expectedOverQuota}`);
+      }
+      if (audit.invariantHolds === false) {
+        console.log('');
+        console.log(`  INVARIANT BROKEN: used ${audit.usedCapacity} > plan ${audit.maxBranches}`);
+      }
+    } catch (auditErr) {
+      console.log('');
+      console.log('INTEGRITY AUDIT  (failed to run:', auditErr.message + ')');
+    }
+
     if (usedCapacity !== null) {
       console.log('');
       line();

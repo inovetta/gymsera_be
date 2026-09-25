@@ -447,6 +447,34 @@ const _getTenantDb = async (tenantId) => {
   return TenantDbManager.getConnection(actualTenantId, tenant.connectionStringEncrypted);
 };
 
+// ── getTenantCapacityAudit (admin) ───────────────────────────────────────────
+/**
+ * Read-only capacity integrity report for one tenant — "are this host's
+ * branch numbers actually correct, and does the audit trail agree?"
+ *
+ * Always resolves against the REAL tenant, even when called with one of the
+ * synthesized `tenantId:listingId` compound ids the tenant list still hands
+ * out for additional organizations. Capacity is a property of the
+ * subscription, which is tenant-wide — there is no such thing as one
+ * organization's own plan, and reporting per-listing here would invent one.
+ */
+const getTenantCapacityAudit = async (tenantId) => {
+  const [actualTenantId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId];
+  const subscriptionQuotaService = require('./subscription-quota.service');
+
+  let tenantDb = null;
+  try {
+    tenantDb = await _getTenantDb(actualTenantId);
+  } catch (err) {
+    // An unprovisioned tenant has no branches to count — the ledger half of
+    // the audit is still meaningful, so report what we can rather than 500.
+    tenantDb = null;
+  }
+
+  const audit = await subscriptionQuotaService.auditCapacity(actualTenantId, tenantDb);
+  return { audit };
+};
+
 // ── getTenantBranches (admin) ─────────────────────────────────────────────────
 const getTenantBranches = async (tenantId) => {
   const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
@@ -1349,7 +1377,7 @@ const getBranchVisibilityHistory = async (branchId) => {
 
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
-  reactivateTenant, deleteTenant, getTenantBranches, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
+  reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,

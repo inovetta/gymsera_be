@@ -213,6 +213,7 @@ const _reconcileCapacityForAllTenants = async () => {
   });
 
   let reconciled = 0;
+  let audited = 0;
   for (const sub of activeSubs) {
     const tenant = await Tenant.findByPk(sub.tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
     if (!tenant?.connectionStringEncrypted) continue;
@@ -238,6 +239,42 @@ const _reconcileCapacityForAllTenants = async () => {
         await platformTx.rollback();
         throw err;
       }
+
+      // Integrity check, after reconciliation rather than before, so what it
+      // reports is what's still wrong once the self-healing pass has done
+      // everything it can. reconcileCapacity enforces the invariant against
+      // the plan; it does NOT verify that reservedSlots agrees with the
+      // capacity_events ledger, so a credit lost by a failed cross-database
+      // step (see gym.service.js#deleteBranch, which logs and gives up "for
+      // the reconciliation job to correct") was previously silent forever.
+      // This is the first thing that actually looks.
+      //
+      // Reported, never auto-repaired: drift means reality and the audit
+      // trail disagree, and silently rewriting one to match the other would
+      // destroy the only evidence of what went wrong. A human decides.
+      try {
+        const audit = await subscriptionQuotaService.auditCapacity(sub.tenantId, tenantDb);
+        if (!audit.ok) {
+          audited++;
+          console.warn(
+            `[Cron] CAPACITY AUDIT FAILED tenant ${sub.tenantId} (${audit.businessName}): ` +
+              `${audit.activeBranches} active + ${audit.usedCapacity - audit.activeBranches} reserved ` +
+              `vs plan ${audit.maxBranches}` +
+              (audit.totalDrift !== 0 ? `, ledger drift ${audit.totalDrift > 0 ? '+' : ''}${audit.totalDrift}` : '') +
+              (audit.overQuotaMismatch
+                ? `, overQuotaCount recorded ${audit.recordedOverQuota} but should be ${audit.expectedOverQuota}`
+                : '')
+          );
+          for (const d of audit.driftedListings) {
+            console.warn(
+              `[Cron]   listing "${d.title}" (${d.listingId}): reservedSlots ${d.actualReservedSlots}, ` +
+                `ledger says ${d.ledgerReservedSlots} (drift ${d.drift > 0 ? '+' : ''}${d.drift})`
+            );
+          }
+        }
+      } catch (auditErr) {
+        console.error(`[Cron] Capacity audit failed for tenant ${sub.tenantId}:`, auditErr.message);
+      }
     } catch (err) {
       console.error(`[Cron] Capacity reconciliation failed for tenant ${sub.tenantId}:`, err.message);
     }
@@ -245,6 +282,9 @@ const _reconcileCapacityForAllTenants = async () => {
 
   if (reconciled > 0) {
     console.log(`[Cron] Capacity reconciliation: corrected drift for ${reconciled} tenant(s)`);
+  }
+  if (audited > 0) {
+    console.warn(`[Cron] Capacity audit: ${audited} tenant(s) need a human look — see warnings above`);
   }
 };
 
