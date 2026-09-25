@@ -225,6 +225,42 @@ router.post('/login', validate(authValidators.login), authController.login);
  */
 router.post('/social/google', validate(authValidators.googleLogin), authController.googleLogin);
 
+// ── POST /auth/social/google/staff ────────────────────────────────────────────
+/**
+ * @swagger
+ * /auth/social/google/staff:
+ *   post:
+ *     summary: Login via Google ID Token — CMS management portal only
+ *     description: >
+ *       Same Google verification as /auth/social/google, but never creates a
+ *       new account and only succeeds for an existing
+ *       GYM_HOST/BRANCH_MANAGER/PLATFORM_ADMIN user. An existing staff
+ *       account that hasn't linked Google yet still gets linked here on
+ *       first use (matched by email) — this only refuses account creation
+ *       and non-staff roles, not linking.
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [idToken]
+ *             properties:
+ *               idToken:
+ *                 type: string
+ *                 description: Google ID token from the client
+ *     responses:
+ *       200:
+ *         description: Google login successful — returns access + refresh tokens
+ *       401:
+ *         description: Invalid Google ID token
+ *       403:
+ *         description: No linked staff account, or the linked account isn't a staff role
+ */
+router.post('/social/google/staff', validate(authValidators.googleLogin), authController.googleLoginStaff);
+
 // ── POST /auth/social/apple ───────────────────────────────────────────────────
 /**
  * @swagger

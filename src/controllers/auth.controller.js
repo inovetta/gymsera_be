@@ -77,6 +77,25 @@ const googleLogin = async (req, res, next) => {
   }
 };
 
+// ── Google Social Login — CMS management portal only ─────────────────────────
+// `staffOnly: true` is fixed here, server-side, never client-supplied — a
+// request body can't opt into or out of it. That's what actually makes this
+// "staff-only": which ROUTE you hit decides the rule, not a flag the CMS's
+// own client happens to send. See auth.service.js#googleLogin.
+const googleLoginStaff = async (req, res, next) => {
+  try {
+    const result = await authService.googleLogin(
+      req.body,
+      req.ip,
+      req.headers['user-agent'],
+      { staffOnly: true }
+    );
+    return sendSuccess(res, result, 'Google login successful');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── Apple Social Login ────────────────────────────────────────────────────────
 const appleLogin = async (req, res, next) => {
   try {
@@ -142,6 +161,7 @@ module.exports = {
   resendOtp,
   login,
   googleLogin,
+  googleLoginStaff,
   appleLogin,
   refreshToken,
   passwordResetRequest,

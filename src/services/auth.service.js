@@ -388,14 +388,29 @@ const _verifyGoogleIdToken = async (idToken) => {
   return payload;
 };
 
+const STAFF_ROLES = [UserRole.GYM_HOST, UserRole.BRANCH_MANAGER, UserRole.PLATFORM_ADMIN];
+
 /**
  * Login or register via Google ID Token.
- * On first login, creates a new ACTIVE + verified account automatically.
+ *
+ * On the public surfaces (mobile app, website) this creates a new ACTIVE +
+ * verified MEMBER account automatically on first login, same as always.
+ *
+ * `staffOnly` is for the CMS management portal specifically, which is a
+ * different trust boundary: nobody should be able to provision themselves
+ * an account just by owning any Gmail address and clicking a button — the
+ * CMS's own AuthGuard only checks "is logged in," not role, so account
+ * creation is the actual gate here, not something enforced later. With
+ * `staffOnly: true`, this never creates a new account, and never lets the
+ * request through unless the resolved user already holds a staff role
+ * (GYM_HOST/BRANCH_MANAGER/PLATFORM_ADMIN) — an existing staff member who
+ * hasn't linked Google yet still gets linked via the normal by-email match
+ * below, they just can't be freshly created this way.
  */
-const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
+const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = false } = {}) => {
   const payload = await _verifyGoogleIdToken(idToken);
   const { sub: googleId, email, name, picture } = payload;
-  console.log(`[Google Auth] Processing login for ${email} (googleId: ${googleId})`);
+  console.log(`[Google Auth] Processing login for ${email} (googleId: ${googleId})${staffOnly ? ' [staff-only]' : ''}`);
 
   // Try to find by googleId first, then fall back to email (to link existing accounts)
   let user = null;
@@ -429,6 +444,11 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
         await user.update(baseUpdate).catch(() => null);
       }
       console.log(`[Google Auth] Linked existing account for ${email}`);
+    } else if (staffOnly) {
+      throw createError(
+        'No GymsEra staff account is linked to this Google account. Ask an admin to invite you, or sign in with your GymsEra password instead.',
+        403
+      );
     } else {
       // Create brand new user
       const createFields = {
@@ -471,6 +491,10 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent) => {
 
   if (user.status === 'SUSPENDED') {
     throw createError('Your account has been suspended. Please contact support.', 403);
+  }
+
+  if (staffOnly && !STAFF_ROLES.includes(user.role)) {
+    throw createError('This account does not have management portal access.', 403);
   }
 
   await user.update({ lastLoginAt: new Date() }).catch(() => null);
