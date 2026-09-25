@@ -72,18 +72,25 @@ const TenantDbManager = require('../src/database/TenantDbManager');
       if (!branch) continue; // branch row genuinely gone, nothing to check
 
       if (branch.status === 'ACTIVE') {
-        // Legitimate re-activation goes through restoreBranch, which always
-        // clears deactivatedAt/deactivatedBy back to null. If those are
-        // still null-cleared AND there's no SLOT_CONSUMED_BUILD/other event
-        // after the deletion for this branch, this row was very likely
-        // flipped straight in the database, not through the app.
-        const laterEvents = await CapacityEvent.count({
+        // The unambiguous test: restoreBranch ALWAYS writes a
+        // BRANCH_RESTORED event, unconditionally, whether or not it
+        // consumed a reserved slot (see gym.service.js#restoreBranch). So
+        // "some later event exists" is too blunt — a branch that was
+        // silently resurrected and then deleted AGAIN by a confused host
+        // also has a later event (its own second BRANCH_DELETED), which
+        // proves the opposite of what a raw count suggests. Only a real
+        // BRANCH_RESTORED row is evidence this branch's current ACTIVE
+        // status came from the app.
+        const laterEvents = await CapacityEvent.findAll({
           where: {
             tenantId: tenant.id,
             branchId: del.branchId,
             createdAt: { [require('sequelize').Op.gt]: del.createdAt },
           },
+          attributes: ['action', 'createdAt'],
+          order: [['createdAt', 'ASC']],
         });
+        const hasRealRestore = laterEvents.some((e) => e.action === 'BRANCH_RESTORED');
         suspiciousBranches++;
         findings.push({
           tenant: tenant.businessName,
@@ -91,7 +98,8 @@ const TenantDbManager = require('../src/database/TenantDbManager');
           branchId: del.branchId,
           branchName: branch.branchName,
           deletedAt: del.createdAt,
-          laterCapacityEvents: laterEvents,
+          laterEvents: laterEvents.map((e) => e.action),
+          hasRealRestore,
         });
       }
     }
@@ -106,11 +114,11 @@ const TenantDbManager = require('../src/database/TenantDbManager');
       console.log(`\n  Tenant   : ${f.tenant} (${f.tenantId})`);
       console.log(`  Branch   : ${f.branchName} (${f.branchId})`);
       console.log(`  Deleted  : ${f.deletedAt.toISOString()}`);
-      console.log(`  Later capacity_events for this branch: ${f.laterCapacityEvents}`);
+      console.log(`  Later capacity_events: ${f.laterEvents.length ? f.laterEvents.join(', ') : '(none)'}`);
       console.log(
-        f.laterCapacityEvents === 0
-          ? '  --> HIGH CONFIDENCE: resurrected outside the app. No legitimate path leaves zero follow-up events.'
-          : '  --> Has later events — check them manually; could be a legitimate restore.'
+        f.hasRealRestore
+          ? '  --> Legitimate: a BRANCH_RESTORED event exists — restored through the app.'
+          : '  --> CONFIRMED: resurrected outside the app. No BRANCH_RESTORED event exists anywhere after this deletion.'
       );
     }
     console.log('\nThese are reports, not repairs. Confirm with the host before touching anything —');
