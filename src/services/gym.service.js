@@ -57,6 +57,57 @@ const _applyPlatformCapacityStep = async (fn, failureLogPrefix, attempts = 3) =>
 };
 
 /**
+ * Recomputes the tenant's capacity flags after the number of real ACTIVE
+ * branches changed (a delete or a restore), without changing their plan.
+ *
+ * Exists because `overQuotaCount` — the flag that blocks new branches and
+ * restores once a downgrade leaves a host over their plan — was only ever
+ * recalculated when a subscription synced or the daily cron ran. A host who
+ * went over quota and then deleted a branch specifically to get back under
+ * it stayed blocked until the next day, with nothing in the app they could
+ * do about it.
+ *
+ * Passing `previousMaxBranches: null` is deliberate: the plan hasn't
+ * changed, so reconcileCapacity must not treat this as an upgrade and
+ * attribute phantom capacity. It only recomputes the overage.
+ *
+ * That recompute is also what makes deleting-while-over-quota behave
+ * correctly. deleteBranch credits the freed unit back as an unbuilt slot,
+ * which on its own would keep a 7-active/6-plan tenant at 7 committed and
+ * still blocked. reconcileCapacity's existing downgrade-trim path then
+ * trims exactly that unbuilt slot — never a real branch — so the freed unit
+ * absorbs the overage instead of being banked, and the flag clears. Both
+ * behaviours (bank the slot when in good standing, absorb it when over)
+ * fall out of the same call; neither is special-cased here.
+ *
+ * Best-effort and never fatal: the branch action itself already committed.
+ */
+const _refreshCapacityFlags = async (tenantId, tenantDb, idempotencyPrefix, actorUserId, reasonLogPrefix) => {
+  await _applyPlatformCapacityStep(async () => {
+    const tenant = await Tenant.findByPk(tenantId);
+    if (!tenant) return;
+
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
+
+    const platformTx = await sequelize.transaction();
+    try {
+      await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, maxBranches, {
+        transaction: platformTx,
+        previousMaxBranches: null,
+        idempotencyPrefix,
+        actorUserId: actorUserId || null,
+        actorType: actorUserId ? 'HOST' : 'SYSTEM',
+      });
+      await platformTx.commit();
+    } catch (err) {
+      await platformTx.rollback();
+      throw err;
+    }
+  }, reasonLogPrefix);
+};
+
+/**
  * Get the single Gym record from the tenant DB.
  * On first access (just after provisioning) there may be no Gym row yet —
  * we auto-create one from the Platform Tenant snapshot.
@@ -644,8 +695,50 @@ const updateBranch = async (tenantDb, branchId, data) => {
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
 
-  // If activating or setting traveler visibility active, enforce at least 1 active public plan
-  if (data.status === 'ACTIVE' || data.travelerVisibilityStatus === 'active') {
+  // `status` is NOT an editable field, and this is the single most important
+  // rule in this file.
+  //
+  // A branch's ACTIVE/INACTIVE state is the thing branch-count billing is
+  // sold against, so every transition has to go through the one path that
+  // also settles capacity: deleteBranch (credits a reservedSlot back,
+  // cascades member subscriptions/staff/plans, writes a CapacityEvent) or
+  // restoreBranch (re-checks capacity against the plan, consumes a slot,
+  // writes a CapacityEvent). This function does none of that.
+  //
+  // Leaving `status` in the writable list below was a live, exploitable
+  // capacity bypass, reachable from PUT /gyms/branches/:branchId and
+  // PATCH /host/branches/:branchId/listing-content, and actually triggered
+  // in production by the CMS branch Edit form — which posted the branch's
+  // whole shape back including status. Deleting a branch credits a slot,
+  // building a new one spends it, and then flipping the deleted one back to
+  // ACTIVE here handed the host a permanently free branch with the credit
+  // still on the books: observed live as 7 active branches on a 6-branch
+  // plan. The same class of bypass was already found and closed in
+  // admin.service.js#updateTenantBranchStatus; this was the same hole one
+  // function over.
+  //
+  // Rejected loudly rather than silently dropped, so a client still sending
+  // it is a visible 400 instead of a silent no-op that looks like it worked.
+  if (data.status !== undefined && data.status !== branch.status) {
+    const err = createError(
+      'A branch\'s status cannot be changed here. Use the delete/restore endpoints, which settle branch capacity as part of the transition.',
+      400
+    );
+    err.code = 'branch_status_immutable_here';
+    throw err;
+  }
+
+  // Traveler visibility can only be turned on for a branch that is actually
+  // live. Previously this was blocked only incidentally — deleteBranch
+  // cascades every membership plan to INACTIVE, so the plan check below
+  // happened to fail for a deleted branch — which meant the guarantee
+  // silently depended on an unrelated cascade rather than being stated.
+  if (data.travelerVisibilityStatus === 'active' && branch.status !== 'ACTIVE') {
+    throw createError('Cannot make a deleted branch visible to travelers — restore it first', 400);
+  }
+
+  // Publishing to travelers requires at least 1 active public membership plan.
+  if (data.travelerVisibilityStatus === 'active') {
     const activePublicPlansCount = await MembershipPlan.count({
       where: {
         branchId,
@@ -659,7 +752,8 @@ const updateBranch = async (tenantDb, branchId, data) => {
     }
   }
 
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'status', 'travelerVisibilityStatus', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
+  // Deliberately no 'status' — see the guard above.
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'travelerVisibilityStatus', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
   fields.forEach((f) => {
     if (data[f] !== undefined) branch[f] = data[f];
   });
@@ -817,6 +911,23 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
     }
   }, '[Branch Deletion] Failed to return capacity to the organization after 3 attempts — reservedSlots may be understated until the reconciliation job corrects it');
 
+  // 7a. Recompute the over-quota flag now that one fewer branch is active,
+  // so a host who deleted a branch specifically to get back under their plan
+  // is unblocked immediately rather than at the next daily reconciliation.
+  // Keyed on this exact delete so a retry can't double-trim.
+  if (branch.gymListingId) {
+    const listingForTenant = await GymListing.findByPk(branch.gymListingId);
+    if (listingForTenant) {
+      await _refreshCapacityFlags(
+        listingForTenant.tenantId,
+        tenantDb,
+        `capacity_refresh_delete:${branch.id}:${branch.deactivatedAt.getTime()}`,
+        deletedByUserId,
+        '[Branch Deletion] Failed to refresh capacity flags after 3 attempts — overQuotaCount may be stale until the daily reconciliation runs'
+      );
+    }
+  }
+
   // 7b. If that was the organization's last branch, the organization goes
   // with it — see _deactivateOrganizationIfEmpty for why the capacity the
   // host paid for survives this untouched.
@@ -964,6 +1075,17 @@ const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => 
     deactivationReason: null,
   }, { transaction: tt });
   await tt.commit();
+
+  // Recompute the over-quota flag now that one more branch is active —
+  // deliberately after the commit above, so the tenant-DB row lock isn't
+  // held while this takes platform-DB listing locks. Keyed on this restore.
+  await _refreshCapacityFlags(
+    tenantId,
+    tenantDb,
+    `capacity_refresh_restore:${branch.id}:${Date.now()}`,
+    restoredByUserId,
+    '[Branch Restore] Failed to refresh capacity flags after 3 attempts — overQuotaCount may be stale until the daily reconciliation runs'
+  );
 
   return { branch };
 };

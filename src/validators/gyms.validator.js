@@ -137,11 +137,11 @@ const gymsValidators = {
       .withMessage('Branch name cannot be empty')
       .isLength({ max: 200 }),
 
-    body('status')
-      .optional()
-      .isIn(['ACTIVE', 'INACTIVE'])
-      .withMessage('status must be ACTIVE or INACTIVE'),
-
+    // `status` is intentionally absent. A branch's ACTIVE/INACTIVE state is
+    // only ever changed by the delete/restore endpoints, which settle branch
+    // capacity as part of the transition — see gym.service.js#updateBranch,
+    // which rejects a status change here outright. A no-op (sending the
+    // branch's current status back, as the CMS edit form does) still passes.
     body('address').optional().isString(),
     body('cityId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
     body('areaId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),

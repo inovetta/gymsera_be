@@ -345,7 +345,6 @@ const updateBranchListingContent = async (req, res, next) => {
       phone,
       latitude,
       longitude,
-      status,
       description,
       establishedYear,
       floorArea,
@@ -370,7 +369,9 @@ const updateBranchListingContent = async (req, res, next) => {
     if (phone !== undefined) patch.phone = phone;
     if (latitude !== undefined) patch.latitude = latitude;
     if (longitude !== undefined) patch.longitude = longitude;
-    if (status !== undefined) patch.status = status;
+    // No `status` here on purpose — a branch's ACTIVE/INACTIVE state is
+    // settled only by delete/restore, which also settle capacity. See
+    // gym.service.js#updateBranch.
     if (description !== undefined) patch.description = description;
     if (establishedYear !== undefined) patch.establishedYear = establishedYear;
     if (floorArea !== undefined) patch.floorArea = floorArea;
