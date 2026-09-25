@@ -57,6 +57,31 @@ const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessNam
 };
 
 // ── listTenants ───────────────────────────────────────────────────────────────
+/**
+ * A tenant is one host account with one subscription — genuinely one row.
+ * Their organizations (GymListings) are not separate tenants and must never
+ * be presented as one, which this list used to do for every ADDITIONAL
+ * organization regardless of its own status: an active host with 3
+ * organizations produced 3 duplicate rows, each with a fabricated business
+ * name and the SAME owner/email repeated on every one — indistinguishable
+ * from 3 different people applying, and with no row anywhere showing the
+ * one real fact ("this tenant has one subscription and 3 organizations").
+ *
+ * The one thing that synthesis was legitimately doing: a new organization
+ * still starts life at GymListing.status 'PENDING' (see
+ * host.controller.js#createListing) and genuinely needs admin
+ * approve/reject — the same review a first-time tenant application gets,
+ * just for an additional org under an already-active tenant. That's a real,
+ * current workflow (approveTenant/rejectTenant below still operate on it via
+ * the tenantId:listingId compound id), so a row for it can't just disappear.
+ *
+ * So the rule is narrower than "never synthesize": only a PENDING or
+ * REJECTED additional organization gets its own row, because that's the one
+ * case where it's a genuine action item distinct from anything the tenant
+ * row itself shows. An ACTIVE additional organization is not — it belongs
+ * inside its tenant's own detail page (see getTenant's `organizations`),
+ * never as a look-alike top-level tenant.
+ */
 const listTenants = async ({ status, page, limit, offset }) => {
   const tenantWhere = {};
   if (status) {
@@ -76,84 +101,86 @@ const listTenants = async ({ status, page, limit, offset }) => {
     order: [['createdAt', 'DESC']],
   });
 
-  // 2. Fetch all GymListings that match the status filter
-  const gymListingWhere = {};
-  if (status) {
-    if (status === 'PENDING_REVIEW') {
-      gymListingWhere.status = 'PENDING';
-    } else if (status === 'REJECTED') {
-      gymListingWhere.status = 'REJECTED';
-    } else if (status === 'ACTIVE') {
-      gymListingWhere.status = 'ACTIVE';
-    } else {
-      // For other statuses (like UNDER_REVIEW, APPROVED, SUSPENDED), additional listings don't apply
-      gymListingWhere.status = 'NONE';
-    }
-  } else {
-    // If no status filter (All), fetch all except DRAFT/INACTIVE
-    gymListingWhere.status = { [Op.in]: ['PENDING', 'REJECTED', 'ACTIVE'] };
+  // 2. Additional organizations awaiting a decision — PENDING/REJECTED only.
+  // Never ACTIVE; see the function doc above for why.
+  let gymListingWhere = null;
+  if (!status) {
+    gymListingWhere = { status: { [Op.in]: ['PENDING', 'REJECTED'] } };
+  } else if (status === 'PENDING_REVIEW') {
+    gymListingWhere = { status: 'PENDING' };
+  } else if (status === 'REJECTED') {
+    gymListingWhere = { status: 'REJECTED' };
   }
+  // Every other tenant-status filter (UNDER_REVIEW, APPROVED, ACTIVE,
+  // SUSPENDED) has no additional-organization equivalent — gymListingWhere
+  // stays null and none are fetched.
 
-  const gymListings = await GymListing.findAll({
-    where: gymListingWhere,
-    include: [
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-      { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] }] },
-    ],
-    order: [['createdAt', 'DESC']],
-  });
-
-  // 3. Filter out the first (primary) gym listing for each tenant to avoid duplicates
-  const additionalListings = [];
-  for (const listing of gymListings) {
-    if (!listing.tenant) continue;
-    // Find all listings for this tenant to check if this one is the first
-    const allTenantListings = await GymListing.findAll({
-      where: { tenantId: listing.tenantId },
-      order: [['createdAt', 'ASC']],
+  let synthesized = [];
+  if (gymListingWhere) {
+    const gymListings = await GymListing.findAll({
+      where: gymListingWhere,
+      include: [
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+        { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] }] },
+      ],
+      order: [['createdAt', 'DESC']],
     });
-    if (allTenantListings.length > 1 && allTenantListings[0].id !== listing.id) {
-      additionalListings.push(listing);
+
+    // Exclude a tenant's own first/primary listing — that one already is
+    // the tenant row, approved or rejected through the tenant itself.
+    const additionalListings = [];
+    for (const listing of gymListings) {
+      if (!listing.tenant) continue;
+      const firstListing = await GymListing.findOne({
+        where: { tenantId: listing.tenantId },
+        order: [['createdAt', 'ASC']],
+        attributes: ['id'],
+      });
+      if (firstListing && firstListing.id !== listing.id) {
+        additionalListings.push(listing);
+      }
     }
+
+    synthesized = additionalListings.map((listing) => {
+      const tenant = listing.tenant;
+      return {
+        id: `${tenant.id}:${listing.id}`, // Compound ID — approveTenant/rejectTenant act on the listing.
+        tenantCode: tenant.tenantCode,
+        // Named as what it actually is: a pending organization under an
+        // existing tenant, not a standalone business applying fresh.
+        businessName: `${tenant.businessName} — new organization "${listing.title}"`,
+        isAdditionalOrganization: true,
+        ownerUserId: tenant.ownerUserId,
+        email: tenant.email,
+        phone: listing.contactPhone || tenant.phone,
+        cityId: listing.cityId,
+        status: listing.status === 'PENDING' ? 'PENDING_REVIEW' : 'REJECTED',
+        gymName: listing.title,
+        gymDescription: listing.shortDescription,
+        logoUrl: listing.logoUrl,
+        coverImageUrl: listing.coverImageUrl,
+        genderType: listing.genderType,
+        createdAt: listing.createdAt,
+        owner: tenant.owner,
+        user: tenant.owner,
+        city: listing.city,
+        gymListing: {
+          id: listing.id,
+          tenantId: listing.tenantId,
+          title: listing.title,
+          averageRating: listing.averageRating,
+          status: listing.status,
+          isFeatured: listing.isFeatured,
+        },
+      };
+    });
   }
 
-  // 4. Synthesize Tenant-like objects for additional listings
-  const synthesized = additionalListings.map((listing) => {
-    const tenant = listing.tenant;
-    return {
-      id: `${tenant.id}:${listing.id}`, // Compound ID
-      tenantCode: tenant.tenantCode,
-      businessName: `${listing.title} (Additional Listing)`,
-      ownerUserId: tenant.ownerUserId,
-      email: tenant.email,
-      phone: listing.contactPhone || tenant.phone,
-      cityId: listing.cityId,
-      status: listing.status === 'PENDING' ? 'PENDING_REVIEW' : (listing.status === 'REJECTED' ? 'REJECTED' : 'ACTIVE'),
-      gymName: listing.title,
-      gymDescription: listing.shortDescription,
-      logoUrl: listing.logoUrl,
-      coverImageUrl: listing.coverImageUrl,
-      genderType: listing.genderType,
-      createdAt: listing.createdAt,
-      owner: tenant.owner,
-      user: tenant.owner,
-      city: listing.city,
-      gymListing: {
-        id: listing.id,
-        tenantId: listing.tenantId,
-        title: listing.title,
-        averageRating: listing.averageRating,
-        status: listing.status,
-        isFeatured: listing.isFeatured,
-      },
-    };
-  });
-
-  // 5. Combine and sort by createdAt DESC
-  const combined = [...tenants.map(t => t.toJSON()), ...synthesized];
+  // 3. Combine and sort by createdAt DESC
+  const combined = [...tenants.map((t) => t.toJSON()), ...synthesized];
   combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  // 6. Paginate
+  // 4. Paginate
   const count = combined.length;
   const paginated = combined.slice(offset, offset + limit);
 
@@ -191,8 +218,50 @@ const getTenant = async (tenantId) => {
   tenantJson.gymListing = gymListing ? gymListing.toJSON() : null;
 
   if (listingId && gymListing) {
+    // Reached only via the compound id a PENDING/REJECTED additional-
+    // organization row in listTenants links to — this is that one listing's
+    // own review status, not a second tenant's.
     tenantJson.status = gymListing.status === 'PENDING' ? 'PENDING_REVIEW' : (gymListing.status === 'REJECTED' ? 'REJECTED' : 'ACTIVE');
-    tenantJson.businessName = `${gymListing.title} (Additional Listing)`;
+    tenantJson.businessName = `${tenant.businessName} — new organization "${gymListing.title}"`;
+  } else {
+    // The real tenant view: every organization it owns, not just the
+    // oldest. This is what replaces the old "one row per organization"
+    // list — one tenant, its real subscription (see the subscription tab's
+    // own fetch), and here, its actual set of organizations with real
+    // branch counts, so "how many organizations does this host have and
+    // how built-out is each one" has an actual answer instead of requiring
+    // N separate page visits that each pretended to be a different tenant.
+    const allListings = await GymListing.findAll({
+      where: { tenantId: actualTenantId, status: { [Op.ne]: 'INACTIVE' } },
+      attributes: ['id', 'title', 'status', 'reservedSlots', 'createdAt'],
+      order: [['createdAt', 'ASC']],
+    });
+
+    let branchCountsByListing = {};
+    if (tenant.connectionStringEncrypted) {
+      try {
+        const tenantDb = await TenantDbManager.getConnection(actualTenantId, tenant.connectionStringEncrypted);
+        const counts = await tenantDb.models.Branch.findAll({
+          where: { status: 'ACTIVE' },
+          attributes: ['gymListingId', [fn('COUNT', col('id')), 'count']],
+          group: ['gymListingId'],
+          raw: true,
+        });
+        branchCountsByListing = Object.fromEntries(counts.map((c) => [c.gymListingId, parseInt(c.count, 10)]));
+      } catch (err) {
+        // Tenant DB unreachable — organizations still render, just without
+        // branch counts, rather than failing the whole tenant page.
+      }
+    }
+
+    tenantJson.organizations = allListings.map((l) => ({
+      id: l.id,
+      title: l.title,
+      status: l.status,
+      activeBranches: branchCountsByListing[l.id] || 0,
+      reservedSlots: l.reservedSlots,
+      createdAt: l.createdAt,
+    }));
   }
 
   return { tenant: tenantJson };
