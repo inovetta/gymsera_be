@@ -149,26 +149,48 @@ class TenantDbManager {
         await sequelize.query('ALTER TABLE gyms ADD COLUMN gym_listing_id CHAR(36) NULL').catch(() => { });
       }
 
-      // Unconditional backfill of gym_listing_id and ensure active status for tenant and primary organization
-      const { Tenant, TenantSubscription, GymListing } = require('../models/platform');
-      const tenant = await Tenant.findByPk(tenantId).catch(() => null);
-      if (tenant && tenant.status !== 'ACTIVE') {
-        await tenant.update({ status: 'ACTIVE' }).catch(() => {});
-      }
-      const nextYear = new Date();
-      nextYear.setFullYear(nextYear.getFullYear() + 1);
-      const sub = await TenantSubscription.findOne({ where: { tenantId } }).catch(() => null);
-      if (sub && (sub.status !== 'ACTIVE' || new Date(sub.endDate) < new Date())) {
-        await sub.update({ status: 'ACTIVE', endDate: nextYear.toISOString().split('T')[0] }).catch(() => {});
-      }
-
-      const firstListing = await GymListing.findOne({ where: { tenantId } }).catch(() => null);
+      // Backfill ONLY: attach a branch/gym that has never had a
+      // gymListingId at all to the tenant's first organization. This never
+      // touches `status` on anything, on purpose.
+      //
+      // Until 2026-09-25 this block (still visible in git history) also
+      // unconditionally forced tenant.status, the subscription's
+      // status/endDate, the primary listing's status, AND every branch
+      // matching `status = 'INACTIVE' OR gym_listing_id IS NULL` back to
+      // ACTIVE — on every tenant's *first* getConnection call after a
+      // connection-pool cache miss (this.pool.has(tenantId) false), which
+      // happens on every process restart (every deploy, every iisreset) and
+      // every explicit TenantDbManager.release(tenantId) call.
+      //
+      // That is exactly suspendTenant/rejectTenant's own cache-eviction
+      // call, and _reconcileCapacityForAllTenants (the daily cron) opens a
+      // connection for every ACTIVE subscription with no tenant.status
+      // filter at all — so a SUSPENDED tenant with a still-ACTIVE
+      // subscription (the normal case: suspension doesn't cancel billing)
+      // was un-suspended by the very next daily cron run, every single day,
+      // with no admin action able to make it stick. The same query also
+      // silently resurrected every deleted branch and reset any lapsed
+      // subscription to a fresh year — with zero CapacityEvent row, zero
+      // reservedSlots debit, and a bare `.catch(() => {})` swallowing any
+      // sign it had run at all. This is almost certainly the "it comes back
+      // free after a while" a host reported: "after a while" was "after the
+      // next deploy or daily cron run."
+      //
+      // A tenant/subscription/listing/branch's status is a real application
+      // decision — approve, suspend, delete, restore, expire — each already
+      // owned by its own dedicated, guarded code path (deleteBranch,
+      // restoreBranch, suspendTenant, the expiry cron...). None of those
+      // decisions may ever be silently reversed by opening a database
+      // connection to read from it.
+      const { GymListing } = require('../models/platform');
+      const firstListing = await GymListing.findOne({ where: { tenantId, status: { [Sequelize.Op.ne]: 'INACTIVE' } } }).catch(() => null);
       if (firstListing) {
-        if (firstListing.status === 'INACTIVE') {
-          await firstListing.update({ status: 'ACTIVE' }).catch(() => {});
-        }
-        await sequelize.query(`UPDATE branches SET status = 'ACTIVE', gym_listing_id = '${firstListing.id}' WHERE status = 'INACTIVE' OR gym_listing_id IS NULL OR gym_listing_id = ''`).catch(() => { });
-        await sequelize.query(`UPDATE gyms SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`).catch(() => { });
+        await sequelize.query(
+          `UPDATE branches SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`
+        ).catch(() => { });
+        await sequelize.query(
+          `UPDATE gyms SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`
+        ).catch(() => { });
       }
     } catch (migErr) {
       console.warn(`[TenantDbManager] Column check warning for tenant ${tenantId}:`, migErr.message);
