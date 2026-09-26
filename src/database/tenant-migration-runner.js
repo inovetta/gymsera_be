@@ -272,10 +272,13 @@ async function ensureMigrationTable(sequelize) {
  * @param {string} [context.gymName]
  * @param {number} [context.targetVersion]
  * @param {boolean} [context.dryRun]
+ * @param {Array} [context.migrations] - the migration list to run (default: the tenant MIGRATIONS). The platform
+ *   database passes its own list (platform-migrations.js) so both databases share this one runner.
  * @returns {Promise<{ tenantId: string, tenantCode?: string, gymName: string, initialVersion: number, finalVersion: number, applied: string[], wouldRun?: string[], dryRun?: boolean }>}
  */
 async function runTenantMigrations(sequelize, context = {}) {
   const isDryRun = context.dryRun === true;
+  const migrations = context.migrations || MIGRATIONS;
 
   let appliedRows = [];
   if (isDryRun) {
@@ -299,7 +302,7 @@ async function runTenantMigrations(sequelize, context = {}) {
 
   const appliedSet = new Set(appliedRows.map((r) => r.version));
   const initialVersion = appliedRows.length > 0 ? Math.max(...appliedRows.map((r) => r.version)) : 0;
-  const targetVersion = context.targetVersion || TARGET_SCHEMA_VERSION;
+  const targetVersion = context.targetVersion || migrations[migrations.length - 1].version;
 
   if (isDryRun) {
     // Structural safety guarantee: wrap dry-run inspection in a transaction that is ALWAYS rolled back
@@ -311,7 +314,7 @@ async function runTenantMigrations(sequelize, context = {}) {
     }
 
     const pending = [];
-    for (const mig of MIGRATIONS) {
+    for (const mig of migrations) {
       if (mig.version > targetVersion) continue;
       if (appliedSet.has(mig.version)) continue;
       pending.push(mig);
@@ -331,7 +334,7 @@ async function runTenantMigrations(sequelize, context = {}) {
 
   const applied = [];
 
-  for (const mig of MIGRATIONS) {
+  for (const mig of migrations) {
     if (mig.version > targetVersion) continue;
     if (appliedSet.has(mig.version)) continue;
 

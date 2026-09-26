@@ -294,7 +294,19 @@ const _reconcileCapacityForAllTenants = async () => {
 const runExpiryCheck = async () => {
   console.log('[Cron] subscription-expiry: starting daily check');
 
-  // ── Platform subscriptions first ─────────────────────────────────────────
+  // ── Billing webhooks: retry failed inbox events, then re-fetch every
+  // store-backed subscription so a notification that never arrived can't
+  // leave a row stale before the expiry pass below reads it (BILL-12). ────
+  try {
+    const billingEvents = require('../services/billing-event.service');
+    await billingEvents.processPendingEvents({ limit: 500 });
+    const recon = await billingEvents.reconcileStoreSubscriptions();
+    if (recon.failed > 0) console.warn(`[Cron] Store reconciliation: ${recon.failed}/${recon.checked} subscription(s) failed to refresh`);
+  } catch (err) {
+    console.error('[Cron] Billing reconciliation failed:', err.message);
+  }
+
+  // ── Platform subscriptions ────────────────────────────────────────────────
   await _processPlatformSubscriptions();
 
   // ── Capacity invariant safety net ────────────────────────────────────────

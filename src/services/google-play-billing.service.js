@@ -27,12 +27,9 @@
  * are stubbed (see platform.js's placeholder-ID backfill).
  */
 const { JWT } = require('google-auth-library');
-const { BillingPlan, Tenant, TenantSubscription } = require('../models/platform');
-const { sequelize } = require('../database/platform');
+const { BillingPlan } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
-const subscriptionQuotaService = require('./subscription-quota.service');
 const subscriptionMigrationService = require('./subscription-migration.service');
-const TenantDbManager = require('../database/TenantDbManager');
 
 const ANDROIDPUBLISHER_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
 
@@ -105,11 +102,11 @@ const _statusFromSubscriptionState = (subscriptionState) => {
 };
 
 /**
- * Upserts the tenant's TenantSubscription row from a verified Google Play
- * purchase. Keyed on externalOriginalTransactionId (= purchaseToken, stable
- * across renewals for one subscription) — safe to call repeatedly. Mirrors
- * apple-billing.service.js#syncSubscriptionFromTransaction function-for-
- * function, including the cross-provider migration hook.
+ * Maps a verified Google Play purchase to TenantSubscription values and
+ * applies them through subscription-migration.service.js#applyVerifiedSubscription
+ * — the one write path shared by every provider. Keyed on
+ * externalOriginalTransactionId (= purchaseToken, stable across renewals for
+ * one subscription) — safe to call repeatedly.
  *
  * `purchaseToken` is passed explicitly rather than read off `purchase` —
  * Google's subscriptionsv2.get response doesn't echo the token that was
@@ -128,128 +125,38 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
   const status = _statusFromSubscriptionState(purchase.subscriptionState);
   const latestOrderId = purchase.latestOrderId ? String(purchase.latestOrderId) : null;
 
-  const platformTx = await sequelize.transaction();
-  try {
-    const existing = await TenantSubscription.findOne({
-      where: { externalOriginalTransactionId: purchaseToken },
-      transaction: platformTx,
-      lock: true,
-    });
-    const previousMaxBranches = existing ? existing.branchCount : null;
-    const planChanged = !existing || existing.billingPlanId !== plan.id;
+  const values = {
+    platform: 'ANDROID',
+    billingPlanId: plan.id,
+    branchCount: plan.branchCount,
+    productId,
+    externalOriginalTransactionId: purchaseToken,
+    externalTransactionId: latestOrderId || purchaseToken,
+    environment: purchase.testPurchase ? 'SANDBOX' : 'PRODUCTION',
+    startDate: purchase.startTime ? new Date(purchase.startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
+    // Written only on a new row or a real plan change — see
+    // subscription-migration.service.js#applyVerifiedSubscription.
+    amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    status,
+    autoRenew: !!purchase.acknowledgementState && status === 'ACTIVE' && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,
+    paymentStatus: 'PAID',
+    lastVerifiedAt: new Date(),
+  };
 
-    const values = {
-      tenantId,
-      platform: 'ANDROID',
-      billingPlanId: plan.id,
-      branchCount: plan.branchCount,
-      productId,
-      externalOriginalTransactionId: purchaseToken,
-      externalTransactionId: latestOrderId || purchaseToken,
-      environment: purchase.testPurchase ? 'SANDBOX' : 'PRODUCTION',
-      startDate: purchase.startTime ? new Date(purchase.startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-      // See apple-billing.service.js's identical comment — never recomputed
-      // on a plain renewal, only on a new row or a real plan change.
-      ...(planChanged
-        ? { amount: isAnnual ? plan.annualPrice : plan.monthlyPrice, billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY' }
-        : {}),
-      status,
-      autoRenew: !!purchase.acknowledgementState && status === 'ACTIVE' && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,
-      paymentStatus: 'PAID',
-      lastVerifiedAt: new Date(),
-    };
-
-    let subscription;
-    // See apple-billing.service.js's identical comment — true whenever
-    // requestProviderChange already handled reconciliation itself.
-    let reconciledByActivation = false;
-    let migratedFrom = null;
-    if (existing) {
-      // A renewal/resync for a token already on file — never a migration
-      // decision (that only ever runs once, in the `else` branch below, the
-      // first time a given purchase token is seen). But Google's own report
-      // for THIS token could still say ACTIVE even after a prior purchase
-      // superseded it locally, if that "supersession" wasn't a real in-app
-      // replacement and this subscription genuinely kept billing at the
-      // store — see subscription-migration.service.js#reconcileRenewalStatus
-      // for why blindly trusting that would resurrect a second ACTIVE row.
-      const reconciledValues = await subscriptionMigrationService.reconcileRenewalStatus(
-        tenantId,
-        existing,
-        values,
-        { transaction: platformTx }
-      );
-      await existing.update(reconciledValues, { transaction: platformTx });
-      subscription = existing;
-    } else {
-      let tenantDb = null;
-      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-      if (tenant?.connectionStringEncrypted) {
-        tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-      }
-      const activation = await subscriptionMigrationService.requestProviderChange(
-        tenantId,
-        {
-          newPlatform: 'ANDROID',
-          newSubscriptionValues: values,
-          // Google's own subscriptionsv2 response says exactly which prior
-          // purchase this one replaces — set on a genuine in-app
-          // subscription-replacement purchase (see
-          // billing_provider.dart#changeAndroidPlan), absent on an
-          // unrelated fresh purchase. Passed through so
-          // requestProviderChange can close out the old row as a confirmed,
-          // store-handled replacement instead of guessing.
-          supersededExternalId: purchase.linkedPurchaseToken || null,
-        },
-        {
-          transaction: platformTx,
-          tenantDb,
-          originListingId,
-          idempotencyPrefix: values.externalTransactionId,
-          actorType: 'SYSTEM',
-        }
-      );
-      subscription = activation.subscription;
-      reconciledByActivation = true;
-      migratedFrom = activation.migratedFrom;
-    }
-
-    // subscription.status, not values.status — reconcileRenewalStatus above
-    // can override what was about to be written, and .update() leaves the
-    // instance holding whatever was actually persisted. Reading values.status
-    // here would reconcile capacity for a row that just got refused ACTIVE
-    // status, double-counting a superseded row's branchCount.
-    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
-      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-      if (tenant?.connectionStringEncrypted) {
-        const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
-          transaction: platformTx,
-          previousMaxBranches,
-          originListingId,
-          idempotencyPrefix: values.externalTransactionId,
-          actorType: 'SYSTEM',
-        });
-      }
-    }
-
-    await platformTx.commit();
-
-    if (migratedFrom?.platform === 'STRIPE' && migratedFrom.externalOriginalTransactionId) {
-      try {
-        const stripeBilling = require('./stripe-billing.service');
-        await stripeBilling.cancelAtPeriodEnd(migratedFrom.externalOriginalTransactionId);
-      } catch (err) {
-        console.warn('[Google Play Billing] Failed to schedule Stripe cancellation after migration:', err.message);
-      }
-    }
-
-    return subscription;
-  } catch (err) {
-    await platformTx.rollback();
-    throw err;
-  }
+  return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
+    originListingId,
+    idempotencyPrefix: values.externalTransactionId,
+    // Google's own subscriptionsv2 response says exactly which prior
+    // purchase this one replaces — set on a genuine in-app
+    // subscription-replacement purchase (see
+    // billing_provider.dart#changeAndroidPlan), absent on an unrelated fresh
+    // purchase. requestProviderChange only trusts it if it matches the row it
+    // independently found ACTIVE.
+    supersededExternalId: purchase.linkedPurchaseToken || null,
+    logLabel: 'Google Play Billing',
+  });
 };
 
 /**
@@ -273,36 +180,27 @@ const acknowledgePurchaseIfNeeded = async (purchaseToken, productId) => {
 };
 
 /**
- * Real-time Developer Notifications — Google POSTing renewal/cancel/expiry
- * events at us via Pub/Sub push. Always re-fetches the purchase fresh via
- * getSubscriptionPurchase rather than trusting the notification payload's
- * own state — mirrors Apple's handleNotification re-decoding the signed
- * transaction rather than trusting the outer envelope.
+ * Provider API calls, grouped so a test can substitute them — nothing else in
+ * this file talks to Google directly.
  */
-const handleRtdnNotification = async (pubsubMessage) => {
-  const dataB64 = pubsubMessage?.message?.data;
-  if (!dataB64) return null;
-  const decoded = JSON.parse(Buffer.from(dataB64, 'base64').toString('utf8'));
-  const notification = decoded.subscriptionNotification;
-  if (!notification?.purchaseToken) return null; // e.g. a test notification, nothing to sync
+const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded };
 
-  const purchase = await getSubscriptionPurchase(notification.purchaseToken);
-
-  const { TenantSubscription: TS } = require('../models/platform');
-  const existing = await TS.findOne({ where: { externalOriginalTransactionId: notification.purchaseToken } });
-  if (!existing) {
-    // A renewal can arrive before the app ever called /billing/android/sync
-    // once — nothing to update yet; the next app-initiated sync creates the
-    // row. Not an error, same as Apple's equivalent case.
-    return null;
-  }
-  return syncSubscriptionFromPurchase(existing.tenantId, purchase, notification.purchaseToken);
+/**
+ * The one entry point both POST /billing/android/sync and the RTDN processor
+ * (billing-event.service.js) use: re-fetch the purchase from the Play
+ * Developer API (never the notification's own claims), then apply it through
+ * syncSubscriptionFromPurchase.
+ */
+const syncFromGoogle = async ({ purchaseToken, tenantId, originListingId = null }) => {
+  const purchase = await playApi.getSubscriptionPurchase(purchaseToken);
+  return syncSubscriptionFromPurchase(tenantId, purchase, purchaseToken, { originListingId });
 };
 
 module.exports = {
+  playApi,
   getSubscriptionPurchase,
   findPlanForProductId,
   syncSubscriptionFromPurchase,
   acknowledgePurchaseIfNeeded,
-  handleRtdnNotification,
+  syncFromGoogle,
 };

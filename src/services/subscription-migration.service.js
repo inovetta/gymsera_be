@@ -298,4 +298,128 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   };
 };
 
-module.exports = { requestProviderChange, reconcileRenewalStatus };
+/**
+ * The ONE code path that writes a store-verified subscription state to
+ * TenantSubscription (BILL-12, spec §7.6). Every provider's sync function
+ * (apple-billing / google-play-billing / stripe-billing) builds `values` from
+ * its own provider API response and hands them here — whether the sync was
+ * triggered by the app's POST /billing/{ios|android}/sync or by a webhook
+ * processed from the billing_events inbox. Before this existed, the three
+ * providers each carried an identical copy of this block.
+ *
+ * Known external id → direct update through reconcileRenewalStatus (renewal,
+ * plan change, cancel). Unknown external id → requestProviderChange (first
+ * purchase or migration). Either way capacity is reconciled inside the same
+ * transaction as the row write, and the Stripe cancel-at-period-end call for a
+ * migration away from Stripe happens only after commit.
+ *
+ * @param {string} tenantId - the tenant the subscription belongs to.
+ * @param {object} values - the row as the provider reports it. `amount` and
+ *   `billingCycle` are only written for a new row or a real plan change —
+ *   never on a plain renewal (see BillingPlan.model.js on subscriber price).
+ * @param {object} [opts]
+ * @param {string|null} [opts.originListingId]
+ * @param {string} opts.idempotencyPrefix - capacity-event key prefix (a per-transaction or per-event id).
+ * @param {string|null} [opts.supersededExternalId] - see requestProviderChange.
+ * @param {string} [opts.logLabel]
+ * @returns {Promise<object>} the persisted TenantSubscription.
+ */
+const applyVerifiedSubscription = async (
+  tenantId,
+  values,
+  { originListingId = null, idempotencyPrefix, supersededExternalId = null, logLabel = 'Billing' } = {}
+) => {
+  const { sequelize } = require('../database/platform');
+  const TenantDbManager = require('../database/TenantDbManager');
+
+  const platformTx = await sequelize.transaction();
+  try {
+    const existing = await TenantSubscription.findOne({
+      where: { platform: values.platform, externalOriginalTransactionId: values.externalOriginalTransactionId },
+      transaction: platformTx,
+      lock: true,
+    });
+    const previousMaxBranches = existing ? existing.branchCount : null;
+    // A genuinely new row, or a real plan change (upgrade/downgrade) — as
+    // opposed to a plain renewal of the same plan, which must NOT recompute
+    // amount/billingCycle.
+    const planChanged = !existing || existing.billingPlanId !== values.billingPlanId;
+    const rowValues = { ...values, tenantId };
+    if (!planChanged) {
+      delete rowValues.amount;
+      delete rowValues.billingCycle;
+    }
+
+    const tenantDbFor = async () => {
+      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
+      if (!tenant?.connectionStringEncrypted) return null;
+      return TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    };
+
+    let subscription;
+    // True whenever requestProviderChange handled this row (fresh signup or a
+    // real cross-provider migration) — it already reconciled capacity itself.
+    let reconciledByActivation = false;
+    let migratedFrom = null;
+    if (existing) {
+      // A renewal/resync for an external id already on file — never a
+      // migration decision. reconcileRenewalStatus refuses to resurrect a
+      // superseded row to ACTIVE while another row is this tenant's entitlement.
+      const reconciledValues = await reconcileRenewalStatus(tenantId, existing, rowValues, { transaction: platformTx });
+      await existing.update(reconciledValues, { transaction: platformTx });
+      subscription = existing;
+    } else {
+      const activation = await requestProviderChange(
+        tenantId,
+        { newPlatform: values.platform, newSubscriptionValues: rowValues, supersededExternalId },
+        {
+          transaction: platformTx,
+          tenantDb: await tenantDbFor(),
+          originListingId,
+          idempotencyPrefix,
+          actorType: 'SYSTEM',
+        }
+      );
+      subscription = activation.subscription;
+      reconciledByActivation = true;
+      migratedFrom = activation.migratedFrom;
+    }
+
+    // subscription.status, not values.status — reconcileRenewalStatus above can
+    // override what was about to be written. Reading values.status would
+    // reconcile capacity for a row that was just refused ACTIVE status.
+    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
+      const tenantDb = await tenantDbFor();
+      if (tenantDb) {
+        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
+          transaction: platformTx,
+          previousMaxBranches,
+          originListingId,
+          idempotencyPrefix,
+          actorType: 'SYSTEM',
+        });
+      }
+    }
+
+    await platformTx.commit();
+
+    // A real Stripe API call must never happen inside a DB transaction that
+    // might still roll back — done here, only after commit, only when this
+    // sync just migrated the tenant away from a Stripe subscription.
+    if (migratedFrom?.platform === 'STRIPE' && migratedFrom.externalOriginalTransactionId) {
+      try {
+        const stripeBilling = require('./stripe-billing.service');
+        await stripeBilling.cancelAtPeriodEnd(migratedFrom.externalOriginalTransactionId);
+      } catch (err) {
+        console.warn(`[${logLabel}] Failed to schedule Stripe cancellation after migration:`, err.message);
+      }
+    }
+
+    return subscription;
+  } catch (err) {
+    await platformTx.rollback();
+    throw err;
+  }
+};
+
+module.exports = { requestProviderChange, reconcileRenewalStatus, applyVerifiedSubscription };

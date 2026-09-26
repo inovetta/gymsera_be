@@ -18,6 +18,23 @@ const { runTenantMigrations } = require('../../src/database/tenant-migration-run
 
 // Force test environment
 process.env.NODE_ENV = 'test';
+
+// No test may ever reach a real Apple / Google / Stripe account (spec §14
+// R-19). Blank every provider credential a local .env may hold, so a call
+// that slips past the fakes in tests/harness/billing-fakes.js fails with
+// "not configured" instead of going out over the network. Set to '' rather
+// than deleted: a later dotenv.config() never overrides a key that exists.
+for (const key of [
+  'APPLE_IAP_KEY_ID',
+  'APPLE_IAP_ISSUER_ID',
+  'APPLE_IAP_BUNDLE_ID',
+  'APPLE_IAP_PRIVATE_KEY_PATH',
+  'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+]) {
+  process.env[key] = '';
+}
 process.env.PLATFORM_DB_NAME = process.env.PLATFORM_TEST_DB_NAME || 'gymsera_test_platform';
 
 // Test MySQL 5.7 port resolution (Safety Rule R-19):
