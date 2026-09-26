@@ -2162,16 +2162,17 @@ Severity is the §12 severity unless the note says it was raised.
 
 **Regression tests for already-fixed defects (mobile doc §9).** Add these if missing:
 
-| Defect | Regression test |
-|---|---|
-| §9.1 `updateBranch` status bypass | `PATCH` branch with `status` → 400 `branch_status_immutable_here`; same value → 200 |
-| §9.2 purchase-stream matching | Stale transaction for another product does not show success UI |
-| §9.3 new-org attempt-first | Quota says "none" but a donor slot exists → create succeeds without the upsell |
-| §9.4 renewal resurrection | Renewal of a superseded row → stays superseded |
-| §9.5 tenant-wide quota provider | Invalidating once updates every org tab |
-| §9.6 `getConnection` side effects | `getConnection` on a cold cache performs zero UPDATEs (query spy) |
-| §9.7 tenant list rows | Tenant with 3 ACTIVE orgs → 1 row |
-| §9.8 delete-button enablement | Typing a password enables the button |
+| Defect | Regression test | Status | Test file(s) | Result / Notes |
+|---|---|---|---|---|
+| §9.1 `updateBranch` status bypass | `PATCH` branch with `status` → 400 `branch_status_immutable_here`; same value → 200 | DONE | `gymsera_be/tests/regression/branch-status-bypass.test.js` | PASS (400 on status change, 200 on identical) |
+| §9.2 purchase-stream matching | Stale transaction for another product does not show success UI | DONE | `gyms_era/test/regression/purchase_stream_matching_test.dart` | PASS (stale transaction ignores foreground success UI; matching flips to success) |
+| §9.3 new-org attempt-first | Quota says "none" but a donor slot exists → create succeeds without the upsell | DONE | `gyms_era/test/regression/new_org_attempt_first_test.dart` | PASS (0 remaining branches still attempts create; succeeds without upsell) |
+| §9.4 renewal resurrection | Renewal of a superseded row → stays superseded | DONE | `gymsera_be/tests/regression/renewal-resurrection.test.js` | PASS (`reconcileRenewalStatus` refuses to resurrect superseded row to ACTIVE when another ACTIVE exists) |
+| §9.5 tenant-wide quota provider | Invalidating once updates every org tab | DONE | `gyms_era/test/regression/tenant_quota_provider_test.dart` | PASS (invalidating `hostBranchQuotaProvider` causes `hostBranchQuotaProviderFamily(orgId)` to re-evaluate) |
+| §9.6 `getConnection` side effects | `getConnection` on a cold cache performs zero UPDATEs (query spy) | REGRESSION (FAIL) | `gymsera_be/tests/regression/get-connection-side-effects.test.js` | FAIL (As expected per NEW-10: query spy caught `UPDATE payments SET business_date...`. Not fixed here per Prompt 1 rules; to be resolved in Phase 1.) |
+| §9.7 tenant list rows | Tenant with 3 ACTIVE orgs → 1 row | DONE | `gymsera_be/tests/regression/tenant-list-rows.test.js` | PASS (Tenant with 3 ACTIVE organizations produces exactly 1 row in `listTenants`) |
+| §9.8 delete-button enablement | Typing a password enables the button | DONE | `gyms_era/test/regression/delete_branch_dialog_test.dart` | PASS (Typing password in `_DeleteBranchDialog` triggers setState and enables Delete button) |
+
 
 ---
 

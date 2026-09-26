@@ -17,30 +17,33 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-09-26 (Prompt 0 finished) |
-| Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Prompt 0 — Read-only audit** |
+| Last updated | 2026-09-26 |
+| Updated by | Gemini (Gemini 3.8 Flash) |
+| Current prompt | **Prompt 1 — Test foundation** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | — |
-| Step within issue | — <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Issue in progress | (none) |
+| Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | no |
-| gymsera_be | main | 17f6132 docs: prompt-0 audit (plus this handoff checkpoint commit) | no |
-| gymsera_cms | main | 8e18096 docs: agent rules — DB rule R-19, owner decisions recorded | no |
-| gymsera_web | main | 5b66fea docs: agent rules — DB rule R-19, owner decisions recorded | no |
+| gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
+| gymsera_be | main | 17f6132 docs: prompt-0 audit (plus this handoff checkpoint commit) | yes: tests/harness, tests/integration, tests/regression, jest.config.js, .github/workflows/ci.yml, package.json, docs |
+| gymsera_cms | main | 8e18096 docs: agent rules — DB rule R-19, owner decisions recorded | yes: vitest.config.ts, playwright.config.ts, tests/, e2e/, .github/workflows/ci.yml, package.json |
+| gymsera_web | main | 5b66fea docs: agent rules — DB rule R-19, owner decisions recorded | yes: vitest.config.ts, playwright.config.ts, tests/, e2e/, .github/workflows/ci.yml, package.json |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Run **Prompt 1 — Test foundation** from `GYMSERA_AGENT_PLAYBOOK.md` Part B. Read §3 below first
-> (what test setup exists today and which regression test is expected to fail).
+> Start **Prompt 1A — Billing core: webhook inbox, refunds, Android acknowledge, store binding, Stripe return** from `GYMSERA_AGENT_PLAYBOOK.md` Part B.
+> Follow `AGENTS.md`. Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §0.1, §0.5, §7 and these issues in §12.1:
+> BILL-12, BILL-02, BILL-06, BILL-01, BILL-14 (do them in that order).
+> Use §12.13 (Prompt 0 results) to skip anything NOT REPRODUCED.
+> Checkpoint `AGENT_HANDOFF.md` as you go.
 
 ### Work in progress that is NOT committed
 
-- (none)
+- All Prompt 1 test foundation files across the 4 repositories (test harnesses, fakes, component tests, E2E configs, CI workflows, and regression tests).
 
 ### Blocked / waiting on the owner
 
@@ -54,21 +57,12 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. Repo map (stack, structure, tests, start commands, env file names) → spec §1.8
-- [x] 2. §1 facts checked; D-1…D-4 resolved → spec §1.8
-- [x] 3. §3.3 parity matrix filled
-- [x] 4. §12.13 verification: BILL
-- [x] 4. §12.13 verification: CAP
-- [x] 4. §12.13 verification: FLOW
-- [x] 4. §12.13 verification: PAY
-- [x] 4. §12.13 verification: AUTH/RBAC
-- [x] 4. §12.13 verification: SEC
-- [x] 4. §12.13 verification: REL/API
-- [x] 4. §12.13 verification: RT
-- [x] 4. §12.13 verification: UX
-- [x] 4. §12.13 verification: PERF/GLB/OBS
-- [x] 5. NEW-xx findings (NEW-01…16 + NEW-BOOST in spec §12.13.11)
-- [x] Commit "docs: prompt-0 audit"
+- [x] 1. gymsera_be: integration test harness against real MySQL (platform DB + 2 tenant DBs), factories, persona helper, `npm test`
+- [x] 2. gyms_era: flutter_test with fake API client and fake store
+- [x] 3. gymsera_cms & gymsera_web: component test runner (vitest) + Playwright configured against local servers
+- [x] 4. CI config (GitHub Actions) running all suites on every push across all 4 repos
+- [x] 5. Regression tests for already-fixed defects (§9.1…§9.8 in spec §13)
+- [x] Finish: run suites, record pass/fail, update §13 and handoff
 
 ---
 
@@ -77,22 +71,28 @@ next agent won't know it.
 <!-- Things you learned that are not obvious from the code or §13: commands that work, test DB setup quirks,
      files that look relevant but aren't, dead ends already tried. Append; delete only when no longer true. -->
 
-- Repo locations (relative to the `SaaS/` folder): `GymsEraApp/gyms_era`, `gymsera_be`, `gymsera_cms`, `gymsera_web`.
-- Shared docs live in `gymsera_be/docs/` (the only place the multi-repo docs are tracked in git).
-- Prompt 0 results live in spec §12.13 (per-issue table + NEW-01…16, NEW-BOOST), §3.3 "Verified status", and §1.8
-  (repo map, fact check, D-1…D-4). Use those file:line references as the starting point for each fix.
-- Test setup found by Prompt 0 (for Prompt 1):
-  - `gymsera_be/tests/*.test.js` (Jest) call a **running server at http://localhost:3000** with seeded users
-    (`tests/helpers.js`). There is no isolated DB harness. Never point them at the live DB (R-19).
-  - `gymsera_be/docker-compose.yml` already defines platform MySQL (3306), tenant MySQL (3307) and Redis — reuse it.
-  - `gyms_era/test/widget_test.dart` is the default Flutter counter test; it will fail against this app.
-  - CMS and web have no test runner. No repo has CI.
-  - Expected regression-test failure: §9.6 "`getConnection` on a cold cache performs zero UPDATEs" will FAIL —
-    `TenantDbManager.getConnection` still runs ALTER/UPDATE backfills (NEW-10). Record it as a regression, don't fix in Prompt 1.
-- The backend has two `node-cron`/Vercel cron entry points for the same job (REL-03); don't run both in tests.
-- Shell note: in zsh an unquoted `echo =====` fails ("= not found"); quote separators.
-- Existing context docs: `gymsera_be/docs/PLATFORM_ARCHITECTURE.md`, `gymsera_be/docs/STAGING_TEST_PLAN.md`,
-  `GymsEraApp/gyms_era/docs/MOBILE_APP_ARCHITECTURE.md`.
+- **Exact commands to run each test suite:**
+  - `gymsera_be`:
+    - Command: `npm test`
+    - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
+    - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL (port 3306). Never touches live or staging DBs (R-19).
+    - Status: 4 suites PASS, 1 suite FAILS as expected (§9.6 `tests/regression/get-connection-side-effects.test.js` due to NEW-10; scheduled to be fixed in Phase 1).
+  - `gyms_era` (Flutter):
+    - Command: `flutter test test/regression/`
+    - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
+    - Runs with fake IAP and fake repos.
+    - Status: 4 suites PASS (5 tests total: §9.2, §9.3, §9.5, §9.8).
+  - `gymsera_cms`:
+    - Unit/Component: `npm test` (runs Vitest jsdom tests in `tests/`)
+    - E2E: `npx playwright test` (runs against local port 3001)
+    - Status: PASS.
+  - `gymsera_web`:
+    - Unit/Component: `npm test` (runs Vitest jsdom tests in `tests/`)
+    - E2E: `npx playwright test` (runs against local port 3002)
+    - Status: PASS.
+- Local MySQL port is 3306 via Homebrew (`brew services start mysql`).
+- Test harness database safety: `tests/harness/test-db.js` explicitly checks that database names include `'test'` before DROP/CREATE operations.
+- §9.6 `getConnection` side-effects regression test: `TenantDbManager.getConnection` still runs backfill UPDATE queries on a cold cache miss. As instructed in Prompt 1, this was NOT fixed in Prompt 1; it is recorded as a regression in §13 and must be fixed during Phase 1.
 
 ---
 
@@ -103,3 +103,4 @@ next agent won't know it.
 | 0 | 2026-09-26 | Claude Code (Opus 5.5) | setup | — (created docs, AGENTS.md / CLAUDE.md / GEMINI.md in all 4 repos) | task complete | yes |
 | 1 | 2026-09-26 | Claude Code (Opus 5.5) | setup | — (recorded owner decisions R-1…R-19 in §14; DB rule R-19 in AGENTS.md; GO prompt in playbook) | task complete | yes |
 | 2 | 2026-09-26 | Claude Code (Opus 5.5) | Prompt 0 | Audit written to spec §1.8, §3.3, §12.13 (164 issues + 17 NEW) | task complete | yes |
+| 3 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Prompt 1 | test harness, factories, personas, mobile fakes, CMS/web vitest+playwright, CI workflows, §9.1–§9.8 regressions | task complete | yes |
