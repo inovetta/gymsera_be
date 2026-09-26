@@ -290,6 +290,7 @@ async function createMixedCollationTenantDb(customDbName = 'gymsera_test_mixed_c
   await seq.query('SET FOREIGN_KEY_CHECKS = 0');
   await seq.query('DROP TABLE IF EXISTS schema_migrations');
   await seq.query('DROP TABLE IF EXISTS payments');
+  await seq.query('DROP TABLE IF EXISTS ledger_days');
   await seq.query('DROP TABLE IF EXISTS branches');
   await seq.query('DROP TABLE IF EXISTS gyms');
 
@@ -327,6 +328,23 @@ async function createMixedCollationTenantDb(customDbName = 'gymsera_test_mixed_c
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
   `);
 
+  // ledger_days table with branch_id in utf8mb4_general_ci
+  await seq.query(`
+    CREATE TABLE \`ledger_days\` (
+      \`id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL PRIMARY KEY,
+      \`branch_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+      \`business_date\` DATE NOT NULL,
+      \`status\` VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+      \`opened_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`closed_by\` VARCHAR(36) NULL,
+      \`closed_at\` DATETIME NULL,
+      \`closed_expected_total\` DECIMAL(10,2) NULL,
+      \`closed_verified_total\` DECIMAL(10,2) NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  `);
+
   // schema_migrations with versions 1, 2, 3 applied
   await seq.query(`
     CREATE TABLE \`schema_migrations\` (
@@ -338,7 +356,7 @@ async function createMixedCollationTenantDb(customDbName = 'gymsera_test_mixed_c
 
   await seq.query("INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, '001_ensure_rbac_tables', NOW()), (2, '002_ensure_ledger_tables', NOW()), (3, '003_audit_and_tracking_columns', NOW())");
 
-  // Seed sample branch and payments with NULL business_date
+  // Seed sample branch, payments, and ledger_days with NULL business_date
   await seq.query(`
     INSERT INTO \`branches\` (\`id\`, \`branch_name\`, \`timezone\`)
     VALUES ('branch-karachi-001', 'Karachi Central', 'Asia/Karachi')
@@ -349,6 +367,11 @@ async function createMixedCollationTenantDb(customDbName = 'gymsera_test_mixed_c
     VALUES 
       ('pmt-cash-001', 'branch-karachi-001', 'CASH', 5000.00, '2026-03-15 14:00:00', '2026-03-15 14:00:00', NULL, NULL),
       ('pmt-bank-002', 'branch-karachi-001', 'BANK_TRANSFER', 8000.00, '2026-03-16 10:00:00', '2026-03-17 11:00:00', NULL, NULL)
+  `);
+
+  await seq.query(`
+    INSERT INTO \`ledger_days\` (\`id\`, \`branch_id\`, \`business_date\`, \`status\`)
+    VALUES ('ld-001', 'branch-karachi-001', '2026-03-15', 'OPEN')
   `);
 
   await seq.query('SET FOREIGN_KEY_CHECKS = 1');

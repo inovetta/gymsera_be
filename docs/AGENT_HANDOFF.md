@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-26 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Step 2.10 — Make migrations safe for the real production databases** |
+| Current prompt | **Step 2.10b — Re-check for collation mismatches, including outside the app code** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | fc1d143 feat(migrations): make tenant migrations safe for MySQL 5.7 and mixed collations (Step 2.10) | no (working tree clean) |
+| gymsera_be | main | 85526bd feat(migrations): make tenant migrations safe for MySQL 5.7 and mixed collations (Step 2.10) | yes: tests/harness/test-db.js, tests/integration/mixed-collation-migration.test.js |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -43,7 +43,7 @@ next agent won't know it.
 
 ### Work in progress that is NOT committed
 
-- `gymsera_be`: none (working tree clean).
+- `gymsera_be`: Step 2.10b test enhancements ready to commit.
 - `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
 
 ### Blocked / waiting on the owner
@@ -64,6 +64,7 @@ next agent won't know it.
 - [x] 6. `reactivateTenant`: Added migration execution up to latest version before setting tenant status to `ACTIVE` in `src/services/admin.service.js`. Verified via regression test `tests/integration/reactivate-tenant-migration.test.js`.
 - [x] 7. App Query Audit: Listed raw SQL queries; confirmed no application queries join mixed-collation columns without Migration 007 fix.
 - [x] 8. Spec §13 & §14: Updated §13 with STEP-2.9 production run results and STEP-2.10 DONE; added MySQL 5.7 -> 8.0/8.4 upgrade plan in §14 (R-20).
+- [x] 9. Step 2.10b (Collation Re-Check outside app code): Proved Migration 007 scans ALL tables/columns via `information_schema` (not a fixed list); audited all scripts/queries; added `ledger_days` with `utf8mb4_general_ci` to test fixture and verified both `payments` and `ledger_days` joins fail before Migration 007 and pass cleanly after Migration 007.
 
 ---
 
@@ -109,5 +110,6 @@ next agent won't know it.
 | 7 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.9 | Maintenance repair script for payment business_date (repair-payment-business-dates.js), collation audit, demo tenant audit | task complete | yes |
 | 8 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.11 | Fix collection-time rule (earlier of created_at/paid_at for CASH; pending non-cash provisional date finalization on completion) | task complete | yes |
 | 9 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.10 | Step 2.10: MySQL 5.7 CI/Docker, mixed-collation fixture, Migration 004 JS join, Migration 007 collation align, runner dry-run & error isolation, reactivateTenant migration | task complete | yes |
+| 10 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.10b | Collation mismatch re-audit: explained owner failure, verified Migration 007 dynamic table/column scan, added ledger_days join failure & success tests | task complete | yes |
 
 

@@ -25,7 +25,7 @@ describe('Step 2.10: Mixed Collation Tenant Database Migrations', () => {
     }
   });
 
-  test('FAILS: direct SQL join between payments.branch_id and branches.id throws "Illegal mix of collations" on MySQL 5.7', async () => {
+  test('FAILS: direct SQL join between payments.branch_id/ledger_days.branch_id and branches.id throws "Illegal mix of collations" on MySQL 5.7', async () => {
     // Proves the production failure: payments.branch_id (utf8mb4_general_ci) = branches.id (utf8mb4_unicode_ci)
     await expect(
       fixture.sequelize.query(`
@@ -33,6 +33,15 @@ describe('Step 2.10: Mixed Collation Tenant Database Migrations', () => {
         FROM payments p 
         LEFT JOIN branches b ON p.branch_id = b.id 
         WHERE p.business_date IS NULL
+      `, { type: QueryTypes.SELECT })
+    ).rejects.toThrow(/Illegal mix of collations/i);
+
+    // Proves ledger_days join failure as well
+    await expect(
+      fixture.sequelize.query(`
+        SELECT ld.id, ld.business_date, b.branch_name
+        FROM ledger_days ld
+        JOIN branches b ON ld.branch_id = b.id
       `, { type: QueryTypes.SELECT })
     ).rejects.toThrow(/Illegal mix of collations/i);
   });
@@ -114,6 +123,17 @@ describe('Step 2.10: Mixed Collation Tenant Database Migrations', () => {
 
     expect(joinRows.length).toBe(2);
     expect(joinRows[0].branch_name).toBe('Karachi Central');
+
+    // Verify that direct SQL join between ledger_days and branches also SUCCEEDS!
+    const ledgerRows = await fixture.sequelize.query(`
+      SELECT ld.id, ld.business_date, ld.status, b.branch_name
+      FROM ledger_days ld
+      JOIN branches b ON ld.branch_id = b.id
+    `, { type: QueryTypes.SELECT });
+
+    expect(ledgerRows.length).toBe(1);
+    expect(ledgerRows[0].branch_name).toBe('Karachi Central');
+    expect(ledgerRows[0].status).toBe('OPEN');
 
     // Test safe to re-run (idempotency): re-running makes 0 changes
     const rerunResult = await runTenantMigrations(fixture.sequelize, {
