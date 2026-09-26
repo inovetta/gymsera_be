@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-26 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 1 — Test foundation** |
+| Current prompt | **Step 2.5 — Fix §9.6 regression and finish test safety net** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -29,9 +29,9 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 17f6132 docs: prompt-0 audit (plus this handoff checkpoint commit) | yes: tests/harness, tests/integration, tests/regression, jest.config.js, .github/workflows/ci.yml, package.json, docs |
-| gymsera_cms | main | 8e18096 docs: agent rules — DB rule R-19, owner decisions recorded | yes: vitest.config.ts, playwright.config.ts, tests/, e2e/, .github/workflows/ci.yml, package.json |
-| gymsera_web | main | 5b66fea docs: agent rules — DB rule R-19, owner decisions recorded | yes: vitest.config.ts, playwright.config.ts, tests/, e2e/, .github/workflows/ci.yml, package.json |
+| gymsera_be | main | 78ab2cb docs(spec): record commit hash for NEW-10 in §13 | no (working tree clean) |
+| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
+| gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
 ### Next action (exact, so another agent can do it without guessing)
 
@@ -43,7 +43,7 @@ next agent won't know it.
 
 ### Work in progress that is NOT committed
 
-- All Prompt 1 test foundation files across the 4 repositories (test harnesses, fakes, component tests, E2E configs, CI workflows, and regression tests).
+- `gyms_era`: uncommitted Prompt 1 test foundation files (`test/fakes/`, `test/regression/`, `.github/workflows/ci.yml`, `lib/.../billing_provider.dart`, `lib/.../listing_preview_screen.dart`).
 
 ### Blocked / waiting on the owner
 
@@ -57,12 +57,15 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. gymsera_be: integration test harness against real MySQL (platform DB + 2 tenant DBs), factories, persona helper, `npm test`
-- [x] 2. gyms_era: flutter_test with fake API client and fake store
-- [x] 3. gymsera_cms & gymsera_web: component test runner (vitest) + Playwright configured against local servers
-- [x] 4. CI config (GitHub Actions) running all suites on every push across all 4 repos
-- [x] 5. Regression tests for already-fixed defects (§9.1…§9.8 in spec §13)
-- [x] Finish: run suites, record pass/fail, update §13 and handoff
+- [x] 1. Part A: Show exact SQL runs in `TenantDbManager.getConnection` on cache miss and explain writes.
+- [x] 2. Part A: Move data fixes/DDL to versioned runner `src/database/tenant-migration-runner.js` and CLI runner `src/scripts/run-tenant-migrations.js` (spec §6.5).
+- [x] 3. Part A: `TenantDbManager.getConnection` stripped of all DDL/DML side-effects; performs 0 writes.
+- [x] 4. Part A: §9.6 regression test (`get-connection-side-effects.test.js`) passes green with query spy checking 0 writes.
+- [x] 5. Part A: Read-only staging query created for detecting payment business_date corruption.
+- [x] 6. Part A: Recorded NEW-10 (P0) in spec §12 and §13.
+- [x] 7. Part B: Backend test safety guard `assertTestEnvironmentSafety` added and tested (`tests/integration/test-safety-guard.test.js`).
+- [x] 8. Part B: Flutter `flutter test` executed; identified failed starter test `test/widget_test.dart`.
+- [x] 9. Part B: Real Playwright login smoke tests added to `gymsera_cms` and `gymsera_web`, tested locally and wired into CI.
 
 ---
 
@@ -76,23 +79,21 @@ next agent won't know it.
     - Command: `npm test`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
     - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL (port 3306). Never touches live or staging DBs (R-19).
-    - Status: 4 suites PASS, 1 suite FAILS as expected (§9.6 `tests/regression/get-connection-side-effects.test.js` due to NEW-10; scheduled to be fixed in Phase 1).
+    - Status: ALL 7 suites PASS, 16 tests PASS. Zero failures.
   - `gyms_era` (Flutter):
     - Command: `flutter test test/regression/`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
-    - Runs with fake IAP and fake repos.
     - Status: 4 suites PASS (5 tests total: §9.2, §9.3, §9.5, §9.8).
+    - Note on `flutter test`: runs all tests; all 5 regression tests pass, but `test/widget_test.dart` ("Counter increments smoke test") fails because it is the unused Flutter default template counter test.
   - `gymsera_cms`:
-    - Unit/Component: `npm test` (runs Vitest jsdom tests in `tests/`)
-    - E2E: `npx playwright test` (runs against local port 3001)
-    - Status: PASS.
+    - Unit/Component: `npm test` (runs Vitest jsdom tests in `tests/`) -> PASS (2/2)
+    - E2E: `npx playwright test` (runs against local port 3001) -> PASS (1/1)
   - `gymsera_web`:
-    - Unit/Component: `npm test` (runs Vitest jsdom tests in `tests/`)
-    - E2E: `npx playwright test` (runs against local port 3002)
-    - Status: PASS.
+    - Unit/Component: `npm test` (runs Vitest jsdom tests in `tests/`) -> PASS (2/2)
+    - E2E: `npx playwright test` (runs against local port 3002) -> PASS (1/1)
 - Local MySQL port is 3306 via Homebrew (`brew services start mysql`).
-- Test harness database safety: `tests/harness/test-db.js` explicitly checks that database names include `'test'` before DROP/CREATE operations.
-- §9.6 `getConnection` side-effects regression test: `TenantDbManager.getConnection` still runs backfill UPDATE queries on a cold cache miss. As instructed in Prompt 1, this was NOT fixed in Prompt 1; it is recorded as a regression in §13 and must be fixed during Phase 1.
+- Test safety guard: `tests/harness/test-db.js` exports `assertTestEnvironmentSafety` which enforces `NODE_ENV === 'test'`, DB hosts within `{localhost, 127.0.0.1, ::1, mysql}`, and DB names starting with `gymsera_test_`.
+- Tenant migrations: `src/database/tenant-migration-runner.js` manages versioned tenant DB migrations. To run across all active tenants, use `node src/scripts/run-tenant-migrations.js`.
 
 ---
 
@@ -104,3 +105,4 @@ next agent won't know it.
 | 1 | 2026-09-26 | Claude Code (Opus 5.5) | setup | — (recorded owner decisions R-1…R-19 in §14; DB rule R-19 in AGENTS.md; GO prompt in playbook) | task complete | yes |
 | 2 | 2026-09-26 | Claude Code (Opus 5.5) | Prompt 0 | Audit written to spec §1.8, §3.3, §12.13 (164 issues + 17 NEW) | task complete | yes |
 | 3 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Prompt 1 | test harness, factories, personas, mobile fakes, CMS/web vitest+playwright, CI workflows, §9.1–§9.8 regressions | task complete | yes |
+| 4 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.5 | NEW-10 (§9.6 getConnection side effects), test safety guard, Playwright smoke tests | task complete | yes |
