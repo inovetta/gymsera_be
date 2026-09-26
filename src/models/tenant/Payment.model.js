@@ -212,7 +212,30 @@ module.exports = (sequelize) => {
     const previousBDate = instance.previous('businessDate');
     const currentBDate = (instance.getDataValue && instance.getDataValue('businessDate')) || instance.businessDate;
 
-    // 1. NEVER change an existing business_date: if an update tries to change it, throw an error
+    // 1. Non-cash payments still PENDING: provisional business_date set at creation is finalized ONCE
+    // upon transition to paid/completed status via payment service.
+    const rawMethod = (instance.method || instance.previous('method') || '').toUpperCase();
+    const isCash = rawMethod === 'CASH';
+    const prevStatus = instance.previous('status');
+    const newStatus = (instance.getDataValue && instance.getDataValue('status')) || instance.status;
+
+    if (
+      options &&
+      options.fromPaymentServiceTransition === true &&
+      !isCash &&
+      prevStatus === PaymentStatus.PENDING &&
+      newStatus === PaymentStatus.COMPLETED
+    ) {
+      const { getPaymentCollectionTime, computeBusinessDate } = require('../../services/ledger.service');
+      const timezone = await resolveBranchTimezone(instance, options);
+      const collectionTime = getPaymentCollectionTime(instance);
+      const bDate = computeBusinessDate(collectionTime, timezone);
+      instance.setDataValue('businessDate', bDate);
+      instance.businessDate = bDate;
+      return;
+    }
+
+    // 2. NEVER change an existing business_date: if an update tries to change it, throw an error
     if (previousBDate) {
       if (instance.changed('businessDate') && currentBDate !== previousBDate) {
         throw new Error('business_date is immutable and cannot be changed once set');

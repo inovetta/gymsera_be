@@ -46,15 +46,13 @@ const computeBusinessDate = (date, timezone) => {
 /**
  * Single authority for determining the physical/collection timestamp of a payment.
  *
- * Precedence rule:
+ * Precedence rule (Step 2.11):
  * 1. collectedAt / collected_at is always authoritative when present.
  * 2. If collectedAt is empty:
- *    - For CASH payments (money taken physically at the desk), created_at holds the
- *      actual moment cash entered the drawer; paid_at represents later host verification.
- *      Fallback order: createdAt -> paidAt -> now.
- *    - For ONLINE / BANK_TRANSFER payments (electronic transfers), paid_at holds the
- *      moment funds cleared/settled; created_at was merely order intent creation.
- *      Fallback order: paidAt -> createdAt -> now.
+ *    - For CASH payments: the EARLIER of created_at and paid_at.
+ *      (Verification happens after creation, so normal rows still use created_at;
+ *      backdated/seeded rows where created_at is import time and paid_at is the real date use paid_at).
+ *    - For NON-CASH payments (bank transfer / online / card): paid_at if set, otherwise created_at.
  *
  * Accepts either a Sequelize Payment model instance or a plain DB row object.
  */
@@ -86,8 +84,16 @@ const getPaymentCollectionTime = (payment) => {
   const paidAt = getVal('paidAt', 'paid_at');
 
   if (isCash) {
+    if (createdAt && paidAt) {
+      const cTime = new Date(createdAt).getTime();
+      const pTime = new Date(paidAt).getTime();
+      if (!isNaN(cTime) && !isNaN(pTime)) {
+        return cTime <= pTime ? createdAt : paidAt;
+      }
+    }
     return createdAt || paidAt || new Date();
   }
+
   return paidAt || createdAt || new Date();
 };
 

@@ -212,4 +212,37 @@ describe('Step 2.9: Repair script for payments on the wrong day', () => {
       'business_date is immutable and cannot be changed once set'
     );
   });
+
+  test('PREVIEW computes paid_at Asia/Karachi date for seeded cash row with May 2026 created_at (Step 2.11)', async () => {
+    const { Payment } = models;
+    const pSeeded = await Payment.create({
+      userId: '772b1504-0a7e-4f7f-9610-c2d437aa8f3b',
+      branchId: branch.id,
+      amount: '2500.00',
+      currency: 'PKR',
+      method: 'CASH',
+      status: 'COMPLETED',
+      businessDate: '2025-12-29', // old UTC date stored on seed/import
+    });
+    // Set created_at to seed time (2026-05-25 20:10 UTC) and paid_at to historical payment (2025-12-29 21:09 UTC)
+    await tenantSeq.query(
+      'UPDATE payments SET created_at = "2026-05-25 20:10:00", updated_at = "2026-05-25 20:10:00", collected_at = NULL, paid_at = "2025-12-29 21:09:00" WHERE id = ?',
+      { replacements: [pSeeded.id] }
+    );
+
+    const previewResult = await processTenantPaymentRepair(
+      tenantSeq,
+      { tenantId: 'test-tenant-1', gymName: 'Test Gym' },
+      { apply: false, quiet: true }
+    );
+
+    const seededMismatch = previewResult.mismatches.find((m) => m.paymentId === pSeeded.id);
+    expect(seededMismatch).toBeDefined();
+    expect(seededMismatch.currentDay).toBe('2025-12-29'); // current (UTC-based) date
+    expect(seededMismatch.correctDay).toBe('2025-12-30'); // Asia/Karachi date of paid_at, NOT 2026-05-26!
+    expect(seededMismatch.correctDay).not.toBe('2026-05-26');
+
+    await tenantSeq.query('DELETE FROM payments WHERE id = ?', { replacements: [pSeeded.id] });
+  });
 });
+

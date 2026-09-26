@@ -717,4 +717,145 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NOT NULL');
     });
   });
+
+  describe('Step 2.11: Fix the collection-time rule & pending non-cash provisional business_date', () => {
+    const { getPaymentCollectionTime, computeBusinessDate } = require('../../src/services/ledger.service');
+
+    test('Seeded cash row: created 2026-05-25 20:10Z, paid 2025-12-29 21:09Z -> day 2025-12-30', () => {
+      const createdAt = new Date('2026-05-25T20:10:00.000Z');
+      const paidAt = new Date('2025-12-29T21:09:00.000Z');
+
+      const collectionTime = getPaymentCollectionTime({
+        method: 'CASH',
+        createdAt,
+        paidAt,
+        collectedAt: null,
+      });
+
+      // Earlier timestamp is paidAt (Dec 29 2025), not the import time (May 2026)
+      expect(new Date(collectionTime).toISOString()).toBe(paidAt.toISOString());
+
+      // In Asia/Karachi (UTC+5), 2025-12-29 21:09:00Z + 5 hours is 2025-12-30 02:09:00
+      const targetDay = computeBusinessDate(collectionTime, 'Asia/Karachi');
+      expect(targetDay).toBe('2025-12-30');
+    });
+
+    test('Normal cash: created 23:30 local day X, verified next morning -> day X', async () => {
+      const { Payment } = tenant1.models;
+      const seq = tenant1.sequelize;
+
+      // Created at 23:30 local on 2026-09-25 (18:30 UTC = Day X)
+      const p = await Payment.create({
+        userId: testUser.id,
+        branchId: branchKarachi.id,
+        amount: '1000.00',
+        currency: 'PKR',
+        method: 'CASH',
+        status: 'PENDING',
+      });
+      await seq.query(
+        'UPDATE payments SET created_at = "2026-09-25 18:30:00", updated_at = "2026-09-25 18:30:00", business_date = "2026-09-25" WHERE id = ?',
+        { replacements: [p.id] }
+      );
+
+      // Verified next morning at 10:00 local (Day X+1)
+      const verified = await paymentService.verifyPayment(
+        tenant1,
+        p.id,
+        testUser.id,
+        'Normal cash verified next morning'
+      );
+
+      // Business date must remain Day X (2026-09-25)
+      expect(verified.businessDate).toBe('2026-09-25');
+      const reloaded = await Payment.findByPk(p.id);
+      expect(reloaded.businessDate).toBe('2026-09-25');
+
+      await seq.query('DELETE FROM payments WHERE id = ?', { replacements: [p.id] });
+    });
+
+    test('Bank transfer created day X (pending), confirmed day X+2 -> day X+2, then immutable', async () => {
+      const { Payment } = tenant1.models;
+      const seq = tenant1.sequelize;
+
+      // 1. Created on Day X (2026-09-20) with provisional businessDate
+      const p = await Payment.create({
+        userId: testUser.id,
+        branchId: branchKarachi.id,
+        amount: '3500.00',
+        currency: 'PKR',
+        method: 'BANK_TRANSFER',
+        status: 'PENDING',
+        businessDate: '2026-09-20',
+      });
+      await seq.query(
+        'UPDATE payments SET created_at = "2026-09-20 10:00:00", updated_at = "2026-09-20 10:00:00" WHERE id = ?',
+        { replacements: [p.id] }
+      );
+
+      // Initial provisional date is Day X (2026-09-20)
+      const initial = await Payment.findByPk(p.id);
+      expect(initial.businessDate).toBe('2026-09-20');
+
+      // 2. Confirmed on Day X+2 (2026-09-22 08:00 UTC) via verifyPayment
+      // Mock Date to simulate verification occurring on Day X+2
+      const dayXPlus2 = new Date('2026-09-22T08:00:00.000Z');
+      const RealDate = global.Date;
+      try {
+        global.Date = class extends RealDate {
+          constructor(...args) {
+            if (args.length === 0) {
+              return new RealDate(dayXPlus2);
+            }
+            return new RealDate(...args);
+          }
+          static now() {
+            return dayXPlus2.getTime();
+          }
+        };
+
+        const verified = await paymentService.verifyPayment(
+          tenant1,
+          p.id,
+          testUser.id,
+          'Bank transfer confirmed on Day X+2'
+        );
+
+        // Business date is finalized to Day X+2 (2026-09-22)
+        expect(verified.businessDate).toBe('2026-09-22');
+        const reloaded = await Payment.findByPk(p.id);
+        expect(reloaded.businessDate).toBe('2026-09-22');
+      } finally {
+        global.Date = RealDate;
+      }
+
+      // 3. Attempting another update to change businessDate is rejected (immutable after completion)
+      const confirmedPayment = await Payment.findByPk(p.id);
+      confirmedPayment.businessDate = '2026-09-25';
+      await expect(confirmedPayment.save()).rejects.toThrow(
+        'business_date is immutable and cannot be changed once set'
+      );
+
+      await seq.query('DELETE FROM payments WHERE id = ?', { replacements: [p.id] });
+    });
+
+    test('An ordinary update trying to change business_date is still rejected', async () => {
+      const { Payment } = tenant1.models;
+      const p = await Payment.create({
+        userId: testUser.id,
+        branchId: branchKarachi.id,
+        amount: '500.00',
+        currency: 'PKR',
+        method: 'ONLINE',
+        status: 'PENDING',
+      });
+
+      p.businessDate = '2026-01-01';
+      await expect(p.save()).rejects.toThrow(
+        'business_date is immutable and cannot be changed once set'
+      );
+
+      await tenant1.sequelize.query('DELETE FROM payments WHERE id = ?', { replacements: [p.id] });
+    });
+  });
 });

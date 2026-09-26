@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-26 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Step 2.9 — Repair script for payments on the wrong day** |
+| Current prompt | **Step 2.11 — Fix the collection-time rule** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 1126343 feat(payments): repair script for payment business_date, model hook bypass, tests and docs (Step 2.9) | no (working tree clean) |
+| gymsera_be | main | c5a4880 feat(payments): fix collection-time rule for backdated rows and pending non-cash finalization (Step 2.11) | no (working tree clean) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -48,7 +48,7 @@ next agent won't know it.
 
 ### Blocked / waiting on the owner
 
-- (none) — owner to run `node src/scripts/repair-payment-business-dates.js` (preview) and `node src/scripts/repair-payment-business-dates.js --apply --confirm` on production.
+- (none) — owner to re-run preview `node src/scripts/repair-payment-business-dates.js` and apply `node src/scripts/repair-payment-business-dates.js --apply --confirm` on production.
 
 ---
 
@@ -56,11 +56,19 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. Maintenance script: Created `src/scripts/repair-payment-business-dates.js` with preview-by-default, `--apply --confirm` safety guard, read-only transaction in preview, skip on CLOSED ledger days ("needs manual adjustment"), and audit logging to `audit_logs`.
-- [x] 2. Immutability bypass: Added explicit `allowBusinessDateRepair` option to `Payment.beforeUpdate` and `beforeBulkUpdate` hooks.
-- [x] 3. Regression tests: Added tests in `tests/integration/repair-payment-business-dates.test.js` verifying preview makes 0 writes, apply fixes open-day rows and skips closed-day rows, writes audit rows, second run is idempotent, and non-script updates remain blocked. All 10 suites / 41 tests pass.
-- [x] 4. Collation audit (Part 2): Analyzed `utf8mb4_general_ci` vs `utf8mb4_unicode_ci` discrepancy, query failure risks, and proposed a zero-downtime migration plan.
-- [x] 5. Demo tenants audit (Part 3): Verified origin of `gymsera_ironpeak` and `gymsera_powerzone` from `seed.js`/`provision-seeded-tenants.js`, and proposed safe removal/deactivation strategy.
+- [x] 1. New collection time rule in `getPaymentCollectionTime` (`src/services/ledger.service.js`):
+  - `collected_at` if set (authoritative, unchanged);
+  - CASH without `collected_at`: the EARLIER of `created_at` and `paid_at` (`cTime <= pTime ? createdAt : paidAt`). Normal desk transactions retain `created_at` (since host verification occurs after creation); backdated/imported records where `created_at` is seed/import time use historical `paid_at`;
+  - Non-cash (bank transfer / online / card): `paid_at` if set, otherwise `created_at`.
+- [x] 2. Non-cash payments still PENDING: provisional `business_date` set at creation is finalized ONE time automatically upon transition to `COMPLETED` via payment service (`fromPaymentServiceTransition: true`), locking `business_date` from `paid_at` in branch timezone. Thereafter immutable. Cash payments never change after creation. Ordinary updates still throw.
+- [x] 3. Comprehensive tests in `tests/integration/payment-business-date.test.js`:
+  - Seeded cash row: created 2026-05-25 20:10Z, paid 2025-12-29 21:09Z -> day 2025-12-30 (in Asia/Karachi);
+  - Normal cash: created 23:30 local day X, verified next morning -> day X;
+  - Bank transfer created day X (pending), confirmed day X+2 -> day X+2, then immutable;
+  - Ordinary update trying to change `business_date` is rejected.
+- [x] 4. Re-checked Migration 004 and `repair-payment-business-dates.js`:
+  - Both directly use `getPaymentCollectionTime` and `computeBusinessDate`.
+  - Added integration test in `tests/integration/repair-payment-business-dates.test.js` verifying preview computes `paid_at`'s Asia/Karachi date (e.g. 2025-12-30) for seeded cash payments with May 2026 `created_at`, not 2026-05-26.
 
 ---
 
@@ -74,7 +82,7 @@ next agent won't know it.
     - Command: `npm test`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
     - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL (port 3306). Never touches live or staging DBs (R-19).
-    - Status: ALL 10 suites PASS, 41 tests PASS. Zero failures.
+    - Status: ALL 10 suites PASS, 46 tests PASS. Zero failures.
   - `gyms_era` (Flutter):
     - Command: `flutter test test/regression/`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
@@ -104,4 +112,6 @@ next agent won't know it.
 | 5 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.7 | Payment business_date immutable from collection time; model hooks; Migration 006; raw SQL audit; backfill-payments.js removed | task complete | yes |
 | 6 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.8 | One rule for collection time (getPaymentCollectionTime): cash -> created_at, online -> paid_at; unified model hooks, Migration 004, and Query B | task complete | yes |
 | 7 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.9 | Maintenance repair script for payment business_date (repair-payment-business-dates.js), collation audit, demo tenant audit | task complete | yes |
+| 8 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.11 | Fix collection-time rule (earlier of created_at/paid_at for CASH; pending non-cash provisional date finalization on completion) | task complete | yes |
+
 

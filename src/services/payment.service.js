@@ -290,10 +290,11 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
     updatePayload.businessDate = await ledgerService.stampBusinessDate(tenantDb, payment.branchId, originalTime);
   }
 
-  await payment.update(updatePayload);
+  await payment.update(updatePayload, { fromPaymentServiceTransition: true });
 
-  if (payment.branchId && (payment.businessDate || updatePayload.businessDate)) {
-    require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, payment.businessDate || updatePayload.businessDate);
+  const finalBusinessDate = payment.businessDate || updatePayload.businessDate;
+  if (payment.branchId && finalBusinessDate) {
+    require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, finalBusinessDate);
   }
 
   if (payment.referenceEntityId) {
