@@ -31,17 +31,17 @@ describe('Regression §9.6: getConnection side effects (NEW-10)', () => {
     await teardownTestDatabases();
   });
 
-  test('getConnection on a cold cache performs zero UPDATEs', async () => {
+  test('getConnection on a cold cache performs zero writes (UPDATE, INSERT, DELETE, ALTER, CREATE, DROP)', async () => {
     // Evict from connection cache to force cold cache path
     TenantDbManager.pool.clear();
 
-    const executedUpdateQueries = [];
+    const executedWriteQueries = [];
     const originalQuery = Sequelize.prototype.query;
 
     const querySpy = jest.spyOn(Sequelize.prototype, 'query').mockImplementation(function (sql, options) {
       const sqlString = typeof sql === 'string' ? sql : sql?.query || '';
-      if (/^\s*UPDATE\b/i.test(sqlString)) {
-        executedUpdateQueries.push(sqlString);
+      if (/^\s*(UPDATE|INSERT|DELETE|ALTER|CREATE|DROP)\b/i.test(sqlString)) {
+        executedWriteQueries.push(sqlString);
       }
       return originalQuery.apply(this, arguments);
     });
@@ -49,8 +49,8 @@ describe('Regression §9.6: getConnection side effects (NEW-10)', () => {
     try {
       await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
 
-      // §9.6 invariant: opening a DB connection to read from it must NEVER perform UPDATE side-effects
-      expect(executedUpdateQueries).toHaveLength(0);
+      // §9.6 invariant: opening a DB connection to read from it must NEVER perform write side-effects
+      expect(executedWriteQueries).toHaveLength(0);
     } finally {
       querySpy.mockRestore();
     }
