@@ -118,9 +118,12 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
     one test run sent a real acknowledge call to Google Play with a fake token (rejected, no effect).
   - Backend suite now 19 suites / 88 tests. Flutter `flutter test`: 9 tests, all pass (the old counter-template
     failure is gone). Web: vitest 6, Playwright 1.
-  - **Intermittent backend failure seen**: in 2 of ~11 full `npm test` runs one test failed that passes alone
-    (once `tests/integration/harness.test.js`, once the BILL-14 "another tenant's session" check with a 400). Looks
-    like cross-file leakage of background work (e.g. the provisioning test's emails/notifications) — not diagnosed.
+  - **Intermittent backend failure — NOT diagnosed, next agent should look first**: in 3 of ~14 full `npm test`
+    runs one test failed that passes alone: `harness.test.js`; the BILL-14 "another tenant's session" check (got
+    400); and the BILL-06 RTDN-acknowledge test (ack not called — the inbox event most likely ended FAILED; print
+    its `lastError` to see why). Always the full run, never the file alone. Suspect cross-file leakage of background
+    work (the provisioning test's emails/notifications, open pools) or a lock race — could be a real bug in the
+    1A code, so treat it as open.
   - Existing tests reach real services: the tenant-provisioning test sends a real e-mail
     (`[Email] Successfully sent email to host-prov@gymsera.test`), and a mobile regression test issues a real
     `GET https://apistaging.gymsera.com/api/v1/tenants/me`. Not touched in 1A; worth fixing under R-19.
