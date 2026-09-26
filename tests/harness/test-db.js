@@ -55,16 +55,60 @@ async function getAdminConnection() {
   return adminConnection;
 }
 
+const ALLOWED_TEST_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'mysql']);
+
+/**
+ * Strict safety guard for test execution (spec §14 Rule R-19).
+ * Refuses to start test setup unless:
+ * 1. NODE_ENV === 'test'
+ * 2. Host is localhost, 127.0.0.1, ::1, or the CI service container ('mysql')
+ * 3. Every targeted database name starts with 'gymsera_test_'
+ */
+function assertTestEnvironmentSafety(overrides = {}) {
+  const nodeEnv = overrides.nodeEnv !== undefined ? overrides.nodeEnv : process.env.NODE_ENV;
+  if (nodeEnv !== 'test') {
+    throw new Error(
+      `[Test Safety Guard] Refusing to start test setup: NODE_ENV must be 'test' (received '${nodeEnv}'). Safety Rule R-19.`
+    );
+  }
+
+  const hosts = overrides.hosts || [
+    process.env.PLATFORM_DB_HOST || 'localhost',
+    process.env.TENANT_DB_HOST || 'localhost',
+  ];
+
+  for (const host of hosts) {
+    const normalizedHost = String(host || '').toLowerCase().trim();
+    if (!normalizedHost || !ALLOWED_TEST_HOSTS.has(normalizedHost)) {
+      throw new Error(
+        `[Test Safety Guard] Refusing to start test setup: host '${host}' is not localhost or CI container (allowed: ${Array.from(ALLOWED_TEST_HOSTS).join(', ')}). Safety Rule R-19.`
+      );
+    }
+  }
+
+  const databases = overrides.databases || [
+    process.env.PLATFORM_DB_NAME || PLATFORM_TEST_DB,
+    TENANT_1_TEST_DB,
+    TENANT_2_TEST_DB,
+  ];
+
+  for (const db of databases) {
+    const dbName = String(db || '').trim();
+    if (!dbName.startsWith('gymsera_test_')) {
+      throw new Error(
+        `[Test Safety Guard] Refusing to start test setup: database '${db}' does not start with 'gymsera_test_'. Safety Rule R-19.`
+      );
+    }
+  }
+}
+
 /**
  * Creates the isolated test databases if they don't already exist.
  */
 async function createTestDatabases() {
+  assertTestEnvironmentSafety();
+
   const conn = await getAdminConnection();
-  
-  // Guard: NEVER touch a database unless its name includes 'test'
-  if (!PLATFORM_TEST_DB.includes('test')) {
-    throw new Error(`Refusing to run tests on non-test platform DB: ${PLATFORM_TEST_DB} (Safety Rule R-19)`);
-  }
 
   await conn.query(`CREATE DATABASE IF NOT EXISTS \`${PLATFORM_TEST_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
   await conn.query(`CREATE DATABASE IF NOT EXISTS \`${TENANT_1_TEST_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
@@ -201,6 +245,8 @@ module.exports = {
   PLATFORM_TEST_DB,
   TENANT_1_TEST_DB,
   TENANT_2_TEST_DB,
+  ALLOWED_TEST_HOSTS,
+  assertTestEnvironmentSafety,
   getAdminConnection,
   createTestDatabases,
   setupTestDatabases,
