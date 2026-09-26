@@ -85,12 +85,16 @@ const MIGRATIONS = [
     name: '004_backfill_payments_business_date',
     up: async (sequelize) => {
       // Historical backfill using each branch's own timezone via computeBusinessDate
-      const { computeBusinessDate } = require('../services/ledger.service');
+      // and getPaymentCollectionTime (collected_at; otherwise created_at for cash; otherwise paid_at for online/bank)
+      const { computeBusinessDate, getPaymentCollectionTime } = require('../services/ledger.service');
       const rows = await sequelize.query(`
         SELECT 
           p.id, 
           p.branch_id, 
-          COALESCE(p.collected_at, p.paid_at, p.created_at) AS date_val,
+          p.method,
+          p.collected_at,
+          p.paid_at,
+          p.created_at,
           b.timezone
         FROM payments p
         LEFT JOIN branches b ON p.branch_id = b.id
@@ -98,9 +102,10 @@ const MIGRATIONS = [
       `, { type: QueryTypes.SELECT }).catch(() => []);
 
       for (const row of rows) {
-        if (!row.id || !row.date_val) continue;
+        if (!row.id) continue;
+        const collectionTime = getPaymentCollectionTime(row);
         const tz = row.timezone || 'Asia/Karachi';
-        const bDate = computeBusinessDate(new Date(row.date_val), tz);
+        const bDate = computeBusinessDate(new Date(collectionTime), tz);
         await sequelize.query(
           'UPDATE payments SET business_date = ? WHERE id = ?',
           { replacements: [bDate, row.id] }

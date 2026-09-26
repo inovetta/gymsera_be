@@ -105,6 +105,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       currency: 'PKR',
       method: 'CASH',
       status: 'COMPLETED',
+      collectedAt: paidAt,
       paidAt,
     });
 
@@ -276,7 +277,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       branchId: branchKarachi.id,
       amount: 1000,
       currency: 'PKR',
-      method: 'CASH',
+      method: 'BANK_TRANSFER',
       status: 'COMPLETED',
       paidAt: new Date(paymentTimestamp),
       businessDate: '2026-09-27',
@@ -293,7 +294,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       branchId: branchDubai.id,
       amount: 2000,
       currency: 'AED',
-      method: 'CASH',
+      method: 'BANK_TRANSFER',
       status: 'COMPLETED',
       paidAt: new Date(paymentTimestamp),
       businessDate: '2026-09-26',
@@ -569,6 +570,151 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       await seq.query('UPDATE payments SET business_date = CURDATE() WHERE business_date IS NULL');
       await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NOT NULL');
       await seq.query("INSERT INTO schema_migrations (version, name, applied_at) VALUES (6, '006_enforce_payments_business_date_not_null', NOW())");
+    });
+  });
+
+  describe('Step 2.8: One rule for collection time (getPaymentCollectionTime)', () => {
+    const { getPaymentCollectionTime, computeBusinessDate } = require('../../src/services/ledger.service');
+
+    test('Unit: getPaymentCollectionTime follows exact precedence rule for cash vs online', () => {
+      const explicitCollected = new Date('2026-09-20T12:00:00.000Z');
+      const createdAt = new Date('2026-09-25T18:30:00.000Z'); // Day X (23:30 PKT)
+      const paidAt = new Date('2026-09-26T05:00:00.000Z'); // Day X+1 (10:00 PKT)
+
+      // 1. collectedAt present: always authoritative
+      expect(getPaymentCollectionTime({ method: 'CASH', collectedAt: explicitCollected, createdAt, paidAt })).toBe(explicitCollected);
+      expect(getPaymentCollectionTime({ method: 'BANK_TRANSFER', collectedAt: explicitCollected, createdAt, paidAt })).toBe(explicitCollected);
+      expect(getPaymentCollectionTime({ method: 'ONLINE', collected_at: explicitCollected, created_at: createdAt, paid_at: paidAt })).toBe(explicitCollected);
+
+      // 2. CASH without collectedAt: created_at (desk collection) before paid_at (host verification)
+      expect(getPaymentCollectionTime({ method: 'CASH', createdAt, paidAt })).toBe(createdAt);
+      expect(getPaymentCollectionTime({ method: 'CASH', created_at: createdAt, paid_at: paidAt })).toBe(createdAt);
+      expect(getPaymentCollectionTime({ method: 'CASH', paidAt })).toBe(paidAt);
+
+      // 3. ONLINE / BANK_TRANSFER without collectedAt: paid_at (clearing/settlement) before created_at (order intent)
+      expect(getPaymentCollectionTime({ method: 'BANK_TRANSFER', createdAt, paidAt })).toBe(paidAt);
+      expect(getPaymentCollectionTime({ method: 'ONLINE', created_at: createdAt, paid_at: paidAt })).toBe(paidAt);
+      expect(getPaymentCollectionTime({ method: 'BANK_TRANSFER', createdAt })).toBe(createdAt);
+    });
+
+    test('Old cash payment created 23:30 on day X and verified next morning gets day X', async () => {
+      const { Payment } = tenant1.models;
+      const seq = tenant1.sequelize;
+
+      // In Asia/Karachi (UTC+5), 23:30 on 2026-09-25 is 18:30 UTC on 2026-09-25 (Day X)
+      const createdUtcStr = '2026-09-25 18:30:00'; // 18:30 UTC = 23:30 PKT (Day X)
+
+      // Temporarily allow NULL business_date to simulate legacy row created before business_date existed
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NULL');
+
+      const oldCashPaymentId = '55555555-5555-4555-8555-555555555551';
+      await seq.query(
+        `INSERT INTO payments (id, user_id, branch_id, amount, currency, method, status, collected_at, paid_at, created_at, updated_at, business_date)
+         VALUES (?, ?, ?, 2500, 'PKR', 'CASH', 'PENDING', NULL, NULL, ?, ?, NULL)`,
+        {
+          replacements: [oldCashPaymentId, testUser.id, branchKarachi.id, createdUtcStr, createdUtcStr],
+        }
+      );
+
+      // Verify the legacy payment the next morning at 10:00 local time (05:00 UTC on 2026-09-26, Day X+1)
+      const verified = await paymentService.verifyPayment(
+        tenant1,
+        oldCashPaymentId,
+        testUser.id,
+        'Host approved cash drawer next morning'
+      );
+
+      // Must be stamped with Day X (2026-09-25), NOT Day X+1 (2026-09-26)
+      expect(verified.businessDate).toBe('2026-09-25');
+
+      const reloaded = await Payment.findByPk(oldCashPaymentId);
+      expect(reloaded.businessDate).toBe('2026-09-25');
+
+      // Cleanup
+      await seq.query('DELETE FROM payments WHERE id = ?', { replacements: [oldCashPaymentId] });
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NOT NULL');
+    });
+
+    test('Old bank transfer payment created on day X and verified next morning gets day X+1', async () => {
+      const { Payment } = tenant1.models;
+      const seq = tenant1.sequelize;
+
+      const createdUtcStr = '2026-09-25 18:30:00'; // 23:30 Day X
+
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NULL');
+
+      const oldBankPaymentId = '55555555-5555-4555-8555-555555555552';
+      await seq.query(
+        `INSERT INTO payments (id, user_id, branch_id, amount, currency, method, status, collected_at, paid_at, created_at, updated_at, business_date)
+         VALUES (?, ?, ?, 5000, 'PKR', 'BANK_TRANSFER', 'PENDING', NULL, NULL, ?, ?, NULL)`,
+        {
+          replacements: [oldBankPaymentId, testUser.id, branchKarachi.id, createdUtcStr, createdUtcStr],
+        }
+      );
+
+      // Verify bank transfer next morning at 10:00 local time (05:00 UTC on 2026-09-26, Day X+1)
+      const verified = await paymentService.verifyPayment(
+        tenant1,
+        oldBankPaymentId,
+        testUser.id,
+        'Bank transfer verified on day X+1'
+      );
+
+      // Bank transfer settlement is Day X+1 (2026-09-26)
+      expect(verified.businessDate).toBe('2026-09-26');
+
+      const reloaded = await Payment.findByPk(oldBankPaymentId);
+      expect(reloaded.businessDate).toBe('2026-09-26');
+
+      // Cleanup
+      await seq.query('DELETE FROM payments WHERE id = ?', { replacements: [oldBankPaymentId] });
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NOT NULL');
+    });
+
+    test('Migration 004 backfill applies the unified rule: CASH -> day X, BANK_TRANSFER -> day X+1', async () => {
+      const seq = tenant1.sequelize;
+      const createdUtcStr = '2026-09-25 18:30:00'; // Day X 23:30 PKT
+      const paidUtcStr = '2026-09-26 05:00:00'; // Day X+1 10:00 PKT
+
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NULL');
+
+      const cashId = '55555555-5555-4555-8555-555555555553';
+      const bankId = '55555555-5555-4555-8555-555555555554';
+
+      await seq.query(
+        `INSERT INTO payments (id, user_id, branch_id, amount, currency, method, status, collected_at, paid_at, created_at, updated_at, business_date)
+         VALUES (?, ?, ?, 1000, 'PKR', 'CASH', 'COMPLETED', NULL, ?, ?, ?, NULL)`,
+        { replacements: [cashId, testUser.id, branchKarachi.id, paidUtcStr, createdUtcStr, createdUtcStr] }
+      );
+
+      await seq.query(
+        `INSERT INTO payments (id, user_id, branch_id, amount, currency, method, status, collected_at, paid_at, created_at, updated_at, business_date)
+         VALUES (?, ?, ?, 2000, 'PKR', 'BANK_TRANSFER', 'COMPLETED', NULL, ?, ?, ?, NULL)`,
+        { replacements: [bankId, testUser.id, branchKarachi.id, paidUtcStr, createdUtcStr, createdUtcStr] }
+      );
+
+      // Re-run Migration 004
+      await seq.query('DELETE FROM schema_migrations WHERE version >= 4');
+      await runTenantMigrations(seq, {
+        tenantId: '22222222-2222-4222-8222-222222222222',
+        gymName: 'Timezone Gym',
+      });
+
+      const [cashRow] = await seq.query('SELECT business_date FROM payments WHERE id = ?', {
+        replacements: [cashId],
+        type: QueryTypes.SELECT,
+      });
+      const [bankRow] = await seq.query('SELECT business_date FROM payments WHERE id = ?', {
+        replacements: [bankId],
+        type: QueryTypes.SELECT,
+      });
+
+      expect(cashRow.business_date).toBe('2026-09-25');
+      expect(bankRow.business_date).toBe('2026-09-26');
+
+      // Cleanup
+      await seq.query('DELETE FROM payments WHERE id IN (?, ?)', { replacements: [cashId, bankId] });
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NOT NULL');
     });
   });
 });

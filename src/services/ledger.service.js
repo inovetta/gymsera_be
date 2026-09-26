@@ -43,6 +43,54 @@ const computeBusinessDate = (date, timezone) => {
   return fmt.format(date instanceof Date ? date : new Date(date));
 };
 
+/**
+ * Single authority for determining the physical/collection timestamp of a payment.
+ *
+ * Precedence rule:
+ * 1. collectedAt / collected_at is always authoritative when present.
+ * 2. If collectedAt is empty:
+ *    - For CASH payments (money taken physically at the desk), created_at holds the
+ *      actual moment cash entered the drawer; paid_at represents later host verification.
+ *      Fallback order: createdAt -> paidAt -> now.
+ *    - For ONLINE / BANK_TRANSFER payments (electronic transfers), paid_at holds the
+ *      moment funds cleared/settled; created_at was merely order intent creation.
+ *      Fallback order: paidAt -> createdAt -> now.
+ *
+ * Accepts either a Sequelize Payment model instance or a plain DB row object.
+ */
+const getPaymentCollectionTime = (payment) => {
+  if (!payment) return new Date();
+
+  const getVal = (camel, snake) => {
+    if (typeof payment.getDataValue === 'function') {
+      const v = payment.getDataValue(camel);
+      if (v !== undefined && v !== null) return v;
+    }
+    if (payment[camel] !== undefined && payment[camel] !== null) return payment[camel];
+    if (snake && payment[snake] !== undefined && payment[snake] !== null) return payment[snake];
+    if (typeof payment.previous === 'function') {
+      const p = payment.previous(camel);
+      if (p !== undefined && p !== null) return p;
+    }
+    return null;
+  };
+
+  const collectedAt = getVal('collectedAt', 'collected_at');
+  if (collectedAt) return collectedAt;
+
+  const rawMethod = getVal('method', 'method');
+  const method = typeof rawMethod === 'string' ? rawMethod.trim().toUpperCase() : '';
+  const isCash = method === 'CASH';
+
+  const createdAt = getVal('createdAt', 'created_at');
+  const paidAt = getVal('paidAt', 'paid_at');
+
+  if (isCash) {
+    return createdAt || paidAt || new Date();
+  }
+  return paidAt || createdAt || new Date();
+};
+
 /** Today's business date for a branch, resolving its timezone from the DB. */
 const todayBusinessDate = async (tenantDb, branchId) => {
   const { Branch } = tenantDb.models;
@@ -462,6 +510,7 @@ const notifyLedgerUpdated = (tenantId, branchId, businessDate) => {
 
 module.exports = {
   computeBusinessDate,
+  getPaymentCollectionTime,
   todayBusinessDate,
   stampBusinessDate,
   getOrCreateLedgerDay,

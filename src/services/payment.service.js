@@ -98,7 +98,12 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
   const autoComplete = isDirect || data.method === 'TEST';
   const paidAt = data.paidAt || (autoComplete ? new Date() : null);
   const collectedAt = data.collectedAt || (data.method === 'CASH' ? (data.paidAt || new Date()) : (autoComplete ? paidAt : null));
-  const collectionTime = data.collectedAt || (data.method === 'CASH' ? collectedAt : (paidAt || new Date()));
+  const collectionTime = ledgerService.getPaymentCollectionTime({
+    method: data.method,
+    collectedAt,
+    paidAt,
+    createdAt: new Date(),
+  });
   const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId, collectionTime);
 
   const payment = await Payment.create({
@@ -277,7 +282,11 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
   };
   if (!payment.businessDate) {
     const ledgerService = require('./ledger.service');
-    const originalTime = payment.collectedAt || payment.createdAt || payment.paidAt || updatePayload.paidAt;
+    const effectivePayment = {
+      ...(payment.dataValues || payment),
+      paidAt: payment.paidAt || updatePayload.paidAt,
+    };
+    const originalTime = ledgerService.getPaymentCollectionTime(effectivePayment);
     updatePayload.businessDate = await ledgerService.stampBusinessDate(tenantDb, payment.branchId, originalTime);
   }
 

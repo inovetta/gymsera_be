@@ -181,25 +181,13 @@ module.exports = (sequelize) => {
     return timezone;
   };
 
-  const getCollectionTime = (payment) => {
-    return (
-      payment.collectedAt ||
-      (payment.getDataValue && payment.getDataValue('collectedAt')) ||
-      payment.paidAt ||
-      (payment.getDataValue && payment.getDataValue('paidAt')) ||
-      payment.createdAt ||
-      (payment.getDataValue && payment.getDataValue('createdAt')) ||
-      new Date()
-    );
-  };
-
   const stampBusinessDateIfMissing = async (payment, options) => {
     const currentBDate = payment.businessDate || (payment.getDataValue && payment.getDataValue('businessDate'));
     if (currentBDate) return;
 
     const timezone = await resolveBranchTimezone(payment, options);
-    const collectionTime = getCollectionTime(payment);
-    const { computeBusinessDate } = require('../../services/ledger.service');
+    const { getPaymentCollectionTime, computeBusinessDate } = require('../../services/ledger.service');
+    const collectionTime = getPaymentCollectionTime(payment);
     const bDate = computeBusinessDate(collectionTime, timezone);
     payment.setDataValue('businessDate', bDate);
     payment.businessDate = bDate;
@@ -235,20 +223,9 @@ module.exports = (sequelize) => {
 
     // If still NULL, stamp it from its original collection time, not from "now"
     const timezone = await resolveBranchTimezone(instance, options);
-    const originalTime =
-      instance.collectedAt ||
-      instance.previous('collectedAt') ||
-      (instance.getDataValue && instance.getDataValue('collectedAt')) ||
-      instance.paidAt ||
-      instance.previous('paidAt') ||
-      (instance.getDataValue && instance.getDataValue('paidAt')) ||
-      instance.createdAt ||
-      instance.previous('createdAt') ||
-      (instance.getDataValue && instance.getDataValue('createdAt'));
-
-    const timestampToUse = originalTime || new Date();
-    const { computeBusinessDate } = require('../../services/ledger.service');
-    const bDate = computeBusinessDate(timestampToUse, timezone);
+    const { getPaymentCollectionTime, computeBusinessDate } = require('../../services/ledger.service');
+    const originalTime = getPaymentCollectionTime(instance);
+    const bDate = computeBusinessDate(originalTime, timezone);
     instance.setDataValue('businessDate', bDate);
     instance.businessDate = bDate;
   });

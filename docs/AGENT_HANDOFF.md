@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-26 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Step 2.7 — A payment's business day is set once and never moves** |
+| Current prompt | **Step 2.8 — One rule for "collection time"** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 6a981ca feat(payments): enforce immutable business_date from collection time, Migration 006, and model hooks (Step 2.7) | no (working tree clean) |
+| gymsera_be | main | (pending commit) | yes: Step 2.8 collection time rule unification |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -43,12 +43,12 @@ next agent won't know it.
 
 ### Work in progress that is NOT committed
 
-- `gymsera_be`: Step 2.7 payment business_date immutability (`Payment.model.js`, `payment.service.js`, `ledger.service.js`, `gym.service.js`, `payments.controller.js`), deleted `backfill-payments.js`, Migration 006 (`tenant-migration-runner.js`), integration tests (`payment-business-date.test.js`).
+- `gymsera_be`: Step 2.8 collection time rule unification (`ledger.service.js`, `Payment.model.js`, `payment.service.js`, `tenant-migration-runner.js`, `payment-business-date.test.js`).
 - `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
 
 ### Blocked / waiting on the owner
 
-- (none) — read-only Query B and branch timezone inspection query provided for owner to run against staging/production databases.
+- (none) — read-only queries provided for owner to run against staging/production databases: Timezone Query, Query A, and Query B.
 
 ---
 
@@ -56,16 +56,11 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. Collection time authority: Identified that previous code used `paidAt` (verification time); updated all paths (`Payment.model.js`, `payment.service.js`, `gym.service.js`, Migration 004) to use COLLECTION time (`collectedAt`, cash drawer day).
-- [x] 2. Payment model hooks:
-  - `beforeCreate` / `beforeBulkCreate`: stamp `business_date` if missing using branch timezone.
-  - `beforeUpdate` / `beforeBulkUpdate`: `business_date` is strictly immutable; rejects updates attempting to mutate `business_date`; stamps legacy NULL rows from original collection time (`collectedAt || paidAt || createdAt`), not from "now".
-  - Branch timezone lookup inside hook uses the same DB transaction (`options.transaction`) as the write.
-  - Verified tests: cash collected at 23:30 local on day X verified next day 10:00 stays day X; `markPrinted`, `uploadPaymentProof`, and `markPaymentFailed` do not change `business_date`; updates attempting to mutate `business_date` are rejected.
-- [x] 3. Raw SQL audit: Audited all `INSERT` and `UPDATE` on `payments`; routed `collectionAction` through `individualHooks: true` and `markPrinted` through `existing.update`.
-- [x] 4. `backfill-payments.js`: Audited script (unused one-off branchId backfill from July 2026); deleted file.
-- [x] 5. Migration 006: Added version 6 `006_enforce_payments_business_date_not_null`; checks for NULL rows; if zero NULL rows, alters table to `DATE NOT NULL` and records version 6; if NULL rows exist, logs clear warning and skips without modifying table or recording version 6. Tested both cases.
-- [x] 6. Query B rewritten to use collection time (`COALESCE(p.collected_at, p.created_at, p.paid_at)`); provided tiny read-only query for branch timezones (`SELECT timezone, COUNT(*) FROM branches GROUP BY timezone;`).
+- [x] 1. Discrepancy analysis: Identified conflicting fallback orders across `Payment.model.js:184-194` (`paid_at` before `created_at`), `tenant-migration-runner.js:93` (`paid_at` before `created_at`), and `Query B` (`created_at` before `paid_at`).
+- [x] 2. Historical audit: Verified that for old CASH payments without `collected_at`, `created_at` records the physical desk collection timestamp (while `paid_at` is later host verification); for ONLINE / BANK_TRANSFER payments, `paid_at` records the fund settlement/clearing timestamp (while `created_at` is only initial intent creation).
+- [x] 3. Unified function: Created single authority `getPaymentCollectionTime(payment)` in `src/services/ledger.service.js`. Replaced all separate fallback rules in `Payment.model.js` hooks, `payment.service.js` (`recordPayment`, `verifyPayment`), and Migration 004 (`004_backfill_payments_business_date`).
+- [x] 4. Regression tests: Added tests in `payment-business-date.test.js` verifying that old cash payment created at 23:30 on Day X and verified next morning gets Day X; old bank transfer verified next morning gets Day X+1; Migration 004 applies this rule identically. All 9 test suites / 36 tests pass.
+- [x] 5. Final read-only queries: Updated Query B to use the unified rule; provided timezone query, Query A, and Query B.
 
 ---
 
@@ -107,3 +102,5 @@ next agent won't know it.
 | 3 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Prompt 1 | test harness, factories, personas, mobile fakes, CMS/web vitest+playwright, CI workflows, §9.1–§9.8 regressions | task complete | yes |
 | 4 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.5 | NEW-10 (§9.6 getConnection side effects), test safety guard, Playwright smoke tests | task complete | yes |
 | 5 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.7 | Payment business_date immutable from collection time; model hooks; Migration 006; raw SQL audit; backfill-payments.js removed | task complete | yes |
+| 6 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.8 | One rule for collection time (getPaymentCollectionTime): cash -> created_at, online -> paid_at; unified model hooks, Migration 004, and Query B | task complete | yes |
+
