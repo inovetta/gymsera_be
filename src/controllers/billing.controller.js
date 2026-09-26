@@ -135,24 +135,20 @@ const appleWebhook = async (req, res) => {
  */
 const syncAndroidPurchase = async (req, res, next) => {
   try {
-    const { purchaseToken, productId, organizationId } = req.body;
+    const { purchaseToken, organizationId } = req.body;
     if (!purchaseToken) throw createError('purchaseToken is required', 400);
 
     const tenantId = req.user?.tenantId;
     if (!tenantId) throw createError('No tenant context for this account', 400);
 
-    // Same entry point as the RTDN processor.
+    // Same entry point as the RTDN processor; it also acknowledges the
+    // purchase server-side (BILL-06). `productId` from the client is not used
+    // — Google's own response says what was bought.
     const subscription = await googlePlayBilling.syncFromGoogle({
       purchaseToken,
       tenantId,
       originListingId: organizationId || null,
     });
-
-    // Server-side safety net alongside the client's own completePurchase
-    // call — never blocks the response on it.
-    googlePlayBilling.playApi
-      .acknowledgePurchaseIfNeeded(purchaseToken, productId || subscription.productId)
-      .catch((err) => console.warn('[Android Sync] Acknowledge safety-net failed:', err.message));
 
     return sendSuccess(res, { subscription }, 'Subscription synced');
   } catch (err) {

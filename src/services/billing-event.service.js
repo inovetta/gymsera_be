@@ -81,7 +81,11 @@ const _processGoogle = async (payload) => {
   const googlePlayBilling = require('./google-play-billing.service');
   let purchaseToken;
   let revoked = false;
-  if (payload?.voidedPurchase) {
+  if (payload?.ackRetry) {
+    // Recorded by google-play-billing.service.js when a server-side
+    // acknowledge failed (BILL-06): re-run the same verified sync + ack.
+    purchaseToken = payload.ackRetry.purchaseToken;
+  } else if (payload?.voidedPurchase) {
     // Recorded by sweepGoogleVoidedPurchases from the Voided Purchases API.
     purchaseToken = payload.voidedPurchase.purchaseToken;
     revoked = true;
@@ -103,7 +107,7 @@ const _processGoogle = async (payload) => {
   if (!tenantId) {
     return { outcome: 'IGNORED', note: 'Unknown purchase token — no tenant owns it yet; the app /sync will create it' };
   }
-  await googlePlayBilling.syncFromGoogle({ purchaseToken, tenantId, revoked });
+  await googlePlayBilling.syncFromGoogle({ purchaseToken, tenantId, revoked, throwOnAckFailure: true });
   return { outcome: 'PROCESSED' };
 };
 

@@ -14,12 +14,10 @@
  *     Pub/Sub push, with no embedded signature — authenticated instead by a
  *     secret token on the push endpoint's own URL (see billing.routes.js).
  *   - A purchase must be acknowledged within 3 days or Google auto-refunds
- *     it. The Flutter client's own completePurchase call handles this on
- *     the happy path (the in_app_purchase plugin maps it to Android's
- *     acknowledge internally); acknowledgePurchaseIfNeeded here is the
- *     server-side safety net for the case where that client call never
- *     completes (app killed mid-flow) — mirrors "never trust the client
- *     alone" applied to acknowledgement specifically, not just verification.
+ *     it. The server acknowledges every verified purchase itself inside
+ *     syncFromGoogle (BILL-06), for the app's /sync and for RTDNs alike, and
+ *     retries through the billing_events inbox; the Flutter client's own
+ *     completePurchase is only a backup.
  *
  * Until real Play Console access exists, BillingPlan rows hold placeholder
  * product/base-plan IDs and androidSyncStatus stays NOT_CONFIGURED — every
@@ -163,11 +161,10 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
 };
 
 /**
- * Server-side safety net alongside the client's own completePurchase call —
- * Play auto-refunds a subscription left unacknowledged for 3 days. Tolerant
- * of "already acknowledged" (a 400 from Google on retry), which is expected,
- * not an error, exactly like every other idempotent-retry path in this
- * codebase (see platform.js's _logIfUnexpected for the same philosophy).
+ * Acknowledges a purchase with the Play Developer API — Play auto-refunds a
+ * subscription left unacknowledged for 3 days (BILL-06). Tolerant of "already
+ * acknowledged" (a 400 from Google on retry), which is expected, not an error;
+ * any other failure is thrown so the caller can retry it.
  */
 const acknowledgePurchaseIfNeeded = async (purchaseToken, productId) => {
   const auth = _playDeveloperApiAuth();
@@ -176,16 +173,10 @@ const acknowledgePurchaseIfNeeded = async (purchaseToken, productId) => {
     await auth.request({ url, method: 'POST', data: {} });
   } catch (err) {
     const message = err.response?.data?.error?.message || err.message || '';
-    if (!/already.*acknowledg/i.test(message)) {
-      console.warn('[Google Play Billing] Acknowledge failed unexpectedly:', message);
-    }
+    if (!/already.*acknowledg/i.test(message)) throw err;
   }
 };
 
-/**
- * Provider API calls, grouped so a test can substitute them — nothing else in
- * this file talks to Google directly.
- */
 /**
  * Voided Purchases API — subscription purchases refunded, charged back or
  * revoked since `startTimeMillis`. Read by the daily sweep so a refund whose
@@ -214,9 +205,44 @@ const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoid
  * Developer API (never the notification's own claims), then apply it through
  * syncSubscriptionFromPurchase.
  */
-const syncFromGoogle = async ({ purchaseToken, tenantId, originListingId = null, revoked = false }) => {
+const syncFromGoogle = async ({ purchaseToken, tenantId, originListingId = null, revoked = false, throwOnAckFailure = false }) => {
   const purchase = await playApi.getSubscriptionPurchase(purchaseToken);
-  return syncSubscriptionFromPurchase(tenantId, purchase, purchaseToken, { originListingId, revoked });
+  const subscription = await syncSubscriptionFromPurchase(tenantId, purchase, purchaseToken, { originListingId, revoked });
+  await _acknowledgeVerifiedPurchase(purchase, purchaseToken, { throwOnAckFailure });
+  return subscription;
+};
+
+/**
+ * Server-side acknowledgement, as part of the verified sync (BILL-06, spec
+ * §7.5.1): only after the purchase was verified with Google and applied, only
+ * when Google says it still needs acknowledging, only for a paid (active or
+ * grace) purchase, and with the product id Google reported — never the
+ * client's. The app's own completePurchase is now only a backup.
+ *
+ * A failure must not fail the app's /sync (the app completes the purchase
+ * only after a 200), so by default it is recorded in the billing_events inbox
+ * as `ack:<token>` and the sweep retries it. When already running from the
+ * inbox (`throwOnAckFailure`), it throws so that event stays FAILED.
+ */
+const ACKNOWLEDGEABLE_STATES = ['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD'];
+const _acknowledgeVerifiedPurchase = async (purchase, purchaseToken, { throwOnAckFailure }) => {
+  if (purchase.acknowledgementState !== 'ACKNOWLEDGEMENT_STATE_PENDING') return;
+  if (!ACKNOWLEDGEABLE_STATES.includes(purchase.subscriptionState)) return;
+  const productId = purchase.lineItems?.[0]?.productId;
+  try {
+    await playApi.acknowledgePurchaseIfNeeded(purchaseToken, productId);
+  } catch (err) {
+    if (throwOnAckFailure) throw err;
+    console.warn('[Google Play Billing] Acknowledge failed; queued for retry:', err.message);
+    const billingEvents = require('./billing-event.service');
+    const { event, duplicate } = await billingEvents.recordEvent({
+      provider: 'GOOGLE',
+      providerEventId: `ack:${purchaseToken}`,
+      eventType: 'acknowledge-retry',
+      rawPayload: { ackRetry: { purchaseToken } },
+    });
+    if (!duplicate) await event.update({ status: 'FAILED', lastError: String(err.message).slice(0, 500) });
+  }
 };
 
 module.exports = {
