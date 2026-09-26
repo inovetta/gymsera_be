@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1A — Billing core (BILL-12, BILL-02, BILL-06, BILL-01, BILL-14)** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BILL-06 |
+| Issue in progress | BILL-01 |
 | Step within issue | verify done; writing red test <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -29,17 +29,19 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-1/prompt-1a-billing-core` (from master 11d37b1) | 11d37b1 gbfgb | no |
-| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | 542ef53 fix(billing): refunds, chargebacks and revokes end entitlement (BILL-02) | no |
+| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | 1a7300f fix(billing): acknowledge Android purchases server-side in the verified sync path (BILL-06) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no |
 | gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f84b784 test(web): add Playwright login smoke test and CI workflow | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> BILL-06: move the Android acknowledge INTO `google-play-billing.service.js#syncFromGoogle` (after the verified
-> apply; only when Play says ACKNOWLEDGEMENT_STATE_PENDING and the purchase is active; productId from Google, not the
-> client). `acknowledgePurchaseIfNeeded` must throw on unexpected errors; a failed ack is recorded in the
-> billing_events inbox as `ack:<token>` and retried by the sweep. Remove the fire-and-forget ack from
-> `billing.controller.js#syncAndroidPurchase`. Red test first: `tests/integration/billing-android-ack.test.js`.
+> BILL-01: in `applyVerifiedSubscription`, refuse (409 `subscription_owned_by_other_account`) when the external id is
+> already owned by another tenant or the store-reported binding token (Apple `appAccountToken`, Google
+> `externalAccountIdentifiers.obfuscatedExternalAccountId`, Stripe `metadata.tenantId`) names another tenant; never
+> rewrite `tenantId` on an existing row. Webhooks resolve an unknown transaction's owner from that token. Platform
+> migration p003: UNIQUE(platform, external_original_transaction_id), skipped with a warning if duplicates exist.
+> Mobile: `applicationUserName: tenantId` on every PurchaseParam; on that 409 call completePurchase and show a clear
+> message. Red test first: `tests/integration/billing-binding.test.js`. Transfer endpoint deferred (report it).
 
 ### Work in progress that is NOT committed
 
@@ -59,7 +61,7 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 
 - [x] 1. BILL-12 — webhook inbox, refetch truth, one apply path (84d250f)
 - [x] 2. BILL-02 — REVOKED state, refunds from all three providers end entitlement via reconcileCapacity (542ef53)
-- [ ] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox
+- [x] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox (1a7300f)
 - [ ] 4. BILL-01 — purchase bound to one tenant (409 subscription_owned_by_other_account), unique index, mobile sends tenant id
 - [ ] 5. BILL-14 — Stripe return page verifies the session server-side
 
