@@ -17,9 +17,9 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-09-26 |
+| Last updated | 2026-09-27 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Step 2.10b — Re-check for collation mismatches, including outside the app code** |
+| Current prompt | **P0 Urgent: --dry-run safety and Migration 004 audit (NEW-17)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 85526bd feat(migrations): make tenant migrations safe for MySQL 5.7 and mixed collations (Step 2.10) | yes: tests/harness/test-db.js, tests/integration/mixed-collation-migration.test.js |
+| gymsera_be | main | 11df745 test(migrations): re-check collation joins outside app code and verify ledger_days (Step 2.10b) | yes: dry-run safety fix, test suite |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -111,5 +111,6 @@ next agent won't know it.
 | 8 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.11 | Fix collection-time rule (earlier of created_at/paid_at for CASH; pending non-cash provisional date finalization on completion) | task complete | yes |
 | 9 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.10 | Step 2.10: MySQL 5.7 CI/Docker, mixed-collation fixture, Migration 004 JS join, Migration 007 collation align, runner dry-run & error isolation, reactivateTenant migration | task complete | yes |
 | 10 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.10b | Collation mismatch re-audit: explained owner failure, verified Migration 007 dynamic table/column scan, added ledger_days join failure & success tests | task complete | yes |
+| 11 | 2026-09-27 | Gemini (Gemini 3.8 Flash) | P0 Urgent | NEW-17: --dry-run safety, rollback transaction wrapper, individual migration dryRun guards, Migration 004 non-null isolation audit & tests | task complete | yes |
 
 

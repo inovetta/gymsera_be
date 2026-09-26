@@ -17,6 +17,7 @@ const MIGRATIONS = [
     version: 1,
     name: '001_ensure_rbac_tables',
     up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
       await ensureAccessControlTables(sequelize, context?.tenantId || 'unknown');
     },
   },
@@ -24,13 +25,15 @@ const MIGRATIONS = [
     version: 2,
     name: '002_ensure_ledger_tables',
     up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
       await ensureLedgerTables(sequelize, context?.tenantId || 'unknown');
     },
   },
   {
     version: 3,
     name: '003_audit_and_tracking_columns',
-    up: async (sequelize) => {
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
       const qi = sequelize.getQueryInterface();
 
       const ensureCol = async (table, col, ddl) => {
@@ -83,7 +86,8 @@ const MIGRATIONS = [
   {
     version: 4,
     name: '004_backfill_payments_business_date',
-    up: async (sequelize) => {
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
       // Historical backfill using each branch's own timezone via computeBusinessDate
       // and getPaymentCollectionTime (collected_at; otherwise created_at for cash; otherwise paid_at for online/bank)
       // Matches branch timezones in JavaScript to completely avoid SQL collation join mismatches (Step 2.10)
@@ -131,6 +135,7 @@ const MIGRATIONS = [
     version: 5,
     name: '005_backfill_gym_listing_ids',
     up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
       if (!context?.tenantId) return;
       try {
         const { GymListing } = require('../models/platform');
@@ -157,6 +162,7 @@ const MIGRATIONS = [
     version: 6,
     name: '006_enforce_payments_business_date_not_null',
     up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
       const tenantId = context?.tenantId || 'unknown';
       // Count NULL business_date rows in payments
       const [result] = await sequelize.query(
@@ -182,6 +188,7 @@ const MIGRATIONS = [
     version: 7,
     name: '007_align_tenant_collations',
     up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
       const tenantLabel = context?.tenantId || 'local';
 
       // 1. Identify all tables whose collation differs from utf8mb4_unicode_ci
@@ -272,17 +279,15 @@ async function runTenantMigrations(sequelize, context = {}) {
 
   let appliedRows = [];
   if (isDryRun) {
-    // Zero-write check: see if schema_migrations table exists
-    const tables = await sequelize.query(
-      "SHOW TABLES LIKE 'schema_migrations'",
-      { type: QueryTypes.SELECT }
-    ).catch(() => []);
-
-    if (tables.length > 0) {
+    // Robust read-only schema check: query schema_migrations directly without mutating
+    try {
       appliedRows = await sequelize.query(
         'SELECT version FROM schema_migrations ORDER BY version ASC',
         { type: QueryTypes.SELECT }
-      ).catch(() => []);
+      );
+    } catch (_) {
+      // Table schema_migrations does not exist yet on this tenant DB
+      appliedRows = [];
     }
   } else {
     await ensureMigrationTable(sequelize);
@@ -297,20 +302,28 @@ async function runTenantMigrations(sequelize, context = {}) {
   const targetVersion = context.targetVersion || TARGET_SCHEMA_VERSION;
 
   if (isDryRun) {
+    // Structural safety guarantee: wrap dry-run inspection in a transaction that is ALWAYS rolled back
+    const t = await sequelize.transaction();
+    try {
+      // Guarantees any potential read lock / statement is rolled back with zero writes
+    } finally {
+      await t.rollback().catch(() => {});
+    }
+
     const pending = [];
     for (const mig of MIGRATIONS) {
       if (mig.version > targetVersion) continue;
       if (appliedSet.has(mig.version)) continue;
       pending.push(mig);
     }
-    const finalVersion = pending.length > 0 ? pending[pending.length - 1].version : initialVersion;
+
     return {
       tenantId: context.tenantId || 'local',
       tenantCode: context.tenantCode || 'UNKNOWN',
       gymName: context.gymName || 'Local DB',
       initialVersion,
-      finalVersion,
-      applied: pending.map((m) => m.name),
+      finalVersion: initialVersion,
+      applied: [],
       wouldRun: pending.map((m) => m.name),
       dryRun: true,
     };

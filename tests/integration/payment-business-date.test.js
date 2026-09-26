@@ -660,11 +660,12 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
         'Bank transfer verified on day X+1'
       );
 
-      // Bank transfer settlement is Day X+1 (2026-09-26)
-      expect(verified.businessDate).toBe('2026-09-26');
+      // Bank transfer settlement is verified today in branch timezone
+      const expectedVerifyDate = computeBusinessDate(new Date(), 'Asia/Karachi');
+      expect(verified.businessDate).toBe(expectedVerifyDate);
 
       const reloaded = await Payment.findByPk(oldBankPaymentId);
-      expect(reloaded.businessDate).toBe('2026-09-26');
+      expect(reloaded.businessDate).toBe(expectedVerifyDate);
 
       // Cleanup
       await seq.query('DELETE FROM payments WHERE id = ?', { replacements: [oldBankPaymentId] });

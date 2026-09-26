@@ -33,14 +33,24 @@ async function main() {
 
   for (const rep of summary.reports) {
     const tenantLabel = rep.tenantCode ? `[${rep.tenantCode}] ${rep.gymName}` : rep.gymName;
-    const versionLabel = `(from v${rep.initialVersion} to v${rep.finalVersion})`;
     if (rep.success) {
-      const migCount = rep.applied?.length || 0;
-      const detail = isDryRun
-        ? (migCount > 0 ? `WOULD RUN: ${rep.applied.join(', ')}` : 'UP TO DATE (no migrations needed)')
-        : (migCount > 0 ? `applied ${migCount} migration(s): ${rep.applied.join(', ')}` : 'UP TO DATE (0 applied)');
-      console.log(` ✅ ${tenantLabel} ${versionLabel}: OK — ${detail}`);
+      if (isDryRun) {
+        const wouldRunCount = rep.wouldRun?.length || 0;
+        const versionLabel = `(at v${rep.initialVersion}, target v${TARGET_SCHEMA_VERSION})`;
+        const detail = wouldRunCount > 0
+          ? `WOULD RUN ${wouldRunCount} migration(s): ${rep.wouldRun.join(', ')}`
+          : 'UP TO DATE (no migrations needed)';
+        console.log(` ℹ️  ${tenantLabel} ${versionLabel}: DRY-RUN — ${detail}`);
+      } else {
+        const migCount = rep.applied?.length || 0;
+        const versionLabel = `(from v${rep.initialVersion} to v${rep.finalVersion})`;
+        const detail = migCount > 0
+          ? `applied ${migCount} migration(s): ${rep.applied.join(', ')}`
+          : 'UP TO DATE (0 applied)';
+        console.log(` ✅ ${tenantLabel} ${versionLabel}: OK — ${detail}`);
+      }
     } else {
+      const versionLabel = `(at v${rep.initialVersion})`;
       console.log(` ❌ ${tenantLabel} ${versionLabel}: FAILED — Error: ${rep.error}`);
     }
   }
