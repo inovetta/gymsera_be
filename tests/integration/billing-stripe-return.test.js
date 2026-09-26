@@ -82,7 +82,9 @@ describe('BILL-14: Stripe return is verified server-side', () => {
   });
 
   test('another tenant’s session, or an unknown id, is not found', async () => {
-    expect((await check('cs_other')).status).toBe(404);
-    expect((await check('cs_made_up')).status).toBe(404);
+    const other = await check('cs_other');
+    expect({ status: other.status, body: other.body }).toMatchObject({ status: 404 });
+    const unknown = await check('cs_made_up');
+    expect({ status: unknown.status, body: unknown.body }).toMatchObject({ status: 404 });
   });
 });

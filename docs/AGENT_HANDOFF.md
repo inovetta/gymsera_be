@@ -20,35 +20,46 @@ next agent won't know it.
 | Last updated | 2026-09-27 |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1A — Billing core (BILL-12, BILL-02, BILL-06, BILL-01, BILL-14)** |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BILL-14 |
-| Step within issue | verify done; writing red test <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
+
+All Prompt 1A work is on branch `phase-1/prompt-1a-billing-core` in three repos, **not pushed and not merged**.
+The owner reviews and merges.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-1/prompt-1a-billing-core` (from master 11d37b1) | b4dfb59 fix(billing): send the tenant id with every store purchase (BILL-01) | no |
-| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | 7a53c72 fix(billing): bind each store purchase to one tenant (BILL-01) | no |
-| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no |
-| gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f84b784 test(web): add Playwright login smoke test and CI workflow | no |
+| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | see `git log` — last is the Prompt 1A close-out docs commit | no |
+| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
+| gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> BILL-14: backend `GET /billing/stripe/session/:id` (authenticated, read-only: Stripe session re-fetched, must
-> belong to the caller's tenant else 404; returns confirmed = paid per Stripe, entitled = the webhook-created ACTIVE
-> row exists). Web `gymsera-billing/page.tsx`: drop the success toast/banner driven by `?checkout=success`; with
-> `session_id` show "Confirming payment…" polling that endpoint until entitled. Register page success_url adds
-> `session_id={CHECKOUT_SESSION_ID}`. Tests: `tests/integration/billing-stripe-return.test.js` (be),
-> `tests/components/gymsera-billing-return.test.tsx` (web). Then close out Prompt 1A (§13 hashes, handoff DONE).
+> Owner first (see "Blocked / waiting on the owner"). Then start **Prompt 1B — Billing lifecycle** from
+> `GYMSERA_AGENT_PLAYBOOK.md` (BILL-04, BILL-05, BILL-03, BILL-13, FLOW-03, BILL-08). Branch from
+> `phase-1/prompt-1a-billing-core` (1B builds on the shared apply path `applyVerifiedSubscription` and the
+> `billing_events` inbox), or from main once 1A is merged. New TenantSubscription columns/states go through
+> `src/database/platform-migrations.js` (next version: p004), never the boot-time block in `platform.js#connect`.
 
 ### Work in progress that is NOT committed
 
-- (none yet)
+- (none)
 
 ### Blocked / waiting on the owner
 
-- (none)
+- **Before deploying this backend branch:** run `node src/scripts/run-platform-migrations.js --dry-run`, check the
+  report, then `node src/scripts/run-platform-migrations.js`. It adds `billing_events` (p001), `REVOKED` status
+  (p002) and UNIQUE(platform, external_original_transaction_id) (p003; skipped with a list if duplicates exist).
+  Until then webhooks answer 500 (providers retry for days), nothing is lost.
+- Decide/confirm (not in §14): a **partial** Stripe refund keeps the plan (only full refund or dispute revokes); a
+  refunded/disputed Stripe subscription is **not** cancelled at Stripe (it would bill again next period — web card
+  is OFF per R-7, so this only matters once a web provider is live).
+- **NEW-15** (not in any prompt yet): `GET /host/subscription/current` creates a free 30-day ACTIVE row whenever a
+  tenant with `selectedPackageId` has no ACTIVE row — this re-grants entitlement right after a BILL-02 refund
+  revoke. Needs scheduling before launch.
 
 ---
 
@@ -58,13 +69,12 @@ next agent won't know it.
 
 Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL-14 entitlement already safe, UX part confirmed.
 
-- [x] 1. BILL-12 — webhook inbox, refetch truth, one apply path (84d250f)
-- [x] 2. BILL-02 — REVOKED state, refunds from all three providers end entitlement via reconcileCapacity (542ef53)
-- [x] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox (1a7300f)
+- [x] 1. BILL-12 — webhook inbox, refetch truth, one apply path (be 84d250f)
+- [x] 2. BILL-02 — REVOKED state, refunds from all three providers end entitlement via reconcileCapacity (be 542ef53)
+- [x] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox (be 1a7300f)
 - [x] 4. BILL-01 — purchase bound to one tenant (409 subscription_owned_by_other_account), unique index, mobile sends tenant id (be 7a53c72, app b4dfb59)
-- [ ] 5. BILL-14 — Stripe return page verifies the session server-side
-
-(Previous prompt's checklist, Step 2.10/2.10b/NEW-17, is complete and recorded in spec §13.)
+- [x] 5. BILL-14 — Stripe return page verifies the session server-side (be 2fff789, web f5fa208)
+- [x] Lint follow-up (be affbcb6), §13 rows with hashes, this handoff.
 
 ---
 
@@ -78,7 +88,7 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
     - Command: `npm test`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
     - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL 5.7 (port 3308 locally via `gymsera-test-mysql57` docker container, 3306 in CI). Never touches live or staging DBs (R-19).
-    - Status: ALL 12 suites PASS, 51 tests PASS. Zero failures.
+    - Status (2026-09-27, after Prompt 1A): 19 suites, 88 tests PASS (see the intermittent-failure note below).
   - `gyms_era` (Flutter):
     - Command: `flutter test test/regression/`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
@@ -95,6 +105,27 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 - Tenant migrations: `src/database/tenant-migration-runner.js` manages versioned tenant DB migrations (target version 7). To preview across all active tenants, use `node src/scripts/run-tenant-migrations.js --dry-run`. To apply, use `node src/scripts/run-tenant-migrations.js`.
 
 ---
+
+- **Prompt 1A additions (2026-09-27):**
+  - Platform DB migrations: `src/database/platform-migrations.js` (reuses `runTenantMigrations` with a migration
+    list). CLI `node src/scripts/run-platform-migrations.js [--dry-run]`; it only `authenticate()`s, because
+    `platform.js#connect` runs boot-time ALTERs. Proof: `tests/integration/platform-migration-runner.test.js`.
+  - Every store/webhook change goes through ONE function: `subscription-migration.service.js#applyVerifiedSubscription`.
+    Entry points: `syncFromApple` / `syncFromGoogle` / `syncFromStripe` (used by `/billing/*/sync`, the inbox
+    processor `billing-event.service.js`, and the daily cron).
+  - Provider calls live in `appleApi` / `playApi` / `stripeApi` objects; tests fake them with
+    `tests/harness/billing-fakes.js`. The test harness blanks all provider credentials (`test-db.js`) — before that,
+    one test run sent a real acknowledge call to Google Play with a fake token (rejected, no effect).
+  - Backend suite now 19 suites / 88 tests. Flutter `flutter test`: 9 tests, all pass (the old counter-template
+    failure is gone). Web: vitest 6, Playwright 1.
+  - **Intermittent backend failure seen**: in 2 of ~11 full `npm test` runs one test failed that passes alone
+    (once `tests/integration/harness.test.js`, once the BILL-14 "another tenant's session" check with a 400). Looks
+    like cross-file leakage of background work (e.g. the provisioning test's emails/notifications) — not diagnosed.
+  - Existing tests reach real services: the tenant-provisioning test sends a real e-mail
+    (`[Email] Successfully sent email to host-prov@gymsera.test`), and a mobile regression test issues a real
+    `GET https://apistaging.gymsera.com/api/v1/tenants/me`. Not touched in 1A; worth fixing under R-19.
+  - ESLint: test files fail lint repo-wide (no Jest env in the config); pre-existing. Changed `src/` files add no
+    new lint errors.
 
 ## 4. Session log (append-only, newest at the bottom)
 
@@ -114,4 +145,4 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 | 11 | 2026-09-27 | Gemini (Gemini 3.8 Flash) | P0 Urgent | NEW-17: --dry-run safety, rollback transaction wrapper, individual migration dryRun guards, Migration 004 non-null isolation audit & tests | task complete | yes |
 
 
-| 12 | 2026-09-27 | Claude Code (Opus 5.5) | Prompt 1A | (in progress) | — | — |
+| 12 | 2026-09-27 | Claude Code (Opus 5.5) | Prompt 1A | BILL-12, BILL-02, BILL-06, BILL-01, BILL-14 (transfer endpoint for BILL-01 deferred) | task complete | yes |
