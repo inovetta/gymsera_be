@@ -169,10 +169,50 @@ These are documented as fixed (mobile doc §9.1–§9.8). The agent must add a r
 
 | # | Conflict | Resolve by |
 |---|---|---|
-| D-1 | `PLATFORM_ARCHITECTURE.md` says the web wizard's Package step shows the **legacy** catalog and Stripe checkout is **not live**. The Public Site Map says the Package step **reads `BillingPlan`** and `card` → **Stripe Checkout** → `/gymsera-billing?checkout=success`. | Read `gymsera_web/src/app/gym-owner/register/page.tsx`, then update both docs to match the code. |
+| D-1 | `PLATFORM_ARCHITECTURE.md` says the web wizard's Package step shows the **legacy** catalog and Stripe checkout is **not live**. The Public Site Map says the Package step **reads `BillingPlan`** and `card` → **Stripe Checkout** → `/gymsera-billing?checkout=success`. | Read `gymsera_web/src/app/gym-owner/register/page.tsx`, then update both docs to match the code. **→ Resolved from code in §1.8.** |
 | D-2 | The Mobile Screen Map says Team & Access uses **3 tiers** (Off / Needs approval / Direct). The backend has **6** (`NONE/VIEW/REQUEST/APPROVE/DIRECT/FULL`). | **Resolved (v2): mobile is correct.** The editor edits 3 tiers per person; VIEW/APPROVE/FULL come from the role preset. See §8.3 and RBAC-01. |
 | D-3 | The mobile map shows a **Cleaner** role. The backend role levels have no Cleaner. | **Resolved (v2): "Cleaner" is the mobile label.** Confirm which backend level it maps to (probably `SUPPORT`). Every client uses the mobile label table. See RBAC-02. |
 | D-4 | The mobile app merged Admin + Staff management into Team & Access. The CMS still has separate **Staff** and **Trainers** screens. | **Resolved (v2): the CMS ports mobile Team & Access.** See UX-12 and RBAC-07. |
+
+
+### 1.8 Verified against the code (Prompt 0, 2026-09-26)
+
+#### 1.8.1 Repository map
+
+| Repo | Stack (from manifests) | Layout | Tests today | Start | Env files (names only) |
+|---|---|---|---|---|---|
+| `gymsera_be` | Node ≥ 20, Express 4, Sequelize 6 + mysql2, Redis (ioredis, Bull), Socket.IO 4, node-cron, Stripe SDK, google-auth-library, firebase-admin, helmet, express-rate-limit, express-validator; Jest 30 | `app.js`, `server.js`, `api/index.js` (Vercel); `src/{config,constants,controllers,database,jobs,middleware,models/{platform,tenant},routes,services,services/commands,socket,utils,validators,scripts,seeders}`; `docs/`; ~20 loose debug/one-off scripts at the root | `tests/*.test.js` (14 files) call a **running server at `http://localhost:3000`** with seeded users (`tests/helpers.js:1-12`); no isolated DB harness, no CI | `npm run dev` (nodemon) / `npm start`; deployed on Vercel (`vercel.json`) and IIS/iisnode (`web.config`, `iisnode/`); `docker-compose.yml` provides platform MySQL (3306), tenant MySQL (3307), Redis | `.env` (git-ignored, not tracked), `.env.example` |
+| `gyms_era` | Flutter (Dart ≥ 3.12), Riverpod 2 (+ generator), go_router 14, dio 5, freezed/json_serializable, in_app_purchase (+ android), firebase_messaging, socket_io_client, google_sign_in, sign_in_with_apple, mobile_scanner, print_bluetooth_thermal | `lib/core/{constants,errors,network,router,services,storage,utils,widgets}`, `lib/features/<22 features>/{data,domain,presentation}` (297 Dart files); legacy `lib/features/gym_host` + `host` coexist | `test/widget_test.dart` is the default **counter** template and will fail against this app; nothing else | `flutter run`; one `ProviderContainer` in `lib/main.dart:30-39` | none in repo; Firebase files git-ignored (`android/app/google-services.json`, `ios/Runner/GoogleService-Info.plist`) |
+| `gymsera_cms` | Next.js 14.2 (app router), React 18, TanStack Query 5, zustand, react-hook-form + zod, Radix/shadcn, axios, recharts, leaflet | `src/app/{(auth),(dashboard)/{admin,gym,settings,dashboard}}`, `src/components/{features,layout,ui}`, `src/lib/api/*` (one axios client), `src/stores`, `src/hooks` | none (no test runner in `package.json`) | `npm run dev` (port 3001); IIS via `server.js` | `.env.example`, `.env.local.example` |
+| `gymsera_web` | Next.js 14.2, React 18, TanStack Query 5, zustand, react-hook-form + zod, Radix, axios, `@vis.gl/react-google-maps`, `react-qr-code` | `src/app/{(public),(dashboard),auth,gym-owner/register,onboarding}`, `src/middleware.ts` (cookie-presence redirect only), `src/lib/api/*` | none | `npm run dev` (port 3002); IIS via `server.js` | `.env.exmaple` (sic), `.env.local.example` |
+
+No CI configuration exists in any repo (no `.github/`, no pipeline files).
+
+#### 1.8.2 §1 facts checked
+
+| § | Documented | In the code | Evidence |
+|---|---|---|---|
+| 1.1 | Mobile Host tabs Today/Gyms/Listings/Inbox/Profile + drawer; Traveler Home/Search/My Plans/Inbox/Profile | Matches (`/host/today`, `/host/gyms`, `/host/listings`, `/host/inbox`, `/host/profile`; `/home`, `/home/search`, `/home/my-plans`, `/home/inbox`, `/home/profile`). The old `/host/admins` and `/host/profile/staff` routes still exist next to `/host/team`. | `app/lib/core/router/app_router.dart` |
+| 1.1 | Backend is the only thing touching databases | True | — |
+| 1.2 | Platform tables | Present, plus `BillingOffer`, `Conversation`, `Message`, `Notification`, `DeviceToken`, `RefreshToken` (reuse for AUTH-02), `Otp`, `UserOrgIndex`, `UserGymMembership`, `SavedGym`, `GymReview`, `Device`, `DeviceMember`. **No** `AuditLog` model (SEC-12), no `BillingEvent`, no `IdempotencyRecord`. | `be/src/models/platform/` |
+| 1.2 | Tenant tables incl. `LedgerEntry` | Present, plus `RoleAssignmentBranch`, `AssignmentOverride`, `ApprovalPolicy`, `StaffActionRequest`, `AuditLog` (tenant), `LedgerAdjustment`, `Expense*`, `Trainer`, `ClassSchedule`, `Announcement`. **No `LedgerEntry`**: the ledger is computed from `payments` (PAY-03). | `be/src/models/tenant/` |
+| 1.2 | `TenantDbManager` lazy in-process cache | True; pool `max: 5` per tenant, unbounded `Map`, and it still runs DDL/UPDATE backfills on first connect (NEW-10). | `be/src/database/TenantDbManager.js:17-195` |
+| 1.3 | One ACTIVE `TenantSubscription` | Enforced only inside `requestProviderChange`/`reconcileRenewalStatus`; no DB constraint. Broken by BILL-01 (a moved row can make two ACTIVE rows for the caller) and by the manual paths (NEW-06, NEW-14, NEW-15). | `be/src/services/subscription-migration.service.js` |
+| 1.3 | Entitlement = `branchCount`; legacy package for MANUAL | True, **plus an undocumented fallback**: no ACTIVE row → `selectedPackage.maxBranches` → `1`. A lapsed tenant is never at 0. | `be/src/services/subscription-quota.service.js:36-51` |
+| 1.3 | Orgs free, never empty; invariant; slot donor; `CapacityEvent.idempotencyKey`; `auditCapacity` read-only | True (unique key at `be/src/models/platform/CapacityEvent.model.js:70-84`; donor in `be/src/controllers/host.controller.js:505-527`). Gaps: CAP-03/05/06/07. | — |
+| 1.4 | JWT role `PLATFORM_ADMIN/GYM_HOST/BRANCH_MANAGER/TRAINER/MEMBER` | The JWT carries the **platform `users.role`**, which legacy flows set to `BRANCH_MANAGER` globally; `tenantContext` then rewrites `req.user.role` per request (`be/src/middleware/tenantContext.js:40-83`). | SEC-02, AUTH-08 |
+| 1.4 | `can(permission, scope)` over `RoleAssignment`; levels OWNER 100 … SUPPORT 5; six tiers; REQUEST → `approvalService.perform` | True. The six tiers exist only in the role **presets** (`N/V/R/A/D/F`) and compile into a base permission key plus a `.direct` twin; `Grants.tierFor` returns `DIRECT/REQUEST/OFF`. | `be/src/constants/permissions.js:36-50`, `be/src/services/access.service.js:69-75` |
+| 1.5 | Already fixed (§9.1–§9.8) | §9.1 fixed (`be/src/services/gym.service.js:747-754`); §9.2 fixed (`_pendingProductId`, `billing_provider.dart:117-122`, `:246`); §9.3 backend donor path present; §9.4 fixed (`reconcileRenewalStatus`); §9.6 status mass-reactivation removed **but other UPDATEs remain** (NEW-10 — the planned regression test will fail); §9.7 fixed (`be/src/services/admin.service.js:59-84` comment + logic); §9.5, §9.8 are mobile UI — to be proven by Prompt 1 tests. | — |
+| 1.6 | Open items | Listings stale → FLOW-05 (NEEDS RUNTIME CHECK); Play upgrade unverified → R-9; Stripe live keys → no `STRIPE_*` keys in the backend `.env` (names checked), R-7; visibility toggle → UX-06. | — |
+
+#### 1.8.3 Conflicts D-1 … D-4 resolved from the code
+
+| # | Resolution |
+|---|---|
+| D-1 | **Both documents are partly right.** The web wizard's Package step lists the **legacy `PlatformPackage`** catalog (`web/src/app/gym-owner/register/page.tsx:216-217` → `GET /platform-packages`). The Payment step offers Bank transfer / Pay later (legacy path) **and**, when a `BillingPlan` with the same branch count exists, a **Card** option that starts a real Stripe Checkout (`:355-372`) returning to `/gymsera-billing?checkout=success`. Stripe code is complete but no Stripe keys are configured, so it is not live. Per R-7 the card option must be hidden behind `WEB_CARD_PAYMENTS_ENABLED=false`. `PLATFORM_ARCHITECTURE.md` still needs the same correction; Prompt 0 may only edit this spec and the handoff, so that edit is left for the next docs change. |
+| D-2 | Confirmed: presets use six tiers; per-person editing is ALLOW/DENY overrides on the base and `.direct` keys, i.e. Off / Needs approval / Direct. The save is a whole-set overwrite (RBAC-01, RBAC-08). |
+| D-3 | Confirmed: "Cleaner" is backend `SUPPORT`, level 5 (`be/src/constants/roles.js:116-118`); mobile maps `SUPPORT` to the cleaning icon (`app/lib/features/host/presentation/screens/add_team_member_screen.dart:607`). No shared label table (RBAC-02). |
+| D-4 | Confirmed: CMS still has separate Staff and Trainers screens (`cms/src/components/layout/sidebar.tsx:71`, `:76`) on the legacy `/gyms/staff` API (UX-12, RBAC-07). |
 
 
 ---
@@ -534,6 +574,51 @@ Each module lists its owner service(s), invariants, surfaces, and the related is
 | Account statement | ❌ | ✅ `/account-statement` | same | **web-only** — decide (R-14) |
 | Staff-invite acceptance | ✅ in Traveler inbox | ❌ | `/staff-invites/*` | UX-22 |
 | Profile, sessions, delete account | ⚠️ verify | ⚠️ verify | AUTH-02, AUTH-07 | — |
+
+#### Verified status (Prompt 0, 2026-09-26)
+
+The tables above are the target. This is what the code actually does today. Paths as in §12.13.
+
+**Host features**
+
+| Feature | Mobile | CMS host | Website | Evidence |
+|---|---|---|---|---|
+| Today dashboard | ✅ `/host/today-summary` | ⚠️ `/reports/dashboard` + admin stats, different cards | — | `app/lib/core/constants/api_constants.dart:133`; `cms/src/app/(dashboard)/dashboard/page.tsx:35-76` |
+| Organization selector | ✅ | ❌ single org (first `Gym` row) | — | `be/src/services/gym.service.js:165-166` |
+| Capacity banner | ✅ `/host/branch-quota` | ❌ (quota shown only on `/settings/billing`) | — | `cms/src/app/(dashboard)/settings/billing/page.tsx:68` |
+| Add branch (attempt-first / upsell) | ✅ | ⚠️ plain form, generic error | — | `cms/src/app/(dashboard)/gym/branches/page.tsx:154-188` |
+| Delete / restore branch | ✅ (re-auth sent) | ⚠️ delete without re-auth, no restore, no last-branch confirm | — | `be/src/controllers/gyms.controller.js:70-100` |
+| New organization (new / move / reserve) | ✅ | ❌ | ⚠️ first signup only | `be/src/controllers/host.controller.js:396-640` |
+| Organization editor | ✅ (Boost is fake — NEW-BOOST) | ⚠️ logo/cover/gallery/info | — | `cms/src/app/(dashboard)/gym/profile/page.tsx` |
+| Branch listing content | ✅ | ❌ | — | |
+| Members / memberships / payments / plans | ✅ | ✅ separate pages (legacy `/gyms/*` routes) | — | `cms/src/lib/api/gym.ts` |
+| Team & access | ✅ `/team` (old `/host/admins`, `/host/profile/staff` routes still present) | ❌ old Staff screen on `/gyms/staff` | — | UX-12 |
+| Approvals | ✅ `/approvals` | ❌ | — | |
+| Staff requests per branch | ✅ | ❌ | — | |
+| Invoices & billing | ✅ | ✅ `/gym/invoices` | — | |
+| Ledger & daily close | ✅ `/ledger` | ❌ | — | |
+| Payouts | ❌ **fake UI** (hard-coded success, no API) | ❌ | — | PAY-10 / NEW-09 |
+| Analytics / branch performance | ✅ `/reports/*` | ⚠️ monthly report page | — | `cms/src/app/(dashboard)/gym/reports/page.tsx:40` |
+| Notifications | ✅ | ❌ | — | UX-23 |
+| Inbox | ✅ | ❌ (out of scope, R-18) | — | |
+| My GymsEra plan | ✅ `/host/subscription/mine` | ⚠️ `/settings/billing`, but "Request a Manual Plan" self-grants a paid plan (NEW-06) | ⚠️ `/gymsera-billing` in member portal | `cms/src/lib/api/host-billing.ts:47-49` |
+| Buy / change plan | ✅ App Store / Play | — | ⚠️ Stripe card option live in signup (must be off, R-7) | `web/src/app/gym-owner/register/page.tsx:355-372` |
+| Become a host | ✅ `/become-host/*` | — | ⚠️ `/gym-owner/register` + legacy `/onboarding` | UX-01, UX-24 |
+| Scan QR / check-in | ✅ `/attendance/qr-scan` + `/manual` | ⚠️ manual only, via a second alias `/attendance/check-in` | — | `be/src/routes/attendance.routes.js:344-352` |
+| Trainers | not in mobile | ✅ `/gym/trainers` | — | web-only (R-14) |
+
+**Traveler / member features**
+
+| Feature | Mobile | Website | Evidence |
+|---|---|---|---|
+| Discovery | ✅ | ✅ | |
+| Wishlist | ✅ `/me/saved-gyms` | ❌ | |
+| Checkout | ⚠️ bank transfer / proof only; card screen is "coming soon" with a fake saved card | ❌ | SEC-09 |
+| My memberships + QR | ✅ | ✅ list/detail **with QR** (`web/src/app/(dashboard)/subscriptions/[id]/page.tsx`, `web/src/components/features/qr-code-display.tsx`) | the §3.3 target table said "no QR" — corrected here |
+| Payment history | ⚠️ inside plan detail | ✅ `/payments` | |
+| Account statement | ❌ | ✅ | web-only (R-14) |
+| Staff-invite acceptance | ✅ (legacy `/staff-invites`) | ❌ | FLOW-12 |
+| Profile / sessions / delete account | ⚠️ "Delete account" only sets INACTIVE; no sessions screen | ⚠️ same; the privacy page promises purging that doesn't happen (`web/src/app/(public)/privacy/page.tsx:191`) | AUTH-02, AUTH-07 |
 
 **Parity work order:**
 1. Team & access + Approvals.
@@ -1796,6 +1881,272 @@ All `CHECK` unless noted. Money must be atomic, auditable, and idempotent.
 | OBS-08 | P2 | Client performance: Firebase Performance / web-vitals reporting | SDK |
 | OBS-09 | P1 | Alerts have runbooks (what it means, first checks, rollback) in `docs/runbooks/` | Docs |
 
+
+---
+
+### 12.13 Verification results (Prompt 0)
+
+**Read-only audit, 2026-09-26, Claude Code (Opus 5.5).** Every §12 issue checked against the code at these commits:
+`gymsera_be` e237dc9 · `gyms_era` 809344b · `gymsera_cms` 8e18096 · `gymsera_web` 5b66fea.
+Paths are relative to each repo (`be/` = `gymsera_be`, `app/` = `gyms_era`, `cms/` = `gymsera_cms`, `web/` = `gymsera_web`).
+
+**Result values:** `CONFIRMED` (defect exists; file:line) · `PARTIAL` (some of the protection exists, the rest is missing; counted as CONFIRMED in totals) · `NOT REPRODUCED` (code already correct; file:line) · `NEEDS RUNTIME CHECK` (can't be decided from code alone; reason given).
+Severity is the §12 severity unless the note says it was raised.
+
+**Summary (164 §12 issues + new findings):**
+
+| Result | Count | Notes |
+|---|---|---|
+| CONFIRMED | 98 | |
+| PARTIAL (counted as confirmed) | 40 | |
+| NOT REPRODUCED | 6 | AUTH-03, SEC-16, FLOW-13 fully; BILL-14, CAP-04, SEC-14 are split results (the named risk is absent, a related gap is confirmed) |
+| NEEDS RUNTIME CHECK | 12 | CAP-08, FLOW-05, UX-06, UX-10, RT-03, RT-07, RT-09, PERF-01, PERF-02, PERF-11, GLB-06, OBS-04 (plus the Apple half of BILL-03, counted as CONFIRMED) |
+| Decision rows (§14) | 4 | BILL-16, BILL-17, FLOW-11, GLB-07 |
+| DEFERRED (R-13/R-14) | 4 | UX-03, UX-05, UX-16, UX-25 |
+| **NEW** | **17** | 9 × P0 (NEW-01…08, NEW-15), 8 × P1 (NEW-09…14, NEW-16, NEW-BOOST) |
+
+**Top risks, in the order Phase 1 should take them:** account takeover through social sign-in (NEW-02, NEW-03); unauthenticated maintenance/debug endpoints (NEW-01, NEW-04, NEW-05); free entitlement paths (NEW-15, NEW-06, NEW-07, BILL-04/08 unpaid states treated as ACTIVE, BILL-01 cross-account restore); cross-tenant access (SEC-02, NEW-08/SEC-01, RT-04); legacy RBAC still granting access (RBAC-07, AUTH-08).
+
+#### 12.13.1 BILL
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| BILL-01 | CONFIRMED (worse than described) | `be/src/services/apple-billing.service.js:186-252`, `be/src/services/google-play-billing.service.js:133-184`, `be/src/services/stripe-billing.service.js:252-305`; client `app/lib/features/billing/presentation/providers/billing_provider.dart:249-262` | Lookup is by `externalOriginalTransactionId` only, never by tenant. `values.tenantId` is the **caller's** tenant and `existing.update(values)` writes it, so tenant B restoring tenant A's transaction **moves the row to B** (A silently loses its plan, no reconcile on A). No `appAccountToken`/`obfuscatedExternalAccountId` is sent (`PurchaseParam` has no `applicationUserName`) or checked. `external_original_transaction_id` is indexed, not unique (`be/src/models/platform/TenantSubscription.model.js:144`). |
+| BILL-02 | PARTIAL | Apple `apple-billing.service.js:182,217` (`revocationDate` → `CANCELLED`); Google `google-play-billing.service.js:93-105` (no revoked/voided handling); Stripe `stripe-billing.service.js:393-442` (no `charge.refunded` / `charge.dispute.created`) | No `REVOKED` state (`TenantSubscription.model.js:99`). Apple refund is noticed only if the webhook carries it. Removing the ACTIVE row does **not** drop entitlement to 0: `resolveMaxBranches` falls back to `tenant.selectedPackageId` or `1` (`be/src/services/subscription-quota.service.js:46-50`). No Voided Purchases sweep. |
+| BILL-03 | CONFIRMED (Android, Stripe); NEEDS RUNTIME CHECK (Apple) | Android `app/lib/features/billing/presentation/providers/billing_provider.dart:369-376` uses `ReplacementMode.withTimeProration` for upgrades **and** downgrades; Stripe `stripe-billing.service.js:176-180` `proration_behavior: 'create_prorations'` (immediate); server applies `plan.branchCount` of the verified product immediately (`apple-billing.service.js:197-202`) | Apple: a downgrade's signed transaction normally keeps the current product until renewal, so the immediate-apply risk depends on what Apple returns — verify in sandbox. No `pendingChange`, no "choose branches to keep". |
+| BILL-04 | CONFIRMED | `TenantSubscription.model.js:98-102`; Google `google-play-billing.service.js:93-105` maps `ON_HOLD`, `PAUSED`, `PENDING` (and any unknown state) to **ACTIVE** via `default`; Stripe `stripe-billing.service.js:212-217` maps `past_due`, `incomplete`, `paused` to **ACTIVE** | Raised to **P0** in effect: an unpaid/on-hold subscription keeps full entitlement. Google `CANCELED` (auto-renew off, still paid to period end) maps to `CANCELLED`, which removes entitlement early. |
+| BILL-05 | CONFIRMED | `apple-billing.service.js:195,214-216`; `google-play-billing.service.js:139,154-156`; `stripe-billing.service.js:258,277-279` | `amount` only written when `planChanged`; always the catalog price, never the provider's charged amount; no currency from the provider. |
+| BILL-06 | PARTIAL | `be/src/controllers/billing.controller.js:132-139`; `google-play-billing.service.js:262-273` | Server-side acknowledge exists but is fire-and-forget after the response, not retried, and errors are only logged. RTDN path (`handleRtdnNotification`, `:282-300`) never acknowledges. If the app dies before `/sync`, nothing acknowledges and Play auto-refunds after 3 days. |
+| BILL-07 | CONFIRMED | no `purchase-intent` route in `be/src/routes/billing.routes.js`; `subscription-migration.service.js:115-206` repairs afterwards | Only a Stripe-on-Stripe guard exists (`stripe-billing.service.js:117-120`). |
+| BILL-08 | CONFIRMED (raised to P0) | server `google-play-billing.service.js:102-103` (`SUBSCRIPTION_STATE_PENDING` → ACTIVE, `paymentStatus: 'PAID'` at `:159`); client `billing_provider.dart:521-525` (pending shows the generic "purchasing" spinner) | A pending (not yet paid) Play purchase grants the plan immediately if the app syncs it. |
+| BILL-09 | PARTIAL | `be/src/services/subscription-migration.service.js:285-298` | Resurrection is refused and a `statusNote` is written, but there is no `duplicateBilling` flag, no host banner, no admin flag, no email — only a server `console.warn`. |
+| BILL-10 | CONFIRMED | Legacy sales still live: `be/src/controllers/host.controller.js:841-913` (host self-serve upgrade), `be/src/services/admin.service.js:675-782` (admin assign), `be/src/services/tenant-provisioning.service.js:510-545` (approval auto-subscription) — all create `platformPackageId` rows with no `billingPlanId`/`branchCount` | See also NEW-06 (the host upgrade grants any package for free). |
+| BILL-11 | CONFIRMED | `be/src/models/platform/BillingPlan.model.js:49-51` (one `currency` column, default `PKR`) | Apps already prefer the store's localized price (`billing_provider.dart:209-214`). |
+| BILL-12 | CONFIRMED | `be/src/controllers/billing.controller.js:102-109` (Apple: always 200, even on a transient DB error — the event is lost); no `BillingEvent` table (grep); `apple-billing.service.js:345-351` and `google-play-billing.service.js:293-298` drop notifications for unknown transactions; Apple uses the payload, not a refetch | No inbox, no dedupe beyond `CapacityEvent` keys, no sweep, no ordering protection. Google does refetch (`:289`). |
+| BILL-13 | CONFIRMED | `be/src/services/tenant-provisioning.service.js:510-545` | Approval creates an **ACTIVE** MANUAL row with `paymentStatus: 'PENDING'` for a full package cycle (up to a year); nothing expires it early when unpaid. Not indefinite: the expiry cron suspends at `endDate` (`be/src/jobs/subscription-expiry.cron.js:145-170`). |
+| BILL-14 | NOT REPRODUCED (entitlement); CONFIRMED (UX) | Entitlement only from the verified webhook: `stripe-billing.service.js:386-445`. Web: `web/src/app/(dashboard)/gymsera-billing/page.tsx` — see §12.13.9 UX-02 | The query param can't grant anything. Whether the page *shows* success on `?checkout=success` is a UX item. Web card payments are OFF by R-7 anyway. |
+| BILL-15 | CONFIRMED | `BillingPlan.model.js:55-75` (`iosSyncStatus`/`androidSyncStatus` are admin-set flags); no verifier job in `be/src/jobs/` | P2. |
+| BILL-16 | — (decision) | §14 R-1 | Decided: keep IAP. |
+| BILL-17 | — (decision) | §14 R-7 | Decided: web card OFF. No `WEB_CARD_PAYMENTS_ENABLED` flag exists yet (grep) — Stripe checkout routes are live (`be/src/routes/billing.routes.js:153-222`); the flag must be added. |
+| BILL-18 | CONFIRMED (R-15) | `app/lib/features/host/presentation/screens/boost_listing_screen.dart` (fake "Pay & Activate" success) | Logged as NEW-BOOST below. |
+
+#### 12.13.2 CAP
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| CAP-01 | CONFIRMED | `be/src/services/subscription-quota.service.js:271-278` (over-quota only sets `overQuotaCount`); no `billingLock` on `be/src/models/tenant/Branch.model.js` | Over-quota blocks new branches/restores only (`be/src/services/gym.service.js:473-481`, `:1039-1046`); existing branches keep selling. Also: a lapsed tenant falls back to `maxBranches = selectedPackage.maxBranches` or `1` (`subscription-quota.service.js:46-50`), never 0. |
+| CAP-02 | CONFIRMED | `be/src/services/gym.service.js:44-57` (3 retries, then `console.error` and give up), used at `:904-947` after the tenant commit at `:889` | Only `auditCapacity` notices; no outbox. |
+| CAP-03 | CONFIRMED | Four branch creators outside `createBranch`: admin `be/src/services/admin.service.js:1180-1264` (own copy of the capacity check, **no Tenant row lock**, so it races with host `createBranch` at `gym.service.js:445-451`); `be/src/services/membership-plan.service.js:201-211` (a **GET** `listForHost` creates an ACTIVE branch with no capacity check when the tenant has no plans and no branches); provisioning `be/src/services/tenant-provisioning.service.js:302-323` (re-approval flips an existing branch back to `ACTIVE` with no capacity event); new-org `be/src/controllers/host.controller.js:396-640` (own capacity copy, shares `_createBranchRecord`). Plus an unauthenticated mass `Branch.update` at `be/src/routes/discovery.routes.js:580-617` (NEW-01). | `moveBranch` (`gym.service.js:578-646`) and `deleteOrganization` (`:1127-1248`) run without a transaction or lock. |
+| CAP-04 | NOT REPRODUCED (bypass); CONFIRMED (missing concept) | Admin status change delegates to `deleteBranch`/`restoreBranch`: `be/src/services/admin.service.js:576-591`, `:1283-1294` | No direct `status` write. But there is no separate `adminSuspended` state: an admin "disable" deletes the branch (credits capacity, cancels memberships). No audit row. |
+| CAP-05 | CONFIRMED | New org is `PENDING` with an ACTIVE branch built immediately (`be/src/controllers/host.controller.js:542`, `:619`); reject only sets the listing to `REJECTED` (`be/src/services/admin.service.js:370-375`) | The branch stays ACTIVE and keeps consuming capacity; `getUsedCapacity` still counts the REJECTED listing's `reservedSlots` (it only excludes INACTIVE, `subscription-quota.service.js:102`). |
+| CAP-06 | CONFIRMED | `be/src/services/gym.service.js:1027-1029` | Restore into an INACTIVE org returns 409 ("move it instead") instead of reactivating the org; the org's preserved `reservedSlots` become inert (`subscription-quota.service.js:98-102`). |
+| CAP-07 | PARTIAL | Guard exists for delete and move (`gym.service.js:427-443`, `:388-419`) | Missing: `auditCapacity` does not report ACTIVE orgs with zero branches (`subscription-quota.service.js:309-386`); `moveBranch`/`deleteOrganization` accept an INACTIVE target org (`gym.service.js:595`, `:1140`); the expiry cron sets **all** the tenant's listings INACTIVE (`be/src/jobs/subscription-expiry.cron.js:165-168`), which also makes their `reservedSlots` inert and nothing reactivates them on renewal/reactivation (`admin.service.js:481-506`). |
+| CAP-08 | NEEDS RUNTIME CHECK | Host `createBranch` locks the Tenant row (`gym.service.js:445-451`); delete/restore lock the branch row (`:817`, `:1010`) | Code looks serialised for host paths; admin create (above) does not take the Tenant lock. Needs the parallel test. |
+
+#### 12.13.3 FLOW
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| FLOW-01 | PARTIAL | `be/src/services/tenant.service.js:36-60` (one tenant per user, resumable via `GET /tenants/me`); no DRAFT purge job in `be/src/jobs/` | No step idempotency keys; abandoned DRAFTs and KYC files are never purged (R-16 wants 30 days). |
+| FLOW-02 | CONFIRMED | `be/src/services/admin.service.js:317-339` → `be/src/services/tenant-provisioning.service.js` (whole flow inline) | No `provisioningState`; `APPROVED` is re-approvable (`admin.service.js:317`) so a double-click runs provisioning twice concurrently; Tenant set ACTIVE (`tenant-provisioning.service.js:499-503`) **before** the subscription step, whose failure is swallowed (`:541-543`). Fallback to `root`/empty password when admin credentials fail (`:67-81`). |
+| FLOW-03 | PARTIAL | Double entitlement is prevented: approval skips auto-create if **any** subscription row exists (`tenant-provisioning.service.js:510-515`) | But: the card path (`web/src/app/gym-owner/register/page.tsx:355-372`) charges **before** review (contradicts R-4) and never calls `finalizeApplication`, so the tenant stays `DRAFT`, which `approveTenant` refuses (`admin.service.js:317`) — a paying applicant can get stuck. Card must be hidden anyway (R-7). |
+| FLOW-04 | CONFIRMED | Rejected tenant cannot edit its application (`be/src/services/tenant.service.js:71`) and cannot register again (`:38-39`) | No re-application path, no KYC retention/deletion, no refund hook. |
+| FLOW-05 | NEEDS RUNTIME CHECK | All four hypotheses fail on the code: no HTTP cache interceptor (`app/lib/core/network/dio_client.dart:27-35`); one `ProviderContainer` (`app/lib/main.dart:30-39`); the screen `ref.watch`es the provider (`app/lib/features/host/presentation/screens/listings_overview_screen.dart:36`) and does not filter by status (`:109-111`); the API returns PENDING orgs (`be/src/controllers/host.controller.js:356-359`); both create paths invalidate `hostListingsProvider` (`app/lib/features/host_onboarding/presentation/providers/host_onboarding_providers.dart:911`, `app/lib/features/host/presentation/screens/new_organization_quick_form_screen.dart:96`) | Needs the debug-log run described in §12 FLOW-05. One untested lead: `getListings` uses `req.user.tenantId` from the token (`host.controller.js:346-349`) — a stale token after onboarding returns `[]`. |
+| FLOW-06 | CONFIRMED | Expiry in server UTC, not branch timezone (`be/src/jobs/subscription-expiry.cron.js:35-46`); renew extends from the old `endDate`, not `max(now, end)` (`be/src/services/subscription.service.js:414-415`); freeze never extends `endDate` and nothing unfreezes (`:340-366`; cron only expires ACTIVE) | See NEW-07: a member can renew their own membership to ACTIVE without paying. |
+| FLOW-07 | PARTIAL | Dedupe by e-mail only (`be/src/services/gym.service.js:1451-1460`) | No phone normalisation/matching; enrolment silently creates a **verified** platform account for any e-mail typed by staff. |
+| FLOW-08 | PARTIAL | Server recomputes price (`be/src/services/subscription.service.js:236-239`) and the membership stays PENDING until staff verify payment (`:194-206`) | No gateway, no webhook, no idempotency key (two taps → the 409 guard at `:180-186` only). Member plan **upgrade applies the new plan immediately** before payment (`:742-746`). Floats for money (`parseFloat`). |
+| FLOW-09 | CONFIRMED | `be/src/services/attendance.service.js:34-45` | QR is a static token that changes only on renew; the scanner also accepts the raw **subscription id or user id** as a QR value. Only a 5-minute duplicate window (`:61-81`). |
+| FLOW-10 | PARTIAL | `be/src/services/discovery.service.js:907-937` | Requires *any* subscription row (a never-paid PENDING or CANCELLED one counts); reviews are auto-`APPROVED` (no moderation); editing a moderator-REJECTED review flips it back to APPROVED (`:916-924`); `review` is an undeclared variable (implicit global) at `:927`. The listing-level route passes the body as `branchId` (`be/src/controllers/discovery.controller.js:144`), so it always fails. No rate limit. |
+| FLOW-11 | — (decision) | §14 R-5 | Manual review stays. |
+| FLOW-12 | CONFIRMED | `be/src/routes/staff-invites.routes.js:95-106` | Invite = the `GymStaff` row id, not a single-use token; no expiry; if `staff.userId` is null anyone with the id can accept; acceptance writes the **global** `users.role = 'BRANCH_MANAGER'` (feeds SEC-02); lookup loops over every tenant DB (`:30-44`). The `/team/invites` path is separate (see RBAC). |
+| FLOW-13 | NOT REPRODUCED | No trainer-booking feature exists (grep for `booking`/`slotStart` finds only a permission constant) | Re-open if bookings are built. |
+
+#### 12.13.4 PAY
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| PAY-01 | PARTIAL | `be/src/services/payment.service.js:90-96` (optional key, check-then-insert); unique index `be/src/database/TenantDbManager.js:131` | Key is optional, not required. Two concurrent requests with the same key both pass the `findOne` and the second hits the unique index → 500, not a replay. Payment + membership activation are not one transaction (`payment.service.js:101-155`). |
+| PAY-02 | CONFIRMED | `be/src/models/tenant/Payment.model.js:40-42` `DECIMAL(10,2)` with JS `parseFloat`/`Number` arithmetic (`be/src/services/subscription.service.js:236-239`, `:736-740`); `TenantSubscription.amount DECIMAL(10,2)` | DECIMAL storage is acceptable per §6.3, but all arithmetic is float. Currency hard-coded `'PKR'` in several creators. |
+| PAY-03 | CONFIRMED | There is no ledger-entry table: the ledger is computed from `payments` rows, which are updated in place (`payment.service.js:265`, `:429`, `:450`, `:550-563`, `:577`) | Verifying/rejecting an old payment changes the history of a past business day. Adjustments are a separate append-only table (`be/src/services/ledger.service.js:274-314`). |
+| PAY-04 | PARTIAL | Business date in branch timezone (`ledger.service.js:36-64`); close is race-safe and one-shot (`:316-366`) | `addAdjustment` does not refuse a CLOSED day (`:274-314`); payments dated to a closed day can still be verified/rejected, changing that day's live totals after close. |
+| PAY-05 | CONFIRMED | Three copies of a random `INV-YYYYMMDD-<6 hex>` generator: `payment.service.js:10`, `gym.service.js:9`, `subscription.service.js:48` | Not sequential, not gapless, collisions possible, not per branch. |
+| PAY-06 | PARTIAL | `staffCollectedBy`/`createdBy` recorded (`Payment.model.js:78`, `payment.service.js:547-563`) | No shift concept; daily close shows totals, not cash per collector vs expected. |
+| PAY-07 | CONFIRMED (not built) | `REFUNDED` exists only as a constant (`be/src/constants/payment-status.js:6`); no refund service or route (grep) | Refunds can't be recorded at all. |
+| PAY-08 | CONFIRMED (not built) | No gateway/webhook for member payments; `markPaymentFailed` (`payment.service.js:568-600`) has no route caller from a verified gateway | A `TEST` payment method auto-completes and activates memberships when the `X-Test-Payment-Key` header matches (`be/src/routes/payments.routes.js:67-81`, `payment.service.js:98`) — a test backdoor that is live wherever `PAYMENT_TEST_KEY` is set. |
+| PAY-09 | PARTIAL | `app/lib/core/services/printer_service.dart` (no "DUPLICATE" marker, no raster rendering for Urdu/Arabic) | `printed_at` is tracked server-side (`TenantDbManager.js:133-138`). |
+| PAY-10 | CONFIRMED (not built; fake UI) | No payout code in `be/src` (grep); mobile "Request payout" shows a hard-coded "Rs42,300 submitted" success without any API call (`app/lib/features/host/presentation/screens/request_payout_screen.dart:42-61`, `:391`); bank accounts are a local `StateProvider` (`app/lib/features/host/presentation/providers/host_profile_provider.dart:61`) | See NEW-09. |
+| PAY-11 | CONFIRMED | `be/src/services/reports.service.js:81`, `:193`, `:240`, `:288` bucket by `paidAt`/`createdAt` with server-local dates | Not built from business dates in branch timezone; no pre-aggregates. |
+| PAY-12 | PARTIAL | Reason required + audit row (`ledger.service.js:274-314`); guarded by `can('ledger.verify')` (`be/src/routes/ledger.routes.js:123-127`) | No approval tier for adjustments. |
+
+#### 12.13.5 AUTH and RBAC
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| AUTH-01 | PARTIAL | `be/src/services/auth.service.js:642-672` rotates on use | Refresh tokens are JWTs stored **in plain text** (`be/src/models/platform/RefreshToken.model.js:16`); reusing a revoked token just returns 401 — no reuse detection, no session-family revoke. |
+| AUTH-02 | CONFIRMED | No session list/revoke and **no logout endpoint** in `be/src/routes/auth.routes.js` (grep "logout" finds nothing) | Only password reset revokes all refresh tokens (`auth.service.js:744`). |
+| AUTH-03 | NOT REPRODUCED | Mobile single-flight `Completer` (`app/lib/core/network/error_interceptor.dart:13-80`); CMS/web `isRefreshing` + subscriber queue (`cms/src/lib/api/client.ts:21-71`, `web/src/lib/api/client.ts:21-71`) | Web/CMS never reject queued subscribers when the refresh fails (they hang); minor. |
+| AUTH-04 | CONFIRMED | 6-digit codes, 10-minute expiry (`be/src/utils/otp.utils.js:7-20`) but stored in plain text and matched by DB equality (`auth.service.js:32-40`); no attempt counter (grep `attempt` in `Otp.model.js`/`auth.service.js` finds nothing); auth limiter is 1000 requests / 15 min per IP (`be/app.js:156-173`) | Brute force of a 6-digit code is feasible; no per-identifier limit or lockout. |
+| AUTH-05 | PARTIAL | One backend verifier with an `aud` allow-list, used by mobile, web and CMS (`auth.service.js:324-386`; `web/src/lib/api/auth.ts:51`; CMS uses `/auth/social/google/staff`) | But the verifier has an unsigned-token fallback (NEW-03) and links accounts by e-mail. |
+| AUTH-06 | CONFIRMED (**P0**) | `auth.service.js:518-560` | Apple identity token is only `jwt.decode`d — **signature never verified**, `aud` computed but not enforced (`:536`, `:539`), `appleId` and e-mail may come from the client (`:548-549`) and an existing account is linked by e-mail (`:567-580`). Anyone can sign in as any user. Same flaw in re-auth (`:831-844`). See NEW-02. |
+| AUTH-07 | CONFIRMED | `be/src/services/me.service.js:439-447` | "Request deletion" only sets `users.status = INACTIVE`. No tenant deletion, no store-subscription preflight, no re-auth, no undo window, no data deletion, no Apple token revoke, no device-token cleanup. |
+| AUTH-08 | PARTIAL (P0 in effect) | `can()` resolves grants from the DB per request with version-keyed cache (`be/src/services/access.service.js:176-200`) | Legacy `authorize()` routes use the **JWT role**, and `applyLegacyRoleShim` returns early when the user has no live assignment (`be/src/middleware/tenantContext.js:67`), so a revoked team member whose `users.role` was set to `BRANCH_MANAGER` keeps access to every `/gyms/*` route (`be/src/routes/gyms.routes.js:13`) until they leave the tenant context. |
+| AUTH-09 | CONFIRMED | `be/src/services/admin.service.js:14-34` | Links an existing account by e-mail and upgrades its role to `GYM_HOST`, or creates a **verified** account with a random password; no invitation, no audit. `team.service.js:245-266` does the same for team invites. |
+| AUTH-10 | PARTIAL | Reset code is single-use, 10 minutes, and revokes refresh tokens (`auth.service.js:718-747`) | Code stored in plain text, no attempt limit (see AUTH-04). |
+| RBAC-01 | PARTIAL | Grantor cap enforced (`access.service.js:367-386`); preset tiers are not written by overrides | The save is a full overwrite (`PUT /team/:id/permissions` → `be/src/services/team.service.js:428-470` deletes all overrides and re-inserts), not `changes[]`; a client that omits a row silently removes it. |
+| RBAC-02 | CONFIRMED | Backend role name "Support" (`be/src/constants/roles.js:116-118`); mobile shows "Cleaner" (`app/lib/features/host/presentation/screens/team_access_screen.dart:16`, `:209`) | No shared `roleLabels` table; the CMS has no team screen yet. P2. |
+| RBAC-03 | CONFIRMED | `be/tests/*.test.js` are hand-written scenarios against a **live** server (`be/tests/helpers.js:1-12`) | No generated endpoint × persona matrix. |
+| RBAC-04 | PARTIAL | Approver re-checked at decision time, race-safe claim, command re-validated (`be/src/services/approval.service.js:161-240`) | Requester's current access is not re-checked; command execution is not in a transaction with the claim — a command that half-succeeds and then throws is reset to PENDING (`:241-250`) and can execute again. |
+| RBAC-05 | PARTIAL | Level rule on invite and update (`access.service.js:338-360`; `team.service.js:208`, `:360`) | There is no acceptance step: `/team/invites` creates an **ACTIVE** assignment immediately (`team.service.js:286-300`), so "re-check at acceptance" can't exist. |
+| RBAC-06 | CONFIRMED | Admin routes guarded only by `authorize('PLATFORM_ADMIN')` (`be/src/routes/admin.routes.js`) | No sub-roles; `be/src/middleware/auditLog.js` exists but see SEC-12. |
+| RBAC-07 | CONFIRMED (**P0**) | Legacy access sources still live: `GymStaff.designation === 'admin'` grants payments/expenses access (`be/src/controllers/payments.controller.js:35-45`, `be/src/controllers/expenses.controller.js:97`); legacy staff CRUD `/gyms/staff` → `createStaffUser` (`be/src/services/gym.service.js:1707-1760`, sets global `users.role = 'BRANCH_MANAGER'`); `/staff-invites/*` (`be/src/routes/staff-invites.routes.js:95-106`); CMS `/gym/staff` page | The legacy shim maps **any** live assignment to `BRANCH_MANAGER` (`tenantContext.js:69-75`), so a Cleaner passes every `authorize('GYM_HOST','BRANCH_MANAGER')` route — e.g. `PATCH /gyms/profile` (change the gym's payment details) and `PATCH /gyms/branches/:id` for any branch. |
+| RBAC-08 | CONFIRMED | `team.service.js:428-470` | No `expectedVersion`; last write wins (the code comment claims PUT prevents this; it does not). |
+| RBAC-09 | CONFIRMED | `deleteBranch` terminates `GymStaff` only (`gym.service.js:860-865`); `RoleAssignmentBranch` links survive | After `restoreBranch` the old branch-scoped assignments grant access again automatically. |
+
+#### 12.13.6 SEC
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| SEC-01 | CONFIRMED (**cross-tenant**) | `be/src/services/subscription.service.js:124-140` | Any user whose platform `users.role` is GYM_HOST/BRANCH_MANAGER/FRONT_DESK can look up **any** subscription id across **all** tenants and freeze, cancel, renew, change or upgrade it (`/subscriptions/:id/*`, `/member/subscriptions/:id/upgrade`). See NEW-08. Payments by id are branch-checked (`be/src/controllers/payments.controller.js:109-120`). |
+| SEC-02 | CONFIRMED (**P0**) | `be/src/middleware/tenantContext.js:95-96` accepts `X-Tenant-Id` / `?tenantId` / body `tenantId` without checking the user belongs to that tenant | Exploit: a user whose `users.role` was set to `BRANCH_MANAGER` by the legacy staff flows (`be/src/routes/staff-invites.routes.js:105`, `be/src/services/gym.service.js:1754-1760`) has no `tenantId` in the token, sends another gym's id, and passes `authorize('GYM_HOST','BRANCH_MANAGER')` on all `/gyms/*` routes of that gym (members list/enrol, branch edit, profile + payment details). `can()` routes are safe (grants come from the target tenant's DB). |
+| SEC-03 | PARTIAL | Apple: x5c chain to pinned root + ES256 verify (`be/src/services/apple-billing.service.js:59-103`); Stripe: `constructEvent` on the raw body (`be/src/services/stripe-billing.service.js:391`) | Google RTDN is authenticated by a static `?token=` in the URL (`be/src/routes/billing.routes.js:111-128`), not the Pub/Sub OIDC token; the token lands in access logs. |
+| SEC-04 | CONFIRMED | `be/app.js:132-173` | In-memory store (per process, reset on restart), 10,000 req/15 min per IP for the API, 1,000 for auth; social-login routes are exempt. No Redis store, no per-user or per-identifier limits. |
+| SEC-05 | CONFIRMED | Hard-coded maintenance keys in git (`be/src/routes/index.js:90`, `:191`, `:238`, `:288`, `:328`; NEW-05); provisioning falls back to MySQL `root` with an empty password (`be/src/services/tenant-provisioning.service.js:78-81`); a Firebase service account can be written to disk through an API call (`index.js:236-284`) | `.env` is git-ignored and not tracked (checked). No secret scanning in CI (there is no CI). |
+| SEC-06 | PARTIAL | Service-level allow-lists exist on the paths checked (`be/src/services/gym.service.js:771-779`, `be/src/services/me.service.js:119-124`, `be/src/services/tenant.service.js:187-193`) | The `validate` middleware never rejects unknown fields (`be/src/middleware/validate.js:10-22`) and many mutating routes have no validator at all (e.g. `POST /gyms/members/enroll`, `be/src/routes/gyms.routes.js:315`). |
+| SEC-07 | CONFIRMED | E-mails logged in clear: `be/src/services/auth.service.js:413`, `:556`, `:685`; `console.log('[Audit]', JSON.stringify(entry))` in non-production (`be/src/middleware/auditLog.js:34-37`) | No redaction layer; `morgan('combined')` logs full URLs including the RTDN `?token=`. |
+| SEC-08 | PARTIAL | MIME allow-list + 10 MB limit (`be/src/middleware/upload.js:4-31`) | Trusts the client MIME type (no magic-byte check), no re-encode/EXIF strip, no virus scan; falls back to **public local disk** (`be/src/services/storage.service.js:59`, `:76`, served by `be/app.js` `/uploads`). |
+| SEC-09 | PARTIAL | Raw card number / expiry / CVV fields exist (`app/lib/features/subscriptions/presentation/screens/add_card_screen.dart:190-310`) but "Add card" only shows "coming soon" and sends nothing (`:364-371`) | A hard-coded fake saved card "Visa ···4242" is shown to every user (`app/lib/features/me/presentation/providers/me_providers.dart:149-163`). No PCI exposure today; remove the fields and the fake card. |
+| SEC-10 | CONFIRMED | KYC documents are client-supplied URLs saved as-is (`be/src/services/tenant.service.js:94`) and uploaded through the same public image pipeline | No encryption, no private bucket, no access log, no retention. |
+| SEC-11 | CONFIRMED | Same as FLOW-09 (`be/src/services/attendance.service.js:34-45`) | |
+| SEC-12 | CONFIRMED | `be/src/middleware/auditLog.js:30-44` writes `AuditLog` to the platform DB, but no `AuditLog` model is registered in `be/src/models/platform/index.js` (grep: 0 hits), so every production write fails and is swallowed | Admin actions (approve/reject/suspend/assign/revoke) have no audit rows. Tenant-DB `audit.service.js` exists for team/ledger/approvals only. |
+| SEC-13 | CONFIRMED | The gym's public payment details (`Tenant.paymentDetailsJson`, shown to members at `be/src/services/discovery.service.js:1132-1136`) are changed by `PATCH /gyms/profile` (`be/src/services/gym.service.js:185-190`) | Reachable by **any** team role through the legacy shim (RBAC-07); no re-auth, no owner notification, no cooling period. Payouts themselves don't exist (PAY-10). |
+| SEC-14 | NOT REPRODUCED (sinks); CONFIRMED (CSP) | No `dangerouslySetInnerHTML` in `web/src` or `cms/src` (grep) | No CSP on either Next.js app (`web/next.config.mjs`, `cms/next.config.mjs` define no headers). |
+| SEC-15 | CONFIRMED | Access and refresh tokens in `localStorage` (`web/src/lib/api/client.ts:13`, `:53-68`; same in `cms/src/lib/api/client.ts`) | No CSP to compensate (SEC-14). |
+| SEC-16 | NOT REPRODUCED | Raw SQL found only with server constants (`be/src/services/ledger.service.js:214-215`, `be/src/database/platform.js`); no user input in `order`/`literal` (grep) | Keep the check in the SAST step. |
+| SEC-17 | CONFIRMED | Admin tenant/member views return full e-mail and phone (`be/src/services/admin.service.js:98`, `:124`, `:612`) | No masking, no reveal audit. P2. |
+| SEC-18 | PARTIAL | API uses `helmet` (`be/app.js:47-60`, CSP relaxed with `unsafe-inline` for Swagger) | Neither Next.js app sets HSTS/frame-ancestors/Referrer-Policy/nosniff. |
+
+#### 12.13.7 REL and API
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| REL-01 | CONFIRMED | No idempotency middleware in `be/src/middleware/`; only `POST /payments` takes an optional key (`be/src/services/payment.service.js:90-96`) | Branch create/delete/restore, org create, billing sync, enrol, check-in, approvals: none take a key. |
+| REL-02 | PARTIAL | Shared button has `isLoading` → disabled (`app/lib/core/widgets/gymsera_primary_button.dart:8-23`) | Not audited per control; needs the widget-test sweep. |
+| REL-03 | CONFIRMED | `node-cron` in every process (`be/server.js:72-76`) **and** Vercel cron (`be/vercel.json` → `be/src/routes/cron.routes.js`) run `runExpiryCheck`; no lock | iisnode can run several workers → several runs per day. |
+| REL-04 | CONFIRMED | `_reconcileCapacityForAllTenants` opens a connection for every ACTIVE subscription with no tenant-status filter (`be/src/jobs/subscription-expiry.cron.js:208-222`); the expiry pass **suspends the tenant and hides all its listings** (`:153-168`) | The §9.6 `getConnection` mutation is gone, but `getConnection` still runs `ALTER TABLE`/`UPDATE` backfills on first connect (`be/src/database/TenantDbManager.js:48-195`) — see §9.6 regression row in §13. |
+| REL-05 | PARTIAL | `server.close` + 10 s force exit (`be/server.js:97-113`) | No drain of Bull queue/socket; `uncaughtException`/`unhandledRejection` are swallowed and the process keeps running (`be/server.js:2-7`). |
+| API-01 | CONFIRMED | Success `{success,message,data}` (`be/src/utils/response.utils.js:9-13`); errors vary: `errorHandler`, `validate` (422 with `errors[]`, `be/src/middleware/validate.js:14-20`), `tenantContext` (own JSON), webhooks (`{received}`) | Not the §4.1 envelope; no `requestId`; `code` only on some errors. |
+| API-02 | PARTIAL | Mobile dio: 20 s connect / 45 s receive (`app/lib/core/network/dio_client.dart:18-19`); single retry after token refresh only | No retry/backoff policy for GETs; no server request timeout. |
+| API-03 | CONFIRMED | No `/me/bootstrap` route (grep); startup reads `/auth/me`, `/me/context`, quota, listings, notifications separately | |
+| API-04 | CONFIRMED | Per-request loops over **every** tenant DB: discovery (`be/src/services/discovery.service.js:23`, `:50-110`, `:309`, `:559`, `:645`, `:1106`, `:1153`), review submit (`:884-886`), staff-invite lookup (`be/src/routes/staff-invites.routes.js:30-44`), admin lists (`be/src/services/admin.service.js:95`, `:1335`, `:1407`), `membership-plan.service.js:39`; startup backfill over all tenants (`be/server.js:29-60`) | This is also PERF-06/PERF-08. |
+| API-05 | CONFIRMED | `parsePagination` is page/offset (`be/src/utils/response.utils.js:31-36`) | |
+| API-06 | PARTIAL | Express's default weak ETag applies to JSON responses (no `app.set('etag', false)` in `be/app.js`) | Clients don't send `If-None-Match`; no `Cache-Control` policy. |
+| API-07 | CONFIRMED | List endpoints return full rows (e.g. `listBranches`, `be/src/services/gym.service.js:207-253`) | P2. |
+| API-08 | CONFIRMED | Sequential awaits in loops, e.g. `be/src/services/tenant.service.js` admin notifications loop, `be/server.js:33-56` | P2. |
+
+#### 12.13.8 RT
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| RT-01 | PARTIAL | Register upserts and moves a token to the new user (`be/src/services/notifications.service.js:87-112`); logout unregisters (`app/lib/features/auth/presentation/providers/auth_provider.dart:149-182`); dead tokens removed (`be/src/services/push.service.js:216-217`, `:259-260`) | No `FirebaseMessaging.deleteToken()` on logout (grep); permission is requested at startup (`app/lib/core/services/notification_service.dart:221`), not in context. |
+| RT-02 | PARTIAL | Mobile dedupes by `notificationId` (`app/lib/core/services/notification_service.dart:75`, `:479`, `:551`) | Server payloads not audited for always carrying it. |
+| RT-03 | NEEDS RUNTIME CHECK | `GET /notifications/unread-count` exists (`be/src/routes/notifications.routes.js:10`) | Mark-read endpoints don't return the new counts; multi-device sync untested. |
+| RT-04 | CONFIRMED (**P0**) | `be/src/socket/index.js:100-104` | Any authenticated user can `join_conversation` with any id and receive every message in it; no participant check. Token also accepted in the query string (`:59`), which gets logged. |
+| RT-05 | PARTIAL | `tempId` is echoed back (`be/src/services/inbox.service.js:105`, `:216`, `:332`) | Not stored/unique, so a resend creates a second message. |
+| RT-06 | CONFIRMED | Client reconnect exists (`app/lib/core/services/chat_socket_service.dart:194-200`) | No `lastEventId` replay and no refetch contract. P2. |
+| RT-07 | NEEDS RUNTIME CHECK | Resolver exists (`app/lib/core/router/notification_route_resolver.dart`) | Tenant/mode switch before navigation not verified. |
+| RT-08 | CONFIRMED | No `grants.changed` event (grep) | P2. |
+| RT-09 | NEEDS RUNTIME CHECK | Listener cleanup not verifiable without a leak test | P2. |
+
+#### 12.13.9 UX
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| UX-01 | CONFIRMED | `web/src/app/onboarding/page.tsx` (435 lines) still live; homepage links to it (`web/src/app/(public)/page.tsx:293`) | |
+| UX-02 | CONFIRMED | `web/src/app/(dashboard)/gymsera-billing/page.tsx` sits in the member portal; it toasts "Payment successful — your GymsEra subscription is now active" from the query param alone (`:41-53`, `:225-228`) | The member layout has no role guard (`web/src/app/(dashboard)/layout.tsx:26-35` checks login only). |
+| UX-03 | DEFERRED (R-13) | — | |
+| UX-04 | CONFIRMED (CMS/web part) | CMS sidebar "Subscriptions" and "Subscription & Billing" (`cms/src/components/layout/sidebar.tsx:72`, `:85`) | Mobile part DEFERRED (R-13). |
+| UX-05 | DEFERRED (R-13) | — | |
+| UX-06 | NEEDS RUNTIME CHECK | Label not located by grep in the mobile/CMS screens | Check on device. |
+| UX-07 | CONFIRMED | `web/src/app/gym-owner/register/page.tsx:1187` ("Our team will contact you for payment once approved") | No consequence or deadline stated; R-17 sets 14 days. |
+| UX-08 | PARTIAL | Shimmer/empty widgets exist (`app/lib/core/widgets/loading_shimmer.dart`); e.g. Listings error state is a bare "Failed to load listings" with no retry (`app/lib/features/host/presentation/screens/listings_overview_screen.dart:80-81`) | Needs the per-screen state sweep. |
+| UX-09 | CONFIRMED | No ARB/`l10n` setup in `app/` and no next-intl in `web/`/`cms/` (package manifests) | All strings hard-coded. |
+| UX-10 | NEEDS RUNTIME CHECK | — | axe / semantics tests needed. |
+| UX-11 | CONFIRMED | Separate `/host/notifications` and `/host/inbox` routes (`app/lib/core/router/app_router.dart`) | P2. |
+| UX-12 | CONFIRMED (**P0**) | CMS `/gym/staff` uses legacy `/gyms/staff` (`cms/src/app/(dashboard)/gym/staff/page.tsx:49-104` → `cms/src/lib/api/gym.ts:188-198`); `/gym/trainers` separate; no `/gym/team` | Mobile also still ships the old `/host/admins` and `/host/profile/staff` routes (`app_router.dart`; `admin_management_screen.dart`, `staff_management_screen.dart`). |
+| UX-13 | CONFIRMED | No Approvals / Ledger / Payouts / quota banner in the CMS sidebar (`cms/src/components/layout/sidebar.tsx:57-97`) | |
+| UX-14 | CONFIRMED | CMS profile reads the tenant's first `Gym` row (`be/src/services/gym.service.js:165-166` → `_getOrCreateGym`); no org switcher | |
+| UX-15 | CONFIRMED | Bank details hard-coded (`web/src/app/gym-owner/register/page.tsx:87`, "Meezan Bank") | |
+| UX-16 | DEFERRED (R-13) | — | |
+| UX-17 | CONFIRMED | `cms/src/app/(dashboard)/admin/tenants/[id]/page.tsx` is 1,365 lines | |
+| UX-18 | CONFIRMED | CMS dashboard uses `/reports/dashboard` + admin stats (`cms/src/app/(dashboard)/dashboard/page.tsx:35-76`); mobile Today uses `/host/today-summary` (`app/lib/core/constants/api_constants.dart:133`) | Different endpoints and cards. |
+| UX-19 | CONFIRMED | CMS create/edit/delete through `/gyms/branches` with a generic error toast (`cms/src/app/(dashboard)/gym/branches/page.tsx:154-188`); no restore, no 403 upsell, no `last_branch_in_organization` confirm | Server-side re-auth for delete is **optional**: skipped when no password/idToken is sent (`be/src/controllers/gyms.controller.js:70-100`), and the CMS sends none. |
+| UX-20 | CONFIRMED | No new-organization flow in the CMS (sidebar/pages) | |
+| UX-21 | CONFIRMED | CMS profile edits logo/cover/gallery/info only (`cms/src/app/(dashboard)/gym/profile/page.tsx:47-108`) | |
+| UX-22 | CONFIRMED | No staff-requests page in the CMS; no web invite-accept page | |
+| UX-23 | CONFIRMED | No notification bell/feed in the CMS header (`cms/src/components/layout/header.tsx`) although `cms/src/lib/api/notifications.ts` exists | Inbox out of scope (R-18). |
+| UX-24 | PARTIAL | Both clients call the same `/tenants/register → gym-profile → select-package → finalize` steps (`app/lib/core/constants/api_constants.dart:107-112`, `web/src/lib/api/tenants.ts:50-83`) | Different step order/fields; web has extra logo/cover steps and the legacy `/onboarding`. |
+| UX-25 | DEFERRED (R-14) | — | |
+
+#### 12.13.10 PERF, GLB, OBS
+
+| ID | Result | Evidence | Notes |
+|---|---|---|---|
+| PERF-01 | NEEDS RUNTIME CHECK | No `/me/bootstrap` (API-03) | Measure cold start and call count on a device. |
+| PERF-02 | NEEDS RUNTIME CHECK | — | DevTools rebuild counts. |
+| PERF-03 | CONFIRMED | No `memCacheWidth`/`memCacheHeight` anywhere in `app/lib` (grep: 0); uploads stored as originals, no variants/blurhash (`be/src/services/storage.service.js`) | |
+| PERF-04 | PARTIAL | Offset pagination only (API-05); a paginated notifier exists (`app/lib/core/utils/paginated_notifier.dart`) | |
+| PERF-05 | CONFIRMED | Public pages are client components with no ISR (`web/src/app/(public)/gyms/page.tsx:1`, `web/src/app/(public)/gyms/[id]/page.tsx:1` are `'use client'`; no `revalidate`/`generateStaticParams` in `web/src/app`) | |
+| PERF-06 | CONFIRMED (**availability risk**) | Discovery opens a connection to **every** ACTIVE tenant DB per request (`be/src/services/discovery.service.js:50-110` and the other loops listed in API-04) | Grows linearly with tenants; with PERF-07 it will exhaust MySQL connections. |
+| PERF-07 | CONFIRMED | `pool: { max: 5 }` per tenant in an unbounded `Map`, no eviction (`be/src/database/TenantDbManager.js:17-45`) | R-8: caps + LRU now. |
+| PERF-08 | CONFIRMED | Admin lists loop over tenant DBs (`be/src/services/admin.service.js:95`, `:1335`, `:1407`) | |
+| PERF-09 | CONFIRMED | Reports run live aggregate queries on the primary (`be/src/services/reports.service.js`) | P2. |
+| PERF-10 | CONFIRMED | Admin tenant detail: one 1,365-line page with 12 `useQuery` calls (`cms/src/app/(dashboard)/admin/tenants/[id]/page.tsx`) | P2. |
+| PERF-11 | NEEDS RUNTIME CHECK | — | `leak_tracker` in widget tests. |
+| GLB-01 | PARTIAL | `branches.timezone` exists (default `Asia/Karachi`, `be/src/database/TenantDbManager.js:95-97`) and the ledger uses it (`be/src/services/ledger.service.js:36-64`) | Membership dates (`be/src/services/gym.service.js:16-27`), expiry cron (`be/src/jobs/subscription-expiry.cron.js:35`) and reports (PAY-11) use server/UTC dates. |
+| GLB-02 | CONFIRMED | `'PKR'` hard-coded in payment creators (`be/src/services/subscription.service.js:251`, `:761`; `be/src/services/payment.service.js:112` defaults to PKR); "Rs" strings in the app (e.g. `request_payout_screen.dart:391`) | |
+| GLB-03 | CONFIRMED | Same as UX-09 | |
+| GLB-04 | CONFIRMED | No phone library in `app/pubspec.yaml` or `web/package.json` (grep) | |
+| GLB-05 | CONFIRMED | 0 uses of `EdgeInsetsDirectional`, 253 uses of `EdgeInsets.only/fromLTRB` in `app/lib` | P2. |
+| GLB-06 | NEEDS RUNTIME CHECK | Validators not exhaustively reviewed | |
+| GLB-07 | — (decision) | §14 R-7 | |
+| GLB-08 | PARTIAL | Mobile timeouts 20 s / 45 s (`app/lib/core/network/dio_client.dart:18-19`); shimmer skeletons exist | No payload budgets, no throttled-network tests, no retry policy (API-02). |
+| GLB-09 | CONFIRMED | No data-export endpoint (grep); deletion is AUTH-07 | |
+| OBS-01 | CONFIRMED | `morgan` + `console.*` only (`be/app.js:121-123`); no request id | |
+| OBS-02 | CONFIRMED | No Sentry/Crashlytics in any of the 4 manifests (grep: 0) | |
+| OBS-03 | CONFIRMED | No metrics library (grep: 0) | |
+| OBS-04 | NEEDS RUNTIME CHECK | MySQL server config is outside the repos | |
+| OBS-05 | CONFIRMED | No `BillingEvent` (BILL-12) | |
+| OBS-06 | PARTIAL | Nightly `auditCapacity` runs but only `console.warn`s (`be/src/jobs/subscription-expiry.cron.js:255-265`); no alert; empty ACTIVE orgs not checked (CAP-07) | |
+| OBS-07 | PARTIAL | Tenant-DB audit for team/ledger/approvals exists (`be/src/services/audit.service.js`); platform admin audit is broken (SEC-12) | |
+| OBS-08 | CONFIRMED | No client performance SDK (grep) | P2. |
+| OBS-09 | CONFIRMED | No `docs/runbooks/` in any repo | |
+
+#### 12.13.11 New defects not in §12 (NEW-xx)
+
+| ID | Sev | Defect | Evidence | Suggested fix (for the phase prompt, not done here) |
+|---|---|---|---|---|
+| NEW-01 | **P0** | Unauthenticated `GET /api/v1/discovery/debug-activate-branches` opens every tenant DB and mass-updates `travelerVisibilityStatus` on every ACTIVE branch | `be/src/routes/discovery.routes.js:580-617` (also root script `be/activate_branches.js`) | Delete the route. |
+| NEW-02 | **P0** | Apple sign-in and Apple re-auth accept an **unsigned** identity token; `aud` not enforced; `appleId`/e-mail can come from the request body; existing accounts are linked by e-mail → account takeover of any user, including platform admins | `be/src/services/auth.service.js:518-580`, `:831-844` | Verify the JWS against Apple's JWKS (`https://appleid.apple.com/auth/keys`), enforce `iss`/`aud`/`exp`, use only `sub` and the token's own e-mail. (AUTH-06) |
+| NEW-03 | **P0** | Google sign-in falls back to an **unsigned** `jwt.decode` when the verifier's error text contains "network"/"certificates"/"timed out"; part of that text (the JWT header in "No pem found for envelope …") is attacker-controlled | `be/src/services/auth.service.js:350-378` | Remove the fallback; fail closed. |
+| NEW-04 | **P0** | Unauthenticated maintenance endpoints: `/debug-sync-db` (`sequelize.sync({alter:true})` on the platform DB and every tenant DB), `/debug-cleanup-indexes` (drops indexes and foreign keys on every tenant DB), `/system/fcm-status` (leaks user e-mails and token previews), `/system/socket-status` | `be/src/routes/index.js:44-86`, `:132-187`, `:342-470` | Delete them (or move behind admin auth + feature flag in non-prod only). |
+| NEW-05 | **P0** | Remote-operation endpoints protected only by keys **committed in git** (`gymsera-fix-socket-2026`, `gymsera-fcm-test-2026`): `run-pull` (git pull + restart), `run-install` (npm install), `configure-fcm` (writes a service-account file), `recycle` (`process.exit`), `fcm-test` (push to any user/token) | `be/src/routes/index.js:88-340` | Delete; rotate anything the keys protected; deploy through CI only. |
+| NEW-06 | **P0** | `POST /host/subscription/upgrade` lets any host (no IAP plan) self-assign **any** `PlatformPackage` as `ACTIVE` + `paymentStatus: 'PAID'` with no payment; the CMS "Request a Manual Plan" button calls it | `be/src/controllers/host.controller.js:841-913`; `cms/src/lib/api/host-billing.ts:47-49` | Turn it into a real request (PENDING, admin-verified), on `BillingPlan` (BILL-10). |
+| NEW-07 | **P0** | A member can renew their own membership: `POST /subscriptions/:id/renew` sets `ACTIVE`, a new `endDate` and a new QR with **no payment** | `be/src/services/subscription.service.js:386-445`; route `be/src/routes/subscriptions.routes.js:144` (authenticate only) | Renew creates a PENDING payment + pending period; only staff verification activates it. |
+| NEW-08 | **P0** | Cross-tenant membership IDOR: callers whose platform role is GYM_HOST/BRANCH_MANAGER/FRONT_DESK resolve **any** subscription id in **any** tenant and can freeze/cancel/renew/change/upgrade it | `be/src/services/subscription.service.js:124-140` | Staff actions must go through `tenantContext` + `can()` on the caller's own tenant; member routes filter by `userId` only. (SEC-01) |
+| NEW-15 | **P0** | `GET /host/subscription/current` **creates** a 30-day `ACTIVE`, `PAID` subscription whenever the tenant has no ACTIVE row — after expiry, refund, cancellation or admin revoke. The app calls it automatically (My plan, after restore), so any lapsed tenant gets a free month, repeatedly | `be/src/controllers/host.controller.js:798-839` (create at `:813-823`) | A GET must never write; return "no active plan". |
+| NEW-16 | P1 | The single purchase-stream listener is **not** created at startup: `billingProvider` is only read by the My Subscription and Plan Picker screens, so a transaction redelivered at launch (app killed after the store charged) is not synced until the host opens a billing screen — with BILL-06 this risks Play auto-refunds | `app/lib/features/billing/presentation/providers/billing_provider.dart:659`; readers only in `app/lib/features/billing/presentation/screens/my_subscription_screen.dart` and `branch_plan_picker_screen.dart` (grep); not in `app/lib/main.dart` | Instantiate the notifier after first frame at startup (§5.1, §10.2). |
+| NEW-09 | P1 | Mobile "Payouts" / "Request payout" is a fake flow: hard-coded "Rs42,300 submitted" success, no API; bank accounts are local state | `app/lib/features/host/presentation/screens/request_payout_screen.dart:42-61`, `:391`; `app/lib/features/host/presentation/providers/host_profile_provider.dart:61` | Replace with "Coming soon" (same treatment as NEW-BOOST) until PAY-10 is built. |
+| NEW-BOOST | P1 | Boost "Pay & Activate" shows success without charging (owner decision R-15) | `app/lib/features/host/presentation/screens/boost_listing_screen.dart` | Disabled "Coming soon" state (R-15). |
+| NEW-10 | P1 | `TenantDbManager.getConnection` still runs `ALTER TABLE`s and `UPDATE` backfills (payments `business_date`, `branches.gym_listing_id`, `gyms.gym_listing_id`) on the first connection per process; dev mode runs `sync({alter:true})`. Contradicts §6.5 and will fail the §9.6 regression test ("zero UPDATEs") | `be/src/database/TenantDbManager.js:48-195`, `:199-220` | Move to a versioned tenant migration runner. |
+| NEW-11 | P1 | `method: 'TEST'` payments auto-complete and activate memberships whenever `X-Test-Payment-Key` matches `PAYMENT_TEST_KEY` (the variable is set in the backend `.env`) | `be/src/routes/payments.routes.js:67-81`; `be/src/services/payment.service.js:98` | Disable outside test environments. |
+| NEW-12 | P1 | Expiry cron suspends the **tenant** and sets **all** its listings INACTIVE the day after `endDate` — including store subscriptions whose renewal webhook was missed (BILL-12). Nothing reactivates the listings on renewal or reactivation, and INACTIVE listings' `reservedSlots` stop counting | `be/src/jobs/subscription-expiry.cron.js:145-170`; `be/src/services/admin.service.js:481-506` | Handle lapse through entitlement (§7.5.8 `billingLock`), not tenant/listing status. |
+| NEW-13 | P1 | Branch delete re-auth is optional: the server only checks a password/idToken **if one is sent** | `be/src/controllers/gyms.controller.js:70-100` | Require re-auth server-side. |
+| NEW-14 | P1 | `finalizeApplication` creates an `ACTIVE` MANUAL subscription at **submission**, before review, so the paid period starts before approval (and the approval path then skips creating one) | `be/src/services/tenant.service.js:251-276` | Fold into the BILL-13 GRACE flow. |
+
+**Other observations (lower severity, recorded for later prompts):**
+- The listing-level review route passes the body as `branchId` (`be/src/controllers/discovery.controller.js:144`) — always fails.
+- `rejectTenant` accepts an `ACTIVE` tenant and leaves its subscriptions untouched (`be/src/services/admin.service.js:398-409`).
+- `server.js` runs a one-off payments backfill over every tenant DB at every boot (`be/server.js:29-60`).
 
 ---
 
