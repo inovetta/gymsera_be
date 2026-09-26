@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | fb3cd2a vdfvdfbdb | yes (Step 2.7 payment business_date immutability, model hooks, Migration 006, tests) |
+| gymsera_be | main | 6a981ca feat(payments): enforce immutable business_date from collection time, Migration 006, and model hooks (Step 2.7) | no (working tree clean) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
