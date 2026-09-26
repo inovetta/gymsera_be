@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | (pending commit) | yes: Step 2.8 collection time rule unification |
+| gymsera_be | main | 92b72e6 feat(payments): unify collection time rule via getPaymentCollectionTime across model hooks, Migration 004, and Query B (Step 2.8) | no (working tree clean) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -43,7 +43,7 @@ next agent won't know it.
 
 ### Work in progress that is NOT committed
 
-- `gymsera_be`: Step 2.8 collection time rule unification (`ledger.service.js`, `Payment.model.js`, `payment.service.js`, `tenant-migration-runner.js`, `payment-business-date.test.js`).
+- `gymsera_be`: none (working tree clean).
 - `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
 
 ### Blocked / waiting on the owner
@@ -74,7 +74,7 @@ next agent won't know it.
     - Command: `npm test`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
     - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL (port 3306). Never touches live or staging DBs (R-19).
-    - Status: ALL 7 suites PASS, 16 tests PASS. Zero failures.
+    - Status: ALL 9 suites PASS, 36 tests PASS. Zero failures.
   - `gyms_era` (Flutter):
     - Command: `flutter test test/regression/`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
