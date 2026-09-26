@@ -2157,7 +2157,7 @@ Severity is the §12 severity unless the note says it was raised.
 
 | Issue | Status (`DONE` / `NOT REPRODUCED` / `DEFERRED` / `IN PROGRESS`) | Root cause (file:line) | Pattern reused | Fix summary | Test file(s) | PR/commit | Verified in staging? |
 |---|---|---|---|---|---|---|---|
-| NEW-10 | DONE | `be/src/database/TenantDbManager.js:48-221` (getConnection ran DDL and DML on cache miss) | Versioned tenant migration runner (spec §6.5) | Removed all writes from getConnection; created versioned tenant migration runner (`src/database/tenant-migration-runner.js`) and CLI runner (`src/scripts/run-tenant-migrations.js`) | `gymsera_be/tests/regression/get-connection-side-effects.test.js`, `gymsera_be/tests/integration/tenant-migration-runner.test.js` | local | pending |
+| NEW-10 | DONE | `be/src/database/TenantDbManager.js:48-221` (getConnection ran DDL and DML on cache miss) | Versioned tenant migration runner (spec §6.5) | Removed all writes from getConnection; created versioned tenant migration runner (`src/database/tenant-migration-runner.js`) and CLI runner (`src/scripts/run-tenant-migrations.js`) | `gymsera_be/tests/regression/get-connection-side-effects.test.js`, `gymsera_be/tests/integration/tenant-migration-runner.test.js` | d7d4179 | pending |
 | _example_ CAP-02 | DONE | `branch.service.js:212` platform credit after tenant commit | `CapacityEvent.idempotencyKey` | Tenant `Outbox` row in step-5 transaction + processor | `capacity.outbox.test.js` | #123 | yes, 2026-10-02 |
 
 **Regression tests for already-fixed defects (mobile doc §9).** Add these if missing:
