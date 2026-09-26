@@ -587,6 +587,7 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
           userId:              memberUser.id,
           paymentFor:          'MEMBERSHIP',
           referenceEntityId:   sub.id,
+          branchId:            branch.id,
           method:              'CASH',
           amount:              totalAmount,
           currency:            'PKR',

@@ -491,6 +491,14 @@ const processTenantProvisioning = async (tenantId) => {
         }
       }
     }
+
+    // ── Step 8d: Run tenant migrations to the latest version (spec §6.5) ──
+    const { runTenantMigrations } = require('../database/tenant-migration-runner');
+    await runTenantMigrations(tenantSequelize, {
+      tenantId: tenant.id,
+      gymName: tenant.gymName,
+    });
+    console.log(`[Provisioning] Tenant migrations applied to latest version for '${dbName}'`);
   } finally {
     await tenantSequelize.close().catch(() => {});
   }

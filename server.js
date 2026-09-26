@@ -25,42 +25,13 @@ async function bootstrap() {
     // 1. Connect to Platform MySQL
     await connectPlatformDb();
 
-    // Run one-time payments branchId backfill (only for active tenants with database provisioned)
-    (async () => {
-      try {
-        const { Tenant } = require('./src/models/platform');
-        const tenants = await Tenant.findAll();
-        for (const tenant of tenants) {
-          if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
-            continue;
-          }
-          try {
-            const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-            const { Payment, MemberSubscription } = tenantDb.models;
-            const payments = await Payment.findAll({
-              where: { paymentFor: 'MEMBERSHIP', branchId: null },
-            });
-            let updated = 0;
-            for (const payment of payments) {
-              if (payment.referenceEntityId) {
-                const sub = await MemberSubscription.findByPk(payment.referenceEntityId);
-                if (sub && sub.branchId) {
-                  await payment.update({ branchId: sub.branchId });
-                  updated++;
-                }
-              }
-            }
-            if (updated > 0) {
-              console.log(`[Backfill] Backfilled branchId for ${updated} payments in tenant: ${tenant.gymName}`);
-            }
-          } catch (e) {
-            // Silently ignore backfill errors on individual tenants
-          }
-        }
-      } catch (err) {
-        // Silently ignore global backfill errors
-      }
-    })();
+    // 1b. Read-only startup check: warn if any active tenant schema is behind latest (spec §6.5)
+    try {
+      const { checkTenantSchemaVersions } = require('./src/database/tenant-migration-runner');
+      await checkTenantSchemaVersions();
+    } catch (checkErr) {
+      console.warn('[Server Startup] Tenant schema check warning:', checkErr?.message || checkErr);
+    }
 
     // 2. Warm up Redis connection
     getRedisClient();

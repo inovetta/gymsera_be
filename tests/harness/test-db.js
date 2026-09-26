@@ -14,8 +14,7 @@ const mysql = require('mysql2/promise');
 const { Sequelize } = require('sequelize');
 const { encrypt } = require('../../src/utils/crypto.utils');
 const registerTenantModels = require('../../src/models/tenant');
-const { ensureAccessControlTables } = require('../../src/database/rbac-migration');
-const { ensureLedgerTables } = require('../../src/database/ledger-migration');
+const { runTenantMigrations } = require('../../src/database/tenant-migration-runner');
 
 // Force test environment
 process.env.NODE_ENV = 'test';
@@ -149,8 +148,7 @@ async function setupTestDatabases() {
   await tenant1Sequelize.authenticate();
   const tenant1Models = registerTenantModels(tenant1Sequelize);
   await tenant1Sequelize.sync({ force: true });
-  await ensureAccessControlTables(tenant1Sequelize, 'test-tenant-1');
-  await ensureLedgerTables(tenant1Sequelize, 'test-tenant-1');
+  await runTenantMigrations(tenant1Sequelize, { tenantId: 'test-tenant-1' });
 
   // Initialize Tenant 2
   const t2Url = `mysql://${tenantUser}:${tenantPass}@${tenantHost}:${tenantPort}/${TENANT_2_TEST_DB}`;
@@ -163,8 +161,7 @@ async function setupTestDatabases() {
   await tenant2Sequelize.authenticate();
   const tenant2Models = registerTenantModels(tenant2Sequelize);
   await tenant2Sequelize.sync({ force: true });
-  await ensureAccessControlTables(tenant2Sequelize, 'test-tenant-2');
-  await ensureLedgerTables(tenant2Sequelize, 'test-tenant-2');
+  await runTenantMigrations(tenant2Sequelize, { tenantId: 'test-tenant-2' });
 
   return {
     platform: {

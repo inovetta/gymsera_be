@@ -2145,7 +2145,7 @@ Severity is the §12 severity unless the note says it was raised.
 **Other observations (lower severity, recorded for later prompts):**
 - The listing-level review route passes the body as `branchId` (`be/src/controllers/discovery.controller.js:144`) — always fails.
 - `rejectTenant` accepts an `ACTIVE` tenant and leaves its subscriptions untouched (`be/src/services/admin.service.js:398-409`).
-- `server.js` runs a one-off payments backfill over every tenant DB at every boot (`be/server.js:29-60`).
+- `server.js` runs a one-off payments backfill over every tenant DB at every boot (`be/server.js:29-60`) — RESOLVED in Step 2.6: removed mutating boot loop and replaced with read-only `checkTenantSchemaVersions` startup check.
 
 ---
 
@@ -2158,6 +2158,7 @@ Severity is the §12 severity unless the note says it was raised.
 | Issue | Status (`DONE` / `NOT REPRODUCED` / `DEFERRED` / `IN PROGRESS`) | Root cause (file:line) | Pattern reused | Fix summary | Test file(s) | PR/commit | Verified in staging? |
 |---|---|---|---|---|---|---|---|
 | NEW-10 | DONE | `be/src/database/TenantDbManager.js:48-221` (getConnection ran DDL and DML on cache miss) | Versioned tenant migration runner (spec §6.5) | Removed all writes from getConnection; created versioned tenant migration runner (`src/database/tenant-migration-runner.js`) and CLI runner (`src/scripts/run-tenant-migrations.js`) | `gymsera_be/tests/regression/get-connection-side-effects.test.js`, `gymsera_be/tests/integration/tenant-migration-runner.test.js` | d7d4179 | pending |
+| STEP-2.6 | DONE | `tenant-provisioning.service.js:506` (tenants activated without migrations); `Payment.model.js` (payments created/updated without branch-timezone `business_date`); `tenant-migration-runner.js:004` (fixed +05:00); `005` (string interpolation of IDs) | `ledger.service.js` (`computeBusinessDate`), Sequelize model lifecycle hooks, parameterized queries | Auto-migrate new tenants before ACTIVE; read-only startup schema check; enforce write-time business_date with branch timezone; parameterized migrations 004/005; mobile CI smoke test | `gymsera_be/tests/integration/payment-business-date.test.js`, `gymsera_be/tests/integration/tenant-provisioning-migrations.test.js`, `gyms_era/test/widget_test.dart` | (pending commit) | pending |
 | _example_ CAP-02 | DONE | `branch.service.js:212` platform credit after tenant commit | `CapacityEvent.idempotencyKey` | Tenant `Outbox` row in step-5 transaction + processor | `capacity.outbox.test.js` | #123 | yes, 2026-10-02 |
 
 **Regression tests for already-fixed defects (mobile doc §9).** Add these if missing:

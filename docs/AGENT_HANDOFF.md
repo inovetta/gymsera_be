@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-26 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Step 2.5 — Fix §9.6 regression and finish test safety net** |
+| Current prompt | **Step 2.6 — Make the migration fix safe** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -28,8 +28,8 @@ next agent won't know it.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 78ab2cb docs(spec): record commit hash for NEW-10 in §13 | no (working tree clean) |
+| gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
+| gymsera_be | main | 78ab2cb docs(spec): record commit hash for NEW-10 in §13 | yes (Step 2.6 safe migration & payment changes + tests) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -43,13 +43,12 @@ next agent won't know it.
 
 ### Work in progress that is NOT committed
 
-- `gyms_era`: uncommitted Prompt 1 test foundation files (`test/fakes/`, `test/regression/`, `.github/workflows/ci.yml`, `lib/.../billing_provider.dart`, `lib/.../listing_preview_screen.dart`).
+- `gymsera_be`: Step 2.6 safe migration changes, Payment model hooks, deploy docs, and tests (`payment-business-date.test.js`, `tenant-provisioning-migrations.test.js`).
+- `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
 
 ### Blocked / waiting on the owner
 
-- (none) — but the owner should read the §12.13 summary: 9 new P0s, several exploitable today
-  (NEW-02/03 account takeover, NEW-04/05 open maintenance endpoints). They are scheduled for Phase 1; the owner
-  may want them first.
+- (none) — but the owner should review the two read-only SQL queries in the Step 2.6 report before executing on staging/production databases.
 
 ---
 
@@ -57,15 +56,12 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. Part A: Show exact SQL runs in `TenantDbManager.getConnection` on cache miss and explain writes.
-- [x] 2. Part A: Move data fixes/DDL to versioned runner `src/database/tenant-migration-runner.js` and CLI runner `src/scripts/run-tenant-migrations.js` (spec §6.5).
-- [x] 3. Part A: `TenantDbManager.getConnection` stripped of all DDL/DML side-effects; performs 0 writes.
-- [x] 4. Part A: §9.6 regression test (`get-connection-side-effects.test.js`) passes green with query spy checking 0 writes.
-- [x] 5. Part A: Read-only staging query created for detecting payment business_date corruption.
-- [x] 6. Part A: Recorded NEW-10 (P0) in spec §12 and §13.
-- [x] 7. Part B: Backend test safety guard `assertTestEnvironmentSafety` added and tested (`tests/integration/test-safety-guard.test.js`).
-- [x] 8. Part B: Flutter `flutter test` executed; identified failed starter test `test/widget_test.dart`.
-- [x] 9. Part B: Real Playwright login smoke tests added to `gymsera_cms` and `gymsera_web`, tested locally and wired into CI.
+- [x] 1. New tenants: `tenant-provisioning.service.js` (Step 8d) and `provision-seeded-tenants.js` run tenant migrations up to `TARGET_SCHEMA_VERSION` before marking tenant `ACTIVE`. Tested in `tests/integration/tenant-provisioning-migrations.test.js` (verifies `schema_migrations`, `role_assignments`, `approval_requests`, `ledger_days`).
+- [x] 2. Deploys: Added read-only `checkTenantSchemaVersions` startup check on API boot (`src/database/tenant-migration-runner.js`, `server.js`); documented deploy order in `gymsera_be/README.md`.
+- [x] 3. Payments without business date: Audited all 17 payment paths; added Sequelize lifecycle hooks (`beforeValidate`, `beforeCreate`, `beforeUpdate`, `beforeBulkCreate`) on `Payment.model.js` to enforce write-time `business_date` assignment using branch timezone via `computeBusinessDate`; updated `payment.service.js` and `me.service.js`. Tested 02:00 local time handling.
+- [x] 4. Migration 004 & 005: Changed Migration 004 to use branch timezone via `computeBusinessDate` (tested with `Asia/Karachi` and `Asia/Dubai`); parameterized Migration 005 `gym_listing_id` replacements.
+- [x] 5. Mobile CI: Replaced default counter test in `gyms_era/test/widget_test.dart` with real smoke test finding `LoginScreen`. `flutter test` is 100% green (6/6 passing).
+- [x] 6. Provided read-only SQL queries for null `business_date` payments and shifted payments against closed ledger days.
 
 ---
 

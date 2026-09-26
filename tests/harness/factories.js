@@ -280,7 +280,7 @@ async function createPayment(tenantDb, branchId, overrides = {}) {
     method: overrides.method || overrides.paymentMethod || 'CASH',
     paymentFor: overrides.paymentFor || 'MEMBERSHIP',
     status: overrides.status || 'COMPLETED',
-    businessDate: overrides.businessDate || new Date().toISOString().slice(0, 10),
+    businessDate: overrides.businessDate, // If omitted, Payment model hook resolves from branch timezone
     idempotencyKey: overrides.idempotencyKey || uuidv4(),
     paidAt: overrides.paidAt || new Date(),
     ...overrides,

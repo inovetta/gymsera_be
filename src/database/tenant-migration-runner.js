@@ -84,10 +84,28 @@ const MIGRATIONS = [
     version: 4,
     name: '004_backfill_payments_business_date',
     up: async (sequelize) => {
-      // One-time historical backfill using branch timezone (+5 hours PKT)
-      await sequelize.query(
-        'UPDATE payments SET business_date = DATE(DATE_ADD(COALESCE(paid_at, created_at), INTERVAL 5 HOUR)) WHERE business_date IS NULL'
-      ).catch(() => {});
+      // Historical backfill using each branch's own timezone via computeBusinessDate
+      const { computeBusinessDate } = require('../services/ledger.service');
+      const rows = await sequelize.query(`
+        SELECT 
+          p.id, 
+          p.branch_id, 
+          COALESCE(p.paid_at, p.created_at) AS date_val,
+          b.timezone
+        FROM payments p
+        LEFT JOIN branches b ON p.branch_id = b.id
+        WHERE p.business_date IS NULL
+      `, { type: QueryTypes.SELECT }).catch(() => []);
+
+      for (const row of rows) {
+        if (!row.id || !row.date_val) continue;
+        const tz = row.timezone || 'Asia/Karachi';
+        const bDate = computeBusinessDate(new Date(row.date_val), tz);
+        await sequelize.query(
+          'UPDATE payments SET business_date = ? WHERE id = ?',
+          { replacements: [bDate, row.id] }
+        ).catch(() => {});
+      }
     },
   },
   {
@@ -101,12 +119,14 @@ const MIGRATIONS = [
           where: { tenantId: context.tenantId, status: { [Sequelize.Op.ne]: 'INACTIVE' } },
         }).catch(() => null);
 
-        if (firstListing) {
+        if (firstListing && firstListing.id) {
           await sequelize.query(
-            `UPDATE branches SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`
+            'UPDATE branches SET gym_listing_id = ? WHERE gym_listing_id IS NULL OR gym_listing_id = ?',
+            { replacements: [firstListing.id, ''] }
           ).catch(() => {});
           await sequelize.query(
-            `UPDATE gyms SET gym_listing_id = '${firstListing.id}' WHERE gym_listing_id IS NULL OR gym_listing_id = ''`
+            'UPDATE gyms SET gym_listing_id = ? WHERE gym_listing_id IS NULL OR gym_listing_id = ?',
+            { replacements: [firstListing.id, ''] }
           ).catch(() => {});
         }
       } catch (_) {
@@ -257,10 +277,91 @@ async function runAllTenantMigrations(options = {}) {
   };
 }
 
+/**
+ * Read-only startup check: checks every active tenant database to verify
+ * if its schemaVersion is behind TARGET_SCHEMA_VERSION.
+ *
+ * Logs a clear warning for any tenant that is behind.
+ * Performs 0 writes and does NOT crash.
+ *
+ * @returns {Promise<{ checked: number, behind: Array<{ tenantId: string, gymName: string, currentVersion: number, targetVersion: number }> }>}
+ */
+async function checkTenantSchemaVersions() {
+  const behind = [];
+  try {
+    const { Tenant } = require('../models/platform');
+    const tenants = await Tenant.findAll({
+      where: {
+        status: 'ACTIVE',
+        connectionStringEncrypted: { [Sequelize.Op.ne]: null },
+      },
+    }).catch(() => []);
+
+    const activeTenants = tenants.filter(
+      (t) => t.connectionStringEncrypted && t.connectionStringEncrypted !== 'PENDING_PROVISIONING'
+    );
+
+    for (const tenant of activeTenants) {
+      let tenantSeq = null;
+      try {
+        const connUrl = decrypt(tenant.connectionStringEncrypted);
+        tenantSeq = new Sequelize(connUrl, {
+          dialect: 'mysql',
+          logging: false,
+          pool: { max: 1, min: 0, acquire: 10000, idle: 5000 },
+          dialectOptions: { connectTimeout: 10000 },
+        });
+
+        await tenantSeq.authenticate();
+
+        const tables = await tenantSeq.query(
+          "SHOW TABLES LIKE 'schema_migrations'",
+          { type: QueryTypes.SELECT }
+        ).catch(() => []);
+
+        let currentVersion = 0;
+        if (tables.length > 0) {
+          const rows = await tenantSeq.query(
+            'SELECT MAX(version) AS max_version FROM schema_migrations',
+            { type: QueryTypes.SELECT }
+          ).catch(() => []);
+          currentVersion = rows[0]?.max_version || 0;
+        }
+
+        if (currentVersion < TARGET_SCHEMA_VERSION) {
+          console.warn(
+            `[Deploy Warning] Tenant '${tenant.gymName || tenant.tenantCode}' (${tenant.id}) schema version (${currentVersion}) is behind target (${TARGET_SCHEMA_VERSION}). Run 'node src/scripts/run-tenant-migrations.js' to apply pending migrations.`
+          );
+          behind.push({
+            tenantId: tenant.id,
+            gymName: tenant.gymName,
+            currentVersion,
+            targetVersion: TARGET_SCHEMA_VERSION,
+          });
+        }
+      } catch (err) {
+        console.warn(
+          `[Deploy Warning] Could not check schema version for tenant '${tenant.gymName || tenant.tenantCode}' (${tenant.id}): ${err.message}`
+        );
+      } finally {
+        if (tenantSeq) {
+          await tenantSeq.close().catch(() => {});
+        }
+      }
+    }
+
+    return { checked: activeTenants.length, behind };
+  } catch (err) {
+    console.warn(`[Deploy Warning] Failed to inspect tenant schema versions on startup: ${err.message}`);
+    return { checked: 0, behind: [] };
+  }
+}
+
 module.exports = {
   MIGRATIONS,
   TARGET_SCHEMA_VERSION,
   ensureMigrationTable,
   runTenantMigrations,
   runAllTenantMigrations,
+  checkTenantSchemaVersions,
 };

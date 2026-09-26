@@ -96,7 +96,8 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
 
   const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
   const autoComplete = isDirect || data.method === 'TEST';
-  const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId);
+  const paidAt = data.paidAt || (autoComplete ? new Date() : null);
+  const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId, paidAt || new Date());
 
   const payment = await Payment.create({
     userId: data.userId,
@@ -111,7 +112,7 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
     amount: data.amount,
     currency: data.currency || 'PKR',
     status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
-    paidAt: autoComplete ? new Date() : null,
+    paidAt,
     notes: data.notes || null,
     createdBy: staffUserId || null,
     createdByRole: resolvedRole,
@@ -262,17 +263,23 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
     }
   }
 
-  await payment.update({
+  const updatePayload = {
     status: PaymentStatus.COMPLETED,
     amount: finalAmount,
     paidAt: new Date(),
     verifiedAt: new Date(),
     verifiedBy: verifiedByUserId,
     notes: notes || payment.notes,
-  });
+  };
+  if (!payment.businessDate) {
+    const ledgerService = require('./ledger.service');
+    updatePayload.businessDate = await ledgerService.stampBusinessDate(tenantDb, payment.branchId, updatePayload.paidAt);
+  }
 
-  if (payment.branchId && payment.businessDate) {
-    require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, payment.businessDate);
+  await payment.update(updatePayload);
+
+  if (payment.branchId && (payment.businessDate || updatePayload.businessDate)) {
+    require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, payment.businessDate || updatePayload.businessDate);
   }
 
   if (payment.referenceEntityId) {

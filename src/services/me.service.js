@@ -283,11 +283,13 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
 
   if (payment) {
     // Update the existing pending payment instead of creating a duplicate
+    const businessDate = payment.businessDate || (await require('./ledger.service').stampBusinessDate({ models }, subscription.branchId));
     await payment.update({
       method,
       amount,
       branchId: subscription.branchId,
       notes: notes || payment.notes,
+      businessDate,
     });
   } else {
     // Fallback: create a new one if none exists

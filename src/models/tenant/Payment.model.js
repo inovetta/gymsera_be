@@ -2,7 +2,7 @@ const { DataTypes } = require('sequelize');
 const { PaymentStatus, PaymentMethod } = require('../../constants/payment-status');
 
 module.exports = (sequelize) => {
-  return sequelize.define(
+  const Payment = sequelize.define(
     'Payment',
     {
       id: {
@@ -143,4 +143,60 @@ module.exports = (sequelize) => {
       ],
     }
   );
+
+  const ensurePaymentBusinessDate = async (payment) => {
+    // If branchId is missing and referenceEntityId exists for a membership, resolve branchId
+    const currentBranchId = payment.branchId || payment.getDataValue('branchId');
+    if (!currentBranchId && payment.referenceEntityId && payment.paymentFor === 'MEMBERSHIP') {
+      try {
+        const { MemberSubscription } = sequelize.models;
+        if (MemberSubscription) {
+          const sub = await MemberSubscription.findByPk(payment.referenceEntityId, {
+            attributes: ['id', 'branchId'],
+          });
+          if (sub && sub.branchId) {
+            payment.setDataValue('branchId', sub.branchId);
+            payment.branchId = sub.branchId;
+          }
+        }
+      } catch (_) {}
+    }
+
+    const effectiveBranchId = payment.branchId || payment.getDataValue('branchId');
+
+    // Always ensure businessDate is populated via computeBusinessDate using branch timezone
+    const currentBDate = payment.businessDate || payment.getDataValue('businessDate');
+    if (!currentBDate) {
+      let timezone = 'Asia/Karachi';
+      if (effectiveBranchId) {
+        try {
+          const { Branch } = sequelize.models;
+          if (Branch) {
+            const branch = await Branch.findByPk(effectiveBranchId, {
+              attributes: ['id', 'timezone'],
+            });
+            if (branch?.timezone) {
+              timezone = branch.timezone;
+            }
+          }
+        } catch (_) {}
+      }
+      const paymentDate = payment.paidAt || payment.getDataValue('paidAt') || payment.createdAt || new Date();
+      const { computeBusinessDate } = require('../../services/ledger.service');
+      const bDate = computeBusinessDate(paymentDate, timezone);
+      payment.setDataValue('businessDate', bDate);
+      payment.businessDate = bDate;
+    }
+  };
+
+  Payment.beforeValidate(ensurePaymentBusinessDate);
+  Payment.beforeCreate(ensurePaymentBusinessDate);
+  Payment.beforeUpdate(ensurePaymentBusinessDate);
+  Payment.beforeBulkCreate(async (instances) => {
+    for (const inst of instances) {
+      await ensurePaymentBusinessDate(inst);
+    }
+  });
+
+  return Payment;
 };

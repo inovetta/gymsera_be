@@ -77,6 +77,13 @@ async function provisionTenant(tenant, dbConfig) {
     registerTenantModels(tenantSeq);
     await tenantSeq.sync({ force: false, alter: true });
     console.log(`   ✅ Tenant schema synced`);
+
+    const { runTenantMigrations } = require('../database/tenant-migration-runner');
+    await runTenantMigrations(tenantSeq, {
+      tenantId: tenant.id,
+      gymName: tenant.gymName,
+    });
+    console.log(`   ✅ Tenant migrations applied to latest version`);
   } finally {
     await tenantSeq.close();
   }
