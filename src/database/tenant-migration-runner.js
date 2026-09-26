@@ -90,7 +90,7 @@ const MIGRATIONS = [
         SELECT 
           p.id, 
           p.branch_id, 
-          COALESCE(p.paid_at, p.created_at) AS date_val,
+          COALESCE(p.collected_at, p.paid_at, p.created_at) AS date_val,
           b.timezone
         FROM payments p
         LEFT JOIN branches b ON p.branch_id = b.id
@@ -132,6 +132,31 @@ const MIGRATIONS = [
       } catch (_) {
         // Safe skip if platform models not loaded or in standalone test
       }
+    },
+  },
+  {
+    version: 6,
+    name: '006_enforce_payments_business_date_not_null',
+    up: async (sequelize, context) => {
+      const tenantId = context?.tenantId || 'unknown';
+      // Count NULL business_date rows in payments
+      const [result] = await sequelize.query(
+        'SELECT COUNT(*) AS null_count FROM payments WHERE business_date IS NULL',
+        { type: QueryTypes.SELECT }
+      ).catch(() => [{ null_count: 0 }]);
+
+      const nullCount = Number(result?.null_count || 0);
+      if (nullCount > 0) {
+        console.warn(
+          `[TenantMigration] SKIPPING Migration 006 on tenant ${tenantId}: found ${nullCount} payments with NULL business_date. Table remains unchanged.`
+        );
+        return { skipped: true, reason: 'has_null_business_date_rows', nullCount };
+      }
+
+      // Zero NULL rows: safe to make payments.business_date NOT NULL
+      await sequelize.query(
+        'ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NOT NULL'
+      );
     },
   },
 ];
@@ -180,7 +205,12 @@ async function runTenantMigrations(sequelize, context = {}) {
     if (appliedSet.has(mig.version)) continue;
 
     console.log(`[TenantMigration] Tenant ${context.tenantId || 'local'}: running ${mig.name} (v${mig.version})...`);
-    await mig.up(sequelize, context);
+    const migResult = await mig.up(sequelize, context);
+
+    if (migResult?.skipped) {
+      console.warn(`[TenantMigration] Tenant ${context.tenantId || 'local'}: skipped ${mig.name} (v${mig.version}); not recording as applied.`);
+      continue;
+    }
 
     await sequelize.query(
       'INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, NOW())',

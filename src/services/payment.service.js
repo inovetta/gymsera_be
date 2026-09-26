@@ -97,7 +97,9 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
   const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
   const autoComplete = isDirect || data.method === 'TEST';
   const paidAt = data.paidAt || (autoComplete ? new Date() : null);
-  const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId, paidAt || new Date());
+  const collectedAt = data.collectedAt || (data.method === 'CASH' ? (data.paidAt || new Date()) : (autoComplete ? paidAt : null));
+  const collectionTime = data.collectedAt || (data.method === 'CASH' ? collectedAt : (paidAt || new Date()));
+  const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId, collectionTime);
 
   const payment = await Payment.create({
     userId: data.userId,
@@ -113,6 +115,8 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
     currency: data.currency || 'PKR',
     status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
     paidAt,
+    collectedAt,
+    staffCollectedBy: data.staffCollectedBy || (data.method === 'CASH' ? staffUserId : null),
     notes: data.notes || null,
     createdBy: staffUserId || null,
     createdByRole: resolvedRole,
@@ -273,7 +277,8 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
   };
   if (!payment.businessDate) {
     const ledgerService = require('./ledger.service');
-    updatePayload.businessDate = await ledgerService.stampBusinessDate(tenantDb, payment.branchId, updatePayload.paidAt);
+    const originalTime = payment.collectedAt || payment.createdAt || payment.paidAt || updatePayload.paidAt;
+    updatePayload.businessDate = await ledgerService.stampBusinessDate(tenantDb, payment.branchId, originalTime);
   }
 
   await payment.update(updatePayload);
@@ -565,6 +570,7 @@ const collectionAction = async (tenantDb, paymentIds, staffUserId) => {
         id: paymentIds,
         status: PaymentStatus.PENDING,
       },
+      individualHooks: true,
     }
   );
 

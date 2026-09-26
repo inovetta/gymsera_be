@@ -281,7 +281,8 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       paidAt: new Date(paymentTimestamp),
       businessDate: '2026-09-27',
     });
-    // Deliberately reset business_date to null in raw SQL to simulate historical un-backfilled state
+    // Deliberately allow null and reset business_date to null in raw SQL to simulate historical un-backfilled state
+    await tenant1.sequelize.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NULL');
     await tenant1.sequelize.query('UPDATE payments SET business_date = NULL WHERE id = ?', {
       replacements: [paymentKarachi.id],
     });
@@ -325,5 +326,249 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
 
     expect(reloadedKarachi.business_date).toBe('2026-09-27');
     expect(reloadedDubai.business_date).toBe('2026-09-26');
+  });
+
+  describe('Step 2.7: Payment business_date immutability and Migration 006', () => {
+    test('Cash collected 23:30 local on day X, verified next day 10:00 -> business_date stays X', async () => {
+      const { Payment } = tenant1.models;
+
+      // In Asia/Karachi (UTC+5), 23:30 on 2026-09-25 is 18:30 UTC on 2026-09-25.
+      const collectionTimestamp = new Date('2026-09-25T18:30:00.000Z');
+
+      // Create payment as collected cash at 23:30 PKT on day X (2026-09-25)
+      const payment = await Payment.create({
+        userId: testUser.id,
+        branchId: branchKarachi.id,
+        amount: 3000,
+        currency: 'PKR',
+        method: 'CASH',
+        status: 'STAFF_COLLECTED',
+        collectedAt: collectionTimestamp,
+      });
+
+      expect(payment.businessDate).toBe('2026-09-25');
+
+      // Next day at 10:00 local time (05:00 UTC on 2026-09-26), payment is verified
+      const verifiedPayment = await paymentService.verifyPayment(
+        tenant1,
+        payment.id,
+        testUser.id,
+        'Approved next morning'
+      );
+
+      // business_date must stay X ('2026-09-25')
+      expect(verifiedPayment.businessDate).toBe('2026-09-25');
+      expect(verifiedPayment.status).toBe('COMPLETED');
+
+      // Reload from DB to verify persistence
+      const reloaded = await Payment.findByPk(payment.id);
+      expect(reloaded.businessDate).toBe('2026-09-25');
+    });
+
+    test('markPrinted, uploadPaymentProof, and markPaymentFailed do not change business_date', async () => {
+      const { Payment } = tenant1.models;
+
+      const payment = await Payment.create({
+        userId: testUser.id,
+        branchId: branchKarachi.id,
+        amount: 1500,
+        currency: 'PKR',
+        method: 'BANK_TRANSFER',
+        status: 'PENDING',
+        collectedAt: new Date('2026-09-25T12:00:00.000Z'),
+      });
+
+      expect(payment.businessDate).toBe('2026-09-25');
+
+      // 1. uploadPaymentProof
+      const afterProof = await paymentService.uploadPaymentProof(
+        tenant1,
+        payment.id,
+        'https://storage.gymsera.com/proofs/receipt-123.jpg'
+      );
+      expect(afterProof.businessDate).toBe('2026-09-25');
+      expect(afterProof.proofUrl).toBe('https://storage.gymsera.com/proofs/receipt-123.jpg');
+
+      // 2. markPrinted (instance update)
+      await afterProof.update({
+        printedAt: new Date(),
+        printedBy: testUser.id,
+      });
+      const afterPrint = await Payment.findByPk(payment.id);
+      expect(afterPrint.businessDate).toBe('2026-09-25');
+      expect(afterPrint.printedAt).toBeTruthy();
+
+      // 3. markPaymentFailed
+      await paymentService.markPaymentFailed(tenant1, payment.id, 'Karachi Gym');
+      const afterFail = await Payment.findByPk(payment.id);
+      expect(afterFail.businessDate).toBe('2026-09-25');
+      expect(afterFail.status).toBe('FAILED');
+    });
+
+    test('An update that tries to change business_date is rejected', async () => {
+      const { Payment } = tenant1.models;
+
+      const payment = await Payment.create({
+        userId: testUser.id,
+        branchId: branchKarachi.id,
+        amount: 2500,
+        currency: 'PKR',
+        method: 'CASH',
+        status: 'COMPLETED',
+        collectedAt: new Date('2026-09-25T10:00:00.000Z'),
+      });
+
+      expect(payment.businessDate).toBe('2026-09-25');
+
+      // Attempting to change existing businessDate via instance update must throw
+      await expect(payment.update({ businessDate: '2026-09-26' })).rejects.toThrow(
+        'business_date is immutable and cannot be changed once set'
+      );
+
+      // Attempting to change businessDate via bulk update must throw
+      await expect(
+        Payment.update({ businessDate: '2026-09-26' }, { where: { id: payment.id } })
+      ).rejects.toThrow('business_date cannot be changed via bulk update');
+
+      // Value in database must remain unchanged
+      const reloaded = await Payment.findByPk(payment.id);
+      expect(reloaded.businessDate).toBe('2026-09-25');
+    });
+
+    test('Old row with NULL business_date is stamped from original collection time, not from now', async () => {
+      const { Payment } = tenant1.models;
+
+      // 1. Temporarily make column nullable to insert legacy NULL row
+      await tenant1.sequelize.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NULL');
+
+      // 2. Insert row with NULL business_date and original collection timestamp 5 days ago
+      const historicalCollectionTime = '2026-09-20 14:00:00';
+      const paymentId = '33333333-3333-4333-8333-333333333333';
+      await tenant1.sequelize.query(
+        `INSERT INTO payments (id, user_id, branch_id, amount, currency, method, status, collected_at, created_at, updated_at, business_date)
+         VALUES (?, ?, ?, 5000, 'PKR', 'CASH', 'PENDING', ?, ?, ?, NULL)`,
+        {
+          replacements: [
+            paymentId,
+            testUser.id,
+            branchKarachi.id,
+            historicalCollectionTime,
+            historicalCollectionTime,
+            historicalCollectionTime,
+          ],
+        }
+      );
+
+      // 3. Load the payment and perform a normal update (e.g. updating notes)
+      const oldPayment = await Payment.findByPk(paymentId);
+      expect(oldPayment.businessDate).toBeNull();
+
+      await oldPayment.update({ notes: 'Stamping historical null row' });
+
+      // 4. Must be stamped from its historical collection time ('2026-09-20'), NOT from "now"
+      expect(oldPayment.businessDate).toBe('2026-09-20');
+
+      const reloaded = await Payment.findByPk(paymentId);
+      expect(reloaded.businessDate).toBe('2026-09-20');
+    });
+
+    test('Branch timezone lookup inside hook uses the same database transaction as the write', async () => {
+      const { Payment } = tenant1.models;
+
+      const tx = await tenant1.sequelize.transaction();
+      try {
+        const payment = await Payment.create(
+          {
+            userId: testUser.id,
+            branchId: branchKarachi.id,
+            amount: 1200,
+            currency: 'PKR',
+            method: 'CASH',
+            collectedAt: new Date('2026-09-25T15:00:00.000Z'),
+          },
+          { transaction: tx }
+        );
+
+        expect(payment.businessDate).toBe('2026-09-25');
+        await tx.commit();
+      } catch (err) {
+        await tx.rollback();
+        throw err;
+      }
+    });
+
+    test('Migration 006: makes payments.business_date NOT NULL for tenant with zero NULL rows', async () => {
+      const seq = tenant1.sequelize;
+
+      // Ensure zero NULL rows
+      await seq.query('UPDATE payments SET business_date = CURDATE() WHERE business_date IS NULL');
+
+      // Reset migration 006 in schema_migrations so it can run
+      await seq.query('DELETE FROM schema_migrations WHERE version = 6');
+
+      const result = await runTenantMigrations(seq, {
+        tenantId: '22222222-2222-4222-8222-222222222222',
+        gymName: 'Timezone Gym',
+      });
+
+      expect(result.finalVersion).toBe(TARGET_SCHEMA_VERSION);
+      expect(result.applied).toContain('006_enforce_payments_business_date_not_null');
+
+      // Check INFORMATION_SCHEMA to confirm IS_NULLABLE is NO
+      const [colInfo] = await seq.query(
+        "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'business_date'",
+        { type: QueryTypes.SELECT }
+      );
+      expect(colInfo.IS_NULLABLE).toBe('NO');
+    });
+
+    test('Migration 006: skips and logs warning when tenant has NULL rows (no data change)', async () => {
+      const seq = tenant1.sequelize;
+
+      // 1. Temporarily allow NULL to simulate a tenant with unmigrated NULL rows
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NULL');
+
+      // 2. Insert a row with NULL business_date
+      const nullPaymentId = '44444444-4444-4444-8444-444444444444';
+      await seq.query(
+        `INSERT INTO payments (id, user_id, branch_id, amount, currency, method, status, created_at, updated_at, business_date)
+         VALUES (?, ?, ?, 999, 'PKR', 'CASH', 'PENDING', NOW(), NOW(), NULL)`,
+        {
+          replacements: [nullPaymentId, testUser.id, branchKarachi.id],
+        }
+      );
+
+      // 3. Reset migration 006 in schema_migrations
+      await seq.query('DELETE FROM schema_migrations WHERE version = 6');
+
+      // 4. Run migrations
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const result = await runTenantMigrations(seq, {
+        tenantId: '22222222-2222-4222-8222-222222222222',
+        gymName: 'Timezone Gym',
+      });
+
+      // Migration 006 was skipped
+      expect(result.applied).not.toContain('006_enforce_payments_business_date_not_null');
+
+      // Column remains nullable (no schema/data change)
+      const [colInfo] = await seq.query(
+        "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'business_date'",
+        { type: QueryTypes.SELECT }
+      );
+      expect(colInfo.IS_NULLABLE).toBe('YES');
+
+      // Warning was logged
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('SKIPPING Migration 006')
+      );
+      warnSpy.mockRestore();
+
+      // Cleanup: delete the null payment and restore NOT NULL
+      await seq.query('DELETE FROM payments WHERE id = ?', { replacements: [nullPaymentId] });
+      await seq.query('UPDATE payments SET business_date = CURDATE() WHERE business_date IS NULL');
+      await seq.query('ALTER TABLE `payments` MODIFY COLUMN `business_date` DATE NOT NULL');
+      await seq.query("INSERT INTO schema_migrations (version, name, applied_at) VALUES (6, '006_enforce_payments_business_date_not_null', NOW())");
+    });
   });
 });

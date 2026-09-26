@@ -144,57 +144,118 @@ module.exports = (sequelize) => {
     }
   );
 
-  const ensurePaymentBusinessDate = async (payment) => {
-    // If branchId is missing and referenceEntityId exists for a membership, resolve branchId
-    const currentBranchId = payment.branchId || payment.getDataValue('branchId');
-    if (!currentBranchId && payment.referenceEntityId && payment.paymentFor === 'MEMBERSHIP') {
+  const resolveBranchTimezone = async (payment, options) => {
+    let effectiveBranchId = payment.branchId || (payment.getDataValue && payment.getDataValue('branchId'));
+    if (!effectiveBranchId && payment.referenceEntityId && payment.paymentFor === 'MEMBERSHIP') {
       try {
         const { MemberSubscription } = sequelize.models;
         if (MemberSubscription) {
           const sub = await MemberSubscription.findByPk(payment.referenceEntityId, {
             attributes: ['id', 'branchId'],
+            transaction: options?.transaction,
           });
           if (sub && sub.branchId) {
             payment.setDataValue('branchId', sub.branchId);
             payment.branchId = sub.branchId;
+            effectiveBranchId = sub.branchId;
           }
         }
       } catch (_) {}
     }
 
-    const effectiveBranchId = payment.branchId || payment.getDataValue('branchId');
-
-    // Always ensure businessDate is populated via computeBusinessDate using branch timezone
-    const currentBDate = payment.businessDate || payment.getDataValue('businessDate');
-    if (!currentBDate) {
-      let timezone = 'Asia/Karachi';
-      if (effectiveBranchId) {
-        try {
-          const { Branch } = sequelize.models;
-          if (Branch) {
-            const branch = await Branch.findByPk(effectiveBranchId, {
-              attributes: ['id', 'timezone'],
-            });
-            if (branch?.timezone) {
-              timezone = branch.timezone;
-            }
+    let timezone = 'Asia/Karachi';
+    if (effectiveBranchId) {
+      try {
+        const { Branch } = sequelize.models;
+        if (Branch) {
+          const branch = await Branch.findByPk(effectiveBranchId, {
+            attributes: ['id', 'timezone'],
+            transaction: options?.transaction,
+          });
+          if (branch?.timezone) {
+            timezone = branch.timezone;
           }
-        } catch (_) {}
-      }
-      const paymentDate = payment.paidAt || payment.getDataValue('paidAt') || payment.createdAt || new Date();
-      const { computeBusinessDate } = require('../../services/ledger.service');
-      const bDate = computeBusinessDate(paymentDate, timezone);
-      payment.setDataValue('businessDate', bDate);
-      payment.businessDate = bDate;
+        }
+      } catch (_) {}
     }
+    return timezone;
   };
 
-  Payment.beforeValidate(ensurePaymentBusinessDate);
-  Payment.beforeCreate(ensurePaymentBusinessDate);
-  Payment.beforeUpdate(ensurePaymentBusinessDate);
-  Payment.beforeBulkCreate(async (instances) => {
+  const getCollectionTime = (payment) => {
+    return (
+      payment.collectedAt ||
+      (payment.getDataValue && payment.getDataValue('collectedAt')) ||
+      payment.paidAt ||
+      (payment.getDataValue && payment.getDataValue('paidAt')) ||
+      payment.createdAt ||
+      (payment.getDataValue && payment.getDataValue('createdAt')) ||
+      new Date()
+    );
+  };
+
+  const stampBusinessDateIfMissing = async (payment, options) => {
+    const currentBDate = payment.businessDate || (payment.getDataValue && payment.getDataValue('businessDate'));
+    if (currentBDate) return;
+
+    const timezone = await resolveBranchTimezone(payment, options);
+    const collectionTime = getCollectionTime(payment);
+    const { computeBusinessDate } = require('../../services/ledger.service');
+    const bDate = computeBusinessDate(collectionTime, timezone);
+    payment.setDataValue('businessDate', bDate);
+    payment.businessDate = bDate;
+  };
+
+  Payment.beforeCreate(async (instance, options) => {
+    await stampBusinessDateIfMissing(instance, options);
+  });
+
+  Payment.beforeBulkCreate(async (instances, options) => {
     for (const inst of instances) {
-      await ensurePaymentBusinessDate(inst);
+      await stampBusinessDateIfMissing(inst, options);
+    }
+  });
+
+  Payment.beforeUpdate(async (instance, options) => {
+    const previousBDate = instance.previous('businessDate');
+    const currentBDate = (instance.getDataValue && instance.getDataValue('businessDate')) || instance.businessDate;
+
+    // 1. NEVER change an existing business_date: if an update tries to change it, throw an error
+    if (previousBDate) {
+      if (instance.changed('businessDate') && currentBDate !== previousBDate) {
+        throw new Error('business_date is immutable and cannot be changed once set');
+      }
+      return;
+    }
+
+    // 2. If an old row has NULL business_date:
+    // If update explicitly provided a businessDate, allow it to be set once
+    if (currentBDate) {
+      return;
+    }
+
+    // If still NULL, stamp it from its original collection time, not from "now"
+    const timezone = await resolveBranchTimezone(instance, options);
+    const originalTime =
+      instance.collectedAt ||
+      instance.previous('collectedAt') ||
+      (instance.getDataValue && instance.getDataValue('collectedAt')) ||
+      instance.paidAt ||
+      instance.previous('paidAt') ||
+      (instance.getDataValue && instance.getDataValue('paidAt')) ||
+      instance.createdAt ||
+      instance.previous('createdAt') ||
+      (instance.getDataValue && instance.getDataValue('createdAt'));
+
+    const timestampToUse = originalTime || new Date();
+    const { computeBusinessDate } = require('../../services/ledger.service');
+    const bDate = computeBusinessDate(timestampToUse, timezone);
+    instance.setDataValue('businessDate', bDate);
+    instance.businessDate = bDate;
+  });
+
+  Payment.beforeBulkUpdate((options) => {
+    if (options.attributes && ('businessDate' in options.attributes || 'business_date' in options.attributes)) {
+      throw new Error('business_date cannot be changed via bulk update');
     }
   });
 

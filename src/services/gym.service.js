@@ -1571,7 +1571,8 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const totalAmount = subtotal + joining + security;
 
   const ledgerService = require('./ledger.service');
-  const businessDate = await ledgerService.stampBusinessDate(tenantDb, branchId);
+  const collectionDate = (preCollected && collection?.collectedAt) ? collection.collectedAt : new Date();
+  const businessDate = await ledgerService.stampBusinessDate(tenantDb, branchId, collectionDate);
 
   const paymentStatus = preCollected
     ? PaymentStatus.STAFF_COLLECTED

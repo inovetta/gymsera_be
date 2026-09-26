@@ -56,10 +56,13 @@ const todayBusinessDate = async (tenantDb, branchId) => {
  * row. Called from payment.service.js at every point a Payment is created —
  * never computed later, never recomputed on read.
  */
-const stampBusinessDate = async (tenantDb, branchId, date = new Date()) => {
+const stampBusinessDate = async (tenantDb, branchId, date = new Date(), options = {}) => {
   if (!branchId) return null;
   const { Branch } = tenantDb.models;
-  const branch = await Branch.findByPk(branchId, { attributes: ['id', 'timezone'] });
+  const branch = await Branch.findByPk(branchId, {
+    attributes: ['id', 'timezone'],
+    transaction: options?.transaction,
+  });
   return computeBusinessDate(date, branch ? branch.timezone : 'Asia/Karachi');
 };
 

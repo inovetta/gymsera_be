@@ -240,17 +240,16 @@ const uploadProof = async (req, res, next) => {
 // ── POST /payments/:id/printed — audit-only receipt-printed ping ──────────────
 const markPrinted = async (req, res, next) => {
   try {
-    const { Payment } = req.tenantDb.models;
-    const existing = await Payment.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
+    const existing = await Payment.findByPk(req.params.id);
     if (!existing) throw createError('Payment not found', 404);
     if (!(await hasBranchAccess(req, existing.branchId, 'payments.view'))) {
       throw createError('You do not have permission to view payments at this branch', 403);
     }
 
-    await Payment.update(
-      { printedAt: new Date(), printedBy: req.user.id || req.user.sub },
-      { where: { id: req.params.id } }
-    );
+    await existing.update({
+      printedAt: new Date(),
+      printedBy: req.user.id || req.user.sub,
+    });
     return sendSuccess(res, {}, 'Recorded');
   } catch (err) {
     next(err);
