@@ -26,10 +26,13 @@ Before any change, re-read spec §0.1 (ground rules) and §0.5 (source of truth)
    CMS and website copy mobile.
 
 Safety:
-- Never connect to or migrate a production database. Use local/test databases only.
+- Database (owner decision R-19 in spec §14): the "production" database holds TEST data only. You may connect to it
+  to investigate and to apply migrations that already passed locally. Automated test suites run ONLY against a
+  local/Docker MySQL (the harness creates and drops databases). Never drop or truncate the live databases.
 - Use only sandbox/test keys for Apple, Google Play and Stripe.
 - Never run destructive commands (drop database, force push, rm -rf outside build folders) without asking.
-- When the spec says "owner decision" (spec §14), stop and ask. Do not choose.
+- Owner decisions are recorded in spec §14 (all DECIDED on 2026-09-26). Apply them; don't ask again.
+  Stop and ask only for a NEW decision that §14 doesn't cover, then record the answer in §14.
 - If a task is bigger than expected, stop and report instead of improvising.
 
 ## Handoff protocol (so any agent can continue another agent's work)

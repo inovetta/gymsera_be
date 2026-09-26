@@ -66,6 +66,20 @@ The agent will stop and ask about these (spec §14). Deciding early saves time. 
 
 ## Part B — The prompts, in order
 
+### ⭐ The easy way: one prompt for everything (GO)
+
+You don't have to copy a different prompt each time. Always open a **new chat** in the `gymsera_be` folder, with any agent (Claude or Gemini), and paste this same text:
+
+```text
+GO. Follow AGENTS.md. Read docs/AGENT_HANDOFF.md.
+- If a prompt is IN PROGRESS there: continue it from "Next action" (someone else may have started it).
+- Otherwise: start the prompt named in "Next action", using its exact text from docs/GYMSERA_AGENT_PLAYBOOK.md Part B.
+Do only that one prompt. Checkpoint the handoff file as you go. When the prompt is finished, do its
+"Finish like this" steps, set "Next action" to the following prompt, and stop.
+```
+
+The agent looks up by itself which prompt is next, or where the last agent stopped. The prompts below are what it reads. You can still paste them by hand if you prefer.
+
 ### How to use them
 
 1. Start a **new agent chat for each prompt**. Long chats make agents forget rules; the rules file, `AGENT_HANDOFF.md` and §13 carry the memory between chats and between agents.

@@ -28,18 +28,19 @@ next agent won't know it.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | — (**not a git repo yet**; run `git init` before Prompt 1) | — | — |
-| gymsera_be | main | — | yes: setup files (`docs/AGENT_HANDOFF.md`, `docs/GYMSERA_*.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) + pre-existing untracked `docs/PLATFORM_ARCHITECTURE.md` |
-| gymsera_cms | main | — | yes: setup files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) |
-| gymsera_web | main | — | yes: setup files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) |
+| gyms_era | main | see `git log` | AGENTS.md safety update |
+| gymsera_be | main | see `git log` | only the owner-decision commit below |
+| gymsera_cms | main | see `git log` | AGENTS.md safety update |
+| gymsera_web | main | see `git log` | AGENTS.md safety update |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Run Prompt 0 from `GYMSERA_AGENT_PLAYBOOK.md`.
+> Run **Prompt 0 — Read-only audit** from `GYMSERA_AGENT_PLAYBOOK.md` Part B.
+> All owner decisions are recorded in spec §14 (R-1…R-19), so don't stop to ask about them.
 
 ### Work in progress that is NOT committed
 
-- Setup files listed above are uncommitted; the owner commits them (e.g. `chore: agent rules + handoff`) before Prompt 0.
+- (none after the setup commits)
 
 ### Blocked / waiting on the owner
 
@@ -72,3 +73,4 @@ next agent won't know it.
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
 |---|---|---|---|---|---|---|
 | 0 | 2026-09-26 | Claude Code (Opus 5.5) | setup | — (created docs, AGENTS.md / CLAUDE.md / GEMINI.md in all 4 repos) | task complete | yes |
+| 1 | 2026-09-26 | Claude Code (Opus 5.5) | setup | — (recorded owner decisions R-1…R-19 in §14; DB rule R-19 in AGENTS.md; GO prompt in playbook) | task complete | yes |

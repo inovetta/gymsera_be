@@ -1826,22 +1826,29 @@ All `CHECK` unless noted. Money must be atomic, auditable, and idempotent.
 
 ## 14. Remaining risks and open decisions
 
-| # | Risk / decision | Owner | Default until decided |
+> **Decisions recorded 2026-09-26.** The owner delegated these to the architect (Claude Code) and they are now **final for agents**. Agents apply them and do **not** stop to ask about them again. The owner may override any row at any time by editing it.
+
+| # | Risk / decision | Owner | **DECIDED** |
 |---|---|---|---|
-| R-1 | IAP vs web-first sales channel per region (BILL-16) | Product | Keep IAP in apps |
-| R-2 | Member-grace length when a branch locks (CAP-01, §7.5.8) | Product | 7 days |
-| R-3 | Over-quota grace before locking | Product | 7 days, with a countdown |
-| R-4 | Card at registration: setup mode vs charge + refund on rejection (FLOW-03) | Product + Finance | Setup mode (no charge before approval) |
-| R-5 | Auto-approve additional organizations (FLOW-11) | Product + Trust | Manual review stays |
-| R-6 | Legacy `PlatformPackage` subscribers' migration timing (BILL-10) | Finance | At their next renewal |
-| R-7 | Stripe availability for the legal entity's country; merchant-of-record alternative (BILL-17) | Founder/Finance | Web card payments stay disabled until resolved |
-| R-8 | `TenantDbManager` at thousands of tenants: pool-per-server redesign (PERF-07) | Engineering | Caps + LRU now; revisit at 500 active tenants |
-| R-9 | Play upgrade/downgrade eligibility not verified on a production Play Console (documented open item) | Engineering | Must pass the staging checklist before launch |
-| R-10 | Offline check-in queue (§11.4) | Product | Not built; online only |
-| R-11 | Data residency requirements in some countries (e.g. EU customers) | Legal | Single region; documented in the privacy policy |
-| R-12 | Everything in this document derives from docs and screen maps; the code may differ | Agent | Verify-first rule (§0.1) |
-| R-13 | Mobile navigation refinements proposed in §2.3.1 and on the UI canvas (drawer → More hub, label renames, front-desk shell) | Owner | **Keep mobile as it is** |
-| R-14 | Web-only features with no mobile equivalent (CMS Trainers, web Account statement) and mobile-only traveler features on the web (checkout, wishlist) | Owner | Keep as they are; no new work |
+| R-1 | IAP vs web-first sales channel per region (BILL-16) | Product | **Keep IAP in the apps.** The web sells nothing by card for now (see R-7). |
+| R-2 | Member-grace length when a branch locks (CAP-01, §7.5.8) | Product | **7 days**, config value `MEMBER_CHECKIN_GRACE_DAYS=7`. |
+| R-3 | Over-quota grace before locking | Product | **7 days, with a countdown banner**, config value `OVERQUOTA_GRACE_DAYS=7`. |
+| R-4 | Card at registration: setup mode vs charge + refund on rejection (FLOW-03) | Product + Finance | **Setup mode: save the card and charge only on approval.** No charge before approval, so nothing to refund. Applies only once a web card provider is live (R-7). |
+| R-5 | Auto-approve additional organizations (FLOW-11) | Product + Trust | **Manual review stays.** |
+| R-6 | Legacy `PlatformPackage` subscribers' migration timing (BILL-10) | Finance | **At their next renewal.** |
+| R-7 | Stripe availability for the legal entity's country; merchant-of-record alternative (BILL-17) | Founder/Finance | **Stripe is not available for Pakistan-based companies** (the code is PKR / `Asia/Karachi` / CNIC / JazzCash). **Web card payments stay OFF.** Web signup offers bank transfer and pay-later only; plans are bought in the app (App Store / Play). Keep the Stripe code behind a feature flag `WEB_CARD_PAYMENTS_ENABLED=false`; don't delete it. A later web provider (a merchant of record such as Paddle, or a local gateway) plugs in behind the same catalog and provider abstraction. The owner confirms the entity's country. |
+| R-8 | `TenantDbManager` at thousands of tenants: pool-per-server redesign (PERF-07) | Engineering | **Caps + LRU now**; revisit at 500 active tenants. |
+| R-9 | Play upgrade/downgrade eligibility not verified on a production Play Console (documented open item) | Engineering | **Must pass the staging checklist before launch** (owner tests on a real device). |
+| R-10 | Offline check-in queue (§11.4) | Product | **Not built; online only.** |
+| R-11 | Data residency requirements in some countries (e.g. EU customers) | Legal | **Single region**; documented in the privacy policy. |
+| R-12 | Everything in this document derives from docs and screen maps; the code may differ | Agent | Verify-first rule (§0.1). |
+| R-13 | Mobile navigation refinements proposed in §2.3.1 and on the UI canvas (drawer → More hub, label renames, front-desk shell) | Owner | **Keep mobile as it is.** UX-03, UX-05, UX-16 and the mobile part of UX-04 are `DEFERRED (R-13)`. |
+| R-14 | Web-only features with no mobile equivalent (CMS Trainers, web Account statement) and mobile-only traveler features on the web (checkout, wishlist) | Owner | **Keep as they are; no new work.** UX-25 is `DEFERRED (R-14)`. |
+| R-15 | **Boost** (BILL-18). Code check: `gyms_era/lib/features/host/presentation/screens/boost_listing_screen.dart` shows Rs 1,500 / 4,500 / 8,000 tiers, and "Pay & Activate Boost" shows a success dialog **without charging anything**; the backend has no Boost code. | Product | **Boost is a paid product, but it is not built.** In hardening: replace the fake "Pay & Activate" with a disabled **"Coming soon"** state (a fake success screen is a store-review and trust risk). Building it later is a new feature: an IAP product in the one catalog, the same `/sync` + webhook pipeline (BILL-18 fix). Log it as NEW-BOOST in §12.13. |
+| R-16 | Retention periods for account/tenant deletion (AUTH-07, FLOW-01, SEC-10) | Legal | **30-day undo window** after a deletion request. **Financial records** (payments, invoices, ledger, platform invoices) kept **6 years, anonymized** (Pakistan tax record rule; owner confirms with the accountant). **KYC files** deleted 90 days after rejection or tenant deletion. **Abandoned DRAFT applications** purged after 30 days. **Application logs** kept 90 days. |
+| R-17 | Web-registration payment choices while R-7 is OFF | Product | Options shown: **Bank transfer** and **Pay later**. Pay-later grace (BILL-13, §7.5.11) = **14 days**, config value `PAY_LATER_GRACE_DAYS=14`. |
+| R-18 | CMS Inbox (UX-23) | Product | **Out of scope.** Build the notifications bell + feed only. |
+| R-19 | Database environment (owner statement, 2026-09-26) | Owner | The "production" database holds **test data only**, so agents may connect to it to investigate and to apply migrations. **Automated test suites still run only against a local/Docker MySQL**, because the harness creates and drops databases and would break the live apps the owner tests on. Real store/Stripe keys stay out of the code: sandbox only. |
 
 **Rejected alternative (recorded so it isn't reopened by accident):** replacing `reservedSlots` with purely derived capacity (`available = entitled − activeBranches`). This would remove the slot-donor mechanism and ledger drift, but the capacity architecture is **locked**. All capacity defects are fixed inside the locked model (CAP-01…08). Revisit only if CAP-07 or OBS-06 shows recurring drift that the outbox cannot eliminate.
 
