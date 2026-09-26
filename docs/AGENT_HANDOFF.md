@@ -21,24 +21,27 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1A — Billing core (BILL-12, BILL-02, BILL-06, BILL-01, BILL-14)** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BILL-12 |
-| Step within issue | verify done; fix in progress <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Issue in progress | BILL-02 |
+| Step within issue | verify done; writing red test <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-1/prompt-1a-billing-core` (from master 11d37b1) | 11d37b1 gbfgb | no |
-| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | 6bf60e7 jhvjvjhv | only this handoff file |
+| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | 84d250f fix(billing): webhook inbox, re-fetch provider truth, one apply path (BILL-12) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no |
 | gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f84b784 test(web): add Playwright login smoke test and CI workflow | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> BILL-12: build the `billing_events` inbox (platform migration runner with --dry-run, reusing
-> `runTenantMigrations` with a platform migration list), make every webhook insert-then-process, refetch provider
-> truth, and route webhooks + /sync through one shared apply function
-> (`subscription-migration.service.js#applyVerifiedSubscription`). Then BILL-02, BILL-06, BILL-01, BILL-14 in order.
+> BILL-02: add `REVOKED` to TenantSubscription.status via platform migration p002 (also remove the status-ENUM
+> MODIFY from platform.js#connect so boot can't narrow it back). Apple revocationDate → REVOKED; Google
+> SUBSCRIPTION_REVOKED / voidedPurchaseNotification + Voided Purchases API in the daily cron → REVOKED; Stripe
+> charge.refunded (full) / charge.dispute.created → REVOKED. In applyVerifiedSubscription, ACTIVE→REVOKED runs
+> reconcileCapacity with resolveMaxBranches (no legacy selectedPackageId fallback after a revoke). Red test first:
+> `tests/integration/billing-refund-revoke.test.js`.
+> Notes: provider calls are faked through `appleApi` / `playApi` / `stripeApi` (tests/harness/billing-fakes.js).
 
 ### Work in progress that is NOT committed
 
@@ -56,7 +59,7 @@ next agent won't know it.
 
 Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL-14 entitlement already safe, UX part confirmed.
 
-- [ ] 1. BILL-12 — webhook inbox, refetch truth, one apply path
+- [x] 1. BILL-12 — webhook inbox, refetch truth, one apply path (84d250f)
 - [ ] 2. BILL-02 — REVOKED state, refunds from all three providers end entitlement via reconcileCapacity
 - [ ] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox
 - [ ] 4. BILL-01 — purchase bound to one tenant (409 subscription_owned_by_other_account), unique index, mobile sends tenant id
