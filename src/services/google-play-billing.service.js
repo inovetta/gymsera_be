@@ -156,6 +156,8 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
     // purchase. requestProviderChange only trusts it if it matches the row it
     // independently found ACTIVE.
     supersededExternalId: purchase.linkedPurchaseToken || null,
+    // The tenant id the app sent as applicationUserName (BILL-01).
+    boundTenantId: purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId || null,
     logLabel: 'Google Play Billing',
   });
 };
@@ -205,9 +207,19 @@ const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoid
  * Developer API (never the notification's own claims), then apply it through
  * syncSubscriptionFromPurchase.
  */
-const syncFromGoogle = async ({ purchaseToken, tenantId, originListingId = null, revoked = false, throwOnAckFailure = false }) => {
+const syncFromGoogle = async ({ purchaseToken, tenantId = null, originListingId = null, revoked = false, throwOnAckFailure = false }) => {
   const purchase = await playApi.getSubscriptionPurchase(purchaseToken);
-  const subscription = await syncSubscriptionFromPurchase(tenantId, purchase, purchaseToken, { originListingId, revoked });
+  // Without a caller tenant (RTDN, daily sweep): the existing row's owner, or
+  // the tenant named by obfuscatedExternalAccountId; null when nobody owns it.
+  const owner =
+    tenantId ||
+    (await subscriptionMigrationService.resolveSubscriptionOwner(
+      'ANDROID',
+      purchaseToken,
+      purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId
+    ));
+  if (!owner) return null;
+  const subscription = await syncSubscriptionFromPurchase(owner, purchase, purchaseToken, { originListingId, revoked });
   await _acknowledgeVerifiedPurchase(purchase, purchaseToken, { throwOnAckFailure });
   return subscription;
 };

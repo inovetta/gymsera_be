@@ -54,8 +54,9 @@
  *     themselves in Settings / Play Store to avoid being charged again.
  *     GymsEra cannot and does not silently do this for them.
  */
-const { Op } = require('sequelize');
+const { Op, UniqueConstraintError } = require('sequelize');
 const { Tenant, TenantSubscription } = require('../models/platform');
+const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
 
 /**
@@ -321,13 +322,35 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
  * @param {string|null} [opts.originListingId]
  * @param {string} opts.idempotencyPrefix - capacity-event key prefix (a per-transaction or per-event id).
  * @param {string|null} [opts.supersededExternalId] - see requestProviderChange.
+ * @param {string|null} [opts.boundTenantId] - the tenant the store says made the purchase (BILL-01).
  * @param {string} [opts.logLabel]
  * @returns {Promise<object>} the persisted TenantSubscription.
  */
-const applyVerifiedSubscription = async (
+const applyVerifiedSubscription = async (tenantId, values, opts = {}) => {
+  // Two tenants verifying the same brand-new transaction at the same moment
+  // both find no row; the UNIQUE (platform, external id) index (or InnoDB's
+  // deadlock detection on the gap lock) stops the second. One retry then
+  // finds the winner's row and answers with the ownership check below.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await _applyVerifiedSubscriptionOnce(tenantId, values, opts);
+    } catch (err) {
+      const raced = err instanceof UniqueConstraintError || err.original?.code === 'ER_LOCK_DEADLOCK';
+      if (!raced || attempt >= 2) throw err;
+    }
+  }
+};
+
+const _ownedByOtherAccount = () => {
+  const err = createError('This subscription belongs to a different GymsEra account.', 409);
+  err.code = 'subscription_owned_by_other_account';
+  return err;
+};
+
+const _applyVerifiedSubscriptionOnce = async (
   tenantId,
   values,
-  { originListingId = null, idempotencyPrefix, supersededExternalId = null, logLabel = 'Billing' } = {}
+  { originListingId = null, idempotencyPrefix, supersededExternalId = null, boundTenantId = null, logLabel = 'Billing' } = {}
 ) => {
   const { sequelize } = require('../database/platform');
   const TenantDbManager = require('../database/TenantDbManager');
@@ -339,12 +362,35 @@ const applyVerifiedSubscription = async (
       transaction: platformTx,
       lock: true,
     });
+
+    // BILL-01: a store purchase belongs to exactly one tenant. Once a row
+    // exists, its tenant owns it — a restore/verify from any other account is
+    // refused and changes nothing (moving a plan between accounts needs an
+    // explicit, audited transfer, not a side effect of Restore). Before any
+    // row exists, the tenant id the app sent with the purchase — echoed back
+    // by the store (Apple appAccountToken / Google obfuscatedExternalAccountId
+    // / our own Stripe metadata) — decides.
+    const bound = boundTenantId ? String(boundTenantId).toLowerCase() : null;
+    if (existing) {
+      if (existing.tenantId !== tenantId) throw _ownedByOtherAccount();
+      if (bound && bound !== String(existing.tenantId).toLowerCase()) {
+        console.warn(
+          `[${logLabel}] TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}, but the store says ` +
+            `tenant ${bound} made the purchase — left with its current owner; needs a human look.`
+        );
+      }
+    } else if (bound && bound !== String(tenantId).toLowerCase()) {
+      throw _ownedByOtherAccount();
+    }
+
     const previousMaxBranches = existing ? existing.branchCount : null;
     // A genuinely new row, or a real plan change (upgrade/downgrade) — as
     // opposed to a plain renewal of the same plan, which must NOT recompute
     // amount/billingCycle.
     const planChanged = !existing || existing.billingPlanId !== values.billingPlanId;
     const rowValues = { ...values, tenantId };
+    // The owner of an existing row is never rewritten by a sync.
+    if (existing) delete rowValues.tenantId;
     if (!planChanged) {
       delete rowValues.amount;
       delete rowValues.billingCycle;
@@ -444,9 +490,28 @@ const applyVerifiedSubscription = async (
 
     return subscription;
   } catch (err) {
-    await platformTx.rollback();
+    // MySQL already rolled back a deadlock victim; rolling back again would
+    // throw and hide the original error.
+    if (!platformTx.finished) await platformTx.rollback();
     throw err;
   }
 };
 
-module.exports = { requestProviderChange, reconcileRenewalStatus, applyVerifiedSubscription };
+/**
+ * Who owns a store subscription, for a sync with no caller tenant (a webhook
+ * or the daily sweep): the tenant already holding its row, else the tenant the
+ * store says bought it (binding token) — only if that tenant really exists.
+ * @returns {Promise<string|null>}
+ */
+const resolveSubscriptionOwner = async (platform, externalId, boundTenantId = null) => {
+  const row = await TenantSubscription.findOne({
+    where: { platform, externalOriginalTransactionId: String(externalId) },
+    attributes: ['tenantId'],
+  });
+  if (row) return row.tenantId;
+  if (!boundTenantId) return null;
+  const tenant = await Tenant.findByPk(String(boundTenantId).toLowerCase(), { attributes: ['id'] });
+  return tenant ? tenant.id : null;
+};
+
+module.exports = { requestProviderChange, reconcileRenewalStatus, applyVerifiedSubscription, resolveSubscriptionOwner };

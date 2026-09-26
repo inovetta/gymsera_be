@@ -60,6 +60,43 @@ const PLATFORM_MIGRATIONS = [
       );
     },
   },
+  {
+    version: 3,
+    name: 'p003_tenant_subscriptions_unique_external_id',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      // UNIQUE (platform, external_original_transaction_id): one row per store
+      // subscription, so one owner (BILL-01). NULL ids (MANUAL rows) never
+      // collide. Existing duplicates are never deleted or merged here — the
+      // migration is skipped (not recorded) and they are listed for a human.
+      const existing = await sequelize.query(
+        "SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+          "AND TABLE_NAME = 'tenant_subscriptions' AND INDEX_NAME = 'tenant_subscriptions_platform_external_unique' LIMIT 1",
+        { type: QueryTypes.SELECT }
+      );
+      if (existing.length > 0) return;
+
+      const duplicates = await sequelize.query(
+        'SELECT platform, external_original_transaction_id AS externalId, COUNT(*) AS n ' +
+          'FROM tenant_subscriptions WHERE external_original_transaction_id IS NOT NULL ' +
+          'GROUP BY platform, external_original_transaction_id HAVING COUNT(*) > 1',
+        { type: QueryTypes.SELECT }
+      );
+      if (duplicates.length > 0) {
+        console.warn(
+          `[PlatformMigration] SKIPPING p003: ${duplicates.length} store subscription id(s) appear on more than one ` +
+            `tenant_subscriptions row: ${duplicates.map((d) => `${d.platform}:${d.externalId} (${d.n})`).join(', ')}. ` +
+            'Resolve them by hand, then re-run.'
+        );
+        return { skipped: true, reason: 'duplicate_external_ids', duplicates };
+      }
+
+      await sequelize.query(
+        'ALTER TABLE `tenant_subscriptions` ADD UNIQUE INDEX `tenant_subscriptions_platform_external_unique` ' +
+          '(`platform`, `external_original_transaction_id`)'
+      );
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

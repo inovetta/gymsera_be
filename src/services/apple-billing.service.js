@@ -195,6 +195,8 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
   return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
     originListingId,
     idempotencyPrefix: values.externalTransactionId,
+    // The tenant id the app sent as applicationUserName (BILL-01).
+    boundTenantId: decodedTransaction.appAccountToken || null,
     logLabel: 'Apple Billing',
   });
 };
@@ -233,10 +235,22 @@ const appleApi = { verifyAndDecode, getTransactionInfo, getLatestTransaction };
  * The one entry point both POST /billing/ios/sync and the App Store
  * notification processor (billing-event.service.js) use: re-fetch Apple's
  * truth, then apply it through syncSubscriptionFromTransaction.
+ *
+ * `tenantId` is the caller's tenant for /sync. Without one (a notification,
+ * the daily sweep) the owner is resolved from the existing row or the
+ * transaction's appAccountToken; returns null when no tenant owns it.
  */
-const syncFromApple = async ({ transactionId, tenantId, originListingId = null }) => {
+const syncFromApple = async ({ transactionId, tenantId = null, originListingId = null }) => {
   const decodedTransaction = await appleApi.getLatestTransaction(transactionId);
-  return syncSubscriptionFromTransaction(tenantId, decodedTransaction, { originListingId });
+  const owner =
+    tenantId ||
+    (await subscriptionMigrationService.resolveSubscriptionOwner(
+      'IOS',
+      decodedTransaction.originalTransactionId,
+      decodedTransaction.appAccountToken
+    ));
+  if (!owner) return null;
+  return syncSubscriptionFromTransaction(owner, decodedTransaction, { originListingId });
 };
 
 module.exports = {

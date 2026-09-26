@@ -33,7 +33,7 @@
  * key change, not a code change).
  */
 const Stripe = require('stripe');
-const { BillingPlan, Tenant, TenantSubscription } = require('../models/platform');
+const { BillingPlan, Tenant } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionMigrationService = require('./subscription-migration.service');
 
@@ -274,6 +274,8 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
   return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
     originListingId,
     idempotencyPrefix,
+    // Written by our own createCheckoutSession, server-side (BILL-01).
+    boundTenantId: stripeSubscription.metadata?.tenantId || null,
     logLabel: 'Stripe Billing',
   });
 };
@@ -345,10 +347,11 @@ const stripeApi = {
  */
 const syncFromStripe = async ({ subscriptionId, eventId = null, revoked = false }) => {
   const subscription = await stripeApi.retrieveSubscription(subscriptionId);
-  const existing = await TenantSubscription.findOne({
-    where: { platform: 'STRIPE', externalOriginalTransactionId: subscription.id },
-  });
-  const tenantId = existing?.tenantId || subscription.metadata?.tenantId || null;
+  const tenantId = await subscriptionMigrationService.resolveSubscriptionOwner(
+    'STRIPE',
+    subscription.id,
+    subscription.metadata?.tenantId
+  );
   if (!tenantId) return null;
   return syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: eventId, revoked });
 };

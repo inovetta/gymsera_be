@@ -84,9 +84,23 @@ describe('Platform migration runner', () => {
     expect(await snapshot()).toEqual(before);
   });
 
+  test('p003 is skipped — not recorded, nothing deleted — while duplicate store ids exist', async () => {
+    await seq.query(
+      "INSERT INTO tenant_subscriptions (id, tenant_id, platform, external_original_transaction_id, status) VALUES ('dup', 't9', 'IOS', 'orig-1', 'CANCELLED')"
+    );
+    const result = await runPlatformMigrations(seq);
+    expect(result.applied).toEqual(['p001_create_billing_events', 'p002_tenant_subscriptions_status_revoked']);
+    expect(result.finalVersion).toBe(2);
+    const [[{ n }]] = await seq.query('SELECT COUNT(*) AS n FROM tenant_subscriptions');
+    expect(Number(n)).toBe(2);
+
+    // Once a human resolves the duplicate, a re-run applies p003.
+    await seq.query("DELETE FROM tenant_subscriptions WHERE id = 'dup'");
+  });
+
   test('apply runs every migration once; a second run applies nothing and changes nothing', async () => {
     const first = await runPlatformMigrations(seq);
-    expect(first.applied).toEqual(PLATFORM_MIGRATIONS.map((m) => m.name));
+    expect(first.applied).toEqual(['p003_tenant_subscriptions_unique_external_id']);
     expect(first.finalVersion).toBe(PLATFORM_TARGET_VERSION);
 
     const [billingEvents] = await seq.query("SHOW TABLES LIKE 'billing_events'");
@@ -97,6 +111,11 @@ describe('Platform migration runner', () => {
     expect(statusCol.Type).toContain("'REVOKED'");
     const [[row]] = await seq.query("SELECT status FROM tenant_subscriptions WHERE id = 's1'");
     expect(row.status).toBe('ACTIVE');
+
+    // p003: the unique index exists and rejects a second row for the same store subscription.
+    await expect(
+      seq.query("INSERT INTO tenant_subscriptions (id, tenant_id, platform, external_original_transaction_id) VALUES ('s2', 't2', 'IOS', 'orig-1')")
+    ).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
 
     const afterFirst = await snapshot();
     const second = await runPlatformMigrations(seq);

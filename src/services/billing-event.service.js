@@ -48,15 +48,6 @@ const recordEvent = async ({ provider, providerEventId, eventType = null, rawPay
   }
 };
 
-/** Tenant that already holds this external subscription, if any. */
-const _ownerOf = async (platform, externalId) => {
-  const row = await TenantSubscription.findOne({
-    where: { platform, externalOriginalTransactionId: String(externalId) },
-    attributes: ['tenantId'],
-  });
-  return row?.tenantId || null;
-};
-
 const _processApple = async (payload) => {
   const appleBilling = require('./apple-billing.service');
   const decoded = appleBilling.appleApi.verifyAndDecode(payload.signedPayload);
@@ -64,13 +55,8 @@ const _processApple = async (payload) => {
   if (!transactionJws) return { outcome: 'IGNORED', note: `${decoded.notificationType || 'Notification'} carries no transaction` };
   // Used only as a key to look the subscription up — its state is re-fetched.
   const transaction = appleBilling.appleApi.verifyAndDecode(transactionJws);
-  const originalTransactionId = String(transaction.originalTransactionId);
-
-  const tenantId = await _ownerOf('IOS', originalTransactionId);
-  if (!tenantId) {
-    return { outcome: 'IGNORED', note: 'Unknown transaction — no tenant owns it yet; the app /sync will create it' };
-  }
-  await appleBilling.syncFromApple({ transactionId: originalTransactionId, tenantId });
+  const synced = await appleBilling.syncFromApple({ transactionId: String(transaction.originalTransactionId) });
+  if (!synced) return { outcome: 'IGNORED', note: 'No GymsEra tenant owns this transaction' };
   return { outcome: 'PROCESSED' };
 };
 
@@ -103,11 +89,8 @@ const _processGoogle = async (payload) => {
   }
   if (!purchaseToken) return { outcome: 'IGNORED', note: 'Not a subscription notification' };
 
-  const tenantId = await _ownerOf('ANDROID', purchaseToken);
-  if (!tenantId) {
-    return { outcome: 'IGNORED', note: 'Unknown purchase token — no tenant owns it yet; the app /sync will create it' };
-  }
-  await googlePlayBilling.syncFromGoogle({ purchaseToken, tenantId, revoked, throwOnAckFailure: true });
+  const synced = await googlePlayBilling.syncFromGoogle({ purchaseToken, revoked, throwOnAckFailure: true });
+  if (!synced) return { outcome: 'IGNORED', note: 'No GymsEra tenant owns this purchase token' };
   return { outcome: 'PROCESSED' };
 };
 
