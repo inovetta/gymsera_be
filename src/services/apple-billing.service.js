@@ -184,7 +184,9 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     // subscription-migration.service.js#applyVerifiedSubscription.
     amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
     billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
-    status: revoked ? 'CANCELLED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
+    // revocationDate = Apple refunded or revoked it (REFUND / REVOKE
+    // notifications): not entitled from now on (BILL-02).
+    status: revoked ? 'REVOKED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
     autoRenew: !revoked,
     paymentStatus: 'PAID',
     lastVerifiedAt: new Date(),

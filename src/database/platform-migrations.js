@@ -45,6 +45,21 @@ const PLATFORM_MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 2,
+    name: 'p002_tenant_subscriptions_status_revoked',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      // Adds REVOKED (BILL-02). Only ever grows the list, so existing values are
+      // untouched and re-running is a no-op. Previously widened at every boot
+      // in platform.js#connect (PENDING_MIGRATION/PENDING_CANCEL/SCHEDULED).
+      await sequelize.query(
+        "ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `status` " +
+          "ENUM('ACTIVE','EXPIRED','CANCELLED','PENDING_MIGRATION','PENDING_CANCEL','SCHEDULED','REVOKED') " +
+          "NOT NULL DEFAULT 'ACTIVE'"
+      );
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

@@ -112,7 +112,7 @@ const _statusFromSubscriptionState = (subscriptionState) => {
  * Google's subscriptionsv2.get response doesn't echo the token that was
  * used to fetch it, so the caller (who already has it) always supplies it.
  */
-const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, { originListingId = null } = {}) => {
+const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, { originListingId = null, revoked = false } = {}) => {
   const lineItem = purchase.lineItems?.[0];
   if (!lineItem) throw createError('Google Play purchase has no line items', 400);
 
@@ -122,7 +122,10 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
   const isAnnual = basePlanId === plan.androidAnnualBasePlanId;
 
   const expiresAt = lineItem.expiryTime ? new Date(lineItem.expiryTime) : null;
-  const status = _statusFromSubscriptionState(purchase.subscriptionState);
+  // `revoked`: Google reported this purchase refunded/revoked (RTDN
+  // SUBSCRIPTION_REVOKED, a voided-purchase notification, or the Voided
+  // Purchases API) — a subscriptionsv2 read alone can't always show it (BILL-02).
+  const status = revoked ? 'REVOKED' : _statusFromSubscriptionState(purchase.subscriptionState);
   const latestOrderId = purchase.latestOrderId ? String(purchase.latestOrderId) : null;
 
   const values = {
@@ -183,7 +186,27 @@ const acknowledgePurchaseIfNeeded = async (purchaseToken, productId) => {
  * Provider API calls, grouped so a test can substitute them — nothing else in
  * this file talks to Google directly.
  */
-const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded };
+/**
+ * Voided Purchases API — subscription purchases refunded, charged back or
+ * revoked since `startTimeMillis`. Read by the daily sweep so a refund whose
+ * RTDN never arrived still ends entitlement (BILL-02, spec §7.6).
+ */
+const listVoidedPurchases = async (startTimeMillis) => {
+  const auth = _playDeveloperApiAuth();
+  const voided = [];
+  let pageToken = null;
+  do {
+    const params = new URLSearchParams({ startTime: String(startTimeMillis), type: '1', maxResults: '1000' });
+    if (pageToken) params.set('token', pageToken);
+    const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${_packageName()}/purchases/voidedpurchases?${params}`;
+    const response = await auth.request({ url, method: 'GET' });
+    voided.push(...(response.data?.voidedPurchases || []));
+    pageToken = response.data?.tokenPagination?.nextPageToken || null;
+  } while (pageToken);
+  return voided;
+};
+
+const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoidedPurchases };
 
 /**
  * The one entry point both POST /billing/android/sync and the RTDN processor
@@ -191,9 +214,9 @@ const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded };
  * Developer API (never the notification's own claims), then apply it through
  * syncSubscriptionFromPurchase.
  */
-const syncFromGoogle = async ({ purchaseToken, tenantId, originListingId = null }) => {
+const syncFromGoogle = async ({ purchaseToken, tenantId, originListingId = null, revoked = false }) => {
   const purchase = await playApi.getSubscriptionPurchase(purchaseToken);
-  return syncSubscriptionFromPurchase(tenantId, purchase, purchaseToken, { originListingId });
+  return syncSubscriptionFromPurchase(tenantId, purchase, purchaseToken, { originListingId, revoked });
 };
 
 module.exports = {

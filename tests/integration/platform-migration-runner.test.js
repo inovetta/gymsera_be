@@ -92,6 +92,12 @@ describe('Platform migration runner', () => {
     const [billingEvents] = await seq.query("SHOW TABLES LIKE 'billing_events'");
     expect(billingEvents).toHaveLength(1);
 
+    // p002: REVOKED added, the existing row untouched.
+    const [[statusCol]] = await seq.query("SHOW COLUMNS FROM tenant_subscriptions LIKE 'status'");
+    expect(statusCol.Type).toContain("'REVOKED'");
+    const [[row]] = await seq.query("SELECT status FROM tenant_subscriptions WHERE id = 's1'");
+    expect(row.status).toBe('ACTIVE');
+
     const afterFirst = await snapshot();
     const second = await runPlatformMigrations(seq);
     expect(second.applied).toEqual([]);

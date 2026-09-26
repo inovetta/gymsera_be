@@ -74,19 +74,36 @@ const _processApple = async (payload) => {
   return { outcome: 'PROCESSED' };
 };
 
+// RTDN subscriptionNotification.notificationType 12 = SUBSCRIPTION_REVOKED.
+const GOOGLE_SUBSCRIPTION_REVOKED = 12;
+
 const _processGoogle = async (payload) => {
   const googlePlayBilling = require('./google-play-billing.service');
-  const dataB64 = payload?.message?.data;
-  if (!dataB64) return { outcome: 'IGNORED', note: 'Empty Pub/Sub message' };
-  const decoded = JSON.parse(Buffer.from(dataB64, 'base64').toString('utf8'));
-  const purchaseToken = decoded.subscriptionNotification?.purchaseToken;
+  let purchaseToken;
+  let revoked = false;
+  if (payload?.voidedPurchase) {
+    // Recorded by sweepGoogleVoidedPurchases from the Voided Purchases API.
+    purchaseToken = payload.voidedPurchase.purchaseToken;
+    revoked = true;
+  } else {
+    const dataB64 = payload?.message?.data;
+    if (!dataB64) return { outcome: 'IGNORED', note: 'Empty Pub/Sub message' };
+    const decoded = JSON.parse(Buffer.from(dataB64, 'base64').toString('utf8'));
+    if (decoded.voidedPurchaseNotification) {
+      purchaseToken = decoded.voidedPurchaseNotification.purchaseToken;
+      revoked = true;
+    } else {
+      purchaseToken = decoded.subscriptionNotification?.purchaseToken;
+      revoked = decoded.subscriptionNotification?.notificationType === GOOGLE_SUBSCRIPTION_REVOKED;
+    }
+  }
   if (!purchaseToken) return { outcome: 'IGNORED', note: 'Not a subscription notification' };
 
   const tenantId = await _ownerOf('ANDROID', purchaseToken);
   if (!tenantId) {
     return { outcome: 'IGNORED', note: 'Unknown purchase token — no tenant owns it yet; the app /sync will create it' };
   }
-  await googlePlayBilling.syncFromGoogle({ purchaseToken, tenantId });
+  await googlePlayBilling.syncFromGoogle({ purchaseToken, tenantId, revoked });
   return { outcome: 'PROCESSED' };
 };
 
@@ -184,6 +201,27 @@ const reconcileStoreSubscriptions = async () => {
   return { checked: rows.length, failed };
 };
 
+/**
+ * Daily: Google refunds/chargebacks/revokes from the Voided Purchases API,
+ * recorded in the inbox (one event per voided order — overlapping windows are
+ * harmless) and processed like a voided-purchase RTDN (BILL-02, spec §7.6).
+ */
+const sweepGoogleVoidedPurchases = async ({ windowDays = 3 } = {}) => {
+  const googlePlayBilling = require('./google-play-billing.service');
+  const since = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+  const voided = await googlePlayBilling.playApi.listVoidedPurchases(since);
+  for (const v of voided) {
+    if (!v.purchaseToken || !v.orderId) continue;
+    await receiveEvent({
+      provider: 'GOOGLE',
+      providerEventId: `voided:${v.orderId}`,
+      eventType: 'voided-purchase',
+      rawPayload: { voidedPurchase: v },
+    });
+  }
+  return { found: voided.length };
+};
+
 module.exports = {
   ALERT_AFTER_ATTEMPTS,
   recordEvent,
@@ -191,4 +229,5 @@ module.exports = {
   receiveEvent,
   processPendingEvents,
   reconcileStoreSubscriptions,
+  sweepGoogleVoidedPurchases,
 };

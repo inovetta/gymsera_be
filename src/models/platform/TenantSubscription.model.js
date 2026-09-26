@@ -95,8 +95,10 @@ module.exports = (sequelize) => {
       // old row after a completed migration away from Stripe, which we CAN
       // cancel server-side (cancel_at_period_end) — flips to CANCELLED once
       // Stripe's webhook confirms. See subscription-migration.service.js.
+      // REVOKED: refunded, charged back or revoked at the provider — not
+      // entitled from that moment (BILL-02, spec §7.5.7).
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED'),
+        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED'),
         allowNull: false,
         defaultValue: 'ACTIVE',
       },

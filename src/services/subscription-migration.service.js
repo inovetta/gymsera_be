@@ -361,7 +361,16 @@ const applyVerifiedSubscription = async (
     // real cross-provider migration) — it already reconciled capacity itself.
     let reconciledByActivation = false;
     let migratedFrom = null;
+    const previousStatus = existing ? existing.status : null;
     if (existing) {
+      // A refund/chargeback is not always visible in the provider's
+      // subscription object (a Stripe refund, or a Play refund without
+      // revoke, still reads "active"), so a later resync of the SAME paid
+      // period must not undo a revocation. Only a newer paid period — the
+      // host paid again — makes a REVOKED row entitled again (BILL-02).
+      if (existing.status === 'REVOKED' && rowValues.status === 'ACTIVE' && !(rowValues.endDate > existing.endDate)) {
+        rowValues.status = 'REVOKED';
+      }
       // A renewal/resync for an external id already on file — never a
       // migration decision. reconcileRenewalStatus refuses to resurrect a
       // superseded row to ACTIVE while another row is this tenant's entitlement.
@@ -396,6 +405,24 @@ const applyVerifiedSubscription = async (
           previousMaxBranches,
           originListingId,
           idempotencyPrefix,
+          actorType: 'SYSTEM',
+        });
+      }
+    }
+
+    // Entitlement ended by a refund/chargeback/revoke: shrink capacity to what
+    // the tenant is still entitled to, in the same transaction (BILL-02,
+    // spec §7.5.7). Runs once — a replay finds the row already REVOKED.
+    if (previousStatus === 'ACTIVE' && subscription.status === 'REVOKED') {
+      const tenantDb = await tenantDbFor();
+      if (tenantDb) {
+        const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
+        const stillActive = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+        const entitled = await subscriptionQuotaService.resolveMaxBranches(tenant, stillActive, { transaction: platformTx });
+        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, entitled, {
+          transaction: platformTx,
+          previousMaxBranches,
+          idempotencyPrefix: `revoke:${values.platform}:${values.externalOriginalTransactionId}`,
           actorType: 'SYSTEM',
         });
       }

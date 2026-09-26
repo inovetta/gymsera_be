@@ -300,6 +300,9 @@ const runExpiryCheck = async () => {
   try {
     const billingEvents = require('../services/billing-event.service');
     await billingEvents.processPendingEvents({ limit: 500 });
+    await billingEvents.sweepGoogleVoidedPurchases().catch((err) =>
+      console.warn('[Cron] Google voided-purchases sweep skipped:', err.message)
+    );
     const recon = await billingEvents.reconcileStoreSubscriptions();
     if (recon.failed > 0) console.warn(`[Cron] Store reconciliation: ${recon.failed}/${recon.checked} subscription(s) failed to refresh`);
   } catch (err) {

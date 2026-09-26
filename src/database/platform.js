@@ -257,22 +257,9 @@ const connect = async () => {
     _logIfUnexpected('tenant_subscriptions.over_quota_count', err);
   }
 
-  // Widen `status` for provider-aware migration (subscription-migration.service.js):
-  // PENDING_MIGRATION is the brief in-transaction state on a row being
-  // replaced by a different-provider purchase (rolled back if that purchase's
-  // verification fails); PENDING_CANCEL is a terminated-but-still-possibly-
-  // billing Apple/Google subscription we cannot cancel server-side, awaiting
-  // the host's own store-side cancellation; SCHEDULED is a Stripe subscription
-  // we've told Stripe to cancel at period end, awaiting its webhook
-  // confirmation. Safe to widen repeatedly — MODIFY COLUMN on an ENUM is
-  // idempotent as long as the target list only ever grows.
-  try {
-    await sequelize.query(
-      "ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `status` ENUM('ACTIVE','EXPIRED','CANCELLED','PENDING_MIGRATION','PENDING_CANCEL','SCHEDULED') NOT NULL DEFAULT 'ACTIVE';"
-    );
-  } catch (err) {
-    _logIfUnexpected('tenant_subscriptions.status widen ENUM', err);
-  }
+  // tenant_subscriptions.status is owned by platform migration p002
+  // (platform-migrations.js) from now on. The boot-time MODIFY that used to
+  // live here would narrow the ENUM back on every boot and drop REVOKED.
 
   // Per-provider catalog sync status (billing-plan-catalog.service.js) — lets
   // Super Admin see when App Store Connect / Play Console / Stripe's actual

@@ -233,7 +233,7 @@ const _statusFromStripeStatus = (stripeStatus) => {
  * own retries of the same delivery, which is exactly the idempotency
  * behavior every other caller of reconcileCapacity relies on.
  */
-const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { originListingId = null, stripeEventId = null } = {}) => {
+const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { originListingId = null, stripeEventId = null, revoked = false } = {}) => {
   const idempotencyPrefix = stripeEventId || stripeSubscription.id;
   const item = stripeSubscription.items?.data?.[0];
   const priceId = item?.price?.id;
@@ -241,7 +241,9 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
   const plan = await findPlanForPriceId(priceId);
   const isAnnual = priceId === plan.stripeAnnualPriceId;
 
-  const status = _statusFromStripeStatus(stripeSubscription.status);
+  // `revoked`: the latest payment was fully refunded or disputed — Stripe
+  // keeps the subscription itself "active", so the caller says so (BILL-02).
+  const status = revoked ? 'REVOKED' : _statusFromStripeStatus(stripeSubscription.status);
   const periodEnd = item.current_period_end ? new Date(item.current_period_end * 1000) : null;
   const periodStart = item.current_period_start ? new Date(item.current_period_start * 1000) : new Date();
 
@@ -308,6 +310,27 @@ const verifyWebhookEvent = (rawBody, signature) => {
 const stripeApi = {
   verifyWebhookEvent,
   retrieveSubscription: (id) => _client().subscriptions.retrieve(id),
+  retrieveCharge: (id) => _client().charges.retrieve(id),
+  /**
+   * The subscription a charge paid for. Older API versions put the invoice on
+   * the charge; newer ones link charge → payment intent → invoice payment →
+   * invoice, and the invoice names its subscription under
+   * parent.subscription_details. Tries both.
+   */
+  subscriptionIdForCharge: async (charge) => {
+    const stripe = _client();
+    let invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
+    if (!invoiceId && charge.payment_intent) {
+      const paymentIntent = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent.id;
+      const payments = await stripe.invoicePayments.list({ payment: { type: 'payment_intent', payment_intent: paymentIntent }, limit: 1 });
+      const inv = payments.data?.[0]?.invoice;
+      invoiceId = typeof inv === 'string' ? inv : inv?.id;
+    }
+    if (!invoiceId) return null;
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    const sub = invoice.subscription || invoice.parent?.subscription_details?.subscription;
+    return typeof sub === 'string' ? sub : sub?.id || null;
+  },
 };
 
 /**
@@ -320,14 +343,14 @@ const stripeApi = {
  *
  * @returns {Promise<object|null>} null when no tenant can be resolved.
  */
-const syncFromStripe = async ({ subscriptionId, eventId = null }) => {
+const syncFromStripe = async ({ subscriptionId, eventId = null, revoked = false }) => {
   const subscription = await stripeApi.retrieveSubscription(subscriptionId);
   const existing = await TenantSubscription.findOne({
     where: { platform: 'STRIPE', externalOriginalTransactionId: subscription.id },
   });
   const tenantId = existing?.tenantId || subscription.metadata?.tenantId || null;
   if (!tenantId) return null;
-  return syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: eventId });
+  return syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: eventId, revoked });
 };
 
 /**
@@ -339,7 +362,22 @@ const syncFromStripe = async ({ subscriptionId, eventId = null }) => {
 const processWebhookEvent = async (event) => {
   const object = event.data?.object || {};
   let subscriptionId = null;
+  let revoked = false;
   switch (event.type) {
+    case 'charge.refunded':
+    case 'charge.dispute.created': {
+      // Refund / chargeback (BILL-02, spec §7.5.7). The charge is re-fetched:
+      // only a FULL refund or an open dispute revokes; a partial refund is a
+      // goodwill credit and leaves the plan in place.
+      const chargeId = event.type === 'charge.refunded' ? object.id : object.charge;
+      const charge = await stripeApi.retrieveCharge(typeof chargeId === 'string' ? chargeId : chargeId?.id);
+      if (!(charge.refunded === true || charge.disputed === true)) {
+        return { outcome: 'IGNORED', note: 'Partial refund — entitlement unchanged' };
+      }
+      subscriptionId = await stripeApi.subscriptionIdForCharge(charge);
+      revoked = true;
+      break;
+    }
     case 'checkout.session.completed':
       if (object.mode === 'subscription') subscriptionId = object.subscription;
       break;
@@ -355,7 +393,7 @@ const processWebhookEvent = async (event) => {
       return { outcome: 'IGNORED', note: `Event type ${event.type} does not change entitlement` };
   }
   if (!subscriptionId) return { outcome: 'IGNORED', note: 'No subscription on this event' };
-  const synced = await syncFromStripe({ subscriptionId, eventId: event.id });
+  const synced = await syncFromStripe({ subscriptionId, eventId: event.id, revoked });
   if (!synced) return { outcome: 'IGNORED', note: 'Subscription has no GymsEra tenant' };
   return { outcome: 'PROCESSED' };
 };

@@ -43,6 +43,12 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
   if (activeSub && activeSub.package) {
     return activeSub.package.maxBranches;
   }
+  // A refunded/charged-back/revoked subscription must not fall through to the
+  // legacy defaults below, which would hand the tenant its registration
+  // package (or 1 branch) back for free (BILL-02, spec §7.5.7).
+  if (!activeSub && (await TenantSubscription.count({ where: { tenantId: tenant.id, status: 'REVOKED' }, transaction })) > 0) {
+    return 0;
+  }
   if (tenant.selectedPackageId) {
     const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId, { transaction });
     if (pkg) return pkg.maxBranches;
