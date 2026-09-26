@@ -204,6 +204,11 @@ module.exports = (sequelize) => {
   });
 
   Payment.beforeUpdate(async (instance, options) => {
+    // Explicit bypass allowed ONLY for the official repair script (repair-payment-business-dates.js)
+    if (options && options.allowBusinessDateRepair === true) {
+      return;
+    }
+
     const previousBDate = instance.previous('businessDate');
     const currentBDate = (instance.getDataValue && instance.getDataValue('businessDate')) || instance.businessDate;
 
@@ -231,6 +236,9 @@ module.exports = (sequelize) => {
   });
 
   Payment.beforeBulkUpdate((options) => {
+    if (options && options.allowBusinessDateRepair === true) {
+      return;
+    }
     if (options.attributes && ('businessDate' in options.attributes || 'business_date' in options.attributes)) {
       throw new Error('business_date cannot be changed via bulk update');
     }

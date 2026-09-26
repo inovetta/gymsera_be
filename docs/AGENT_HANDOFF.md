@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-26 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Step 2.8 — One rule for "collection time"** |
+| Current prompt | **Step 2.9 — Repair script for payments on the wrong day** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 92b72e6 feat(payments): unify collection time rule via getPaymentCollectionTime across model hooks, Migration 004, and Query B (Step 2.8) | no (working tree clean) |
+| gymsera_be | main | (pending commit) | yes: Step 2.9 repair script, hook bypass, tests |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -43,12 +43,12 @@ next agent won't know it.
 
 ### Work in progress that is NOT committed
 
-- `gymsera_be`: none (working tree clean).
+- `gymsera_be`: Step 2.9 maintenance repair script (`src/scripts/repair-payment-business-dates.js`, `Payment.model.js`, `tests/integration/repair-payment-business-dates.test.js`).
 - `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
 
 ### Blocked / waiting on the owner
 
-- (none) — read-only queries provided for owner to run against staging/production databases: Timezone Query, Query A, and Query B.
+- (none) — owner to run `node src/scripts/repair-payment-business-dates.js` (preview) and `node src/scripts/repair-payment-business-dates.js --apply --confirm` on production.
 
 ---
 
@@ -56,11 +56,11 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. Discrepancy analysis: Identified conflicting fallback orders across `Payment.model.js:184-194` (`paid_at` before `created_at`), `tenant-migration-runner.js:93` (`paid_at` before `created_at`), and `Query B` (`created_at` before `paid_at`).
-- [x] 2. Historical audit: Verified that for old CASH payments without `collected_at`, `created_at` records the physical desk collection timestamp (while `paid_at` is later host verification); for ONLINE / BANK_TRANSFER payments, `paid_at` records the fund settlement/clearing timestamp (while `created_at` is only initial intent creation).
-- [x] 3. Unified function: Created single authority `getPaymentCollectionTime(payment)` in `src/services/ledger.service.js`. Replaced all separate fallback rules in `Payment.model.js` hooks, `payment.service.js` (`recordPayment`, `verifyPayment`), and Migration 004 (`004_backfill_payments_business_date`).
-- [x] 4. Regression tests: Added tests in `payment-business-date.test.js` verifying that old cash payment created at 23:30 on Day X and verified next morning gets Day X; old bank transfer verified next morning gets Day X+1; Migration 004 applies this rule identically. All 9 test suites / 36 tests pass.
-- [x] 5. Final read-only queries: Updated Query B to use the unified rule; provided timezone query, Query A, and Query B.
+- [x] 1. Maintenance script: Created `src/scripts/repair-payment-business-dates.js` with preview-by-default, `--apply --confirm` safety guard, read-only transaction in preview, skip on CLOSED ledger days ("needs manual adjustment"), and audit logging to `audit_logs`.
+- [x] 2. Immutability bypass: Added explicit `allowBusinessDateRepair` option to `Payment.beforeUpdate` and `beforeBulkUpdate` hooks.
+- [x] 3. Regression tests: Added tests in `tests/integration/repair-payment-business-dates.test.js` verifying preview makes 0 writes, apply fixes open-day rows and skips closed-day rows, writes audit rows, second run is idempotent, and non-script updates remain blocked. All 10 suites / 41 tests pass.
+- [x] 4. Collation audit (Part 2): Analyzed `utf8mb4_general_ci` vs `utf8mb4_unicode_ci` discrepancy, query failure risks, and proposed a zero-downtime migration plan.
+- [x] 5. Demo tenants audit (Part 3): Verified origin of `gymsera_ironpeak` and `gymsera_powerzone` from `seed.js`/`provision-seeded-tenants.js`, and proposed safe removal/deactivation strategy.
 
 ---
 
@@ -74,7 +74,7 @@ next agent won't know it.
     - Command: `npm test`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
     - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL (port 3306). Never touches live or staging DBs (R-19).
-    - Status: ALL 9 suites PASS, 36 tests PASS. Zero failures.
+    - Status: ALL 10 suites PASS, 41 tests PASS. Zero failures.
   - `gyms_era` (Flutter):
     - Command: `flutter test test/regression/`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
@@ -103,4 +103,5 @@ next agent won't know it.
 | 4 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.5 | NEW-10 (§9.6 getConnection side effects), test safety guard, Playwright smoke tests | task complete | yes |
 | 5 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.7 | Payment business_date immutable from collection time; model hooks; Migration 006; raw SQL audit; backfill-payments.js removed | task complete | yes |
 | 6 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.8 | One rule for collection time (getPaymentCollectionTime): cash -> created_at, online -> paid_at; unified model hooks, Migration 004, and Query B | task complete | yes |
+| 7 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.9 | Maintenance repair script for payment business_date (repair-payment-business-dates.js), collation audit, demo tenant audit | task complete | yes |
 
