@@ -210,6 +210,24 @@ const createStripeCheckoutSession = async (req, res, next) => {
 };
 
 /**
+ * GET /billing/stripe/session/:id
+ *
+ * The Stripe return page's only source of truth (BILL-14): Stripe's own
+ * answer about this Checkout Session, and whether the webhook has granted the
+ * plan yet. The page's `?checkout=success` is never trusted.
+ */
+const getStripeCheckoutSession = async (req, res, next) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const status = await stripeBilling.getCheckoutSessionStatus(tenantId, req.params.id);
+    return sendSuccess(res, status, 'Checkout session status');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /billing/stripe/change-plan
  *
  * Same-provider (Stripe → Stripe) upgrade/downgrade — updates the existing
@@ -294,6 +312,7 @@ module.exports = {
   syncAndroidPurchase,
   googleRtdnWebhook,
   createStripeCheckoutSession,
+  getStripeCheckoutSession,
   changeStripePlan,
   createStripePortalSession,
   stripeWebhook,

@@ -154,6 +154,26 @@ router.post('/stripe/checkout-session', authenticate, controller.createStripeChe
 
 /**
  * @swagger
+ * /billing/stripe/session/{id}:
+ *   get:
+ *     summary: Verify a Stripe Checkout Session server-side (return page)
+ *     description: >
+ *       Re-fetches the session from Stripe and reports whether it is paid and
+ *       whether the webhook has granted the plan yet. Read-only. The return
+ *       URL's query parameters are never trusted.
+ *     tags: [Billing]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: "{ status, paymentStatus, confirmed, entitled }" }
+ *       404: { description: Unknown session, or not this tenant's }
+ */
+router.get('/stripe/session/:id', authenticate, controller.getStripeCheckoutSession);
+
+/**
+ * @swagger
  * /billing/stripe/change-plan:
  *   post:
  *     summary: Change an existing Stripe subscriber's plan (same-provider upgrade/downgrade)

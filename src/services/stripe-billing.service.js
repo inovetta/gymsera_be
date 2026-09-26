@@ -313,6 +313,7 @@ const stripeApi = {
   verifyWebhookEvent,
   retrieveSubscription: (id) => _client().subscriptions.retrieve(id),
   retrieveCharge: (id) => _client().charges.retrieve(id),
+  retrieveCheckoutSession: (id) => _client().checkout.sessions.retrieve(id),
   /**
    * The subscription a charge paid for. Older API versions put the invoice on
    * the charge; newer ones link charge → payment intent → invoice payment →
@@ -333,6 +334,36 @@ const stripeApi = {
     const sub = invoice.subscription || invoice.parent?.subscription_details?.subscription;
     return typeof sub === 'string' ? sub : sub?.id || null;
   },
+};
+
+/**
+ * What the Stripe return page shows (BILL-14): the Checkout Session re-fetched
+ * from Stripe — never the `?checkout=success` the browser arrived with — plus
+ * whether the webhook-driven entitlement exists yet. Read-only: a GET never
+ * grants anything; only the webhook does. A session that isn't this tenant's
+ * is reported as not found.
+ */
+const getCheckoutSessionStatus = async (tenantId, sessionId) => {
+  let session;
+  try {
+    session = await stripeApi.retrieveCheckoutSession(sessionId);
+  } catch (err) {
+    if (err.statusCode === 404 || err.code === 'resource_missing') throw createError('Checkout session not found', 404);
+    throw err;
+  }
+  if (session.metadata?.tenantId !== tenantId) throw createError('Checkout session not found', 404);
+
+  const confirmed = session.status === 'complete' && ['paid', 'no_payment_required'].includes(session.payment_status);
+  const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+  let entitled = false;
+  if (confirmed && subscriptionId) {
+    const { TenantSubscription } = require('../models/platform');
+    entitled =
+      (await TenantSubscription.count({
+        where: { tenantId, platform: 'STRIPE', externalOriginalTransactionId: subscriptionId, status: 'ACTIVE' },
+      })) > 0;
+  }
+  return { status: session.status, paymentStatus: session.payment_status, confirmed, entitled };
 };
 
 /**
@@ -409,6 +440,7 @@ module.exports = {
   syncSubscriptionFromStripeObject,
   cancelAtPeriodEnd,
   stripeApi,
+  getCheckoutSessionStatus,
   verifyWebhookEvent,
   syncFromStripe,
   processWebhookEvent,
