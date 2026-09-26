@@ -24,6 +24,7 @@
  * function below is real, production-shaped code; only the store-side IDs
  * are stubbed (see platform.js's placeholder-ID backfill).
  */
+const { URLSearchParams } = require('url');
 const { JWT } = require('google-auth-library');
 const { BillingPlan } = require('../models/platform');
 const { createError } = require('../utils/response.utils');

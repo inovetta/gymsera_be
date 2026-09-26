@@ -31,7 +31,7 @@ module.exports = (sequelize) => {
       providerEventId: {
         type: DataTypes.STRING(191),
         allowNull: false,
-        comment: "Apple notificationUUID, Pub/Sub messageId, or Stripe event id — the provider's own dedupe key.",
+        comment: 'Apple notificationUUID, Pub/Sub messageId, or Stripe event id — the provider\'s own dedupe key.',
       },
       eventType: {
         type: DataTypes.STRING(100),

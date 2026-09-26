@@ -54,9 +54,9 @@ const PLATFORM_MIGRATIONS = [
       // untouched and re-running is a no-op. Previously widened at every boot
       // in platform.js#connect (PENDING_MIGRATION/PENDING_CANCEL/SCHEDULED).
       await sequelize.query(
-        "ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `status` " +
-          "ENUM('ACTIVE','EXPIRED','CANCELLED','PENDING_MIGRATION','PENDING_CANCEL','SCHEDULED','REVOKED') " +
-          "NOT NULL DEFAULT 'ACTIVE'"
+        'ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `status` ' +
+          'ENUM(\'ACTIVE\',\'EXPIRED\',\'CANCELLED\',\'PENDING_MIGRATION\',\'PENDING_CANCEL\',\'SCHEDULED\',\'REVOKED\') ' +
+          'NOT NULL DEFAULT \'ACTIVE\''
       );
     },
   },
@@ -70,8 +70,8 @@ const PLATFORM_MIGRATIONS = [
       // collide. Existing duplicates are never deleted or merged here — the
       // migration is skipped (not recorded) and they are listed for a human.
       const existing = await sequelize.query(
-        "SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
-          "AND TABLE_NAME = 'tenant_subscriptions' AND INDEX_NAME = 'tenant_subscriptions_platform_external_unique' LIMIT 1",
+        'SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() ' +
+          'AND TABLE_NAME = \'tenant_subscriptions\' AND INDEX_NAME = \'tenant_subscriptions_platform_external_unique\' LIMIT 1',
         { type: QueryTypes.SELECT }
       );
       if (existing.length > 0) return;
@@ -132,7 +132,7 @@ const checkPlatformSchemaVersion = async (sequelize) => {
     if (currentVersion < PLATFORM_TARGET_VERSION) {
       console.warn(
         `[Deploy Warning] Platform schema version (${currentVersion}) is behind target (${PLATFORM_TARGET_VERSION}). ` +
-          "Run 'node src/scripts/run-platform-migrations.js --dry-run', then without --dry-run."
+          'Run \'node src/scripts/run-platform-migrations.js --dry-run\', then without --dry-run.'
       );
     }
     return { currentVersion, targetVersion: PLATFORM_TARGET_VERSION };
