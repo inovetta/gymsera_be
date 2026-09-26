@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-26 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Step 2.11 — Fix the collection-time rule** |
+| Current prompt | **Step 2.10 — Make migrations safe for the real production databases** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | c5a4880 feat(payments): fix collection-time rule for backdated rows and pending non-cash finalization (Step 2.11) | no (working tree clean) |
+| gymsera_be | main | fc1d143 feat(migrations): make tenant migrations safe for MySQL 5.7 and mixed collations (Step 2.10) | no (working tree clean) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -48,7 +48,7 @@ next agent won't know it.
 
 ### Blocked / waiting on the owner
 
-- (none) — owner to re-run preview `node src/scripts/repair-payment-business-dates.js` and apply `node src/scripts/repair-payment-business-dates.js --apply --confirm` on production.
+- (none) — owner to run preview `node src/scripts/run-tenant-migrations.js --dry-run` and apply `node src/scripts/run-tenant-migrations.js` on production.
 
 ---
 
@@ -56,19 +56,14 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. New collection time rule in `getPaymentCollectionTime` (`src/services/ledger.service.js`):
-  - `collected_at` if set (authoritative, unchanged);
-  - CASH without `collected_at`: the EARLIER of `created_at` and `paid_at` (`cTime <= pTime ? createdAt : paidAt`). Normal desk transactions retain `created_at` (since host verification occurs after creation); backdated/imported records where `created_at` is seed/import time use historical `paid_at`;
-  - Non-cash (bank transfer / online / card): `paid_at` if set, otherwise `created_at`.
-- [x] 2. Non-cash payments still PENDING: provisional `business_date` set at creation is finalized ONE time automatically upon transition to `COMPLETED` via payment service (`fromPaymentServiceTransition: true`), locking `business_date` from `paid_at` in branch timezone. Thereafter immutable. Cash payments never change after creation. Ordinary updates still throw.
-- [x] 3. Comprehensive tests in `tests/integration/payment-business-date.test.js`:
-  - Seeded cash row: created 2026-05-25 20:10Z, paid 2025-12-29 21:09Z -> day 2025-12-30 (in Asia/Karachi);
-  - Normal cash: created 23:30 local day X, verified next morning -> day X;
-  - Bank transfer created day X (pending), confirmed day X+2 -> day X+2, then immutable;
-  - Ordinary update trying to change `business_date` is rejected.
-- [x] 4. Re-checked Migration 004 and `repair-payment-business-dates.js`:
-  - Both directly use `getPaymentCollectionTime` and `computeBusinessDate`.
-  - Added integration test in `tests/integration/repair-payment-business-dates.test.js` verifying preview computes `paid_at`'s Asia/Karachi date (e.g. 2025-12-30) for seeded cash payments with May 2026 `created_at`, not 2026-05-26.
+- [x] 1. MySQL 5.7 Support: Updated backend CI (`.github/workflows/ci.yml`) and compose (`docker-compose.yml`) to `mysql:5.7`. Configured test harness to run on MySQL 5.7 (`utf8mb4_unicode_ci`, never `utf8mb4_0900_ai_ci`). Fixed `billing_plan_id` foreign key collation on platform DB.
+- [x] 2. Test Fixture: Added `createMixedCollationTenantDb` in `tests/harness/test-db.js` simulating production mixed collations (`payments.branch_id` `utf8mb4_general_ci` vs `branches.id` `utf8mb4_unicode_ci`). Proved direct SQL join fails on MySQL 5.7 with `ER_CANT_AGGREGATE_2COLLATIONS` ("Illegal mix of collations") in `tests/integration/mixed-collation-migration.test.js`.
+- [x] 3. Migration 004 Fix: Eliminated SQL JOIN between `payments` and `branches`. Matched branch timezone in JavaScript using Map lookup (reusing `repair-payment-business-dates.js` pattern). Verified it correctly backfills NULL rows on mixed-collation DBs.
+- [x] 4. Migration 007 (Collation Alignment): Created `007_align_tenant_collations` in `src/database/tenant-migration-runner.js`. Converts differing tables to `utf8mb4_unicode_ci`, touches only what differs, idempotent. Verified SQL join succeeds after 007.
+- [x] 5. Runner Upgrades: Added `--dry-run` flag to runner and CLI (`src/scripts/run-tenant-migrations.js`) with zero writes. Resilient per-tenant execution: logs error, continues next tenant, reports from/to versions and status, exits non-zero if any failed.
+- [x] 6. `reactivateTenant`: Added migration execution up to latest version before setting tenant status to `ACTIVE` in `src/services/admin.service.js`. Verified via regression test `tests/integration/reactivate-tenant-migration.test.js`.
+- [x] 7. App Query Audit: Listed raw SQL queries; confirmed no application queries join mixed-collation columns without Migration 007 fix.
+- [x] 8. Spec §13 & §14: Updated §13 with STEP-2.9 production run results and STEP-2.10 DONE; added MySQL 5.7 -> 8.0/8.4 upgrade plan in §14 (R-20).
 
 ---
 
@@ -81,8 +76,8 @@ next agent won't know it.
   - `gymsera_be`:
     - Command: `npm test`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
-    - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL (port 3306). Never touches live or staging DBs (R-19).
-    - Status: ALL 10 suites PASS, 46 tests PASS. Zero failures.
+    - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL 5.7 (port 3308 locally via `gymsera-test-mysql57` docker container, 3306 in CI). Never touches live or staging DBs (R-19).
+    - Status: ALL 12 suites PASS, 51 tests PASS. Zero failures.
   - `gyms_era` (Flutter):
     - Command: `flutter test test/regression/`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
@@ -94,9 +89,9 @@ next agent won't know it.
   - `gymsera_web`:
     - Unit/Component: `npm test` (runs Vitest jsdom tests in `tests/`) -> PASS (2/2)
     - E2E: `npx playwright test` (runs against local port 3002) -> PASS (1/1)
-- Local MySQL port is 3306 via Homebrew (`brew services start mysql`).
+- Local MySQL port is 3308 for MySQL 5.7 container (`gymsera-test-mysql57`), fallback 3306.
 - Test safety guard: `tests/harness/test-db.js` exports `assertTestEnvironmentSafety` which enforces `NODE_ENV === 'test'`, DB hosts within `{localhost, 127.0.0.1, ::1, mysql}`, and DB names starting with `gymsera_test_`.
-- Tenant migrations: `src/database/tenant-migration-runner.js` manages versioned tenant DB migrations. To run across all active tenants, use `node src/scripts/run-tenant-migrations.js`.
+- Tenant migrations: `src/database/tenant-migration-runner.js` manages versioned tenant DB migrations (target version 7). To preview across all active tenants, use `node src/scripts/run-tenant-migrations.js --dry-run`. To apply, use `node src/scripts/run-tenant-migrations.js`.
 
 ---
 
@@ -113,5 +108,6 @@ next agent won't know it.
 | 6 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.8 | One rule for collection time (getPaymentCollectionTime): cash -> created_at, online -> paid_at; unified model hooks, Migration 004, and Query B | task complete | yes |
 | 7 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.9 | Maintenance repair script for payment business_date (repair-payment-business-dates.js), collation audit, demo tenant audit | task complete | yes |
 | 8 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.11 | Fix collection-time rule (earlier of created_at/paid_at for CASH; pending non-cash provisional date finalization on completion) | task complete | yes |
+| 9 | 2026-09-26 | Gemini (Gemini 3.8 Flash) | Step 2.10 | Step 2.10: MySQL 5.7 CI/Docker, mixed-collation fixture, Migration 004 JS join, Migration 007 collation align, runner dry-run & error isolation, reactivateTenant migration | task complete | yes |
 
 

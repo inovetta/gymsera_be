@@ -86,30 +86,44 @@ const MIGRATIONS = [
     up: async (sequelize) => {
       // Historical backfill using each branch's own timezone via computeBusinessDate
       // and getPaymentCollectionTime (collected_at; otherwise created_at for cash; otherwise paid_at for online/bank)
+      // Matches branch timezones in JavaScript to completely avoid SQL collation join mismatches (Step 2.10)
       const { computeBusinessDate, getPaymentCollectionTime } = require('../services/ledger.service');
+
+      // 1. Preload branches into a Map (no cross-table join)
+      const branchRows = await sequelize.query(
+        'SELECT id, timezone FROM branches',
+        { type: QueryTypes.SELECT }
+      ).catch(() => []);
+
+      const branchMap = new Map();
+      for (const b of branchRows) {
+        if (b.id) {
+          branchMap.set(b.id, b.timezone || 'Asia/Karachi');
+        }
+      }
+
+      // 2. Fetch payments with NULL business_date
       const rows = await sequelize.query(`
         SELECT 
-          p.id, 
-          p.branch_id, 
-          p.method,
-          p.collected_at,
-          p.paid_at,
-          p.created_at,
-          b.timezone
-        FROM payments p
-        LEFT JOIN branches b ON p.branch_id = b.id
-        WHERE p.business_date IS NULL
+          id, 
+          branch_id, 
+          method,
+          collected_at,
+          paid_at,
+          created_at
+        FROM payments
+        WHERE business_date IS NULL
       `, { type: QueryTypes.SELECT }).catch(() => []);
 
       for (const row of rows) {
         if (!row.id) continue;
         const collectionTime = getPaymentCollectionTime(row);
-        const tz = row.timezone || 'Asia/Karachi';
+        const tz = (row.branch_id ? branchMap.get(row.branch_id) : null) || 'Asia/Karachi';
         const bDate = computeBusinessDate(new Date(collectionTime), tz);
         await sequelize.query(
           'UPDATE payments SET business_date = ? WHERE id = ?',
           { replacements: [bDate, row.id] }
-        ).catch(() => {});
+        );
       }
     },
   },
@@ -164,6 +178,63 @@ const MIGRATIONS = [
       );
     },
   },
+  {
+    version: 7,
+    name: '007_align_tenant_collations',
+    up: async (sequelize, context) => {
+      const tenantLabel = context?.tenantId || 'local';
+
+      // 1. Identify all tables whose collation differs from utf8mb4_unicode_ci
+      const differingTables = await sequelize.query(`
+        SELECT TABLE_NAME, TABLE_COLLATION
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_TYPE = 'BASE TABLE'
+          AND TABLE_COLLATION IS NOT NULL
+          AND TABLE_COLLATION != 'utf8mb4_unicode_ci'
+      `, { type: QueryTypes.SELECT }).catch(() => []);
+
+      // 2. Identify all columns whose collation differs from utf8mb4_unicode_ci
+      const differingColumns = await sequelize.query(`
+        SELECT TABLE_NAME, COLUMN_NAME, COLLATION_NAME
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND COLLATION_NAME IS NOT NULL
+          AND COLLATION_NAME != 'utf8mb4_unicode_ci'
+      `, { type: QueryTypes.SELECT }).catch(() => []);
+
+      // Gather distinct tables requiring conversion
+      const tablesToConvert = new Set();
+      for (const t of differingTables) {
+        if (t.TABLE_NAME) tablesToConvert.add(t.TABLE_NAME);
+      }
+      for (const c of differingColumns) {
+        if (c.TABLE_NAME) tablesToConvert.add(c.TABLE_NAME);
+      }
+
+      if (tablesToConvert.size === 0) {
+        console.log(`[TenantMigration] Tenant ${tenantLabel}: all tenant tables and columns already aligned to utf8mb4_unicode_ci (0 changes needed).`);
+        return { alignedCount: 0 };
+      }
+
+      console.log(`[TenantMigration] Tenant ${tenantLabel}: aligning collations to utf8mb4_unicode_ci for ${tablesToConvert.size} table(s): ${Array.from(tablesToConvert).join(', ')}`);
+
+      await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
+      try {
+        for (const tableName of tablesToConvert) {
+          console.log(`[TenantMigration] Tenant ${tenantLabel}: converting table \`${tableName}\` to CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci...`);
+          await sequelize.query(
+            `ALTER TABLE \`${tableName}\` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+          );
+        }
+      } finally {
+        await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
+      }
+
+      console.log(`[TenantMigration] Tenant ${tenantLabel}: successfully converted ${tablesToConvert.size} table(s) to utf8mb4_unicode_ci.`);
+      return { alignedCount: tablesToConvert.size };
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -178,31 +249,73 @@ async function ensureMigrationTable(sequelize) {
       name        VARCHAR(191) NOT NULL,
       applied_at  DATETIME     NOT NULL,
       PRIMARY KEY (version)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 }
 
 /**
  * Run pending migrations on a single tenant database.
  *
+ * Supports `context.dryRun = true` for zero-write preview.
+ *
  * @param {import('sequelize').Sequelize} sequelize
  * @param {object} [context]
  * @param {string} [context.tenantId]
+ * @param {string} [context.tenantCode]
  * @param {string} [context.gymName]
  * @param {number} [context.targetVersion]
- * @returns {Promise<{ tenantId: string, initialVersion: number, finalVersion: number, applied: string[] }>}
+ * @param {boolean} [context.dryRun]
+ * @returns {Promise<{ tenantId: string, tenantCode?: string, gymName: string, initialVersion: number, finalVersion: number, applied: string[], wouldRun?: string[], dryRun?: boolean }>}
  */
 async function runTenantMigrations(sequelize, context = {}) {
-  await ensureMigrationTable(sequelize);
+  const isDryRun = context.dryRun === true;
 
-  const appliedRows = await sequelize.query(
-    'SELECT version FROM schema_migrations ORDER BY version ASC',
-    { type: QueryTypes.SELECT }
-  );
+  let appliedRows = [];
+  if (isDryRun) {
+    // Zero-write check: see if schema_migrations table exists
+    const tables = await sequelize.query(
+      "SHOW TABLES LIKE 'schema_migrations'",
+      { type: QueryTypes.SELECT }
+    ).catch(() => []);
+
+    if (tables.length > 0) {
+      appliedRows = await sequelize.query(
+        'SELECT version FROM schema_migrations ORDER BY version ASC',
+        { type: QueryTypes.SELECT }
+      ).catch(() => []);
+    }
+  } else {
+    await ensureMigrationTable(sequelize);
+    appliedRows = await sequelize.query(
+      'SELECT version FROM schema_migrations ORDER BY version ASC',
+      { type: QueryTypes.SELECT }
+    );
+  }
+
   const appliedSet = new Set(appliedRows.map((r) => r.version));
   const initialVersion = appliedRows.length > 0 ? Math.max(...appliedRows.map((r) => r.version)) : 0;
-
   const targetVersion = context.targetVersion || TARGET_SCHEMA_VERSION;
+
+  if (isDryRun) {
+    const pending = [];
+    for (const mig of MIGRATIONS) {
+      if (mig.version > targetVersion) continue;
+      if (appliedSet.has(mig.version)) continue;
+      pending.push(mig);
+    }
+    const finalVersion = pending.length > 0 ? pending[pending.length - 1].version : initialVersion;
+    return {
+      tenantId: context.tenantId || 'local',
+      tenantCode: context.tenantCode || 'UNKNOWN',
+      gymName: context.gymName || 'Local DB',
+      initialVersion,
+      finalVersion,
+      applied: pending.map((m) => m.name),
+      wouldRun: pending.map((m) => m.name),
+      dryRun: true,
+    };
+  }
+
   const applied = [];
 
   for (const mig of MIGRATIONS) {
@@ -232,6 +345,7 @@ async function runTenantMigrations(sequelize, context = {}) {
 
   return {
     tenantId: context.tenantId || 'local',
+    tenantCode: context.tenantCode || 'UNKNOWN',
     gymName: context.gymName || 'Local DB',
     initialVersion,
     finalVersion,
@@ -243,10 +357,12 @@ async function runTenantMigrations(sequelize, context = {}) {
  * Run migrations across all active tenant databases.
  *
  * Resumable: reports errors per tenant and continues across remaining tenants.
+ * Supports `options.dryRun = true` for zero-write preview.
  *
  * @param {object} [options]
  * @param {number} [options.targetVersion]
- * @returns {Promise<{ totalTenants: number, successCount: number, failedCount: number, reports: Array }>}
+ * @param {boolean} [options.dryRun]
+ * @returns {Promise<{ totalTenants: number, successCount: number, failedCount: number, reports: Array, dryRun?: boolean }>}
  */
 async function runAllTenantMigrations(options = {}) {
   const { Tenant } = require('../models/platform');
@@ -261,7 +377,7 @@ async function runAllTenantMigrations(options = {}) {
     (t) => t.connectionStringEncrypted && t.connectionStringEncrypted !== 'PENDING_PROVISIONING'
   );
 
-  console.log(`[TenantMigration] Found ${activeTenants.length} active tenant(s) to migrate.`);
+  console.log(`[TenantMigration] Found ${activeTenants.length} active tenant(s) to ${options.dryRun ? 'preview (dry-run)' : 'migrate'}.`);
 
   const reports = [];
   let successCount = 0;
@@ -282,17 +398,32 @@ async function runAllTenantMigrations(options = {}) {
 
       const result = await runTenantMigrations(tenantSeq, {
         tenantId: tenant.id,
+        tenantCode: tenant.tenantCode,
         gymName: tenant.gymName,
         targetVersion: options.targetVersion,
+        dryRun: options.dryRun === true,
       });
 
-      reports.push({ ...result, success: true });
+      reports.push({
+        tenantId: tenant.id,
+        tenantCode: tenant.tenantCode,
+        gymName: tenant.gymName,
+        initialVersion: result.initialVersion,
+        finalVersion: result.finalVersion,
+        applied: result.applied,
+        wouldRun: result.wouldRun,
+        dryRun: options.dryRun === true,
+        success: true,
+      });
       successCount++;
     } catch (err) {
       console.error(`[TenantMigration] Failed migrating tenant ${tenant.tenantCode} (${tenant.id}):`, err.message);
       reports.push({
         tenantId: tenant.id,
+        tenantCode: tenant.tenantCode,
         gymName: tenant.gymName,
+        initialVersion: 0,
+        finalVersion: 0,
         success: false,
         error: err.message,
       });
@@ -309,6 +440,7 @@ async function runAllTenantMigrations(options = {}) {
     successCount,
     failedCount,
     reports,
+    dryRun: options.dryRun === true,
   };
 }
 

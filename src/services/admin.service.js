@@ -486,6 +486,31 @@ const reactivateTenant = async (tenantId, adminUserId) => {
     throw createError('Only suspended tenants can be reactivated', 400);
   }
 
+  // Ensure tenant database schema is at latest version before reactivating (spec §6.5, Step 2.10)
+  if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+    const { decrypt } = require('../utils/crypto.utils');
+    const { Sequelize } = require('sequelize');
+    const connUrl = decrypt(tenant.connectionStringEncrypted);
+    const tenantSeq = new Sequelize(connUrl, {
+      dialect: 'mysql',
+      logging: false,
+      pool: { max: 2, min: 0, acquire: 20000, idle: 10000 },
+      dialectOptions: { connectTimeout: 15000 },
+    });
+    try {
+      await tenantSeq.authenticate();
+      const { runTenantMigrations } = require('../database/tenant-migration-runner');
+      await runTenantMigrations(tenantSeq, {
+        tenantId: tenant.id,
+        tenantCode: tenant.tenantCode,
+        gymName: tenant.gymName,
+      });
+      console.log(`[reactivateTenant] Tenant migrations applied to latest version for '${tenant.gymName}' (${tenant.id})`);
+    } finally {
+      await tenantSeq.close().catch(() => {});
+    }
+  }
+
   await tenant.update({ status: TenantStatus.ACTIVE });
   await safeRedisDel(`tenant:${tenantId}:connStr`);
 

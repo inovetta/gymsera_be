@@ -39,7 +39,12 @@ class TenantDbManager {
         enableKeepAlive: true,
         keepAliveInitialDelay: 10000,
       },
-      define: { underscored: true, timestamps: true },
+      define: {
+        underscored: true,
+        timestamps: true,
+        charset: 'utf8mb4',
+        collate: 'utf8mb4_unicode_ci',
+      },
     });
 
     await sequelize.authenticate();

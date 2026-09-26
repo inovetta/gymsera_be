@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # ── Platform MySQL (identity, routing, admin, discovery) ──────────────────────
   platform-db:
-    image: mysql:8.0
+    image: mysql:5.7
     container_name: gymsera-platform-db
     restart: unless-stopped
     environment:
@@ -24,7 +24,7 @@ services:
 
   # ── Tenant MySQL Server (all per-gym databases live here) ─────────────────────
   tenant-db:
-    image: mysql:8.0
+    image: mysql:5.7
     container_name: gymsera-tenant-db
     restart: unless-stopped
     environment:

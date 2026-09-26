@@ -12,16 +12,18 @@ const { connect: connectPlatform } = require('../database/platform');
 const { runAllTenantMigrations, TARGET_SCHEMA_VERSION } = require('../database/tenant-migration-runner');
 
 async function main() {
-  console.log(`🚀 Starting tenant database migrations (target version: v${TARGET_SCHEMA_VERSION})...\n`);
+  const isDryRun = process.argv.includes('--dry-run');
+
+  console.log(`🚀 Starting tenant database migrations (target version: v${TARGET_SCHEMA_VERSION}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE'})...\n`);
 
   await connectPlatform();
 
   const startTime = Date.now();
-  const summary = await runAllTenantMigrations();
+  const summary = await runAllTenantMigrations({ dryRun: isDryRun });
   const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(2);
 
   console.log('\n=========================================');
-  console.log('       TENANT MIGRATION REPORT           ');
+  console.log(`       TENANT MIGRATION REPORT (${isDryRun ? 'DRY-RUN' : 'LIVE'})`);
   console.log('=========================================');
   console.log(`Total tenants:   ${summary.totalTenants}`);
   console.log(`Successful:      ${summary.successCount}`);
@@ -30,10 +32,16 @@ async function main() {
   console.log('-----------------------------------------');
 
   for (const rep of summary.reports) {
+    const tenantLabel = rep.tenantCode ? `[${rep.tenantCode}] ${rep.gymName}` : rep.gymName;
+    const versionLabel = `(from v${rep.initialVersion} to v${rep.finalVersion})`;
     if (rep.success) {
-      console.log(` ✅ ${rep.gymName} (v${rep.initialVersion} -> v${rep.finalVersion}) — applied ${rep.applied?.length || 0} migration(s)`);
+      const migCount = rep.applied?.length || 0;
+      const detail = isDryRun
+        ? (migCount > 0 ? `WOULD RUN: ${rep.applied.join(', ')}` : 'UP TO DATE (no migrations needed)')
+        : (migCount > 0 ? `applied ${migCount} migration(s): ${rep.applied.join(', ')}` : 'UP TO DATE (0 applied)');
+      console.log(` ✅ ${tenantLabel} ${versionLabel}: OK — ${detail}`);
     } else {
-      console.log(` ❌ ${rep.gymName} — ERROR: ${rep.error}`);
+      console.log(` ❌ ${tenantLabel} ${versionLabel}: FAILED — Error: ${rep.error}`);
     }
   }
 
@@ -44,7 +52,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('🎉 All tenant migrations completed successfully.');
+  console.log(`🎉 All tenant migrations ${isDryRun ? 'dry-run checked' : 'completed'} successfully.`);
   process.exit(0);
 }
 

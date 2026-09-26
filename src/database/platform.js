@@ -25,6 +25,8 @@ const sequelize = new Sequelize(database, username, password, {
   define: {
     underscored: true,
     timestamps: true,
+    charset: 'utf8mb4',
+    collate: 'utf8mb4_unicode_ci',
   },
 });
 
@@ -207,7 +209,7 @@ const connect = async () => {
     logLabel: 'tenant_subscriptions.platform_package_id -> NULL',
   });
   const tenantSubBillingColumns = [
-    "ADD COLUMN `billing_plan_id` CHAR(36) NULL",
+    "ADD COLUMN `billing_plan_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL",
     "ADD COLUMN `platform` ENUM('MANUAL','IOS','ANDROID','STRIPE') NOT NULL DEFAULT 'MANUAL'",
     "ADD COLUMN `branch_count` INT NULL",
     "ADD COLUMN `product_id` VARCHAR(150) NULL",
@@ -225,6 +227,13 @@ const connect = async () => {
     } catch (err) {
       _logIfUnexpected(`tenant_subscriptions ${clause}`, err);
     }
+  }
+  try {
+    await sequelize.query(
+      'ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `billing_plan_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL;'
+    );
+  } catch (err) {
+    _logIfUnexpected('tenant_subscriptions.billing_plan_id COLLATE utf8mb4_bin', err);
   }
   try {
     await sequelize.query(

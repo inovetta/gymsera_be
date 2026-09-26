@@ -20,19 +20,30 @@ const { runTenantMigrations } = require('../../src/database/tenant-migration-run
 process.env.NODE_ENV = 'test';
 process.env.PLATFORM_DB_NAME = process.env.PLATFORM_TEST_DB_NAME || 'gymsera_test_platform';
 
+// Test MySQL 5.7 port resolution (Safety Rule R-19):
+// CI service container runs on 3306.
+// Local test harness defaults to 3308 (Docker MySQL 5.7 container) unless overridden.
+const testPort = String(
+  process.env.TEST_MYSQL_PORT ||
+  process.env.PLATFORM_TEST_DB_PORT ||
+  (process.env.CI ? (process.env.MYSQL_PORT || '3306') : (process.env.PLATFORM_DB_PORT === '3306' ? '3308' : (process.env.PLATFORM_DB_PORT || '3308')))
+);
+process.env.PLATFORM_DB_PORT = testPort;
+process.env.TENANT_DB_PORT = testPort;
+
 const PLATFORM_TEST_DB = process.env.PLATFORM_DB_NAME;
 const TENANT_1_TEST_DB = 'gymsera_test_tenant_1';
 const TENANT_2_TEST_DB = 'gymsera_test_tenant_2';
 
-const dbHost = process.env.PLATFORM_DB_HOST || 'localhost';
-const dbPort = parseInt(process.env.PLATFORM_DB_PORT || '3306');
-const dbUser = process.env.PLATFORM_DB_USER || 'root';
-const dbPass = process.env.PLATFORM_DB_PASS !== undefined ? process.env.PLATFORM_DB_PASS : '';
+const dbHost = process.env.PLATFORM_TEST_DB_HOST || process.env.PLATFORM_DB_HOST || process.env.MYSQL_HOST || 'localhost';
+const dbPort = parseInt(testPort);
+const dbUser = process.env.PLATFORM_TEST_DB_USER || process.env.PLATFORM_DB_USER || process.env.MYSQL_USER || 'root';
+const dbPass = process.env.PLATFORM_TEST_DB_PASS !== undefined ? process.env.PLATFORM_TEST_DB_PASS : (process.env.PLATFORM_DB_PASS !== undefined ? process.env.PLATFORM_DB_PASS : '');
 
-const tenantHost = process.env.TENANT_DB_HOST || 'localhost';
-const tenantPort = parseInt(process.env.TENANT_DB_PORT || '3306');
-const tenantUser = process.env.TENANT_DB_USER || 'root';
-const tenantPass = process.env.TENANT_DB_PASS !== undefined ? process.env.TENANT_DB_PASS : '';
+const tenantHost = process.env.TENANT_TEST_DB_HOST || process.env.TENANT_DB_HOST || process.env.MYSQL_HOST || 'localhost';
+const tenantPort = parseInt(testPort);
+const tenantUser = process.env.TENANT_TEST_DB_USER || process.env.TENANT_DB_USER || process.env.MYSQL_USER || 'root';
+const tenantPass = process.env.TENANT_TEST_DB_PASS !== undefined ? process.env.TENANT_TEST_DB_PASS : (process.env.TENANT_DB_PASS !== undefined ? process.env.TENANT_DB_PASS : '');
 
 let adminConnection = null;
 let tenant1Sequelize = null;
@@ -143,7 +154,12 @@ async function setupTestDatabases() {
     dialect: 'mysql',
     logging: false,
     pool: { max: 5, min: 0, acquire: 20000, idle: 10000 },
-    define: { underscored: true, timestamps: true },
+    define: {
+      underscored: true,
+      timestamps: true,
+      charset: 'utf8mb4',
+      collate: 'utf8mb4_unicode_ci',
+    },
   });
   await tenant1Sequelize.authenticate();
   const tenant1Models = registerTenantModels(tenant1Sequelize);
@@ -156,7 +172,12 @@ async function setupTestDatabases() {
     dialect: 'mysql',
     logging: false,
     pool: { max: 5, min: 0, acquire: 20000, idle: 10000 },
-    define: { underscored: true, timestamps: true },
+    define: {
+      underscored: true,
+      timestamps: true,
+      charset: 'utf8mb4',
+      collate: 'utf8mb4_unicode_ci',
+    },
   });
   await tenant2Sequelize.authenticate();
   const tenant2Models = registerTenantModels(tenant2Sequelize);
@@ -238,6 +259,111 @@ async function teardownTestDatabases() {
   }
 }
 
+/**
+ * Test fixture helper (spec §14, Task Step 2.10):
+ * Creates a tenant test database with mixed collations matching production:
+ * - `branches`: utf8mb4_unicode_ci (or column id utf8mb4_unicode_ci)
+ * - `payments`: utf8mb4_general_ci (or column branch_id utf8mb4_general_ci)
+ * - seeds branches and payments with business_date = NULL
+ * - schema_migrations records versions 1..3 applied (so Migration 004 is next)
+ */
+async function createMixedCollationTenantDb(customDbName = 'gymsera_test_mixed_collate') {
+  assertTestEnvironmentSafety({ databases: [customDbName] });
+
+  const conn = await getAdminConnection();
+  await conn.query(`CREATE DATABASE IF NOT EXISTS \`${customDbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+
+  try {
+    await conn.query(`GRANT ALL PRIVILEGES ON \`${customDbName}\`.* TO 'gymsera_tenant'@'%' IDENTIFIED BY 'tenant_pass'; FLUSH PRIVILEGES;`);
+  } catch (_) {}
+
+  const connUrl = `mysql://${tenantUser}:${tenantPass}@${tenantHost}:${tenantPort}/${customDbName}`;
+  const seq = new Sequelize(connUrl, {
+    dialect: 'mysql',
+    logging: false,
+    pool: { max: 5, min: 0, acquire: 20000, idle: 10000 },
+    define: { underscored: true, timestamps: true },
+  });
+
+  await seq.authenticate();
+
+  await seq.query('SET FOREIGN_KEY_CHECKS = 0');
+  await seq.query('DROP TABLE IF EXISTS schema_migrations');
+  await seq.query('DROP TABLE IF EXISTS payments');
+  await seq.query('DROP TABLE IF EXISTS branches');
+  await seq.query('DROP TABLE IF EXISTS gyms');
+
+  // branches table with utf8mb4_unicode_ci
+  await seq.query(`
+    CREATE TABLE \`branches\` (
+      \`id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL PRIMARY KEY,
+      \`gym_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+      \`gym_listing_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+      \`branch_name\` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+      \`timezone\` VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Asia/Karachi',
+      \`status\` VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  // payments table with branch_id in utf8mb4_general_ci
+  await seq.query(`
+    CREATE TABLE \`payments\` (
+      \`id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL PRIMARY KEY,
+      \`branch_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+      \`member_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+      \`subscription_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+      \`invoice_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+      \`amount\` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      \`currency\` VARCHAR(10) NOT NULL DEFAULT 'PKR',
+      \`method\` VARCHAR(50) NOT NULL DEFAULT 'CASH',
+      \`status\` VARCHAR(50) NOT NULL DEFAULT 'COMPLETED',
+      \`business_date\` DATE NULL,
+      \`collected_at\` DATETIME NULL,
+      \`paid_at\` DATETIME NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  `);
+
+  // schema_migrations with versions 1, 2, 3 applied
+  await seq.query(`
+    CREATE TABLE \`schema_migrations\` (
+      \`version\` INT NOT NULL PRIMARY KEY,
+      \`name\` VARCHAR(255) NOT NULL,
+      \`applied_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  await seq.query("INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, '001_ensure_rbac_tables', NOW()), (2, '002_ensure_ledger_tables', NOW()), (3, '003_audit_and_tracking_columns', NOW())");
+
+  // Seed sample branch and payments with NULL business_date
+  await seq.query(`
+    INSERT INTO \`branches\` (\`id\`, \`branch_name\`, \`timezone\`)
+    VALUES ('branch-karachi-001', 'Karachi Central', 'Asia/Karachi')
+  `);
+
+  await seq.query(`
+    INSERT INTO \`payments\` (\`id\`, \`branch_id\`, \`method\`, \`amount\`, \`created_at\`, \`paid_at\`, \`collected_at\`, \`business_date\`)
+    VALUES 
+      ('pmt-cash-001', 'branch-karachi-001', 'CASH', 5000.00, '2026-03-15 14:00:00', '2026-03-15 14:00:00', NULL, NULL),
+      ('pmt-bank-002', 'branch-karachi-001', 'BANK_TRANSFER', 8000.00, '2026-03-16 10:00:00', '2026-03-17 11:00:00', NULL, NULL)
+  `);
+
+  await seq.query('SET FOREIGN_KEY_CHECKS = 1');
+
+  return {
+    sequelize: seq,
+    dbName: customDbName,
+    connUrl,
+    encryptedConnStr: encrypt(connUrl),
+    cleanup: async () => {
+      await seq.close().catch(() => {});
+    },
+  };
+}
+
 module.exports = {
   PLATFORM_TEST_DB,
   TENANT_1_TEST_DB,
@@ -246,6 +372,7 @@ module.exports = {
   assertTestEnvironmentSafety,
   getAdminConnection,
   createTestDatabases,
+  createMixedCollationTenantDb,
   setupTestDatabases,
   resetTestDatabases,
   teardownTestDatabases,
