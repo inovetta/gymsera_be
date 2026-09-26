@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | no |
-| gymsera_be | main | the "docs: prompt-0 audit" commit (see `git log -1`) | no |
+| gymsera_be | main | 17f6132 docs: prompt-0 audit (plus this handoff checkpoint commit) | no |
 | gymsera_cms | main | 8e18096 docs: agent rules — DB rule R-19, owner decisions recorded | no |
 | gymsera_web | main | 5b66fea docs: agent rules — DB rule R-19, owner decisions recorded | no |
 
