@@ -18,37 +18,35 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-09-27 |
-| Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **P0 Urgent: --dry-run safety and Migration 004 audit (NEW-17)** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Updated by | Claude Code (Opus 5.5) |
+| Current prompt | **Prompt 1A — Billing core (BILL-12, BILL-02, BILL-06, BILL-01, BILL-14)** |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | BILL-12 |
+| Step within issue | verify done; fix in progress <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 11df745 test(migrations): re-check collation joins outside app code and verify ledger_days (Step 2.10b) | yes: dry-run safety fix, test suite |
-| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
-| gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
+| gyms_era | `phase-1/prompt-1a-billing-core` (from master 11d37b1) | 11d37b1 gbfgb | no |
+| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | 6bf60e7 jhvjvjhv | only this handoff file |
+| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no |
+| gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f84b784 test(web): add Playwright login smoke test and CI workflow | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Start **Prompt 1A — Billing core: webhook inbox, refunds, Android acknowledge, store binding, Stripe return** from `GYMSERA_AGENT_PLAYBOOK.md` Part B.
-> Follow `AGENTS.md`. Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §0.1, §0.5, §7 and these issues in §12.1:
-> BILL-12, BILL-02, BILL-06, BILL-01, BILL-14 (do them in that order).
-> Use §12.13 (Prompt 0 results) to skip anything NOT REPRODUCED.
-> Checkpoint `AGENT_HANDOFF.md` as you go.
+> BILL-12: build the `billing_events` inbox (platform migration runner with --dry-run, reusing
+> `runTenantMigrations` with a platform migration list), make every webhook insert-then-process, refetch provider
+> truth, and route webhooks + /sync through one shared apply function
+> (`subscription-migration.service.js#applyVerifiedSubscription`). Then BILL-02, BILL-06, BILL-01, BILL-14 in order.
 
 ### Work in progress that is NOT committed
 
-- `gymsera_be`: Step 2.10b test enhancements ready to commit.
-- `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
+- (none yet)
 
 ### Blocked / waiting on the owner
 
-- (none) — owner to run preview `node src/scripts/run-tenant-migrations.js --dry-run` and apply `node src/scripts/run-tenant-migrations.js` on production.
+- (none)
 
 ---
 
@@ -56,15 +54,15 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. MySQL 5.7 Support: Updated backend CI (`.github/workflows/ci.yml`) and compose (`docker-compose.yml`) to `mysql:5.7`. Configured test harness to run on MySQL 5.7 (`utf8mb4_unicode_ci`, never `utf8mb4_0900_ai_ci`). Fixed `billing_plan_id` foreign key collation on platform DB.
-- [x] 2. Test Fixture: Added `createMixedCollationTenantDb` in `tests/harness/test-db.js` simulating production mixed collations (`payments.branch_id` `utf8mb4_general_ci` vs `branches.id` `utf8mb4_unicode_ci`). Proved direct SQL join fails on MySQL 5.7 with `ER_CANT_AGGREGATE_2COLLATIONS` ("Illegal mix of collations") in `tests/integration/mixed-collation-migration.test.js`.
-- [x] 3. Migration 004 Fix: Eliminated SQL JOIN between `payments` and `branches`. Matched branch timezone in JavaScript using Map lookup (reusing `repair-payment-business-dates.js` pattern). Verified it correctly backfills NULL rows on mixed-collation DBs.
-- [x] 4. Migration 007 (Collation Alignment): Created `007_align_tenant_collations` in `src/database/tenant-migration-runner.js`. Converts differing tables to `utf8mb4_unicode_ci`, touches only what differs, idempotent. Verified SQL join succeeds after 007.
-- [x] 5. Runner Upgrades: Added `--dry-run` flag to runner and CLI (`src/scripts/run-tenant-migrations.js`) with zero writes. Resilient per-tenant execution: logs error, continues next tenant, reports from/to versions and status, exits non-zero if any failed.
-- [x] 6. `reactivateTenant`: Added migration execution up to latest version before setting tenant status to `ACTIVE` in `src/services/admin.service.js`. Verified via regression test `tests/integration/reactivate-tenant-migration.test.js`.
-- [x] 7. App Query Audit: Listed raw SQL queries; confirmed no application queries join mixed-collation columns without Migration 007 fix.
-- [x] 8. Spec §13 & §14: Updated §13 with STEP-2.9 production run results and STEP-2.10 DONE; added MySQL 5.7 -> 8.0/8.4 upgrade plan in §14 (R-20).
-- [x] 9. Step 2.10b (Collation Re-Check outside app code): Proved Migration 007 scans ALL tables/columns via `information_schema` (not a fixed list); audited all scripts/queries; added `ledger_days` with `utf8mb4_general_ci` to test fixture and verified both `payments` and `ledger_days` joins fail before Migration 007 and pass cleanly after Migration 007.
+Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL-14 entitlement already safe, UX part confirmed.
+
+- [ ] 1. BILL-12 — webhook inbox, refetch truth, one apply path
+- [ ] 2. BILL-02 — REVOKED state, refunds from all three providers end entitlement via reconcileCapacity
+- [ ] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox
+- [ ] 4. BILL-01 — purchase bound to one tenant (409 subscription_owned_by_other_account), unique index, mobile sends tenant id
+- [ ] 5. BILL-14 — Stripe return page verifies the session server-side
+
+(Previous prompt's checklist, Step 2.10/2.10b/NEW-17, is complete and recorded in spec §13.)
 
 ---
 
@@ -114,3 +112,4 @@ next agent won't know it.
 | 11 | 2026-09-27 | Gemini (Gemini 3.8 Flash) | P0 Urgent | NEW-17: --dry-run safety, rollback transaction wrapper, individual migration dryRun guards, Migration 004 non-null isolation audit & tests | task complete | yes |
 
 
+| 12 | 2026-09-27 | Claude Code (Opus 5.5) | Prompt 1A | (in progress) | — | — |
