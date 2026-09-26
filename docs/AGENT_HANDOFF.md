@@ -29,7 +29,7 @@ next agent won't know it.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | (pending commit) | yes: Step 2.9 repair script, hook bypass, tests |
+| gymsera_be | main | 1126343 feat(payments): repair script for payment business_date, model hook bypass, tests and docs (Step 2.9) | no (working tree clean) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
 | gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
 
@@ -43,7 +43,7 @@ next agent won't know it.
 
 ### Work in progress that is NOT committed
 
-- `gymsera_be`: Step 2.9 maintenance repair script (`src/scripts/repair-payment-business-dates.js`, `Payment.model.js`, `tests/integration/repair-payment-business-dates.test.js`).
+- `gymsera_be`: none (working tree clean).
 - `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
 
 ### Blocked / waiting on the owner
