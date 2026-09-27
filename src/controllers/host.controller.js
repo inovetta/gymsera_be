@@ -805,7 +805,15 @@ const getCurrentSubscription = async (req, res, next) => {
       include: [{ model: PlatformPackage, as: 'package' }]
     });
 
-    if (!subscription) {
+    // Only a tenant with no subscription history at all may get its
+    // registration package here — the same "no row yet" test the onboarding
+    // paths use (tenant.service.js#finalizeApplication,
+    // tenant-provisioning.service.js step 10). A tenant whose plan ended
+    // (REVOKED by a refund, CANCELLED, EXPIRED, …) gets 404, never a free
+    // month (NEW-15; otherwise this undoes BILL-02).
+    const hasHistory = !subscription && (await TenantSubscription.count({ where: { tenantId } })) > 0;
+
+    if (!subscription && !hasHistory) {
       const tenant = await Tenant.findByPk(tenantId);
       if (tenant && tenant.selectedPackageId) {
         const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
