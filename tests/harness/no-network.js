@@ -1,0 +1,83 @@
+/**
+ * Test-run network jail (spec §14 R-19). Loaded by jest.config.js `setupFiles`
+ * before any test or app code.
+ *
+ * Every outbound TCP/TLS connection and every DNS lookup is refused unless it
+ * targets the local test infrastructure (MySQL, Redis, supertest's in-process
+ * server). This is a network block, not blanked credentials: even with a real
+ * Apple / Google / Stripe key loaded, a test has no path to their servers.
+ *
+ * It hooks net.Socket.prototype.connect, which http, https, tls, undici
+ * (global fetch), axios, google-auth-library, the Stripe SDK, nodemailer and
+ * mysql2 all go through, and dns.lookup, which they use to resolve names.
+ */
+const net = require('net');
+const dns = require('dns');
+
+const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1', 'mysql']);
+
+/** Pure allow-list check — exported so a test can prove provider hosts are refused. */
+const isAllowedHost = (host) => {
+  if (host === undefined || host === null || host === '') return true; // Node's default is localhost
+  return ALLOWED_HOSTS.has(String(host).toLowerCase().replace(/^\[|\]$/g, ''));
+};
+
+const blockedAttempts = [];
+
+const blockedError = (host, port) => {
+  const err = new Error(`[no-network] Outbound connection to ${host}${port ? `:${port}` : ''} blocked in tests (R-19)`);
+  err.code = 'TEST_NETWORK_BLOCKED';
+  return err;
+};
+
+if (!net.Socket.prototype.__gymseraNetworkJail) {
+  const originalConnect = net.Socket.prototype.connect;
+  net.Socket.prototype.connect = function patchedConnect(...args) {
+    // connect(options[, cb]) | connect(path[, cb]) | connect(port[, host][, cb])
+    let host;
+    let port;
+    let isPipe = false;
+    const first = Array.isArray(args[0]) ? args[0][0] : args[0]; // Node passes normalized [options, cb] internally
+    if (first && typeof first === 'object') {
+      if (first.path) isPipe = true;
+      host = first.host;
+      port = first.port;
+    } else if (typeof first === 'string' && Number.isNaN(Number(first))) {
+      isPipe = true; // unix socket path
+    } else {
+      port = first;
+      host = typeof args[1] === 'string' ? args[1] : undefined;
+    }
+
+    if (!isPipe && !isAllowedHost(host)) {
+      blockedAttempts.push({ host, port, at: new Date().toISOString() });
+      const err = blockedError(host, port);
+      process.nextTick(() => this.destroy(err));
+      return this;
+    }
+    return originalConnect.apply(this, args);
+  };
+
+  const originalLookup = dns.lookup;
+  dns.lookup = function patchedLookup(hostname, options, callback) {
+    const cb = typeof options === 'function' ? options : callback;
+    if (!isAllowedHost(hostname)) {
+      blockedAttempts.push({ host: hostname, port: null, at: new Date().toISOString(), dns: true });
+      process.nextTick(() => cb(blockedError(hostname)));
+      return {};
+    }
+    return originalLookup.call(this, hostname, options, callback);
+  };
+  const originalPromisesLookup = dns.promises.lookup;
+  dns.promises.lookup = async function patchedPromisesLookup(hostname, options) {
+    if (!isAllowedHost(hostname)) {
+      blockedAttempts.push({ host: hostname, port: null, at: new Date().toISOString(), dns: true });
+      throw blockedError(hostname);
+    }
+    return originalPromisesLookup.call(this, hostname, options);
+  };
+
+  Object.defineProperty(net.Socket.prototype, '__gymseraNetworkJail', { value: { blockedAttempts, isAllowedHost } });
+}
+
+module.exports = net.Socket.prototype.__gymseraNetworkJail;
