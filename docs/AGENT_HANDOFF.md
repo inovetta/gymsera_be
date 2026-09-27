@@ -17,9 +17,9 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-09-27 |
+| Last updated | 2026-09-28 |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Prompt 1A — Billing core (BILL-12, BILL-02, BILL-06, BILL-01, BILL-14)** |
+| Current prompt | **NEW-15 (follow-up to Prompt 1A): GET /host/subscription/current must not auto-grant a free plan** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -57,9 +57,9 @@ The owner reviews and merges.
 - Decide/confirm (not in §14): a **partial** Stripe refund keeps the plan (only full refund or dispute revokes); a
   refunded/disputed Stripe subscription is **not** cancelled at Stripe (it would bill again next period — web card
   is OFF per R-7, so this only matters once a web provider is live).
-- **NEW-15** (not in any prompt yet): `GET /host/subscription/current` creates a free 30-day ACTIVE row whenever a
-  tenant with `selectedPackageId` has no ACTIVE row — this re-grants entitlement right after a BILL-02 refund
-  revoke. Needs scheduling before launch.
+- **NEW-15 is DONE** (be 6f3506f on `phase-1/prompt-1a-billing-core`): the endpoint now auto-creates only for a tenant
+  with zero subscription history. **Open owner question R-21 (spec §14):** should that GET write anything at all?
+  Recommended: make it read-only. Until answered, the zero-history auto-create stays as it was.
 
 ---
 
@@ -75,6 +75,7 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 - [x] 4. BILL-01 — purchase bound to one tenant (409 subscription_owned_by_other_account), unique index, mobile sends tenant id (be 7a53c72, app b4dfb59)
 - [x] 5. BILL-14 — Stripe return page verifies the session server-side (be 2fff789, web f5fa208)
 - [x] Lint follow-up (be affbcb6), §13 rows with hashes, this handoff.
+- [x] Follow-up NEW-15 — GET /host/subscription/current grants nothing to a tenant with subscription history (be 6f3506f); owner question R-21 open.
 
 ---
 
@@ -149,3 +150,4 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 
 
 | 12 | 2026-09-27 | Claude Code (Opus 5.5) | Prompt 1A | BILL-12, BILL-02, BILL-06, BILL-01, BILL-14 (transfer endpoint for BILL-01 deferred) | task complete | yes |
+| 13 | 2026-09-28 | Claude Code (Opus 5.5) | NEW-15 (1A follow-up) | NEW-15 (R-21 raised for owner) | task complete | yes |
