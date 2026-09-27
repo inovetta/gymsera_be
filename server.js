@@ -22,6 +22,9 @@ const PORT = process.env.PORT || 3000;
 
 async function bootstrap() {
   try {
+    // 0. Refuse to start without SMTP settings — there is no built-in fallback.
+    require('./src/config/smtp.config').assertSmtpConfigured();
+
     // 1. Connect to Platform MySQL
     await connectPlatformDb();
 

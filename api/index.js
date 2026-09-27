@@ -1,5 +1,9 @@
 require('dotenv').config();
 
+// Refuse to start without SMTP settings — there is no built-in fallback. On
+// Vercel this fails the function at load with the message in the logs.
+require('../src/config/smtp.config').assertSmtpConfigured();
+
 const app = require('../app');
 const { connect: connectPlatformDb } = require('../src/database/platform');
 

@@ -35,6 +35,18 @@ for (const key of [
 ]) {
   process.env[key] = '';
 }
+
+// Tests never use the real mailbox: fixed fake SMTP settings (an `.invalid`
+// host that can never resolve), so e-mail code paths behave the same locally
+// and in CI. Messages are captured by tests/harness/mail-fake.js; anything
+// that escapes is stopped by the network jail (tests/harness/no-network.js).
+Object.assign(process.env, {
+  SMTP_HOST: 'smtp.gymsera-test.invalid',
+  SMTP_PORT: '587',
+  SMTP_USER: 'noreply@gymsera.test',
+  SMTP_PASS: 'test-only-not-a-real-password',
+  SMTP_FROM: 'GymsEra Test <noreply@gymsera.test>',
+});
 process.env.PLATFORM_DB_NAME = process.env.PLATFORM_TEST_DB_NAME || 'gymsera_test_platform';
 
 // Test MySQL 5.7 port resolution (Safety Rule R-19):
