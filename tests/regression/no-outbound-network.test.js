@@ -74,6 +74,38 @@ describe('R-19: tests have no outbound network', () => {
     jailProven = true;
   });
 
+  test('DNS servers are never queried for an external name: resolve*, Resolver classes, reverse', async () => {
+    const before = jail.blockedAttempts.length;
+    const host = 'no-network-check.invalid';
+    const cb = (fn) => new Promise((resolve, reject) => fn((err, v) => (err ? reject(err) : resolve(v))));
+
+    await expectBlocked(cb((done) => dns.resolve4(host, done)));
+    await expectBlocked(cb((done) => dns.resolveMx(host, done)));
+    await expectBlocked(cb((done) => dns.resolve(host, 'A', done)));
+    // nodemailer's way of resolving SMTP hosts
+    await expectBlocked(cb((done) => new dns.Resolver().resolve4(host, done)));
+    await expectBlocked(dns.promises.resolve4(host));
+    await expectBlocked(new dns.promises.Resolver().resolveTxt(host));
+    await expectBlocked(cb((done) => dns.reverse('192.0.2.1', done)));
+
+    const dnsBlocks = jail.blockedAttempts.slice(before).filter((a) => a.dns);
+    expect(dnsBlocks).toHaveLength(7);
+  });
+
+  test('a real nodemailer SMTP send is stopped at the DNS lookup, before any connection', async () => {
+    const nodemailer = require('nodemailer');
+    const before = jail.blockedAttempts.length;
+    const transport = nodemailer.createTransport({ host: 'smtp.no-network-check.invalid', port: 587, secure: false });
+
+    await expect(
+      transport.sendMail({ from: 'a@example.test', to: 'b@example.test', subject: 'x', text: 'x' })
+    ).rejects.toBeTruthy();
+
+    const attempts = jail.blockedAttempts.slice(before);
+    expect(attempts.some((a) => a.dns && a.host === 'smtp.no-network-check.invalid')).toBe(true);
+    expect(attempts.filter((a) => !a.dns)).toEqual([]); // never got as far as a connection
+  });
+
   test('local connections still work (localhost, 127.0.0.1, ::1 are never blocked)', async () => {
     const server = net.createServer((sock) => sock.end('ok'));
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

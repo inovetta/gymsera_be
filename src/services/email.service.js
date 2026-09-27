@@ -18,6 +18,15 @@ const getTransporter = () => {
 };
 
 /**
+ * The one place a message actually leaves for the SMTP server, grouped so a
+ * test can substitute it (tests/harness/mail-fake.js) — the same pattern as
+ * billing's appleApi / playApi / stripeApi.
+ */
+const mailTransport = {
+  send: (message) => getTransporter().sendMail(message),
+};
+
+/**
  * Send an email using Nodemailer.
  */
 const sendMail = async ({ to, subject, html, text }) => {
@@ -29,7 +38,7 @@ const sendMail = async ({ to, subject, html, text }) => {
   }
 
   try {
-    const info = await getTransporter().sendMail({ from: smtpConfig.from, to, subject, html, text });
+    const info = await mailTransport.send({ from: smtpConfig.from, to, subject, html, text });
     console.log(`[Email] Successfully sent email to ${to} (Subject: "${subject}") — MessageId: ${info.messageId}`);
     return info;
   } catch (err) {
@@ -393,6 +402,7 @@ const sendTenantAccountReactivatedEmail = async (to, fullName, { businessName, p
 };
 
 module.exports = {
+  mailTransport,
   sendOtpEmail,
   sendPasswordResetEmail,
   sendTenantApprovedEmail,

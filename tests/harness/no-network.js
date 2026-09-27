@@ -9,7 +9,9 @@
  *
  * It hooks net.Socket.prototype.connect, which http, https, tls, undici
  * (global fetch), axios, google-auth-library, the Stripe SDK, nodemailer and
- * mysql2 all go through, and dns.lookup, which they use to resolve names.
+ * mysql2 all go through, and every name-resolving function in `dns`
+ * (lookup, resolve*, reverse, lookupService, dns.promises, dns.Resolver),
+ * so an external hostname is never even resolved.
  */
 const net = require('net');
 const dns = require('dns');
@@ -76,6 +78,50 @@ if (!net.Socket.prototype.__gymseraNetworkJail) {
     }
     return originalPromisesLookup.call(this, hostname, options);
   };
+
+  // dns.lookup (above) uses the OS resolver; the resolve* family and
+  // dns.Resolver query DNS servers directly over the network — nodemailer
+  // resolves SMTP hosts this way — so they are refused for non-local names
+  // too. Covers the top-level functions, dns.promises, and both Resolver
+  // classes, callback and promise styles.
+  const RESOLVER_METHODS = [
+    'resolve', 'resolve4', 'resolve6', 'resolveAny', 'resolveCaa', 'resolveCname', 'resolveMx',
+    'resolveNaptr', 'resolveNs', 'resolvePtr', 'resolveSoa', 'resolveSrv', 'resolveTlsa', 'resolveTxt', 'reverse',
+  ];
+  const recordDns = (hostname) =>
+    blockedAttempts.push({ host: hostname, port: null, at: new Date().toISOString(), dns: true });
+  const wrapCallbackStyle = (target, name) => {
+    const original = target[name];
+    if (typeof original !== 'function') return;
+    target[name] = function patchedResolve(hostname, ...rest) {
+      if (!isAllowedHost(hostname)) {
+        recordDns(hostname);
+        const cb = rest[rest.length - 1];
+        if (typeof cb === 'function') process.nextTick(() => cb(blockedError(hostname)));
+        return this instanceof dns.Resolver ? undefined : {};
+      }
+      return original.call(this, hostname, ...rest);
+    };
+  };
+  const wrapPromiseStyle = (target, name) => {
+    const original = target[name];
+    if (typeof original !== 'function') return;
+    target[name] = async function patchedResolvePromise(hostname, ...rest) {
+      if (!isAllowedHost(hostname)) {
+        recordDns(hostname);
+        throw blockedError(hostname);
+      }
+      return original.call(this, hostname, ...rest);
+    };
+  };
+  for (const name of RESOLVER_METHODS) {
+    wrapCallbackStyle(dns, name);
+    wrapCallbackStyle(dns.Resolver.prototype, name);
+    wrapPromiseStyle(dns.promises, name);
+    wrapPromiseStyle(dns.promises.Resolver.prototype, name);
+  }
+  wrapCallbackStyle(dns, 'lookupService');
+  wrapPromiseStyle(dns.promises, 'lookupService');
 
   Object.defineProperty(net.Socket.prototype, '__gymseraNetworkJail', { value: { blockedAttempts, isAllowedHost } });
 }
