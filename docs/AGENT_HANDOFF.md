@@ -57,9 +57,8 @@ The owner reviews and merges.
 - Decide/confirm (not in §14): a **partial** Stripe refund keeps the plan (only full refund or dispute revokes); a
   refunded/disputed Stripe subscription is **not** cancelled at Stripe (it would bill again next period — web card
   is OFF per R-7, so this only matters once a web provider is live).
-- **NEW-15 is DONE** (be 6f3506f on `phase-1/prompt-1a-billing-core`): the endpoint now auto-creates only for a tenant
-  with zero subscription history. **Open owner question R-21 (spec §14):** should that GET write anything at all?
-  Recommended: make it read-only. Until answered, the zero-history auto-create stays as it was.
+- **NEW-15 is DONE** and R-21 is DECIDED (`GET /host/subscription/current` is read-only; be 6f3506f, 5d984de).
+  New P2 item NEW-18 (spec §12.13.11): plan creation at approval fails silently — recorded, not fixed.
 
 ---
 
@@ -76,6 +75,7 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 - [x] 5. BILL-14 — Stripe return page verifies the session server-side (be 2fff789, web f5fa208)
 - [x] Lint follow-up (be affbcb6), §13 rows with hashes, this handoff.
 - [x] Follow-up NEW-15 — GET /host/subscription/current grants nothing to a tenant with subscription history (be 6f3506f); owner question R-21 open.
+- [x] R-21 decided: the endpoint never creates a plan (be 5d984de); NEW-18 recorded.
 
 ---
 
@@ -151,3 +151,4 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 
 | 12 | 2026-09-27 | Claude Code (Opus 5.5) | Prompt 1A | BILL-12, BILL-02, BILL-06, BILL-01, BILL-14 (transfer endpoint for BILL-01 deferred) | task complete | yes |
 | 13 | 2026-09-28 | Claude Code (Opus 5.5) | NEW-15 (1A follow-up) | NEW-15 (R-21 raised for owner) | task complete | yes |
+| 14 | 2026-09-28 | Claude Code (Opus 5.5) | R-21 (1A follow-up) | R-21 read-only endpoint; NEW-18 recorded | task complete | yes |
