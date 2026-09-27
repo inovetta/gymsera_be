@@ -57,7 +57,16 @@ describe('SMTP settings have no built-in fallback', () => {
   test('starting server.js without SMTP_PASS fails clearly and never starts listening', async () => {
     const child = spawn(process.execPath, ['-r', './tests/harness/no-network.js', 'server.js'], {
       cwd: ROOT,
-      env: { ...process.env, SMTP_PASS: '', PORT: '0', NODE_ENV: 'test' },
+      // Host and user set here (not from a local .env), so only the password
+      // is missing — the same in every environment, CI included.
+      env: {
+        ...process.env,
+        SMTP_HOST: 'smtp.gymsera-test.invalid',
+        SMTP_USER: 'noreply@gymsera.test',
+        SMTP_PASS: '',
+        PORT: '0',
+        NODE_ENV: 'test',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -71,7 +80,7 @@ describe('SMTP settings have no built-in fallback', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/SMTP is not configured: missing SMTP_PASS/);
+    expect(stderr).toMatch(/SMTP is not configured: missing SMTP_PASS\./);
     expect(stdout).not.toMatch(/GymsEra API running/);
     expect(stdout).not.toMatch(/\[Platform DB\] Connected/); // stopped before touching the database
   }, 30000);
