@@ -2310,6 +2310,14 @@ Severity is the §12 severity unless the note says it was raised.
 - [ ] Rollback plan per system: previous container image, previous app build still compatible with the API (API changes are additive only).
 - [ ] Data migrations reversible (expand/contract).
 
+### Before adding real data
+Both items are deferred (recorded 2026-09-28): production holds test data only (R-19), and the owner plans a
+full database wipe before real customers go live. Do them at that point, not before.
+- [ ] Check whether the seeded platform-admin accounts (`src/seeders/seed.js`) exist in the production database.
+  If they do, delete them or change their passwords before any real gym signs up.
+- [ ] Confirm the `noreply@gymsera.com` mailbox password has been changed (it was committed to git history on
+  2026-08-31), and that git history is eventually cleaned or repo access is reviewed.
+
 ---
 
 ## 17. Final production-readiness criteria
