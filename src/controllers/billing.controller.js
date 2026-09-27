@@ -1,6 +1,7 @@
 const appleBilling = require('../services/apple-billing.service');
 const googlePlayBilling = require('../services/google-play-billing.service');
 const stripeBilling = require('../services/stripe-billing.service');
+const billingEvents = require('../services/billing-event.service');
 const { BillingPlan } = require('../models/platform');
 const { sendSuccess, createError } = require('../utils/response.utils');
 
@@ -73,13 +74,14 @@ const syncIosPurchase = async (req, res, next) => {
     const tenantId = req.user?.tenantId;
     if (!tenantId) throw createError('No tenant context for this account', 400);
 
-    const decodedTransaction = await appleBilling.getTransactionInfo(transactionId);
     // organizationId is optional — the org the purchase was initiated from,
     // if the app knows it (e.g. the upsell flow reached from a specific
     // organization's "need more capacity" prompt). Used only to decide where
     // an upgrade's new capacity lands as a spendable slot; a downgrade never
-    // reads it.
-    const subscription = await appleBilling.syncSubscriptionFromTransaction(tenantId, decodedTransaction, {
+    // reads it. Same entry point as the App Store notification processor.
+    const subscription = await appleBilling.syncFromApple({
+      transactionId,
+      tenantId,
       originListingId: organizationId || null,
     });
 
@@ -95,17 +97,32 @@ const syncIosPurchase = async (req, res, next) => {
  * App Store Server Notifications V2. No auth middleware in front of this
  * one (Apple isn't carrying a bearer token) — the JWS signature inside
  * `signedPayload` IS the authentication; see apple-billing.service.js.
- * Always 200s on a signature failure too (logged, not surfaced) — Apple
- * retries on non-2xx, and a permanently-invalid payload would just retry
- * forever for no benefit.
+ * Verified, then recorded in the billing_events inbox (keyed on Apple's
+ * notificationUUID) and processed. A payload that fails verification is
+ * rejected (400) and never stored. If the event cannot be recorded (e.g. the
+ * database is down) this answers 500 so Apple redelivers — it used to answer
+ * 200 and lose the event.
  */
 const appleWebhook = async (req, res) => {
+  let decoded;
   try {
-    await appleBilling.handleNotification(req.body.signedPayload);
+    decoded = appleBilling.appleApi.verifyAndDecode(req.body.signedPayload);
   } catch (err) {
-    console.warn('[Apple Webhook] Notification not applied:', err.message);
+    console.warn('[Apple Webhook] Rejected unverifiable payload:', err.message);
+    return res.status(400).json({ received: false });
   }
-  return res.status(200).json({ received: true });
+  try {
+    await billingEvents.receiveEvent({
+      provider: 'APPLE',
+      providerEventId: decoded.notificationUUID,
+      eventType: [decoded.notificationType, decoded.subtype].filter(Boolean).join(':') || null,
+      rawPayload: { signedPayload: req.body.signedPayload },
+    });
+    return res.status(200).json({ received: true });
+  } catch (err) {
+    console.error('[Apple Webhook] Could not record notification:', err.message);
+    return res.status(500).json({ received: false });
+  }
 };
 
 /**
@@ -118,25 +135,20 @@ const appleWebhook = async (req, res) => {
  */
 const syncAndroidPurchase = async (req, res, next) => {
   try {
-    const { purchaseToken, productId, organizationId } = req.body;
+    const { purchaseToken, organizationId } = req.body;
     if (!purchaseToken) throw createError('purchaseToken is required', 400);
 
     const tenantId = req.user?.tenantId;
     if (!tenantId) throw createError('No tenant context for this account', 400);
 
-    const purchase = await googlePlayBilling.getSubscriptionPurchase(purchaseToken);
-    const subscription = await googlePlayBilling.syncSubscriptionFromPurchase(tenantId, purchase, purchaseToken, {
+    // Same entry point as the RTDN processor; it also acknowledges the
+    // purchase server-side (BILL-06). `productId` from the client is not used
+    // — Google's own response says what was bought.
+    const subscription = await googlePlayBilling.syncFromGoogle({
+      purchaseToken,
+      tenantId,
       originListingId: organizationId || null,
     });
-
-    const lineItem = purchase.lineItems?.[0];
-    if (lineItem?.productId) {
-      // Server-side safety net alongside the client's own completePurchase
-      // call — never blocks the response on it.
-      googlePlayBilling
-        .acknowledgePurchaseIfNeeded(purchaseToken, productId || lineItem.productId)
-        .catch((err) => console.warn('[Android Sync] Acknowledge safety-net failed:', err.message));
-    }
 
     return sendSuccess(res, { subscription }, 'Subscription synced');
   } catch (err) {
@@ -150,17 +162,23 @@ const syncAndroidPurchase = async (req, res, next) => {
  * Real-time Developer Notifications via Cloud Pub/Sub push. No embedded
  * signature like Apple's JWS — authenticated instead by a secret token on
  * this endpoint's own URL (see billing.routes.js), checked before this
- * handler runs. Unlike Apple's webhook (always 200s, even on failure),
- * this one may return a non-2xx on a genuine transient failure to get
- * Pub/Sub's own bounded, safe redelivery — each platform's own retry
- * guarantee used correctly.
+ * handler runs. Recorded in the billing_events inbox keyed on the Pub/Sub
+ * messageId, then processed; answers 500 only if the event could not be
+ * recorded, so Pub/Sub redelivers.
  */
 const googleRtdnWebhook = async (req, res) => {
+  const messageId = req.body?.message?.messageId || req.body?.message?.message_id;
+  if (!messageId) return res.status(400).json({ received: false, message: 'Missing Pub/Sub messageId' });
   try {
-    await googlePlayBilling.handleRtdnNotification(req.body);
+    await billingEvents.receiveEvent({
+      provider: 'GOOGLE',
+      providerEventId: messageId,
+      eventType: 'rtdn',
+      rawPayload: req.body,
+    });
     return res.status(200).json({ received: true });
   } catch (err) {
-    console.warn('[Google RTDN Webhook] Notification not applied:', err.message);
+    console.error('[Google RTDN Webhook] Could not record notification:', err.message);
     return res.status(500).json({ received: false });
   }
 };
@@ -186,6 +204,24 @@ const createStripeCheckoutSession = async (req, res, next) => {
       cancelUrl,
     });
     return sendSuccess(res, session, 'Checkout session created');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /billing/stripe/session/:id
+ *
+ * The Stripe return page's only source of truth (BILL-14): Stripe's own
+ * answer about this Checkout Session, and whether the webhook has granted the
+ * plan yet. The page's `?checkout=success` is never trusted.
+ */
+const getStripeCheckoutSession = async (req, res, next) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const status = await stripeBilling.getCheckoutSessionStatus(tenantId, req.params.id);
+    return sendSuccess(res, status, 'Checkout session status');
   } catch (err) {
     next(err);
   }
@@ -242,21 +278,30 @@ const createStripePortalSession = async (req, res, next) => {
  *
  * Verified via Stripe's own signature scheme against the RAW request body
  * (req.rawBody, captured by app.js's express.json() verify hook — the
- * JSON-parsed req.body no longer matches the exact bytes Stripe signed).
- * This is the ONLY authoritative trigger for granting a Stripe purchase;
- * the frontend's post-Checkout redirect never does.
+ * JSON-parsed req.body no longer matches the exact bytes Stripe signed),
+ * then recorded in the billing_events inbox keyed on the Stripe event id and
+ * processed. This is the ONLY authoritative trigger for granting a Stripe
+ * purchase; the frontend's post-Checkout redirect never does.
  */
 const stripeWebhook = async (req, res) => {
+  let event;
   try {
-    const signature = req.headers['stripe-signature'];
-    await stripeBilling.handleWebhook(req.rawBody, signature);
+    event = stripeBilling.stripeApi.verifyWebhookEvent(req.rawBody, req.headers['stripe-signature']);
+  } catch (err) {
+    console.warn('[Stripe Webhook] Rejected unverifiable event:', err.message);
+    return res.status(400).json({ received: false });
+  }
+  try {
+    await billingEvents.receiveEvent({
+      provider: 'STRIPE',
+      providerEventId: event.id,
+      eventType: event.type,
+      rawPayload: event,
+    });
     return res.status(200).json({ received: true });
   } catch (err) {
-    console.warn('[Stripe Webhook] Notification not applied:', err.message);
-    // Signature verification failures and genuine transient failures both
-    // get a non-2xx here — Stripe retries on failure with its own bounded
-    // schedule, same reasoning as the Google RTDN webhook above.
-    return res.status(400).json({ received: false });
+    console.error('[Stripe Webhook] Could not record event:', err.message);
+    return res.status(500).json({ received: false });
   }
 };
 
@@ -267,6 +312,7 @@ module.exports = {
   syncAndroidPurchase,
   googleRtdnWebhook,
   createStripeCheckoutSession,
+  getStripeCheckoutSession,
   changeStripePlan,
   createStripePortalSession,
   stripeWebhook,

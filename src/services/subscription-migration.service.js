@@ -54,8 +54,9 @@
  *     themselves in Settings / Play Store to avoid being charged again.
  *     GymsEra cannot and does not silently do this for them.
  */
-const { Op } = require('sequelize');
+const { Op, UniqueConstraintError } = require('sequelize');
 const { Tenant, TenantSubscription } = require('../models/platform');
+const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
 
 /**
@@ -298,4 +299,219 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   };
 };
 
-module.exports = { requestProviderChange, reconcileRenewalStatus };
+/**
+ * The ONE code path that writes a store-verified subscription state to
+ * TenantSubscription (BILL-12, spec §7.6). Every provider's sync function
+ * (apple-billing / google-play-billing / stripe-billing) builds `values` from
+ * its own provider API response and hands them here — whether the sync was
+ * triggered by the app's POST /billing/{ios|android}/sync or by a webhook
+ * processed from the billing_events inbox. Before this existed, the three
+ * providers each carried an identical copy of this block.
+ *
+ * Known external id → direct update through reconcileRenewalStatus (renewal,
+ * plan change, cancel). Unknown external id → requestProviderChange (first
+ * purchase or migration). Either way capacity is reconciled inside the same
+ * transaction as the row write, and the Stripe cancel-at-period-end call for a
+ * migration away from Stripe happens only after commit.
+ *
+ * @param {string} tenantId - the tenant the subscription belongs to.
+ * @param {object} values - the row as the provider reports it. `amount` and
+ *   `billingCycle` are only written for a new row or a real plan change —
+ *   never on a plain renewal (see BillingPlan.model.js on subscriber price).
+ * @param {object} [opts]
+ * @param {string|null} [opts.originListingId]
+ * @param {string} opts.idempotencyPrefix - capacity-event key prefix (a per-transaction or per-event id).
+ * @param {string|null} [opts.supersededExternalId] - see requestProviderChange.
+ * @param {string|null} [opts.boundTenantId] - the tenant the store says made the purchase (BILL-01).
+ * @param {string} [opts.logLabel]
+ * @returns {Promise<object>} the persisted TenantSubscription.
+ */
+const applyVerifiedSubscription = async (tenantId, values, opts = {}) => {
+  // Two tenants verifying the same brand-new transaction at the same moment
+  // both find no row; the UNIQUE (platform, external id) index (or InnoDB's
+  // deadlock detection on the gap lock) stops the second. One retry then
+  // finds the winner's row and answers with the ownership check below.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await _applyVerifiedSubscriptionOnce(tenantId, values, opts);
+    } catch (err) {
+      const raced = err instanceof UniqueConstraintError || err.original?.code === 'ER_LOCK_DEADLOCK';
+      if (!raced || attempt >= 2) throw err;
+    }
+  }
+};
+
+const _ownedByOtherAccount = () => {
+  const err = createError('This subscription belongs to a different GymsEra account.', 409);
+  err.code = 'subscription_owned_by_other_account';
+  return err;
+};
+
+const _applyVerifiedSubscriptionOnce = async (
+  tenantId,
+  values,
+  { originListingId = null, idempotencyPrefix, supersededExternalId = null, boundTenantId = null, logLabel = 'Billing' } = {}
+) => {
+  const { sequelize } = require('../database/platform');
+  const TenantDbManager = require('../database/TenantDbManager');
+
+  const platformTx = await sequelize.transaction();
+  try {
+    const existing = await TenantSubscription.findOne({
+      where: { platform: values.platform, externalOriginalTransactionId: values.externalOriginalTransactionId },
+      transaction: platformTx,
+      lock: true,
+    });
+
+    // BILL-01: a store purchase belongs to exactly one tenant. Once a row
+    // exists, its tenant owns it — a restore/verify from any other account is
+    // refused and changes nothing (moving a plan between accounts needs an
+    // explicit, audited transfer, not a side effect of Restore). Before any
+    // row exists, the tenant id the app sent with the purchase — echoed back
+    // by the store (Apple appAccountToken / Google obfuscatedExternalAccountId
+    // / our own Stripe metadata) — decides.
+    const bound = boundTenantId ? String(boundTenantId).toLowerCase() : null;
+    if (existing) {
+      if (existing.tenantId !== tenantId) throw _ownedByOtherAccount();
+      if (bound && bound !== String(existing.tenantId).toLowerCase()) {
+        console.warn(
+          `[${logLabel}] TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}, but the store says ` +
+            `tenant ${bound} made the purchase — left with its current owner; needs a human look.`
+        );
+      }
+    } else if (bound && bound !== String(tenantId).toLowerCase()) {
+      throw _ownedByOtherAccount();
+    }
+
+    const previousMaxBranches = existing ? existing.branchCount : null;
+    // A genuinely new row, or a real plan change (upgrade/downgrade) — as
+    // opposed to a plain renewal of the same plan, which must NOT recompute
+    // amount/billingCycle.
+    const planChanged = !existing || existing.billingPlanId !== values.billingPlanId;
+    const rowValues = { ...values, tenantId };
+    // The owner of an existing row is never rewritten by a sync.
+    if (existing) delete rowValues.tenantId;
+    if (!planChanged) {
+      delete rowValues.amount;
+      delete rowValues.billingCycle;
+    }
+
+    const tenantDbFor = async () => {
+      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
+      if (!tenant?.connectionStringEncrypted) return null;
+      return TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    };
+
+    let subscription;
+    // True whenever requestProviderChange handled this row (fresh signup or a
+    // real cross-provider migration) — it already reconciled capacity itself.
+    let reconciledByActivation = false;
+    let migratedFrom = null;
+    const previousStatus = existing ? existing.status : null;
+    if (existing) {
+      // A refund/chargeback is not always visible in the provider's
+      // subscription object (a Stripe refund, or a Play refund without
+      // revoke, still reads "active"), so a later resync of the SAME paid
+      // period must not undo a revocation. Only a newer paid period — the
+      // host paid again — makes a REVOKED row entitled again (BILL-02).
+      if (existing.status === 'REVOKED' && rowValues.status === 'ACTIVE' && !(rowValues.endDate > existing.endDate)) {
+        rowValues.status = 'REVOKED';
+      }
+      // A renewal/resync for an external id already on file — never a
+      // migration decision. reconcileRenewalStatus refuses to resurrect a
+      // superseded row to ACTIVE while another row is this tenant's entitlement.
+      const reconciledValues = await reconcileRenewalStatus(tenantId, existing, rowValues, { transaction: platformTx });
+      await existing.update(reconciledValues, { transaction: platformTx });
+      subscription = existing;
+    } else {
+      const activation = await requestProviderChange(
+        tenantId,
+        { newPlatform: values.platform, newSubscriptionValues: rowValues, supersededExternalId },
+        {
+          transaction: platformTx,
+          tenantDb: await tenantDbFor(),
+          originListingId,
+          idempotencyPrefix,
+          actorType: 'SYSTEM',
+        }
+      );
+      subscription = activation.subscription;
+      reconciledByActivation = true;
+      migratedFrom = activation.migratedFrom;
+    }
+
+    // subscription.status, not values.status — reconcileRenewalStatus above can
+    // override what was about to be written. Reading values.status would
+    // reconcile capacity for a row that was just refused ACTIVE status.
+    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
+      const tenantDb = await tenantDbFor();
+      if (tenantDb) {
+        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
+          transaction: platformTx,
+          previousMaxBranches,
+          originListingId,
+          idempotencyPrefix,
+          actorType: 'SYSTEM',
+        });
+      }
+    }
+
+    // Entitlement ended by a refund/chargeback/revoke: shrink capacity to what
+    // the tenant is still entitled to, in the same transaction (BILL-02,
+    // spec §7.5.7). Runs once — a replay finds the row already REVOKED.
+    if (previousStatus === 'ACTIVE' && subscription.status === 'REVOKED') {
+      const tenantDb = await tenantDbFor();
+      if (tenantDb) {
+        const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
+        const stillActive = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+        const entitled = await subscriptionQuotaService.resolveMaxBranches(tenant, stillActive, { transaction: platformTx });
+        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, entitled, {
+          transaction: platformTx,
+          previousMaxBranches,
+          idempotencyPrefix: `revoke:${values.platform}:${values.externalOriginalTransactionId}`,
+          actorType: 'SYSTEM',
+        });
+      }
+    }
+
+    await platformTx.commit();
+
+    // A real Stripe API call must never happen inside a DB transaction that
+    // might still roll back — done here, only after commit, only when this
+    // sync just migrated the tenant away from a Stripe subscription.
+    if (migratedFrom?.platform === 'STRIPE' && migratedFrom.externalOriginalTransactionId) {
+      try {
+        const stripeBilling = require('./stripe-billing.service');
+        await stripeBilling.cancelAtPeriodEnd(migratedFrom.externalOriginalTransactionId);
+      } catch (err) {
+        console.warn(`[${logLabel}] Failed to schedule Stripe cancellation after migration:`, err.message);
+      }
+    }
+
+    return subscription;
+  } catch (err) {
+    // MySQL already rolled back a deadlock victim; rolling back again would
+    // throw and hide the original error.
+    if (!platformTx.finished) await platformTx.rollback();
+    throw err;
+  }
+};
+
+/**
+ * Who owns a store subscription, for a sync with no caller tenant (a webhook
+ * or the daily sweep): the tenant already holding its row, else the tenant the
+ * store says bought it (binding token) — only if that tenant really exists.
+ * @returns {Promise<string|null>}
+ */
+const resolveSubscriptionOwner = async (platform, externalId, boundTenantId = null) => {
+  const row = await TenantSubscription.findOne({
+    where: { platform, externalOriginalTransactionId: String(externalId) },
+    attributes: ['tenantId'],
+  });
+  if (row) return row.tenantId;
+  if (!boundTenantId) return null;
+  const tenant = await Tenant.findByPk(String(boundTenantId).toLowerCase(), { attributes: ['id'] });
+  return tenant ? tenant.id : null;
+};
+
+module.exports = { requestProviderChange, reconcileRenewalStatus, applyVerifiedSubscription, resolveSubscriptionOwner };

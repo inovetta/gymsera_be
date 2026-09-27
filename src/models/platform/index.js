@@ -31,6 +31,7 @@ const UserOrgIndex = require('./UserOrgIndex.model')(sequelize);
 const BillingPlan = require('./BillingPlan.model')(sequelize);
 const BillingOffer = require('./BillingOffer.model')(sequelize);
 const CapacityEvent = require('./CapacityEvent.model')(sequelize);
+const BillingEvent = require('./BillingEvent.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -196,4 +197,5 @@ module.exports = {
   BillingPlan,
   BillingOffer,
   CapacityEvent,
+  BillingEvent,
 };

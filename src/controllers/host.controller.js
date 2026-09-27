@@ -800,33 +800,14 @@ const getCurrentSubscription = async (req, res, next) => {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw createError('Tenant not found', 404);
 
-    let subscription = await TenantSubscription.findOne({
+    // Read-only (NEW-15, owner decision R-21): this endpoint never creates a
+    // plan. It used to create a 30-day ACTIVE/PAID row whenever there was no
+    // ACTIVE one, which handed refunded/lapsed tenants a free month. The first
+    // plan comes only from onboarding (submission / approval).
+    const subscription = await TenantSubscription.findOne({
       where: { tenantId, status: 'ACTIVE' },
       include: [{ model: PlatformPackage, as: 'package' }]
     });
-
-    if (!subscription) {
-      const tenant = await Tenant.findByPk(tenantId);
-      if (tenant && tenant.selectedPackageId) {
-        const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
-        if (pkg) {
-          subscription = await TenantSubscription.create({
-            tenantId,
-            platformPackageId: pkg.id,
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            amount: pkg.price,
-            billingCycle: pkg.billingCycle || 'MONTHLY',
-            status: 'ACTIVE',
-            autoRenew: true,
-            paymentStatus: 'PAID'
-          });
-          subscription = await TenantSubscription.findByPk(subscription.id, {
-            include: [{ model: PlatformPackage, as: 'package' }]
-          });
-        }
-      }
-    }
 
     if (!subscription) {
       throw createError('No active subscription found', 404);

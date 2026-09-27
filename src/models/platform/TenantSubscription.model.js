@@ -95,8 +95,10 @@ module.exports = (sequelize) => {
       // old row after a completed migration away from Stripe, which we CAN
       // cancel server-side (cancel_at_period_end) — flips to CANCELLED once
       // Stripe's webhook confirms. See subscription-migration.service.js.
+      // REVOKED: refunded, charged back or revoked at the provider — not
+      // entitled from that moment (BILL-02, spec §7.5.7).
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED'),
+        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED'),
         allowNull: false,
         defaultValue: 'ACTIVE',
       },
@@ -142,6 +144,13 @@ module.exports = (sequelize) => {
         { fields: ['status'] },
         { fields: ['end_date'] },
         { fields: ['external_original_transaction_id'] },
+        // One row per store subscription, so it can belong to one tenant only
+        // (BILL-01). Added to existing databases by platform migration p003.
+        {
+          unique: true,
+          fields: ['platform', 'external_original_transaction_id'],
+          name: 'tenant_subscriptions_platform_external_unique',
+        },
       ],
     }
   );

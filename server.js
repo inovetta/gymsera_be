@@ -22,6 +22,11 @@ const PORT = process.env.PORT || 3000;
 
 async function bootstrap() {
   try {
+    // 0. Refuse to start without SMTP settings or database passwords — there
+    //    is no built-in fallback for either.
+    require('./src/config/smtp.config').assertSmtpConfigured();
+    require('./src/config/database.config').assertDatabaseConfigured();
+
     // 1. Connect to Platform MySQL
     await connectPlatformDb();
 
@@ -32,6 +37,8 @@ async function bootstrap() {
     } catch (checkErr) {
       console.warn('[Server Startup] Tenant schema check warning:', checkErr?.message || checkErr);
     }
+    const { sequelize: platformSequelize } = require('./src/database/platform');
+    await require('./src/database/platform-migrations').checkPlatformSchemaVersion(platformSequelize);
 
     // 2. Warm up Redis connection
     getRedisClient();
@@ -43,6 +50,14 @@ async function bootstrap() {
     cron.schedule(EXPIRY_CRON, () => {
       runExpiryCheck().catch((err) =>
         console.error('[Cron] subscription-expiry error:', err.message)
+      );
+    });
+
+    // 4b. Retry billing webhook events that failed to process (BILL-12, spec §7.6)
+    const { processPendingEvents } = require('./src/services/billing-event.service');
+    cron.schedule('* * * * *', () => {
+      processPendingEvents().catch((err) =>
+        console.error('[Cron] billing-events sweep error:', err.message)
       );
     });
 

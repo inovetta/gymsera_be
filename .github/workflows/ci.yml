@@ -27,6 +27,11 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      # Throwaway keys for this run only — generated, never committed.
+      - name: Generate test-only keys
+        run: |
+          echo "TENANT_CONN_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Run test suites
         run: npm test
         env:
@@ -34,4 +39,19 @@ jobs:
           MYSQL_PORT: 3306
           MYSQL_USER: root
           MYSQL_PASSWORD: ''
+          # The database settings the app reads — set explicitly so nothing
+          # relies on a built-in default (SEC-DB-FALLBACK). The mysql service
+          # above has MYSQL_ALLOW_EMPTY_PASSWORD=yes: root with an empty
+          # password, reachable on 127.0.0.1:3306. Empty passwords are set
+          # explicitly, which assertDatabaseConfigured accepts.
+          PLATFORM_DB_HOST: 127.0.0.1
+          PLATFORM_DB_PORT: 3306
+          PLATFORM_DB_USER: root
+          PLATFORM_DB_PASS: ''
+          TENANT_DB_HOST: 127.0.0.1
+          TENANT_DB_PORT: 3306
+          TENANT_DB_ADMIN_USER: root
+          TENANT_DB_ADMIN_PASS: ''
+          TENANT_DB_USER: root
+          TENANT_DB_PASS: ''
           JWT_SECRET: test-jwt-secret-key-at-least-32-chars-long

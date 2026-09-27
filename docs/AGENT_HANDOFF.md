@@ -17,38 +17,48 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-09-27 |
-| Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **P0 Urgent: --dry-run safety and Migration 004 audit (NEW-17)** |
+| Last updated | 2026-09-28 |
+| Updated by | Claude Code (Opus 5.5) |
+| Current prompt | **NEW-15 (follow-up to Prompt 1A): GET /host/subscription/current must not auto-grant a free plan** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
+All Prompt 1A work is on branch `phase-1/prompt-1a-billing-core` in three repos, **not pushed and not merged**.
+The owner reviews and merges.
+
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | **master** (not main) | 809344b docs: agent rules — DB rule R-19, owner decisions recorded | yes: test/widget_test.dart, test/fakes, test/regression, .github/workflows/ci.yml, billing_provider.dart, listing_preview_screen.dart |
-| gymsera_be | main | 11df745 test(migrations): re-check collation joins outside app code and verify ledger_days (Step 2.10b) | yes: dry-run safety fix, test suite |
-| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (working tree clean) |
-| gymsera_web | main | f84b784 test(web): add Playwright login smoke test and CI workflow | no (working tree clean) |
+| gyms_era | `phase-1/prompt-1a-billing-core` (from master 11d37b1) | b4dfb59 fix(billing): send the tenant id with every store purchase (BILL-01) | no |
+| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | see `git log` — last is the Prompt 1A close-out docs commit | no |
+| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
+| gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Start **Prompt 1A — Billing core: webhook inbox, refunds, Android acknowledge, store binding, Stripe return** from `GYMSERA_AGENT_PLAYBOOK.md` Part B.
-> Follow `AGENTS.md`. Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §0.1, §0.5, §7 and these issues in §12.1:
-> BILL-12, BILL-02, BILL-06, BILL-01, BILL-14 (do them in that order).
-> Use §12.13 (Prompt 0 results) to skip anything NOT REPRODUCED.
-> Checkpoint `AGENT_HANDOFF.md` as you go.
+> Owner first (see "Blocked / waiting on the owner"). Then start **Prompt 1B — Billing lifecycle** from
+> `GYMSERA_AGENT_PLAYBOOK.md` (BILL-04, BILL-05, BILL-03, BILL-13, FLOW-03, BILL-08). Branch from
+> `phase-1/prompt-1a-billing-core` (1B builds on the shared apply path `applyVerifiedSubscription` and the
+> `billing_events` inbox), or from main once 1A is merged. New TenantSubscription columns/states go through
+> `src/database/platform-migrations.js` (next version: p004), never the boot-time block in `platform.js#connect`.
 
 ### Work in progress that is NOT committed
 
-- `gymsera_be`: Step 2.10b test enhancements ready to commit.
-- `gyms_era`: uncommitted Prompt 1 test foundation files and Step 2.6 smoke test in `test/widget_test.dart`.
+- (none)
 
 ### Blocked / waiting on the owner
 
-- (none) — owner to run preview `node src/scripts/run-tenant-migrations.js --dry-run` and apply `node src/scripts/run-tenant-migrations.js` on production.
+- **Before deploying this backend branch:** run `node src/scripts/run-platform-migrations.js --dry-run`, check the
+  report, then `node src/scripts/run-platform-migrations.js`. It adds `billing_events` (p001), `REVOKED` status
+  (p002) and UNIQUE(platform, external_original_transaction_id) (p003; skipped with a list if duplicates exist).
+  Until then webhooks answer 500 (providers retry for days), nothing is lost.
+- Decide/confirm (not in §14): a **partial** Stripe refund keeps the plan (only full refund or dispute revokes); a
+  refunded/disputed Stripe subscription is **not** cancelled at Stripe (it would bill again next period — web card
+  is OFF per R-7, so this only matters once a web provider is live).
+- **NEW-15 is DONE** and R-21 is DECIDED (`GET /host/subscription/current` is read-only; be 6f3506f, 5d984de).
+  New P2 item NEW-18 (spec §12.13.11): plan creation at approval fails silently — recorded, not fixed.
 
 ---
 
@@ -56,15 +66,16 @@ next agent won't know it.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-- [x] 1. MySQL 5.7 Support: Updated backend CI (`.github/workflows/ci.yml`) and compose (`docker-compose.yml`) to `mysql:5.7`. Configured test harness to run on MySQL 5.7 (`utf8mb4_unicode_ci`, never `utf8mb4_0900_ai_ci`). Fixed `billing_plan_id` foreign key collation on platform DB.
-- [x] 2. Test Fixture: Added `createMixedCollationTenantDb` in `tests/harness/test-db.js` simulating production mixed collations (`payments.branch_id` `utf8mb4_general_ci` vs `branches.id` `utf8mb4_unicode_ci`). Proved direct SQL join fails on MySQL 5.7 with `ER_CANT_AGGREGATE_2COLLATIONS` ("Illegal mix of collations") in `tests/integration/mixed-collation-migration.test.js`.
-- [x] 3. Migration 004 Fix: Eliminated SQL JOIN between `payments` and `branches`. Matched branch timezone in JavaScript using Map lookup (reusing `repair-payment-business-dates.js` pattern). Verified it correctly backfills NULL rows on mixed-collation DBs.
-- [x] 4. Migration 007 (Collation Alignment): Created `007_align_tenant_collations` in `src/database/tenant-migration-runner.js`. Converts differing tables to `utf8mb4_unicode_ci`, touches only what differs, idempotent. Verified SQL join succeeds after 007.
-- [x] 5. Runner Upgrades: Added `--dry-run` flag to runner and CLI (`src/scripts/run-tenant-migrations.js`) with zero writes. Resilient per-tenant execution: logs error, continues next tenant, reports from/to versions and status, exits non-zero if any failed.
-- [x] 6. `reactivateTenant`: Added migration execution up to latest version before setting tenant status to `ACTIVE` in `src/services/admin.service.js`. Verified via regression test `tests/integration/reactivate-tenant-migration.test.js`.
-- [x] 7. App Query Audit: Listed raw SQL queries; confirmed no application queries join mixed-collation columns without Migration 007 fix.
-- [x] 8. Spec §13 & §14: Updated §13 with STEP-2.9 production run results and STEP-2.10 DONE; added MySQL 5.7 -> 8.0/8.4 upgrade plan in §14 (R-20).
-- [x] 9. Step 2.10b (Collation Re-Check outside app code): Proved Migration 007 scans ALL tables/columns via `information_schema` (not a fixed list); audited all scripts/queries; added `ledger_days` with `utf8mb4_general_ci` to test fixture and verified both `payments` and `ledger_days` joins fail before Migration 007 and pass cleanly after Migration 007.
+Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL-14 entitlement already safe, UX part confirmed.
+
+- [x] 1. BILL-12 — webhook inbox, refetch truth, one apply path (be 84d250f)
+- [x] 2. BILL-02 — REVOKED state, refunds from all three providers end entitlement via reconcileCapacity (be 542ef53)
+- [x] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox (be 1a7300f)
+- [x] 4. BILL-01 — purchase bound to one tenant (409 subscription_owned_by_other_account), unique index, mobile sends tenant id (be 7a53c72, app b4dfb59)
+- [x] 5. BILL-14 — Stripe return page verifies the session server-side (be 2fff789, web f5fa208)
+- [x] Lint follow-up (be affbcb6), §13 rows with hashes, this handoff.
+- [x] Follow-up NEW-15 — GET /host/subscription/current grants nothing to a tenant with subscription history (be 6f3506f); owner question R-21 open.
+- [x] R-21 decided: the endpoint never creates a plan (be 5d984de); NEW-18 recorded.
 
 ---
 
@@ -78,7 +89,7 @@ next agent won't know it.
     - Command: `npm test`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/gymsera_be`
     - Runs isolated test DBs (`gymsera_test_platform`, `gymsera_test_tenant_1`, `gymsera_test_tenant_2`) on local MySQL 5.7 (port 3308 locally via `gymsera-test-mysql57` docker container, 3306 in CI). Never touches live or staging DBs (R-19).
-    - Status: ALL 12 suites PASS, 51 tests PASS. Zero failures.
+    - Status (2026-09-27, after Prompt 1A): 19 suites, 88 tests PASS (see the intermittent-failure note below).
   - `gyms_era` (Flutter):
     - Command: `flutter test test/regression/`
     - Cwd: `/Users/powertech/Developer/Apps/InovettaTech/SaaS/GymsEraApp/gyms_era`
@@ -95,6 +106,30 @@ next agent won't know it.
 - Tenant migrations: `src/database/tenant-migration-runner.js` manages versioned tenant DB migrations (target version 7). To preview across all active tenants, use `node src/scripts/run-tenant-migrations.js --dry-run`. To apply, use `node src/scripts/run-tenant-migrations.js`.
 
 ---
+
+- **Prompt 1A additions (2026-09-27):**
+  - Platform DB migrations: `src/database/platform-migrations.js` (reuses `runTenantMigrations` with a migration
+    list). CLI `node src/scripts/run-platform-migrations.js [--dry-run]`; it only `authenticate()`s, because
+    `platform.js#connect` runs boot-time ALTERs. Proof: `tests/integration/platform-migration-runner.test.js`.
+  - Every store/webhook change goes through ONE function: `subscription-migration.service.js#applyVerifiedSubscription`.
+    Entry points: `syncFromApple` / `syncFromGoogle` / `syncFromStripe` (used by `/billing/*/sync`, the inbox
+    processor `billing-event.service.js`, and the daily cron).
+  - Provider calls live in `appleApi` / `playApi` / `stripeApi` objects; tests fake them with
+    `tests/harness/billing-fakes.js`. The test harness blanks all provider credentials (`test-db.js`) — before that,
+    one test run sent a real acknowledge call to Google Play with a fake token (rejected, no effect).
+  - Backend suite now 19 suites / 88 tests. Flutter `flutter test`: 9 tests, all pass (the old counter-template
+    failure is gone). Web: vitest 6, Playwright 1.
+  - **Intermittent backend failure — NOT diagnosed, next agent should look first**: in 3 of ~14 full `npm test`
+    runs one test failed that passes alone: `harness.test.js`; the BILL-14 "another tenant's session" check (got
+    400); and the BILL-06 RTDN-acknowledge test (ack not called — the inbox event most likely ended FAILED; print
+    its `lastError` to see why). Always the full run, never the file alone. Suspect cross-file leakage of background
+    work (the provisioning test's emails/notifications, open pools) or a lock race — could be a real bug in the
+    1A code, so treat it as open.
+  - Existing tests reach real services: the tenant-provisioning test sends a real e-mail
+    (`[Email] Successfully sent email to host-prov@gymsera.test`), and a mobile regression test issues a real
+    `GET https://apistaging.gymsera.com/api/v1/tenants/me`. Not touched in 1A; worth fixing under R-19.
+  - ESLint: test files fail lint repo-wide (no Jest env in the config); pre-existing. Changed `src/` files add no
+    new lint errors.
 
 ## 4. Session log (append-only, newest at the bottom)
 
@@ -114,3 +149,6 @@ next agent won't know it.
 | 11 | 2026-09-27 | Gemini (Gemini 3.8 Flash) | P0 Urgent | NEW-17: --dry-run safety, rollback transaction wrapper, individual migration dryRun guards, Migration 004 non-null isolation audit & tests | task complete | yes |
 
 
+| 12 | 2026-09-27 | Claude Code (Opus 5.5) | Prompt 1A | BILL-12, BILL-02, BILL-06, BILL-01, BILL-14 (transfer endpoint for BILL-01 deferred) | task complete | yes |
+| 13 | 2026-09-28 | Claude Code (Opus 5.5) | NEW-15 (1A follow-up) | NEW-15 (R-21 raised for owner) | task complete | yes |
+| 14 | 2026-09-28 | Claude Code (Opus 5.5) | R-21 (1A follow-up) | R-21 read-only endpoint; NEW-18 recorded | task complete | yes |

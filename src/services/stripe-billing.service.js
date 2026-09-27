@@ -5,7 +5,8 @@
  * shape, same rules. What's different is Stripe's own model:
  *
  *   - The frontend redirect after Checkout NEVER grants anything by itself
- *     — only handleWebhook, verified via Stripe's own signature scheme, is
+ *     — only a signature-verified webhook (verifyWebhookEvent), re-fetched and
+ *     applied through syncFromStripe, is
  *     authoritative. This mirrors "never trust the client alone" applied to
  *     an entire payment flow, not just one purchase confirmation call.
  *   - We control Stripe server-side, unlike Apple/Google — a cross-provider
@@ -32,12 +33,9 @@
  * key change, not a code change).
  */
 const Stripe = require('stripe');
-const { BillingPlan, Tenant, TenantSubscription } = require('../models/platform');
-const { sequelize } = require('../database/platform');
+const { BillingPlan, Tenant } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
-const subscriptionQuotaService = require('./subscription-quota.service');
 const subscriptionMigrationService = require('./subscription-migration.service');
-const TenantDbManager = require('../database/TenantDbManager');
 
 let _stripe = null;
 const _client = () => {
@@ -217,12 +215,12 @@ const _statusFromStripeStatus = (stripeStatus) => {
 };
 
 /**
- * Upserts the tenant's TenantSubscription row from a verified Stripe
- * subscription object (always via handleWebhook — the frontend redirect
- * alone never reaches this). Keyed on externalOriginalTransactionId (=
- * Stripe subscription id, stable for its lifetime including plan changes)
- * — safe to call repeatedly. Mirrors the other two providers' sync function
- * function-for-function, including the cross-provider migration hook.
+ * Maps a Stripe subscription object (always re-fetched via syncFromStripe —
+ * the frontend redirect never reaches this) to TenantSubscription values and
+ * applies them through subscription-migration.service.js#applyVerifiedSubscription,
+ * the one write path shared by every provider. Keyed on
+ * externalOriginalTransactionId (= Stripe subscription id, stable for its
+ * lifetime including plan changes) — safe to call repeatedly.
  *
  * `stripeEventId` (the webhook Event's own id, e.g. "evt_...") is used as
  * the capacity-reconciliation idempotency key instead of
@@ -235,7 +233,7 @@ const _statusFromStripeStatus = (stripeStatus) => {
  * own retries of the same delivery, which is exactly the idempotency
  * behavior every other caller of reconcileCapacity relies on.
  */
-const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { originListingId = null, stripeEventId = null } = {}) => {
+const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { originListingId = null, stripeEventId = null, revoked = false } = {}) => {
   const idempotencyPrefix = stripeEventId || stripeSubscription.id;
   const item = stripeSubscription.items?.data?.[0];
   const priceId = item?.price?.id;
@@ -243,123 +241,43 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
   const plan = await findPlanForPriceId(priceId);
   const isAnnual = priceId === plan.stripeAnnualPriceId;
 
-  const status = _statusFromStripeStatus(stripeSubscription.status);
+  // `revoked`: the latest payment was fully refunded or disputed — Stripe
+  // keeps the subscription itself "active", so the caller says so (BILL-02).
+  const status = revoked ? 'REVOKED' : _statusFromStripeStatus(stripeSubscription.status);
   const periodEnd = item.current_period_end ? new Date(item.current_period_end * 1000) : null;
   const periodStart = item.current_period_start ? new Date(item.current_period_start * 1000) : new Date();
 
-  const platformTx = await sequelize.transaction();
-  try {
-    const existing = await TenantSubscription.findOne({
-      where: { externalOriginalTransactionId: stripeSubscription.id },
-      transaction: platformTx,
-      lock: true,
-    });
-    const previousMaxBranches = existing ? existing.branchCount : null;
-    const planChanged = !existing || existing.billingPlanId !== plan.id;
+  const values = {
+    platform: 'STRIPE',
+    billingPlanId: plan.id,
+    branchCount: plan.branchCount,
+    productId: priceId,
+    externalOriginalTransactionId: stripeSubscription.id,
+    externalTransactionId: stripeSubscription.id,
+    // Stripe has no per-object sandbox flag — test vs. live is entirely a
+    // function of which API key made the call, tracked at the account
+    // level, not on the subscription itself. Always PRODUCTION here; the
+    // real environment distinction is which STRIPE_SECRET_KEY is loaded.
+    environment: 'PRODUCTION',
+    startDate: periodStart.toISOString().split('T')[0],
+    endDate: periodEnd ? periodEnd.toISOString().split('T')[0] : null,
+    // Written only on a new row or a real plan change — see
+    // subscription-migration.service.js#applyVerifiedSubscription.
+    amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    status,
+    autoRenew: !stripeSubscription.cancel_at_period_end,
+    paymentStatus: 'PAID',
+    lastVerifiedAt: new Date(),
+  };
 
-    const values = {
-      tenantId,
-      platform: 'STRIPE',
-      billingPlanId: plan.id,
-      branchCount: plan.branchCount,
-      productId: priceId,
-      externalOriginalTransactionId: stripeSubscription.id,
-      externalTransactionId: stripeSubscription.id,
-      // Stripe has no per-object sandbox flag — test vs. live is entirely a
-      // function of which API key made the call, tracked at the account
-      // level, not on the subscription itself. Always PRODUCTION here; the
-      // real environment distinction is which STRIPE_SECRET_KEY is loaded.
-      environment: 'PRODUCTION',
-      startDate: periodStart.toISOString().split('T')[0],
-      endDate: periodEnd ? periodEnd.toISOString().split('T')[0] : null,
-      // See apple-billing.service.js's identical comment — never recomputed
-      // on a plain renewal, only on a new row or a real plan change.
-      ...(planChanged
-        ? { amount: isAnnual ? plan.annualPrice : plan.monthlyPrice, billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY' }
-        : {}),
-      status,
-      autoRenew: !stripeSubscription.cancel_at_period_end,
-      paymentStatus: 'PAID',
-      lastVerifiedAt: new Date(),
-    };
-
-    let subscription;
-    // See apple-billing.service.js's identical comment — true whenever
-    // requestProviderChange already handled reconciliation itself.
-    let reconciledByActivation = false;
-    let migratedFrom = null;
-    if (existing) {
-      // A renewal/resync for a Stripe subscription id already on file —
-      // never a migration decision. But Stripe's own object could still say
-      // ACTIVE even after a prior purchase superseded this row locally —
-      // see subscription-migration.service.js#reconcileRenewalStatus for
-      // why blindly trusting that would resurrect a second ACTIVE row.
-      // Mirrors the identical guard in apple-billing.service.js and
-      // google-play-billing.service.js.
-      const reconciledValues = await subscriptionMigrationService.reconcileRenewalStatus(
-        tenantId,
-        existing,
-        values,
-        { transaction: platformTx }
-      );
-      await existing.update(reconciledValues, { transaction: platformTx });
-      subscription = existing;
-    } else {
-      let tenantDb = null;
-      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-      if (tenant?.connectionStringEncrypted) {
-        tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-      }
-      const activation = await subscriptionMigrationService.requestProviderChange(
-        tenantId,
-        { newPlatform: 'STRIPE', newSubscriptionValues: values },
-        {
-          transaction: platformTx,
-          tenantDb,
-          originListingId,
-          idempotencyPrefix,
-          actorType: 'SYSTEM',
-        }
-      );
-      subscription = activation.subscription;
-      reconciledByActivation = true;
-      migratedFrom = activation.migratedFrom;
-    }
-
-    // subscription.status, not values.status — see the identical comment in
-    // apple-billing.service.js / google-play-billing.service.js.
-    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
-      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-      if (tenant?.connectionStringEncrypted) {
-        const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
-          transaction: platformTx,
-          previousMaxBranches,
-          originListingId,
-          idempotencyPrefix,
-          actorType: 'SYSTEM',
-        });
-      }
-    }
-
-    await platformTx.commit();
-
-    if (migratedFrom?.platform === 'STRIPE' && migratedFrom.externalOriginalTransactionId) {
-      // A Stripe -> Stripe migration never happens (same-platform changes
-      // never go through requestProviderChange), but guard identically to
-      // the other two providers for symmetry/safety.
-      try {
-        await cancelAtPeriodEnd(migratedFrom.externalOriginalTransactionId);
-      } catch (err) {
-        console.warn('[Stripe Billing] Failed to schedule Stripe cancellation after migration:', err.message);
-      }
-    }
-
-    return subscription;
-  } catch (err) {
-    await platformTx.rollback();
-    throw err;
-  }
+  return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
+    originListingId,
+    idempotencyPrefix,
+    // Written by our own createCheckoutSession, server-side (BILL-01).
+    boundTenantId: stripeSubscription.metadata?.tenantId || null,
+    logLabel: 'Stripe Billing',
+  });
 };
 
 /**
@@ -376,72 +294,142 @@ const cancelAtPeriodEnd = async (stripeSubscriptionId) => {
 };
 
 /**
- * Stripe webhook receiver. Verified via Stripe's own signature scheme
- * (stripe.webhooks.constructEvent) against the RAW request body — app.js
- * captures that onto req.rawBody via express.json()'s verify hook, since
- * the JSON-parsed req.body would no longer match the exact bytes Stripe
- * signed. The frontend's post-Checkout redirect never grants anything by
- * itself; this is the only authoritative trigger for syncing a purchase.
+ * Verifies a Stripe webhook's signature against the RAW request body (app.js
+ * captures it onto req.rawBody — the JSON-parsed body no longer matches the
+ * bytes Stripe signed) and returns the event. Only a verified event ever
+ * reaches the billing_events inbox.
  */
-const handleWebhook = async (rawBody, signature) => {
-  const stripe = _client();
+const verifyWebhookEvent = (rawBody, signature) => {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) throw createError('Stripe webhook secret is not configured on the server', 500);
+  return _client().webhooks.constructEvent(rawBody, signature, webhookSecret);
+};
 
-  const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+/**
+ * Provider API calls, grouped so a test can substitute them — nothing else in
+ * this file's sync/webhook path talks to Stripe directly.
+ */
+const stripeApi = {
+  verifyWebhookEvent,
+  retrieveSubscription: (id) => _client().subscriptions.retrieve(id),
+  retrieveCharge: (id) => _client().charges.retrieve(id),
+  retrieveCheckoutSession: (id) => _client().checkout.sessions.retrieve(id),
+  /**
+   * The subscription a charge paid for. Older API versions put the invoice on
+   * the charge; newer ones link charge → payment intent → invoice payment →
+   * invoice, and the invoice names its subscription under
+   * parent.subscription_details. Tries both.
+   */
+  subscriptionIdForCharge: async (charge) => {
+    const stripe = _client();
+    let invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
+    if (!invoiceId && charge.payment_intent) {
+      const paymentIntent = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent.id;
+      const payments = await stripe.invoicePayments.list({ payment: { type: 'payment_intent', payment_intent: paymentIntent }, limit: 1 });
+      const inv = payments.data?.[0]?.invoice;
+      invoiceId = typeof inv === 'string' ? inv : inv?.id;
+    }
+    if (!invoiceId) return null;
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    const sub = invoice.subscription || invoice.parent?.subscription_details?.subscription;
+    return typeof sub === 'string' ? sub : sub?.id || null;
+  },
+};
 
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = event.data.object;
-      if (session.mode !== 'subscription' || !session.subscription) break;
-      const subscription = await stripe.subscriptions.retrieve(session.subscription);
-      const tenantId = session.metadata?.tenantId || subscription.metadata?.tenantId;
-      if (tenantId) await syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: event.id });
-      break;
-    }
-    case 'customer.subscription.updated': {
-      const subscription = event.data.object;
-      const tenantId = subscription.metadata?.tenantId;
-      if (tenantId) await syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: event.id });
-      break;
-    }
-    case 'customer.subscription.deleted': {
-      // Routed through the same single choke point as every other event —
-      // never a second, parallel write path to TenantSubscription. Stripe's
-      // own `status` on a deleted subscription object is already 'canceled',
-      // which _statusFromStripeStatus maps to CANCELLED; no capacity
-      // reconciliation happens for a cancellation here, matching the exact
-      // same "the expiry cron is the safety net" rule already established
-      // for Apple/Google cancellations (see this function's own status
-      // check further down in syncSubscriptionFromStripeObject).
-      const subscription = event.data.object;
-      const tenantId = subscription.metadata?.tenantId;
-      if (tenantId) {
-        await syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: event.id });
-      } else {
-        // No metadata to resolve a tenant from (e.g. a subscription created
-        // outside our own Checkout flow) — fall back to a direct update by
-        // external id so the row doesn't drift, same tolerant-fallback
-        // philosophy as the rest of this codebase's idempotent paths.
-        await TenantSubscription.update(
-          { status: 'CANCELLED' },
-          { where: { externalOriginalTransactionId: subscription.id, status: { [require('sequelize').Op.in]: ['ACTIVE', 'SCHEDULED'] } } }
-        );
-      }
-      break;
-    }
-    case 'invoice.payment_failed': {
-      // Left as-is deliberately — Stripe's own dunning/retry emails handle
-      // this, and the subscription-expiry cron (unchanged, shared with
-      // every other provider) is the safety net that expires anything that
-      // never recovers by its endDate.
-      break;
-    }
-    default:
-      break;
+/**
+ * What the Stripe return page shows (BILL-14): the Checkout Session re-fetched
+ * from Stripe — never the `?checkout=success` the browser arrived with — plus
+ * whether the webhook-driven entitlement exists yet. Read-only: a GET never
+ * grants anything; only the webhook does. A session that isn't this tenant's
+ * is reported as not found.
+ */
+const getCheckoutSessionStatus = async (tenantId, sessionId) => {
+  let session;
+  try {
+    session = await stripeApi.retrieveCheckoutSession(sessionId);
+  } catch (err) {
+    if (err.statusCode === 404 || err.code === 'resource_missing') throw createError('Checkout session not found', 404);
+    throw err;
   }
+  if (session.metadata?.tenantId !== tenantId) throw createError('Checkout session not found', 404);
 
-  return { received: true, type: event.type };
+  const confirmed = session.status === 'complete' && ['paid', 'no_payment_required'].includes(session.payment_status);
+  const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+  let entitled = false;
+  if (confirmed && subscriptionId) {
+    const { TenantSubscription } = require('../models/platform');
+    entitled =
+      (await TenantSubscription.count({
+        where: { tenantId, platform: 'STRIPE', externalOriginalTransactionId: subscriptionId, status: 'ACTIVE' },
+      })) > 0;
+  }
+  return { status: session.status, paymentStatus: session.payment_status, confirmed, entitled };
+};
+
+/**
+ * The one entry point for applying a Stripe subscription: re-fetch it from
+ * Stripe's API (never the webhook payload's copy, which can arrive out of
+ * order), resolve its owner, then apply it through
+ * syncSubscriptionFromStripeObject. The owner is the tenant already holding
+ * this subscription id, else the tenantId our own Checkout Session wrote into
+ * the subscription's metadata server-side.
+ *
+ * @returns {Promise<object|null>} null when no tenant can be resolved.
+ */
+const syncFromStripe = async ({ subscriptionId, eventId = null, revoked = false }) => {
+  const subscription = await stripeApi.retrieveSubscription(subscriptionId);
+  const tenantId = await subscriptionMigrationService.resolveSubscriptionOwner(
+    'STRIPE',
+    subscription.id,
+    subscription.metadata?.tenantId
+  );
+  if (!tenantId) return null;
+  return syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: eventId, revoked });
+};
+
+/**
+ * Processes one verified Stripe event from the billing_events inbox. Every
+ * subscription-affecting event resolves to a subscription id and goes through
+ * syncFromStripe — the event's own copy of the object is never trusted for
+ * state. Returns what happened, for the inbox row.
+ */
+const processWebhookEvent = async (event) => {
+  const object = event.data?.object || {};
+  let subscriptionId = null;
+  let revoked = false;
+  switch (event.type) {
+    case 'charge.refunded':
+    case 'charge.dispute.created': {
+      // Refund / chargeback (BILL-02, spec §7.5.7). The charge is re-fetched:
+      // only a FULL refund or an open dispute revokes; a partial refund is a
+      // goodwill credit and leaves the plan in place.
+      const chargeId = event.type === 'charge.refunded' ? object.id : object.charge;
+      const charge = await stripeApi.retrieveCharge(typeof chargeId === 'string' ? chargeId : chargeId?.id);
+      if (!(charge.refunded === true || charge.disputed === true)) {
+        return { outcome: 'IGNORED', note: 'Partial refund — entitlement unchanged' };
+      }
+      subscriptionId = await stripeApi.subscriptionIdForCharge(charge);
+      revoked = true;
+      break;
+    }
+    case 'checkout.session.completed':
+      if (object.mode === 'subscription') subscriptionId = object.subscription;
+      break;
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      subscriptionId = object.id;
+      break;
+    default:
+      // invoice.payment_failed and anything else: Stripe's own dunning
+      // handles the retry, and the next customer.subscription.updated (or
+      // the daily reconciliation sweep) carries the resulting state.
+      return { outcome: 'IGNORED', note: `Event type ${event.type} does not change entitlement` };
+  }
+  if (!subscriptionId) return { outcome: 'IGNORED', note: 'No subscription on this event' };
+  const synced = await syncFromStripe({ subscriptionId, eventId: event.id, revoked });
+  if (!synced) return { outcome: 'IGNORED', note: 'Subscription has no GymsEra tenant' };
+  return { outcome: 'PROCESSED' };
 };
 
 module.exports = {
@@ -451,5 +439,9 @@ module.exports = {
   findPlanForPriceId,
   syncSubscriptionFromStripeObject,
   cancelAtPeriodEnd,
-  handleWebhook,
+  stripeApi,
+  getCheckoutSessionStatus,
+  verifyWebhookEvent,
+  syncFromStripe,
+  processWebhookEvent,
 };

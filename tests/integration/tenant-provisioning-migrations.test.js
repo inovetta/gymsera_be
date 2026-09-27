@@ -18,6 +18,7 @@ const {
   createUser,
   createTenant,
 } = require('../harness/factories');
+const { installMailFake } = require('../harness/mail-fake');
 const { TARGET_SCHEMA_VERSION } = require('../../src/database/tenant-migration-runner');
 const adminService = require('../../src/services/admin.service');
 const TenantDbManager = require('../../src/database/TenantDbManager');
@@ -26,11 +27,14 @@ describe('Tenant Provisioning Migrations (Step 2.6)', () => {
   let dbHarness;
   let adminUser;
   let hostUser;
+  let mail;
   const testTenantCode = 'test_safe_prov';
   const expectedDbName = `gymsera_${testTenantCode}`;
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
+    // Approval sends the host an e-mail: capture it, never send it (R-19).
+    mail = installMailFake();
 
     adminUser = await createUser({
       email: 'admin-prov@gymsera.test',
@@ -68,6 +72,10 @@ describe('Tenant Provisioning Migrations (Step 2.6)', () => {
     // 2. Approve tenant (triggers processTenantProvisioning)
     const result = await adminService.approveTenant(pendingTenant.id, adminUser.id);
     expect(result.tenant.status).toBe('ACTIVE');
+
+    // The host's approval e-mail went to the fake sender, not a real SMTP server.
+    expect(mail.sent.map((m) => m.to)).toContain('host-prov@gymsera.test');
+    expect(mail.sent.find((m) => m.to === 'host-prov@gymsera.test').subject).toMatch(/approved/i);
 
     // 3. Reload tenant from platform DB
     await pendingTenant.reload();

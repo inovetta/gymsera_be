@@ -21,12 +21,9 @@
  */
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const { BillingPlan, Tenant } = require('../models/platform');
-const { sequelize } = require('../database/platform');
+const { BillingPlan } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
-const subscriptionQuotaService = require('./subscription-quota.service');
 const subscriptionMigrationService = require('./subscription-migration.service');
-const TenantDbManager = require('../database/TenantDbManager');
 
 // Apple Root CA - G3, fetched and fingerprint-verified against Apple's
 // published SHA-1 (b5:2c:b0:2f:d5:67:e0:35:9f:e8:fa:4d:4c:41:03:79:70:fe:01:b0)
@@ -157,205 +154,110 @@ const findPlanForProductId = async (productId) => {
 };
 
 /**
- * Upserts the tenant's TenantSubscription row from a verified Apple
- * transaction. Keyed on externalOriginalTransactionId — stable across
- * renewals and tier upgrades — so this is safe to call repeatedly (every
- * app-sync call, every webhook notification) without creating duplicates.
- *
- * Also this is the single choke point where branchCount ever changes for a
- * store-verified subscription, so it's where capacity reconciliation lives
- * too (subscription-quota.service.js#reconcileCapacity): a downgrade trims
- * unbuilt reservedSlots (or flags the account over-quota) and an upgrade
- * attributes the new headroom as a spendable slot, both inside the same
- * transaction as the branchCount write itself so the two can never drift
- * apart. `originListingId` — the organization the purchase was made from,
- * when the app-initiated sync call knows it — is where new capacity from an
- * upgrade lands; the webhook path (no such context) falls back to the
- * tenant's oldest organization inside reconcileCapacity.
+ * Maps a verified Apple transaction to TenantSubscription values and applies
+ * them through subscription-migration.service.js#applyVerifiedSubscription —
+ * the one write path shared by every provider, the app's /sync and every
+ * webhook. Keyed on externalOriginalTransactionId (stable across renewals and
+ * tier upgrades), so it is safe to call repeatedly. `originListingId` — the
+ * organization the purchase was made from, when the app knows it — is where
+ * an upgrade's new capacity lands; without it reconcileCapacity falls back to
+ * the tenant's oldest organization.
  */
 const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { originListingId = null } = {}) => {
-  const { TenantSubscription } = require('../models/platform');
   const plan = await findPlanForProductId(decodedTransaction.productId);
 
   const expiresAt = decodedTransaction.expiresDate ? new Date(Number(decodedTransaction.expiresDate)) : null;
   const isAnnual = decodedTransaction.productId === plan.iosAnnualProductId;
   const revoked = !!decodedTransaction.revocationDate;
 
-  const platformTx = await sequelize.transaction();
-  try {
-    const existing = await TenantSubscription.findOne({
-      where: { externalOriginalTransactionId: String(decodedTransaction.originalTransactionId) },
-      transaction: platformTx,
-      lock: true,
-    });
-    const previousMaxBranches = existing ? existing.branchCount : null;
-    // A genuinely new row, or a real plan change (upgrade/downgrade) — as
-    // opposed to a plain renewal of the same plan, which must NOT recompute
-    // amount/billingCycle below (see that field's comment).
-    const planChanged = !existing || existing.billingPlanId !== plan.id;
+  const values = {
+    platform: 'IOS',
+    billingPlanId: plan.id,
+    branchCount: plan.branchCount,
+    productId: decodedTransaction.productId,
+    externalOriginalTransactionId: String(decodedTransaction.originalTransactionId),
+    externalTransactionId: String(decodedTransaction.transactionId),
+    environment: decodedTransaction.environment === 'Production' ? 'PRODUCTION' : 'SANDBOX',
+    startDate: new Date(Number(decodedTransaction.purchaseDate)).toISOString().split('T')[0],
+    endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
+    // Written only on a new row or a real plan change — see
+    // subscription-migration.service.js#applyVerifiedSubscription.
+    amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    // revocationDate = Apple refunded or revoked it (REFUND / REVOKE
+    // notifications): not entitled from now on (BILL-02).
+    status: revoked ? 'REVOKED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
+    autoRenew: !revoked,
+    paymentStatus: 'PAID',
+    lastVerifiedAt: new Date(),
+  };
 
-    const values = {
-      tenantId,
-      platform: 'IOS',
-      billingPlanId: plan.id,
-      branchCount: plan.branchCount,
-      productId: decodedTransaction.productId,
-      externalOriginalTransactionId: String(decodedTransaction.originalTransactionId),
-      externalTransactionId: String(decodedTransaction.transactionId),
-      environment: decodedTransaction.environment === 'Production' ? 'PRODUCTION' : 'SANDBOX',
-      startDate: new Date(Number(decodedTransaction.purchaseDate)).toISOString().split('T')[0],
-      endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-      // Captured only on a new row or a real plan change, then left alone on
-      // every subsequent renewal sync — otherwise a later BillingPlan catalog
-      // price edit would silently overwrite what this subscriber actually
-      // locked in, even though Apple never re-charged them at the new rate.
-      // This is what keeps "existing subscriber price" a real, distinct
-      // concept from "current catalog price" (see BillingPlan.model.js).
-      ...(planChanged
-        ? { amount: isAnnual ? plan.annualPrice : plan.monthlyPrice, billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY' }
-        : {}),
-      status: revoked ? 'CANCELLED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
-      autoRenew: !revoked,
-      paymentStatus: 'PAID',
-      lastVerifiedAt: new Date(),
-    };
-
-    let subscription;
-    // True whenever requestProviderChange handled this row (fresh signup or
-    // a real cross-provider migration) — either way it already called
-    // reconcileCapacity itself, so the shared block below must skip it.
-    // Named for what it means here, not for whether a migration literally
-    // happened; the post-commit Stripe-cancel hook below keys off
-    // `migratedFrom` instead, which is only ever set for a real migration.
-    let reconciledByActivation = false;
-    let migratedFrom = null;
-    if (existing) {
-      // A renewal/resync for an originalTransactionId already on file —
-      // never a migration decision (that only ever runs once, in the `else`
-      // branch below, the first time a given id is seen). But Apple's own
-      // report for THIS transaction could still say ACTIVE even after a
-      // prior purchase superseded it locally, if that "supersession" wasn't
-      // a real in-app replacement within the same subscription group and
-      // this one genuinely kept billing — see subscription-
-      // migration.service.js#reconcileRenewalStatus for why blindly
-      // trusting that would resurrect a second ACTIVE row. (Confirmed
-      // happening on Android's equivalent path during live testing; the two
-      // services mirror each other function-for-function, so the same gap
-      // applies here even though Apple's stable originalTransactionId makes
-      // it rarer in practice.)
-      const reconciledValues = await subscriptionMigrationService.reconcileRenewalStatus(
-        tenantId,
-        existing,
-        values,
-        { transaction: platformTx }
-      );
-      await existing.update(reconciledValues, { transaction: platformTx });
-      subscription = existing;
-    } else {
-      // A brand-new Apple subscription for this tenant — first-ever signup
-      // or a cross-provider migration. requestProviderChange decides which,
-      // under a tenant-row lock so no concurrent purchase/webhook for this
-      // same tenant can race this decision. See subscription-migration.service.js.
-      let tenantDb = null;
-      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-      if (tenant?.connectionStringEncrypted) {
-        tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-      }
-      const activation = await subscriptionMigrationService.requestProviderChange(
-        tenantId,
-        { newPlatform: 'IOS', newSubscriptionValues: values },
-        {
-          transaction: platformTx,
-          tenantDb,
-          originListingId,
-          idempotencyPrefix: values.externalTransactionId,
-          actorType: 'SYSTEM',
-        }
-      );
-      subscription = activation.subscription;
-      reconciledByActivation = true;
-      migratedFrom = activation.migratedFrom;
-    }
-
-    // Only reconcile for an ACTIVE, store-verified entitlement with a real
-    // branch-count change to react to — a cancellation/expiry/refund is
-    // handled by the expiry cron (it doesn't shrink branchCount, it ends
-    // the subscription entirely) and needs no slot trimming here. The
-    // `!existing` branch above already reconciled via requestProviderChange,
-    // so it's skipped here.
-    // subscription.status, not values.status — reconcileRenewalStatus above
-    // can override what was about to be written, and .update() leaves the
-    // instance holding whatever was actually persisted. Reading values.status
-    // here would reconcile capacity for a row that just got refused ACTIVE
-    // status, double-counting a superseded row's branchCount.
-    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
-      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-      if (tenant?.connectionStringEncrypted) {
-        const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
-          transaction: platformTx,
-          previousMaxBranches,
-          originListingId,
-          idempotencyPrefix: values.externalTransactionId,
-          actorType: 'SYSTEM',
-        });
-      }
-    }
-
-    await platformTx.commit();
-
-    // A real Stripe API call must never happen inside a DB transaction that
-    // might still roll back — done here, only after commit, only when this
-    // sync just migrated the tenant away from a Stripe subscription.
-    if (migratedFrom?.platform === 'STRIPE' && migratedFrom.externalOriginalTransactionId) {
-      try {
-        const stripeBilling = require('./stripe-billing.service');
-        await stripeBilling.cancelAtPeriodEnd(migratedFrom.externalOriginalTransactionId);
-      } catch (err) {
-        console.warn('[Apple Billing] Failed to schedule Stripe cancellation after migration:', err.message);
-      }
-    }
-
-    return subscription;
-  } catch (err) {
-    await platformTx.rollback();
-    throw err;
-  }
+  return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
+    originListingId,
+    idempotencyPrefix: values.externalTransactionId,
+    // The tenant id the app sent as applicationUserName (BILL-01).
+    boundTenantId: decodedTransaction.appAccountToken || null,
+    logLabel: 'Apple Billing',
+  });
 };
 
 /**
- * App Store Server Notifications V2 — Apple POSTing renewal/cancel/refund
- * events at us. `signedPayload` is the raw body Apple sent; verified the
- * same way as getTransactionInfo's response, since this arrives over the
- * public internet with nothing else authenticating it as really Apple.
+ * Apple's current truth for a subscription, given any of its transaction ids:
+ * the latest signed transaction from the App Store Server API's subscription
+ * status endpoint — never what a notification payload claims (BILL-12).
  */
-const handleNotification = async (signedPayload) => {
-  const decoded = verifyAndDecode(signedPayload);
-  const transactionInfoJws = decoded.data?.signedTransactionInfo;
-  if (!transactionInfoJws) {
-    // Some notification types (e.g. TEST) carry no transaction — nothing to sync.
-    return null;
-  }
-  const decodedTransaction = verifyAndDecode(transactionInfoJws);
-
-  const { TenantSubscription } = require('../models/platform');
-  const existing = await TenantSubscription.findOne({
-    where: { externalOriginalTransactionId: String(decodedTransaction.originalTransactionId) },
+const getLatestTransaction = async (transactionId) => {
+  const axios = require('axios');
+  const known = await appleApi.getTransactionInfo(transactionId);
+  const originalId = String(known.originalTransactionId);
+  const response = await axios.get(`${_appleApiBase()}/inApps/v1/subscriptions/${encodeURIComponent(originalId)}`, {
+    headers: { Authorization: `Bearer ${_appleApiJwt()}` },
   });
-  if (!existing) {
-    // A renewal notification can arrive before the app ever called
-    // /billing/ios/sync once (e.g. background renewal while the app isn't
-    // open) — nothing to update yet; the next app-initiated sync will
-    // create the row. Not an error.
-    return null;
+  for (const group of response.data?.data || []) {
+    for (const last of group.lastTransactions || []) {
+      if (String(last.originalTransactionId) === originalId && last.signedTransactionInfo) {
+        return appleApi.verifyAndDecode(last.signedTransactionInfo);
+      }
+    }
   }
-  return syncSubscriptionFromTransaction(existing.tenantId, decodedTransaction);
+  // Not an auto-renewable subscription status Apple can report — the
+  // transaction lookup itself is still Apple-verified truth.
+  return known;
+};
+
+/**
+ * Provider API calls, grouped so a test can substitute them — nothing else in
+ * this file talks to Apple directly.
+ */
+const appleApi = { verifyAndDecode, getTransactionInfo, getLatestTransaction };
+
+/**
+ * The one entry point both POST /billing/ios/sync and the App Store
+ * notification processor (billing-event.service.js) use: re-fetch Apple's
+ * truth, then apply it through syncSubscriptionFromTransaction.
+ *
+ * `tenantId` is the caller's tenant for /sync. Without one (a notification,
+ * the daily sweep) the owner is resolved from the existing row or the
+ * transaction's appAccountToken; returns null when no tenant owns it.
+ */
+const syncFromApple = async ({ transactionId, tenantId = null, originListingId = null }) => {
+  const decodedTransaction = await appleApi.getLatestTransaction(transactionId);
+  const owner =
+    tenantId ||
+    (await subscriptionMigrationService.resolveSubscriptionOwner(
+      'IOS',
+      decodedTransaction.originalTransactionId,
+      decodedTransaction.appAccountToken
+    ));
+  if (!owner) return null;
+  return syncSubscriptionFromTransaction(owner, decodedTransaction, { originListingId });
 };
 
 module.exports = {
+  appleApi,
   verifyAndDecode,
   getTransactionInfo,
   findPlanForProductId,
   syncSubscriptionFromTransaction,
-  handleNotification,
+  syncFromApple,
 };
