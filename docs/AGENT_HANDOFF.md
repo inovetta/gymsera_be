@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1B — Billing lifecycle** (BILL-04, BILL-05, BILL-03, BILL-13, FLOW-03, BILL-08) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BILL-03 |
+| Issue in progress | BILL-13 |
 | Step within issue | verify / root cause <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,14 +31,14 @@ main at ea1d4df. **Not pushed, not merged** — the owner reviews and merges.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1a-billing-core` (not touched in 1B yet) | b4dfb59 fix(billing): send the tenant id with every store purchase (BILL-01) | no |
+| gyms_era | `phase-1/prompt-1b-billing-lifecycle` (from `phase-1/prompt-1a-billing-core` b4dfb59 — mobile 1A is NOT in master yet) | b8909df fix(billing): Android downgrades use DEFERRED replacement (BILL-03) | no |
 | gymsera_be | `phase-1/prompt-1b-billing-lifecycle` (from main ea1d4df) | see `git log` | no |
 | gymsera_cms | main | (not touched) | no |
 | gymsera_web | main | (not touched) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> BILL-03: platform migration p006 adds `pending_change` JSON; Apple reads renewalInfo.autoRenewProductId into pendingChange (never applies a downgrade early); Google keeps the current plan until Play switches the line item (DEFERRED); host API to store keepBranchIds; Stripe downgrade at period end; mobile ReplacementMode per direction. Lock itself = CAP-01 (Prompt 1C).
+> BILL-13: pay-later. `finalizeApplication` (tenant.service.js) must not create an ACTIVE row for PAY_LATER; approval (tenant-provisioning step 10) creates a MANUAL GRACE row, branchCount=1, endDate = approval + PAY_LATER_GRACE_DAYS (new single config value); admin verify endpoint (audited) → ACTIVE; the existing daily cron expires unpaid GRACE MANUAL rows → EXPIRED → 0 branches. Test: `tests/integration/billing-pay-later.test.js`.
 
 ### Work in progress that is NOT committed
 
@@ -58,7 +58,7 @@ main at ea1d4df. **Not pushed, not merged** — the owner reviews and merges.
 - [x] STEP 0 — §14 R-22 owner confirmed; R-17 = R-22 = one setting (be 043066a)
 - [x] 1. BILL-04 — GRACE / ON_HOLD / PAUSED (p004) (be f5543f2)
 - [x] 2. BILL-05 — amount/currency from the provider's charge (be e7d61f5)
-- [ ] 3. BILL-03 — deferred downgrade, pendingChange + keepBranchIds (lock itself is CAP-01, Prompt 1C)
+- [x] 3. BILL-03 — deferred downgrade, pendingChange + keepBranchIds (be 900506e, app b8909df; lock = CAP-01)
 - [ ] 4. BILL-13 — pay-later GRACE MANUAL row, PAY_LATER_GRACE_DAYS
 - [ ] 5. FLOW-03 — one entitlement at approval
 - [ ] 6. BILL-08 — Google PENDING purchases
