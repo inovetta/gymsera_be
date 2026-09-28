@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1B — Billing lifecycle** (BILL-04, BILL-05, BILL-03, BILL-13, FLOW-03, BILL-08) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BILL-04 |
+| Issue in progress | BILL-05 |
 | Step within issue | verify / root cause <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -38,10 +38,7 @@ main at ea1d4df. **Not pushed, not merged** — the owner reviews and merges.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> BILL-04: add platform migration p004 (status ENUM + GRACE, ON_HOLD, PAUSED), treat ACTIVE+GRACE as the
-> entitling set in `subscription-quota.service.js#getActiveSubscription` and the one-entitling-row checks in
-> `subscription-migration.service.js`; map Apple/Google/Stripe states; manage link during GRACE in
-> `GET /host/subscription/current`. Test: `tests/integration/billing-lifecycle-states.test.js`.
+> BILL-05: add `currency` to TenantSubscription via platform migration p005; in `applyVerifiedSubscription` write amount/currency from the provider's actual charge on every verified sync (not only on plan change); catalog edits never touch it. Test: `tests/integration/billing-subscriber-price.test.js`.
 
 ### Work in progress that is NOT committed
 
@@ -59,7 +56,7 @@ main at ea1d4df. **Not pushed, not merged** — the owner reviews and merges.
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
 - [x] STEP 0 — §14 R-22 owner confirmed; R-17 = R-22 = one setting (be 043066a)
-- [ ] 1. BILL-04 — GRACE / ON_HOLD / PAUSED (p004)
+- [x] 1. BILL-04 — GRACE / ON_HOLD / PAUSED (p004) (be f5543f2)
 - [ ] 2. BILL-05 — amount/currency from the provider's charge
 - [ ] 3. BILL-03 — deferred downgrade, pendingChange + keepBranchIds (lock itself is CAP-01, Prompt 1C)
 - [ ] 4. BILL-13 — pay-later GRACE MANUAL row, PAY_LATER_GRACE_DAYS
