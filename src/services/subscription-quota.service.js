@@ -409,8 +409,26 @@ const auditCapacity = async (tenantId, tenantDb) => {
   };
 };
 
+/**
+ * HOOK FOR CAP-01 (Prompt 1C — branch billing lock). Nothing calls it yet.
+ *
+ * The real branches the host chose to keep when the plan went down (BILL-03,
+ * spec §7.5.4): the keep-list stored with the tenant's entitling row once the
+ * provider applied that plan. CAP-01 locks `overQuotaCount` branches after the
+ * over-quota grace (R-3, 7 days): the ones NOT in this list first, otherwise
+ * the most recently created. Null when the host made no choice.
+ * @returns {Promise<string[]|null>}
+ */
+const getBranchesToKeep = async (tenantId, { transaction } = {}) => {
+  const sub = await getActiveSubscription(tenantId, { transaction });
+  const change = sub?.pendingChange;
+  if (!change || !change.appliedAt || change.billingPlanId !== sub.billingPlanId) return null;
+  return Array.isArray(change.keepBranchIds) ? change.keepBranchIds : null;
+};
+
 module.exports = {
   ENTITLING_STATUSES,
+  getBranchesToKeep,
   ENDED_STATUSES,
   recordCapacityEvent,
   getActiveSubscription,

@@ -154,6 +154,20 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(255),
         allowNull: true,
       },
+      // A plan change the provider applies later — a downgrade takes effect at
+      // renewal (BILL-03, spec §7.5.4). Added by platform migration p006.
+      //   { billingPlanId, branchCount, productId, effectiveAt,
+      //     keepBranchIds, keepChosenAt, confirmedByProvider, appliedAt }
+      // confirmedByProvider=false: only the host's choice so far (made before
+      // the store purchase). true: the provider reports this as the next plan.
+      // appliedAt set: the provider switched to it; keepBranchIds stays for the
+      // branch billing lock (CAP-01) until the next change. Written by
+      // subscription-migration.service.js only; entitlement always comes from
+      // branchCount, never from here.
+      pendingChange: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
     },
     {
       tableName: 'tenant_subscriptions',

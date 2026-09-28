@@ -184,6 +184,28 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
       : APPLE_STATUS[decodedTransaction.subscriptionStatus] ||
         (expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE');
 
+  // BILL-03: the plan in effect is the transaction's product. An in-group
+  // downgrade only takes effect at renewal; until then Apple names the next
+  // product in renewalInfo.autoRenewProductId — recorded as pendingChange,
+  // never applied early. No renewal info (plain lookup) = unknown (undefined).
+  let upcomingChange;
+  if (renewalInfo) {
+    const nextProductId = renewalInfo.autoRenewProductId;
+    const renews = renewalInfo.autoRenewStatus == null || Number(renewalInfo.autoRenewStatus) === 1;
+    upcomingChange = null;
+    if (renews && nextProductId && nextProductId !== decodedTransaction.productId) {
+      const nextPlan = await findPlanForProductId(nextProductId).catch(() => null);
+      if (nextPlan && nextPlan.id !== plan.id) {
+        upcomingChange = {
+          billingPlanId: nextPlan.id,
+          branchCount: nextPlan.branchCount,
+          productId: nextProductId,
+          effectiveAt: expiresAt ? expiresAt.toISOString() : null,
+        };
+      }
+    }
+  }
+
   const values = {
     platform: 'IOS',
     billingPlanId: plan.id,
@@ -202,6 +224,7 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     // What Apple actually charged (BILL-05): `price` in milliunits of `currency`.
     chargedAmount: decodedTransaction.price != null ? Math.round(Number(decodedTransaction.price) / 10) / 100 : null,
     chargedCurrency: decodedTransaction.price != null ? decodedTransaction.currency || null : null,
+    upcomingChange,
     // revocationDate = Apple refunded or revoked it (REFUND / REVOKE
     // notifications): not entitled from now on (BILL-02).
     status,

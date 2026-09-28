@@ -194,4 +194,47 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
       expect(await snapshot()).toEqual(afterFirst);
     });
   });
+
+  describe('p006 — tenant_subscriptions.pending_change (BILL-03)', () => {
+    const P006 = 'p006_tenant_subscriptions_pending_change';
+    const p006 = () => PLATFORM_MIGRATIONS.find((m) => m.name === P006);
+
+    test('--dry-run lists p006 and writes NOTHING', async () => {
+      await createDbAfter1A();
+      const before = await snapshot();
+      expect((await runPlatformMigrations(seq, { dryRun: true })).wouldRun).toContain(P006);
+      await p006().up(seq, { dryRun: true });
+      expect(await snapshot()).toEqual(before);
+      expect(await columnType('pending_change')).toBeNull();
+    });
+
+    test('conflicting data: a hand-made pending_change column of another type → skipped, not recorded, untouched', async () => {
+      await createDbAfter1A();
+      await seq.query('ALTER TABLE tenant_subscriptions ADD COLUMN pending_change VARCHAR(255) NULL');
+      await seq.query("UPDATE tenant_subscriptions SET pending_change = 'downgrade to 3' WHERE id = 's1'");
+      const before = await snapshot();
+
+      const result = await p006().up(seq, {});
+      expect(result).toMatchObject({ skipped: true, reason: 'column_exists_with_other_type', existingType: 'varchar(255)', rowsWithValue: 1 });
+      expect(await snapshot()).toEqual(before);
+      const run = await runPlatformMigrations(seq);
+      expect(run.applied).not.toContain(P006);
+      const [recorded] = await seq.query('SELECT version FROM schema_migrations WHERE version = 6');
+      expect(recorded).toHaveLength(0);
+    });
+
+    test('apply adds a nullable JSON column (MySQL 5.7), rows untouched; a re-run changes nothing', async () => {
+      await createDbAfter1A();
+      expect((await runPlatformMigrations(seq)).applied).toContain(P006);
+      expect(await columnType('pending_change')).toBe('json');
+      const rows = await seq.query('SELECT id, pending_change FROM tenant_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
+      expect(rows.map((r) => r.pending_change)).toEqual([null, null]);
+      await seq.query('UPDATE tenant_subscriptions SET pending_change = \'{"branchCount":3}\' WHERE id = \'s1\'');
+
+      const afterFirst = await snapshot();
+      expect((await runPlatformMigrations(seq)).applied).toEqual([]);
+      expect(await p006().up(seq, {})).toBeNull();
+      expect(await snapshot()).toEqual(afterFirst);
+    });
+  });
 });

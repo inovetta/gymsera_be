@@ -122,7 +122,12 @@ const _statusFromSubscriptionState = (subscriptionState, expiresAt) => {
  * Google's subscriptionsv2.get response doesn't echo the token that was
  * used to fetch it, so the caller (who already has it) always supplies it.
  */
-const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, { originListingId = null, revoked = false } = {}) => {
+const syncSubscriptionFromPurchase = async (
+  tenantId,
+  purchase,
+  purchaseToken,
+  { originListingId = null, revoked = false, upcomingOverride = undefined } = {}
+) => {
   const lineItem = purchase.lineItems?.[0];
   if (!lineItem) throw createError('Google Play purchase has no line items', 400);
 
@@ -133,6 +138,26 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
 
   const expiresAt = lineItem.expiryTime ? new Date(lineItem.expiryTime) : null;
   const recurringPrice = lineItem.autoRenewingPlan?.recurringPrice || null;
+
+  // BILL-03: a downgrade bought with ReplacementMode.DEFERRED is recorded by
+  // Play on the current purchase (deferredItemReplacement) and applied at
+  // renewal — until then it is only pendingChange.
+  let upcomingChange = upcomingOverride;
+  if (upcomingChange === undefined) {
+    upcomingChange = null;
+    const deferredProductId = lineItem.deferredItemReplacement?.productId;
+    if (deferredProductId && deferredProductId !== productId) {
+      const nextPlan = await BillingPlan.findOne({ where: { androidProductId: deferredProductId } });
+      if (nextPlan && nextPlan.id !== plan.id) {
+        upcomingChange = {
+          billingPlanId: nextPlan.id,
+          branchCount: nextPlan.branchCount,
+          productId: deferredProductId,
+          effectiveAt: expiresAt ? expiresAt.toISOString() : null,
+        };
+      }
+    }
+  }
   // `revoked`: Google reported this purchase refunded/revoked (RTDN
   // SUBSCRIPTION_REVOKED, a voided-purchase notification, or the Voided
   // Purchases API) — a subscriptionsv2 read alone can't always show it (BILL-02).
@@ -160,6 +185,7 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
       ? Math.round((Number(recurringPrice.units || 0) + Number(recurringPrice.nanos || 0) / 1e9) * 100) / 100
       : null,
     chargedCurrency: recurringPrice?.currencyCode || null,
+    upcomingChange,
     status,
     autoRenew:
       !!purchase.acknowledgementState && ['ACTIVE', 'GRACE'].includes(status) && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,
@@ -240,6 +266,30 @@ const syncFromGoogle = async ({ purchaseToken, tenantId = null, originListingId 
       purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId
     ));
   if (!owner) return null;
+
+  // A replacement purchase that Play has not started yet (DEFERRED downgrade,
+  // BILL-03): not in effect, so it must not supersede the plan the host is
+  // still on. It is recorded as that plan's pendingChange instead; the
+  // replacement is applied when Play reports it started (its RTDN, or the sweep).
+  if (purchase.linkedPurchaseToken && purchase.startTime && new Date(purchase.startTime) > new Date()) {
+    const lineItem = purchase.lineItems?.[0];
+    const nextPlan = lineItem ? await findPlanForProductId(lineItem.productId, lineItem.offerDetails?.basePlanId) : null;
+    const linked = await playApi.getSubscriptionPurchase(purchase.linkedPurchaseToken);
+    const subscription = await syncSubscriptionFromPurchase(owner, linked, purchase.linkedPurchaseToken, {
+      originListingId,
+      upcomingOverride: nextPlan
+        ? {
+          billingPlanId: nextPlan.id,
+          branchCount: nextPlan.branchCount,
+          productId: lineItem.productId,
+          effectiveAt: new Date(purchase.startTime).toISOString(),
+        }
+        : undefined,
+    });
+    await _acknowledgeVerifiedPurchase(purchase, purchaseToken, { throwOnAckFailure });
+    return subscription;
+  }
+
   const subscription = await syncSubscriptionFromPurchase(owner, purchase, purchaseToken, { originListingId, revoked });
   await _acknowledgeVerifiedPurchase(purchase, purchaseToken, { throwOnAckFailure });
   return subscription;

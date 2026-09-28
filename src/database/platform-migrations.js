@@ -199,6 +199,22 @@ const PLATFORM_MIGRATIONS = [
       });
     },
   },
+  {
+    version: 6,
+    name: 'p006_tenant_subscriptions_pending_change',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      // Deferred plan change + the host's keep-list (BILL-03). New rows only;
+      // no existing data is rewritten.
+      return _addNullableColumn(sequelize, {
+        table: 'tenant_subscriptions',
+        column: 'pending_change',
+        type: 'JSON',
+        expectedType: 'json',
+        migrationName: 'p006',
+      });
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
