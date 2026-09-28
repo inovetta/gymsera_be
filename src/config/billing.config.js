@@ -14,4 +14,32 @@ const payLaterGraceDays = () => {
   return days;
 };
 
-module.exports = { payLaterGraceDays };
+/** Days of grace before locking over-quota branches (R-3, default 7). */
+const overquotaGraceDays = () => {
+  const raw = process.env.OVERQUOTA_GRACE_DAYS;
+  if (raw === undefined || raw === '') return 7;
+  const days = Number(raw);
+  if (!Number.isInteger(days) || days < 1) {
+    throw new Error(`OVERQUOTA_GRACE_DAYS must be a whole number of days (1 or more), got "${raw}"`);
+  }
+  return days;
+};
+
+/** Days existing members can still check in after a branch is billing-locked (R-2, default 7). */
+const memberCheckinGraceDays = () => {
+  const raw = process.env.MEMBER_CHECKIN_GRACE_DAYS;
+  if (raw === undefined || raw === '') return 7;
+  const days = Number(raw);
+  if (!Number.isInteger(days) || days < 1) {
+    throw new Error(`MEMBER_CHECKIN_GRACE_DAYS must be a whole number of days (1 or more), got "${raw}"`);
+  }
+  return days;
+};
+
+module.exports = {
+  payLaterGraceDays,
+  overquotaGraceDays,
+  memberCheckinGraceDays,
+  OVERQUOTA_GRACE_DAYS: 7,
+  MEMBER_CHECKIN_GRACE_DAYS: 7,
+};

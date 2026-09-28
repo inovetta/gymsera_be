@@ -94,6 +94,20 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
     }
   }
 
+  // Branch billing lock guard (CAP-01): no sales/payments for a locked branch
+  let targetBranchId = data.branchId;
+  if (!targetBranchId && data.paymentFor === 'MEMBERSHIP' && data.referenceEntityId) {
+    const sub = await MemberSubscription.findByPk(data.referenceEntityId);
+    if (sub) targetBranchId = sub.branchId;
+  }
+  if (targetBranchId && tenantDb.models.Branch) {
+    const branch = await tenantDb.models.Branch.findByPk(targetBranchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
+
   const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
   const autoComplete = isDirect || data.method === 'TEST';
   const paidAt = data.paidAt || (autoComplete ? new Date() : null);

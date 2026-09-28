@@ -147,7 +147,7 @@ const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
  * means this exact event was already recorded and the caller must NOT also
  * re-apply the delta.
  */
-const recordCapacityEvent = async (fields, { transaction }) => {
+const recordCapacityEvent = async (fields, { transaction } = {}) => {
   const already = await CapacityEvent.findOne({ where: { idempotencyKey: fields.idempotencyKey }, transaction });
   if (already) return { applied: false, event: already };
   const event = await CapacityEvent.create(fields, { transaction });
@@ -263,6 +263,15 @@ const reconcileCapacity = async (
       { overQuotaCount: 0 },
       { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
     );
+
+    if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
+      try {
+        const branchBillingLockService = require('./branch-billing-lock.service');
+        await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+      } catch (lockErr) {
+        console.warn(`[reconcileCapacity] Failed to unlock branches for tenant ${tenantId}:`, lockErr.message);
+      }
+    }
     return { overQuotaCount: 0, trimmedSlots: 0 };
   }
 
@@ -307,6 +316,16 @@ const reconcileCapacity = async (
     { overQuotaCount: Math.max(0, remaining) },
     { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
   );
+
+  // Automatic lock/unlock enforcement when capacity changes (CAP-01)
+  if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
+    try {
+      const branchBillingLockService = require('./branch-billing-lock.service');
+      await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+    } catch (lockErr) {
+      console.warn(`[reconcileCapacity] Failed to enforce branch locks for tenant ${tenantId}:`, lockErr.message);
+    }
+  }
 
   return { overQuotaCount: Math.max(0, remaining), trimmedSlots };
 };

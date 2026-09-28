@@ -286,6 +286,24 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 10,
+    name: '010_add_branch_billing_lock_columns',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      const qi = sequelize.getQueryInterface();
+
+      const ensureCol = async (table, col, ddl) => {
+        const cols = await qi.describeTable(table).catch(() => ({}));
+        if (cols && !cols[col]) {
+          await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN ${ddl}`).catch(() => {});
+        }
+      };
+
+      await ensureCol('branches', 'billing_locked_at', '`billing_locked_at` DATETIME NULL');
+      await ensureCol('branches', 'billing_lock_reason', '`billing_lock_reason` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

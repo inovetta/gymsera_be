@@ -312,6 +312,8 @@ const createPlan = async (tenantDb, data, { transaction } = {}) => {
   if (data.branchId) {
     const branch = await Branch.findOne({ where: { id: data.branchId, status: 'ACTIVE' } });
     if (!branch) throw createError('Branch not found or has been deleted', 404);
+    const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+    assertBranchNotBillingLocked(branch);
   }
 
   const plan = await MembershipPlan.create({

@@ -176,6 +176,9 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   const branch = await models.Branch.findOne({ where: { id: branchIdToUse, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
 
+  const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+  assertBranchNotBillingLocked(branch);
+
   const existing = await MemberSubscription.findOne({
     where: {
       userId,
@@ -391,6 +394,14 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
   if (!sub) throw createError('Subscription not found in tenant database', 404);
   if (sub.status === SubscriptionStatus.CANCELLED) {
     throw createError('Cancelled subscriptions cannot be renewed', 409);
+  }
+
+  if (sub.branchId) {
+    const branch = await models.Branch.findByPk(sub.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
   }
 
   const effectivePlanId = targetPlanId || sub.membershipPlanId;

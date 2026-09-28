@@ -221,10 +221,14 @@ const inviteMember = async (ctx, input) => {
     }
     const found = await Branch.findAll({
       where: { id: { [Op.in]: targetBranchIds } },
-      attributes: ['id'],
     });
     if (found.length !== targetBranchIds.length) {
       throw createError('One or more selected branches do not exist', 400);
+    }
+
+    const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+    for (const b of found) {
+      assertBranchNotBillingLocked(b);
     }
 
     // A branch-scoped actor cannot staff a branch they have no access to.

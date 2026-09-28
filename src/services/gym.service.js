@@ -1302,6 +1302,9 @@ const assignStaff = async (tenantDb, branchId, userId, designation) => {
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
 
+  const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+  assertBranchNotBillingLocked(branch);
+
   // Prevent duplicate active assignment
   const existing = await GymStaff.findOne({
     where: { branchId, userId, employmentStatus: 'ACTIVE' },
@@ -1491,12 +1494,15 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     },
   });
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
-  if (!plan) throw createError('Plan not found or inactive', 404);
-
   const branch = await tenantDb.models.Branch.findOne({ where: { id: branchId } });
   if (!branch) throw createError('Branch not found', 404);
   if (branch.status !== 'ACTIVE') throw createError(`Branch is not active (current status: ${branch.status})`, 404);
+
+  const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+  assertBranchNotBillingLocked(branch);
+
+  const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
+  if (!plan) throw createError('Plan not found or inactive', 404);
 
   const today = new Date().toISOString().split('T')[0];
   const existing = await MemberSubscription.findOne({
@@ -1805,6 +1811,12 @@ const createStaffUser = async (tenantDb, { fullName, email, phone, password, des
   const gymName = tenant ? tenant.gymName : 'your gym';
 
   for (const branchId of targetBranchIds) {
+    const branch = await Branch.findByPk(branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+
     // Check if staff assignment already exists
     let staffMember = await GymStaff.findOne({
       where: {

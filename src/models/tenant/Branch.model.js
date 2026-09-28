@@ -166,6 +166,16 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'admin_suspended_by',
       },
+      billingLockedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'billing_locked_at',
+      },
+      billingLockReason: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'billing_lock_reason',
+      },
     },
     {
       tableName: 'branches',
