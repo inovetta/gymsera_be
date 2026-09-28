@@ -403,6 +403,7 @@ const auditCapacity = async (tenantId, tenantDb) => {
   let usedCapacity = null;
   let invariantHolds = null;
   let expectedOverQuota = null;
+  let emptyActiveOrgs = [];
 
   if (tenantDb) {
     activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
@@ -412,6 +413,22 @@ const auditCapacity = async (tenantId, tenantDb) => {
     // Real branches alone beyond the plan — what overQuotaCount should be
     // once every unbuilt slot has already been trimmed.
     expectedOverQuota = Math.max(0, activeBranches - maxBranches);
+
+    // CAP-07: "Organization never empty" — report ACTIVE organizations with 0 ACTIVE branches
+    const activeOrgs = await GymListing.findAll({
+      where: { tenantId, status: 'ACTIVE' },
+      attributes: ['id', 'title'],
+    });
+    const activeBranchesList = await tenantDb.models.Branch.findAll({
+      where: { status: 'ACTIVE' },
+      attributes: ['gymListingId'],
+    });
+    const activeListingIds = new Set(
+      activeBranchesList.map((b) => b.gymListingId).filter(Boolean)
+    );
+    emptyActiveOrgs = activeOrgs
+      .filter((org) => !activeListingIds.has(org.id))
+      .map((org) => ({ listingId: org.id, title: org.title }));
   }
 
   const recordedOverQuota = activeSub?.overQuotaCount ?? 0;
@@ -431,8 +448,10 @@ const auditCapacity = async (tenantId, tenantDb) => {
     listings: listingReports,
     driftedListings,
     totalDrift,
+    emptyActiveOrgs,
+    hasEmptyActiveOrgs: emptyActiveOrgs.length > 0,
     // The single field a cron or dashboard should branch on.
-    ok: driftedListings.length === 0 && !overQuotaMismatch && invariantHolds !== false,
+    ok: driftedListings.length === 0 && !overQuotaMismatch && invariantHolds !== false && emptyActiveOrgs.length === 0,
   };
 };
 
