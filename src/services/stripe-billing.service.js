@@ -212,6 +212,9 @@ const findPlanForPriceId = async (priceId) => {
  * is handled before this — it grants nothing and writes no row. An unknown
  * status is never guessed as ACTIVE.
  */
+// Currencies Stripe counts in whole units, not cents.
+const STRIPE_ZERO_DECIMAL = ['bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf'];
+
 const _statusFromStripeStatus = (stripeStatus) => {
   if (['active', 'trialing'].includes(stripeStatus)) return 'ACTIVE';
   if (stripeStatus === 'past_due') return 'GRACE';
@@ -269,10 +272,19 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
     environment: 'PRODUCTION',
     startDate: periodStart.toISOString().split('T')[0],
     endDate: periodEnd ? periodEnd.toISOString().split('T')[0] : null,
-    // Written only on a new row or a real plan change — see
+    // Catalog price: only a fallback when Stripe reports no price — see
     // subscription-migration.service.js#applyVerifiedSubscription.
     amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    currency: plan.currency,
     billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    // What Stripe charges for this subscription (BILL-05): the item's price
+    // in minor units — survives a Stripe price migration on the same subscription.
+    chargedAmount:
+      item.price?.unit_amount != null
+        ? (item.price.unit_amount * (item.quantity || 1)) /
+          (STRIPE_ZERO_DECIMAL.includes(String(item.price.currency).toLowerCase()) ? 1 : 100)
+        : null,
+    chargedCurrency: item.price?.unit_amount != null ? item.price.currency || null : null,
     status,
     autoRenew: !stripeSubscription.cancel_at_period_end,
     paymentStatus: 'PAID',

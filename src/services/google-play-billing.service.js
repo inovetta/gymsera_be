@@ -132,6 +132,7 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
   const isAnnual = basePlanId === plan.androidAnnualBasePlanId;
 
   const expiresAt = lineItem.expiryTime ? new Date(lineItem.expiryTime) : null;
+  const recurringPrice = lineItem.autoRenewingPlan?.recurringPrice || null;
   // `revoked`: Google reported this purchase refunded/revoked (RTDN
   // SUBSCRIPTION_REVOKED, a voided-purchase notification, or the Voided
   // Purchases API) — a subscriptionsv2 read alone can't always show it (BILL-02).
@@ -148,10 +149,17 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
     environment: purchase.testPurchase ? 'SANDBOX' : 'PRODUCTION',
     startDate: purchase.startTime ? new Date(purchase.startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-    // Written only on a new row or a real plan change — see
+    // Catalog price: only a fallback when Play reports no price — see
     // subscription-migration.service.js#applyVerifiedSubscription.
     amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    currency: plan.currency,
     billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    // What Play charges for this subscription (BILL-05): the recurring price
+    // of the purchased base plan, including any accepted price change.
+    chargedAmount: recurringPrice
+      ? Math.round((Number(recurringPrice.units || 0) + Number(recurringPrice.nanos || 0) / 1e9) * 100) / 100
+      : null,
+    chargedCurrency: recurringPrice?.currencyCode || null,
     status,
     autoRenew:
       !!purchase.acknowledgementState && ['ACTIVE', 'GRACE'].includes(status) && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,

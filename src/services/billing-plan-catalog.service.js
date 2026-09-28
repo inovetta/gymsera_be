@@ -46,8 +46,8 @@ const createPlan = async (fields) => {
 /**
  * Editing monthlyPrice/annualPrice touches only this row's own catalog
  * price — never a provider's live price object, never an existing
- * subscriber's TenantSubscription.amount (that's captured once at their own
- * purchase/upgrade time and left alone by every provider's sync function,
+ * subscriber's TenantSubscription.amount (that mirrors what the provider
+ * actually charges, written only by the verified provider sync — BILL-05,
  * per the three-price-separation rule). A price edit flips every provider's
  * sync status to PENDING so it's visible that App Store Connect / Play
  * Console / Stripe's own configuration may now be stale; editing a

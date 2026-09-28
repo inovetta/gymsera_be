@@ -146,4 +146,52 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
       expect(await snapshot()).toEqual(afterFirst);
     });
   });
+
+  describe('p005 — tenant_subscriptions.currency (BILL-05)', () => {
+    const P005 = 'p005_tenant_subscriptions_currency';
+    const p005 = () => PLATFORM_MIGRATIONS.find((m) => m.name === P005);
+
+    test('--dry-run lists p005 and writes NOTHING', async () => {
+      await createDbAfter1A();
+      const before = await snapshot();
+      const result = await runPlatformMigrations(seq, { dryRun: true });
+      expect(result.wouldRun).toContain(P005);
+      await p005().up(seq, { dryRun: true });
+      expect(await snapshot()).toEqual(before);
+      expect(await columnType('currency')).toBeNull();
+    });
+
+    test('conflicting data: a hand-made currency column of another type → skipped, not recorded, untouched', async () => {
+      await createDbAfter1A();
+      await seq.query('ALTER TABLE tenant_subscriptions ADD COLUMN currency VARCHAR(10) NULL');
+      await seq.query("UPDATE tenant_subscriptions SET currency = 'rupees' WHERE id = 's1'");
+      const before = await snapshot();
+
+      const result = await p005().up(seq, {});
+      expect(result).toMatchObject({ skipped: true, reason: 'column_exists_with_other_type', existingType: 'varchar(10)', rowsWithValue: 1 });
+      expect(await snapshot()).toEqual(before);
+
+      const run = await runPlatformMigrations(seq);
+      expect(run.applied).not.toContain(P005);
+      const [recorded] = await seq.query('SELECT version FROM schema_migrations WHERE version = 5');
+      expect(recorded).toHaveLength(0);
+    });
+
+    test('apply adds a nullable CHAR(3), existing rows untouched (NULL); a re-run changes nothing', async () => {
+      await createDbAfter1A();
+      const result = await runPlatformMigrations(seq);
+      expect(result.applied).toContain(P005);
+      expect(await columnType('currency')).toBe('char(3)');
+      const rows = await seq.query('SELECT id, amount, currency FROM tenant_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
+      expect(rows).toEqual([
+        { id: 's1', amount: '4999.00', currency: null },
+        { id: 's2', amount: '1000.00', currency: null },
+      ]);
+
+      const afterFirst = await snapshot();
+      expect((await runPlatformMigrations(seq)).applied).toEqual([]);
+      expect(await p005().up(seq, {})).toBeNull();
+      expect(await snapshot()).toEqual(afterFirst);
+    });
+  });
 });

@@ -78,9 +78,20 @@ module.exports = (sequelize) => {
         type: DataTypes.DATEONLY,
         allowNull: false,
       },
+      // The subscriber price: what the provider actually charges (BILL-05,
+      // spec §7.2) — written from the provider's verified charge on every
+      // sync, never from a catalog edit. Falls back to the catalog price only
+      // when the provider reports no price (then only at purchase / plan change).
       amount: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
+      },
+      // ISO 4217 currency of `amount`. NULL on rows written before platform
+      // migration p005: those amounts are catalog prices in the catalog's
+      // currency (PKR).
+      currency: {
+        type: DataTypes.CHAR(3),
+        allowNull: true,
       },
       billingCycle: {
         type: DataTypes.ENUM('MONTHLY', 'QUARTERLY', 'YEARLY'),

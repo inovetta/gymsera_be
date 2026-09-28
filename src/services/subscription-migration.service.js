@@ -322,9 +322,11 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
  * migration away from Stripe happens only after commit.
  *
  * @param {string} tenantId - the tenant the subscription belongs to.
- * @param {object} values - the row as the provider reports it. `amount` and
- *   `billingCycle` are only written for a new row or a real plan change —
- *   never on a plain renewal (see BillingPlan.model.js on subscriber price).
+ * @param {object} values - the row as the provider reports it. `chargedAmount`
+ *   / `chargedCurrency` (the provider's actual price, when it reports one) are
+ *   written as amount/currency on every sync (BILL-05). Otherwise the catalog
+ *   `amount`/`currency` — and `billingCycle` always — are only written for a
+ *   new row or a real plan change, never on a plain renewal.
  * @param {object} [opts]
  * @param {string|null} [opts.originListingId]
  * @param {string} opts.idempotencyPrefix - capacity-event key prefix (a per-transaction or per-event id).
@@ -393,15 +395,25 @@ const _applyVerifiedSubscriptionOnce = async (
     const previousMaxBranches = existing ? existing.branchCount : null;
     // A genuinely new row, or a real plan change (upgrade/downgrade) — as
     // opposed to a plain renewal of the same plan, which must NOT recompute
-    // amount/billingCycle.
+    // billingCycle or fall back to the catalog price.
     const planChanged = !existing || existing.billingPlanId !== values.billingPlanId;
-    const rowValues = { ...values, tenantId };
+    const { chargedAmount = null, chargedCurrency = null, ...providerValues } = values;
+    const rowValues = { ...providerValues, tenantId };
     // The owner of an existing row is never rewritten by a sync.
     if (existing) delete rowValues.tenantId;
-    if (!planChanged) {
+    // Subscriber price (BILL-05, spec §7.2): what the provider actually charges
+    // — a store price increase, another storefront's price, a Stripe price
+    // migration — on every verified sync. Only when the provider reports no
+    // price does the catalog price (and its currency) stand in, and then only
+    // for a new row or a real plan change; a catalog edit never reaches here.
+    if (chargedAmount != null) {
+      rowValues.amount = chargedAmount;
+      if (chargedCurrency) rowValues.currency = String(chargedCurrency).toUpperCase();
+    } else if (!planChanged) {
       delete rowValues.amount;
-      delete rowValues.billingCycle;
+      delete rowValues.currency;
     }
+    if (!planChanged) delete rowValues.billingCycle;
 
     const tenantDbFor = async () => {
       const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });

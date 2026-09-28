@@ -194,10 +194,14 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     environment: decodedTransaction.environment === 'Production' ? 'PRODUCTION' : 'SANDBOX',
     startDate: new Date(Number(decodedTransaction.purchaseDate)).toISOString().split('T')[0],
     endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-    // Written only on a new row or a real plan change — see
+    // Catalog price: only a fallback when Apple reports no price — see
     // subscription-migration.service.js#applyVerifiedSubscription.
     amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    currency: plan.currency,
     billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    // What Apple actually charged (BILL-05): `price` in milliunits of `currency`.
+    chargedAmount: decodedTransaction.price != null ? Math.round(Number(decodedTransaction.price) / 10) / 100 : null,
+    chargedCurrency: decodedTransaction.price != null ? decodedTransaction.currency || null : null,
     // revocationDate = Apple refunded or revoked it (REFUND / REVOKE
     // notifications): not entitled from now on (BILL-02).
     status,

@@ -57,6 +57,32 @@ const _widenEnumColumn = async (sequelize, { table, column, values, defaultValue
   return null;
 };
 
+/**
+ * Adds a nullable column. Already there with the same type → nothing to do.
+ * Already there with a DIFFERENT type (someone added it by hand) → skipped (not
+ * recorded) and reported, never altered: its data may mean something else.
+ */
+const _addNullableColumn = async (sequelize, { table, column, type, expectedType, migrationName }) => {
+  const [col] = await sequelize.query(
+    'SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
+      'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+    { replacements: [table, column], type: QueryTypes.SELECT }
+  );
+  if (col) {
+    if (String(col.type).toLowerCase() === expectedType && col.nullable === 'YES') return null;
+    const [{ n }] = await sequelize.query(`SELECT COUNT(*) AS n FROM \`${table}\` WHERE \`${column}\` IS NOT NULL`, {
+      type: QueryTypes.SELECT,
+    });
+    console.warn(
+      `[PlatformMigration] SKIPPING ${migrationName}: ${table}.${column} already exists as ${col.type} ` +
+        `(nullable: ${col.nullable}, ${n} row(s) with a value); expected ${expectedType} NULL. Resolve it by hand, then re-run.`
+    );
+    return { skipped: true, reason: 'column_exists_with_other_type', existingType: col.type, rowsWithValue: Number(n) };
+  }
+  await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type} NULL`);
+  return null;
+};
+
 const PLATFORM_MIGRATIONS = [
   {
     version: 1,
@@ -154,6 +180,22 @@ const PLATFORM_MIGRATIONS = [
         ],
         defaultValue: 'ACTIVE',
         migrationName: 'p004',
+      });
+    },
+  },
+  {
+    version: 5,
+    name: 'p005_tenant_subscriptions_currency',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      // Currency of `amount`, from the provider's actual charge (BILL-05).
+      // Existing rows stay NULL (= the catalog's PKR); no data is rewritten.
+      return _addNullableColumn(sequelize, {
+        table: 'tenant_subscriptions',
+        column: 'currency',
+        type: 'CHAR(3)',
+        expectedType: 'char(3)',
+        migrationName: 'p005',
       });
     },
   },
