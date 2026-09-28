@@ -91,6 +91,7 @@ const _processGoogle = async (payload) => {
 
   const synced = await googlePlayBilling.syncFromGoogle({ purchaseToken, revoked, throwOnAckFailure: true });
   if (!synced) return { outcome: 'IGNORED', note: 'No GymsEra tenant owns this purchase token' };
+  if (synced.pending) return { outcome: 'IGNORED', note: `Not paid: ${synced.paymentState} — nothing granted (BILL-08)` };
   return { outcome: 'PROCESSED' };
 };
 

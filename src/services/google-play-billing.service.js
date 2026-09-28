@@ -252,10 +252,27 @@ const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoid
  * The one entry point both POST /billing/android/sync and the RTDN processor
  * (billing-event.service.js) use: re-fetch the purchase from the Play
  * Developer API (never the notification's own claims), then apply it through
- * syncSubscriptionFromPurchase.
+ * syncSubscriptionFromPurchase. Returns the row, null when no tenant owns the
+ * purchase, or `{ pending: true, paymentState }` for an unpaid one (BILL-08).
  */
+/**
+ * A purchase Google has not been paid for yet (cash at a shop, carrier
+ * billing, other slow methods), or whose pending payment was cancelled
+ * (BILL-08, spec §7.5.1). Nothing is granted, written or acknowledged; the
+ * app is told "payment pending". Google's next notification for the same
+ * token (SUBSCRIPTION_PURCHASED, or SUBSCRIPTION_PENDING_PURCHASE_CANCELED)
+ * resolves it through this same function.
+ */
+const UNPAID_STATES = {
+  SUBSCRIPTION_STATE_PENDING: 'PAYMENT_PENDING',
+  SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED: 'PAYMENT_CANCELLED',
+};
+
 const syncFromGoogle = async ({ purchaseToken, tenantId = null, originListingId = null, revoked = false, throwOnAckFailure = false }) => {
   const purchase = await playApi.getSubscriptionPurchase(purchaseToken);
+  if (UNPAID_STATES[purchase.subscriptionState] && !revoked) {
+    return { pending: true, paymentState: UNPAID_STATES[purchase.subscriptionState] };
+  }
   // Without a caller tenant (RTDN, daily sweep): the existing row's owner, or
   // the tenant named by obfuscatedExternalAccountId; null when nobody owns it.
   const owner =

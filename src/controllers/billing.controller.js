@@ -151,6 +151,22 @@ const syncAndroidPurchase = async (req, res, next) => {
       originListingId: organizationId || null,
     });
 
+    // Not paid yet (cash, carrier billing…) or that payment was cancelled
+    // (BILL-08): nothing was granted. 202 = "we'll unlock branches when Google
+    // confirms the payment" — the app must not treat it as a success.
+    if (subscription?.pending) {
+      const message =
+        subscription.paymentState === 'PAYMENT_PENDING'
+          ? 'Payment pending — your branches unlock when Google Play confirms the payment.'
+          : 'The pending payment was cancelled — nothing was charged.';
+      return sendSuccess(
+        res,
+        { state: subscription.paymentState, subscription: null },
+        message,
+        subscription.paymentState === 'PAYMENT_PENDING' ? 202 : 200
+      );
+    }
+
     return sendSuccess(res, { subscription }, 'Subscription synced');
   } catch (err) {
     next(err);
