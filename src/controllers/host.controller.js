@@ -611,26 +611,35 @@ const createListing = async (req, res, next) => {
 
       let branch = null;
       if (branchSource === 'new') {
-        // This organization's first (and, until it grows, only) branch —
-        // reuses the exact same Branch+membership-plan creation gym.service.js
-        // uses for the standalone "add a branch" flow. Not routed through
-        // gymService.createBranch itself: that function opens its own
-        // platformTx and re-locks the same Tenant row, which would deadlock
-        // against the lock this transaction is already holding.
-        branch = await gymService._createBranchRecord(req.tenantDb, gym, listing.id, {
-          branchName: gymName,
-          address,
-          addressLine1: address,
-          cityId: targetCityId,
-          areaId,
-          latitude,
-          longitude,
-          phone: contactPhone || tenant.phone || null,
-          images: Array.isArray(images) && images.length > 0
-            ? images
-            : (coverImageUrl ? [coverImageUrl] : []),
-          packages,
-        }, { transaction: platformTx });
+        // CAP-03: Route through gymService.createBranch with caller's transaction
+        // and capacity already verified/settled above.
+        const branchResult = await gymService.createBranch(
+          req.tenantDb,
+          tenantId,
+          {
+            branchName: gymName,
+            address,
+            addressLine1: address,
+            cityId: targetCityId,
+            areaId,
+            latitude,
+            longitude,
+            phone: contactPhone || tenant.phone || null,
+            images: Array.isArray(images) && images.length > 0
+              ? images
+              : (coverImageUrl ? [coverImageUrl] : []),
+            packages,
+            gymListingId: listing.id,
+          },
+          req.user.sub || req.user.id,
+          {
+            transaction: platformTx,
+            skipCapacityCheck: true,
+            skipCapacityEvent: !!slotDonorListing,
+            reason: `Initial branch "${gymName}" created with new organization`,
+          }
+        );
+        branch = branchResult.branch;
       }
 
       await platformTx.commit();

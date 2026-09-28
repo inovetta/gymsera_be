@@ -1193,98 +1193,32 @@ const deleteGymListingImage = async (tenantId, imageUrl) => {
 
 // ── Admin branch management ───────────────────────────────────────────────────
 
-// Found during a final capacity-path audit: created branches with
-// status: 'ACTIVE' directly, with no capacity check, no reservedSlots
-// interaction, and no capacity_events row — a second, independent bypass
-// of the same rules gymService.createBranch enforces. Fixed to run the
-// identical check (using a reserved slot on the target org first, else
-// fresh tenant-wide capacity) rather than routing through createBranch
-// itself, which would additionally start requiring membership packages —
-// a content-model change this admin tool has never enforced and isn't
-// what this audit is about.
+// CAP-03: Every branch creator must use createBranch. Admin branch
+// creation delegates directly to gymService.createBranch, ensuring uniform
+// capacity enforcement, reservedSlots consumption, and CapacityEvent audit logging.
 const createAdminTenantBranch = async (tenantId, data, adminUserId) => {
   const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
   if (!tenant) throw createError('Tenant not found', 404);
   if (tenant.status !== 'ACTIVE') throw createError('Tenant must be active to manage branches', 400);
 
-  const subscriptionQuotaService = require('./subscription-quota.service');
-  const { sequelize: platformSequelize } = require('../database/platform');
   const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-  const { models } = tenantDb;
+  const gymService = require('./gym.service');
 
-  let gym;
-  if (listingId) {
-    gym = await models.Gym.findOne({ where: { gymListingId: listingId } });
-  } else {
-    gym = await models.Gym.findOne();
-  }
-  if (!gym) throw createError('Gym profile not found for this tenant', 404);
-
-  const platformTx = await platformSequelize.transaction();
-  let branch;
-  try {
-    let targetListing = null;
-    if (listingId) {
-      targetListing = await GymListing.findByPk(listingId, { lock: true, transaction: platformTx });
+  const { branch } = await gymService.createBranch(
+    tenantDb,
+    actualTenantId,
+    {
+      ...data,
+      gymListingId: listingId || data.gymListingId,
+    },
+    adminUserId,
+    {
+      actorType: 'ADMIN',
+      allowDefaultPackage: true,
+      reason: `Branch "${data.branchName}" created by admin`,
     }
-    const consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
-
-    if (!consumingReservedSlot) {
-      const activeSub = await subscriptionQuotaService.getActiveSubscription(actualTenantId, { transaction: platformTx });
-      if (activeSub && activeSub.overQuotaCount > 0) {
-        const err = createError('This tenant is over its plan\'s branch capacity following a recent downgrade — resolve that before adding a branch.', 403);
-        err.code = 'account_over_quota';
-        throw err;
-      }
-      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-      const usedCapacity = await subscriptionQuotaService.getUsedCapacity(actualTenantId, tenantDb, { transaction: platformTx });
-      if (usedCapacity >= maxBranches) {
-        const err = createError('Branch limit reached for this tenant\'s plan', 403);
-        err.code = 'branch_limit_reached';
-        throw err;
-      }
-    }
-
-    branch = await models.Branch.create({
-      gymId: gym.id,
-      gymListingId: listingId || null,
-      branchName: data.branchName,
-      address: data.address || null,
-      cityId: data.cityId || null,
-      areaId: data.areaId || null,
-      phone: data.phone || null,
-      openingTime: data.openingTime || null,
-      closingTime: data.closingTime || null,
-      facilitiesJson: data.facilitiesJson || null,
-      status: 'ACTIVE',
-    });
-
-    if (consumingReservedSlot) {
-      await subscriptionQuotaService.recordCapacityEvent(
-        {
-          tenantId: actualTenantId,
-          listingId: targetListing.id,
-          branchId: branch.id,
-          action: 'SLOT_CONSUMED_BUILD',
-          delta: -1,
-          reservedSlotsBefore: targetListing.reservedSlots,
-          reservedSlotsAfter: targetListing.reservedSlots - 1,
-          actorUserId: adminUserId || null,
-          actorType: 'ADMIN',
-          reason: `Branch "${branch.branchName}" built by admin into a reserved slot`,
-          idempotencyKey: `slot_consumed_build:${branch.id}`,
-        },
-        { transaction: platformTx }
-      );
-      await targetListing.decrement('reservedSlots', { by: 1, transaction: platformTx });
-    }
-
-    await platformTx.commit();
-  } catch (err) {
-    await platformTx.rollback();
-    throw err;
-  }
+  );
 
   return { branch };
 };

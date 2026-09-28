@@ -201,14 +201,23 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
     if (gym) {
       let branch = await Branch.findOne({ where: { gymId: gym.id } }) || await Branch.findOne();
       if (!branch) {
-        branch = await Branch.create({
-          gymId: gym.id,
-          branchName: b.name || tenant.gymName || 'Main Branch',
-          address: b.address || tenant.address || null,
-          cityId: b.cityId || tenant.cityId || null,
-          status: 'ACTIVE',
-          travelerVisibilityStatus: 'active',
-        });
+        const gymService = require('./gym.service');
+        branch = await gymService.createBranch(
+          tenantDb,
+          gym.id,
+          {
+            branchName: b.name || tenant.gymName || 'Main Branch',
+            address: b.address || tenant.address || null,
+            cityId: b.cityId || tenant.cityId || null,
+          },
+          tenantId,
+          {
+            skipCapacityCheck: true,
+            skipCapacityEvent: true,
+            isProvisioning: true,
+            allowDefaultPackage: false,
+          }
+        );
       }
 
       if (branch && rawPlans.length > 0) {

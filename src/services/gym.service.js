@@ -272,11 +272,22 @@ const _countActiveBranchesForTenant = async (tenantDb) => {
  * innodb_lock_wait_timeout) waiting on itself before giving up. Both current
  * callers (createBranch, createListing) always have one open.
  */
-const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { transaction } = {}) => {
+const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { transaction, allowDefaultPackage = false } = {}) => {
   const { Branch } = tenantDb.models;
 
-  if (!Array.isArray(data.packages) || data.packages.length === 0) {
-    throw createError('At least 1 membership package/plan is required to create a branch', 400);
+  let packages = data.packages;
+  if (!Array.isArray(packages) || packages.length === 0) {
+    if (allowDefaultPackage || data.allowDefaultPackage) {
+      packages = [{
+        name: `${data.branchName || 'Standard'} Membership`,
+        price: 0,
+        durationType: 'MONTHLY',
+        durationValue: 1,
+        description: 'Standard membership plan',
+      }];
+    } else {
+      throw createError('At least 1 membership package/plan is required to create a branch', 400);
+    }
   }
 
   const branch = await Branch.create({
@@ -309,7 +320,7 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { trans
   // Create initial membership packages (mandatory: at least 1)
   const membershipPlanService = require('./membership-plan.service');
   let createdPlansCount = 0;
-  for (const pkg of data.packages) {
+  for (const pkg of packages) {
     if (!pkg.name || pkg.price === undefined || pkg.price === null) continue;
     try {
       await membershipPlanService.createPlan(tenantDb, {
@@ -442,14 +453,23 @@ const _guardLastBranchInOrganization = async (tenantDb, branch, confirmed) => {
   throw err;
 };
 
-const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) => {
-  const platformTx = await sequelize.transaction();
+const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, options = {}) => {
+  const {
+    transaction: callerTx = null,
+    skipCapacityCheck = false,
+    actorType = null,
+    reason = null,
+    isProvisioning = false,
+    allowDefaultPackage = false,
+  } = options;
+
+  const isLocalTx = !callerTx;
+  const platformTx = callerTx || (await sequelize.transaction());
   try {
     // Acquire exclusive write lock on Tenant record in platform DB to serialize branch creations for this tenant.
-    const tenant = await Tenant.findByPk(tenantId, {
-      lock: true,
-      transaction: platformTx,
-    });
+    const tenant = isLocalTx
+      ? await Tenant.findByPk(tenantId, { lock: true, transaction: platformTx })
+      : await Tenant.findByPk(tenantId, { transaction: platformTx });
     if (!tenant) {
       throw createError('Tenant not found', 404);
     }
@@ -475,7 +495,7 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) =>
     }
     const consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
 
-    if (!consumingReservedSlot) {
+    if (!consumingReservedSlot && !skipCapacityCheck) {
       const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
 
       // A recent downgrade can leave real ACTIVE branches alone exceeding
@@ -484,7 +504,7 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) =>
       // further NEW consumption until the host upgrades or closes some
       // themselves. Filling an already-reserved slot above is still allowed
       // even in this state since it doesn't add to the overage.
-      if (activeSub && activeSub.overQuotaCount > 0) {
+      if (activeSub && activeSub.overQuotaCount > 0 && !isProvisioning) {
         const err = createError(
           'Your account is over its current plan\'s branch capacity following a recent downgrade. Upgrade your plan or close another branch before adding a new one.',
           403
@@ -496,7 +516,7 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) =>
       const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
       const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb, { transaction: platformTx });
 
-      if (usedCapacity >= maxBranches) {
+      if (usedCapacity >= maxBranches && !isProvisioning) {
         await _notifyBranchLimitReached(tenantId, tenant);
         const err = createError('Branch limit reached', 403);
         err.code = 'branch_limit_reached';
@@ -514,7 +534,10 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) =>
       gym = await _getOrCreateGym(tenantDb, tenantId);
     }
 
-    const branch = await _createBranchRecord(tenantDb, gym, targetListingId, data, { transaction: platformTx });
+    const branch = await _createBranchRecord(tenantDb, gym, targetListingId, data, {
+      transaction: platformTx,
+      allowDefaultPackage: allowDefaultPackage || data.allowDefaultPackage,
+    });
 
     if (consumingReservedSlot) {
       // Completes the audit trail for the reverse of BRANCH_DELETED: this
@@ -532,8 +555,8 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) =>
           reservedSlotsBefore: targetListing.reservedSlots,
           reservedSlotsAfter: targetListing.reservedSlots - 1,
           actorUserId: createdByUserId,
-          actorType: createdByUserId ? 'HOST' : 'SYSTEM',
-          reason: `Branch "${branch.branchName}" built into a reserved slot`,
+          actorType: actorType || (createdByUserId ? 'HOST' : 'SYSTEM'),
+          reason: reason || `Branch "${branch.branchName}" built into a reserved slot`,
           idempotencyKey: `slot_consumed_build:${branch.id}`,
         },
         { transaction: platformTx }
@@ -541,10 +564,14 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null) =>
       await targetListing.decrement('reservedSlots', { by: 1, transaction: platformTx });
     }
 
-    await platformTx.commit();
+    if (isLocalTx) {
+      await platformTx.commit();
+    }
     return { branch };
   } catch (err) {
-    await platformTx.rollback();
+    if (isLocalTx) {
+      await platformTx.rollback();
+    }
     throw err;
   }
 };
