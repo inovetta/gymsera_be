@@ -4,16 +4,19 @@ const {
   setupTestDatabases,
   teardownTestDatabases,
 } = require('../harness');
-const app = require('../../app');
+const { startTestServer, stopTestServer } = require('../harness/test-server');
 
 describe('NEW-05: /system/recycle route is removed', () => {
   let dbHarness;
+  let app;
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
+    app = await startTestServer();
   });
 
   afterAll(async () => {
+    await stopTestServer();
     await teardownTestDatabases();
   });
 

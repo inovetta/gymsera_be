@@ -85,18 +85,29 @@ const findPlanForProductId = async (productId, basePlanId) => {
   return plan;
 };
 
-/** Google's subscriptionState enum -> our status vocabulary. */
-const _statusFromSubscriptionState = (subscriptionState) => {
+/**
+ * Google's subscriptionState enum -> our status vocabulary (BILL-04, spec
+ * §7.4). CANCELED only means auto-renew was turned off: the subscriber paid
+ * to the end of the period and stays entitled until then. A state we don't
+ * know is never guessed as ACTIVE — the sync fails and the inbox keeps
+ * retrying/alerting until someone looks.
+ */
+const _statusFromSubscriptionState = (subscriptionState, expiresAt) => {
   switch (subscriptionState) {
     case 'SUBSCRIPTION_STATE_ACTIVE':
-    case 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD':
       return 'ACTIVE';
+    case 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD':
+      return 'GRACE';
+    case 'SUBSCRIPTION_STATE_ON_HOLD':
+      return 'ON_HOLD';
+    case 'SUBSCRIPTION_STATE_PAUSED':
+      return 'PAUSED';
     case 'SUBSCRIPTION_STATE_CANCELED':
-      return 'CANCELLED';
+      return expiresAt && expiresAt > new Date() ? 'ACTIVE' : 'EXPIRED';
     case 'SUBSCRIPTION_STATE_EXPIRED':
       return 'EXPIRED';
     default:
-      return 'ACTIVE';
+      throw createError(`Google Play reported an unknown subscription state "${subscriptionState}"`, 502);
   }
 };
 
@@ -111,7 +122,12 @@ const _statusFromSubscriptionState = (subscriptionState) => {
  * Google's subscriptionsv2.get response doesn't echo the token that was
  * used to fetch it, so the caller (who already has it) always supplies it.
  */
-const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, { originListingId = null, revoked = false } = {}) => {
+const syncSubscriptionFromPurchase = async (
+  tenantId,
+  purchase,
+  purchaseToken,
+  { originListingId = null, revoked = false, upcomingOverride = undefined } = {}
+) => {
   const lineItem = purchase.lineItems?.[0];
   if (!lineItem) throw createError('Google Play purchase has no line items', 400);
 
@@ -121,10 +137,31 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
   const isAnnual = basePlanId === plan.androidAnnualBasePlanId;
 
   const expiresAt = lineItem.expiryTime ? new Date(lineItem.expiryTime) : null;
+  const recurringPrice = lineItem.autoRenewingPlan?.recurringPrice || null;
+
+  // BILL-03: a downgrade bought with ReplacementMode.DEFERRED is recorded by
+  // Play on the current purchase (deferredItemReplacement) and applied at
+  // renewal — until then it is only pendingChange.
+  let upcomingChange = upcomingOverride;
+  if (upcomingChange === undefined) {
+    upcomingChange = null;
+    const deferredProductId = lineItem.deferredItemReplacement?.productId;
+    if (deferredProductId && deferredProductId !== productId) {
+      const nextPlan = await BillingPlan.findOne({ where: { androidProductId: deferredProductId } });
+      if (nextPlan && nextPlan.id !== plan.id) {
+        upcomingChange = {
+          billingPlanId: nextPlan.id,
+          branchCount: nextPlan.branchCount,
+          productId: deferredProductId,
+          effectiveAt: expiresAt ? expiresAt.toISOString() : null,
+        };
+      }
+    }
+  }
   // `revoked`: Google reported this purchase refunded/revoked (RTDN
   // SUBSCRIPTION_REVOKED, a voided-purchase notification, or the Voided
   // Purchases API) — a subscriptionsv2 read alone can't always show it (BILL-02).
-  const status = revoked ? 'REVOKED' : _statusFromSubscriptionState(purchase.subscriptionState);
+  const status = revoked ? 'REVOKED' : _statusFromSubscriptionState(purchase.subscriptionState, expiresAt);
   const latestOrderId = purchase.latestOrderId ? String(purchase.latestOrderId) : null;
 
   const values = {
@@ -137,12 +174,21 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
     environment: purchase.testPurchase ? 'SANDBOX' : 'PRODUCTION',
     startDate: purchase.startTime ? new Date(purchase.startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-    // Written only on a new row or a real plan change — see
+    // Catalog price: only a fallback when Play reports no price — see
     // subscription-migration.service.js#applyVerifiedSubscription.
     amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    currency: plan.currency,
     billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    // What Play charges for this subscription (BILL-05): the recurring price
+    // of the purchased base plan, including any accepted price change.
+    chargedAmount: recurringPrice
+      ? Math.round((Number(recurringPrice.units || 0) + Number(recurringPrice.nanos || 0) / 1e9) * 100) / 100
+      : null,
+    chargedCurrency: recurringPrice?.currencyCode || null,
+    upcomingChange,
     status,
-    autoRenew: !!purchase.acknowledgementState && status === 'ACTIVE' && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,
+    autoRenew:
+      !!purchase.acknowledgementState && ['ACTIVE', 'GRACE'].includes(status) && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,
     paymentStatus: 'PAID',
     lastVerifiedAt: new Date(),
   };
@@ -206,10 +252,27 @@ const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoid
  * The one entry point both POST /billing/android/sync and the RTDN processor
  * (billing-event.service.js) use: re-fetch the purchase from the Play
  * Developer API (never the notification's own claims), then apply it through
- * syncSubscriptionFromPurchase.
+ * syncSubscriptionFromPurchase. Returns the row, null when no tenant owns the
+ * purchase, or `{ pending: true, paymentState }` for an unpaid one (BILL-08).
  */
+/**
+ * A purchase Google has not been paid for yet (cash at a shop, carrier
+ * billing, other slow methods), or whose pending payment was cancelled
+ * (BILL-08, spec §7.5.1). Nothing is granted, written or acknowledged; the
+ * app is told "payment pending". Google's next notification for the same
+ * token (SUBSCRIPTION_PURCHASED, or SUBSCRIPTION_PENDING_PURCHASE_CANCELED)
+ * resolves it through this same function.
+ */
+const UNPAID_STATES = {
+  SUBSCRIPTION_STATE_PENDING: 'PAYMENT_PENDING',
+  SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED: 'PAYMENT_CANCELLED',
+};
+
 const syncFromGoogle = async ({ purchaseToken, tenantId = null, originListingId = null, revoked = false, throwOnAckFailure = false }) => {
   const purchase = await playApi.getSubscriptionPurchase(purchaseToken);
+  if (UNPAID_STATES[purchase.subscriptionState] && !revoked) {
+    return { pending: true, paymentState: UNPAID_STATES[purchase.subscriptionState] };
+  }
   // Without a caller tenant (RTDN, daily sweep): the existing row's owner, or
   // the tenant named by obfuscatedExternalAccountId; null when nobody owns it.
   const owner =
@@ -220,6 +283,30 @@ const syncFromGoogle = async ({ purchaseToken, tenantId = null, originListingId 
       purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId
     ));
   if (!owner) return null;
+
+  // A replacement purchase that Play has not started yet (DEFERRED downgrade,
+  // BILL-03): not in effect, so it must not supersede the plan the host is
+  // still on. It is recorded as that plan's pendingChange instead; the
+  // replacement is applied when Play reports it started (its RTDN, or the sweep).
+  if (purchase.linkedPurchaseToken && purchase.startTime && new Date(purchase.startTime) > new Date()) {
+    const lineItem = purchase.lineItems?.[0];
+    const nextPlan = lineItem ? await findPlanForProductId(lineItem.productId, lineItem.offerDetails?.basePlanId) : null;
+    const linked = await playApi.getSubscriptionPurchase(purchase.linkedPurchaseToken);
+    const subscription = await syncSubscriptionFromPurchase(owner, linked, purchase.linkedPurchaseToken, {
+      originListingId,
+      upcomingOverride: nextPlan
+        ? {
+          billingPlanId: nextPlan.id,
+          branchCount: nextPlan.branchCount,
+          productId: lineItem.productId,
+          effectiveAt: new Date(purchase.startTime).toISOString(),
+        }
+        : undefined,
+    });
+    await _acknowledgeVerifiedPurchase(purchase, purchaseToken, { throwOnAckFailure });
+    return subscription;
+  }
+
   const subscription = await syncSubscriptionFromPurchase(owner, purchase, purchaseToken, { originListingId, revoked });
   await _acknowledgeVerifiedPurchase(purchase, purchaseToken, { throwOnAckFailure });
   return subscription;

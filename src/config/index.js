@@ -4,5 +4,6 @@ module.exports = {
   jwt: require('./jwt.config'),
   smtp: require('./smtp.config'),
   storage: require('./storage.config'),
+  billing: require('./billing.config'),
   // Redis is accessed via getRedisClient() from redis.config directly
 };

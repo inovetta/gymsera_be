@@ -6,6 +6,7 @@ const gymService = require('../services/gym.service');
 const inboxService = require('../services/inbox.service');
 const accessService = require('../services/access.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
+const subscriptionMigrationService = require('../services/subscription-migration.service');
 const storageService = require('../services/storage.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 
@@ -804,16 +805,19 @@ const getCurrentSubscription = async (req, res, next) => {
     // plan. It used to create a 30-day ACTIVE/PAID row whenever there was no
     // ACTIVE one, which handed refunded/lapsed tenants a free month. The first
     // plan comes only from onboarding (submission / approval).
-    const subscription = await TenantSubscription.findOne({
-      where: { tenantId, status: 'ACTIVE' },
-      include: [{ model: PlatformPackage, as: 'package' }]
-    });
+    // The entitling row: ACTIVE, or GRACE while a failed renewal is retried —
+    // then `paymentIssue` carries the provider's own page to fix the payment
+    // (BILL-04, spec §7.4). Null otherwise.
+    const subscription = await subscriptionQuotaService.getActiveSubscription(tenantId);
 
     if (!subscription) {
       throw createError('No active subscription found', 404);
     }
 
-    return sendSuccess(res, subscription);
+    return sendSuccess(res, {
+      ...subscription.toJSON(),
+      paymentIssue: subscriptionMigrationService.paymentIssueFor(subscription),
+    });
   } catch (err) {
     next(err);
   }

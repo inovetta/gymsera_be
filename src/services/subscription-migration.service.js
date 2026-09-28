@@ -54,10 +54,17 @@
  *     themselves in Settings / Play Store to avoid being charged again.
  *     GymsEra cannot and does not silently do this for them.
  */
+const { URLSearchParams } = require('url');
 const { Op, UniqueConstraintError } = require('sequelize');
 const { Tenant, TenantSubscription } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
+
+const { ENTITLING_STATUSES, ENDED_STATUSES } = subscriptionQuotaService;
+const _entitling = (status) => ENTITLING_STATUSES.includes(status);
+// A new entitlement starts ACTIVE unless it is born in GRACE (a pay-later
+// plan, BILL-13, or a store purchase first seen during its grace, BILL-04).
+const _activationStatus = (values) => (values.status === 'GRACE' ? 'GRACE' : 'ACTIVE');
 
 /**
  * @param {string} tenantId
@@ -86,8 +93,10 @@ const requestProviderChange = async (
   const tenant = await Tenant.findByPk(tenantId, { transaction, lock: true });
   if (!tenant) throw new Error(`Tenant ${tenantId} not found`);
 
+  // ACTIVE or GRACE — a row in grace is still the tenant's one entitlement,
+  // so a new purchase supersedes it like an ACTIVE one (BILL-04).
   const currentActive = await TenantSubscription.findOne({
-    where: { tenantId, status: 'ACTIVE' },
+    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
     transaction,
     lock: true,
   });
@@ -95,7 +104,7 @@ const requestProviderChange = async (
   if (!currentActive) {
     // No entitlement to migrate away from — a fresh first-ever subscription.
     const subscription = await TenantSubscription.create(
-      { ...newSubscriptionValues, tenantId, platform: newPlatform, status: 'ACTIVE' },
+      { ...newSubscriptionValues, tenantId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
       { transaction }
     );
 
@@ -137,7 +146,7 @@ const requestProviderChange = async (
   await currentActive.update({ status: 'PENDING_MIGRATION' }, { transaction });
 
   const newSubscription = await TenantSubscription.create(
-    { ...newSubscriptionValues, tenantId, platform: newPlatform, status: 'ACTIVE' },
+    { ...newSubscriptionValues, tenantId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
     { transaction }
   );
 
@@ -170,6 +179,19 @@ const requestProviderChange = async (
       {
         status: 'CANCELLED',
         statusNote: `Replaced by an in-app plan change on ${today} — no action needed.`,
+      },
+      { transaction }
+    );
+  } else if (currentActive.platform === 'MANUAL') {
+    // A manual plan (bank transfer / pay later) has nothing to cancel at a
+    // store: it is simply replaced — e.g. a card subscription from the
+    // registration wizard completing after approval (FLOW-03). It used to fall
+    // into the store branch below and tell the host to "cancel the undefined
+    // subscription yourself".
+    await currentActive.update(
+      {
+        status: 'CANCELLED',
+        statusNote: `Replaced by a new ${storeLabel[newPlatform]} subscription on ${today} — no action needed.`,
       },
       { transaction }
     );
@@ -252,7 +274,8 @@ const requestProviderChange = async (
 const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { transaction }) => {
   if (!transaction) throw new Error('reconcileRenewalStatus requires a platform-DB transaction');
 
-  if (incomingValues.status !== 'ACTIVE' || existingRow.status === 'ACTIVE') {
+  // "ACTIVE" here means the entitling set (ACTIVE or GRACE, BILL-04).
+  if (!_entitling(incomingValues.status) || _entitling(existingRow.status)) {
     // Not a resurrection attempt: either the provider itself says this
     // subscription is no longer active (always safe to record as-is — a
     // terminal status can never violate the one-ACTIVE-row invariant), or
@@ -267,7 +290,7 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   await Tenant.findByPk(tenantId, { transaction, lock: true });
 
   const otherActive = await TenantSubscription.findOne({
-    where: { tenantId, status: 'ACTIVE', id: { [Op.ne]: existingRow.id } },
+    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES }, id: { [Op.ne]: existingRow.id } },
     transaction,
     lock: true,
   });
@@ -299,6 +322,45 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   };
 };
 
+/** A provider-reported upcoming plan, in the stored pendingChange shape. */
+const _confirmedChange = (upcoming, keep = null) => ({
+  billingPlanId: upcoming.billingPlanId,
+  branchCount: upcoming.branchCount,
+  productId: upcoming.productId || null,
+  effectiveAt: upcoming.effectiveAt || null,
+  keepBranchIds: keep?.keepBranchIds ?? null,
+  keepChosenAt: keep?.keepChosenAt ?? null,
+  confirmedByProvider: true,
+  appliedAt: null,
+});
+
+/**
+ * The row's next pendingChange (BILL-03, spec §7.5.4), from what it holds now
+ * and what the provider reports:
+ *   upcoming undefined — the provider can't tell (e.g. no renewal info): keep.
+ *   upcoming null      — nothing scheduled: a store-confirmed change was
+ *                        cancelled → cleared; the host's own unconfirmed
+ *                        choice or an applied record is kept.
+ *   upcoming {…}       — the provider will switch to this plan: recorded, with
+ *                        the host's keep-list if it was chosen for that plan.
+ * When the provider has just switched plans, a change for that plan is marked
+ * applied (its keep-list stays for CAP-01); anything else is dropped.
+ */
+const _nextPendingChange = (existing, billingPlanId, upcoming) => {
+  const now = new Date().toISOString();
+  const current = existing?.pendingChange || null;
+  const matchesCurrent = (u) => current && !current.appliedAt && current.billingPlanId === u.billingPlanId;
+  if (existing && existing.billingPlanId !== billingPlanId) {
+    if (current && current.billingPlanId === billingPlanId) {
+      return { ...current, confirmedByProvider: true, appliedAt: current.appliedAt || now };
+    }
+    return upcoming ? _confirmedChange(upcoming) : null;
+  }
+  if (upcoming === undefined) return current;
+  if (upcoming === null) return current && current.confirmedByProvider && !current.appliedAt ? null : current;
+  return _confirmedChange(upcoming, matchesCurrent(upcoming) ? current : null);
+};
+
 /**
  * The ONE code path that writes a store-verified subscription state to
  * TenantSubscription (BILL-12, spec §7.6). Every provider's sync function
@@ -315,9 +377,11 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
  * migration away from Stripe happens only after commit.
  *
  * @param {string} tenantId - the tenant the subscription belongs to.
- * @param {object} values - the row as the provider reports it. `amount` and
- *   `billingCycle` are only written for a new row or a real plan change —
- *   never on a plain renewal (see BillingPlan.model.js on subscriber price).
+ * @param {object} values - the row as the provider reports it. `chargedAmount`
+ *   / `chargedCurrency` (the provider's actual price, when it reports one) are
+ *   written as amount/currency on every sync (BILL-05). Otherwise the catalog
+ *   `amount`/`currency` — and `billingCycle` always — are only written for a
+ *   new row or a real plan change, never on a plain renewal.
  * @param {object} [opts]
  * @param {string|null} [opts.originListingId]
  * @param {string} opts.idempotencyPrefix - capacity-event key prefix (a per-transaction or per-event id).
@@ -386,15 +450,28 @@ const _applyVerifiedSubscriptionOnce = async (
     const previousMaxBranches = existing ? existing.branchCount : null;
     // A genuinely new row, or a real plan change (upgrade/downgrade) — as
     // opposed to a plain renewal of the same plan, which must NOT recompute
-    // amount/billingCycle.
+    // billingCycle or fall back to the catalog price.
     const planChanged = !existing || existing.billingPlanId !== values.billingPlanId;
-    const rowValues = { ...values, tenantId };
+    const { chargedAmount = null, chargedCurrency = null, upcomingChange, ...providerValues } = values;
+    const rowValues = { ...providerValues, tenantId };
+    // Deferred plan change as the provider reports it (BILL-03). The current
+    // plan (branchCount) is always the one the provider says is in effect now.
+    rowValues.pendingChange = _nextPendingChange(existing, values.billingPlanId, upcomingChange);
     // The owner of an existing row is never rewritten by a sync.
     if (existing) delete rowValues.tenantId;
-    if (!planChanged) {
+    // Subscriber price (BILL-05, spec §7.2): what the provider actually charges
+    // — a store price increase, another storefront's price, a Stripe price
+    // migration — on every verified sync. Only when the provider reports no
+    // price does the catalog price (and its currency) stand in, and then only
+    // for a new row or a real plan change; a catalog edit never reaches here.
+    if (chargedAmount != null) {
+      rowValues.amount = chargedAmount;
+      if (chargedCurrency) rowValues.currency = String(chargedCurrency).toUpperCase();
+    } else if (!planChanged) {
       delete rowValues.amount;
-      delete rowValues.billingCycle;
+      delete rowValues.currency;
     }
+    if (!planChanged) delete rowValues.billingCycle;
 
     const tenantDbFor = async () => {
       const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
@@ -414,7 +491,7 @@ const _applyVerifiedSubscriptionOnce = async (
       // revoke, still reads "active"), so a later resync of the SAME paid
       // period must not undo a revocation. Only a newer paid period — the
       // host paid again — makes a REVOKED row entitled again (BILL-02).
-      if (existing.status === 'REVOKED' && rowValues.status === 'ACTIVE' && !(rowValues.endDate > existing.endDate)) {
+      if (existing.status === 'REVOKED' && _entitling(rowValues.status) && !(rowValues.endDate > existing.endDate)) {
         rowValues.status = 'REVOKED';
       }
       // A renewal/resync for an external id already on file — never a
@@ -423,6 +500,13 @@ const _applyVerifiedSubscriptionOnce = async (
       const reconciledValues = await reconcileRenewalStatus(tenantId, existing, rowValues, { transaction: platformTx });
       await existing.update(reconciledValues, { transaction: platformTx });
       subscription = existing;
+    } else if (!_entitling(rowValues.status)) {
+      // First sight of a subscription the provider already reports as not
+      // entitling (on hold, paused, expired, revoked — e.g. a restore of an old
+      // purchase): record it as it is. It activates nothing and supersedes
+      // nothing, so it never goes through requestProviderChange, which always
+      // creates an ACTIVE row (BILL-04).
+      subscription = await TenantSubscription.create(rowValues, { transaction: platformTx });
     } else {
       const activation = await requestProviderChange(
         tenantId,
@@ -438,12 +522,25 @@ const _applyVerifiedSubscriptionOnce = async (
       subscription = activation.subscription;
       reconciledByActivation = true;
       migratedFrom = activation.migratedFrom;
+      // A store replacement that carries out the downgrade the replaced row was
+      // waiting for (Google DEFERRED): the host's keep-list moves with it.
+      const carried = migratedFrom?.pendingChange;
+      if (carried && carried.billingPlanId === values.billingPlanId && !subscription.pendingChange) {
+        await subscription.update(
+          { pendingChange: { ...carried, confirmedByProvider: true, appliedAt: new Date().toISOString() } },
+          { transaction: platformTx }
+        );
+      }
     }
 
     // subscription.status, not values.status — reconcileRenewalStatus above can
     // override what was about to be written. Reading values.status would
     // reconcile capacity for a row that was just refused ACTIVE status.
-    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
+    // A downgrade reaches this point only once the provider applied it
+    // (BILL-03): reserved slots are trimmed first and the rest is recorded as
+    // overQuotaCount. CAP-01 (Prompt 1C) locks those branches, reading the
+    // host's keep-list through subscription-quota.service.js#getBranchesToKeep.
+    if (!reconciledByActivation && _entitling(subscription.status) && values.branchCount != null) {
       const tenantDb = await tenantDbFor();
       if (tenantDb) {
         await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
@@ -456,10 +553,11 @@ const _applyVerifiedSubscriptionOnce = async (
       }
     }
 
-    // Entitlement ended by a refund/chargeback/revoke: shrink capacity to what
-    // the tenant is still entitled to, in the same transaction (BILL-02,
-    // spec §7.5.7). Runs once — a replay finds the row already REVOKED.
-    if (previousStatus === 'ACTIVE' && subscription.status === 'REVOKED') {
+    // Entitlement ended by a refund/chargeback/revoke (BILL-02, spec §7.5.7),
+    // or put on hold / paused by the provider (BILL-04, §7.4): shrink capacity
+    // to what the tenant is still entitled to, in the same transaction. Runs
+    // once per transition — a replay finds the row already ended.
+    if (_entitling(previousStatus) && ENDED_STATUSES.includes(subscription.status)) {
       const tenantDb = await tenantDbFor();
       if (tenantDb) {
         const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
@@ -468,7 +566,12 @@ const _applyVerifiedSubscriptionOnce = async (
         await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, entitled, {
           transaction: platformTx,
           previousMaxBranches,
-          idempotencyPrefix: `revoke:${values.platform}:${values.externalOriginalTransactionId}`,
+          // A revoke happens once per subscription. A hold/pause can recur
+          // after a recovery, so its key carries the verified transaction id.
+          idempotencyPrefix:
+            subscription.status === 'REVOKED'
+              ? `revoke:${values.platform}:${values.externalOriginalTransactionId}`
+              : `${subscription.status.toLowerCase()}:${values.platform}:${idempotencyPrefix}`,
           actorType: 'SYSTEM',
         });
       }
@@ -514,4 +617,333 @@ const resolveSubscriptionOwner = async (platform, externalId, boundTenantId = nu
   return tenant ? tenant.id : null;
 };
 
-module.exports = { requestProviderChange, reconcileRenewalStatus, applyVerifiedSubscription, resolveSubscriptionOwner };
+/**
+ * "Pay later" at onboarding (BILL-13, spec §7.5.11): approval gives the tenant
+ * one branch for PAY_LATER_GRACE_DAYS (owner decisions R-17 = R-22) as a
+ * MANUAL row in GRACE — entitled, with a countdown. Written through
+ * applyVerifiedSubscription like every other plan, keyed on a fixed id per
+ * tenant, so a retried approval finds the same row instead of adding one.
+ *
+ * It becomes ACTIVE only when an admin verifies the bank transfer
+ * (verifyPayLaterPayment); otherwise the daily sweep ends it (EXPIRED).
+ * Never replaces a plan the tenant already has (FLOW-03).
+ */
+const PAY_LATER_ID_PREFIX = 'pay-later:';
+const _payLaterId = (tenantId) => `${PAY_LATER_ID_PREFIX}${tenantId}`;
+const _isoDate = (d) => d.toISOString().split('T')[0];
+
+const startPayLaterGrace = async (tenantId) => {
+  const { BillingPlan } = require('../models/platform');
+  const { payLaterGraceDays } = require('../config/billing.config');
+
+  const existingPlan = await subscriptionQuotaService.getActiveSubscription(tenantId);
+  if (existingPlan) return existingPlan;
+
+  const onePlan = await BillingPlan.findOne({ where: { branchCount: 1 }, order: [['sortOrder', 'ASC']] });
+  const now = new Date();
+  const endsAt = new Date(now.getTime() + payLaterGraceDays() * 24 * 60 * 60 * 1000);
+  return applyVerifiedSubscription(
+    tenantId,
+    {
+      platform: 'MANUAL',
+      externalOriginalTransactionId: _payLaterId(tenantId),
+      externalTransactionId: _payLaterId(tenantId),
+      billingPlanId: onePlan ? onePlan.id : null,
+      branchCount: 1,
+      productId: null,
+      startDate: _isoDate(now),
+      endDate: _isoDate(endsAt),
+      // What the host will owe for the 1-branch plan once they pay.
+      amount: onePlan ? onePlan.monthlyPrice : 0,
+      currency: onePlan ? onePlan.currency : null,
+      billingCycle: 'MONTHLY',
+      status: 'GRACE',
+      autoRenew: false,
+      paymentStatus: 'PENDING',
+    },
+    { idempotencyPrefix: `${_payLaterId(tenantId)}:approve`, logLabel: 'Pay later' }
+  );
+};
+
+/**
+ * The plan a tenant gets at approval (FLOW-03, spec §7.5.10), decided before
+ * provisioning creates anything:
+ *   - a provider-backed row already exists (e.g. the Stripe subscription from
+ *     the registration card step): re-verify it with its provider through the
+ *     one sync path and create NOTHING else — never a second entitlement;
+ *   - otherwise "pay later" gets its GRACE plan (BILL-13); other methods keep
+ *     the existing MANUAL row from submission / provisioning step 10.
+ * A failed re-verification is logged, not fatal: the row is already there and
+ * the daily store sweep refreshes it.
+ * @returns {Promise<{ linked?: object, created?: object }|null>}
+ */
+const planForApproval = async (tenant) => {
+  const providerRow = await TenantSubscription.findOne({
+    where: { tenantId: tenant.id, platform: { [Op.in]: ['IOS', 'ANDROID', 'STRIPE'] } },
+    order: [['updatedAt', 'DESC']],
+  });
+  if (providerRow) {
+    try {
+      await require('./billing-event.service').refreshStoreSubscription(providerRow);
+    } catch (err) {
+      console.warn(
+        `[Approval] Could not re-verify ${providerRow.platform} subscription ${providerRow.id} for tenant ${tenant.id}: ${err.message}`
+      );
+    }
+    return { linked: await providerRow.reload() };
+  }
+  if (tenant.paymentMethod === 'PAY_LATER') return { created: await startPayLaterGrace(tenant.id) };
+  return null;
+};
+
+/**
+ * An admin confirms the pay-later bank transfer arrived (BILL-13): GRACE →
+ * ACTIVE, PAID, one billing cycle from today. Only for the tenant's own
+ * pay-later row while it is in GRACE (a lapsed one is reactivated through the
+ * normal admin assign path). Audited in the tenant's own trail.
+ */
+const verifyPayLaterPayment = async (tenantId, subscriptionId, { adminUserId, bankTransferRef = null, req = null }) => {
+  const row = await TenantSubscription.findOne({ where: { id: subscriptionId, tenantId } });
+  if (!row) throw createError('Subscription not found', 404);
+  if (row.platform !== 'MANUAL' || row.externalOriginalTransactionId !== _payLaterId(tenantId) || row.status !== 'GRACE') {
+    const err = createError('Only a pay-later plan that is waiting for payment can be verified.', 409);
+    err.code = 'not_pay_later_grace';
+    throw err;
+  }
+  const before = row.toJSON();
+  const now = new Date();
+  const paidUntil = new Date(now);
+  paidUntil.setMonth(paidUntil.getMonth() + 1);
+  const subscription = await applyVerifiedSubscription(
+    tenantId,
+    {
+      platform: 'MANUAL',
+      externalOriginalTransactionId: row.externalOriginalTransactionId,
+      externalTransactionId: bankTransferRef ? `bank:${bankTransferRef}` : row.externalTransactionId,
+      billingPlanId: row.billingPlanId,
+      branchCount: row.branchCount,
+      startDate: _isoDate(now),
+      endDate: _isoDate(paidUntil),
+      status: 'ACTIVE',
+      autoRenew: false,
+      paymentStatus: 'PAID',
+      bankTransferRef: bankTransferRef || row.bankTransferRef,
+      lastVerifiedAt: now,
+    },
+    { idempotencyPrefix: `${_payLaterId(tenantId)}:verify`, logLabel: 'Pay later' }
+  );
+
+  const tenant = await Tenant.findByPk(tenantId);
+  if (tenant?.connectionStringEncrypted) {
+    const TenantDbManager = require('../database/TenantDbManager');
+    const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    await require('./audit.service').record(
+      { tenantDb, userId: adminUserId, roleKey: 'PLATFORM_ADMIN', req },
+      {
+        action: 'billing.pay_later_verified',
+        targetType: 'TenantSubscription',
+        targetId: subscription.id,
+        before: { status: before.status, paymentStatus: before.paymentStatus, endDate: before.endDate },
+        after: {
+          status: subscription.status,
+          paymentStatus: subscription.paymentStatus,
+          endDate: subscription.endDate,
+          bankTransferRef: subscription.bankTransferRef,
+        },
+      }
+    );
+  } else {
+    console.error(`[Pay later] Verified payment for tenant ${tenantId} could not be audited: tenant database not ready`);
+  }
+  return subscription;
+};
+
+/**
+ * The daily sweep's end of an unpaid pay-later grace (BILL-13): EXPIRED
+ * through the one write path. The caller (subscription-expiry.cron.js) then
+ * does what it does for every lapsed plan.
+ */
+const expirePayLaterGrace = async (row) =>
+  applyVerifiedSubscription(
+    row.tenantId,
+    {
+      platform: 'MANUAL',
+      externalOriginalTransactionId: row.externalOriginalTransactionId,
+      externalTransactionId: row.externalTransactionId,
+      billingPlanId: row.billingPlanId,
+      branchCount: row.branchCount,
+      status: 'EXPIRED',
+      lastVerifiedAt: new Date(),
+    },
+    { idempotencyPrefix: `${row.externalOriginalTransactionId}:expire`, logLabel: 'Pay later' }
+  );
+
+/**
+ * What a downgrade to `billingPlanId` means for this tenant, for the plan
+ * picker's preview (BILL-03, spec §7.5.4 step 1–2): the new plan covers
+ * `newBranchCount`; unbuilt reserved slots are trimmed first; when the real
+ * ACTIVE branches alone are more than that, the host must choose which to keep.
+ */
+const _downgradeContext = async (tenantId, billingPlanId, { transaction = null, lock = false } = {}) => {
+  const { BillingPlan, GymListing } = require('../models/platform');
+  const TenantDbManager = require('../database/TenantDbManager');
+  const plan = billingPlanId ? await BillingPlan.findByPk(billingPlanId, { transaction }) : null;
+  if (!plan) throw createError('Billing plan not found', 404);
+  const current = await TenantSubscription.findOne({
+    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
+    order: [['createdAt', 'DESC']],
+    transaction,
+    lock,
+  });
+  if (!current || current.branchCount == null) {
+    throw createError('There is no in-app plan to change on this account.', 409);
+  }
+  if (plan.branchCount >= current.branchCount) {
+    throw createError('This plan is not a downgrade — no branch choice is needed.', 400);
+  }
+  const tenant = await Tenant.findByPk(tenantId, { transaction });
+  if (!tenant?.connectionStringEncrypted) throw createError('Tenant database is not ready', 409);
+  const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+  const branches = await tenantDb.models.Branch.findAll({
+    where: { status: 'ACTIVE' },
+    attributes: ['id', 'branchName', 'gymListingId', 'createdAt'],
+    order: [['createdAt', 'ASC']],
+  });
+  const reservedSlots =
+    (await GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.ne]: 'INACTIVE' } }, transaction })) || 0;
+  const mustChooseBranches = branches.length > plan.branchCount;
+  return { plan, current, tenantDb, branches, reservedSlots, mustChooseBranches };
+};
+
+const previewDowngrade = async (tenantId, billingPlanId) => {
+  const { plan, current, branches, reservedSlots, mustChooseBranches } = await _downgradeContext(tenantId, billingPlanId);
+  return {
+    currentBranchCount: current.branchCount,
+    newBranchCount: plan.branchCount,
+    activeBranches: branches.length,
+    reservedSlots,
+    mustChooseBranches,
+    keepCount: mustChooseBranches ? plan.branchCount : 0,
+    // The provider applies a downgrade at the end of the paid period.
+    effectiveAt: current.endDate,
+    branches: branches.map((b) => ({ id: b.id, name: b.branchName, organizationId: b.gymListingId })),
+    pendingChange: current.pendingChange || null,
+  };
+};
+
+/**
+ * The host's choice of branches to keep on a downgrade (BILL-03, spec §7.5.4
+ * step 2), stored with the entitling row's pendingChange. Only the host's
+ * intent is written here — the plan, branchCount and status still change only
+ * through applyVerifiedSubscription, when the provider applies the downgrade.
+ * Made before the store purchase it is kept as an unconfirmed request; the
+ * provider's confirmation of the same plan keeps it (_nextPendingChange).
+ */
+const recordDowngradeChoice = async (tenantId, { billingPlanId, keepBranchIds = null }, { actorUserId = null, req = null } = {}) => {
+  const { sequelize } = require('../database/platform');
+  const tx = await sequelize.transaction();
+  try {
+    await Tenant.findByPk(tenantId, { transaction: tx, lock: true });
+    const { plan, current, tenantDb, branches, mustChooseBranches } = await _downgradeContext(tenantId, billingPlanId, {
+      transaction: tx,
+      lock: true,
+    });
+
+    let keep = null;
+    if (mustChooseBranches) {
+      const ids = Array.isArray(keepBranchIds) ? keepBranchIds.map(String) : [];
+      const active = new Set(branches.map((b) => b.id));
+      if (new Set(ids).size !== ids.length) throw createError('Each branch can be chosen only once.', 400);
+      if (ids.length !== plan.branchCount) {
+        throw createError(`Choose exactly ${plan.branchCount} branch(es) to keep.`, 400);
+      }
+      if (!ids.every((id) => active.has(id))) throw createError('Choose only from your active branches.', 400);
+      keep = ids;
+    } else if (Array.isArray(keepBranchIds) && keepBranchIds.length > 0) {
+      throw createError('All your branches fit the new plan — there is nothing to choose.', 400);
+    }
+
+    const existing = current.pendingChange;
+    const keepChosenAt = keep ? new Date().toISOString() : null;
+    let next;
+    if (existing && existing.confirmedByProvider && !existing.appliedAt) {
+      if (existing.billingPlanId !== plan.id) {
+        throw createError('A different plan change is already scheduled with your store. Change or cancel it there first.', 409);
+      }
+      next = { ...existing, keepBranchIds: keep, keepChosenAt };
+    } else {
+      next = {
+        billingPlanId: plan.id,
+        branchCount: plan.branchCount,
+        productId: null,
+        effectiveAt: null,
+        keepBranchIds: keep,
+        keepChosenAt,
+        confirmedByProvider: false,
+        appliedAt: null,
+      };
+    }
+    const before = current.pendingChange;
+    await current.update({ pendingChange: next }, { transaction: tx });
+    await tx.commit();
+
+    await require('./audit.service').record(
+      { tenantDb, userId: actorUserId, roleKey: 'GYM_HOST', req },
+      { action: 'billing.downgrade_choice', targetType: 'TenantSubscription', targetId: current.id, before, after: next }
+    );
+    return current;
+  } catch (err) {
+    if (!tx.finished) await tx.rollback();
+    throw err;
+  }
+};
+
+/**
+ * Where the host fixes a failed payment while the row is in GRACE (BILL-04,
+ * spec §7.4): always the provider's own subscription-management page, built
+ * here from fixed addresses and the verified row — never a URL taken from a
+ * request or a notification. Stripe has no fixed page per customer: the host
+ * opens one through our own POST /billing/stripe/portal-session.
+ * @returns {object|null} null unless the row is in GRACE.
+ */
+const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
+const GOOGLE_MANAGE_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
+const paymentIssueFor = (subscription) => {
+  if (!subscription || subscription.status !== 'GRACE') return null;
+  switch (subscription.platform) {
+    case 'MANUAL': {
+      // Pay later (BILL-13): the countdown to the day the plan ends unpaid.
+      const payBy = subscription.endDate;
+      const today = new Date(`${_isoDate(new Date())}T00:00:00Z`);
+      const daysLeft = Math.max(0, Math.round((new Date(`${payBy}T00:00:00Z`) - today) / (24 * 60 * 60 * 1000)));
+      return { provider: 'MANUAL', manageUrl: null, payBy, daysLeft };
+    }
+    case 'IOS':
+      return { provider: 'IOS', manageUrl: APPLE_MANAGE_SUBSCRIPTIONS_URL };
+    case 'ANDROID': {
+      const pkg = process.env.GOOGLE_PLAY_PACKAGE_NAME;
+      if (!pkg || !subscription.productId) return { provider: 'ANDROID', manageUrl: GOOGLE_MANAGE_SUBSCRIPTIONS_URL };
+      const params = new URLSearchParams({ sku: subscription.productId, package: pkg });
+      return { provider: 'ANDROID', manageUrl: `${GOOGLE_MANAGE_SUBSCRIPTIONS_URL}?${params}` };
+    }
+    case 'STRIPE':
+      return { provider: 'STRIPE', manageUrl: null, portalSessionPath: '/api/v1/billing/stripe/portal-session' };
+    default:
+      return { provider: subscription.platform, manageUrl: null };
+  }
+};
+
+module.exports = {
+  requestProviderChange,
+  reconcileRenewalStatus,
+  applyVerifiedSubscription,
+  resolveSubscriptionOwner,
+  paymentIssueFor,
+  previewDowngrade,
+  recordDowngradeChoice,
+  PAY_LATER_ID_PREFIX,
+  startPayLaterGrace,
+  planForApproval,
+  verifyPayLaterPayment,
+  expirePayLaterGrace,
+};

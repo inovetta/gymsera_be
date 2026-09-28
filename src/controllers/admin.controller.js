@@ -164,6 +164,20 @@ const assignTenantSubscription = async (req, res, next) => {
 };
 
 // ── PATCH /admin/tenants/:id/subscriptions/:subId/revoke ──────────────────────
+// ── POST /admin/tenants/:id/subscriptions/:subId/verify-payment ───────────────
+// Pay later (BILL-13): the admin confirms the bank transfer arrived.
+const verifyPayLaterPayment = async (req, res, next) => {
+  try {
+    const subscriptionMigration = require('../services/subscription-migration.service');
+    const subscription = await subscriptionMigration.verifyPayLaterPayment(req.params.id, req.params.subId, {
+      adminUserId: req.user.sub || req.user.id,
+      bankTransferRef: req.body?.bankTransferRef || null,
+      req,
+    });
+    return sendSuccess(res, { subscription }, 'Payment verified — plan is active');
+  } catch (err) { next(err); }
+};
+
 const revokeTenantSubscription = async (req, res, next) => {
   try {
     const result = await adminService.revokeTenantSubscription(req.params.id, req.params.subId);
@@ -399,7 +413,7 @@ module.exports = {
   getGymListing, createGymListing, updateGymListing,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,
   createAdminTenantBranch, updateAdminTenantBranch, uploadAdminBranchImages, deleteAdminBranchImage,
-  getTenantSubscriptions, assignTenantSubscription, revokeTenantSubscription,
+  getTenantSubscriptions, assignTenantSubscription, revokeTenantSubscription, verifyPayLaterPayment,
   getTenantInvoices, createTenantInvoice, updateTenantInvoice,
   sendInvoiceReminder, sendInvoiceConfirmation,
   getPlatformStats, getPlatformAnalytics,

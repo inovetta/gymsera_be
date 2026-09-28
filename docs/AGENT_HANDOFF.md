@@ -19,29 +19,28 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-28 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **HOTFIX part 2 — close open routes & unauthenticated route guard (NEW-29, NEW-30, NEW-31)** |
+| Current prompt | **Merge: Prompt 1B + Hotfix PR #48** (hotfix PR #48 is merged and deployed; 1B branch being merged; next: Prompt 1C) |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-Hotfix work is on branch `hotfix/close-open-routes` in `gymsera_be`, **not pushed and not merged**.
-The owner reviews and merges.
+Hotfix PR #48 is merged and deployed; the 1B branch is being merged; the next prompt is 1C (CAP-01).
+
+Prompt 1B is on `phase-1/prompt-1b-billing-lifecycle` in two repos, with origin/main (hotfix PR #48: closed open routes NEW-04, NEW-05, NEW-29, NEW-30, NEW-31 and router guard test) merged in `gymsera_be`.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1a-billing-core` (from master 11d37b1) | b4dfb59 fix(billing): send the tenant id with every store purchase (BILL-01) | no |
-| gymsera_be | `hotfix/close-open-routes` (from main ea1d4df) | see `git log` — hotfix docs commit | no |
+| gyms_era | `phase-1/prompt-1b-billing-lifecycle` (from `phase-1/prompt-1a-billing-core` b4dfb59 — **mobile 1A is not in master yet**; merge 1A first or merge 1B, which contains it) | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
+| gymsera_be | `phase-1/prompt-1b-billing-lifecycle` (merged with origin/main containing hotfix PR #48) | see `git log` | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Hotfix branch `hotfix/close-open-routes` in `gymsera_be` has closed all open/unauthenticated maintenance routes
-> (NEW-04, NEW-05, NEW-29, NEW-30, NEW-31) and added the router walk guard test.
-> Ready for review and merge into `main`. After merge, continue with owner directions or resume **Prompt 1B — Billing lifecycle**
-> from `GYMSERA_AGENT_PLAYBOOK.md` on branch `phase-1/prompt-1a-billing-core`.
+> Hotfix PR #48 is merged and deployed; the 1B branch is being merged; the next prompt is **Prompt 1C** (CAP-01) from `GYMSERA_AGENT_PLAYBOOK.md` (CAP-01 branch billing lock and the rest of 1C).
+> CAP-01 must read the host's keep-list through `subscription-quota.service.js#getBranchesToKeep(tenantId)` (BILL-03) and use `OVERQUOTA_GRACE_DAYS=7` (R-3) and `MEMBER_CHECKIN_GRACE_DAYS=7` (R-2) — neither setting exists in code yet; add each once, in `src/config/billing.config.js` next to `PAY_LATER_GRACE_DAYS`.
 
 ### Work in progress that is NOT committed
 
@@ -49,15 +48,23 @@ The owner reviews and merges.
 
 ### Blocked / waiting on the owner
 
+- **Deploy order (critical):** platform migrations **p004–p006 must be applied before this backend code goes live.**
+  The model reads `currency` and `pending_change`; without them every `tenant_subscriptions` query fails
+  ("Unknown column"). Steps: run the read-only checks in `docs/sql/prompt-1b-precheck.sql`, then
+  `node src/scripts/run-platform-migrations.js --dry-run`, then without the flag. (p001–p003 from 1A too, if not yet run.)
 - **Before deploying this backend branch:** run `node src/scripts/run-platform-migrations.js --dry-run`, check the
   report, then `node src/scripts/run-platform-migrations.js`. It adds `billing_events` (p001), `REVOKED` status
   (p002) and UNIQUE(platform, external_original_transaction_id) (p003; skipped with a list if duplicates exist).
   Until then webhooks answer 500 (providers retry for days), nothing is lost.
-- Decide/confirm (not in §14): a **partial** Stripe refund keeps the plan (only full refund or dispute revokes); a
-  refunded/disputed Stripe subscription is **not** cancelled at Stripe (it would bill again next period — web card
-  is OFF per R-7, so this only matters once a web provider is live).
+- **Existing pay-later tenants (data decision, not done):** tenants approved before BILL-13 still hold the old full-cycle
+  ACTIVE / payment-PENDING row; pay-later applications submitted before BILL-13 keep theirs at approval. Query 6 in
+  `docs/sql/prompt-1b-precheck.sql` lists the pending ones. Converting them to the 14-day GRACE plan is a production
+  data change — owner to decide.
+- Still open from 1A / Decide/confirm (not in §14): a **partial** Stripe refund keeps the plan (only full refund or dispute revokes);
+  a refunded/disputed Stripe subscription is **not** cancelled at Stripe (it would bill again next period — web card is OFF per R-7,
+  so this only matters once a web provider is live).
 - **NEW-15 is DONE** and R-21 is DECIDED (`GET /host/subscription/current` is read-only; be 6f3506f, 5d984de).
-  New P2 item NEW-18 (spec §12.13.11): plan creation at approval fails silently — recorded, not fixed.
+  New P2 item NEW-18 (spec §12.13.11): plan creation at approval fails silently — recorded, partly fixed in 1B.
 - **NEW-26 (P1)**: Suspended tenant context bypass recorded in spec §12.13.12 (report only, not fixed).
 - **NEW-27 (P2)**: Mobile restore purchase retry loop on 409 recorded in spec §12.13.12.
 - **NEW-28 (P2)**: Unclosed Redis clients in Bull queues & un-awaited DeviceToken.sync() recorded in spec §12.13.12.
@@ -70,8 +77,17 @@ The owner reviews and merges.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-Hotfix — Close open routes & guard (2026-09-28):
+**Prompt 1B — Billing lifecycle:**
+- [x] STEP 0 — §14 R-22 owner confirmed; R-17 = R-22 = one setting (be 043066a)
+- [x] 1. BILL-04 — GRACE / ON_HOLD / PAUSED (p004) (be f5543f2)
+- [x] 2. BILL-05 — amount/currency from the provider's charge (p005) (be e7d61f5)
+- [x] 3. BILL-03 — deferred downgrade, pendingChange + keepBranchIds (p006) (be 900506e, app b8909df; lock = CAP-01)
+- [x] 4. BILL-13 — pay-later GRACE MANUAL row, PAY_LATER_GRACE_DAYS (be fc76f8b)
+- [x] 5. FLOW-03 — one entitlement at approval (be 6142e65; NEW-18 partly fixed)
+- [x] 6. BILL-08 — Google PENDING purchases (be 07043f3, app 520a49b)
+- [x] §13 rows with hashes, 3 consecutive full runs, pre-check SQL, this handoff
 
+**Hotfix — Close open routes & guard (PR #48):**
 - [x] 1. NEW-04 — /debug-sync-db removed completely, fetch_sync.js removed, returns 404 with 0 DB writes (be 0cc58d8)
 - [x] 2. NEW-05 — /system/recycle removed completely, returns 404 with 0 DB writes (be 271ca62)
 - [x] 3. Part 1c — Audit calls to /debug-sync-db and /system/recycle (only fetch_sync.js called /debug-sync-db; approved and removed)
@@ -139,6 +155,33 @@ Hotfix — Close open routes & guard (2026-09-28):
   - ESLint: test files fail lint repo-wide (no Jest env in the config); pre-existing. Changed `src/` files add no
     new lint errors.
 
+- **Prompt 1B additions (2026-09-28):**
+  - Entitling set: `subscription-quota.service.js#ENTITLING_STATUSES = ['ACTIVE','GRACE']`. The one-ACTIVE-row
+    invariant now means one *entitling* row. `ENDED_STATUSES` (REVOKED, ON_HOLD, PAUSED) reconcile capacity when a
+    row leaves the entitling set; `NO_FALLBACK_STATUSES` (+ EXPIRED) never fall back to the legacy package.
+  - `applyVerifiedSubscription` now also handles: provider charge (`chargedAmount`/`chargedCurrency`), the provider's
+    upcoming plan (`upcomingChange` → `pendingChange`), first-seen non-entitling rows (recorded, not activated), and
+    MANUAL rows (pay-later, keyed `pay-later:<tenantId>`).
+  - Migration tests for p004+ live in `tests/integration/platform-migrations-1b.test.js` (scratch DB
+    `gymsera_test_platform_mig_1b`, shaped like production after 1A). Add each new migration there: dry-run, conflict,
+    apply + re-run.
+  - `subscription-expiry.cron.js` computes "today" as local midnight printed in UTC, so east of UTC (Pakistan) a plan
+    expires one day late. Pre-existing; not changed. The pay-later tests advance the clock 16 days because of it.
+  - **Intermittent full-suite failure — cause proven and fixed (TEST-FLAKE-1B, be e9feaf7, §13):** supertest ran the
+    bare app on a random port on every address but called 127.0.0.1; on macOS that port can belong to another program
+    bound to 127.0.0.1 only. Tests now call `tests/harness/test-server.js#startTestServer` (listening on 127.0.0.1);
+    `tests/harness/loopback-listen.js` refuses a bare `request(app)` with a clear message. **New test files: use
+    `startTestServer`, never `request(require('../../app'))`.**
+  - Still open (not the flake): Jest needs `--forceExit` — 33 Redis sockets (Bull queues, `src/jobs/queues.js:36`, never
+    closed; tests use the developer's local Redis on 6379) and 3 MySQL sockets remain; `src/models/platform/index.js:46`
+    runs `DeviceToken.sync()` un-awaited at require time.
+  - Security, still live on production (already tracked P0, not fixed): NEW-04 `/debug-sync-db` (unauthenticated
+    `sync({alter:true})` on every database) and NEW-05 `/system/recycle` etc. behind a key committed in git
+    (`src/routes/index.js:326-470`).
+  - Remaining client work from 1B: mobile "choose branches to keep" screen (API exists: `GET /billing/downgrade-preview`,
+    `PUT /billing/downgrade-choice`); CMS admin "Verify payment" button (`POST /admin/tenants/:id/subscriptions/:subId/verify-payment`);
+    host countdown/banner from `paymentIssue` on `GET /host/subscription/current` (mobile, CMS, web).
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -163,5 +206,6 @@ Hotfix — Close open routes & guard (2026-09-28):
 | 15 | 2026-09-28 | Claude Code (Opus 5.5) | docs: owner decisions 1B | R-2, R-3, R-4 marked DECIDED 2026-09-28; R-22 pay-later grace added (owner confirmation pending) | task complete | yes |
 | 16 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Hotfix: close open routes | NEW-04, NEW-05, audit unauthenticated routes, suspended tenant report & NEW-26/27/28 recorded | task complete | yes |
 | 17 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Hotfix part 2 | NEW-29, NEW-30, NEW-31 (resolves NEW-01), Part 2 report, Part 3 unauthenticated-routes-guard test | task complete | yes |
-
-
+| 18 | 2026-09-28 | Claude Code (Opus 5.5) | Prompt 1B | BILL-04, BILL-05, BILL-03 (lock = CAP-01), BILL-13, FLOW-03, BILL-08 | task complete | yes |
+| 19 | 2026-09-28 | Claude Code (Opus 5.5) | 1B close-out | TEST-FLAKE-1B (cause proven, fixed); backward-compat report; NEW-19…NEW-25 + §16 sandbox list | task complete | yes |
+| 20 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Merge: 1B + Hotfix PR #48 | Resolve docs merge conflicts in AGENT_HANDOFF.md and GYMSERA_PRODUCTION_ARCHITECTURE.md | task complete | yes |

@@ -2,6 +2,7 @@ const appleBilling = require('../services/apple-billing.service');
 const googlePlayBilling = require('../services/google-play-billing.service');
 const stripeBilling = require('../services/stripe-billing.service');
 const billingEvents = require('../services/billing-event.service');
+const subscriptionMigration = require('../services/subscription-migration.service');
 const { BillingPlan } = require('../models/platform');
 const { sendSuccess, createError } = require('../utils/response.utils');
 
@@ -149,6 +150,22 @@ const syncAndroidPurchase = async (req, res, next) => {
       tenantId,
       originListingId: organizationId || null,
     });
+
+    // Not paid yet (cash, carrier billing…) or that payment was cancelled
+    // (BILL-08): nothing was granted. 202 = "we'll unlock branches when Google
+    // confirms the payment" — the app must not treat it as a success.
+    if (subscription?.pending) {
+      const message =
+        subscription.paymentState === 'PAYMENT_PENDING'
+          ? 'Payment pending — your branches unlock when Google Play confirms the payment.'
+          : 'The pending payment was cancelled — nothing was charged.';
+      return sendSuccess(
+        res,
+        { state: subscription.paymentState, subscription: null },
+        message,
+        subscription.paymentState === 'PAYMENT_PENDING' ? 202 : 200
+      );
+    }
 
     return sendSuccess(res, { subscription }, 'Subscription synced');
   } catch (err) {
@@ -305,8 +322,50 @@ const stripeWebhook = async (req, res) => {
   }
 };
 
+/**
+ * GET /billing/downgrade-preview?billingPlanId=
+ *
+ * What moving to a smaller plan means before the host buys it at the store
+ * (BILL-03, spec §7.5.4): the new branch count, the active branches, and
+ * whether the host must choose which ones to keep.
+ */
+const getDowngradePreview = async (req, res, next) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const preview = await subscriptionMigration.previewDowngrade(tenantId, req.query.billingPlanId);
+    return sendSuccess(res, preview, 'Downgrade preview');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /billing/downgrade-choice { billingPlanId, keepBranchIds }
+ *
+ * Stores which branches stay entitled after a downgrade. The plan itself
+ * changes only when the store applies the downgrade (webhook / sync).
+ */
+const putDowngradeChoice = async (req, res, next) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const { billingPlanId, keepBranchIds } = req.body || {};
+    const subscription = await subscriptionMigration.recordDowngradeChoice(
+      tenantId,
+      { billingPlanId, keepBranchIds },
+      { actorUserId: req.user.sub || req.user.id, req }
+    );
+    return sendSuccess(res, { pendingChange: subscription.pendingChange }, 'Branch choice saved');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getPlans,
+  getDowngradePreview,
+  putDowngradeChoice,
   syncIosPurchase,
   appleWebhook,
   syncAndroidPurchase,

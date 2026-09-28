@@ -78,9 +78,20 @@ module.exports = (sequelize) => {
         type: DataTypes.DATEONLY,
         allowNull: false,
       },
+      // The subscriber price: what the provider actually charges (BILL-05,
+      // spec §7.2) — written from the provider's verified charge on every
+      // sync, never from a catalog edit. Falls back to the catalog price only
+      // when the provider reports no price (then only at purchase / plan change).
       amount: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
+      },
+      // ISO 4217 currency of `amount`. NULL on rows written before platform
+      // migration p005: those amounts are catalog prices in the catalog's
+      // currency (PKR).
+      currency: {
+        type: DataTypes.CHAR(3),
+        allowNull: true,
       },
       billingCycle: {
         type: DataTypes.ENUM('MONTHLY', 'QUARTERLY', 'YEARLY'),
@@ -97,8 +108,17 @@ module.exports = (sequelize) => {
       // Stripe's webhook confirms. See subscription-migration.service.js.
       // REVOKED: refunded, charged back or revoked at the provider — not
       // entitled from that moment (BILL-02, spec §7.5.7).
+      // GRACE: a renewal payment failed but the provider still grants access
+      // (entitled, like ACTIVE). ON_HOLD: the provider stopped access until
+      // the payment is fixed. PAUSED: paused by the subscriber. Neither is
+      // entitled (BILL-04, spec §7.4). Added by platform migration p004.
+      // ACTIVE and GRACE are the entitling set; at most one such row per
+      // tenant (subscription-quota.service.js#ENTITLING_STATUSES).
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED'),
+        type: DataTypes.ENUM(
+          'ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED',
+          'GRACE', 'ON_HOLD', 'PAUSED'
+        ),
         allowNull: false,
         defaultValue: 'ACTIVE',
       },
@@ -132,6 +152,20 @@ module.exports = (sequelize) => {
       // being charged again." Null for a plain ACTIVE/EXPIRED/CANCELLED row.
       statusNote: {
         type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      // A plan change the provider applies later — a downgrade takes effect at
+      // renewal (BILL-03, spec §7.5.4). Added by platform migration p006.
+      //   { billingPlanId, branchCount, productId, effectiveAt,
+      //     keepBranchIds, keepChosenAt, confirmedByProvider, appliedAt }
+      // confirmedByProvider=false: only the host's choice so far (made before
+      // the store purchase). true: the provider reports this as the next plan.
+      // appliedAt set: the provider switched to it; keepBranchIds stays for the
+      // branch billing lock (CAP-01) until the next change. Written by
+      // subscription-migration.service.js only; entitlement always comes from
+      // branchCount, never from here.
+      pendingChange: {
+        type: DataTypes.JSON,
         allowNull: true,
       },
     },

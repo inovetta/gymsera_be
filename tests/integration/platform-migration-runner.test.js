@@ -89,8 +89,14 @@ describe('Platform migration runner', () => {
       "INSERT INTO tenant_subscriptions (id, tenant_id, platform, external_original_transaction_id, status) VALUES ('dup', 't9', 'IOS', 'orig-1', 'CANCELLED')"
     );
     const result = await runPlatformMigrations(seq);
-    expect(result.applied).toEqual(['p001_create_billing_events', 'p002_tenant_subscriptions_status_revoked']);
-    expect(result.finalVersion).toBe(2);
+    // Every migration except p003 runs; p003 is not recorded.
+    expect(result.applied).toEqual(
+      PLATFORM_MIGRATIONS.map((m) => m.name).filter((n) => n !== 'p003_tenant_subscriptions_unique_external_id')
+    );
+    expect(result.applied).toContain('p001_create_billing_events');
+    expect(result.applied).toContain('p002_tenant_subscriptions_status_revoked');
+    const [recorded] = await seq.query('SELECT version FROM schema_migrations WHERE version = 3');
+    expect(recorded).toHaveLength(0);
     const [[{ n }]] = await seq.query('SELECT COUNT(*) AS n FROM tenant_subscriptions');
     expect(Number(n)).toBe(2);
 

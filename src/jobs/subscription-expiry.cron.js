@@ -21,6 +21,7 @@ const { notificationsQueue } = require('./queues');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const emailService = require('../services/email.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
+const { PAY_LATER_ID_PREFIX, expirePayLaterGrace } = require('../services/subscription-migration.service');
 
 const EXPIRY_CRON = '0 1 * * *'; // 01:00 every day
 const WARNING_DAYS = 3;
@@ -142,8 +143,16 @@ const _processPlatformSubscriptions = async () => {
   }
 
   // ── 2. Expire overdue platform subscriptions ──────────────────────────────
+  // Includes an unpaid "pay later" grace (MANUAL row in GRACE, BILL-13).
+  // Store rows in GRACE are ended by their provider, never by date here.
   const expiredSubs = await TenantSubscription.findAll({
-    where: { status: 'ACTIVE', endDate: { [Op.lt]: todayStr } },
+    where: {
+      [Op.or]: [
+        { status: 'ACTIVE' },
+        { status: 'GRACE', platform: 'MANUAL', externalOriginalTransactionId: { [Op.like]: `${PAY_LATER_ID_PREFIX}%` } },
+      ],
+      endDate: { [Op.lt]: todayStr },
+    },
     include: [
       { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['email', 'fullName'] }] },
       { model: PlatformPackage, as: 'package', attributes: ['name'] },
@@ -152,8 +161,9 @@ const _processPlatformSubscriptions = async () => {
 
   for (const sub of expiredSubs) {
     try {
-      // Mark subscription expired
-      await sub.update({ status: 'EXPIRED' });
+      // Mark subscription expired (a pay-later grace through the one write path)
+      if (sub.status === 'GRACE') await expirePayLaterGrace(sub);
+      else await sub.update({ status: 'EXPIRED' });
 
       // Auto-suspend the tenant
       const tenant = sub.tenant;
@@ -208,7 +218,7 @@ const _processPlatformSubscriptions = async () => {
 const _reconcileCapacityForAllTenants = async () => {
   const todayStr = new Date().toISOString().split('T')[0];
   const activeSubs = await TenantSubscription.findAll({
-    where: { status: 'ACTIVE', branchCount: { [Op.ne]: null } },
+    where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES }, branchCount: { [Op.ne]: null } },
     attributes: ['id', 'tenantId', 'branchCount'],
   });
 

@@ -18,10 +18,33 @@ const { Tenant, TenantSubscription, PlatformPackage, GymListing, CapacityEvent }
  * should call through here instead of re-deriving this itself.
  */
 
-/** The tenant's current entitlement — the most recently created ACTIVE subscription, if any. */
+/**
+ * Statuses that entitle a tenant to its plan (spec §7.3, §7.4). GRACE — a
+ * failed renewal the provider is still retrying while it keeps access open —
+ * entitles exactly like ACTIVE (BILL-04). The one-ACTIVE-row invariant covers
+ * this whole set: at most one entitling row per tenant.
+ */
+const ENTITLING_STATUSES = ['ACTIVE', 'GRACE'];
+
+/**
+ * Statuses that END entitlement while the tenant still has a plan on record —
+ * it must read as 0 branches, never fall through to the legacy defaults in
+ * resolveMaxBranches (BILL-02, BILL-04).
+ */
+const ENDED_STATUSES = ['REVOKED', 'ON_HOLD', 'PAUSED'];
+
+/**
+ * A tenant whose plan is in any of these (and has no entitling row) is
+ * entitled to 0 branches — never the legacy defaults. EXPIRED joins the ended
+ * states here (spec §7.5.8): a lapsed plan, e.g. an unpaid pay-later grace
+ * (BILL-13), must not fall back to the registration package.
+ */
+const NO_FALLBACK_STATUSES = [...ENDED_STATUSES, 'EXPIRED'];
+
+/** The tenant's current entitlement — the most recently created entitling (ACTIVE or GRACE) subscription, if any. */
 const getActiveSubscription = async (tenantId, { transaction } = {}) => {
   return TenantSubscription.findOne({
-    where: { tenantId, status: 'ACTIVE' },
+    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
     include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches', 'maxOrganizations'] }],
     order: [['createdAt', 'DESC']],
     transaction,
@@ -43,10 +66,14 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
   if (activeSub && activeSub.package) {
     return activeSub.package.maxBranches;
   }
-  // A refunded/charged-back/revoked subscription must not fall through to the
-  // legacy defaults below, which would hand the tenant its registration
-  // package (or 1 branch) back for free (BILL-02, spec §7.5.7).
-  if (!activeSub && (await TenantSubscription.count({ where: { tenantId: tenant.id, status: 'REVOKED' }, transaction })) > 0) {
+  // A refunded/charged-back/revoked, held, paused or lapsed subscription must
+  // not fall through to the legacy defaults below, which would hand the tenant
+  // its registration package (or 1 branch) back for free (BILL-02, BILL-04,
+  // BILL-13).
+  if (
+    !activeSub &&
+    (await TenantSubscription.count({ where: { tenantId: tenant.id, status: { [Op.in]: NO_FALLBACK_STATUSES } }, transaction })) > 0
+  ) {
     return 0;
   }
   if (tenant.selectedPackageId) {
@@ -234,7 +261,7 @@ const reconcileCapacity = async (
     // Any previously-set over-quota flag is now resolved.
     await TenantSubscription.update(
       { overQuotaCount: 0 },
-      { where: { tenantId, status: 'ACTIVE' }, transaction }
+      { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
     );
     return { overQuotaCount: 0, trimmedSlots: 0 };
   }
@@ -278,7 +305,7 @@ const reconcileCapacity = async (
   // plan — never resolved by deleting or hiding anything, only flagged.
   await TenantSubscription.update(
     { overQuotaCount: Math.max(0, remaining) },
-    { where: { tenantId, status: 'ACTIVE' }, transaction }
+    { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
   );
 
   return { overQuotaCount: Math.max(0, remaining), trimmedSlots };
@@ -391,7 +418,27 @@ const auditCapacity = async (tenantId, tenantDb) => {
   };
 };
 
+/**
+ * HOOK FOR CAP-01 (Prompt 1C — branch billing lock). Nothing calls it yet.
+ *
+ * The real branches the host chose to keep when the plan went down (BILL-03,
+ * spec §7.5.4): the keep-list stored with the tenant's entitling row once the
+ * provider applied that plan. CAP-01 locks `overQuotaCount` branches after the
+ * over-quota grace (R-3, 7 days): the ones NOT in this list first, otherwise
+ * the most recently created. Null when the host made no choice.
+ * @returns {Promise<string[]|null>}
+ */
+const getBranchesToKeep = async (tenantId, { transaction } = {}) => {
+  const sub = await getActiveSubscription(tenantId, { transaction });
+  const change = sub?.pendingChange;
+  if (!change || !change.appliedAt || change.billingPlanId !== sub.billingPlanId) return null;
+  return Array.isArray(change.keepBranchIds) ? change.keepBranchIds : null;
+};
+
 module.exports = {
+  ENTITLING_STATUSES,
+  getBranchesToKeep,
+  ENDED_STATUSES,
   recordCapacityEvent,
   getActiveSubscription,
   resolveMaxBranches,

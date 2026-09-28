@@ -91,6 +91,7 @@ const _processGoogle = async (payload) => {
 
   const synced = await googlePlayBilling.syncFromGoogle({ purchaseToken, revoked, throwOnAckFailure: true });
   if (!synced) return { outcome: 'IGNORED', note: 'No GymsEra tenant owns this purchase token' };
+  if (synced.pending) return { outcome: 'IGNORED', note: `Not paid: ${synced.paymentState} — nothing granted (BILL-08)` };
   return { outcome: 'PROCESSED' };
 };
 
@@ -151,6 +152,29 @@ const processPendingEvents = async ({ limit = 50 } = {}) => {
 };
 
 /**
+ * Re-fetches one store-backed row from its provider through that provider's
+ * one sync entry point (the same one webhooks and the app's /sync use).
+ */
+const refreshStoreSubscription = async (row) => {
+  if (row.platform === 'IOS') {
+    return require('./apple-billing.service').syncFromApple({
+      transactionId: row.externalOriginalTransactionId,
+      tenantId: row.tenantId,
+    });
+  }
+  if (row.platform === 'ANDROID') {
+    return require('./google-play-billing.service').syncFromGoogle({
+      purchaseToken: row.externalOriginalTransactionId,
+      tenantId: row.tenantId,
+    });
+  }
+  if (row.platform === 'STRIPE') {
+    return require('./stripe-billing.service').syncFromStripe({ subscriptionId: row.externalOriginalTransactionId });
+  }
+  throw new Error(`Not a store-backed subscription: ${row.platform}`);
+};
+
+/**
  * Daily safety net for notifications that never arrived: every store-backed
  * row that can still carry entitlement is re-fetched through the same sync
  * entry point (spec §7.6).
@@ -159,7 +183,8 @@ const reconcileStoreSubscriptions = async () => {
   const rows = await TenantSubscription.findAll({
     where: {
       platform: { [Op.in]: ['IOS', 'ANDROID', 'STRIPE'] },
-      status: { [Op.in]: ['ACTIVE', 'PENDING_CANCEL', 'SCHEDULED'] },
+      // GRACE / ON_HOLD / PAUSED can still recover (or lapse) at the provider (BILL-04).
+      status: { [Op.in]: ['ACTIVE', 'GRACE', 'ON_HOLD', 'PAUSED', 'PENDING_CANCEL', 'SCHEDULED'] },
       externalOriginalTransactionId: { [Op.ne]: null },
     },
     attributes: ['id', 'tenantId', 'platform', 'externalOriginalTransactionId'],
@@ -167,19 +192,7 @@ const reconcileStoreSubscriptions = async () => {
   let failed = 0;
   for (const row of rows) {
     try {
-      if (row.platform === 'IOS') {
-        await require('./apple-billing.service').syncFromApple({
-          transactionId: row.externalOriginalTransactionId,
-          tenantId: row.tenantId,
-        });
-      } else if (row.platform === 'ANDROID') {
-        await require('./google-play-billing.service').syncFromGoogle({
-          purchaseToken: row.externalOriginalTransactionId,
-          tenantId: row.tenantId,
-        });
-      } else {
-        await require('./stripe-billing.service').syncFromStripe({ subscriptionId: row.externalOriginalTransactionId });
-      }
+      await refreshStoreSubscription(row);
     } catch (err) {
       failed++;
       console.warn(`[BillingEvent] Daily reconciliation failed for subscription ${row.id} (${row.platform}): ${err.message}`);
@@ -215,6 +228,7 @@ module.exports = {
   processEvent,
   receiveEvent,
   processPendingEvents,
+  refreshStoreSubscription,
   reconcileStoreSubscriptions,
   sweepGoogleVoidedPurchases,
 };

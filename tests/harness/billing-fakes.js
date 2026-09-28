@@ -23,6 +23,8 @@ const appleTransaction = ({
   expiresInDays = 30,
   revocationDate = null,
   appAccountToken = undefined,
+  price = undefined, // milliunits, as Apple reports it (4990000 = 4990.00)
+  currency = undefined,
 }) => ({
   originalTransactionId,
   transactionId,
@@ -32,6 +34,7 @@ const appleTransaction = ({
   environment: 'Sandbox',
   ...(revocationDate ? { revocationDate } : {}),
   ...(appAccountToken ? { appAccountToken } : {}),
+  ...(price !== undefined ? { price, currency } : {}),
 });
 
 /**
@@ -69,6 +72,7 @@ const googlePurchase = ({
   latestOrderId = 'GPA.0000-0000-0000-00001',
   acknowledgementState = 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED',
   obfuscatedExternalAccountId = undefined,
+  recurringPrice = undefined, // { currencyCode, units, nanos }, as Play reports it
 }) => ({
   subscriptionState: state,
   latestOrderId,
@@ -81,7 +85,7 @@ const googlePurchase = ({
       productId,
       expiryTime: new Date(Date.now() + expiresInDays * DAY).toISOString(),
       offerDetails: { basePlanId },
-      autoRenewingPlan: { autoRenewEnabled: true },
+      autoRenewingPlan: { autoRenewEnabled: true, ...(recurringPrice ? { recurringPrice } : {}) },
     },
   ],
 });
@@ -106,7 +110,9 @@ const rtdnBody = ({ messageId, notification }) => ({
 });
 
 /** A Stripe subscription object, as Stripe's API would report it. */
-const stripeSubscription = ({ id, priceId, status = 'active', tenantId, cancelAtPeriodEnd = false }) => ({
+const stripeSubscription = ({
+  id, priceId, status = 'active', tenantId, cancelAtPeriodEnd = false, unitAmount = undefined, currency = 'pkr',
+}) => ({
   id,
   object: 'subscription',
   status,
@@ -115,7 +121,8 @@ const stripeSubscription = ({ id, priceId, status = 'active', tenantId, cancelAt
   items: {
     data: [
       {
-        price: { id: priceId },
+        price: { id: priceId, ...(unitAmount !== undefined ? { unit_amount: unitAmount, currency } : {}) },
+        quantity: 1,
         current_period_start: Math.floor((Date.now() - DAY) / 1000),
         current_period_end: Math.floor((Date.now() + 30 * DAY) / 1000),
       },

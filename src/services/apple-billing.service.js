@@ -154,6 +154,13 @@ const findPlanForProductId = async (productId) => {
 };
 
 /**
+ * App Store Server API subscription status -> our status (BILL-04, spec §7.4):
+ * 1 active, 2 expired, 3 billing retry (Apple has stopped access), 4 billing
+ * grace period (Apple still gives access), 5 revoked.
+ */
+const APPLE_STATUS = { 1: 'ACTIVE', 2: 'EXPIRED', 3: 'ON_HOLD', 4: 'GRACE', 5: 'REVOKED' };
+
+/**
  * Maps a verified Apple transaction to TenantSubscription values and applies
  * them through subscription-migration.service.js#applyVerifiedSubscription —
  * the one write path shared by every provider, the app's /sync and every
@@ -169,6 +176,35 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
   const expiresAt = decodedTransaction.expiresDate ? new Date(Number(decodedTransaction.expiresDate)) : null;
   const isAnnual = decodedTransaction.productId === plan.iosAnnualProductId;
   const revoked = !!decodedTransaction.revocationDate;
+  const renewalInfo = decodedTransaction.renewalInfo || null;
+  // Apple's subscription status (from getLatestTransaction) decides; without
+  // it (a plain transaction lookup) the expiry date does, as before.
+  const status =
+    revoked ? 'REVOKED'
+      : APPLE_STATUS[decodedTransaction.subscriptionStatus] ||
+        (expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE');
+
+  // BILL-03: the plan in effect is the transaction's product. An in-group
+  // downgrade only takes effect at renewal; until then Apple names the next
+  // product in renewalInfo.autoRenewProductId — recorded as pendingChange,
+  // never applied early. No renewal info (plain lookup) = unknown (undefined).
+  let upcomingChange;
+  if (renewalInfo) {
+    const nextProductId = renewalInfo.autoRenewProductId;
+    const renews = renewalInfo.autoRenewStatus == null || Number(renewalInfo.autoRenewStatus) === 1;
+    upcomingChange = null;
+    if (renews && nextProductId && nextProductId !== decodedTransaction.productId) {
+      const nextPlan = await findPlanForProductId(nextProductId).catch(() => null);
+      if (nextPlan && nextPlan.id !== plan.id) {
+        upcomingChange = {
+          billingPlanId: nextPlan.id,
+          branchCount: nextPlan.branchCount,
+          productId: nextProductId,
+          effectiveAt: expiresAt ? expiresAt.toISOString() : null,
+        };
+      }
+    }
+  }
 
   const values = {
     platform: 'IOS',
@@ -180,14 +216,20 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     environment: decodedTransaction.environment === 'Production' ? 'PRODUCTION' : 'SANDBOX',
     startDate: new Date(Number(decodedTransaction.purchaseDate)).toISOString().split('T')[0],
     endDate: expiresAt ? expiresAt.toISOString().split('T')[0] : null,
-    // Written only on a new row or a real plan change — see
+    // Catalog price: only a fallback when Apple reports no price — see
     // subscription-migration.service.js#applyVerifiedSubscription.
     amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
+    currency: plan.currency,
     billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
+    // What Apple actually charged (BILL-05): `price` in milliunits of `currency`.
+    chargedAmount: decodedTransaction.price != null ? Math.round(Number(decodedTransaction.price) / 10) / 100 : null,
+    chargedCurrency: decodedTransaction.price != null ? decodedTransaction.currency || null : null,
+    upcomingChange,
     // revocationDate = Apple refunded or revoked it (REFUND / REVOKE
     // notifications): not entitled from now on (BILL-02).
-    status: revoked ? 'REVOKED' : expiresAt && expiresAt < new Date() ? 'EXPIRED' : 'ACTIVE',
-    autoRenew: !revoked,
+    status,
+    // Turning auto-renew off changes nothing else: entitled to the period end (§7.4).
+    autoRenew: !revoked && (renewalInfo?.autoRenewStatus == null || Number(renewalInfo.autoRenewStatus) === 1),
     paymentStatus: 'PAID',
     lastVerifiedAt: new Date(),
   };
@@ -204,7 +246,10 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
 /**
  * Apple's current truth for a subscription, given any of its transaction ids:
  * the latest signed transaction from the App Store Server API's subscription
- * status endpoint — never what a notification payload claims (BILL-12).
+ * status endpoint — never what a notification payload claims (BILL-12). The
+ * same response's `status` and signed renewal info are attached as
+ * `subscriptionStatus` / `renewalInfo` (grace, billing retry, auto-renew —
+ * BILL-04; the upcoming product — BILL-03).
  */
 const getLatestTransaction = async (transactionId) => {
   const axios = require('axios');
@@ -216,7 +261,11 @@ const getLatestTransaction = async (transactionId) => {
   for (const group of response.data?.data || []) {
     for (const last of group.lastTransactions || []) {
       if (String(last.originalTransactionId) === originalId && last.signedTransactionInfo) {
-        return appleApi.verifyAndDecode(last.signedTransactionInfo);
+        return {
+          ...appleApi.verifyAndDecode(last.signedTransactionInfo),
+          subscriptionStatus: last.status ?? null,
+          renewalInfo: last.signedRenewalInfo ? appleApi.verifyAndDecode(last.signedRenewalInfo) : null,
+        };
       }
     }
   }

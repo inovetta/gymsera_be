@@ -4,16 +4,19 @@ const {
   setupTestDatabases,
   teardownTestDatabases,
 } = require('../harness');
-const app = require('../../app');
+const { startTestServer, stopTestServer } = require('../harness/test-server');
 
 describe('NEW-31: /discovery/debug-activate-branches route is removed (resolves NEW-01)', () => {
   let dbHarness;
+  let app;
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
+    app = await startTestServer();
   });
 
   afterAll(async () => {
+    await stopTestServer();
     await teardownTestDatabases();
   });
 

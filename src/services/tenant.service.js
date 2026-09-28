@@ -248,7 +248,10 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
     console.warn('[Notification Error] Failed to create tenant review notification:', notifErr.message);
   }
 
-  if (tenant.selectedPackageId) {
+  // "Pay later" gets no plan at submission: approval gives it a time-limited
+  // GRACE plan instead (BILL-13, subscription-migration.service.js#startPayLaterGrace).
+  // It used to get an ACTIVE plan for the whole package cycle here, unpaid.
+  if (tenant.selectedPackageId && tenant.paymentMethod !== 'PAY_LATER') {
     const existingSub = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
     if (!existingSub) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);

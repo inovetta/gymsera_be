@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
+const authorize = require('../middleware/authorize');
 const controller = require('../controllers/billing.controller');
 
 const router = Router();
@@ -53,6 +54,52 @@ router.get('/plans', controller.getPlans);
  *       200: { description: Subscription synced }
  */
 router.post('/ios/sync', authenticate, controller.syncIosPurchase);
+
+/**
+ * @swagger
+ * /billing/downgrade-preview:
+ *   get:
+ *     summary: What a downgrade to a smaller plan means (BILL-03)
+ *     description: >
+ *       New branch count, active branches and reserved slots, and whether the
+ *       owner must choose which branches to keep before buying the smaller
+ *       plan at the store. Owner only.
+ *     tags: [Billing]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: query, name: billingPlanId, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: Downgrade preview }
+ *       400: { description: Not a downgrade }
+ *       409: { description: No in-app plan on this account }
+ */
+router.get('/downgrade-preview', authenticate, authorize('GYM_HOST'), controller.getDowngradePreview);
+
+/**
+ * @swagger
+ * /billing/downgrade-choice:
+ *   put:
+ *     summary: Choose the branches to keep on a downgrade (BILL-03)
+ *     description: >
+ *       Stored with the plan's pendingChange. The plan changes only when the
+ *       store applies the downgrade at renewal. Owner only.
+ *     tags: [Billing]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [billingPlanId]
+ *             properties:
+ *               billingPlanId: { type: string }
+ *               keepBranchIds: { type: array, items: { type: string } }
+ *     responses:
+ *       200: { description: Branch choice saved }
+ *       400: { description: Invalid choice }
+ *       409: { description: A different change is scheduled at the store }
+ */
+router.put('/downgrade-choice', authenticate, authorize('GYM_HOST'), controller.putDowngradeChoice);
 
 /**
  * @swagger
