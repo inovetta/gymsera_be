@@ -339,48 +339,6 @@ router.get('/system/recycle', (req, res) => {
   }, 300);
 });
 
-router.get('/debug-sync-db', async (_req, res) => {
-  try {
-    const { sequelize: platformSeq } = require('../database/platform');
-    require('../models/platform');
-    await platformSeq.sync({ alter: true });
-    const platformStatus = 'Platform DB synced successfully';
-
-    const { Sequelize } = require('sequelize');
-    const { Tenant } = require('../models/platform');
-    const registerTenantModels = require('../models/tenant');
-    const { decrypt } = require('../utils/crypto.utils');
-
-    const tenants = await Tenant.findAll();
-    const results = [];
-
-    for (const tenant of tenants) {
-      if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
-        const connUrl = decrypt(tenant.connectionStringEncrypted);
-        const tenantSeq = new Sequelize(connUrl, {
-          dialect: 'mysql',
-          logging: false,
-        });
-        try {
-          await tenantSeq.authenticate();
-          registerTenantModels(tenantSeq);
-          await tenantSeq.sync({ force: false, alter: true });
-          results.push({ tenant: tenant.tenantCode, status: 'SUCCESS' });
-        } catch (err) {
-          results.push({ tenant: tenant.tenantCode, status: 'FAILED', error: err.message });
-        } finally {
-          await tenantSeq.close();
-        }
-      } else {
-        results.push({ tenant: tenant.tenantCode, status: 'PENDING_PROVISIONING' });
-      }
-    }
-
-    res.json({ success: true, platformStatus, results });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 router.get('/debug-cleanup-indexes', async (_req, res) => {
   try {
