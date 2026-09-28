@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1B — Billing lifecycle** (BILL-04, BILL-05, BILL-03, BILL-13, FLOW-03, BILL-08) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BILL-13 |
+| Issue in progress | FLOW-03 |
 | Step within issue | verify / root cause <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -38,7 +38,7 @@ main at ea1d4df. **Not pushed, not merged** — the owner reviews and merges.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> BILL-13: pay-later. `finalizeApplication` (tenant.service.js) must not create an ACTIVE row for PAY_LATER; approval (tenant-provisioning step 10) creates a MANUAL GRACE row, branchCount=1, endDate = approval + PAY_LATER_GRACE_DAYS (new single config value); admin verify endpoint (audited) → ACTIVE; the existing daily cron expires unpaid GRACE MANUAL rows → EXPIRED → 0 branches. Test: `tests/integration/billing-pay-later.test.js`.
+> FLOW-03: at approval (tenant-provisioning step 1b/10), before creating any plan, look for a provider-backed row of this tenant (e.g. Stripe from the card step). If one exists, link/activate it and create nothing else; otherwise MANUAL/pending for the chosen method. Test: `tests/integration/flow-03-one-entitlement.test.js`.
 
 ### Work in progress that is NOT committed
 
@@ -59,7 +59,7 @@ main at ea1d4df. **Not pushed, not merged** — the owner reviews and merges.
 - [x] 1. BILL-04 — GRACE / ON_HOLD / PAUSED (p004) (be f5543f2)
 - [x] 2. BILL-05 — amount/currency from the provider's charge (be e7d61f5)
 - [x] 3. BILL-03 — deferred downgrade, pendingChange + keepBranchIds (be 900506e, app b8909df; lock = CAP-01)
-- [ ] 4. BILL-13 — pay-later GRACE MANUAL row, PAY_LATER_GRACE_DAYS
+- [x] 4. BILL-13 — pay-later GRACE MANUAL row, PAY_LATER_GRACE_DAYS (be fc76f8b)
 - [ ] 5. FLOW-03 — one entitlement at approval
 - [ ] 6. BILL-08 — Google PENDING purchases
 - [ ] §13 rows, 3 full runs, report
