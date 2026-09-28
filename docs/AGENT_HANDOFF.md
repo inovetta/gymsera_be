@@ -141,12 +141,17 @@ reviews and merges.
     apply + re-run.
   - `subscription-expiry.cron.js` computes "today" as local midnight printed in UTC, so east of UTC (Pakistan) a plan
     expires one day late. Pre-existing; not changed. The pay-later tests advance the clock 16 days because of it.
-  - **Intermittent failure — OPEN, not diagnosed:** in 1 of 7 consecutive full `npm test` runs at the end of 1B,
-    `billing-downgrade.test.js` › "a store-confirmed downgrade without a keep-list…" failed; the message was not
-    captured. Not reproduced in 4 more full runs (JSON reports) or 6 runs of the file alone. The file took 41.6 s that
-    run vs 14.5–30.6 s normally, with no slow test inside — points to a setup hook (e.g. `resetTestDatabases` TRUNCATE)
-    stalling past the 30 s timeout, not to the billing logic. Next agent: run the suite with
-    `--json --outputFile` until it recurs and read `failureMessages`.
+  - **Intermittent full-suite failure — cause proven and fixed (TEST-FLAKE-1B, be e9feaf7, §13):** supertest ran the
+    bare app on a random port on every address but called 127.0.0.1; on macOS that port can belong to another program
+    bound to 127.0.0.1 only. Tests now call `tests/harness/test-server.js#startTestServer` (listening on 127.0.0.1);
+    `tests/harness/loopback-listen.js` refuses a bare `request(app)` with a clear message. **New test files: use
+    `startTestServer`, never `request(require('../../app'))`.**
+  - Still open (not the flake): Jest needs `--forceExit` — 33 Redis sockets (Bull queues, `src/jobs/queues.js:36`, never
+    closed; tests use the developer's local Redis on 6379) and 3 MySQL sockets remain; `src/models/platform/index.js:46`
+    runs `DeviceToken.sync()` un-awaited at require time.
+  - Security, still live on production (already tracked P0, not fixed): NEW-04 `/debug-sync-db` (unauthenticated
+    `sync({alter:true})` on every database) and NEW-05 `/system/recycle` etc. behind a key committed in git
+    (`src/routes/index.js:326-470`).
   - Remaining client work from 1B: mobile "choose branches to keep" screen (API exists: `GET /billing/downgrade-preview`,
     `PUT /billing/downgrade-choice`); CMS admin "Verify payment" button (`POST /admin/tenants/:id/subscriptions/:subId/verify-payment`);
     host countdown/banner from `paymentIssue` on `GET /host/subscription/current` (mobile, CMS, web).
@@ -174,3 +179,4 @@ reviews and merges.
 | 14 | 2026-09-28 | Claude Code (Opus 5.5) | R-21 (1A follow-up) | R-21 read-only endpoint; NEW-18 recorded | task complete | yes |
 | 15 | 2026-09-28 | Claude Code (Opus 5.5) | docs: owner decisions 1B | R-2, R-3, R-4 marked DECIDED 2026-09-28; R-22 pay-later grace added (owner confirmation pending) | task complete | yes |
 | 16 | 2026-09-28 | Claude Code (Opus 5.5) | Prompt 1B | BILL-04, BILL-05, BILL-03 (lock = CAP-01), BILL-13, FLOW-03, BILL-08 | task complete | yes |
+| 17 | 2026-09-28 | Claude Code (Opus 5.5) | 1B close-out | TEST-FLAKE-1B (cause proven, fixed); backward-compat report; NEW-19…NEW-25 + §16 sandbox list | task complete | yes |
