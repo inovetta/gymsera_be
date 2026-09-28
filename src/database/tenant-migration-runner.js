@@ -242,6 +242,26 @@ const MIGRATIONS = [
       return { alignedCount: tablesToConvert.size };
     },
   },
+  {
+    version: 8,
+    name: '008_add_branch_admin_suspended_columns',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      const qi = sequelize.getQueryInterface();
+
+      const ensureCol = async (table, col, ddl) => {
+        const cols = await qi.describeTable(table).catch(() => ({}));
+        if (cols && !cols[col]) {
+          await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN ${ddl}`).catch(() => {});
+        }
+      };
+
+      await ensureCol('branches', 'admin_suspended', '`admin_suspended` TINYINT(1) NOT NULL DEFAULT 0');
+      await ensureCol('branches', 'admin_suspended_reason', '`admin_suspended_reason` TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
+      await ensureCol('branches', 'admin_suspended_at', '`admin_suspended_at` DATETIME NULL');
+      await ensureCol('branches', 'admin_suspended_by', '`admin_suspended_by` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

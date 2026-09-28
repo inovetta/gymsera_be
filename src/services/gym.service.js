@@ -789,6 +789,10 @@ const updateBranch = async (tenantDb, branchId, data) => {
     throw createError('Cannot make a deleted branch visible to travelers — restore it first', 400);
   }
 
+  if (data.travelerVisibilityStatus === 'active' && branch.adminSuspended) {
+    throw createError('Cannot make a suspended branch visible to travelers — administrator review required', 403);
+  }
+
   // Publishing to travelers requires at least 1 active public membership plan.
   if (data.travelerVisibilityStatus === 'active') {
     const activePublicPlansCount = await MembershipPlan.count({

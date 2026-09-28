@@ -598,21 +598,162 @@ const getTenantBranches = async (tenantId) => {
 // gymService.deleteBranch/restoreBranch every other deactivate/reactivate
 // path already goes through, so this admin action gets the exact same
 // guarantees instead of a second, ungoverned copy of the logic.
-const updateTenantBranchStatus = async (tenantId, branchId, status, adminUserId) => {
+// ── suspendTenantBranch (admin disable for policy reasons) ───────────────────
+// CAP-04: Admin disabling for policy reasons is a distinct concept from
+// host/admin deletion. It flags adminSuspended: true, hides the branch from
+// public discovery, and logs an audit trail, while leaving the tenant's capacity
+// completely unchanged (does NOT decrement usage or credit reservedSlots).
+const suspendTenantBranch = async (tenantId, branchId, reason, adminUserId) => {
+  const tenantDb = await _getTenantDb(tenantId);
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch) throw createError('Branch not found', 404);
+
+  const beforeState = {
+    adminSuspended: !!branch.adminSuspended,
+    adminSuspendedReason: branch.adminSuspendedReason || null,
+    travelerVisibilityStatus: branch.travelerVisibilityStatus,
+    status: branch.status,
+  };
+
+  const trimReason = reason ? String(reason).trim() : 'Suspended by administrator for policy reasons';
+
+  await branch.update({
+    adminSuspended: true,
+    adminSuspendedReason: trimReason,
+    adminSuspendedAt: new Date(),
+    adminSuspendedBy: adminUserId || null,
+    travelerVisibilityStatus: 'deactivated',
+  });
+
+  // 1. Audit trail in tenant DB AuditLog
+  const { AuditLog, BranchVisibilityHistory } = tenantDb.models;
+  if (AuditLog) {
+    await AuditLog.create({
+      branchId: branch.id,
+      actorUserId: adminUserId,
+      actorRoleKey: 'PLATFORM_ADMIN',
+      action: 'branch.admin_suspend',
+      targetType: 'branch',
+      targetId: branch.id,
+      beforeState,
+      afterState: {
+        adminSuspended: true,
+        adminSuspendedReason: trimReason,
+        travelerVisibilityStatus: 'deactivated',
+        status: branch.status,
+      },
+    }).catch(() => {});
+  }
+
+  // 2. Audit trail in BranchVisibilityHistory
+  if (BranchVisibilityHistory) {
+    await BranchVisibilityHistory.create({
+      branchId: branch.id,
+      status: 'deactivated',
+      reason: trimReason,
+      changedBy: adminUserId,
+      changedAt: new Date(),
+    }).catch(() => {});
+  }
+
+  // 3. Notify the host
+  try {
+    const [actualTenantId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId];
+    const tenant = await Tenant.findByPk(actualTenantId);
+    if (tenant && tenant.ownerUserId) {
+      const notificationsService = require('./notifications.service');
+      notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        role: 'host',
+        type: 'branch_suspended',
+        title: 'Branch Suspended by Administrator',
+        message: `Your branch "${branch.branchName}" has been suspended for policy reasons: ${trimReason}`,
+        priority: 'high',
+        deepLink: '/host/branches',
+        metadataJson: { event: 'branch_suspended', branchId: branch.id, reason: trimReason },
+      }).catch(() => {});
+    }
+  } catch (_) {}
+
+  return { branch };
+};
+
+// ── unsuspendTenantBranch (admin enable) ───────────────────────────────────────
+const unsuspendTenantBranch = async (tenantId, branchId, adminUserId) => {
+  const tenantDb = await _getTenantDb(tenantId);
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch) throw createError('Branch not found', 404);
+
+  const beforeState = {
+    adminSuspended: !!branch.adminSuspended,
+    adminSuspendedReason: branch.adminSuspendedReason || null,
+    travelerVisibilityStatus: branch.travelerVisibilityStatus,
+    status: branch.status,
+  };
+
+  await branch.update({
+    adminSuspended: false,
+    adminSuspendedReason: null,
+    adminSuspendedAt: null,
+    adminSuspendedBy: null,
+  });
+
+  const { AuditLog } = tenantDb.models;
+  if (AuditLog) {
+    await AuditLog.create({
+      branchId: branch.id,
+      actorUserId: adminUserId,
+      actorRoleKey: 'PLATFORM_ADMIN',
+      action: 'branch.admin_unsuspend',
+      targetType: 'branch',
+      targetId: branch.id,
+      beforeState,
+      afterState: {
+        adminSuspended: false,
+        status: branch.status,
+      },
+    }).catch(() => {});
+  }
+
+  return { branch };
+};
+
+// ── deleteTenantBranch (admin delete calling deleteBranch) ───────────────────
+const deleteTenantBranch = async (tenantId, branchId, adminUserId, { confirmOrganizationDeletion = false } = {}) => {
+  const tenantDb = await _getTenantDb(tenantId);
+  const gymService = require('./gym.service');
+  await gymService.deleteBranch(tenantDb, branchId, adminUserId, { confirmOrganizationDeletion });
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  return { branch };
+};
+
+// ── updateTenantBranchStatus (admin) ─────────────────────────────────────────
+// Delegates to deleteTenantBranch (for INACTIVE), restoreBranch / unsuspend (for ACTIVE),
+// or suspendTenantBranch (for SUSPENDED). Never writes status directly.
+const updateTenantBranchStatus = async (tenantId, branchId, status, adminUserId, reason = null) => {
   const [actualTenantId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId];
   const tenantDb = await _getTenantDb(tenantId);
   const gymService = require('./gym.service');
 
-  if (status === 'INACTIVE') {
-    await gymService.deleteBranch(tenantDb, branchId, adminUserId);
+  if (status === 'SUSPENDED') {
+    return await suspendTenantBranch(tenantId, branchId, reason, adminUserId);
+  } else if (status === 'INACTIVE') {
+    return await deleteTenantBranch(tenantId, branchId, adminUserId, { confirmOrganizationDeletion: true });
   } else if (status === 'ACTIVE') {
-    await gymService.restoreBranch(tenantDb, actualTenantId, branchId, adminUserId);
-  } else {
-    throw createError('status must be ACTIVE or INACTIVE', 400);
-  }
+    const branch = await tenantDb.models.Branch.findByPk(branchId);
+    if (!branch) throw createError('Branch not found', 404);
 
-  const branch = await tenantDb.models.Branch.findByPk(branchId);
-  return { branch };
+    if (branch.adminSuspended) {
+      await unsuspendTenantBranch(tenantId, branchId, adminUserId);
+    }
+    if (branch.status === 'INACTIVE') {
+      await gymService.restoreBranch(tenantDb, actualTenantId, branchId, adminUserId);
+    }
+    await branch.reload();
+    return { branch };
+  } else {
+    throw createError('status must be ACTIVE, INACTIVE, or SUSPENDED', 400);
+  }
 };
 
 // ── getTenantMembers (admin) ──────────────────────────────────────────────────
@@ -1405,7 +1546,9 @@ const getBranchVisibilityHistory = async (branchId) => {
 
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
-  reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
+  reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus,
+  suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
+  getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,

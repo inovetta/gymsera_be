@@ -191,8 +191,27 @@ router.get('/tenants/:id/branches', adminController.getTenantBranches);
 
 router.patch(
   '/tenants/:id/branches/:branchId/status',
-  validate([body('status').isIn(['ACTIVE', 'INACTIVE']).withMessage('status must be ACTIVE or INACTIVE')]),
+  validate([
+    body('status').isIn(['ACTIVE', 'INACTIVE', 'SUSPENDED']).withMessage('status must be ACTIVE, INACTIVE, or SUSPENDED'),
+    body('reason').optional({ nullable: true }).trim(),
+  ]),
   adminController.updateTenantBranchStatus
+);
+
+router.post(
+  '/tenants/:id/branches/:branchId/suspend',
+  validate([body('reason').trim().notEmpty().withMessage('Suspension reason is required')]),
+  adminController.suspendTenantBranch
+);
+
+router.post(
+  '/tenants/:id/branches/:branchId/unsuspend',
+  adminController.unsuspendTenantBranch
+);
+
+router.delete(
+  '/tenants/:id/branches/:branchId',
+  adminController.deleteTenantBranch
 );
 
 router.get('/tenants/:id/members', adminController.getTenantMembers);

@@ -100,9 +100,57 @@ const updateTenantBranchStatus = async (req, res, next) => {
       req.params.id,
       req.params.branchId,
       req.body.status,
-      req.user.sub || req.user.id
+      req.user.sub || req.user.id,
+      req.body.reason
     );
     return sendSuccess(res, result, 'Branch status updated.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /admin/tenants/:id/branches/:branchId/suspend ────────────────────────
+const suspendTenantBranch = async (req, res, next) => {
+  try {
+    const result = await adminService.suspendTenantBranch(
+      req.params.id,
+      req.params.branchId,
+      req.body.reason,
+      req.user.sub || req.user.id
+    );
+    return sendSuccess(res, result, 'Branch suspended by administrator.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /admin/tenants/:id/branches/:branchId/unsuspend ──────────────────────
+const unsuspendTenantBranch = async (req, res, next) => {
+  try {
+    const result = await adminService.unsuspendTenantBranch(
+      req.params.id,
+      req.params.branchId,
+      req.user.sub || req.user.id
+    );
+    return sendSuccess(res, result, 'Branch unsuspended by administrator.');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /admin/tenants/:id/branches/:branchId ──────────────────────────────
+const deleteTenantBranch = async (req, res, next) => {
+  try {
+    const confirm = req.body?.confirmOrganizationDeletion === true ||
+      req.query?.confirm === 'true' ||
+      req.query?.confirmOrganizationDeletion === 'true';
+    const result = await adminService.deleteTenantBranch(
+      req.params.id,
+      req.params.branchId,
+      req.user.sub || req.user.id,
+      { confirmOrganizationDeletion: confirm }
+    );
+    return sendSuccess(res, result, 'Branch deleted.');
   } catch (err) {
     next(err);
   }
@@ -408,7 +456,9 @@ const getBranchVisibilityHistory = async (req, res, next) => {
 
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
-  reactivateTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
+  reactivateTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus,
+  suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
+  getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,
