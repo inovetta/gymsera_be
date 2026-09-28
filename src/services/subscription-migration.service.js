@@ -54,10 +54,14 @@
  *     themselves in Settings / Play Store to avoid being charged again.
  *     GymsEra cannot and does not silently do this for them.
  */
+const { URLSearchParams } = require('url');
 const { Op, UniqueConstraintError } = require('sequelize');
 const { Tenant, TenantSubscription } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
+
+const { ENTITLING_STATUSES, ENDED_STATUSES } = subscriptionQuotaService;
+const _entitling = (status) => ENTITLING_STATUSES.includes(status);
 
 /**
  * @param {string} tenantId
@@ -86,8 +90,10 @@ const requestProviderChange = async (
   const tenant = await Tenant.findByPk(tenantId, { transaction, lock: true });
   if (!tenant) throw new Error(`Tenant ${tenantId} not found`);
 
+  // ACTIVE or GRACE — a row in grace is still the tenant's one entitlement,
+  // so a new purchase supersedes it like an ACTIVE one (BILL-04).
   const currentActive = await TenantSubscription.findOne({
-    where: { tenantId, status: 'ACTIVE' },
+    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
     transaction,
     lock: true,
   });
@@ -252,7 +258,8 @@ const requestProviderChange = async (
 const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { transaction }) => {
   if (!transaction) throw new Error('reconcileRenewalStatus requires a platform-DB transaction');
 
-  if (incomingValues.status !== 'ACTIVE' || existingRow.status === 'ACTIVE') {
+  // "ACTIVE" here means the entitling set (ACTIVE or GRACE, BILL-04).
+  if (!_entitling(incomingValues.status) || _entitling(existingRow.status)) {
     // Not a resurrection attempt: either the provider itself says this
     // subscription is no longer active (always safe to record as-is — a
     // terminal status can never violate the one-ACTIVE-row invariant), or
@@ -267,7 +274,7 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   await Tenant.findByPk(tenantId, { transaction, lock: true });
 
   const otherActive = await TenantSubscription.findOne({
-    where: { tenantId, status: 'ACTIVE', id: { [Op.ne]: existingRow.id } },
+    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES }, id: { [Op.ne]: existingRow.id } },
     transaction,
     lock: true,
   });
@@ -414,7 +421,7 @@ const _applyVerifiedSubscriptionOnce = async (
       // revoke, still reads "active"), so a later resync of the SAME paid
       // period must not undo a revocation. Only a newer paid period — the
       // host paid again — makes a REVOKED row entitled again (BILL-02).
-      if (existing.status === 'REVOKED' && rowValues.status === 'ACTIVE' && !(rowValues.endDate > existing.endDate)) {
+      if (existing.status === 'REVOKED' && _entitling(rowValues.status) && !(rowValues.endDate > existing.endDate)) {
         rowValues.status = 'REVOKED';
       }
       // A renewal/resync for an external id already on file — never a
@@ -423,6 +430,13 @@ const _applyVerifiedSubscriptionOnce = async (
       const reconciledValues = await reconcileRenewalStatus(tenantId, existing, rowValues, { transaction: platformTx });
       await existing.update(reconciledValues, { transaction: platformTx });
       subscription = existing;
+    } else if (!_entitling(rowValues.status)) {
+      // First sight of a subscription the provider already reports as not
+      // entitling (on hold, paused, expired, revoked — e.g. a restore of an old
+      // purchase): record it as it is. It activates nothing and supersedes
+      // nothing, so it never goes through requestProviderChange, which always
+      // creates an ACTIVE row (BILL-04).
+      subscription = await TenantSubscription.create(rowValues, { transaction: platformTx });
     } else {
       const activation = await requestProviderChange(
         tenantId,
@@ -443,7 +457,7 @@ const _applyVerifiedSubscriptionOnce = async (
     // subscription.status, not values.status — reconcileRenewalStatus above can
     // override what was about to be written. Reading values.status would
     // reconcile capacity for a row that was just refused ACTIVE status.
-    if (!reconciledByActivation && subscription.status === 'ACTIVE' && values.branchCount != null) {
+    if (!reconciledByActivation && _entitling(subscription.status) && values.branchCount != null) {
       const tenantDb = await tenantDbFor();
       if (tenantDb) {
         await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
@@ -456,10 +470,11 @@ const _applyVerifiedSubscriptionOnce = async (
       }
     }
 
-    // Entitlement ended by a refund/chargeback/revoke: shrink capacity to what
-    // the tenant is still entitled to, in the same transaction (BILL-02,
-    // spec §7.5.7). Runs once — a replay finds the row already REVOKED.
-    if (previousStatus === 'ACTIVE' && subscription.status === 'REVOKED') {
+    // Entitlement ended by a refund/chargeback/revoke (BILL-02, spec §7.5.7),
+    // or put on hold / paused by the provider (BILL-04, §7.4): shrink capacity
+    // to what the tenant is still entitled to, in the same transaction. Runs
+    // once per transition — a replay finds the row already ended.
+    if (_entitling(previousStatus) && ENDED_STATUSES.includes(subscription.status)) {
       const tenantDb = await tenantDbFor();
       if (tenantDb) {
         const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
@@ -468,7 +483,12 @@ const _applyVerifiedSubscriptionOnce = async (
         await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, entitled, {
           transaction: platformTx,
           previousMaxBranches,
-          idempotencyPrefix: `revoke:${values.platform}:${values.externalOriginalTransactionId}`,
+          // A revoke happens once per subscription. A hold/pause can recur
+          // after a recovery, so its key carries the verified transaction id.
+          idempotencyPrefix:
+            subscription.status === 'REVOKED'
+              ? `revoke:${values.platform}:${values.externalOriginalTransactionId}`
+              : `${subscription.status.toLowerCase()}:${values.platform}:${idempotencyPrefix}`,
           actorType: 'SYSTEM',
         });
       }
@@ -514,4 +534,38 @@ const resolveSubscriptionOwner = async (platform, externalId, boundTenantId = nu
   return tenant ? tenant.id : null;
 };
 
-module.exports = { requestProviderChange, reconcileRenewalStatus, applyVerifiedSubscription, resolveSubscriptionOwner };
+/**
+ * Where the host fixes a failed payment while the row is in GRACE (BILL-04,
+ * spec §7.4): always the provider's own subscription-management page, built
+ * here from fixed addresses and the verified row — never a URL taken from a
+ * request or a notification. Stripe has no fixed page per customer: the host
+ * opens one through our own POST /billing/stripe/portal-session.
+ * @returns {object|null} null unless the row is in GRACE.
+ */
+const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
+const GOOGLE_MANAGE_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
+const paymentIssueFor = (subscription) => {
+  if (!subscription || subscription.status !== 'GRACE') return null;
+  switch (subscription.platform) {
+    case 'IOS':
+      return { provider: 'IOS', manageUrl: APPLE_MANAGE_SUBSCRIPTIONS_URL };
+    case 'ANDROID': {
+      const pkg = process.env.GOOGLE_PLAY_PACKAGE_NAME;
+      if (!pkg || !subscription.productId) return { provider: 'ANDROID', manageUrl: GOOGLE_MANAGE_SUBSCRIPTIONS_URL };
+      const params = new URLSearchParams({ sku: subscription.productId, package: pkg });
+      return { provider: 'ANDROID', manageUrl: `${GOOGLE_MANAGE_SUBSCRIPTIONS_URL}?${params}` };
+    }
+    case 'STRIPE':
+      return { provider: 'STRIPE', manageUrl: null, portalSessionPath: '/api/v1/billing/stripe/portal-session' };
+    default:
+      return { provider: subscription.platform, manageUrl: null };
+  }
+};
+
+module.exports = {
+  requestProviderChange,
+  reconcileRenewalStatus,
+  applyVerifiedSubscription,
+  resolveSubscriptionOwner,
+  paymentIssueFor,
+};

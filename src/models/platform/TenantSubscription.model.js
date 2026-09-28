@@ -97,8 +97,17 @@ module.exports = (sequelize) => {
       // Stripe's webhook confirms. See subscription-migration.service.js.
       // REVOKED: refunded, charged back or revoked at the provider — not
       // entitled from that moment (BILL-02, spec §7.5.7).
+      // GRACE: a renewal payment failed but the provider still grants access
+      // (entitled, like ACTIVE). ON_HOLD: the provider stopped access until
+      // the payment is fixed. PAUSED: paused by the subscriber. Neither is
+      // entitled (BILL-04, spec §7.4). Added by platform migration p004.
+      // ACTIVE and GRACE are the entitling set; at most one such row per
+      // tenant (subscription-quota.service.js#ENTITLING_STATUSES).
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED'),
+        type: DataTypes.ENUM(
+          'ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED',
+          'GRACE', 'ON_HOLD', 'PAUSED'
+        ),
         allowNull: false,
         defaultValue: 'ACTIVE',
       },

@@ -85,18 +85,29 @@ const findPlanForProductId = async (productId, basePlanId) => {
   return plan;
 };
 
-/** Google's subscriptionState enum -> our status vocabulary. */
-const _statusFromSubscriptionState = (subscriptionState) => {
+/**
+ * Google's subscriptionState enum -> our status vocabulary (BILL-04, spec
+ * §7.4). CANCELED only means auto-renew was turned off: the subscriber paid
+ * to the end of the period and stays entitled until then. A state we don't
+ * know is never guessed as ACTIVE — the sync fails and the inbox keeps
+ * retrying/alerting until someone looks.
+ */
+const _statusFromSubscriptionState = (subscriptionState, expiresAt) => {
   switch (subscriptionState) {
     case 'SUBSCRIPTION_STATE_ACTIVE':
-    case 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD':
       return 'ACTIVE';
+    case 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD':
+      return 'GRACE';
+    case 'SUBSCRIPTION_STATE_ON_HOLD':
+      return 'ON_HOLD';
+    case 'SUBSCRIPTION_STATE_PAUSED':
+      return 'PAUSED';
     case 'SUBSCRIPTION_STATE_CANCELED':
-      return 'CANCELLED';
+      return expiresAt && expiresAt > new Date() ? 'ACTIVE' : 'EXPIRED';
     case 'SUBSCRIPTION_STATE_EXPIRED':
       return 'EXPIRED';
     default:
-      return 'ACTIVE';
+      throw createError(`Google Play reported an unknown subscription state "${subscriptionState}"`, 502);
   }
 };
 
@@ -124,7 +135,7 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
   // `revoked`: Google reported this purchase refunded/revoked (RTDN
   // SUBSCRIPTION_REVOKED, a voided-purchase notification, or the Voided
   // Purchases API) — a subscriptionsv2 read alone can't always show it (BILL-02).
-  const status = revoked ? 'REVOKED' : _statusFromSubscriptionState(purchase.subscriptionState);
+  const status = revoked ? 'REVOKED' : _statusFromSubscriptionState(purchase.subscriptionState, expiresAt);
   const latestOrderId = purchase.latestOrderId ? String(purchase.latestOrderId) : null;
 
   const values = {
@@ -142,7 +153,8 @@ const syncSubscriptionFromPurchase = async (tenantId, purchase, purchaseToken, {
     amount: isAnnual ? plan.annualPrice : plan.monthlyPrice,
     billingCycle: isAnnual ? 'YEARLY' : 'MONTHLY',
     status,
-    autoRenew: !!purchase.acknowledgementState && status === 'ACTIVE' && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,
+    autoRenew:
+      !!purchase.acknowledgementState && ['ACTIVE', 'GRACE'].includes(status) && lineItem.autoRenewingPlan?.autoRenewEnabled !== false,
     paymentStatus: 'PAID',
     lastVerifiedAt: new Date(),
   };

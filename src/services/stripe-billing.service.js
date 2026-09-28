@@ -111,8 +111,7 @@ const _resolveCustomerId = async (tenantId, tenant) => {
  * same customer instead of replacing one with the other.
  */
 const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { successUrl, cancelUrl }) => {
-  const { TenantSubscription: TS } = require('../models/platform');
-  const currentActive = await TS.findOne({ where: { tenantId, status: 'ACTIVE' } });
+  const currentActive = await require('./subscription-quota.service').getActiveSubscription(tenantId);
   if (currentActive?.platform === 'STRIPE') {
     throw createError('This account already has an active Stripe subscription — change its plan instead of starting a new checkout.', 409);
   }
@@ -155,8 +154,7 @@ const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { su
  * only the webhook does" rule as everywhere else in this file.
  */
 const changeSubscriptionPlan = async (tenantId, billingPlanId, billingCycle) => {
-  const { TenantSubscription: TS } = require('../models/platform');
-  const currentActive = await TS.findOne({ where: { tenantId, status: 'ACTIVE' } });
+  const currentActive = await require('./subscription-quota.service').getActiveSubscription(tenantId);
   if (!currentActive || currentActive.platform !== 'STRIPE') {
     throw createError('This account does not have an active Stripe subscription to change.', 409);
   }
@@ -207,11 +205,21 @@ const findPlanForPriceId = async (priceId) => {
   return plan;
 };
 
+/**
+ * Stripe subscription status -> our status (BILL-04, spec §7.4). past_due =
+ * Stripe is retrying a failed renewal and access continues (GRACE); unpaid =
+ * retries ran out (ON_HOLD until paid). `incomplete` (first payment not done)
+ * is handled before this — it grants nothing and writes no row. An unknown
+ * status is never guessed as ACTIVE.
+ */
 const _statusFromStripeStatus = (stripeStatus) => {
   if (['active', 'trialing'].includes(stripeStatus)) return 'ACTIVE';
+  if (stripeStatus === 'past_due') return 'GRACE';
+  if (stripeStatus === 'unpaid') return 'ON_HOLD';
+  if (stripeStatus === 'paused') return 'PAUSED';
   if (stripeStatus === 'canceled') return 'CANCELLED';
-  if (['incomplete_expired', 'unpaid'].includes(stripeStatus)) return 'EXPIRED';
-  return 'ACTIVE';
+  if (stripeStatus === 'incomplete_expired') return 'EXPIRED';
+  throw createError(`Stripe reported an unknown subscription status "${stripeStatus}"`, 502);
 };
 
 /**
@@ -360,7 +368,12 @@ const getCheckoutSessionStatus = async (tenantId, sessionId) => {
     const { TenantSubscription } = require('../models/platform');
     entitled =
       (await TenantSubscription.count({
-        where: { tenantId, platform: 'STRIPE', externalOriginalTransactionId: subscriptionId, status: 'ACTIVE' },
+        where: {
+          tenantId,
+          platform: 'STRIPE',
+          externalOriginalTransactionId: subscriptionId,
+          status: require('./subscription-quota.service').ENTITLING_STATUSES,
+        },
       })) > 0;
   }
   return { status: session.status, paymentStatus: session.payment_status, confirmed, entitled };
@@ -374,10 +387,14 @@ const getCheckoutSessionStatus = async (tenantId, sessionId) => {
  * this subscription id, else the tenantId our own Checkout Session wrote into
  * the subscription's metadata server-side.
  *
- * @returns {Promise<object|null>} null when no tenant can be resolved.
+ * @returns {Promise<object|null>} null when no tenant can be resolved;
+ *   `{ pending: true }` (nothing written) while the first payment is incomplete.
  */
 const syncFromStripe = async ({ subscriptionId, eventId = null, revoked = false }) => {
   const subscription = await stripeApi.retrieveSubscription(subscriptionId);
+  // First payment not completed yet (e.g. 3-D Secure pending): nothing to
+  // grant. The next customer.subscription.updated carries the outcome.
+  if (subscription.status === 'incomplete') return { pending: true };
   const tenantId = await subscriptionMigrationService.resolveSubscriptionOwner(
     'STRIPE',
     subscription.id,
@@ -429,6 +446,7 @@ const processWebhookEvent = async (event) => {
   if (!subscriptionId) return { outcome: 'IGNORED', note: 'No subscription on this event' };
   const synced = await syncFromStripe({ subscriptionId, eventId: event.id, revoked });
   if (!synced) return { outcome: 'IGNORED', note: 'Subscription has no GymsEra tenant' };
+  if (synced.pending) return { outcome: 'IGNORED', note: 'First payment not completed yet (incomplete)' };
   return { outcome: 'PROCESSED' };
 };
 

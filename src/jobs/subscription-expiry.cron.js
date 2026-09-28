@@ -208,7 +208,7 @@ const _processPlatformSubscriptions = async () => {
 const _reconcileCapacityForAllTenants = async () => {
   const todayStr = new Date().toISOString().split('T')[0];
   const activeSubs = await TenantSubscription.findAll({
-    where: { status: 'ACTIVE', branchCount: { [Op.ne]: null } },
+    where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES }, branchCount: { [Op.ne]: null } },
     attributes: ['id', 'tenantId', 'branchCount'],
   });
 

@@ -16,6 +16,47 @@
 const { QueryTypes } = require('sequelize');
 const { runTenantMigrations } = require('./tenant-migration-runner');
 
+/**
+ * Widens an ENUM column to exactly `values` (existing values first, new ones
+ * appended — MySQL can then change it in place, without rebuilding the table).
+ *
+ * Never loses data: if the column today allows a value that `values` does not
+ * list, or a row holds such a value, MODIFY would rewrite or reject it — the
+ * migration is then skipped (not recorded) and the conflict is listed for a
+ * human, like p003. Already widened → nothing to do.
+ */
+const _widenEnumColumn = async (sequelize, { table, column, values, defaultValue, migrationName }) => {
+  const [col] = await sequelize.query(
+    'SELECT COLUMN_TYPE AS type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
+      'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+    { replacements: [table, column], type: QueryTypes.SELECT }
+  );
+  if (!col) throw new Error(`${migrationName}: ${table}.${column} does not exist`);
+  const current = [...String(col.type).matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, '\''));
+  if (values.every((v) => current.includes(v)) && current.every((v) => values.includes(v))) return null;
+
+  const unknownAllowed = current.filter((v) => !values.includes(v));
+  const unknownRows = await sequelize.query(
+    `SELECT \`${column}\` AS value, COUNT(*) AS n FROM \`${table}\` ` +
+      `WHERE \`${column}\` NOT IN (${values.map(() => '?').join(',')}) GROUP BY \`${column}\``,
+    { replacements: values, type: QueryTypes.SELECT }
+  );
+  if (unknownAllowed.length > 0 || unknownRows.length > 0) {
+    console.warn(
+      `[PlatformMigration] SKIPPING ${migrationName}: ${table}.${column} holds values this migration does not know ` +
+        `(allowed: ${unknownAllowed.join(', ') || 'none'}; in rows: ` +
+        `${unknownRows.map((r) => `${r.value} (${r.n})`).join(', ') || 'none'}). Resolve them by hand, then re-run.`
+    );
+    return { skipped: true, reason: 'unknown_enum_values', unknownAllowed, unknownRows };
+  }
+
+  const list = values.map((v) => `'${v.replace(/'/g, '\'\'')}'`).join(',');
+  await sequelize.query(
+    `ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ENUM(${list}) NOT NULL DEFAULT '${defaultValue}'`
+  );
+  return null;
+};
+
 const PLATFORM_MIGRATIONS = [
   {
     version: 1,
@@ -95,6 +136,25 @@ const PLATFORM_MIGRATIONS = [
         'ALTER TABLE `tenant_subscriptions` ADD UNIQUE INDEX `tenant_subscriptions_platform_external_unique` ' +
           '(`platform`, `external_original_transaction_id`)'
       );
+    },
+  },
+  {
+    version: 4,
+    name: 'p004_tenant_subscriptions_status_grace_hold_pause',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      // Adds GRACE, ON_HOLD, PAUSED (BILL-04, spec §7.4), appended after the
+      // p002 list so existing values keep their positions.
+      return _widenEnumColumn(sequelize, {
+        table: 'tenant_subscriptions',
+        column: 'status',
+        values: [
+          'ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED',
+          'GRACE', 'ON_HOLD', 'PAUSED',
+        ],
+        defaultValue: 'ACTIVE',
+        migrationName: 'p004',
+      });
     },
   },
 ];

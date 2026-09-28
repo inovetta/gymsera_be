@@ -159,7 +159,8 @@ const reconcileStoreSubscriptions = async () => {
   const rows = await TenantSubscription.findAll({
     where: {
       platform: { [Op.in]: ['IOS', 'ANDROID', 'STRIPE'] },
-      status: { [Op.in]: ['ACTIVE', 'PENDING_CANCEL', 'SCHEDULED'] },
+      // GRACE / ON_HOLD / PAUSED can still recover (or lapse) at the provider (BILL-04).
+      status: { [Op.in]: ['ACTIVE', 'GRACE', 'ON_HOLD', 'PAUSED', 'PENDING_CANCEL', 'SCHEDULED'] },
       externalOriginalTransactionId: { [Op.ne]: null },
     },
     attributes: ['id', 'tenantId', 'platform', 'externalOriginalTransactionId'],

@@ -18,10 +18,25 @@ const { Tenant, TenantSubscription, PlatformPackage, GymListing, CapacityEvent }
  * should call through here instead of re-deriving this itself.
  */
 
-/** The tenant's current entitlement — the most recently created ACTIVE subscription, if any. */
+/**
+ * Statuses that entitle a tenant to its plan (spec §7.3, §7.4). GRACE — a
+ * failed renewal the provider is still retrying while it keeps access open —
+ * entitles exactly like ACTIVE (BILL-04). The one-ACTIVE-row invariant covers
+ * this whole set: at most one entitling row per tenant.
+ */
+const ENTITLING_STATUSES = ['ACTIVE', 'GRACE'];
+
+/**
+ * Statuses that END entitlement while the tenant still has a plan on record —
+ * it must read as 0 branches, never fall through to the legacy defaults in
+ * resolveMaxBranches (BILL-02, BILL-04).
+ */
+const ENDED_STATUSES = ['REVOKED', 'ON_HOLD', 'PAUSED'];
+
+/** The tenant's current entitlement — the most recently created entitling (ACTIVE or GRACE) subscription, if any. */
 const getActiveSubscription = async (tenantId, { transaction } = {}) => {
   return TenantSubscription.findOne({
-    where: { tenantId, status: 'ACTIVE' },
+    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
     include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches', 'maxOrganizations'] }],
     order: [['createdAt', 'DESC']],
     transaction,
@@ -43,10 +58,13 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
   if (activeSub && activeSub.package) {
     return activeSub.package.maxBranches;
   }
-  // A refunded/charged-back/revoked subscription must not fall through to the
-  // legacy defaults below, which would hand the tenant its registration
-  // package (or 1 branch) back for free (BILL-02, spec §7.5.7).
-  if (!activeSub && (await TenantSubscription.count({ where: { tenantId: tenant.id, status: 'REVOKED' }, transaction })) > 0) {
+  // A refunded/charged-back/revoked, held or paused subscription must not fall
+  // through to the legacy defaults below, which would hand the tenant its
+  // registration package (or 1 branch) back for free (BILL-02, BILL-04).
+  if (
+    !activeSub &&
+    (await TenantSubscription.count({ where: { tenantId: tenant.id, status: { [Op.in]: ENDED_STATUSES } }, transaction })) > 0
+  ) {
     return 0;
   }
   if (tenant.selectedPackageId) {
@@ -234,7 +252,7 @@ const reconcileCapacity = async (
     // Any previously-set over-quota flag is now resolved.
     await TenantSubscription.update(
       { overQuotaCount: 0 },
-      { where: { tenantId, status: 'ACTIVE' }, transaction }
+      { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
     );
     return { overQuotaCount: 0, trimmedSlots: 0 };
   }
@@ -278,7 +296,7 @@ const reconcileCapacity = async (
   // plan — never resolved by deleting or hiding anything, only flagged.
   await TenantSubscription.update(
     { overQuotaCount: Math.max(0, remaining) },
-    { where: { tenantId, status: 'ACTIVE' }, transaction }
+    { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
   );
 
   return { overQuotaCount: Math.max(0, remaining), trimmedSlots };
@@ -392,6 +410,8 @@ const auditCapacity = async (tenantId, tenantDb) => {
 };
 
 module.exports = {
+  ENTITLING_STATUSES,
+  ENDED_STATUSES,
   recordCapacityEvent,
   getActiveSubscription,
   resolveMaxBranches,
