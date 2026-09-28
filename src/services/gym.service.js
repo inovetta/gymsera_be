@@ -517,7 +517,9 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
       const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb, { transaction: platformTx });
 
       if (usedCapacity >= maxBranches && !isProvisioning) {
-        await _notifyBranchLimitReached(tenantId, tenant);
+        _notifyBranchLimitReached(tenantId, tenant).catch((notifErr) => {
+          console.warn('[Notification Error] Failed to create branch quota reached notification:', notifErr.message);
+        });
         const err = createError('Branch limit reached', 403);
         err.code = 'branch_limit_reached';
         throw err;
