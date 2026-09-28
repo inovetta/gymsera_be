@@ -357,15 +357,39 @@ const approveTenant = async (tenantId, adminUserId) => {
 
 // ── rejectTenant ──────────────────────────────────────────────────────────────
 const rejectTenant = async (tenantId, adminUserId, reason) => {
-  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  let [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
 
   if (!reason || !reason.trim()) {
     throw createError('A rejection reason is required', 400);
   }
 
+  if (!listingId) {
+    const maybeListing = await GymListing.findByPk(actualTenantId);
+    if (maybeListing) {
+      listingId = maybeListing.id;
+      actualTenantId = maybeListing.tenantId;
+    }
+  }
+
   if (listingId) {
     const listing = await GymListing.findByPk(listingId);
     if (!listing) throw createError('Gym listing not found', 404);
+
+    const tenant = await Tenant.findByPk(listing.tenantId);
+    if (tenant && tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+      const TenantDbManager = require('../database/TenantDbManager');
+      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+      const { Branch } = tenantDb.models;
+      const branches = await Branch.findAll({
+        where: { gymListingId: listing.id, status: 'ACTIVE' },
+      });
+      const gymService = require('./gym.service');
+      for (const branch of branches) {
+        await gymService.deleteBranch(tenantDb, branch.id, adminUserId, {
+          confirmOrganizationDeletion: true,
+        });
+      }
+    }
 
     await listing.update({
       status: 'REJECTED',
@@ -374,20 +398,21 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
       rejectedBy: adminUserId,
     });
 
-    if (listing.hostId) {
+    const hostUserId = listing.hostId || tenant?.ownerUserId;
+    if (hostUserId) {
       notificationsService.createNotification({
-        userId: listing.hostId,
+        userId: hostUserId,
         role: 'host',
         type: 'listing_rejected',
-        title: 'Gym Listing Rejected',
-        message: `Your listing "${listing.title}" was not approved: ${reason.trim()}`,
+        title: 'Gym Listing Rejected — Capacity Returned',
+        message: `Your listing "${listing.title}" was not approved: ${reason.trim()}. Your branch capacity has been returned to your account.`,
         priority: 'high',
         deepLink: '/host/branches',
-        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED' },
+        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED', capacityReturned: true },
       }).catch(err => console.error('[rejectTenant listing] Notification error:', err.message));
     }
 
-    return { tenant: { id: tenantId, status: 'REJECTED' } };
+    return { tenant: { id: tenantId, status: 'REJECTED' }, capacityReturned: true };
   }
 
   const tenant = await Tenant.findByPk(actualTenantId, {

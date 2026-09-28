@@ -128,11 +128,10 @@ const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) 
 const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
   const [activeBranches, reservedTotal] = await Promise.all([
     tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }),
-    // Excludes deleted (INACTIVE) organizations — otherwise a reservedSlots
-    // count left on a deleted organization would permanently lock that
-    // capacity out of the pool forever, since nothing else ever reads or
-    // clears reservedSlots on a listing once it's gone.
-    GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.ne]: 'INACTIVE' } }, transaction }),
+    // Excludes deleted (INACTIVE) and REJECTED organizations — otherwise a reservedSlots
+    // count left on an inactive/rejected organization would permanently lock that
+    // capacity out of the pool forever.
+    GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } }, transaction }),
   ]);
   return activeBranches + (reservedTotal || 0);
 };
@@ -205,7 +204,7 @@ const reconcileCapacity = async (
   // back to for "which org gets an upgrade's new capacity" when no specific
   // origin is known.
   const listings = await GymListing.findAll({
-    where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
+    where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
     order: [['createdAt', 'ASC']],
     lock: true,
     transaction,
@@ -366,7 +365,7 @@ const auditCapacity = async (tenantId, tenantDb) => {
   const maxBranches = await resolveMaxBranches(tenant, activeSub);
 
   const listings = await GymListing.findAll({
-    where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
+    where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
     attributes: ['id', 'title', 'reservedSlots'],
     order: [['createdAt', 'ASC']],
   });
