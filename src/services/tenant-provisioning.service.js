@@ -127,6 +127,15 @@ const processTenantProvisioning = async (tenantId) => {
     return;
   }
 
+  // ── Step 1b: "Pay later" plan (BILL-13, spec §7.5.11) ─────────────────────
+  // One branch for PAY_LATER_GRACE_DAYS, in GRACE. Done first — before the
+  // reserved-slot step below reads the entitlement, and before the tenant is
+  // ACTIVE — and never swallowed: if it fails, the approval fails and the
+  // tenant stays re-approvable (NEW-18 for this path). Idempotent on retry.
+  if (tenant.paymentMethod === 'PAY_LATER') {
+    await require('./subscription-migration.service').startPayLaterGrace(tenant.id);
+  }
+
   const dbConfig = getTenantDbConfig();
   const dbName = buildDbName(tenant.tenantCode);
 

@@ -33,6 +33,14 @@ const ENTITLING_STATUSES = ['ACTIVE', 'GRACE'];
  */
 const ENDED_STATUSES = ['REVOKED', 'ON_HOLD', 'PAUSED'];
 
+/**
+ * A tenant whose plan is in any of these (and has no entitling row) is
+ * entitled to 0 branches — never the legacy defaults. EXPIRED joins the ended
+ * states here (spec §7.5.8): a lapsed plan, e.g. an unpaid pay-later grace
+ * (BILL-13), must not fall back to the registration package.
+ */
+const NO_FALLBACK_STATUSES = [...ENDED_STATUSES, 'EXPIRED'];
+
 /** The tenant's current entitlement — the most recently created entitling (ACTIVE or GRACE) subscription, if any. */
 const getActiveSubscription = async (tenantId, { transaction } = {}) => {
   return TenantSubscription.findOne({
@@ -58,12 +66,13 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
   if (activeSub && activeSub.package) {
     return activeSub.package.maxBranches;
   }
-  // A refunded/charged-back/revoked, held or paused subscription must not fall
-  // through to the legacy defaults below, which would hand the tenant its
-  // registration package (or 1 branch) back for free (BILL-02, BILL-04).
+  // A refunded/charged-back/revoked, held, paused or lapsed subscription must
+  // not fall through to the legacy defaults below, which would hand the tenant
+  // its registration package (or 1 branch) back for free (BILL-02, BILL-04,
+  // BILL-13).
   if (
     !activeSub &&
-    (await TenantSubscription.count({ where: { tenantId: tenant.id, status: { [Op.in]: ENDED_STATUSES } }, transaction })) > 0
+    (await TenantSubscription.count({ where: { tenantId: tenant.id, status: { [Op.in]: NO_FALLBACK_STATUSES } }, transaction })) > 0
   ) {
     return 0;
   }

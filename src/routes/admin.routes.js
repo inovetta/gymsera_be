@@ -251,6 +251,12 @@ router.post(
   adminController.assignTenantSubscription
 );
 router.patch('/tenants/:id/subscriptions/:subId/revoke', adminController.revokeTenantSubscription);
+// Pay later (BILL-13): confirm the bank transfer → the GRACE plan becomes ACTIVE (audited).
+router.post(
+  '/tenants/:id/subscriptions/:subId/verify-payment',
+  validate([body('bankTransferRef').optional({ nullable: true }).isString().isLength({ max: 100 })]),
+  adminController.verifyPayLaterPayment
+);
 
 // ── Tenant platform invoices ───────────────────────────────────────────────────
 router.get('/tenants/:id/invoices', adminController.getTenantInvoices);

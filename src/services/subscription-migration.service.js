@@ -62,6 +62,9 @@ const subscriptionQuotaService = require('./subscription-quota.service');
 
 const { ENTITLING_STATUSES, ENDED_STATUSES } = subscriptionQuotaService;
 const _entitling = (status) => ENTITLING_STATUSES.includes(status);
+// A new entitlement starts ACTIVE unless it is born in GRACE (a pay-later
+// plan, BILL-13, or a store purchase first seen during its grace, BILL-04).
+const _activationStatus = (values) => (values.status === 'GRACE' ? 'GRACE' : 'ACTIVE');
 
 /**
  * @param {string} tenantId
@@ -101,7 +104,7 @@ const requestProviderChange = async (
   if (!currentActive) {
     // No entitlement to migrate away from — a fresh first-ever subscription.
     const subscription = await TenantSubscription.create(
-      { ...newSubscriptionValues, tenantId, platform: newPlatform, status: 'ACTIVE' },
+      { ...newSubscriptionValues, tenantId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
       { transaction }
     );
 
@@ -143,7 +146,7 @@ const requestProviderChange = async (
   await currentActive.update({ status: 'PENDING_MIGRATION' }, { transaction });
 
   const newSubscription = await TenantSubscription.create(
-    { ...newSubscriptionValues, tenantId, platform: newPlatform, status: 'ACTIVE' },
+    { ...newSubscriptionValues, tenantId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
     { transaction }
   );
 
@@ -602,6 +605,136 @@ const resolveSubscriptionOwner = async (platform, externalId, boundTenantId = nu
 };
 
 /**
+ * "Pay later" at onboarding (BILL-13, spec §7.5.11): approval gives the tenant
+ * one branch for PAY_LATER_GRACE_DAYS (owner decisions R-17 = R-22) as a
+ * MANUAL row in GRACE — entitled, with a countdown. Written through
+ * applyVerifiedSubscription like every other plan, keyed on a fixed id per
+ * tenant, so a retried approval finds the same row instead of adding one.
+ *
+ * It becomes ACTIVE only when an admin verifies the bank transfer
+ * (verifyPayLaterPayment); otherwise the daily sweep ends it (EXPIRED).
+ * Never replaces a plan the tenant already has (FLOW-03).
+ */
+const PAY_LATER_ID_PREFIX = 'pay-later:';
+const _payLaterId = (tenantId) => `${PAY_LATER_ID_PREFIX}${tenantId}`;
+const _isoDate = (d) => d.toISOString().split('T')[0];
+
+const startPayLaterGrace = async (tenantId) => {
+  const { BillingPlan } = require('../models/platform');
+  const { payLaterGraceDays } = require('../config/billing.config');
+
+  const existingPlan = await subscriptionQuotaService.getActiveSubscription(tenantId);
+  if (existingPlan) return existingPlan;
+
+  const onePlan = await BillingPlan.findOne({ where: { branchCount: 1 }, order: [['sortOrder', 'ASC']] });
+  const now = new Date();
+  const endsAt = new Date(now.getTime() + payLaterGraceDays() * 24 * 60 * 60 * 1000);
+  return applyVerifiedSubscription(
+    tenantId,
+    {
+      platform: 'MANUAL',
+      externalOriginalTransactionId: _payLaterId(tenantId),
+      externalTransactionId: _payLaterId(tenantId),
+      billingPlanId: onePlan ? onePlan.id : null,
+      branchCount: 1,
+      productId: null,
+      startDate: _isoDate(now),
+      endDate: _isoDate(endsAt),
+      // What the host will owe for the 1-branch plan once they pay.
+      amount: onePlan ? onePlan.monthlyPrice : 0,
+      currency: onePlan ? onePlan.currency : null,
+      billingCycle: 'MONTHLY',
+      status: 'GRACE',
+      autoRenew: false,
+      paymentStatus: 'PENDING',
+    },
+    { idempotencyPrefix: `${_payLaterId(tenantId)}:approve`, logLabel: 'Pay later' }
+  );
+};
+
+/**
+ * An admin confirms the pay-later bank transfer arrived (BILL-13): GRACE →
+ * ACTIVE, PAID, one billing cycle from today. Only for the tenant's own
+ * pay-later row while it is in GRACE (a lapsed one is reactivated through the
+ * normal admin assign path). Audited in the tenant's own trail.
+ */
+const verifyPayLaterPayment = async (tenantId, subscriptionId, { adminUserId, bankTransferRef = null, req = null }) => {
+  const row = await TenantSubscription.findOne({ where: { id: subscriptionId, tenantId } });
+  if (!row) throw createError('Subscription not found', 404);
+  if (row.platform !== 'MANUAL' || row.externalOriginalTransactionId !== _payLaterId(tenantId) || row.status !== 'GRACE') {
+    const err = createError('Only a pay-later plan that is waiting for payment can be verified.', 409);
+    err.code = 'not_pay_later_grace';
+    throw err;
+  }
+  const before = row.toJSON();
+  const now = new Date();
+  const paidUntil = new Date(now);
+  paidUntil.setMonth(paidUntil.getMonth() + 1);
+  const subscription = await applyVerifiedSubscription(
+    tenantId,
+    {
+      platform: 'MANUAL',
+      externalOriginalTransactionId: row.externalOriginalTransactionId,
+      externalTransactionId: bankTransferRef ? `bank:${bankTransferRef}` : row.externalTransactionId,
+      billingPlanId: row.billingPlanId,
+      branchCount: row.branchCount,
+      startDate: _isoDate(now),
+      endDate: _isoDate(paidUntil),
+      status: 'ACTIVE',
+      autoRenew: false,
+      paymentStatus: 'PAID',
+      bankTransferRef: bankTransferRef || row.bankTransferRef,
+      lastVerifiedAt: now,
+    },
+    { idempotencyPrefix: `${_payLaterId(tenantId)}:verify`, logLabel: 'Pay later' }
+  );
+
+  const tenant = await Tenant.findByPk(tenantId);
+  if (tenant?.connectionStringEncrypted) {
+    const TenantDbManager = require('../database/TenantDbManager');
+    const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    await require('./audit.service').record(
+      { tenantDb, userId: adminUserId, roleKey: 'PLATFORM_ADMIN', req },
+      {
+        action: 'billing.pay_later_verified',
+        targetType: 'TenantSubscription',
+        targetId: subscription.id,
+        before: { status: before.status, paymentStatus: before.paymentStatus, endDate: before.endDate },
+        after: {
+          status: subscription.status,
+          paymentStatus: subscription.paymentStatus,
+          endDate: subscription.endDate,
+          bankTransferRef: subscription.bankTransferRef,
+        },
+      }
+    );
+  } else {
+    console.error(`[Pay later] Verified payment for tenant ${tenantId} could not be audited: tenant database not ready`);
+  }
+  return subscription;
+};
+
+/**
+ * The daily sweep's end of an unpaid pay-later grace (BILL-13): EXPIRED
+ * through the one write path. The caller (subscription-expiry.cron.js) then
+ * does what it does for every lapsed plan.
+ */
+const expirePayLaterGrace = async (row) =>
+  applyVerifiedSubscription(
+    row.tenantId,
+    {
+      platform: 'MANUAL',
+      externalOriginalTransactionId: row.externalOriginalTransactionId,
+      externalTransactionId: row.externalTransactionId,
+      billingPlanId: row.billingPlanId,
+      branchCount: row.branchCount,
+      status: 'EXPIRED',
+      lastVerifiedAt: new Date(),
+    },
+    { idempotencyPrefix: `${row.externalOriginalTransactionId}:expire`, logLabel: 'Pay later' }
+  );
+
+/**
  * What a downgrade to `billingPlanId` means for this tenant, for the plan
  * picker's preview (BILL-03, spec §7.5.4 step 1–2): the new plan covers
  * `newBranchCount`; unbuilt reserved slots are trimmed first; when the real
@@ -734,6 +867,13 @@ const GOOGLE_MANAGE_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/s
 const paymentIssueFor = (subscription) => {
   if (!subscription || subscription.status !== 'GRACE') return null;
   switch (subscription.platform) {
+    case 'MANUAL': {
+      // Pay later (BILL-13): the countdown to the day the plan ends unpaid.
+      const payBy = subscription.endDate;
+      const today = new Date(`${_isoDate(new Date())}T00:00:00Z`);
+      const daysLeft = Math.max(0, Math.round((new Date(`${payBy}T00:00:00Z`) - today) / (24 * 60 * 60 * 1000)));
+      return { provider: 'MANUAL', manageUrl: null, payBy, daysLeft };
+    }
     case 'IOS':
       return { provider: 'IOS', manageUrl: APPLE_MANAGE_SUBSCRIPTIONS_URL };
     case 'ANDROID': {
@@ -757,4 +897,8 @@ module.exports = {
   paymentIssueFor,
   previewDowngrade,
   recordDowngradeChoice,
+  PAY_LATER_ID_PREFIX,
+  startPayLaterGrace,
+  verifyPayLaterPayment,
+  expirePayLaterGrace,
 };
