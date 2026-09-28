@@ -449,43 +449,4 @@ router.post(
   controller.submitBranchReview
 );
 
-router.get('/debug-activate-branches', async (req, res, next) => {
-  try {
-    const { Tenant } = require('../models/platform');
-    const registerTenantModels = require('../models/tenant');
-    const { decrypt } = require('../utils/crypto.utils');
-    const { Sequelize } = require('sequelize');
-
-    const tenants = await Tenant.findAll();
-    let logs = [];
-
-    for (const tenant of tenants) {
-      if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
-        const connUrl = decrypt(tenant.connectionStringEncrypted);
-        const tenantSeq = new Sequelize(connUrl, {
-          dialect: 'mysql',
-          logging: false,
-        });
-        try {
-          await tenantSeq.authenticate();
-          const models = registerTenantModels(tenantSeq);
-          const { Branch } = models;
-
-          const [affectedCount] = await Branch.update(
-            { travelerVisibilityStatus: 'active' },
-            { where: { status: 'ACTIVE' } }
-          );
-          logs.push(`Updated ${affectedCount} active branches to visible on tenant: ${tenant.tenantCode}`);
-        } catch (err) {
-          logs.push(`Failed to update tenant: ${tenant.tenantCode}: ${err.message}`);
-        } finally {
-          await tenantSeq.close();
-        }
-      }
-    }
-    res.json({ success: true, logs });
-  } catch (err) {
-    next(err);
-  }
-});
 module.exports = router;
