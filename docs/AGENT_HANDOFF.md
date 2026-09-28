@@ -19,7 +19,7 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-28 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **HOTFIX — close two open production routes (NEW-04, NEW-05)** |
+| Current prompt | **HOTFIX part 2 — close open routes & unauthenticated route guard (NEW-29, NEW-30, NEW-31)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
@@ -38,9 +38,10 @@ The owner reviews and merges.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Hotfix branch `hotfix/close-open-routes` in `gymsera_be` is ready for review and merge into `main`.
-> After merge, continue with owner directions or resume **Prompt 1B — Billing lifecycle** from
-> `GYMSERA_AGENT_PLAYBOOK.md` on branch `phase-1/prompt-1a-billing-core`.
+> Hotfix branch `hotfix/close-open-routes` in `gymsera_be` has closed all open/unauthenticated maintenance routes
+> (NEW-04, NEW-05, NEW-29, NEW-30, NEW-31) and added the router walk guard test.
+> Ready for review and merge into `main`. After merge, continue with owner directions or resume **Prompt 1B — Billing lifecycle**
+> from `GYMSERA_AGENT_PLAYBOOK.md` on branch `phase-1/prompt-1a-billing-core`.
 
 ### Work in progress that is NOT committed
 
@@ -60,6 +61,8 @@ The owner reviews and merges.
 - **NEW-26 (P1)**: Suspended tenant context bypass recorded in spec §12.13.12 (report only, not fixed).
 - **NEW-27 (P2)**: Mobile restore purchase retry loop on 409 recorded in spec §12.13.12.
 - **NEW-28 (P2)**: Unclosed Redis clients in Bull queues & un-awaited DeviceToken.sync() recorded in spec §12.13.12.
+- **Part 2 of Hotfix Part 2**: Decisions pending on the four /system routes (`/system/run-install`, `/system/run-pull`,
+  `/system/configure-fcm`, `/system/fcm-test`).
 
 ---
 
@@ -67,7 +70,7 @@ The owner reviews and merges.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-Hotfix — Close two open production routes (2026-09-28):
+Hotfix — Close open routes & guard (2026-09-28):
 
 - [x] 1. NEW-04 — /debug-sync-db removed completely, fetch_sync.js removed, returns 404 with 0 DB writes (be 0cc58d8)
 - [x] 2. NEW-05 — /system/recycle removed completely, returns 404 with 0 DB writes (be 271ca62)
@@ -75,6 +78,12 @@ Hotfix — Close two open production routes (2026-09-28):
 - [x] 4. Part 1d — Audit unauthenticated mutating routes in src/routes/index.js and mounted files
 - [x] 5. Part 2 — Suspended tenant bypass report (src/middleware/tenantContext.js:134) & spec §12 NEW-26 recorded
 - [x] 6. Part 3 — Spec §12 NEW-27 (mobile restore purchase retry loop) & NEW-28 (33 Redis sockets, DeviceToken.sync) recorded
+- [x] 7. Part 1a (Part 2) — Search 4 repos, scripts, CI, docs for callers of debug-cleanup-indexes, seed-conversations, debug-activate-branches (none found)
+- [x] 8. NEW-29 — /debug-cleanup-indexes removed completely, returns 404 with 0 DB writes (be 0ae5cdf)
+- [x] 9. NEW-30 — /discovery/seed-conversations removed completely, returns 404 with 0 DB writes (be 58237df)
+- [x] 10. NEW-31 (resolves NEW-01) — /discovery/debug-activate-branches removed completely, returns 404 with 0 DB writes (be 2aaa986)
+- [x] 11. Part 2 (Part 2) — Security report on the four /system routes
+- [x] 12. Part 3 (Part 2) — Router walk guard test enforcing allow-list for unauthenticated routes (be ee7232d)
 
 ---
 
@@ -153,4 +162,6 @@ Hotfix — Close two open production routes (2026-09-28):
 | 14 | 2026-09-28 | Claude Code (Opus 5.5) | R-21 (1A follow-up) | R-21 read-only endpoint; NEW-18 recorded | task complete | yes |
 | 15 | 2026-09-28 | Claude Code (Opus 5.5) | docs: owner decisions 1B | R-2, R-3, R-4 marked DECIDED 2026-09-28; R-22 pay-later grace added (owner confirmation pending) | task complete | yes |
 | 16 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Hotfix: close open routes | NEW-04, NEW-05, audit unauthenticated routes, suspended tenant report & NEW-26/27/28 recorded | task complete | yes |
+| 17 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Hotfix part 2 | NEW-29, NEW-30, NEW-31 (resolves NEW-01), Part 2 report, Part 3 unauthenticated-routes-guard test | task complete | yes |
+
 
