@@ -19,30 +19,29 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-28 |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **NEW-15 (follow-up to Prompt 1A): GET /host/subscription/current must not auto-grant a free plan** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Current prompt | **Prompt 1B — Billing lifecycle** (BILL-04, BILL-05, BILL-03, BILL-13, FLOW-03, BILL-08) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | BILL-04 |
+| Step within issue | verify / root cause <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-All Prompt 1A work is on branch `phase-1/prompt-1a-billing-core` in three repos, **not pushed and not merged**.
-The owner reviews and merges.
+Prompt 1A is merged into main (PR #47). Prompt 1B works on `phase-1/prompt-1b-billing-lifecycle`, created from
+main at ea1d4df. **Not pushed, not merged** — the owner reviews and merges.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1a-billing-core` (from master 11d37b1) | b4dfb59 fix(billing): send the tenant id with every store purchase (BILL-01) | no |
-| gymsera_be | `phase-1/prompt-1a-billing-core` (from main 6bf60e7) | see `git log` — last is the Prompt 1A close-out docs commit | no |
-| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
-| gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
+| gyms_era | `phase-1/prompt-1a-billing-core` (not touched in 1B yet) | b4dfb59 fix(billing): send the tenant id with every store purchase (BILL-01) | no |
+| gymsera_be | `phase-1/prompt-1b-billing-lifecycle` (from main ea1d4df) | see `git log` | no |
+| gymsera_cms | main | (not touched) | no |
+| gymsera_web | main | (not touched) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Owner first (see "Blocked / waiting on the owner"). Then start **Prompt 1B — Billing lifecycle** from
-> `GYMSERA_AGENT_PLAYBOOK.md` (BILL-04, BILL-05, BILL-03, BILL-13, FLOW-03, BILL-08). Branch from
-> `phase-1/prompt-1a-billing-core` (1B builds on the shared apply path `applyVerifiedSubscription` and the
-> `billing_events` inbox), or from main once 1A is merged. New TenantSubscription columns/states go through
-> `src/database/platform-migrations.js` (next version: p004), never the boot-time block in `platform.js#connect`.
+> BILL-04: add platform migration p004 (status ENUM + GRACE, ON_HOLD, PAUSED), treat ACTIVE+GRACE as the
+> entitling set in `subscription-quota.service.js#getActiveSubscription` and the one-entitling-row checks in
+> `subscription-migration.service.js`; map Apple/Google/Stripe states; manage link during GRACE in
+> `GET /host/subscription/current`. Test: `tests/integration/billing-lifecycle-states.test.js`.
 
 ### Work in progress that is NOT committed
 
@@ -50,15 +49,8 @@ The owner reviews and merges.
 
 ### Blocked / waiting on the owner
 
-- **Before deploying this backend branch:** run `node src/scripts/run-platform-migrations.js --dry-run`, check the
-  report, then `node src/scripts/run-platform-migrations.js`. It adds `billing_events` (p001), `REVOKED` status
-  (p002) and UNIQUE(platform, external_original_transaction_id) (p003; skipped with a list if duplicates exist).
-  Until then webhooks answer 500 (providers retry for days), nothing is lost.
-- Decide/confirm (not in §14): a **partial** Stripe refund keeps the plan (only full refund or dispute revokes); a
-  refunded/disputed Stripe subscription is **not** cancelled at Stripe (it would bill again next period — web card
-  is OFF per R-7, so this only matters once a web provider is live).
-- **NEW-15 is DONE** and R-21 is DECIDED (`GET /host/subscription/current` is read-only; be 6f3506f, 5d984de).
-  New P2 item NEW-18 (spec §12.13.11): plan creation at approval fails silently — recorded, not fixed.
+- Still open from 1A: run `node src/scripts/run-platform-migrations.js --dry-run` then without the flag before
+  deploying; partial-Stripe-refund question (see §14 notes / previous handoff).
 
 ---
 
@@ -66,16 +58,14 @@ The owner reviews and merges.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL-14 entitlement already safe, UX part confirmed.
-
-- [x] 1. BILL-12 — webhook inbox, refetch truth, one apply path (be 84d250f)
-- [x] 2. BILL-02 — REVOKED state, refunds from all three providers end entitlement via reconcileCapacity (be 542ef53)
-- [x] 3. BILL-06 — server-side Android acknowledge inside the verified sync path, retried through the inbox (be 1a7300f)
-- [x] 4. BILL-01 — purchase bound to one tenant (409 subscription_owned_by_other_account), unique index, mobile sends tenant id (be 7a53c72, app b4dfb59)
-- [x] 5. BILL-14 — Stripe return page verifies the session server-side (be 2fff789, web f5fa208)
-- [x] Lint follow-up (be affbcb6), §13 rows with hashes, this handoff.
-- [x] Follow-up NEW-15 — GET /host/subscription/current grants nothing to a tenant with subscription history (be 6f3506f); owner question R-21 open.
-- [x] R-21 decided: the endpoint never creates a plan (be 5d984de); NEW-18 recorded.
+- [x] STEP 0 — §14 R-22 owner confirmed; R-17 = R-22 = one setting (be 043066a)
+- [ ] 1. BILL-04 — GRACE / ON_HOLD / PAUSED (p004)
+- [ ] 2. BILL-05 — amount/currency from the provider's charge
+- [ ] 3. BILL-03 — deferred downgrade, pendingChange + keepBranchIds (lock itself is CAP-01, Prompt 1C)
+- [ ] 4. BILL-13 — pay-later GRACE MANUAL row, PAY_LATER_GRACE_DAYS
+- [ ] 5. FLOW-03 — one entitlement at approval
+- [ ] 6. BILL-08 — Google PENDING purchases
+- [ ] §13 rows, 3 full runs, report
 
 ---
 
@@ -153,3 +143,4 @@ Verification (all five reproduced in code, 2026-09-27): see §12.13.1 rows; BILL
 | 13 | 2026-09-28 | Claude Code (Opus 5.5) | NEW-15 (1A follow-up) | NEW-15 (R-21 raised for owner) | task complete | yes |
 | 14 | 2026-09-28 | Claude Code (Opus 5.5) | R-21 (1A follow-up) | R-21 read-only endpoint; NEW-18 recorded | task complete | yes |
 | 15 | 2026-09-28 | Claude Code (Opus 5.5) | docs: owner decisions 1B | R-2, R-3, R-4 marked DECIDED 2026-09-28; R-22 pay-later grace added (owner confirmation pending) | task complete | yes |
+| 16 | 2026-09-28 | Claude Code (Opus 5.5) | Prompt 1B | (in progress) | — | — |
