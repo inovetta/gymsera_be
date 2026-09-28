@@ -151,6 +151,29 @@ const processPendingEvents = async ({ limit = 50 } = {}) => {
 };
 
 /**
+ * Re-fetches one store-backed row from its provider through that provider's
+ * one sync entry point (the same one webhooks and the app's /sync use).
+ */
+const refreshStoreSubscription = async (row) => {
+  if (row.platform === 'IOS') {
+    return require('./apple-billing.service').syncFromApple({
+      transactionId: row.externalOriginalTransactionId,
+      tenantId: row.tenantId,
+    });
+  }
+  if (row.platform === 'ANDROID') {
+    return require('./google-play-billing.service').syncFromGoogle({
+      purchaseToken: row.externalOriginalTransactionId,
+      tenantId: row.tenantId,
+    });
+  }
+  if (row.platform === 'STRIPE') {
+    return require('./stripe-billing.service').syncFromStripe({ subscriptionId: row.externalOriginalTransactionId });
+  }
+  throw new Error(`Not a store-backed subscription: ${row.platform}`);
+};
+
+/**
  * Daily safety net for notifications that never arrived: every store-backed
  * row that can still carry entitlement is re-fetched through the same sync
  * entry point (spec §7.6).
@@ -168,19 +191,7 @@ const reconcileStoreSubscriptions = async () => {
   let failed = 0;
   for (const row of rows) {
     try {
-      if (row.platform === 'IOS') {
-        await require('./apple-billing.service').syncFromApple({
-          transactionId: row.externalOriginalTransactionId,
-          tenantId: row.tenantId,
-        });
-      } else if (row.platform === 'ANDROID') {
-        await require('./google-play-billing.service').syncFromGoogle({
-          purchaseToken: row.externalOriginalTransactionId,
-          tenantId: row.tenantId,
-        });
-      } else {
-        await require('./stripe-billing.service').syncFromStripe({ subscriptionId: row.externalOriginalTransactionId });
-      }
+      await refreshStoreSubscription(row);
     } catch (err) {
       failed++;
       console.warn(`[BillingEvent] Daily reconciliation failed for subscription ${row.id} (${row.platform}): ${err.message}`);
@@ -216,6 +227,7 @@ module.exports = {
   processEvent,
   receiveEvent,
   processPendingEvents,
+  refreshStoreSubscription,
   reconcileStoreSubscriptions,
   sweepGoogleVoidedPurchases,
 };

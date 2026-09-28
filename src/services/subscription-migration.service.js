@@ -182,6 +182,19 @@ const requestProviderChange = async (
       },
       { transaction }
     );
+  } else if (currentActive.platform === 'MANUAL') {
+    // A manual plan (bank transfer / pay later) has nothing to cancel at a
+    // store: it is simply replaced — e.g. a card subscription from the
+    // registration wizard completing after approval (FLOW-03). It used to fall
+    // into the store branch below and tell the host to "cancel the undefined
+    // subscription yourself".
+    await currentActive.update(
+      {
+        status: 'CANCELLED',
+        statusNote: `Replaced by a new ${storeLabel[newPlatform]} subscription on ${today} — no action needed.`,
+      },
+      { transaction }
+    );
   } else if (currentActive.platform === 'STRIPE') {
     // We control Stripe server-side — schedule its real cancellation. The
     // caller (stripe-billing.service.js, or another provider's service via
@@ -653,6 +666,37 @@ const startPayLaterGrace = async (tenantId) => {
 };
 
 /**
+ * The plan a tenant gets at approval (FLOW-03, spec §7.5.10), decided before
+ * provisioning creates anything:
+ *   - a provider-backed row already exists (e.g. the Stripe subscription from
+ *     the registration card step): re-verify it with its provider through the
+ *     one sync path and create NOTHING else — never a second entitlement;
+ *   - otherwise "pay later" gets its GRACE plan (BILL-13); other methods keep
+ *     the existing MANUAL row from submission / provisioning step 10.
+ * A failed re-verification is logged, not fatal: the row is already there and
+ * the daily store sweep refreshes it.
+ * @returns {Promise<{ linked?: object, created?: object }|null>}
+ */
+const planForApproval = async (tenant) => {
+  const providerRow = await TenantSubscription.findOne({
+    where: { tenantId: tenant.id, platform: { [Op.in]: ['IOS', 'ANDROID', 'STRIPE'] } },
+    order: [['updatedAt', 'DESC']],
+  });
+  if (providerRow) {
+    try {
+      await require('./billing-event.service').refreshStoreSubscription(providerRow);
+    } catch (err) {
+      console.warn(
+        `[Approval] Could not re-verify ${providerRow.platform} subscription ${providerRow.id} for tenant ${tenant.id}: ${err.message}`
+      );
+    }
+    return { linked: await providerRow.reload() };
+  }
+  if (tenant.paymentMethod === 'PAY_LATER') return { created: await startPayLaterGrace(tenant.id) };
+  return null;
+};
+
+/**
  * An admin confirms the pay-later bank transfer arrived (BILL-13): GRACE →
  * ACTIVE, PAID, one billing cycle from today. Only for the tenant's own
  * pay-later row while it is in GRACE (a lapsed one is reactivated through the
@@ -899,6 +943,7 @@ module.exports = {
   recordDowngradeChoice,
   PAY_LATER_ID_PREFIX,
   startPayLaterGrace,
+  planForApproval,
   verifyPayLaterPayment,
   expirePayLaterGrace,
 };
