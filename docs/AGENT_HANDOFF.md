@@ -37,10 +37,11 @@ Prompt 1C is committed on branch `phase-1/prompt-1c-branch-capacity` in `gymsera
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1C is DONE. Next prompt is **Prompt 2A** from `GYMSERA_AGENT_PLAYBOOK.md`:
-> Read spec §4.1, §11 and issues API-01, API-02, REL-02, REL-03, REL-04, REL-05, BILL-07, BILL-09, AUTH-02, AUTH-03, AUTH-08.
-> API-01 (one response/error envelope) must stay backward compatible behind a version flag / additive fields.
-> Branch to create: `phase-2/prompt-2a-reliability`.
+> Prompt 1C is DONE. Next prompt is **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** from `GYMSERA_AGENT_PLAYBOOK.md`:
+> Read spec §0.5, §8 (especially §8.3 Team & Access — approved design from mobile) and issues: RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, SEC-06, RBAC-03.
+> RBAC-07 first: every path that grants or removes staff access must go through the /team service and RoleAssignment. Do NOT change mobile Team & Access UX.
+> RBAC-03: generate endpoint x persona test suite from real route list and constants/permissions.js, and commit docs/PERMISSIONS.md.
+> Branch to create: `phase-1/prompt-1d-access-control`.
 
 ### Work in progress that is NOT committed
 
