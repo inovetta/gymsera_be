@@ -8,7 +8,13 @@
 const request = require('supertest');
 const { setupTestDatabases, teardownTestDatabases, resetTestDatabases, factories } = require('../harness');
 const fakes = require('../harness/billing-fakes');
-const app = require('../../app');
+// supertest calls a server already listening on 127.0.0.1 (TEST-FLAKE-1B).
+const { startTestServer } = require('../harness/test-server');
+
+let app;
+beforeAll(async () => {
+  app = await startTestServer();
+});
 const { signToken } = require('../../src/utils/jwt.utils');
 const { City, Tenant, TenantSubscription, CapacityEvent, GymListing, BillingEvent } = require('../../src/models/platform');
 const quota = require('../../src/services/subscription-quota.service');

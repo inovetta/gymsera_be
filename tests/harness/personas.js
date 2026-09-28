@@ -23,7 +23,7 @@ const {
   createTenantSubscription,
   createRoleAssignment,
 } = require('./factories');
-const app = require('../../app');
+const { startTestServer } = require('./test-server');
 
 class PersonaManager {
   constructor() {
@@ -37,6 +37,8 @@ class PersonaManager {
    */
   async setup(dbHarness) {
     const { tenant1, tenant2 } = dbHarness;
+    // supertest calls a server already listening on 127.0.0.1 (TEST-FLAKE-1B).
+    this.server = await startTestServer();
 
     // 1. Tenant 1 & Owner
     const ownerUser = await createUser({
@@ -323,7 +325,8 @@ class PersonaManager {
 
     const formatPath = (path) => (path.startsWith('/api/v1') ? path : `/api/v1${path.startsWith('/') ? path : `/${path}`}`);
 
-    const agent = request(app);
+    if (!this.server) throw new Error('Call setup() before as(): the test server is started there');
+    const agent = request(this.server);
 
     return {
       get: (path) => {

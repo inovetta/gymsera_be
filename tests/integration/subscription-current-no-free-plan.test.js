@@ -16,7 +16,13 @@ const {
   factories,
 } = require('../harness');
 const fakes = require('../harness/billing-fakes');
-const app = require('../../app');
+// supertest calls a server already listening on 127.0.0.1 (TEST-FLAKE-1B).
+const { startTestServer } = require('../harness/test-server');
+
+let app;
+beforeAll(async () => {
+  app = await startTestServer();
+});
 const { signToken } = require('../../src/utils/jwt.utils');
 const {
   City,

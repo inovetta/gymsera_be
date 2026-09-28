@@ -12,7 +12,13 @@ const request = require('supertest');
 const { setupTestDatabases, teardownTestDatabases, getAdminConnection, factories } = require('../harness');
 const { installMailFake } = require('../harness/mail-fake');
 const fakes = require('../harness/billing-fakes');
-const app = require('../../app');
+// supertest calls a server already listening on 127.0.0.1 (TEST-FLAKE-1B).
+const { startTestServer } = require('../harness/test-server');
+
+let app;
+beforeAll(async () => {
+  app = await startTestServer();
+});
 const { City, TenantSubscription } = require('../../src/models/platform');
 const tenantService = require('../../src/services/tenant.service');
 const adminService = require('../../src/services/admin.service');

@@ -272,6 +272,8 @@ async function resetTestDatabases() {
  * Closes all connections.
  */
 async function teardownTestDatabases() {
+  // The 127.0.0.1 test server, if this file started one (TEST-FLAKE-1B).
+  await require('./test-server').stopTestServer();
   const { sequelize: platformSequelize } = require('../../src/database/platform');
   if (platformSequelize) {
     await platformSequelize.close().catch(() => {});
