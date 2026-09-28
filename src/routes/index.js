@@ -320,25 +320,6 @@ router.get('/system/run-pull', (req, res) => {
   });
 });
 
-/**
- * Recycle IIS worker process to immediately reset memory store (rate limits, caches)
- */
-router.get('/system/recycle', (req, res) => {
-  const secret = req.query.key;
-  if (secret !== 'gymsera-fix-socket-2026') {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
-
-  res.json({
-    success: true,
-    message: 'Worker recycling triggered. iisnode will restart worker process immediately.',
-  });
-
-  setTimeout(() => {
-    process.exit(0);
-  }, 300);
-});
-
 
 router.get('/debug-cleanup-indexes', async (_req, res) => {
   try {
