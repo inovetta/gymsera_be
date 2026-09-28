@@ -37,6 +37,9 @@ const registerTenantModels = (sequelize) => {
   const LedgerDay = require('./LedgerDay.model')(sequelize);
   const LedgerAdjustment = require('./LedgerAdjustment.model')(sequelize);
 
+  // ── Capacity Outbox (see spec §6.2, CAP-02) ──────────────────────────────────
+  const CapacityOutbox = require('./CapacityOutbox.model')(sequelize);
+
   // ── Associations ─────────────────────────────────────────────────────────────
 
   // Gym ↔ Branch
@@ -151,6 +154,8 @@ const registerTenantModels = (sequelize) => {
     AuditLog,
     LedgerDay,
     LedgerAdjustment,
+    CapacityOutbox,
+    Outbox: CapacityOutbox,
   };
 };
 

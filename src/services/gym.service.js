@@ -836,6 +836,7 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
 
   const t = await tenantDb.sequelize.transaction();
   let branch;
+  let outboxEntry = null;
   try {
     // Row-locked fetch + guard, both inside the transaction — found via
     // concurrency testing that two near-simultaneous deletes of the same
@@ -917,6 +918,40 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
       );
     }
 
+    // CAP-02: Write tenant-DB Outbox row inside tenant transaction t
+    // so cross-database capacity credit can never be lost if the process
+    // dies between the tenant commit and the platform credit.
+    outboxEntry = null;
+    const deactivatedTimestamp = branch.deactivatedAt ? branch.deactivatedAt.getTime() : Date.now();
+    const idempotencyKey = `branch_delete:${branch.id}:${deactivatedTimestamp}`;
+
+    if (branch.gymListingId) {
+      const listing = await GymListing.findByPk(branch.gymListingId, { attributes: ['id', 'tenantId'] });
+      if (listing) {
+        const capacityOutboxService = require('./capacity-outbox.service');
+        outboxEntry = await capacityOutboxService.createOutboxEntry(
+          tenantDb,
+          {
+            eventType: 'BRANCH_DELETED',
+            payloadJson: {
+              tenantId: listing.tenantId,
+              listingId: listing.id,
+              branchId: branch.id,
+              action: 'BRANCH_DELETED',
+              delta: 1,
+              reservedSlotsDelta: 1,
+              actorUserId: deletedByUserId || null,
+              actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
+              reason: `Branch "${branch.branchName}" deleted`,
+              idempotencyKey,
+            },
+            idempotencyKey,
+          },
+          { transaction: t }
+        );
+      }
+    }
+
     await t.commit();
   } catch (err) {
     await t.rollback();
@@ -924,48 +959,15 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
   }
 
   // 7. Give the organization back the capacity this branch was using, as an
-  // unbuilt slot — the host already paid for it, deleting the branch
-  // shouldn't make it disappear from their account, just from being built
-  // out right now. This is a SEPARATE database (platform, not tenant), so it
-  // can't share the transaction above — instead it's made idempotent
-  // (keyed on this exact delete, via the deactivatedAt just committed) and
-  // retried on transient failure, so a retry can never double-credit the
-  // slot and a failure here never silently loses it the way a bare
-  // try/catch would. See CapacityEvent.model.js.
-  await _applyPlatformCapacityStep(async () => {
-    const platformTx = await sequelize.transaction();
-    try {
-      await GymListing.update({ branchId: null }, { where: { branchId }, transaction: platformTx });
-      if (branch.gymListingId) {
-        const listing = await GymListing.findByPk(branch.gymListingId, { lock: true, transaction: platformTx });
-        if (listing) {
-          const { applied } = await subscriptionQuotaService.recordCapacityEvent(
-            {
-              tenantId: listing.tenantId,
-              listingId: listing.id,
-              branchId: branch.id,
-              action: 'BRANCH_DELETED',
-              delta: 1,
-              reservedSlotsBefore: listing.reservedSlots,
-              reservedSlotsAfter: listing.reservedSlots + 1,
-              actorUserId: deletedByUserId || null,
-              actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
-              reason: `Branch "${branch.branchName}" deleted`,
-              idempotencyKey: `branch_delete:${branch.id}:${branch.deactivatedAt.getTime()}`,
-            },
-            { transaction: platformTx }
-          );
-          if (applied) {
-            await listing.increment('reservedSlots', { by: 1, transaction: platformTx });
-          }
-        }
-      }
-      await platformTx.commit();
-    } catch (err) {
-      await platformTx.rollback();
-      throw err;
-    }
-  }, '[Branch Deletion] Failed to return capacity to the organization after 3 attempts — reservedSlots may be understated until the reconciliation job corrects it');
+  // unbuilt slot — applied via the Capacity Outbox processor. If this
+  // immediate call fails or the process died, the daily sweep recovers it
+  // using the exact same CapacityEvent.idempotencyKey.
+  if (outboxEntry) {
+    const capacityOutboxService = require('./capacity-outbox.service');
+    await _applyPlatformCapacityStep(async () => {
+      await capacityOutboxService.processOutboxEntry(tenantDb, outboxEntry.id);
+    }, '[Branch Deletion] Failed to return capacity to the organization after 3 attempts — outbox sweep will process it');
+  }
 
   // 7a. Recompute the over-quota flag now that one fewer branch is active,
   // so a host who deleted a branch specifically to get back under their plan

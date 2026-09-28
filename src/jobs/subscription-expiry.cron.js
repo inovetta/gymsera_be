@@ -322,6 +322,14 @@ const runExpiryCheck = async () => {
   // ── Platform subscriptions ────────────────────────────────────────────────
   await _processPlatformSubscriptions();
 
+  // ── Capacity Outbox sweep (CAP-02) ───────────────────────────────────────
+  try {
+    const capacityOutboxService = require('../services/capacity-outbox.service');
+    await capacityOutboxService.sweepAllTenantsOutbox();
+  } catch (err) {
+    console.error('[Cron] Capacity outbox sweep failed:', err.message);
+  }
+
   // ── Capacity invariant safety net ────────────────────────────────────────
   await _reconcileCapacityForAllTenants();
 
