@@ -1058,8 +1058,21 @@ const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => 
     if (!tenant) throw createError('Tenant not found', 404);
 
     const listing = await GymListing.findByPk(branch.gymListingId, { lock: true, transaction: platformTx });
-    if (!listing || listing.status === 'INACTIVE') {
-      throw createError('This branch\'s organization no longer exists — move it to another organization instead', 409);
+    if (!listing) {
+      throw createError('This branch\'s organization no longer exists — move it to another organization instead', 404);
+    }
+
+    // CAP-06: Restoring a branch whose organization was auto-deactivated reactivates
+    // the organization in the same flow and consumes that organization's preserved reservedSlots first.
+    if (listing.status === 'INACTIVE') {
+      await listing.update({
+        status: 'ACTIVE',
+        branchId: branch.id,
+      }, { transaction: platformTx });
+    } else if (!listing.branchId) {
+      await listing.update({
+        branchId: branch.id,
+      }, { transaction: platformTx });
     }
 
     const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
