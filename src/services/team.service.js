@@ -388,10 +388,13 @@ const updateAssignment = async (ctx, assignmentId, changes) => {
     }
     const found = await Branch.findAll({
       where: { id: { [Op.in]: targetBranchIds } },
-      attributes: ['id'],
     });
     if (found.length !== targetBranchIds.length) {
       throw createError('One or more selected branches do not exist', 400);
+    }
+    const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+    for (const b of found) {
+      assertBranchNotBillingLocked(b);
     }
     patch.scopeType = 'BRANCH';
 

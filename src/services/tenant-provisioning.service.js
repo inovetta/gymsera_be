@@ -222,6 +222,9 @@ const processTenantProvisioning = async (tenantId) => {
 
   try {
     const models = registerTenantModels(tenantSequelize);
+    const tenantDb = tenantSequelize;
+    tenantDb.models = models;
+    tenantDb.tenantId = tenantId;
     await tenantSequelize.sync({ force: false, alter: true });
     console.log(`[Provisioning] Tenant schema synced to '${dbName}'`);
 

@@ -96,6 +96,13 @@ router.post('/:staffId/accept', async (req, res, next) => {
       throw createError('Access denied: Invite is not assigned to your account', 403);
     }
 
+    const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+    const branch = await tenantDb.models.Branch.findByPk(staff.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('../services/branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+
     // Accept invite
     await staff.update({ status: 'active' });
 
