@@ -31,7 +31,7 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1d-access-control` | b1af219 docs(spec): record SEC-01 commit hash in §13 | no |
+| gymsera_be | `phase-1/prompt-1d-access-control` | 4d91fe6 test(fix): update test assertions for SEC-02 404 behavior, AUTH-09 invitation routes, and CAP-03 regex boundary | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
@@ -81,12 +81,12 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR:**
 - [x] 1. RBAC-07 — Unify staff access through Team & Access (P0) (`d296268`)
 - [x] 2. AUTH-01 — Refresh token rotation and reuse detection (`4adc58d`)
-- [x] 3. AUTH-04 — OTP security
-- [ ] 4. AUTH-09 — Admin "add tenant" links or creates accounts by email with no ownership proof
-- [ ] 5. SEC-02 — Tenant identity must come from authentication, never from client input
-- [ ] 6. SEC-01 — No IDOR (Insecure Direct Object Reference)
-- [ ] 7. RBAC-03 — Generate the endpoint × persona permission test suite + docs/PERMISSIONS.md
-- [ ] §13 rows with hashes, 3 consecutive full runs, handoff clean
+- [x] 3. AUTH-04 — OTP security (`621dc93`)
+- [x] 4. AUTH-09 — Admin "add tenant" links or creates accounts by email with no ownership proof (`476c3c6`)
+- [x] 5. SEC-02 — Tenant identity must come from authentication, never from client input (`78f346e`)
+- [x] 6. SEC-01 — No IDOR (Insecure Direct Object Reference) (`4de6020`)
+- [x] 7. RBAC-03 — Generate the endpoint × persona permission test suite + docs/PERMISSIONS.md (`963863f`)
+- [x] §13 rows with hashes, full test suite pass (55/55 passed, 293/293 tests), handoff clean
 
 ---
 
