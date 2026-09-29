@@ -17,7 +17,7 @@ const { Op } = require('sequelize');
 const TenantDbManager       = require('../database/TenantDbManager');
 const { sequelize: platformSequelize } = require('../database/platform');
 const { UserGymMembership, User, Tenant, TenantSubscription, GymListing, PlatformPackage } = require('../models/platform');
-const { notificationsQueue } = require('./queues');
+const notificationsService = require('../services/notifications.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const emailService = require('../services/email.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
@@ -88,14 +88,35 @@ const _processTenant = async (tenantId, tenantDb) => {
       attributes: ['gymName'],
     });
 
-    await notificationsQueue.add({
-      type:     'SUBSCRIPTION_EXPIRING_SOON',
-      userId:   user.id,
-      email:    user.email,
-      fullName: user.fullName,
-      gymName:  index?.gymName || 'your gym',
-      endDate:  sub.endDate,
-    }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+    const gymName = index?.gymName || 'your gym';
+
+    // 1. In-app notification, WebSocket broadcast, and FCM push
+    await notificationsService.createNotification({
+      userId: user.id,
+      role: 'traveler',
+      type: 'expiry',
+      title: 'Plan Expiring Soon',
+      message: `Your membership at ${gymName} expires on ${sub.endDate}. Renew now!`,
+      deepLink: '/traveler/subscriptions',
+      metadataJson: {
+        event: 'subscription_expiring_soon',
+        subscriptionId: sub.id,
+        gymName,
+        endDate: sub.endDate,
+      },
+    }).catch((notifErr) => {
+      console.warn('[Notification Error] Failed to create SUBSCRIPTION_EXPIRING_SOON notification:', notifErr.message);
+    });
+
+    // 2. Direct email delivery via SMTP
+    await emailService.sendSubscriptionExpiringSoonEmail(
+      user.email,
+      user.fullName,
+      gymName,
+      sub.endDate
+    ).catch((mailErr) => {
+      console.warn('[Email Error] Failed to send SUBSCRIPTION_EXPIRING_SOON email:', mailErr.message);
+    });
   }
 };
 
