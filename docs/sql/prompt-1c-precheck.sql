@@ -8,6 +8,17 @@
 -- 2. Run Section 2 against each TENANT database
 --    Then: node src/scripts/run-tenant-migrations.js --dry-run
 --          node src/scripts/run-tenant-migrations.js
+--
+-- What "safe to migrate" looks like:
+-- MySQL version returns 5.7.8 or later.
+-- Platform schema_migrations returns migrations 1 through 6 applied, with p007 absent.
+-- Check 4 shows capacity_events.action as an ENUM with only pre-p007 values, zero unknown actions in use, and rows_in_capacity_events providing the platform table size baseline.
+-- Tenant schema_migrations returns versions 1 through 7 applied, with versions 8, 9, and 10 absent.
+-- Check 1 returns 0 rows from information_schema.COLUMNS for admin_suspended columns on branches.
+-- Check 2 returns 0 rows from information_schema.TABLES for the capacity_outbox table.
+-- Check 3 returns 0 rows from information_schema.COLUMNS for billing_locked_at columns on branches.
+-- Check (c) returns admin_suspended_column_exists = 0, confirming the column does not exist yet.
+-- Table size for branches returns the baseline row count for online ALTER timing.
 
 -- ============================================================================
 -- SECTION 1: PLATFORM DATABASE CHECKS (run against `gymsera` platform DB)
@@ -71,12 +82,12 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches'
   AND COLUMN_NAME IN ('billing_locked_at', 'billing_lock_reason');
 
 -- 7. Check (c): Pre-existing column conflict check on branches table.
---    Expected: Error "Unknown column 'admin_suspended'" on a fresh database (safe to migrate),
---    OR if the column was pre-created out-of-band, the count must be exactly 0.
---    A count > 0 indicates a schema conflict where admin_suspended already holds data.
-SELECT COUNT(*) AS active_branches_with_admin_suspended
-FROM branches
-WHERE status = 'ACTIVE' AND admin_suspended IS NOT NULL;
+--    Expected safe result: 0 (column does not exist yet). If it returns 1, STOP before
+--    migrating that tenant and tell me, because something already created a column with
+--    that name and we need to see what it is before touching it.
+SELECT COUNT(*) AS admin_suspended_column_exists
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches' AND COLUMN_NAME = 'admin_suspended';
 
 -- 8. Table size for branches (online ALTER timing baseline).
 SELECT COUNT(*) AS rows_in_branches FROM branches;
