@@ -433,4 +433,8 @@ router.post(
  */
 router.get('/me', authenticate, authController.me);
 
+// ── Tenant Invitations (AUTH-09) ──────────────────────────────────────────────
+router.get('/tenant-invitations/verify', authController.verifyTenantInvitation);
+router.post('/tenant-invitations/accept', authController.acceptTenantInvitation);
+
 module.exports = router;

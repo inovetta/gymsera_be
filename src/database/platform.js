@@ -154,6 +154,55 @@ const connect = async () => {
     _logIfUnexpected('otps.max_attempts', err);
   }
 
+  // Tenant invitations and platform audit logs (AUTH-09)
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS \`tenant_invitations\` (
+        \`id\` CHAR(36) NOT NULL,
+        \`token_hash\` VARCHAR(64) NOT NULL,
+        \`owner_email\` VARCHAR(150) NOT NULL,
+        \`owner_full_name\` VARCHAR(150) NOT NULL,
+        \`owner_phone\` VARCHAR(25) NULL,
+        \`business_name\` VARCHAR(200) NOT NULL,
+        \`email\` VARCHAR(150) NOT NULL,
+        \`phone\` VARCHAR(25) NULL,
+        \`city_id\` INT NULL,
+        \`package_id\` CHAR(36) NULL,
+        \`invited_by\` CHAR(36) NOT NULL,
+        \`status\` ENUM('PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED') NOT NULL DEFAULT 'PENDING',
+        \`expires_at\` DATETIME NOT NULL,
+        \`accepted_at\` DATETIME NULL,
+        \`tenant_id\` CHAR(36) NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`idx_tenant_invitations_token_hash\` (\`token_hash\`),
+        KEY \`idx_tenant_invitations_owner_email\` (\`owner_email\`),
+        KEY \`idx_tenant_invitations_status\` (\`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+  } catch (err) {
+    _logIfUnexpected('tenant_invitations', err);
+  }
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS \`platform_audit_logs\` (
+        \`id\` CHAR(36) NOT NULL,
+        \`actor_user_id\` CHAR(36) NULL,
+        \`action\` VARCHAR(100) NOT NULL,
+        \`target_type\` VARCHAR(50) NULL,
+        \`target_id\` VARCHAR(100) NULL,
+        \`details\` JSON NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`idx_platform_audit_actor\` (\`actor_user_id\`),
+        KEY \`idx_platform_audit_action\` (\`action\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+  } catch (err) {
+    _logIfUnexpected('platform_audit_logs', err);
+  }
+
   // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
   // store-verified-purchase columns. Additive and idempotent — safe to run on
   // every boot, in every environment, same as the block above. See

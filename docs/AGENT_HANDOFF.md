@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | AUTH-09 |
+| Issue in progress | SEC-02 |
 | Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,17 +31,19 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1d-access-control` | d312572 fix(auth): secure OTPs with salted hashing, attempt lockout, and cooldown (AUTH-04) | no |
+| gymsera_be | `phase-1/prompt-1d-access-control` | 621dc93 fix(auth): secure OTPs with salted hashing, attempt lockout, and cooldown (AUTH-04) | yes (AUTH-09 ready to commit) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1D issue 4: **AUTH-09 — Admin "add tenant" links or creates accounts by email with no ownership proof**.
-> Find the current flow in admin controller / tenant provisioning service. If it links or auto-creates
-> an account from a typed email with no verification, replace it with an invitation: an email link
-> the recipient must click to prove ownership before the link happens. Audit the action either way.
-> Write failing regression test, implement fix, make green, update §13 and handoff, commit.
+> Prompt 1D issue 5: **SEC-02 — Tenant identity must come from authentication, never from client input**.
+> Confirm resolveTenant (or equivalent, e.g. `tenantContext.js`) ignores any tenantId in the request body,
+> and that a header-based tenant selector (`X-Tenant-Id`) is only ever validated against the tenants the
+> authenticated user actually belongs to.
+> Test: forge a tenant ID in the body of a request for a tenant the caller does not belong to — must be
+> rejected, and must not leak whether that tenant ID exists (returns 404, not 403).
+> Write regression test, verify failure, implement fix, make green 3x, update §13 and handoff, commit.
 
 ### Work in progress that is NOT committed
 

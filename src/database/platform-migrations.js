@@ -306,6 +306,55 @@ const PLATFORM_MIGRATIONS = [
       }
     },
   },
+  {
+    version: 10,
+    name: 'p010_tenant_invitations_and_audit',
+    description: 'Create tenant_invitations and platform_audit_logs tables for AUTH-09 admin tenant invitation flow',
+    up: async (sequelize, context) => {
+      if (context.dryRun) return;
+
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`tenant_invitations\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`token_hash\` VARCHAR(64) NOT NULL,
+          \`owner_email\` VARCHAR(150) NOT NULL,
+          \`owner_full_name\` VARCHAR(150) NOT NULL,
+          \`owner_phone\` VARCHAR(25) NULL,
+          \`business_name\` VARCHAR(200) NOT NULL,
+          \`email\` VARCHAR(150) NOT NULL,
+          \`phone\` VARCHAR(25) NULL,
+          \`city_id\` INT NULL,
+          \`package_id\` CHAR(36) NULL,
+          \`invited_by\` CHAR(36) NOT NULL,
+          \`status\` ENUM('PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED') NOT NULL DEFAULT 'PENDING',
+          \`expires_at\` DATETIME NOT NULL,
+          \`accepted_at\` DATETIME NULL,
+          \`tenant_id\` CHAR(36) NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`idx_tenant_invitations_token_hash\` (\`token_hash\`),
+          KEY \`idx_tenant_invitations_owner_email\` (\`owner_email\`),
+          KEY \`idx_tenant_invitations_status\` (\`status\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`platform_audit_logs\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`actor_user_id\` CHAR(36) NULL,
+          \`action\` VARCHAR(100) NOT NULL,
+          \`target_type\` VARCHAR(50) NULL,
+          \`target_id\` VARCHAR(100) NULL,
+          \`details\` JSON NULL,
+          \`created_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          KEY \`idx_platform_audit_actor\` (\`actor_user_id\`),
+          KEY \`idx_platform_audit_action\` (\`action\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

@@ -5,7 +5,7 @@ const { Op } = require('sequelize');
 const { OAuth2Client } = require('google-auth-library');
 const { v4: uuidv4 } = require('uuid');
 
-const { User, Tenant, RefreshToken, Otp } = require('../models/platform');
+const { User, Tenant, RefreshToken, Otp, TenantInvitation, PlatformAuditLog } = require('../models/platform');
 const { signToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt.utils');
 const {
   generateOtpCode,
@@ -16,6 +16,7 @@ const {
 const { createError } = require('../utils/response.utils');
 const emailService = require('./email.service');
 const { UserRole } = require('../constants/roles');
+const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -1007,6 +1008,162 @@ const verifyReauthCredential = async (userId, { provider, idToken }) => {
   throw createError(`Unsupported re-authentication provider "${provider}"`, 400);
 };
 
+/**
+ * Verify a tenant invitation token (AUTH-09).
+ */
+const verifyTenantInvitation = async (rawToken) => {
+  if (!rawToken || typeof rawToken !== 'string') {
+    throw createError('Invitation token is required', 400);
+  }
+  const tokenHash = crypto.createHash('sha256').update(rawToken.trim()).digest('hex');
+
+  const invitation = await TenantInvitation.findOne({
+    where: {
+      tokenHash,
+      status: 'PENDING',
+      expiresAt: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (!invitation) {
+    throw createError('Invalid or expired invitation link', 400);
+  }
+
+  return {
+    valid: true,
+    invitation: {
+      id: invitation.id,
+      ownerEmail: invitation.ownerEmail,
+      ownerFullName: invitation.ownerFullName,
+      businessName: invitation.businessName,
+      email: invitation.email,
+      phone: invitation.phone,
+      expiresAt: invitation.expiresAt,
+    },
+  };
+};
+
+/**
+ * Accept a tenant invitation and create/link the tenant (AUTH-09).
+ * Recipient proves ownership of email by providing password / authenticated session.
+ */
+const acceptTenantInvitation = async ({ token, password, fullName, phone }, authenticatedUser = null, ipAddress = null, userAgent = null) => {
+  if (!token || typeof token !== 'string') {
+    throw createError('Invitation token is required', 400);
+  }
+  const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+  const invitation = await TenantInvitation.findOne({
+    where: {
+      tokenHash,
+      status: 'PENDING',
+      expiresAt: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (!invitation) {
+    throw createError('Invalid or expired invitation link', 400);
+  }
+
+  let user = await User.findOne({ where: { email: invitation.ownerEmail } });
+
+  if (user) {
+    // Existing user: caller must prove ownership via active session or valid password
+    const isSessionMatch = authenticatedUser && (authenticatedUser.id === user.id || authenticatedUser.sub === user.id);
+    if (!isSessionMatch) {
+      if (!password) {
+        throw createError('Password is required to confirm ownership of your existing account', 401);
+      }
+      const match = await bcrypt.compare(password, user.passwordHash);
+      if (!match) {
+        throw createError('Invalid password for existing account', 401);
+      }
+    }
+
+    // Check if user already owns a tenant
+    const existingTenant = await Tenant.findOne({ where: { ownerUserId: user.id } });
+    if (existingTenant) {
+      throw createError('This user already owns a gym business', 409);
+    }
+
+    // Consent given & ownership proved: upgrade to GYM_HOST
+    await user.update({
+      role: UserRole.GYM_HOST,
+      isVerified: true,
+      status: 'ACTIVE',
+      fullName: fullName || user.fullName,
+      phone: phone || user.phone,
+    });
+  } else {
+    // New user: must provide password to set up their account
+    if (!password || password.length < 8) {
+      throw createError('Password must be at least 8 characters long', 400);
+    }
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    user = await User.create({
+      fullName: fullName || invitation.ownerFullName,
+      email: invitation.ownerEmail,
+      phone: phone || invitation.ownerPhone || null,
+      passwordHash,
+      role: UserRole.GYM_HOST,
+      isVerified: true,
+      status: 'ACTIVE',
+    });
+  }
+
+  // Create the Tenant
+  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const tenantCode = `GYM-${suffix}`;
+
+  const tenant = await Tenant.create({
+    tenantCode,
+    businessName: invitation.businessName,
+    email: invitation.email,
+    phone: invitation.phone || null,
+    cityId: invitation.cityId || null,
+    ownerUserId: user.id,
+    selectedPackageId: invitation.packageId || null,
+    status: TenantStatus.PENDING_REVIEW,
+    kycStatus: KycStatus.NOT_SUBMITTED,
+    onboardingStep: 1,
+  });
+
+  // Mark invitation ACCEPTED
+  await invitation.update({
+    status: 'ACCEPTED',
+    acceptedAt: new Date(),
+    tenantId: tenant.id,
+  });
+
+  // Audit the acceptance
+  try {
+    await PlatformAuditLog.create({
+      actorUserId: user.id,
+      action: 'tenant_invitation.accepted',
+      targetType: 'tenant',
+      targetId: tenant.id,
+      details: {
+        ownerEmail: invitation.ownerEmail,
+        tenantCode: tenant.tenantCode,
+        businessName: tenant.businessName,
+        invitationId: invitation.id,
+      },
+      createdAt: new Date(),
+    });
+  } catch (auditErr) {
+    console.warn('[Audit] Failed to record tenant invitation accepted:', auditErr.message);
+  }
+
+  const tokenPair = await _issueTokenPair(user, ipAddress, userAgent);
+
+  return {
+    tenant,
+    user: tokenPair.user,
+    accessToken: tokenPair.accessToken,
+    refreshToken: tokenPair.refreshToken,
+  };
+};
+
 module.exports = {
   register,
   verifyOtp,
@@ -1019,4 +1176,6 @@ module.exports = {
   passwordResetConfirm,
   getMe,
   verifyReauthCredential,
+  verifyTenantInvitation,
+  acceptTenantInvitation,
 };
