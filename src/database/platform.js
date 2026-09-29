@@ -130,6 +130,13 @@ const connect = async () => {
     _logIfUnexpected('gym_listings.reserved_slots', err);
   }
 
+  // Refresh token rotation session family identifier (AUTH-01)
+  try {
+    await sequelize.query('ALTER TABLE `refresh_tokens` ADD COLUMN `family_id` CHAR(36) NULL;');
+  } catch (err) {
+    _logIfUnexpected('refresh_tokens.family_id', err);
+  }
+
   // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
   // store-verified-purchase columns. Additive and idempotent — safe to run on
   // every boot, in every environment, same as the block above. See

@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | AUTH-01 |
+| Issue in progress | AUTH-04 |
 | Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,15 +31,16 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1d-access-control` | 7471c22 Merge pull request #52 from inovetta/refactor/direct-member-notifications | no |
+| gymsera_be | `phase-1/prompt-1d-access-control` | d296268 fix(rbac): unify staff access through Team & Access (RBAC-07) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1D issue 2: **AUTH-01 — Refresh token rotation and reuse detection**.
-> Verify refresh tokens are opaque, stored hashed, rotated on every use, and that reusing an already-rotated
-> refresh token revokes the entire session family. Write regression test, verify failure, implement fix, make green.
+> Prompt 1D issue 3: **AUTH-04 — OTP security**.
+> Confirm: 6-digit codes, hashed at rest (never stored or logged in plaintext), 5–10 minute expiry,
+> maximum attempts before lockout, a resend cooldown, and rate limits per IP and per identifier.
+> Audit existing OTP creation and verification flows, write failing regression test, fix gaps, make green.
 
 ### Work in progress that is NOT committed
 

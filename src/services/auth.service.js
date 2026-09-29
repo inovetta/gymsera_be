@@ -1,7 +1,9 @@
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { OAuth2Client } = require('google-auth-library');
+const { v4: uuidv4 } = require('uuid');
 
 const { User, Tenant, RefreshToken, Otp } = require('../models/platform');
 const { signToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt.utils');
@@ -15,6 +17,38 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const BCRYPT_ROUNDS = 12;
 
 // ── Private helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Generate an opaque refresh token (80 hex characters) (AUTH-01).
+ */
+const _generateOpaqueRefreshToken = () => {
+  return crypto.randomBytes(40).toString('hex');
+};
+
+/**
+ * Hash a refresh token with SHA-256 for secure storage at rest (AUTH-01).
+ */
+const _hashToken = (rawToken) => {
+  return crypto.createHash('sha256').update(String(rawToken)).digest('hex');
+};
+
+/**
+ * Resolve refresh token expiry date from environment or default 30 days.
+ */
+const _getRefreshTokenExpiry = () => {
+  const str = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
+  let ms = 30 * 24 * 60 * 60 * 1000;
+  const match = String(str).match(/^(\d+)([smhd])$/);
+  if (match) {
+    const val = parseInt(match[1], 10);
+    const unit = match[2];
+    if (unit === 's') ms = val * 1000;
+    else if (unit === 'm') ms = val * 60 * 1000;
+    else if (unit === 'h') ms = val * 60 * 60 * 1000;
+    else if (unit === 'd') ms = val * 24 * 60 * 60 * 1000;
+  }
+  return new Date(Date.now() + ms);
+};
 
 /**
  * Invalidate all unused OTPs of a given type for a user.
@@ -72,23 +106,25 @@ const _buildTokenPayload = async (user) => {
 };
 
 /**
- * Issue a JWT + refresh token pair, store the refresh token in the DB.
+ * Issue a JWT + opaque refresh token pair, store the hashed refresh token in the DB (AUTH-01).
+ * Preserves familyId on rotation so the entire session family can be revoked on reuse.
  */
-const _issueTokenPair = async (user, ipAddress, userAgent) => {
+const _issueTokenPair = async (user, ipAddress, userAgent, existingFamilyId = null) => {
   const payload = await _buildTokenPayload(user);
 
   const accessToken = signToken(payload);
-  const refreshToken = signRefreshToken({ sub: user.id });
-
-  // Decode the signed refresh token to get its actual expiry
-  const decoded = jwt.decode(refreshToken);
-  const expiresAt = new Date(decoded.exp * 1000);
+  const refreshToken = _generateOpaqueRefreshToken();
+  const tokenHash = _hashToken(refreshToken);
+  const familyId = existingFamilyId || uuidv4();
+  const expiresAt = _getRefreshTokenExpiry();
 
   try {
     await RefreshToken.create({
       userId: user.id,
-      token: refreshToken,
+      familyId,
+      token: tokenHash,
       expiresAt,
+      isRevoked: false,
       ipAddress: ipAddress || null,
       userAgent: userAgent || null,
     });
@@ -637,28 +673,52 @@ const appleLogin = async ({ identityToken, userIdentifier, email, fullName }, ip
 };
 
 /**
- * Rotate a refresh token — revoke the old one, issue a new pair.
+ * Rotate a refresh token — revoke the old one, issue a new pair in the same family.
+ * If an already-revoked refresh token is presented, REUSE is detected: revoke the
+ * entire session family immediately to protect against token theft (AUTH-01).
  */
 const refreshTokens = async (token, ipAddress, userAgent) => {
-  // Verify the JWT signature first
-  let decoded;
-  try {
-    decoded = verifyRefreshToken(token);
-  } catch {
+  if (!token || typeof token !== 'string') {
     throw createError('Invalid or expired refresh token', 401);
   }
 
-  // Look up in DB — must not be revoked or expired
-  const stored = await RefreshToken.findOne({
-    where: {
-      token,
-      userId: decoded.sub,
-      isRevoked: false,
-      expiresAt: { [Op.gt]: new Date() },
-    },
+  const tokenHash = _hashToken(token);
+
+  // Look up in DB by token hash, or fallback to raw token for legacy DB rows if any
+  let stored = await RefreshToken.findOne({
+    where: { token: tokenHash },
   });
+  if (!stored) {
+    stored = await RefreshToken.findOne({
+      where: { token },
+    });
+  }
 
   if (!stored) {
+    throw createError('Invalid or expired refresh token', 401);
+  }
+
+  // Reuse detection: If the token is already revoked, an attacker or compromised
+  // client is attempting to reuse an old refresh token. Revoke the entire session family!
+  if (stored.isRevoked) {
+    console.warn(`[Auth:Security] Refresh token reuse detected! Revoking family ${stored.familyId} for user ${stored.userId}`);
+    if (stored.familyId) {
+      await RefreshToken.update(
+        { isRevoked: true },
+        { where: { familyId: stored.familyId } }
+      );
+    } else {
+      await RefreshToken.update(
+        { isRevoked: true },
+        { where: { userId: stored.userId } }
+      );
+    }
+    throw createError('Invalid or expired refresh token', 401);
+  }
+
+  // Check expiration
+  if (new Date(stored.expiresAt) <= new Date()) {
+    await stored.update({ isRevoked: true });
     throw createError('Invalid or expired refresh token', 401);
   }
 
@@ -666,12 +726,13 @@ const refreshTokens = async (token, ipAddress, userAgent) => {
   await stored.update({ isRevoked: true });
 
   // Load the user
-  const user = await User.findByPk(decoded.sub);
+  const user = await User.findByPk(stored.userId);
   if (!user || user.status === 'SUSPENDED') {
     throw createError('User not found or account is suspended', 401);
   }
 
-  return _issueTokenPair(user, ipAddress, userAgent);
+  // Issue new token pair preserving the SAME session familyId
+  return _issueTokenPair(user, ipAddress, userAgent, stored.familyId);
 };
 
 /**

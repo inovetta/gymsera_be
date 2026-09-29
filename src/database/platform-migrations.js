@@ -246,6 +246,32 @@ const PLATFORM_MIGRATIONS = [
       });
     },
   },
+  {
+    version: 8,
+    name: 'p008_refresh_tokens_family_id',
+    up: async (sequelize, context = {}) => {
+      if (context.dryRun) return;
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['refresh_tokens'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return;
+
+      const [col] = await sequelize.query(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
+          'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        { replacements: ['refresh_tokens', 'family_id'], type: QueryTypes.SELECT }
+      );
+      if (!col) {
+        await sequelize.query('ALTER TABLE `refresh_tokens` ADD COLUMN `family_id` CHAR(36) NULL;');
+      }
+
+      // Add indexes if missing
+      try {
+        await sequelize.query('CREATE INDEX `refresh_tokens_family_id` ON `refresh_tokens` (`family_id`);');
+      } catch (_) {}
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
