@@ -334,64 +334,12 @@ const getStaffStatus = async (req, res, next) => {
       }
     }
 
-    // Legacy fallback: a tenant not yet backfilled onto role_assignments (see
-    // scripts/backfill-rbac.js) may still only have a gym_staff row. Once every
-    // tenant is migrated this whole branch — and the scan it does — can be
-    // deleted; it deliberately runs only when the indexed lookup found nothing,
-    // so a migrated user never pays for it.
-    if (branches.length === 0) {
-      await _legacyGymStaffScan(userId, req.user.email, branches);
-    }
-
     return sendSuccess(res, {
       isStaff: branches.length > 0,
       branches,
     }, 'Staff status retrieved');
   } catch (err) {
     next(err);
-  }
-};
-
-/** @deprecated remove once every tenant has run the RBAC backfill. */
-const _legacyGymStaffScan = async (userId, email, branches) => {
-  const { Tenant } = require('../models/platform');
-  const TenantDbManager = require('../database/TenantDbManager');
-  const { Op } = require('sequelize');
-
-  const userEmail = email ? email.toLowerCase().trim() : '';
-  const tenants = await Tenant.findAll({ where: { status: 'ACTIVE' } });
-
-  for (const tenant of tenants) {
-    try {
-      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-      const { GymStaff, Branch } = tenantDb.models;
-
-      const whereCondition = { employmentStatus: 'ACTIVE' };
-      if (userEmail && userId) whereCondition[Op.or] = [{ userId }, { email: userEmail }];
-      else if (userId) whereCondition.userId = userId;
-      else if (userEmail) whereCondition.email = userEmail;
-      else continue;
-
-      const staffRecords = await GymStaff.findAll({ where: whereCondition });
-
-      for (const staff of staffRecords) {
-        if (userId && (!staff.userId || staff.status !== 'active')) {
-          await staff.update({ userId, status: 'active' }).catch(() => {});
-        }
-        const branch = await Branch.findByPk(staff.branchId);
-        if (branch && branch.status === 'ACTIVE') {
-          branches.push({
-            branchId: branch.id,
-            tenantId: tenant.id,
-            branchName: branch.branchName,
-            gymName: tenant.gymName || tenant.businessName,
-            designation: staff.designation || 'Staff',
-          });
-        }
-      }
-    } catch (err) {
-      // Skip connection or query errors.
-    }
   }
 };
 

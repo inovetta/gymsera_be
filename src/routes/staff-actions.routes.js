@@ -11,32 +11,46 @@ const subscriptionService = require('../services/subscription.service');
 const router = Router();
 router.use(authenticate);
 
-// Helper to resolve active staff
+// Helper to resolve active staff via RoleAssignment
 const _resolveActiveStaff = async (tenantDb, branchId, user) => {
-  if (!user || !tenantDb?.models?.GymStaff) return null;
+  if (!user) return null;
   const userId = user.id || user.sub;
-  const userEmail = user.email ? user.email.toLowerCase().trim() : null;
+  if (!userId) return null;
 
-  const userConditions = [];
-  if (userId) userConditions.push({ userId });
-  if (userEmail) userConditions.push({ email: userEmail });
-  if (userConditions.length === 0) return null;
+  const { RoleAssignment, RoleAssignmentBranch, GymStaff } = tenantDb.models;
+  if (!RoleAssignment) return null;
 
-  const staff = await tenantDb.models.GymStaff.findOne({
-    where: {
-      branchId,
-      [Op.or]: userConditions,
-      [Op.and]: [
-        { [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }] }
-      ]
-    }
+  const assignments = await RoleAssignment.findAll({
+    where: { userId, status: 'ACTIVE' },
+    include: [{ model: RoleAssignmentBranch, as: 'branchLinks', required: false }],
   });
 
-  if (staff && userId && (!staff.userId || staff.status !== 'active')) {
-    await staff.update({ userId, status: 'active' }).catch(() => {});
+  const matchingAssignment = assignments.find((a) => {
+    if (a.scopeType === 'ORG') return true;
+    return (a.branchLinks || []).some((b) => b.branchId === branchId);
+  });
+
+  if (!matchingAssignment) return null;
+
+  // Retrieve HR profile from GymStaff if available
+  let staff = null;
+  if (GymStaff) {
+    staff = await GymStaff.findOne({
+      where: {
+        branchId,
+        userId,
+      },
+    });
   }
 
-  return staff;
+  return staff || {
+    id: matchingAssignment.id,
+    userId,
+    branchId,
+    status: 'active',
+    employmentStatus: 'ACTIVE',
+    designation: matchingAssignment.roleKey,
+  };
 };
 
 // Helper to resolve Tenant DB from branch ID

@@ -27,6 +27,8 @@ const ALLOWED_NON_LOGIN_OPERATIONAL_ROUTES = [
   { method: 'POST', path: '/api/v1/auth/refresh', reason: 'Public token refresh: exchanges valid refresh token for fresh JWT' },
   { method: 'POST', path: '/api/v1/auth/password-reset/request', reason: 'Public password reset request: generates secure password reset token' },
   { method: 'POST', path: '/api/v1/auth/password-reset/confirm', reason: 'Public password reset confirm: applies new password via validated reset token' },
+  { method: 'GET', path: '/api/v1/auth/tenant-invitations/verify', reason: 'Public tenant invitation token verification: validates invitation token before registration' },
+  { method: 'POST', path: '/api/v1/auth/tenant-invitations/accept', reason: 'Public tenant invitation accept: creates tenant and owner account via validated invitation token' },
 
   // Cron route (secret checked)
   { method: 'GET', path: '/api/v1/cron/subscription-expiry', reason: 'Cron trigger: sweeps expired subscriptions; protected by CRON_SECRET header/bearer' },

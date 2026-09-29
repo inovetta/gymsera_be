@@ -155,6 +155,32 @@ const me = async (req, res, next) => {
   }
 };
 
+// ── GET /auth/tenant-invitations/verify (AUTH-09) ─────────────────────────────
+const verifyTenantInvitation = async (req, res, next) => {
+  try {
+    const { token } = req.query;
+    const result = await authService.verifyTenantInvitation(token);
+    return sendSuccess(res, result, 'Invitation token is valid');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /auth/tenant-invitations/accept (AUTH-09) ────────────────────────────
+const acceptTenantInvitation = async (req, res, next) => {
+  try {
+    const result = await authService.acceptTenantInvitation(
+      req.body,
+      req.user,
+      req.ip,
+      req.headers['user-agent']
+    );
+    return sendSuccess(res, result, 'Tenant invitation accepted successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   register,
   verifyOtp,
@@ -167,4 +193,6 @@ module.exports = {
   passwordResetRequest,
   passwordResetConfirm,
   me,
+  verifyTenantInvitation,
+  acceptTenantInvitation,
 };

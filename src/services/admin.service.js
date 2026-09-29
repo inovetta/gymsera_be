@@ -1,6 +1,18 @@
 const crypto = require('crypto');
 const { Op, fn, col, literal } = require('sequelize');
-const { Tenant, User, City, Area, PlatformPackage, GymListing, TenantSubscription, PlatformInvoice, UserGymMembership } = require('../models/platform');
+const {
+  Tenant,
+  User,
+  City,
+  Area,
+  PlatformPackage,
+  GymListing,
+  TenantSubscription,
+  PlatformInvoice,
+  UserGymMembership,
+  TenantInvitation,
+  PlatformAuditLog,
+} = require('../models/platform');
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
@@ -10,50 +22,93 @@ const TenantDbManager = require('../database/TenantDbManager');
 const { safeRedisDel } = require('../config/redis.config');
 const notificationsService = require('./notifications.service');
 
-// ── createTenant (admin) ──────────────────────────────────────────────────────
-const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessName, email, phone, cityId, packageId }) => {
-  // Find existing user or create one
-  let user = await User.findOne({ where: { email: ownerEmail.toLowerCase() } });
-  if (!user) {
-    const tempPassword = crypto.randomBytes(10).toString('hex');
-    const bcrypt = require('bcrypt');
-    const passwordHash = await bcrypt.hash(tempPassword, 12);
-    user = await User.create({
-      fullName: ownerFullName,
-      email: ownerEmail.toLowerCase(),
-      phone: ownerPhone || null,
-      passwordHash,
-      role: UserRole.GYM_HOST,
-      isVerified: true,
-      status: 'ACTIVE',
-    });
-  } else {
-    // Upgrade role if not already a host/admin
-    if (user.role === 'MEMBER' || user.role === 'TRAINER') {
-      await user.update({ role: UserRole.GYM_HOST });
+// ── createTenant (admin invitation flow - AUTH-09) ───────────────────────────
+const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessName, email, phone, cityId, packageId }, adminActorId = null) => {
+  const emailClean = ownerEmail.trim().toLowerCase();
+
+  // If user already exists, verify they don't already own a gym business
+  const existingUser = await User.findOne({ where: { email: emailClean } });
+  if (existingUser) {
+    const existingTenant = await Tenant.findOne({ where: { ownerUserId: existingUser.id } });
+    if (existingTenant) {
+      throw createError('This user already owns a gym business', 409);
     }
   }
 
-  const existing = await Tenant.findOne({ where: { ownerUserId: user.id } });
-  if (existing) throw createError('This user already owns a gym business', 409);
+  // Revoke any previous pending invitation for this owner email
+  await TenantInvitation.update(
+    { status: 'REVOKED' },
+    { where: { ownerEmail: emailClean, status: 'PENDING' } }
+  );
 
-  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
-  const tenantCode = `GYM-${suffix}`;
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7-day expiry
 
-  const tenant = await Tenant.create({
-    tenantCode,
-    businessName,
-    email,
-    phone: phone || null,
+  const invitation = await TenantInvitation.create({
+    tokenHash,
+    ownerEmail: emailClean,
+    ownerFullName: ownerFullName.trim(),
+    ownerPhone: ownerPhone ? ownerPhone.trim() : null,
+    businessName: businessName.trim(),
+    email: email.trim().toLowerCase(),
+    phone: phone ? phone.trim() : null,
     cityId: cityId || null,
-    ownerUserId: user.id,
-    selectedPackageId: packageId || null,
-    status: TenantStatus.PENDING_REVIEW,
-    kycStatus: KycStatus.NOT_SUBMITTED,
-    onboardingStep: 1,
+    packageId: packageId || null,
+    invitedBy: adminActorId || '00000000-0000-0000-0000-000000000000',
+    status: 'PENDING',
+    expiresAt,
   });
 
-  return { tenant, user };
+  // Audit the invitation
+  try {
+    await PlatformAuditLog.create({
+      actorUserId: adminActorId || null,
+      action: 'admin.tenant_invited',
+      targetType: 'tenant_invitation',
+      targetId: invitation.id,
+      details: {
+        ownerEmail: emailClean,
+        ownerFullName: ownerFullName.trim(),
+        businessName: businessName.trim(),
+      },
+      createdAt: new Date(),
+    });
+  } catch (auditErr) {
+    console.warn('[Admin:Audit] Failed to record tenant invitation audit:', auditErr.message);
+  }
+
+  // Send invitation email with link
+  const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'https://gymsera.com';
+  const inviteUrl = `${appUrl}/accept-tenant-invite?token=${rawToken}`;
+  try {
+    await emailService.sendTenantInvitationEmail(
+      emailClean,
+      ownerFullName.trim(),
+      businessName.trim(),
+      inviteUrl
+    );
+  } catch (emailErr) {
+    console.warn('[Admin] Failed to send tenant invitation email:', emailErr.message);
+  }
+
+  const result = {
+    invitation: {
+      id: invitation.id,
+      ownerEmail: invitation.ownerEmail,
+      ownerFullName: invitation.ownerFullName,
+      businessName: invitation.businessName,
+      status: invitation.status,
+      expiresAt: invitation.expiresAt,
+    },
+    message: 'Tenant invitation sent successfully',
+  };
+
+  if (process.env.NODE_ENV !== 'production') {
+    result.debugToken = rawToken;
+  }
+
+  return result;
 };
 
 // ── listTenants ───────────────────────────────────────────────────────────────

@@ -83,27 +83,109 @@ const applyLegacyRoleShim = async (req, tenantDb, tenantId) => {
 };
 
 /**
+ * Verify whether an authenticated user belongs to the requested tenant.
+ * @param {string} userId
+ * @param {string} tenantId
+ * @returns {Promise<boolean>}
+ */
+const userBelongsToTenant = async (userId, tenantId) => {
+  if (!userId || !tenantId) return false;
+  const { UserOrgIndex, Tenant, UserGymMembership } = require('../models/platform');
+
+  // 1. Direct tenant ownership
+  const owned = await Tenant.findOne({
+    where: { id: tenantId, ownerUserId: userId, status: 'ACTIVE' },
+    attributes: ['id'],
+  });
+  if (owned) return true;
+
+  // 2. Active membership in UserOrgIndex (staff / team)
+  const inIndex = await UserOrgIndex.findOne({
+    where: { userId, tenantId, status: 'ACTIVE' },
+    attributes: ['tenantId'],
+  });
+  if (inIndex) return true;
+
+  // 3. Gym member in UserGymMembership
+  const inMemberIndex = await UserGymMembership.findOne({
+    where: { userId, tenantId },
+    attributes: ['id'],
+  });
+  if (inMemberIndex) return true;
+
+  // 3. Fallback: check RoleAssignment directly in tenant DB (e.g. before index sync)
+  try {
+    const tenant = await Tenant.findOne({
+      where: { id: tenantId, status: 'ACTIVE' },
+      attributes: ['id', 'connectionStringEncrypted'],
+    });
+    if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
+      return false;
+    }
+    const db = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    if (db?.models?.RoleAssignment) {
+      const assignment = await db.models.RoleAssignment.findOne({
+        where: { userId, status: 'ACTIVE' },
+        attributes: ['id'],
+      });
+      if (assignment) {
+        await membershipService.syncUserOrgIndex(tenantId, userId, db).catch(() => {});
+        return true;
+      }
+    }
+  } catch (_) {
+    // Unreachable tenant DB — skip
+  }
+
+  return false;
+};
+
+/**
  * Work out which tenant this request belongs to.
+ * Tenant identity comes strictly from authentication and validated selectors.
+ * Never from client body input.
  * @returns {Promise<string|null>}
  */
 const resolveTenantId = async (req) => {
-  // 1. The token said so.
-  if (req.user?.tenantId) return req.user.tenantId;
+  const user = req.user;
+  const userId = user?.id || user?.sub;
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
-  // 2. The client said so — the app's context switcher sends this, and it is the
-  //    only correct answer for a user who works at more than one organization.
-  const explicit = req.headers['x-tenant-id'] || req.query.tenantId || req.body?.tenantId;
-  if (explicit) return explicit;
-
-  // 3. Infer from the branch being operated on.
-  const branchId = req.params.branchId || req.query.branchId || req.body?.branchId;
-  if (branchId) {
-    const fromBranch = await membershipService.resolveTenantForBranch(branchId);
-    if (fromBranch) return fromBranch;
+  // 1. Header-based tenant selector (X-Tenant-Id)
+  // Validated against tenants the user actually belongs to.
+  const headerTenantId = req.headers['x-tenant-id'];
+  if (headerTenantId) {
+    if (isPlatformAdmin) {
+      const { Tenant } = require('../models/platform');
+      const exists = await Tenant.findOne({
+        where: { id: headerTenantId, status: 'ACTIVE' },
+        attributes: ['id'],
+      });
+      return exists ? headerTenantId : null;
+    }
+    const belongs = await userBelongsToTenant(userId, headerTenantId);
+    return belongs ? headerTenantId : null;
   }
 
-  // 4. The user's highest-level active membership. One indexed read.
-  const userId = req.user?.id || req.user?.sub;
+  // 2. Token-scoped tenantId (if present in JWT)
+  if (user?.tenantId) {
+    if (isPlatformAdmin) return user.tenantId;
+    const belongs = await userBelongsToTenant(userId, user.tenantId);
+    if (belongs) return user.tenantId;
+  }
+
+  // 3. Infer from branch being operated on (URL params or query only, never body!)
+  const branchId = req.params?.branchId || req.query?.branchId;
+  if (branchId) {
+    const fromBranch = await membershipService.resolveTenantForBranch(branchId);
+    if (fromBranch) {
+      if (isPlatformAdmin) return fromBranch;
+      const belongs = await userBelongsToTenant(userId, fromBranch);
+      if (belongs) return fromBranch;
+    }
+  }
+
+  // 4. User's default active tenant (membership index or owned tenant)
   if (userId) {
     const fromIndex = await membershipService.resolveDefaultTenantForUser(userId);
     if (fromIndex) return fromIndex;
@@ -114,6 +196,48 @@ const resolveTenantId = async (req) => {
 
 const tenantContext = async (req, res, next) => {
   try {
+    const user = req.user;
+    const userId = user?.id || user?.sub;
+    const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
+
+    // ── SEC-02: Tenant identity from authentication, never client input ───
+    // 1. If client provided a tenantId in request body:
+    //    It must NEVER select tenant. If caller forged an out-of-scope tenant ID,
+    //    reject immediately with 404 (without leaking existence).
+    //    If caller belongs to it, delete it so body is never the authority.
+    if (req.body && req.body.tenantId !== undefined) {
+      const bodyTenantId = req.body.tenantId;
+      delete req.body.tenantId;
+
+      if (!isPlatformAdmin) {
+        const belongs = await userBelongsToTenant(userId, bodyTenantId);
+        if (!belongs) {
+          return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+        }
+      }
+    }
+
+    // 2. If client provided X-Tenant-Id header for an out-of-scope tenant:
+    //    Must be rejected with 404 without leaking existence.
+    const headerTenantId = req.headers['x-tenant-id'];
+    if (headerTenantId) {
+      if (isPlatformAdmin) {
+        const { Tenant } = require('../models/platform');
+        const exists = await Tenant.findOne({
+          where: { id: headerTenantId, status: 'ACTIVE' },
+          attributes: ['id'],
+        });
+        if (!exists) {
+          return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+        }
+      } else {
+        const belongs = await userBelongsToTenant(userId, headerTenantId);
+        if (!belongs) {
+          return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+        }
+      }
+    }
+
     const tenantId = await resolveTenantId(req);
 
     if (!tenantId) {
@@ -152,6 +276,9 @@ const tenantContext = async (req, res, next) => {
     req.tenantDb = await TenantDbManager.getConnection(tenantId, encryptedConnStr);
     req.tenantDb.tenantId = tenantId;
     req.tenantId = tenantId;
+    if (req.user) {
+      req.user.tenantId = tenantId;
+    }
 
     // Claim any invite addressed to this email but issued before they signed up.
     await membershipService.claimInvitesForUser(req.tenantDb, tenantId, req.user).catch((err) => {
@@ -169,4 +296,7 @@ const tenantContext = async (req, res, next) => {
 };
 
 module.exports = tenantContext;
+module.exports.resolveTenant = tenantContext;
+module.exports.resolveTenantId = resolveTenantId;
+module.exports.userBelongsToTenant = userBelongsToTenant;
 module.exports.applyLegacyRoleShim = applyLegacyRoleShim;

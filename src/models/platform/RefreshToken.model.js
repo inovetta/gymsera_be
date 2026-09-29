@@ -13,6 +13,11 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      familyId: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        allowNull: true,
+      },
       token: {
         type: DataTypes.TEXT,
         allowNull: false,
@@ -40,6 +45,7 @@ module.exports = (sequelize) => {
       timestamps: true,
       indexes: [
         { fields: ['user_id'] },
+        { fields: ['family_id'] },
         { fields: ['is_revoked'] },
         { fields: ['expires_at'] },
       ],

@@ -5,12 +5,13 @@ const validate = require('../middleware/validate');
 const upload = require('../middleware/upload');
 const userValidators = require('../validators/users.validator');
 const usersController = require('../controllers/users.controller');
+const tenantContext = require('../middleware/tenantContext');
 const { UserRole } = require('../constants/roles');
 
 const router = Router();
 
-// All /users routes require authentication
-router.use(authenticate);
+// All /users routes require authentication and tenant context
+router.use(authenticate, tenantContext);
 
 const managerRoles = [UserRole.GYM_HOST, UserRole.BRANCH_MANAGER, UserRole.PLATFORM_ADMIN];
 

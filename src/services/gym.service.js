@@ -834,6 +834,8 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
     Announcement,
     ClassSchedule,
     StaffActionRequest,
+    RoleAssignment,
+    RoleAssignmentBranch,
   } = tenantDb.models;
 
   const t = await tenantDb.sequelize.transaction();
@@ -890,12 +892,51 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
       );
     }
 
-    // 4. Terminate active staff assignments on this branch
+    // 4. Terminate active staff assignments on this branch and revoke branch RoleAssignments (RBAC-09)
     if (GymStaff) {
       await GymStaff.update(
         { employmentStatus: 'TERMINATED' },
         { where: { branchId, employmentStatus: 'ACTIVE' }, transaction: t }
       );
+    }
+
+    if (RoleAssignment && RoleAssignmentBranch) {
+      const branchLinks = await RoleAssignmentBranch.findAll({
+        where: { branchId },
+        transaction: t,
+      });
+
+      const affectedAssignmentIds = [...new Set(branchLinks.map((l) => l.assignmentId))];
+      if (affectedAssignmentIds.length > 0) {
+        await RoleAssignmentBranch.destroy({
+          where: { branchId },
+          transaction: t,
+        });
+
+        for (const assignmentId of affectedAssignmentIds) {
+          const assignment = await RoleAssignment.findByPk(assignmentId, {
+            transaction: t,
+          });
+
+          if (assignment && assignment.scopeType === 'BRANCH') {
+            const remaining = await RoleAssignmentBranch.count({
+              where: { assignmentId },
+              transaction: t,
+            });
+
+            if (remaining === 0 && assignment.status !== 'REVOKED') {
+              await assignment.update(
+                {
+                  status: 'REVOKED',
+                  revokedBy: 'system:branch_deleted',
+                  revokedAt: new Date(),
+                },
+                { transaction: t }
+              );
+            }
+          }
+        }
+      }
     }
 
     // 5. Cancel any pending staff action requests for this branch
@@ -1311,8 +1352,11 @@ const listStaff = async (tenantDb, branchId) => {
   return { branch, staff };
 };
 
-const assignStaff = async (tenantDb, branchId, userId, designation) => {
+const assignStaff = async (tenantDb, branchId, userId, designation, actor = null) => {
   const { Branch, GymStaff } = tenantDb.models;
+  const { User } = require('../models/platform');
+  const teamService = require('./team.service');
+  const accessService = require('./access.service');
 
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
@@ -1320,49 +1364,110 @@ const assignStaff = async (tenantDb, branchId, userId, designation) => {
   const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
   assertBranchNotBillingLocked(branch);
 
-  // Prevent duplicate active assignment
-  const existing = await GymStaff.findOne({
-    where: { branchId, userId, employmentStatus: 'ACTIVE' },
-  });
-  if (existing) throw createError('This user is already assigned to this branch', 409);
+  const user = await User.findByPk(userId);
+  if (!user) throw createError('User not found', 404);
 
-  const staffMember = await GymStaff.create({
-    branchId,
-    userId,
-    designation: designation || null,
-    employmentStatus: 'ACTIVE',
-    status: 'active',
+  const roleKey = mapDesignationToRoleKey(designation, false);
+  const actorId = actor ? actor.id || actor.sub : null;
+  const actorGrants =
+    actor && (actor.role === 'GYM_HOST' || actor.isHost)
+      ? accessService.ownerGrants()
+      : actor?.grants || accessService.ownerGrants();
+
+  const ctx = {
+    tenantDb,
+    tenantId: tenantDb.tenantId,
+    grants: actorGrants,
+    userId: actorId,
+  };
+
+  const inviteResult = await teamService.inviteMember(ctx, {
+    email: user.email,
+    fullName: user.fullName,
+    phone: user.phone,
+    roleKey,
+    scopeType: 'BRANCH',
+    branchIds: [branchId],
+    assignToAllBranches: false,
+    jobTitle: designation || null,
   });
 
-  try {
-    const { Tenant } = require('../models/platform');
-    const notificationsService = require('./notifications.service');
-    const tenant = await Tenant.findByPk(tenantDb.tenantId);
-    const gymName = tenant ? tenant.gymName : 'your gym';
-    await notificationsService.createNotification({
-      userId,
-      role: 'staff',
-      type: 'staff_invite',
-      title: 'New Staff Assignment',
-      message: `You have been assigned as staff for ${branch.branchName} at ${gymName}.`,
-      priority: 'high',
-      deepLink: '/staff/dashboard',
-      metadataJson: { branchId }
-    });
-  } catch (notifErr) {
-    console.warn('[Notification Error] Failed to create staff assignment notification:', notifErr.message);
+  // Sync GymStaff HR record
+  let staffMember = null;
+  if (GymStaff) {
+    staffMember = await GymStaff.findOne({ where: { branchId, userId } });
+    if (staffMember) {
+      await staffMember.update({
+        designation: designation || roleKey,
+        employmentStatus: 'ACTIVE',
+        status: 'active',
+      });
+    } else {
+      staffMember = await GymStaff.create({
+        branchId,
+        userId,
+        email: user.email,
+        designation: designation || roleKey,
+        employmentStatus: 'ACTIVE',
+        status: 'active',
+      });
+    }
   }
 
-  return { staffMember };
+  return { staffMember, assignment: inviteResult.assignment };
 };
 
-const removeStaff = async (tenantDb, branchId, staffId) => {
-  const { GymStaff } = tenantDb.models;
+const removeStaff = async (tenantDb, branchId, staffId, actor = null) => {
+  const { GymStaff, RoleAssignment, RoleAssignmentBranch } = tenantDb.models;
+  const { Op } = require('sequelize');
+  const membershipService = require('./membership.service');
+  const accessService = require('./access.service');
 
-  const staffMember = await GymStaff.findOne({ where: { id: staffId, branchId } });
-  if (!staffMember) throw createError('Staff assignment not found', 404);
+  let staffMember = null;
+  let targetUserId = null;
 
-  await staffMember.update({ employmentStatus: 'TERMINATED' });
+  if (GymStaff) {
+    staffMember = await GymStaff.findOne({ where: { id: staffId, branchId } });
+    if (staffMember) {
+      targetUserId = staffMember.userId;
+      await staffMember.update({ employmentStatus: 'TERMINATED', status: 'declined' });
+    }
+  }
+
+  if (!staffMember && RoleAssignment) {
+    const a = await RoleAssignment.findByPk(staffId);
+    if (a) targetUserId = a.userId;
+  }
+
+  if (!targetUserId) throw createError('Staff assignment not found', 404);
+
+  // Revoke branch RoleAssignment
+  if (RoleAssignment && RoleAssignmentBranch) {
+    const links = await RoleAssignmentBranch.findAll({ where: { branchId } });
+    const assignmentIds = links.map((l) => l.assignmentId);
+
+    const assignments = await RoleAssignment.findAll({
+      where: {
+        id: assignmentIds,
+        userId: targetUserId,
+        status: { [Op.in]: ['INVITED', 'ACTIVE', 'SUSPENDED'] },
+      },
+    });
+
+    const now = new Date();
+    const actorId = actor ? actor.id || actor.sub : 'system:legacy_remove';
+
+    for (const a of assignments) {
+      await RoleAssignmentBranch.destroy({ where: { assignmentId: a.id, branchId } });
+      const remaining = await RoleAssignmentBranch.count({ where: { assignmentId: a.id } });
+      if (remaining === 0) {
+        await a.update({ status: 'REVOKED', revokedBy: actorId, revokedAt: now });
+      }
+      await membershipService.syncUserOrgIndex(tenantDb.tenantId, targetUserId, tenantDb);
+      await accessService.bumpUserPermissionVersion(targetUserId);
+    }
+  }
+
   return { message: 'Staff member removed from branch' };
 };
 
@@ -1759,61 +1864,36 @@ const listAllStaff = async (tenantDb) => {
  * assignToAllBranches: if true, assign to every active branch in the gym.
  * branchIds: specific branch UUIDs to assign to (used when assignToAllBranches is false).
  */
-const createStaffUser = async (tenantDb, { fullName, email, phone, password, designation, branchIds, assignToAllBranches }) => {
+const mapDesignationToRoleKey = (designation, assignToAllBranches = false) => {
+  if (!designation) return 'DESK';
+  const clean = String(designation).trim().toUpperCase();
+  if (['OWNER', 'ORG_ADMIN', 'MANAGER', 'BR_ADMIN', 'DESK', 'TRAINER', 'SUPPORT'].includes(clean)) {
+    return clean;
+  }
+  const lower = clean.toLowerCase();
+  if (lower.includes('manager')) return 'MANAGER';
+  if (lower.includes('trainer')) return 'TRAINER';
+  if (lower.includes('cleaner') || lower.includes('support')) return 'SUPPORT';
+  if (lower.includes('admin')) return assignToAllBranches ? 'ORG_ADMIN' : 'MANAGER';
+  return 'DESK';
+};
+
+/**
+ * Create a new staff user and assign them to branches via team service and RoleAssignment.
+ * assignToAllBranches: if true, assign to every active branch in the gym.
+ * branchIds: specific branch UUIDs to assign to (used when assignToAllBranches is false).
+ */
+const createStaffUser = async (
+  tenantDb,
+  { fullName, email, phone, password, designation, branchIds, assignToAllBranches },
+  actor = null
+) => {
   const { GymStaff, Branch } = tenantDb.models;
-  const { User, Tenant } = require('../models/platform');
-  const bcrypt = require('bcrypt');
-  const crypto = require('crypto');
-  const notificationsService = require('./notifications.service');
+  const teamService = require('./team.service');
+  const accessService = require('./access.service');
 
+  if (!email) throw createError('An email address is required', 400);
   const emailClean = email.toLowerCase().trim();
-
-  // Check if a staff/admin with this email already exists and is active in this gym
-  const existingActiveStaff = await GymStaff.findOne({
-    where: {
-      email: emailClean,
-      employmentStatus: 'ACTIVE',
-    }
-  });
-
-  let existingUser = await User.findOne({ where: { email: emailClean } });
-  let userActiveStaff = null;
-  if (existingUser) {
-    userActiveStaff = await GymStaff.findOne({
-      where: {
-        userId: existingUser.id,
-        employmentStatus: 'ACTIVE',
-      }
-    });
-  }
-
-  const conflictStaff = existingActiveStaff || userActiveStaff;
-  if (conflictStaff) {
-    const existingRole = conflictStaff.designation || 'Staff/Admin';
-    throw createError(
-      `User with email "${emailClean}" is already assigned as ${existingRole}. Please remove them from ${existingRole} first before assigning a new role.`,
-      409
-    );
-  }
-
-  let tempPasswordGenerated = null;
-
-  if (!existingUser) {
-    tempPasswordGenerated = password || (crypto.randomBytes(4).toString('hex') + '!Aa1');
-    const passwordHash = await bcrypt.hash(tempPasswordGenerated, 12);
-    existingUser = await User.create({
-      fullName: fullName || emailClean.split('@')[0],
-      email: emailClean,
-      phone: phone || null,
-      passwordHash,
-      role: 'BRANCH_MANAGER',
-      status: 'ACTIVE',
-      isVerified: true,
-      emailVerified: true,
-    });
-  } else if (existingUser.role === 'MEMBER') {
-    await existingUser.update({ role: 'BRANCH_MANAGER' });
-  }
 
   let targetBranchIds = branchIds || [];
   if (assignToAllBranches) {
@@ -1821,108 +1901,135 @@ const createStaffUser = async (tenantDb, { fullName, email, phone, password, des
     targetBranchIds = allBranches.map((b) => b.id);
   }
 
-  const staffRecords = [];
-  const tenant = await Tenant.findByPk(tenantDb.tenantId);
-  const gymName = tenant ? tenant.gymName : 'your gym';
+  const roleKey = mapDesignationToRoleKey(designation, assignToAllBranches);
+  const effectiveScope = assignToAllBranches ? 'ORG' : 'BRANCH';
 
-  for (const branchId of targetBranchIds) {
-    const branch = await Branch.findByPk(branchId);
-    if (branch) {
-      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
-      assertBranchNotBillingLocked(branch);
-    }
+  const actorId = actor ? actor.id || actor.sub : null;
+  const actorGrants =
+    actor && (actor.role === 'GYM_HOST' || actor.isHost)
+      ? accessService.ownerGrants()
+      : actor?.grants || accessService.ownerGrants();
 
-    // Check if staff assignment already exists
-    let staffMember = await GymStaff.findOne({
-      where: {
-        branchId,
-        userId: existingUser.id,
-      }
-    });
+  const ctx = {
+    tenantDb,
+    tenantId: tenantDb.tenantId,
+    grants: actorGrants,
+    userId: actorId,
+  };
 
-    if (!staffMember) {
-      staffMember = await GymStaff.findOne({
-        where: {
-          branchId,
+  const inviteResult = await teamService.inviteMember(ctx, {
+    email: emailClean,
+    fullName,
+    phone,
+    roleKey,
+    scopeType: effectiveScope,
+    branchIds: targetBranchIds,
+    assignToAllBranches,
+    jobTitle: designation || null,
+  });
+
+  const { assignment, user, tempPassword } = inviteResult;
+
+  // Also sync GymStaff HR records for backwards-compatible HR listing
+  if (GymStaff) {
+    for (const branchId of targetBranchIds) {
+      const existing = await GymStaff.findOne({
+        where: { branchId, userId: user.id },
+      });
+      if (existing) {
+        await existing.update({
           email: emailClean,
-        }
-      });
-    }
-
-    if (staffMember) {
-      await staffMember.update({
-        userId: existingUser.id,
-        email: emailClean,
-        designation: designation || staffMember.designation || 'Staff',
-        employmentStatus: 'ACTIVE',
-        status: 'active',
-      });
-      staffRecords.push(staffMember);
-      continue;
-    }
-
-    staffMember = await GymStaff.create({
-      userId: existingUser.id,
-      email: emailClean,
-      branchId,
-      designation: designation || 'Staff',
-      employmentStatus: 'ACTIVE',
-      status: 'active',
-    });
-    staffRecords.push(staffMember);
-
-    // Create notification
-    try {
-      const br = await Branch.findByPk(branchId);
-      const brName = br ? br.branchName : 'branch';
-      await notificationsService.createNotification({
-        userId: existingUser.id,
-        role: 'traveler',
-        type: 'staff_invite',
-        title: 'Staff / Admin Assignment',
-        message: `You've been assigned to ${brName} as ${designation || 'staff'} for ${gymName}.`,
-        priority: 'normal',
-        metadataJson: { staffId: staffMember.id, branchId, tenantId: tenantDb.tenantId }
-      });
-    } catch (notifErr) {
-      console.warn('[Notification Error] Failed to create staff assignment notification:', notifErr.message);
+          designation: designation || roleKey,
+          employmentStatus: 'ACTIVE',
+          status: 'active',
+        });
+      } else {
+        await GymStaff.create({
+          userId: user.id,
+          email: emailClean,
+          branchId,
+          designation: designation || roleKey,
+          employmentStatus: 'ACTIVE',
+          status: 'active',
+        });
+      }
     }
   }
 
   return {
     user: {
-      id: existingUser.id,
-      fullName: existingUser.fullName,
-      email: existingUser.email,
-      phone: existingUser.phone || null,
-      role: existingUser.role,
-      status: existingUser.status,
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone || null,
+      role: user.role, // Kept as MEMBER (or whatever platform role)
+      status: user.status,
     },
-    tempPassword: tempPasswordGenerated,
-    assignedBranches: staffRecords.length,
+    tempPassword,
+    assignedBranches: targetBranchIds.length,
+    assignmentId: assignment.id,
   };
 };
 
 /**
- * Remove a staff user from all branches (soft-deactivate all GymStaff records).
+ * Remove a staff user from all branches (revokes RoleAssignments and soft-deactivates GymStaff HR records).
  */
-const removeStaffUser = async (tenantDb, staffUserId) => {
-  const { GymStaff } = tenantDb.models;
+const removeStaffUser = async (tenantDb, staffUserId, actor = null) => {
+  const { GymStaff, RoleAssignment } = tenantDb.models;
   const { Op } = require('sequelize');
+  const membershipService = require('./membership.service');
+  const accessService = require('./access.service');
 
-  const [updated] = await GymStaff.update(
-    { employmentStatus: 'TERMINATED', status: 'declined' },
-    {
+  let updatedStaff = 0;
+  if (GymStaff) {
+    const [u] = await GymStaff.update(
+      { employmentStatus: 'TERMINATED', status: 'declined' },
+      {
+        where: {
+          [Op.or]: [
+            { userId: staffUserId },
+            { email: String(staffUserId).toLowerCase().trim() },
+          ],
+          employmentStatus: 'ACTIVE',
+        },
+      }
+    );
+    updatedStaff = u;
+  }
+
+  let updatedAssignments = 0;
+  if (RoleAssignment) {
+    const assignments = await RoleAssignment.findAll({
       where: {
         [Op.or]: [
           { userId: staffUserId },
-          { email: String(staffUserId).toLowerCase().trim() }
+          { email: String(staffUserId).toLowerCase().trim() },
         ],
-        employmentStatus: 'ACTIVE'
+        status: { [Op.in]: ['INVITED', 'ACTIVE', 'SUSPENDED'] },
+      },
+    });
+
+    const now = new Date();
+    const actorId = actor ? actor.id || actor.sub : 'system:legacy_remove';
+
+    for (const a of assignments) {
+      await a.update({
+        status: 'REVOKED',
+        revokedBy: actorId,
+        revokedAt: now,
+      });
+      updatedAssignments++;
+      if (a.userId) {
+        await membershipService.syncUserOrgIndex(tenantDb.tenantId, a.userId, tenantDb);
+        await accessService.bumpUserPermissionVersion(a.userId);
       }
     }
-  );
-  if (updated === 0) throw createError('No active staff assignments found for this user', 404);
+  }
+
+  if (updatedStaff === 0 && updatedAssignments === 0) {
+    throw createError('No active staff assignments found for this user', 404);
+  }
+
   return { message: 'Staff user removed from all branches' };
 };
 
@@ -1999,6 +2106,7 @@ module.exports = {
   listAllStaff,
   createStaffUser,
   removeStaffUser,
+  mapDesignationToRoleKey,
   checkAndTriggerPendingStaffInvites,
   _countActiveBranchesForTenant,
   _createBranchRecord,

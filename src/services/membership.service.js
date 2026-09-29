@@ -116,7 +116,21 @@ const listUserTenants = async (userId, opts = {}) => {
  */
 const resolveDefaultTenantForUser = async (userId) => {
   const memberships = await listUserTenants(userId, { activeOnly: true });
-  return memberships.length > 0 ? memberships[0].tenantId : null;
+  if (memberships.length > 0) return memberships[0].tenantId;
+
+  const { Tenant, UserGymMembership } = require('../models/platform');
+  const owned = await Tenant.findOne({
+    where: { ownerUserId: userId, status: 'ACTIVE' },
+    attributes: ['id'],
+  });
+  if (owned) return owned.id;
+
+  const memberGym = await UserGymMembership.findOne({
+    where: { userId },
+    order: [['createdAt', 'DESC']],
+    attributes: ['tenantId'],
+  });
+  return memberGym ? memberGym.tenantId : null;
 };
 
 /**

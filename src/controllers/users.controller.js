@@ -1,6 +1,56 @@
 const userService = require('../services/user.service');
-const { sendSuccess, parsePagination } = require('../utils/response.utils');
+const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
+const { hasBranchAccess } = require('../utils/branchAccess.utils');
+
+/**
+ * Ensures the target user belongs to the caller's tenant (and authorized branch).
+ * Throws 404 (not 403) if the user is not affiliated with the tenant to avoid leaking existence.
+ */
+const assertUserInTenant = async (req, targetUserId) => {
+  if (req.user?.role === 'PLATFORM_ADMIN') return;
+  if (!req.tenantDb) throw createError('Tenant context required', 400);
+
+  // If the target user is the caller themselves
+  if (targetUserId === req.user.id || targetUserId === req.user.sub) return;
+
+  const { MemberProfile, MemberSubscription, Payment, AttendanceLog, RoleAssignment } = req.tenantDb.models;
+
+  const [profile, sub, payment, attendance, staff] = await Promise.all([
+    MemberProfile ? MemberProfile.findOne({ where: { userId: targetUserId } }) : null,
+    MemberSubscription ? MemberSubscription.findOne({ where: { userId: targetUserId } }) : null,
+    Payment ? Payment.findOne({ where: { userId: targetUserId } }) : null,
+    AttendanceLog ? AttendanceLog.findOne({ where: { userId: targetUserId } }) : null,
+    RoleAssignment ? RoleAssignment.findOne({ where: { userId: targetUserId } }) : null,
+  ]);
+
+  const existsInTenant = Boolean(profile || sub || payment || attendance || staff);
+  if (!existsInTenant) {
+    throw createError('User not found', 404);
+  }
+
+  // Branch scoping for non-host staff (e.g. BRANCH_MANAGER)
+  if (req.user.role !== 'GYM_HOST' && !req.user.isHost) {
+    const branchIds = new Set();
+    if (sub?.branchId) branchIds.add(sub.branchId);
+    if (payment?.branchId) branchIds.add(payment.branchId);
+    if (attendance?.branchId) branchIds.add(attendance.branchId);
+    if (staff?.branchId) branchIds.add(staff.branchId);
+
+    if (branchIds.size > 0) {
+      let hasAccessToAny = false;
+      for (const bId of branchIds) {
+        if (await hasBranchAccess(req, bId, 'members.view')) {
+          hasAccessToAny = true;
+          break;
+        }
+      }
+      if (!hasAccessToAny) {
+        throw createError('User not found', 404);
+      }
+    }
+  }
+};
 
 // ── GET /users — paginated search ─────────────────────────────────────────────
 const search = async (req, res, next) => {
@@ -8,7 +58,10 @@ const search = async (req, res, next) => {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { q, role, status } = req.query;
 
-    const result = await userService.searchUsers({ q, role, status, page, limit, offset });
+    const result = await userService.searchUsers(
+      { q, role, status, page, limit, offset },
+      req.user?.role === 'PLATFORM_ADMIN' ? null : req.tenantDb
+    );
     return sendSuccess(res, { users: result.users }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
@@ -18,6 +71,7 @@ const search = async (req, res, next) => {
 // ── GET /users/:id ─────────────────────────────────────────────────────────────
 const getById = async (req, res, next) => {
   try {
+    await assertUserInTenant(req, req.params.id);
     const user = await userService.getUserById(req.params.id, req.tenantDb || null);
     return sendSuccess(res, { user }, 'User retrieved');
   } catch (err) {
@@ -38,6 +92,7 @@ const create = async (req, res, next) => {
 // ── PUT /users/:id ─────────────────────────────────────────────────────────────
 const update = async (req, res, next) => {
   try {
+    await assertUserInTenant(req, req.params.id);
     const user = await userService.updateUser(req.params.id, req.body, req.tenantDb || null, req.user);
     return sendSuccess(res, { user }, 'User updated');
   } catch (err) {
@@ -48,6 +103,7 @@ const update = async (req, res, next) => {
 // ── POST /users/:id/status ─────────────────────────────────────────────────────
 const setStatus = async (req, res, next) => {
   try {
+    await assertUserInTenant(req, req.params.id);
     const result = await userService.setStatus(req.params.id, req.body.status);
     return sendSuccess(res, result, 'User status updated');
   } catch (err) {
@@ -58,6 +114,7 @@ const setStatus = async (req, res, next) => {
 // ── POST /users/:id/password ───────────────────────────────────────────────────
 const adminResetPassword = async (req, res, next) => {
   try {
+    await assertUserInTenant(req, req.params.id);
     const result = await userService.adminResetPassword(req.params.id, req.body.newPassword);
     return sendSuccess(res, null, result.message);
   } catch (err) {
@@ -68,6 +125,7 @@ const adminResetPassword = async (req, res, next) => {
 // ── POST /users/:id/profile-image ─────────────────────────────────────────────
 const uploadProfileImage = async (req, res, next) => {
   try {
+    await assertUserInTenant(req, req.params.id);
     if (!req.file) {
       const err = new Error('Image file is required');
       err.statusCode = 422;
@@ -85,6 +143,7 @@ const uploadProfileImage = async (req, res, next) => {
 // ── GET /users/:id/account-statement ──────────────────────────────────────────
 const accountStatement = async (req, res, next) => {
   try {
+    await assertUserInTenant(req, req.params.id);
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { from, to } = req.query;
 
@@ -102,6 +161,7 @@ const accountStatement = async (req, res, next) => {
 // ── GET /users/:id/account-statement/export ────────────────────────────────────
 const accountStatementExport = async (req, res, next) => {
   try {
+    await assertUserInTenant(req, req.params.id);
     const { from, to } = req.query;
     const { page, limit, offset } = parsePagination({ page: 1, limit: 1000 }, 1000, 1000);
 

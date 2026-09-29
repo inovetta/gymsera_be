@@ -46,8 +46,23 @@ const _upsertMemberProfile = async (tenantDb, userId, profileFields) => {
  * Paginated member search — platform DB.
  * Returns platform-level user records (no tenant DB needed for listing).
  */
-const searchUsers = async ({ q, role, status, page, limit, offset }) => {
+const searchUsers = async ({ q, role, status, page, limit, offset }, tenantDb = null) => {
   const where = {};
+
+  if (tenantDb) {
+    const { MemberProfile, MemberSubscription, Payment, RoleAssignment } = tenantDb.models;
+    const [profiles, subs, payments, staff] = await Promise.all([
+      MemberProfile ? MemberProfile.findAll({ attributes: ['userId'] }) : [],
+      MemberSubscription ? MemberSubscription.findAll({ attributes: ['userId'] }) : [],
+      Payment ? Payment.findAll({ attributes: ['userId'] }) : [],
+      RoleAssignment ? RoleAssignment.findAll({ attributes: ['userId'] }) : [],
+    ]);
+    const idSet = new Set();
+    for (const r of [...profiles, ...subs, ...payments, ...staff]) {
+      if (r.userId) idSet.add(r.userId);
+    }
+    where.id = { [Op.in]: Array.from(idSet) };
+  }
 
   if (q) {
     where[Op.or] = [

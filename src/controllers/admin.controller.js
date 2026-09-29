@@ -4,8 +4,8 @@ const { sendSuccess, parsePagination, createError } = require('../utils/response
 // ── POST /admin/tenants ───────────────────────────────────────────────────────
 const createTenant = async (req, res, next) => {
   try {
-    const result = await adminService.createTenant(req.body);
-    return sendSuccess(res, result, 'Tenant created successfully', 201);
+    const result = await adminService.createTenant(req.body, req.user?.sub);
+    return sendSuccess(res, result, 'Tenant invitation sent successfully', 201);
   } catch (err) {
     next(err);
   }

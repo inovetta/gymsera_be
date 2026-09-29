@@ -1,20 +1,108 @@
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { OAuth2Client } = require('google-auth-library');
+const { v4: uuidv4 } = require('uuid');
 
-const { User, Tenant, RefreshToken, Otp } = require('../models/platform');
+const { User, Tenant, RefreshToken, Otp, TenantInvitation, PlatformAuditLog } = require('../models/platform');
 const { signToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt.utils');
-const { generateOtpCode, getOtpExpiry } = require('../utils/otp.utils');
+const {
+  generateOtpCode,
+  getOtpExpiry,
+  hashOtpCode,
+  verifyOtpHash,
+} = require('../utils/otp.utils');
 const { createError } = require('../utils/response.utils');
 const emailService = require('./email.service');
 const { UserRole } = require('../constants/roles');
+const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const BCRYPT_ROUNDS = 12;
 
 // ── Private helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Generate an opaque refresh token (80 hex characters) (AUTH-01).
+ */
+const _generateOpaqueRefreshToken = () => {
+  return crypto.randomBytes(40).toString('hex');
+};
+
+/**
+ * Hash a refresh token with SHA-256 for secure storage at rest (AUTH-01).
+ */
+const _hashToken = (rawToken) => {
+  return crypto.createHash('sha256').update(String(rawToken)).digest('hex');
+};
+
+/**
+ * Resolve refresh token expiry date from environment or default 30 days.
+ */
+const _getRefreshTokenExpiry = () => {
+  const str = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
+  let ms = 30 * 24 * 60 * 60 * 1000;
+  const match = String(str).match(/^(\d+)([smhd])$/);
+  if (match) {
+    const val = parseInt(match[1], 10);
+    const unit = match[2];
+    if (unit === 's') ms = val * 1000;
+    else if (unit === 'm') ms = val * 60 * 1000;
+    else if (unit === 'h') ms = val * 60 * 60 * 1000;
+    else if (unit === 'd') ms = val * 24 * 60 * 60 * 1000;
+  }
+  return new Date(Date.now() + ms);
+};
+
+const OTP_COOLDOWN_MS = 60 * 1000; // 60-second resend cooldown (AUTH-04)
+const MAX_OTP_ATTEMPTS = 5; // 5 failed attempts locks code (AUTH-04)
+
+/**
+ * Enforce a 60-second cooldown between OTP requests for the same target (AUTH-04).
+ */
+const _assertOtpCooldown = async (userId, email, type) => {
+  const conditions = [];
+  if (userId) conditions.push({ userId });
+  if (email) conditions.push({ email });
+  if (conditions.length === 0) return;
+
+  const latest = await Otp.findOne({
+    where: {
+      type,
+      [Op.or]: conditions,
+    },
+    order: [['createdAt', 'DESC']],
+  });
+
+  if (latest) {
+    const elapsedMs = Date.now() - new Date(latest.createdAt).getTime();
+    if (elapsedMs < OTP_COOLDOWN_MS) {
+      const waitSec = Math.ceil((OTP_COOLDOWN_MS - elapsedMs) / 1000);
+      const err = createError(`Please wait ${waitSec} seconds before requesting a new code.`, 429);
+      err.retryAfter = waitSec;
+      throw err;
+    }
+  }
+};
+
+/**
+ * Enforce per-identifier rate limiting: max 10 OTP requests per hour per email (AUTH-04).
+ */
+const _assertIdentifierRateLimit = async (email) => {
+  if (!email) return;
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const count = await Otp.count({
+    where: {
+      email,
+      createdAt: { [Op.gt]: oneHourAgo },
+    },
+  });
+  if (count >= 10) {
+    throw createError('Too many verification codes requested for this email. Please try again later.', 429);
+  }
+};
 
 /**
  * Invalidate all unused OTPs of a given type for a user.
@@ -27,18 +115,46 @@ const _invalidatePreviousOtps = async (userId, type) => {
 };
 
 /**
- * Find a valid (unused, unexpired) OTP.
+ * Verify submitted OTP against hashed DB record with attempt counting and lockout (AUTH-04).
  */
-const _findValidOtp = async (userId, code, type) => {
-  return Otp.findOne({
+const _verifyAndConsumeOtp = async (userId, submittedCode, type) => {
+  const otp = await Otp.findOne({
     where: {
       userId,
-      code,
       type,
-      isUsed: false,
       expiresAt: { [Op.gt]: new Date() },
     },
+    order: [['createdAt', 'DESC']],
   });
+
+  if (!otp) {
+    throw createError('Invalid or expired OTP', 400);
+  }
+
+  if (otp.attempts >= (otp.maxAttempts || MAX_OTP_ATTEMPTS)) {
+    if (!otp.isUsed) await otp.update({ isUsed: true });
+    throw createError('Too many failed attempts. This code has been locked. Please request a new code.', 400);
+  }
+
+  if (otp.isUsed) {
+    throw createError('This verification code has already been used. Please request a new code.', 400);
+  }
+
+  const isValid = verifyOtpHash(submittedCode, otp.code, userId);
+  if (!isValid) {
+    await otp.increment('attempts', { by: 1 });
+    await otp.reload();
+    if (otp.attempts >= (otp.maxAttempts || MAX_OTP_ATTEMPTS)) {
+      await otp.update({ isUsed: true });
+      throw createError('Too many failed attempts. This code has been locked. Please request a new code.', 400);
+    }
+    const remaining = (otp.maxAttempts || MAX_OTP_ATTEMPTS) - otp.attempts;
+    throw createError(`Invalid OTP code. ${remaining} attempts remaining.`, 400);
+  }
+
+  // Mark OTP used
+  await otp.update({ isUsed: true });
+  return otp;
 };
 
 /**
@@ -72,23 +188,25 @@ const _buildTokenPayload = async (user) => {
 };
 
 /**
- * Issue a JWT + refresh token pair, store the refresh token in the DB.
+ * Issue a JWT + opaque refresh token pair, store the hashed refresh token in the DB (AUTH-01).
+ * Preserves familyId on rotation so the entire session family can be revoked on reuse.
  */
-const _issueTokenPair = async (user, ipAddress, userAgent) => {
+const _issueTokenPair = async (user, ipAddress, userAgent, existingFamilyId = null) => {
   const payload = await _buildTokenPayload(user);
 
   const accessToken = signToken(payload);
-  const refreshToken = signRefreshToken({ sub: user.id });
-
-  // Decode the signed refresh token to get its actual expiry
-  const decoded = jwt.decode(refreshToken);
-  const expiresAt = new Date(decoded.exp * 1000);
+  const refreshToken = _generateOpaqueRefreshToken();
+  const tokenHash = _hashToken(refreshToken);
+  const familyId = existingFamilyId || uuidv4();
+  const expiresAt = _getRefreshTokenExpiry();
 
   try {
     await RefreshToken.create({
       userId: user.id,
-      token: refreshToken,
+      familyId,
+      token: tokenHash,
       expiresAt,
+      isRevoked: false,
       ipAddress: ipAddress || null,
       userAgent: userAgent || null,
     });
@@ -120,6 +238,9 @@ const _sanitizeUser = (user, tenantId = null) => ({
  * Sends an OTP to the provided email for verification.
  */
 const register = async ({ fullName, email, password, phone }) => {
+  await _assertIdentifierRateLimit(email);
+  await _assertOtpCooldown(null, email, 'EMAIL_VERIFICATION');
+
   const existing = await User.findOne({ where: { email } });
   if (existing) {
     if (!existing.isVerified) {
@@ -134,10 +255,13 @@ const register = async ({ fullName, email, password, phone }) => {
       await _invalidatePreviousOtps(existing.id, 'EMAIL_VERIFICATION');
 
       const code = generateOtpCode();
+      const hashCode = hashOtpCode(code, existing.id);
       const otp = await Otp.create({
         userId: existing.id,
         email,
-        code,
+        code: hashCode,
+        attempts: 0,
+        maxAttempts: 5,
         type: 'EMAIL_VERIFICATION',
         expiresAt: getOtpExpiry(),
       });
@@ -169,10 +293,13 @@ const register = async ({ fullName, email, password, phone }) => {
   });
 
   const code = generateOtpCode();
+  const hashCode = hashOtpCode(code, user.id);
   const otp = await Otp.create({
     userId: user.id,
     email,
-    code,
+    code: hashCode,
+    attempts: 0,
+    maxAttempts: 5,
     type: 'EMAIL_VERIFICATION',
     expiresAt: getOtpExpiry(),
   });
@@ -199,14 +326,9 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
 
   if (user.isVerified) throw createError('Account is already verified', 400);
 
-  const otp = await _findValidOtp(user.id, code, 'EMAIL_VERIFICATION');
-  if (!otp) throw createError('Invalid or expired OTP', 400);
+  await _verifyAndConsumeOtp(user.id, code, 'EMAIL_VERIFICATION');
 
-  // Mark OTP used and activate user in a single transaction
-  await Promise.all([
-    otp.update({ isUsed: true }),
-    user.update({ isVerified: true, status: 'ACTIVE' }),
-  ]);
+  await user.update({ isVerified: true, status: 'ACTIVE' });
 
   setImmediate(() => {
     try {
@@ -224,6 +346,8 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
  * Resend a fresh OTP to the user's email for email verification.
  */
 const resendOtp = async ({ email }) => {
+  await _assertIdentifierRateLimit(email);
+
   const user = await User.findOne({ where: { email } });
 
   // Don't reveal if email exists — return the same message either way
@@ -231,13 +355,17 @@ const resendOtp = async ({ email }) => {
     return { message: 'If this email is registered and unverified, a new code has been sent.' };
   }
 
+  await _assertOtpCooldown(user.id, email, 'EMAIL_VERIFICATION');
   await _invalidatePreviousOtps(user.id, 'EMAIL_VERIFICATION');
 
   const code = generateOtpCode();
+  const hashCode = hashOtpCode(code, user.id);
   await Otp.create({
     userId: user.id,
     email,
-    code,
+    code: hashCode,
+    attempts: 0,
+    maxAttempts: 5,
     type: 'EMAIL_VERIFICATION',
     expiresAt: getOtpExpiry(),
   });
@@ -266,29 +394,45 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
   if (!passwordMatch) throw createError('Invalid email or password', 401);
 
   if (!user.isVerified) {
-    // Auto-resend a fresh OTP so the user can complete verification without
-    // having to manually call /auth/otp/resend — matches .NET behaviour
-    await _invalidatePreviousOtps(user.id, 'EMAIL_VERIFICATION');
-    const code = generateOtpCode();
-    const otp = await Otp.create({
-      userId: user.id,
-      email,
-      code,
-      type: 'EMAIL_VERIFICATION',
-      expiresAt: getOtpExpiry(),
+    // If within cooldown, do not spam a fresh code; return existing OTP expiry
+    let latestOtp = await Otp.findOne({
+      where: {
+        userId: user.id,
+        type: 'EMAIL_VERIFICATION',
+        isUsed: false,
+        expiresAt: { [Op.gt]: new Date() },
+      },
+      order: [['createdAt', 'DESC']],
     });
-    try {
-      await emailService.sendOtpEmail(email, user.fullName, code);
-    } catch (emailErr) {
-      console.warn('[Auth] OTP email failed (login):', emailErr.message);
+
+    let code;
+    if (!latestOtp) {
+      await _assertOtpCooldown(user.id, user.email, 'EMAIL_VERIFICATION');
+      await _invalidatePreviousOtps(user.id, 'EMAIL_VERIFICATION');
+      code = generateOtpCode();
+      const hashCode = hashOtpCode(code, user.id);
+      latestOtp = await Otp.create({
+        userId: user.id,
+        email: user.email,
+        code: hashCode,
+        attempts: 0,
+        maxAttempts: 5,
+        type: 'EMAIL_VERIFICATION',
+        expiresAt: getOtpExpiry(),
+      });
+      try {
+        await emailService.sendOtpEmail(email, user.fullName, code);
+      } catch (emailErr) {
+        console.warn('[Auth] OTP email failed (login):', emailErr.message);
+      }
     }
 
     const payload = {
       email: user.email,
       fullName: user.fullName,
-      otpExpiresAtUtc: otp.expiresAt,
+      otpExpiresAtUtc: latestOtp.expiresAt,
     };
-    if (process.env.NODE_ENV !== 'production') payload.debugCode = code;
+    if (code && process.env.NODE_ENV !== 'production') payload.debugCode = code;
 
     // Use a structured error so the controller can return success:false + data
     const err = createError('Account is not verified. A new OTP has been sent to your email.', 403);
@@ -637,28 +781,52 @@ const appleLogin = async ({ identityToken, userIdentifier, email, fullName }, ip
 };
 
 /**
- * Rotate a refresh token — revoke the old one, issue a new pair.
+ * Rotate a refresh token — revoke the old one, issue a new pair in the same family.
+ * If an already-revoked refresh token is presented, REUSE is detected: revoke the
+ * entire session family immediately to protect against token theft (AUTH-01).
  */
 const refreshTokens = async (token, ipAddress, userAgent) => {
-  // Verify the JWT signature first
-  let decoded;
-  try {
-    decoded = verifyRefreshToken(token);
-  } catch {
+  if (!token || typeof token !== 'string') {
     throw createError('Invalid or expired refresh token', 401);
   }
 
-  // Look up in DB — must not be revoked or expired
-  const stored = await RefreshToken.findOne({
-    where: {
-      token,
-      userId: decoded.sub,
-      isRevoked: false,
-      expiresAt: { [Op.gt]: new Date() },
-    },
+  const tokenHash = _hashToken(token);
+
+  // Look up in DB by token hash, or fallback to raw token for legacy DB rows if any
+  let stored = await RefreshToken.findOne({
+    where: { token: tokenHash },
   });
+  if (!stored) {
+    stored = await RefreshToken.findOne({
+      where: { token },
+    });
+  }
 
   if (!stored) {
+    throw createError('Invalid or expired refresh token', 401);
+  }
+
+  // Reuse detection: If the token is already revoked, an attacker or compromised
+  // client is attempting to reuse an old refresh token. Revoke the entire session family!
+  if (stored.isRevoked) {
+    console.warn(`[Auth:Security] Refresh token reuse detected! Revoking family ${stored.familyId} for user ${stored.userId}`);
+    if (stored.familyId) {
+      await RefreshToken.update(
+        { isRevoked: true },
+        { where: { familyId: stored.familyId } }
+      );
+    } else {
+      await RefreshToken.update(
+        { isRevoked: true },
+        { where: { userId: stored.userId } }
+      );
+    }
+    throw createError('Invalid or expired refresh token', 401);
+  }
+
+  // Check expiration
+  if (new Date(stored.expiresAt) <= new Date()) {
+    await stored.update({ isRevoked: true });
     throw createError('Invalid or expired refresh token', 401);
   }
 
@@ -666,12 +834,13 @@ const refreshTokens = async (token, ipAddress, userAgent) => {
   await stored.update({ isRevoked: true });
 
   // Load the user
-  const user = await User.findByPk(decoded.sub);
+  const user = await User.findByPk(stored.userId);
   if (!user || user.status === 'SUSPENDED') {
     throw createError('User not found or account is suspended', 401);
   }
 
-  return _issueTokenPair(user, ipAddress, userAgent);
+  // Issue new token pair preserving the SAME session familyId
+  return _issueTokenPair(user, ipAddress, userAgent, stored.familyId);
 };
 
 /**
@@ -679,6 +848,8 @@ const refreshTokens = async (token, ipAddress, userAgent) => {
  * Always returns 200 to prevent email enumeration.
  */
 const passwordResetRequest = async ({ email }) => {
+  await _assertIdentifierRateLimit(email);
+
   const user = await User.findOne({ where: { email } });
 
   if (!user) {
@@ -690,16 +861,21 @@ const passwordResetRequest = async ({ email }) => {
     return { message: 'If this email is registered, a password reset code has been sent.' };
   }
 
+  await _assertOtpCooldown(user.id, email, 'PASSWORD_RESET');
+
   // Invalidate any existing unused RESET OTPs
   await _invalidatePreviousOtps(user.id, 'PASSWORD_RESET');
 
   const code = generateOtpCode();
+  const hashCode = hashOtpCode(code, user.id);
   const expiresAt = getOtpExpiry(10); // 10 minutes
 
   await Otp.create({
     userId: user.id,
     email,
-    code,
+    code: hashCode,
+    attempts: 0,
+    maxAttempts: 5,
     type: 'PASSWORD_RESET',
     expiresAt,
   });
@@ -721,21 +897,7 @@ const passwordResetConfirm = async ({ email, code, password }) => {
     throw createError('Invalid or expired password reset code', 400);
   }
 
-  const otp = await Otp.findOne({
-    where: {
-      userId: user.id,
-      code,
-      type: 'PASSWORD_RESET',
-      isUsed: false,
-      expiresAt: { [Op.gt]: new Date() },
-    },
-  });
-
-  if (!otp) {
-    throw createError('Invalid or expired password reset code', 400);
-  }
-
-  await otp.update({ isUsed: true });
+  await _verifyAndConsumeOtp(user.id, code, 'PASSWORD_RESET');
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await user.update({ passwordHash, isVerified: true });
@@ -846,6 +1008,162 @@ const verifyReauthCredential = async (userId, { provider, idToken }) => {
   throw createError(`Unsupported re-authentication provider "${provider}"`, 400);
 };
 
+/**
+ * Verify a tenant invitation token (AUTH-09).
+ */
+const verifyTenantInvitation = async (rawToken) => {
+  if (!rawToken || typeof rawToken !== 'string') {
+    throw createError('Invitation token is required', 400);
+  }
+  const tokenHash = crypto.createHash('sha256').update(rawToken.trim()).digest('hex');
+
+  const invitation = await TenantInvitation.findOne({
+    where: {
+      tokenHash,
+      status: 'PENDING',
+      expiresAt: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (!invitation) {
+    throw createError('Invalid or expired invitation link', 400);
+  }
+
+  return {
+    valid: true,
+    invitation: {
+      id: invitation.id,
+      ownerEmail: invitation.ownerEmail,
+      ownerFullName: invitation.ownerFullName,
+      businessName: invitation.businessName,
+      email: invitation.email,
+      phone: invitation.phone,
+      expiresAt: invitation.expiresAt,
+    },
+  };
+};
+
+/**
+ * Accept a tenant invitation and create/link the tenant (AUTH-09).
+ * Recipient proves ownership of email by providing password / authenticated session.
+ */
+const acceptTenantInvitation = async ({ token, password, fullName, phone }, authenticatedUser = null, ipAddress = null, userAgent = null) => {
+  if (!token || typeof token !== 'string') {
+    throw createError('Invitation token is required', 400);
+  }
+  const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+  const invitation = await TenantInvitation.findOne({
+    where: {
+      tokenHash,
+      status: 'PENDING',
+      expiresAt: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (!invitation) {
+    throw createError('Invalid or expired invitation link', 400);
+  }
+
+  let user = await User.findOne({ where: { email: invitation.ownerEmail } });
+
+  if (user) {
+    // Existing user: caller must prove ownership via active session or valid password
+    const isSessionMatch = authenticatedUser && (authenticatedUser.id === user.id || authenticatedUser.sub === user.id);
+    if (!isSessionMatch) {
+      if (!password) {
+        throw createError('Password is required to confirm ownership of your existing account', 401);
+      }
+      const match = await bcrypt.compare(password, user.passwordHash);
+      if (!match) {
+        throw createError('Invalid password for existing account', 401);
+      }
+    }
+
+    // Check if user already owns a tenant
+    const existingTenant = await Tenant.findOne({ where: { ownerUserId: user.id } });
+    if (existingTenant) {
+      throw createError('This user already owns a gym business', 409);
+    }
+
+    // Consent given & ownership proved: upgrade to GYM_HOST
+    await user.update({
+      role: UserRole.GYM_HOST,
+      isVerified: true,
+      status: 'ACTIVE',
+      fullName: fullName || user.fullName,
+      phone: phone || user.phone,
+    });
+  } else {
+    // New user: must provide password to set up their account
+    if (!password || password.length < 8) {
+      throw createError('Password must be at least 8 characters long', 400);
+    }
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    user = await User.create({
+      fullName: fullName || invitation.ownerFullName,
+      email: invitation.ownerEmail,
+      phone: phone || invitation.ownerPhone || null,
+      passwordHash,
+      role: UserRole.GYM_HOST,
+      isVerified: true,
+      status: 'ACTIVE',
+    });
+  }
+
+  // Create the Tenant
+  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const tenantCode = `GYM-${suffix}`;
+
+  const tenant = await Tenant.create({
+    tenantCode,
+    businessName: invitation.businessName,
+    email: invitation.email,
+    phone: invitation.phone || null,
+    cityId: invitation.cityId || null,
+    ownerUserId: user.id,
+    selectedPackageId: invitation.packageId || null,
+    status: TenantStatus.PENDING_REVIEW,
+    kycStatus: KycStatus.NOT_SUBMITTED,
+    onboardingStep: 1,
+  });
+
+  // Mark invitation ACCEPTED
+  await invitation.update({
+    status: 'ACCEPTED',
+    acceptedAt: new Date(),
+    tenantId: tenant.id,
+  });
+
+  // Audit the acceptance
+  try {
+    await PlatformAuditLog.create({
+      actorUserId: user.id,
+      action: 'tenant_invitation.accepted',
+      targetType: 'tenant',
+      targetId: tenant.id,
+      details: {
+        ownerEmail: invitation.ownerEmail,
+        tenantCode: tenant.tenantCode,
+        businessName: tenant.businessName,
+        invitationId: invitation.id,
+      },
+      createdAt: new Date(),
+    });
+  } catch (auditErr) {
+    console.warn('[Audit] Failed to record tenant invitation accepted:', auditErr.message);
+  }
+
+  const tokenPair = await _issueTokenPair(user, ipAddress, userAgent);
+
+  return {
+    tenant,
+    user: tokenPair.user,
+    accessToken: tokenPair.accessToken,
+    refreshToken: tokenPair.refreshToken,
+  };
+};
+
 module.exports = {
   register,
   verifyOtp,
@@ -858,4 +1176,6 @@ module.exports = {
   passwordResetConfirm,
   getMe,
   verifyReauthCredential,
+  verifyTenantInvitation,
+  acceptTenantInvitation,
 };

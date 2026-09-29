@@ -32,6 +32,8 @@ const BillingPlan = require('./BillingPlan.model')(sequelize);
 const BillingOffer = require('./BillingOffer.model')(sequelize);
 const CapacityEvent = require('./CapacityEvent.model')(sequelize);
 const BillingEvent = require('./BillingEvent.model')(sequelize);
+const TenantInvitation = require('./TenantInvitation.model')(sequelize);
+const PlatformAuditLog = require('./PlatformAuditLog.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -172,6 +174,16 @@ DeviceMember.belongsTo(Device, { foreignKey: 'deviceId', as: 'device' });
 User.hasMany(DeviceMember, { foreignKey: 'userId', as: 'deviceMemberships', onDelete: 'CASCADE' });
 DeviceMember.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+// TenantInvitation associations
+User.hasMany(TenantInvitation, { foreignKey: 'invitedBy', as: 'sentTenantInvitations' });
+TenantInvitation.belongsTo(User, { foreignKey: 'invitedBy', as: 'inviter' });
+Tenant.hasMany(TenantInvitation, { foreignKey: 'tenantId', as: 'invitations' });
+TenantInvitation.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+// PlatformAuditLog associations
+User.hasMany(PlatformAuditLog, { foreignKey: 'actorUserId', as: 'platformAuditLogs' });
+PlatformAuditLog.belongsTo(User, { foreignKey: 'actorUserId', as: 'actor' });
+
 module.exports = {
   sequelize,
   User,
@@ -198,4 +210,6 @@ module.exports = {
   BillingOffer,
   CapacityEvent,
   BillingEvent,
+  TenantInvitation,
+  PlatformAuditLog,
 };

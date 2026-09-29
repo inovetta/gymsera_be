@@ -1,5 +1,6 @@
 const subscriptionService = require('../services/subscription.service');
-const { sendSuccess, parsePagination } = require('../utils/response.utils');
+const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
+const { hasBranchAccess } = require('../utils/branchAccess.utils');
 
 // ── POST /subscriptions ───────────────────────────────────────────────────────
 const subscribe = async (req, res, next) => {
@@ -116,6 +117,9 @@ const listForStaff = async (req, res, next) => {
 const getForStaff = async (req, res, next) => {
   try {
     const result = await subscriptionService.getForStaff(req.tenantDb, req.params.id);
+    if (result.subscription?.branchId && !(await hasBranchAccess(req, result.subscription.branchId, 'subscriptions.view'))) {
+      throw createError('Subscription not found', 404);
+    }
     return sendSuccess(res, result, 'Subscription retrieved');
   } catch (err) {
     next(err);
@@ -161,6 +165,12 @@ const uploadSubscriptionProof = async (req, res, next) => {
 // ── POST /subscriptions/staff/:id/activate — staff activates without payment ───
 const activateSubscription = async (req, res, next) => {
   try {
+    const { MemberSubscription } = req.tenantDb.models;
+    const existing = await MemberSubscription.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
+    if (!existing) throw createError('Subscription not found', 404);
+    if (existing.branchId && !(await hasBranchAccess(req, existing.branchId, 'subscriptions.activate') || await hasBranchAccess(req, existing.branchId, 'subscriptions.view'))) {
+      throw createError('Subscription not found', 404);
+    }
     const subscription = await subscriptionService.activateSubscription(req.tenantDb, req.params.id);
     return sendSuccess(res, { subscription }, 'Subscription activated');
   } catch (err) {
@@ -171,7 +181,7 @@ const activateSubscription = async (req, res, next) => {
 // ── GET /member/branches/:branchId/subscription-status ────────────────────────
 const getMemberBranchSubscriptionStatus = async (req, res, next) => {
   try {
-    const userId = req.query.userId || req.user.id;
+    const userId = req.user.id;
     const result = await subscriptionService.getMemberBranchSubscriptionStatus(
       req.tenantDb,
       userId,
@@ -186,7 +196,7 @@ const getMemberBranchSubscriptionStatus = async (req, res, next) => {
 // ── GET /member/subscriptions/:id/upgrade-options ────────────────────────────
 const getUpgradeOptions = async (req, res, next) => {
   try {
-    const userId = req.query.userId || req.user.id;
+    const userId = req.user.id;
     const result = await subscriptionService.getUpgradeOptions(userId, req.params.id);
     return sendSuccess(res, result, 'Upgrade options retrieved');
   } catch (err) {
@@ -197,7 +207,7 @@ const getUpgradeOptions = async (req, res, next) => {
 // ── POST /member/subscriptions/:id/upgrade ───────────────────────────────────
 const upgradeSubscription = async (req, res, next) => {
   try {
-    const userId = req.query.userId || req.user.id;
+    const userId = req.user.id;
     const result = await subscriptionService.upgradeSubscription(userId, req.params.id, req.body.newPlanId);
     return sendSuccess(res, result, 'Subscription upgraded');
   } catch (err) {

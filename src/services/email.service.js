@@ -401,6 +401,26 @@ const sendTenantAccountReactivatedEmail = async (to, fullName, { businessName, p
   });
 };
 
+const sendTenantInvitationEmail = async (to, fullName, businessName, inviteUrl) => {
+  await sendMail({
+    to,
+    subject: `GymsEra — Invitation to manage ${businessName}`,
+    text: `Hi ${fullName},\n\nYou have been invited to manage ${businessName} on GymsEra.\n\nPlease click the link below to accept the invitation and activate your account:\n${inviteUrl}\n\nThis invitation link expires in 7 days.\n\nIf you did not expect this invitation, please ignore this email.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px">
+        <h2 style="color:#1a1a2e">Gym Business Invitation</h2>
+        <p>Hi <strong>${fullName}</strong>,</p>
+        <p>You have been invited to set up and manage <strong>${businessName}</strong> on the GymsEra platform.</p>
+        <p>Please click the button below to accept your invitation, verify your email, and activate your account:</p>
+        <div style="margin:28px 0;text-align:center">
+          <a href="${inviteUrl}" style="background:#e94560;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:6px;font-weight:bold;display:inline-block">Accept Invitation</a>
+        </div>
+        <p style="color:#666;font-size:14px">Or copy and paste this link into your browser:<br><a href="${inviteUrl}" style="color:#e94560">${inviteUrl}</a></p>
+        <p style="color:#999;font-size:12px;margin-top:24px">This invitation expires in 7 days. If you did not expect this invitation, please disregard this email.</p>
+      </div>`,
+  });
+};
+
 module.exports = {
   mailTransport,
   sendOtpEmail,
@@ -417,4 +437,5 @@ module.exports = {
   sendTenantSubscriptionWarningEmail,
   sendTenantSubscriptionSuspendedEmail,
   sendTenantAccountReactivatedEmail,
+  sendTenantInvitationEmail,
 };
