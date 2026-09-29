@@ -131,7 +131,7 @@ const tenantContext = async (req, res, next) => {
     if (!encryptedConnStr) {
       const { Tenant } = require('../models/platform');
       const tenant = await Tenant.findOne({
-        where: { id: tenantId, status: ['ACTIVE', 'SUSPENDED'] },
+        where: { id: tenantId, status: 'ACTIVE' },
         attributes: ['id', 'connectionStringEncrypted', 'status'],
       });
 

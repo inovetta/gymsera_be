@@ -183,6 +183,9 @@ const updateMyTenant = async (userId, updates) => {
     include: [{ model: City, as: 'city', attributes: ['id', 'name'] }],
   });
   if (!tenant) throw createError('No gym business registered for this account', 404);
+  if (tenant.status !== TenantStatus.ACTIVE) {
+    throw createError('Tenant not found or not active', 404);
+  }
 
   const { businessName, email, phone, cityId } = updates;
   await tenant.update({
