@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | SEC-02 |
+| Issue in progress | SEC-01 |
 | Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,19 +31,22 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1d-access-control` | 621dc93 fix(auth): secure OTPs with salted hashing, attempt lockout, and cooldown (AUTH-04) | yes (AUTH-09 ready to commit) |
+| gymsera_be | `phase-1/prompt-1d-access-control` | 476c3c6 fix(auth): replace admin tenant creation with verified invitation flow (AUTH-09) | yes (SEC-02 ready to commit) |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1D issue 5: **SEC-02 — Tenant identity must come from authentication, never from client input**.
-> Confirm resolveTenant (or equivalent, e.g. `tenantContext.js`) ignores any tenantId in the request body,
-> and that a header-based tenant selector (`X-Tenant-Id`) is only ever validated against the tenants the
-> authenticated user actually belongs to.
-> Test: forge a tenant ID in the body of a request for a tenant the caller does not belong to — must be
-> rejected, and must not leak whether that tenant ID exists (returns 404, not 403).
-> Write regression test, verify failure, implement fix, make green 3x, update §13 and handoff, commit.
+> Prompt 1D issue 6: **SEC-01 — No IDOR (Insecure Direct Object Reference)**.
+> For every by-ID read or write in the backend (a member record, a payment, a subscription,
+> an invoice, a branch, anything fetched by :id in the URL), confirm the query is scoped to what
+> the caller is actually allowed to see (their own tenant, their own branches, their own member
+> record if they are a member) — not just "does this ID exist".
+> An out-of-scope ID must return 404, not 403 (403 confirms existence, 404 does not).
+> Audit high-value targets (member personal data, payment/invoice records, subscription records,
+> branch data). Write matrix test: as tenant A, try to read/write every by-ID resource belonging
+> to tenant B — all must 404. List endpoints checked and fixed.
+> Stop and ask if expanding beyond expected scope.
 
 ### Work in progress that is NOT committed
 
