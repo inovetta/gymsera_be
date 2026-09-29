@@ -541,6 +541,134 @@ const revokeAssignment = async (ctx, assignmentId) => {
   return assignment;
 };
 
+/**
+ * Revoke all active/invited assignments for a user in a tenant.
+ */
+const revokeUserAccess = async (ctx, targetUserId) => {
+  const { tenantDb, tenantId, grants: actorGrants, userId: actorId } = ctx;
+  const { RoleAssignment } = tenantDb.models;
+
+  const assignments = await RoleAssignment.findAll({
+    where: {
+      [Op.or]: [
+        { userId: targetUserId },
+        { email: String(targetUserId).toLowerCase().trim() },
+      ],
+      status: { [Op.in]: ['INVITED', 'ACTIVE', 'SUSPENDED'] },
+    },
+  });
+
+  const now = new Date();
+  for (const a of assignments) {
+    if (a.roleKey === 'OWNER') continue;
+    await a.update({
+      status: 'REVOKED',
+      revokedAt: now,
+      revokedBy: actorId || 'system:revoke',
+    });
+    if (a.userId) {
+      await accessService.bumpUserPermissionVersion(a.userId);
+      await membershipService.syncUserOrgIndex(tenantId, a.userId, tenantDb);
+    }
+  }
+
+  return assignments.length;
+};
+
+/**
+ * Revoke branch-scoped assignments when a branch is removed/deleted.
+ */
+const revokeBranchAssignments = async (ctx, branchId) => {
+  const { tenantDb, tenantId, userId: actorId } = ctx;
+  const { RoleAssignment, RoleAssignmentBranch } = tenantDb.models;
+
+  const links = await RoleAssignmentBranch.findAll({ where: { branchId } });
+  const assignmentIds = [...new Set(links.map((l) => l.assignmentId))];
+  if (assignmentIds.length === 0) return 0;
+
+  await RoleAssignmentBranch.destroy({ where: { branchId } });
+
+  const now = new Date();
+  let revokedCount = 0;
+  for (const assignmentId of assignmentIds) {
+    const assignment = await RoleAssignment.findByPk(assignmentId);
+    if (assignment && assignment.scopeType === 'BRANCH') {
+      const remaining = await RoleAssignmentBranch.count({ where: { assignmentId } });
+      if (remaining === 0 && assignment.status !== 'REVOKED') {
+        await assignment.update({
+          status: 'REVOKED',
+          revokedAt: now,
+          revokedBy: actorId || 'system:branch_deleted',
+        });
+        revokedCount++;
+        if (assignment.userId) {
+          await accessService.bumpUserPermissionVersion(assignment.userId);
+          await membershipService.syncUserOrgIndex(tenantId, assignment.userId, tenantDb);
+        }
+      }
+    }
+  }
+  return revokedCount;
+};
+
+/**
+ * Accept a staff invite: create or activate the RoleAssignment for a staff member.
+ * Single authority for staff invite acceptance.
+ */
+const acceptStaffInvite = async ({ tenantDb, tenantId, userId, email, branchId, designation, inviterUserId }) => {
+  const { RoleAssignment, RoleAssignmentBranch } = tenantDb.models;
+  const { getRoleLevel } = require('../constants/roles');
+  const { mapDesignationToRoleKey } = require('./gym.service');
+
+  const roleKey = mapDesignationToRoleKey(designation, false);
+  const now = new Date();
+
+  let assignment = await RoleAssignment.findOne({
+    where: {
+      userId,
+      status: { [Op.in]: ['INVITED', 'ACTIVE', 'SUSPENDED'] },
+    },
+    include: [{ model: RoleAssignmentBranch, as: 'branchLinks', required: false }],
+  });
+
+  if (assignment) {
+    if (assignment.status !== 'ACTIVE') {
+      await assignment.update({ status: 'ACTIVE', acceptedAt: now });
+    }
+    if (branchId && !(assignment.branchLinks || []).some((b) => b.branchId === branchId)) {
+      await RoleAssignmentBranch.create({
+        assignmentId: assignment.id,
+        branchId,
+      });
+    }
+  } else {
+    assignment = await RoleAssignment.create({
+      userId,
+      email: email ? email.toLowerCase().trim() : null,
+      roleKey,
+      roleLevel: getRoleLevel(roleKey),
+      scopeType: 'BRANCH',
+      status: 'ACTIVE',
+      jobTitle: designation || null,
+      invitedBy: inviterUserId,
+      invitedAt: now,
+      acceptedAt: now,
+    });
+
+    if (branchId) {
+      await RoleAssignmentBranch.create({
+        assignmentId: assignment.id,
+        branchId,
+      });
+    }
+  }
+
+  await membershipService.syncUserOrgIndex(tenantId, userId, tenantDb);
+  await accessService.bumpUserPermissionVersion(userId);
+
+  return assignment;
+};
+
 const notifyInvitee = async (ctx, user, assignment, branchIds) => {
   const notificationsService = require('./notifications.service');
   const { Tenant } = require('../models/platform');
@@ -576,6 +704,9 @@ module.exports = {
   updateAssignment,
   setOverrides,
   revokeAssignment,
+  revokeUserAccess,
+  revokeBranchAssignments,
+  acceptStaffInvite,
   serializeAssignment,
   ASSIGNMENT_FIELDS,
 };

@@ -19,29 +19,27 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-29 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **NEW-28 / OPTION-B — Direct Member Notifications (Remove Bull/Redis)** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Current prompt | **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | AUTH-01 |
+| Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-NEW-28 (Option B) is committed on branch `refactor/direct-member-notifications` in `gymsera_be`.
+Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1b-billing-lifecycle` | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `refactor/direct-member-notifications` | 65d70f8 refactor(notifications): replace Bull/Redis queues with direct member notification dispatch (NEW-28 Option B) | no |
+| gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
+| gymsera_be | `phase-1/prompt-1d-access-control` | 7471c22 Merge pull request #52 from inovetta/refactor/direct-member-notifications | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
-| gymsera_web | `phase-1/prompt-1a-billing-core` | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
+| gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1C and NEW-28 (Option B) are DONE. Next prompt is **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** from `GYMSERA_AGENT_PLAYBOOK.md`:
-> Read spec §0.5, §8 (especially §8.3 Team & Access — approved design from mobile) and issues: RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, SEC-06, RBAC-03.
-> RBAC-07 first: every path that grants or removes staff access must go through the /team service and RoleAssignment. Do NOT change mobile Team & Access UX.
-> RBAC-03: generate endpoint x persona test suite from real route list and constants/permissions.js, and commit docs/PERMISSIONS.md.
-> Branch to create: `phase-1/prompt-1d-access-control`.
+> Prompt 1D issue 2: **AUTH-01 — Refresh token rotation and reuse detection**.
+> Verify refresh tokens are opaque, stored hashed, rotated on every use, and that reusing an already-rotated
+> refresh token revokes the entire session family. Write regression test, verify failure, implement fix, make green.
 
 ### Work in progress that is NOT committed
 
@@ -78,16 +76,15 @@ NEW-28 (Option B) is committed on branch `refactor/direct-member-notifications` 
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-**Prompt 1C — Branch Capacity (CAP-01 to CAP-08):**
-- [x] 1. CAP-03 — Route all branch creation through `createBranch` and guard lifecycle doors (be 0d81080)
-- [x] 2. CAP-04 — Separate admin policy disable from deletion, add migration 008, guard discovery (be 9444ca2)
-- [x] 3. CAP-02 — Add tenant capacity outbox for cross-database durability, add migration 009, sweep hook (be 03493c5)
-- [x] 4. CAP-01 — Enforce real branch billing lock on over-quota tenants, add migration 010 & p007, middleware guard (be a023dad)
-- [x] 5. CAP-05 — Return capacity on pending organization rejection via `deleteBranch` (be 262846e)
-- [x] 6. CAP-06 — Reactivate auto-deactivated organization on branch restore (be a85db2d)
-- [x] 7. CAP-07 — Enforce organization never empty everywhere and report in `auditCapacity` (be 5463307)
-- [x] 8. CAP-08 — Verify concurrency controls for parallel create, delete+restore, and donor slot competition (be 2dcaec8)
-- [x] §13 rows with hashes, 3 consecutive full runs, pre-check SQL queries, this handoff
+**Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR:**
+- [ ] 1. RBAC-07 — Unify staff access through Team & Access (P0)
+- [ ] 2. AUTH-01 — Refresh token rotation and reuse detection
+- [ ] 3. AUTH-04 — OTP security
+- [ ] 4. AUTH-09 — Admin "add tenant" links or creates accounts by email with no ownership proof
+- [ ] 5. SEC-02 — Tenant identity must come from authentication, never from client input
+- [ ] 6. SEC-01 — No IDOR (Insecure Direct Object Reference)
+- [ ] 7. RBAC-03 — Generate the endpoint × persona permission test suite + docs/PERMISSIONS.md
+- [ ] §13 rows with hashes, 3 consecutive full runs, handoff clean
 
 ---
 
@@ -200,3 +197,4 @@ NEW-28 (Option B) is committed on branch `refactor/direct-member-notifications` 
 | 21 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1C (Branch capacity) | CAP-01..CAP-08 (branch billing lock, capacity outbox, lifecycle doors, admin suspend, reject pending org, restore auto-deactivated org, org never empty, concurrency controls) | task complete | yes |
 | 22 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-26 | NEW-26 (suspended tenant complete blocking, cache invalidation, updateMyTenant, webhook audit-only R-23, cron sweep, platform admin exception verified) | task complete | yes |
 | 23 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-28 (Option B) | NEW-28 (removed Bull/Redis queue dependency for member notifications PAYMENT_FAILED, SUBSCRIPTION_RENEWED, SUBSCRIPTION_EXPIRING_SOON; direct in-app/push/email dispatch; deleted queues.js & notifications.processor.js) | task complete | yes |
+| 24 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1D (Access control) | (in progress) | in progress | in progress |

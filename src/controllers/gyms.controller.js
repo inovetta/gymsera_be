@@ -128,7 +128,8 @@ const assignStaff = async (req, res, next) => {
       req.tenantDb,
       req.params.branchId,
       req.body.userId,
-      req.body.designation
+      req.body.designation,
+      req.user
     );
 
     // Notify the host
@@ -300,7 +301,7 @@ const listAllStaff = async (req, res, next) => {
 // ── POST /gyms/staff ──────────────────────────────────────────────────────────
 const createStaffUser = async (req, res, next) => {
   try {
-    const result = await gymService.createStaffUser(req.tenantDb, req.body);
+    const result = await gymService.createStaffUser(req.tenantDb, req.body, req.user);
     return sendSuccess(res, result, 'Staff user created successfully', 201);
   } catch (err) {
     next(err);
@@ -310,7 +311,7 @@ const createStaffUser = async (req, res, next) => {
 // ── DELETE /gyms/staff/:userId ────────────────────────────────────────────────
 const removeStaffUser = async (req, res, next) => {
   try {
-    const result = await gymService.removeStaffUser(req.tenantDb, req.params.userId);
+    const result = await gymService.removeStaffUser(req.tenantDb, req.params.userId, req.user);
     return sendSuccess(res, null, result.message);
   } catch (err) {
     next(err);

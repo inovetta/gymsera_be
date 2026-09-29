@@ -86,18 +86,6 @@ const hasExpenseAccess = async (req, branchId, permissionKey) => {
     }
   }
 
-  if (req.user.role === 'BRANCH_MANAGER') {
-    const staff = await req.tenantDb.models.GymStaff.findOne({
-      where: {
-        branchId,
-        userId,
-        [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }],
-      },
-    });
-    if (staff && (staff.designation || '').trim().toLowerCase() === 'admin') {
-      return true;
-    }
-  }
   return false;
 };
 
@@ -331,17 +319,20 @@ const createExpense = async (req, res, next) => {
 
     // If caller is STAFF: Create StaffActionRequest ONLY (No Expense row created yet!)
     const userId = req.user.id || req.user.sub;
+    const hasRequestAccess =
+      (await hasExpenseAccess(req, branchId, 'expenses.create.request')) ||
+      (await hasExpenseAccess(req, branchId, 'expenses.create'));
+
+    if (!hasRequestAccess) {
+      throw createError('Access denied: You are not active staff at this branch', 403);
+    }
+
     const staffMember = await GymStaff.findOne({
       where: {
         branchId,
         userId,
-        [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }],
       },
     });
-
-    if (!staffMember) {
-      throw createError('Access denied: You are not active staff at this branch', 403);
-    }
 
     const payload = {
       branchId,

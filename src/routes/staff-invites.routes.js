@@ -104,13 +104,19 @@ router.post('/:staffId/accept', async (req, res, next) => {
     }
 
     // Accept invite
-    await staff.update({ status: 'active' });
+    await staff.update({ status: 'active', userId: req.user.id });
 
-    // Update user role to include staff capabilities (we update their platform role to BRANCH_MANAGER if it was MEMBER)
-    const user = await User.findByPk(req.user.id);
-    if (user && user.role === 'MEMBER') {
-      await user.update({ role: 'BRANCH_MANAGER' });
-    }
+    // Single authority: acceptStaffInvite creates or activates RoleAssignment
+    const teamService = require('../services/team.service');
+    await teamService.acceptStaffInvite({
+      tenantDb,
+      tenantId: tenant.id,
+      userId: req.user.id,
+      email: req.user.email,
+      branchId: staff.branchId,
+      designation: staff.designation,
+      inviterUserId: tenant.ownerUserId,
+    });
 
     // Find and mark the notification read
     try {

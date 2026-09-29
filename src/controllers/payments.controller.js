@@ -32,18 +32,6 @@ const hasBranchAccess = async (req, branchId, permissionKey) => {
     }
   }
 
-  if (req.user.role === 'BRANCH_MANAGER') {
-    const staff = await req.tenantDb.models.GymStaff.findOne({
-      where: {
-        branchId,
-        userId,
-        [Op.or]: [{ status: 'active' }, { employmentStatus: 'ACTIVE' }],
-      },
-    });
-    if (staff && (staff.designation || '').trim().toLowerCase() === 'admin') {
-      return true;
-    }
-  }
   return false;
 };
 
