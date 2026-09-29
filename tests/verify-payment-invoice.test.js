@@ -64,7 +64,6 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
         update: jest.fn().mockResolvedValue([1]),
       },
     }));
-    jest.doMock('../src/jobs/queues', () => ({ notificationsQueue: { add: jest.fn() } }));
     jest.doMock('../src/services/notifications.service', () => ({ createNotification: jest.fn() }));
     paymentService = require('../src/services/payment.service');
     tenantDb = buildTenantDb();
@@ -72,7 +71,6 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
 
   afterEach(() => {
     jest.dontMock('../src/models/platform');
-    jest.dontMock('../src/jobs/queues');
     jest.dontMock('../src/services/notifications.service');
   });
 

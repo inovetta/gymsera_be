@@ -19,25 +19,25 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-29 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **NEW-26 — Suspended Tenant Full Blocking** |
+| Current prompt | **NEW-28 / OPTION-B — Direct Member Notifications (Remove Bull/Redis)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-NEW-26 is committed on branch `phase-1/new-26-suspended-tenant-blocking` in `gymsera_be`.
+NEW-28 (Option B) is committed on branch `refactor/direct-member-notifications` in `gymsera_be`.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-1/prompt-1b-billing-lifecycle` | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/new-26-suspended-tenant-blocking` | ee571f5 fix(access): completely block suspended tenants on tenant routes with immediate cache invalidation (NEW-26) | no |
+| gymsera_be | `refactor/direct-member-notifications` | 65d70f8 refactor(notifications): replace Bull/Redis queues with direct member notification dispatch (NEW-28 Option B) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | `phase-1/prompt-1a-billing-core` | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1C is DONE. Next prompt is **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** from `GYMSERA_AGENT_PLAYBOOK.md`:
+> Prompt 1C and NEW-28 (Option B) are DONE. Next prompt is **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** from `GYMSERA_AGENT_PLAYBOOK.md`:
 > Read spec §0.5, §8 (especially §8.3 Team & Access — approved design from mobile) and issues: RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, SEC-06, RBAC-03.
 > RBAC-07 first: every path that grants or removes staff access must go through the /team service and RoleAssignment. Do NOT change mobile Team & Access UX.
 > RBAC-03: generate endpoint x persona test suite from real route list and constants/permissions.js, and commit docs/PERMISSIONS.md.
@@ -199,3 +199,4 @@ NEW-26 is committed on branch `phase-1/new-26-suspended-tenant-blocking` in `gym
 | 20 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Merge: 1B + Hotfix PR #48 | Resolve docs merge conflicts in AGENT_HANDOFF.md and GYMSERA_PRODUCTION_ARCHITECTURE.md | task complete | yes |
 | 21 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1C (Branch capacity) | CAP-01..CAP-08 (branch billing lock, capacity outbox, lifecycle doors, admin suspend, reject pending org, restore auto-deactivated org, org never empty, concurrency controls) | task complete | yes |
 | 22 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-26 | NEW-26 (suspended tenant complete blocking, cache invalidation, updateMyTenant, webhook audit-only R-23, cron sweep, platform admin exception verified) | task complete | yes |
+| 23 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-28 (Option B) | NEW-28 (removed Bull/Redis queue dependency for member notifications PAYMENT_FAILED, SUBSCRIPTION_RENEWED, SUBSCRIPTION_EXPIRING_SOON; direct in-app/push/email dispatch; deleted queues.js & notifications.processor.js) | task complete | yes |

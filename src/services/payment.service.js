@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
-const { notificationsQueue } = require('../jobs/queues');
+const notificationsService = require('./notifications.service');
+const emailService = require('./email.service');
 const { User, UserGymMembership } = require('../models/platform');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -644,21 +645,44 @@ const markPaymentFailed = async (tenantDb, paymentId, gymName) => {
   await payment.update({ status: PaymentStatus.FAILED });
 
   try {
-    const user = await User.findByPk(payment.userId, { attributes: ['email', 'fullName', 'fcmToken'] });
+    const user = await User.findByPk(payment.userId, { attributes: ['id', 'email', 'fullName'] });
     if (user) {
-      await notificationsQueue.add({
-        type: 'PAYMENT_FAILED',
-        userId: payment.userId,
-        email: user.email,
-        fullName: user.fullName,
-        fcmToken: user.fcmToken,
-        gymName: gymName || 'your gym',
-        amount: payment.amount,
-        currency: payment.currency,
-      }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+      const formattedGymName = gymName || 'your gym';
+      const formattedAmount = payment.amount;
+      const formattedCurrency = payment.currency || 'PKR';
+
+      // 1. In-app notification, WebSocket broadcast, and FCM push notification
+      await notificationsService.createNotification({
+        userId: user.id,
+        role: 'traveler',
+        type: 'warning',
+        title: 'Payment Failed',
+        message: `Your payment of ${formattedCurrency} ${formattedAmount} for ${formattedGymName} could not be processed.`,
+        priority: 'high',
+        metadataJson: {
+          event: 'payment_failed',
+          paymentId: payment.id,
+          amount: formattedAmount,
+          currency: formattedCurrency,
+          gymName: formattedGymName,
+        },
+      }).catch((notifErr) => {
+        console.warn('[Notification Error] Failed to create PAYMENT_FAILED notification:', notifErr.message);
+      });
+
+      // 2. Direct email delivery via SMTP
+      await emailService.sendPaymentFailedEmail(
+        user.email,
+        user.fullName,
+        formattedGymName,
+        formattedAmount,
+        formattedCurrency
+      ).catch((mailErr) => {
+        console.warn('[Email Error] Failed to send PAYMENT_FAILED email:', mailErr.message);
+      });
     }
   } catch (err) {
-    console.warn('[Notification] Failed to enqueue PAYMENT_FAILED:', err.message);
+    console.warn('[Notification] Failed to dispatch PAYMENT_FAILED notification:', err.message);
   }
 
   return payment.reload();

@@ -5,21 +5,8 @@ const TenantDbManager = require('../database/TenantDbManager');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
-const { notificationsQueue } = require('../jobs/queues');
-
-// ── Notification helper ───────────────────────────────────────────────────────
-const _enqueueNotification = async (userId, type, extra) => {
-  try {
-    const user = await User.findByPk(userId, { attributes: ['email', 'fullName', 'fcmToken'] });
-    if (!user) return;
-    await notificationsQueue.add(
-      { type, userId, email: user.email, fullName: user.fullName, fcmToken: user.fcmToken, ...extra },
-      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } }
-    );
-  } catch (err) {
-    console.warn('[Notification] Failed to enqueue:', err.message);
-  }
-};
+const notificationsService = require('./notifications.service');
+const emailService = require('./email.service');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -312,11 +299,6 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     console.warn('[Notification Error] Failed to create subscription pending notifications:', notifErr.message);
   }
 
-  _enqueueNotification(userId, 'SUBSCRIPTION_PENDING', {
-    gymName: gymListing.title,
-    planName: plan.name,
-    endDate,
-  }).catch(() => { });
 
   return { subscription, qrCode, payment, invoice };
 };
@@ -444,12 +426,44 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
     planName: plan.name,
   });
 
-  // Fire-and-forget notification
-  _enqueueNotification(userId, 'SUBSCRIPTION_RENEWED', {
-    gymName: index.gymName,
-    planName: plan.name,
-    endDate: newEndDate,
-  }).catch(() => { });
+  // Direct notifications (in-app, push, email)
+  try {
+    const user = await User.findByPk(userId, { attributes: ['id', 'email', 'fullName'] });
+    if (user) {
+      const gymName = index.gymName || 'your gym';
+      // 1. In-app notification, WebSocket broadcast, and FCM push
+      await notificationsService.createNotification({
+        userId: user.id,
+        role: 'traveler',
+        type: 'subscription',
+        title: 'Subscription Renewed',
+        message: `Your ${plan.name} at ${gymName} has been renewed until ${newEndDate}.`,
+        deepLink: '/traveler/subscriptions',
+        metadataJson: {
+          event: 'subscription_renewed',
+          subscriptionId: sub.id,
+          planName: plan.name,
+          gymName,
+          endDate: newEndDate,
+        },
+      }).catch((notifErr) => {
+        console.warn('[Notification Error] Failed to create SUBSCRIPTION_RENEWED notification:', notifErr.message);
+      });
+
+      // 2. Direct email delivery via SMTP
+      await emailService.sendSubscriptionRenewedEmail(
+        user.email,
+        user.fullName,
+        gymName,
+        plan.name,
+        newEndDate
+      ).catch((mailErr) => {
+        console.warn('[Email Error] Failed to send SUBSCRIPTION_RENEWED email:', mailErr.message);
+      });
+    }
+  } catch (err) {
+    console.warn('[Notification] Failed to dispatch SUBSCRIPTION_RENEWED notification:', err.message);
+  }
 
   return { subscription: await sub.reload(), qrCode: newQr };
 };
