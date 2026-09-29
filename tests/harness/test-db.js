@@ -48,6 +48,8 @@ Object.assign(process.env, {
   SMTP_FROM: 'GymsEra Test <noreply@gymsera.test>',
 });
 process.env.PLATFORM_DB_NAME = process.env.PLATFORM_TEST_DB_NAME || 'gymsera_test_platform';
+process.env.REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
+process.env.REDIS_PORT = process.env.REDIS_PORT || '6379';
 
 // Test MySQL 5.7 port resolution (Safety Rule R-19):
 // CI service container runs on 3306.
