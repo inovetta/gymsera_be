@@ -242,6 +242,68 @@ const MIGRATIONS = [
       return { alignedCount: tablesToConvert.size };
     },
   },
+  {
+    version: 8,
+    name: '008_add_branch_admin_suspended_columns',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      const qi = sequelize.getQueryInterface();
+
+      const ensureCol = async (table, col, ddl) => {
+        const cols = await qi.describeTable(table).catch(() => ({}));
+        if (cols && !cols[col]) {
+          await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN ${ddl}`).catch(() => {});
+        }
+      };
+
+      await ensureCol('branches', 'admin_suspended', '`admin_suspended` TINYINT(1) NOT NULL DEFAULT 0');
+      await ensureCol('branches', 'admin_suspended_reason', '`admin_suspended_reason` TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
+      await ensureCol('branches', 'admin_suspended_at', '`admin_suspended_at` DATETIME NULL');
+      await ensureCol('branches', 'admin_suspended_by', '`admin_suspended_by` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
+    },
+  },
+  {
+    version: 9,
+    name: '009_create_capacity_outbox_table',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`capacity_outbox\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`event_type\` VARCHAR(60) NOT NULL,
+          \`payload_json\` JSON NOT NULL,
+          \`idempotency_key\` VARCHAR(191) NOT NULL,
+          \`status\` VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+          \`attempts\` INT NOT NULL DEFAULT 0,
+          \`last_error\` TEXT NULL,
+          \`processed_at\` DATETIME NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`capacity_outbox_idempotency_key_unique\` (\`idempotency_key\`),
+          INDEX \`capacity_outbox_status_idx\` (\`status\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+    },
+  },
+  {
+    version: 10,
+    name: '010_add_branch_billing_lock_columns',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      const qi = sequelize.getQueryInterface();
+
+      const ensureCol = async (table, col, ddl) => {
+        const cols = await qi.describeTable(table).catch(() => ({}));
+        if (cols && !cols[col]) {
+          await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN ${ddl}`).catch(() => {});
+        }
+      };
+
+      await ensureCol('branches', 'billing_locked_at', '`billing_locked_at` DATETIME NULL');
+      await ensureCol('branches', 'billing_lock_reason', '`billing_lock_reason` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

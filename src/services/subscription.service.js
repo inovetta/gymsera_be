@@ -176,6 +176,9 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   const branch = await models.Branch.findOne({ where: { id: branchIdToUse, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
 
+  const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+  assertBranchNotBillingLocked(branch);
+
   const existing = await MemberSubscription.findOne({
     where: {
       userId,
@@ -393,6 +396,14 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
     throw createError('Cancelled subscriptions cannot be renewed', 409);
   }
 
+  if (sub.branchId) {
+    const branch = await models.Branch.findByPk(sub.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
+
   const effectivePlanId = targetPlanId || sub.membershipPlanId;
   let plan = await models.MembershipPlan.findByPk(effectivePlanId);
 
@@ -450,6 +461,14 @@ const changePlan = async (userId, subscriptionId, newPlanId) => {
 
   const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
   if (!sub) throw createError('Subscription not found in tenant database', 404);
+
+  if (sub.branchId && models.Branch) {
+    const branch = await models.Branch.findByPk(sub.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   // Find the new membership plan
   const newPlan = await MembershipPlan.findByPk(newPlanId);
@@ -638,6 +657,14 @@ const activateSubscription = async (tenantDb, subscriptionId) => {
   if (sub.status === SubscriptionStatus.ACTIVE) throw createError('Subscription is already active', 409);
   if (sub.status === SubscriptionStatus.CANCELLED) throw createError('Cannot activate a cancelled subscription', 409);
 
+  if (sub.branchId && tenantDb.models.Branch) {
+    const branch = await tenantDb.models.Branch.findByPk(sub.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
+
   const qrCode = sub.qrCode || `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
   await sub.update({ status: SubscriptionStatus.ACTIVE, qrCode });
   await UserGymMembership.update({ status: SubscriptionStatus.ACTIVE }, { where: { subscriptionId } });
@@ -724,6 +751,14 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     include: [{ model: MembershipPlan, as: 'plan' }],
   });
   if (!sub) throw createError('Subscription not found', 404);
+
+  if (sub.branchId && models.Branch) {
+    const branch = await models.Branch.findByPk(sub.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   const currentPlan = sub.plan;
   if (!currentPlan) throw createError('Current membership plan not found', 404);

@@ -94,6 +94,10 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
     }
 
     const { tenantDb, tenant, branch } = await _resolveTenantFromBranch(branchId);
+    if (branch && ['add_member', 'renew', 'change_plan', 'upgrade'].includes(actionType)) {
+      const { assertBranchNotBillingLocked } = require('../services/branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
 
     // Verify enroller is an active staff member of this branch
     const staff = await _resolveActiveStaff(tenantDb, branchId, req.user);

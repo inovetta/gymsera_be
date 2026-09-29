@@ -170,6 +170,8 @@ async function setupTestDatabases() {
   const { sequelize: platformSequelize, connect: connectPlatform } = require('../../src/database/platform');
   await platformSequelize.sync({ force: true });
   await connectPlatform();
+  const { runPlatformMigrations } = require('../../src/database/platform-migrations');
+  await runPlatformMigrations(platformSequelize);
 
   const { City } = require('../../src/models/platform');
   await City.findOrCreate({

@@ -222,6 +222,9 @@ const processTenantProvisioning = async (tenantId) => {
 
   try {
     const models = registerTenantModels(tenantSequelize);
+    const tenantDb = tenantSequelize;
+    tenantDb.models = models;
+    tenantDb.tenantId = tenantId;
     await tenantSequelize.sync({ force: false, alter: true });
     console.log(`[Provisioning] Tenant schema synced to '${dbName}'`);
 
@@ -310,27 +313,44 @@ const processTenantProvisioning = async (tenantId) => {
 
         let branch = await models.Branch.findOne({ where: { gymId } });
         if (!branch) {
-          branch = await models.Branch.create({
-            gymId,
-            gymListingId: listingId,
-            branchName: b.name || tenant.gymName || 'Main Branch',
-            address: b.address || tenant.address || null,
-            cityId: b.cityId || tenant.cityId || null,
-            areaId: b.areaId || tenant.areaId || null,
-            latitude: safeBranchLat,
-            longitude: safeBranchLng,
-            phone: b.phone || tenant.phone || null,
-            openingTime: b.openingTime || null,
-            closingTime: b.closingTime || null,
-            imagesJson: onboardingImages,
-            status: 'ACTIVE',
-            travelerVisibilityStatus: 'active',
-          });
+          // CAP-03: Route through gymService.createBranch
+          const gymService = require('./gym.service');
+          const rawPackages = (Array.isArray(b.packages) && b.packages.length > 0)
+            ? b.packages
+            : (Array.isArray(b.plans) && b.plans.length > 0 ? b.plans : []);
+          const branchResult = await gymService.createBranch(
+            tenantDb,
+            tenantId,
+            {
+              gymListingId: listingId,
+              branchName: b.name || tenant.gymName || 'Main Branch',
+              address: b.address || tenant.address || null,
+              addressLine1: b.address || tenant.address || null,
+              cityId: b.cityId || tenant.cityId || null,
+              areaId: b.areaId || tenant.areaId || null,
+              latitude: safeBranchLat,
+              longitude: safeBranchLng,
+              phone: b.phone || tenant.phone || null,
+              openingTime: b.openingTime || null,
+              closingTime: b.closingTime || null,
+              images: onboardingImages,
+              packages: rawPackages,
+            },
+            null,
+            {
+              actorType: 'SYSTEM',
+              allowDefaultPackage: true,
+              isProvisioning: true,
+              skipCapacityCheck: true,
+              skipCapacityEvent: true,
+              reason: 'Initial Branch created during tenant provisioning',
+            }
+          );
+          branch = branchResult.branch;
           console.log(`[Provisioning] Initial Branch created in '${dbName}' (id: ${branch.id})`);
         } else {
           const updates = {};
           if (listingId && !branch.gymListingId) updates.gymListingId = listingId;
-          if (branch.status !== 'ACTIVE') updates.status = 'ACTIVE';
           if (b.name && !branch.branchName) updates.branchName = b.name;
           if (b.address && !branch.address) updates.address = b.address;
           // Only fill in if the branch has no photos of its own yet — never
@@ -341,6 +361,10 @@ const processTenantProvisioning = async (tenantId) => {
           }
           if (Object.keys(updates).length > 0) {
             await branch.update(updates).catch(() => {});
+          }
+          if (branch.status !== 'ACTIVE') {
+            const gymService = require('./gym.service');
+            await gymService.restoreBranch(tenantDb, tenantId, branch.id, null);
           }
         }
 

@@ -357,15 +357,39 @@ const approveTenant = async (tenantId, adminUserId) => {
 
 // ── rejectTenant ──────────────────────────────────────────────────────────────
 const rejectTenant = async (tenantId, adminUserId, reason) => {
-  const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  let [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
 
   if (!reason || !reason.trim()) {
     throw createError('A rejection reason is required', 400);
   }
 
+  if (!listingId) {
+    const maybeListing = await GymListing.findByPk(actualTenantId);
+    if (maybeListing) {
+      listingId = maybeListing.id;
+      actualTenantId = maybeListing.tenantId;
+    }
+  }
+
   if (listingId) {
     const listing = await GymListing.findByPk(listingId);
     if (!listing) throw createError('Gym listing not found', 404);
+
+    const tenant = await Tenant.findByPk(listing.tenantId);
+    if (tenant && tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+      const TenantDbManager = require('../database/TenantDbManager');
+      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+      const { Branch } = tenantDb.models;
+      const branches = await Branch.findAll({
+        where: { gymListingId: listing.id, status: 'ACTIVE' },
+      });
+      const gymService = require('./gym.service');
+      for (const branch of branches) {
+        await gymService.deleteBranch(tenantDb, branch.id, adminUserId, {
+          confirmOrganizationDeletion: true,
+        });
+      }
+    }
 
     await listing.update({
       status: 'REJECTED',
@@ -374,20 +398,21 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
       rejectedBy: adminUserId,
     });
 
-    if (listing.hostId) {
+    const hostUserId = listing.hostId || tenant?.ownerUserId;
+    if (hostUserId) {
       notificationsService.createNotification({
-        userId: listing.hostId,
+        userId: hostUserId,
         role: 'host',
         type: 'listing_rejected',
-        title: 'Gym Listing Rejected',
-        message: `Your listing "${listing.title}" was not approved: ${reason.trim()}`,
+        title: 'Gym Listing Rejected — Capacity Returned',
+        message: `Your listing "${listing.title}" was not approved: ${reason.trim()}. Your branch capacity has been returned to your account.`,
         priority: 'high',
         deepLink: '/host/branches',
-        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED' },
+        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED', capacityReturned: true },
       }).catch(err => console.error('[rejectTenant listing] Notification error:', err.message));
     }
 
-    return { tenant: { id: tenantId, status: 'REJECTED' } };
+    return { tenant: { id: tenantId, status: 'REJECTED' }, capacityReturned: true };
   }
 
   const tenant = await Tenant.findByPk(actualTenantId, {
@@ -598,21 +623,162 @@ const getTenantBranches = async (tenantId) => {
 // gymService.deleteBranch/restoreBranch every other deactivate/reactivate
 // path already goes through, so this admin action gets the exact same
 // guarantees instead of a second, ungoverned copy of the logic.
-const updateTenantBranchStatus = async (tenantId, branchId, status, adminUserId) => {
+// ── suspendTenantBranch (admin disable for policy reasons) ───────────────────
+// CAP-04: Admin disabling for policy reasons is a distinct concept from
+// host/admin deletion. It flags adminSuspended: true, hides the branch from
+// public discovery, and logs an audit trail, while leaving the tenant's capacity
+// completely unchanged (does NOT decrement usage or credit reservedSlots).
+const suspendTenantBranch = async (tenantId, branchId, reason, adminUserId) => {
+  const tenantDb = await _getTenantDb(tenantId);
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch) throw createError('Branch not found', 404);
+
+  const beforeState = {
+    adminSuspended: !!branch.adminSuspended,
+    adminSuspendedReason: branch.adminSuspendedReason || null,
+    travelerVisibilityStatus: branch.travelerVisibilityStatus,
+    status: branch.status,
+  };
+
+  const trimReason = reason ? String(reason).trim() : 'Suspended by administrator for policy reasons';
+
+  await branch.update({
+    adminSuspended: true,
+    adminSuspendedReason: trimReason,
+    adminSuspendedAt: new Date(),
+    adminSuspendedBy: adminUserId || null,
+    travelerVisibilityStatus: 'deactivated',
+  });
+
+  // 1. Audit trail in tenant DB AuditLog
+  const { AuditLog, BranchVisibilityHistory } = tenantDb.models;
+  if (AuditLog) {
+    await AuditLog.create({
+      branchId: branch.id,
+      actorUserId: adminUserId,
+      actorRoleKey: 'PLATFORM_ADMIN',
+      action: 'branch.admin_suspend',
+      targetType: 'branch',
+      targetId: branch.id,
+      beforeState,
+      afterState: {
+        adminSuspended: true,
+        adminSuspendedReason: trimReason,
+        travelerVisibilityStatus: 'deactivated',
+        status: branch.status,
+      },
+    }).catch(() => {});
+  }
+
+  // 2. Audit trail in BranchVisibilityHistory
+  if (BranchVisibilityHistory) {
+    await BranchVisibilityHistory.create({
+      branchId: branch.id,
+      status: 'deactivated',
+      reason: trimReason,
+      changedBy: adminUserId,
+      changedAt: new Date(),
+    }).catch(() => {});
+  }
+
+  // 3. Notify the host
+  try {
+    const [actualTenantId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId];
+    const tenant = await Tenant.findByPk(actualTenantId);
+    if (tenant && tenant.ownerUserId) {
+      const notificationsService = require('./notifications.service');
+      notificationsService.createNotification({
+        userId: tenant.ownerUserId,
+        role: 'host',
+        type: 'branch_suspended',
+        title: 'Branch Suspended by Administrator',
+        message: `Your branch "${branch.branchName}" has been suspended for policy reasons: ${trimReason}`,
+        priority: 'high',
+        deepLink: '/host/branches',
+        metadataJson: { event: 'branch_suspended', branchId: branch.id, reason: trimReason },
+      }).catch(() => {});
+    }
+  } catch (_) {}
+
+  return { branch };
+};
+
+// ── unsuspendTenantBranch (admin enable) ───────────────────────────────────────
+const unsuspendTenantBranch = async (tenantId, branchId, adminUserId) => {
+  const tenantDb = await _getTenantDb(tenantId);
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch) throw createError('Branch not found', 404);
+
+  const beforeState = {
+    adminSuspended: !!branch.adminSuspended,
+    adminSuspendedReason: branch.adminSuspendedReason || null,
+    travelerVisibilityStatus: branch.travelerVisibilityStatus,
+    status: branch.status,
+  };
+
+  await branch.update({
+    adminSuspended: false,
+    adminSuspendedReason: null,
+    adminSuspendedAt: null,
+    adminSuspendedBy: null,
+  });
+
+  const { AuditLog } = tenantDb.models;
+  if (AuditLog) {
+    await AuditLog.create({
+      branchId: branch.id,
+      actorUserId: adminUserId,
+      actorRoleKey: 'PLATFORM_ADMIN',
+      action: 'branch.admin_unsuspend',
+      targetType: 'branch',
+      targetId: branch.id,
+      beforeState,
+      afterState: {
+        adminSuspended: false,
+        status: branch.status,
+      },
+    }).catch(() => {});
+  }
+
+  return { branch };
+};
+
+// ── deleteTenantBranch (admin delete calling deleteBranch) ───────────────────
+const deleteTenantBranch = async (tenantId, branchId, adminUserId, { confirmOrganizationDeletion = false } = {}) => {
+  const tenantDb = await _getTenantDb(tenantId);
+  const gymService = require('./gym.service');
+  await gymService.deleteBranch(tenantDb, branchId, adminUserId, { confirmOrganizationDeletion });
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  return { branch };
+};
+
+// ── updateTenantBranchStatus (admin) ─────────────────────────────────────────
+// Delegates to deleteTenantBranch (for INACTIVE), restoreBranch / unsuspend (for ACTIVE),
+// or suspendTenantBranch (for SUSPENDED). Never writes status directly.
+const updateTenantBranchStatus = async (tenantId, branchId, status, adminUserId, reason = null) => {
   const [actualTenantId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId];
   const tenantDb = await _getTenantDb(tenantId);
   const gymService = require('./gym.service');
 
-  if (status === 'INACTIVE') {
-    await gymService.deleteBranch(tenantDb, branchId, adminUserId);
+  if (status === 'SUSPENDED') {
+    return await suspendTenantBranch(tenantId, branchId, reason, adminUserId);
+  } else if (status === 'INACTIVE') {
+    return await deleteTenantBranch(tenantId, branchId, adminUserId, { confirmOrganizationDeletion: true });
   } else if (status === 'ACTIVE') {
-    await gymService.restoreBranch(tenantDb, actualTenantId, branchId, adminUserId);
-  } else {
-    throw createError('status must be ACTIVE or INACTIVE', 400);
-  }
+    const branch = await tenantDb.models.Branch.findByPk(branchId);
+    if (!branch) throw createError('Branch not found', 404);
 
-  const branch = await tenantDb.models.Branch.findByPk(branchId);
-  return { branch };
+    if (branch.adminSuspended) {
+      await unsuspendTenantBranch(tenantId, branchId, adminUserId);
+    }
+    if (branch.status === 'INACTIVE') {
+      await gymService.restoreBranch(tenantDb, actualTenantId, branchId, adminUserId);
+    }
+    await branch.reload();
+    return { branch };
+  } else {
+    throw createError('status must be ACTIVE, INACTIVE, or SUSPENDED', 400);
+  }
 };
 
 // ── getTenantMembers (admin) ──────────────────────────────────────────────────
@@ -1193,98 +1359,32 @@ const deleteGymListingImage = async (tenantId, imageUrl) => {
 
 // ── Admin branch management ───────────────────────────────────────────────────
 
-// Found during a final capacity-path audit: created branches with
-// status: 'ACTIVE' directly, with no capacity check, no reservedSlots
-// interaction, and no capacity_events row — a second, independent bypass
-// of the same rules gymService.createBranch enforces. Fixed to run the
-// identical check (using a reserved slot on the target org first, else
-// fresh tenant-wide capacity) rather than routing through createBranch
-// itself, which would additionally start requiring membership packages —
-// a content-model change this admin tool has never enforced and isn't
-// what this audit is about.
+// CAP-03: Every branch creator must use createBranch. Admin branch
+// creation delegates directly to gymService.createBranch, ensuring uniform
+// capacity enforcement, reservedSlots consumption, and CapacityEvent audit logging.
 const createAdminTenantBranch = async (tenantId, data, adminUserId) => {
   const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
   if (!tenant) throw createError('Tenant not found', 404);
   if (tenant.status !== 'ACTIVE') throw createError('Tenant must be active to manage branches', 400);
 
-  const subscriptionQuotaService = require('./subscription-quota.service');
-  const { sequelize: platformSequelize } = require('../database/platform');
   const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-  const { models } = tenantDb;
+  const gymService = require('./gym.service');
 
-  let gym;
-  if (listingId) {
-    gym = await models.Gym.findOne({ where: { gymListingId: listingId } });
-  } else {
-    gym = await models.Gym.findOne();
-  }
-  if (!gym) throw createError('Gym profile not found for this tenant', 404);
-
-  const platformTx = await platformSequelize.transaction();
-  let branch;
-  try {
-    let targetListing = null;
-    if (listingId) {
-      targetListing = await GymListing.findByPk(listingId, { lock: true, transaction: platformTx });
+  const { branch } = await gymService.createBranch(
+    tenantDb,
+    actualTenantId,
+    {
+      ...data,
+      gymListingId: listingId || data.gymListingId,
+    },
+    adminUserId,
+    {
+      actorType: 'ADMIN',
+      allowDefaultPackage: true,
+      reason: `Branch "${data.branchName}" created by admin`,
     }
-    const consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
-
-    if (!consumingReservedSlot) {
-      const activeSub = await subscriptionQuotaService.getActiveSubscription(actualTenantId, { transaction: platformTx });
-      if (activeSub && activeSub.overQuotaCount > 0) {
-        const err = createError('This tenant is over its plan\'s branch capacity following a recent downgrade — resolve that before adding a branch.', 403);
-        err.code = 'account_over_quota';
-        throw err;
-      }
-      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-      const usedCapacity = await subscriptionQuotaService.getUsedCapacity(actualTenantId, tenantDb, { transaction: platformTx });
-      if (usedCapacity >= maxBranches) {
-        const err = createError('Branch limit reached for this tenant\'s plan', 403);
-        err.code = 'branch_limit_reached';
-        throw err;
-      }
-    }
-
-    branch = await models.Branch.create({
-      gymId: gym.id,
-      gymListingId: listingId || null,
-      branchName: data.branchName,
-      address: data.address || null,
-      cityId: data.cityId || null,
-      areaId: data.areaId || null,
-      phone: data.phone || null,
-      openingTime: data.openingTime || null,
-      closingTime: data.closingTime || null,
-      facilitiesJson: data.facilitiesJson || null,
-      status: 'ACTIVE',
-    });
-
-    if (consumingReservedSlot) {
-      await subscriptionQuotaService.recordCapacityEvent(
-        {
-          tenantId: actualTenantId,
-          listingId: targetListing.id,
-          branchId: branch.id,
-          action: 'SLOT_CONSUMED_BUILD',
-          delta: -1,
-          reservedSlotsBefore: targetListing.reservedSlots,
-          reservedSlotsAfter: targetListing.reservedSlots - 1,
-          actorUserId: adminUserId || null,
-          actorType: 'ADMIN',
-          reason: `Branch "${branch.branchName}" built by admin into a reserved slot`,
-          idempotencyKey: `slot_consumed_build:${branch.id}`,
-        },
-        { transaction: platformTx }
-      );
-      await targetListing.decrement('reservedSlots', { by: 1, transaction: platformTx });
-    }
-
-    await platformTx.commit();
-  } catch (err) {
-    await platformTx.rollback();
-    throw err;
-  }
+  );
 
   return { branch };
 };
@@ -1471,7 +1571,9 @@ const getBranchVisibilityHistory = async (branchId) => {
 
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
-  reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus, getTenantMembers, getTenantMembershipPlans,
+  reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus,
+  suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
+  getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,

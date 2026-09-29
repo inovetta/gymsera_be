@@ -31,6 +31,9 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
   const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
 
+  const { assertBranchCheckinAllowed } = require('./branch-billing-lock.service');
+  assertBranchCheckinAllowed(branch);
+
   let subscription = await MemberSubscription.findOne({ where: { qrCode } });
   if (!subscription) {
     // Try finding by subscription ID (in case the QR encoded the sub id)
@@ -117,6 +120,9 @@ const manual = async (tenantDb, staffUserId, { userId, branchId, subscriptionId,
   const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
 
+  const { assertBranchCheckinAllowed } = require('./branch-billing-lock.service');
+  assertBranchCheckinAllowed(branch);
+
   const subscription = await MemberSubscription.findOne({
     where: { id: subscriptionId, userId, branchId },
   });
@@ -169,6 +175,9 @@ const deviceNotify = async (tenantDb, { deviceId, userId, eventTime, branchId })
 
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
+
+  const { assertBranchCheckinAllowed } = require('./branch-billing-lock.service');
+  assertBranchCheckinAllowed(branch);
 
   // Find the user's active subscription for this branch
   const subscription = await MemberSubscription.findOne({

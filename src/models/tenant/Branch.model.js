@@ -145,6 +145,37 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'deactivated_by',
       },
+      adminSuspended: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'admin_suspended',
+      },
+      adminSuspendedReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'admin_suspended_reason',
+      },
+      adminSuspendedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'admin_suspended_at',
+      },
+      adminSuspendedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'admin_suspended_by',
+      },
+      billingLockedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'billing_locked_at',
+      },
+      billingLockReason: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'billing_lock_reason',
+      },
     },
     {
       tableName: 'branches',

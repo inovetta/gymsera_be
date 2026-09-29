@@ -94,6 +94,20 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
     }
   }
 
+  // Branch billing lock guard (CAP-01): no sales/payments for a locked branch
+  let targetBranchId = data.branchId;
+  if (!targetBranchId && data.paymentFor === 'MEMBERSHIP' && data.referenceEntityId) {
+    const sub = await MemberSubscription.findByPk(data.referenceEntityId);
+    if (sub) targetBranchId = sub.branchId;
+  }
+  if (targetBranchId && tenantDb.models.Branch) {
+    const branch = await tenantDb.models.Branch.findByPk(targetBranchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
+
   const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
   const autoComplete = isDirect || data.method === 'TEST';
   const paidAt = data.paidAt || (autoComplete ? new Date() : null);
@@ -254,6 +268,15 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
 
   const payment = await Payment.findByPk(paymentId);
   if (!payment) throw createError('Payment not found', 404);
+
+  const targetBranchId = payment.branchId;
+  if (targetBranchId && tenantDb.models.Branch) {
+    const branch = await tenantDb.models.Branch.findByPk(targetBranchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   const verifiableStatuses = [PaymentStatus.PENDING, PaymentStatus.STAFF_COLLECTED];
   if (!verifiableStatuses.includes(payment.status)) {
@@ -445,6 +468,13 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
   if (!payment) throw createError('Payment not found', 404);
 
   if (action === 'collect') {
+    if (payment.branchId && tenantDb.models.Branch) {
+      const branch = await tenantDb.models.Branch.findByPk(payment.branchId);
+      if (branch) {
+        const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+        assertBranchNotBillingLocked(branch);
+      }
+    }
     if (payment.status !== PaymentStatus.PENDING) {
       throw createError(`Cannot collect a payment that is already ${payment.status.toLowerCase()}`, 409);
     }
@@ -567,7 +597,21 @@ const uploadPaymentProof = async (tenantDb, paymentId, proofUrl) => {
  * The tenant (GYM_HOST) still needs to give final approval for each payment.
  */
 const collectionAction = async (tenantDb, paymentIds, staffUserId) => {
-  const { Payment } = tenantDb.models;
+  const { Payment, Branch } = tenantDb.models;
+
+  if (Branch && Array.isArray(paymentIds) && paymentIds.length > 0) {
+    const payments = await Payment.findAll({
+      where: { id: paymentIds, status: PaymentStatus.PENDING },
+    });
+    const branchIds = [...new Set(payments.map((p) => p.branchId).filter(Boolean))];
+    if (branchIds.length > 0) {
+      const branches = await Branch.findAll({ where: { id: branchIds } });
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      for (const branch of branches) {
+        assertBranchNotBillingLocked(branch);
+      }
+    }
+  }
 
   const [updatedCount] = await Payment.update(
     {

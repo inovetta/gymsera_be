@@ -45,7 +45,9 @@ module.exports = (sequelize) => {
           'SLOT_ATTRIBUTED_UPGRADE',
           'SLOT_CONSUMED_BUILD',
           'ORG_DELETED',
-          'ORG_BRANCHES_MOVED'
+          'ORG_BRANCHES_MOVED',
+          'BRANCH_BILLING_LOCKED',
+          'BRANCH_BILLING_UNLOCKED'
         ),
         allowNull: false,
       },

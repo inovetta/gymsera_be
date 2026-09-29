@@ -272,6 +272,14 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
   const subscription = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId, userId } });
   if (!subscription) throw createError('Subscription not found or does not belong to you', 404);
 
+  if (subscription.branchId && models.Branch) {
+    const branch = await models.Branch.findByPk(subscription.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
+
   // Check if there is already a PENDING payment for this subscription
   let payment = await Payment.findOne({
     where: {

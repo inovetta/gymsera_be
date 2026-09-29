@@ -8,6 +8,8 @@ const createTrainer = async (tenantDb, data) => {
   if (data.branchId) {
     const branch = await Branch.findOne({ where: { id: data.branchId, status: 'ACTIVE' } });
     if (!branch) throw createError('Branch not found or inactive', 404);
+    const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+    assertBranchNotBillingLocked(branch);
   }
 
   // Prevent duplicate active trainer record for the same user
@@ -47,13 +49,20 @@ const listTrainers = async (tenantDb, { branchId, status, page, limit, offset })
 
 // ── PATCH /trainers/:id ────────────────────────────────────────────────────────
 const updateTrainer = async (tenantDb, trainerId, data) => {
-  const { Trainer } = tenantDb.models;
+  const { Trainer, Branch } = tenantDb.models;
 
   const trainer = await Trainer.findByPk(trainerId);
   if (!trainer) throw createError('Trainer not found', 404);
 
+  if (data.branchId) {
+    const branch = await Branch.findOne({ where: { id: data.branchId, status: 'ACTIVE' } });
+    if (!branch) throw createError('Branch not found or inactive', 404);
+    const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+    assertBranchNotBillingLocked(branch);
+  }
+
   const allowed = ['specialization', 'bio', 'yearsExperience',
-    'certificationsJson', 'availabilityJson', 'status'];
+    'certificationsJson', 'availabilityJson', 'status', 'branchId'];
   const patch = {};
   for (const key of allowed) {
     if (data[key] !== undefined) patch[key] = data[key];
@@ -72,6 +81,9 @@ const assignTrainer = async (tenantDb, trainerId, branchId) => {
 
   const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
+
+  const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+  assertBranchNotBillingLocked(branch);
 
   await trainer.update({ branchId });
   return trainer.reload();

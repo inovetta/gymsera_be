@@ -128,11 +128,10 @@ const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) 
 const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
   const [activeBranches, reservedTotal] = await Promise.all([
     tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }),
-    // Excludes deleted (INACTIVE) organizations — otherwise a reservedSlots
-    // count left on a deleted organization would permanently lock that
-    // capacity out of the pool forever, since nothing else ever reads or
-    // clears reservedSlots on a listing once it's gone.
-    GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.ne]: 'INACTIVE' } }, transaction }),
+    // Excludes deleted (INACTIVE) and REJECTED organizations — otherwise a reservedSlots
+    // count left on an inactive/rejected organization would permanently lock that
+    // capacity out of the pool forever.
+    GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } }, transaction }),
   ]);
   return activeBranches + (reservedTotal || 0);
 };
@@ -147,7 +146,7 @@ const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
  * means this exact event was already recorded and the caller must NOT also
  * re-apply the delta.
  */
-const recordCapacityEvent = async (fields, { transaction }) => {
+const recordCapacityEvent = async (fields, { transaction } = {}) => {
   const already = await CapacityEvent.findOne({ where: { idempotencyKey: fields.idempotencyKey }, transaction });
   if (already) return { applied: false, event: already };
   const event = await CapacityEvent.create(fields, { transaction });
@@ -205,7 +204,7 @@ const reconcileCapacity = async (
   // back to for "which org gets an upgrade's new capacity" when no specific
   // origin is known.
   const listings = await GymListing.findAll({
-    where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
+    where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
     order: [['createdAt', 'ASC']],
     lock: true,
     transaction,
@@ -263,6 +262,15 @@ const reconcileCapacity = async (
       { overQuotaCount: 0 },
       { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
     );
+
+    if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
+      try {
+        const branchBillingLockService = require('./branch-billing-lock.service');
+        await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+      } catch (lockErr) {
+        console.warn(`[reconcileCapacity] Failed to unlock branches for tenant ${tenantId}:`, lockErr.message);
+      }
+    }
     return { overQuotaCount: 0, trimmedSlots: 0 };
   }
 
@@ -308,6 +316,16 @@ const reconcileCapacity = async (
     { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
   );
 
+  // Automatic lock/unlock enforcement when capacity changes (CAP-01)
+  if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
+    try {
+      const branchBillingLockService = require('./branch-billing-lock.service');
+      await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+    } catch (lockErr) {
+      console.warn(`[reconcileCapacity] Failed to enforce branch locks for tenant ${tenantId}:`, lockErr.message);
+    }
+  }
+
   return { overQuotaCount: Math.max(0, remaining), trimmedSlots };
 };
 
@@ -347,7 +365,7 @@ const auditCapacity = async (tenantId, tenantDb) => {
   const maxBranches = await resolveMaxBranches(tenant, activeSub);
 
   const listings = await GymListing.findAll({
-    where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
+    where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
     attributes: ['id', 'title', 'reservedSlots'],
     order: [['createdAt', 'ASC']],
   });
@@ -385,6 +403,7 @@ const auditCapacity = async (tenantId, tenantDb) => {
   let usedCapacity = null;
   let invariantHolds = null;
   let expectedOverQuota = null;
+  let emptyActiveOrgs = [];
 
   if (tenantDb) {
     activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
@@ -394,6 +413,22 @@ const auditCapacity = async (tenantId, tenantDb) => {
     // Real branches alone beyond the plan — what overQuotaCount should be
     // once every unbuilt slot has already been trimmed.
     expectedOverQuota = Math.max(0, activeBranches - maxBranches);
+
+    // CAP-07: "Organization never empty" — report ACTIVE organizations with 0 ACTIVE branches
+    const activeOrgs = await GymListing.findAll({
+      where: { tenantId, status: 'ACTIVE' },
+      attributes: ['id', 'title'],
+    });
+    const activeBranchesList = await tenantDb.models.Branch.findAll({
+      where: { status: 'ACTIVE' },
+      attributes: ['gymListingId'],
+    });
+    const activeListingIds = new Set(
+      activeBranchesList.map((b) => b.gymListingId).filter(Boolean)
+    );
+    emptyActiveOrgs = activeOrgs
+      .filter((org) => !activeListingIds.has(org.id))
+      .map((org) => ({ listingId: org.id, title: org.title }));
   }
 
   const recordedOverQuota = activeSub?.overQuotaCount ?? 0;
@@ -413,8 +448,10 @@ const auditCapacity = async (tenantId, tenantDb) => {
     listings: listingReports,
     driftedListings,
     totalDrift,
+    emptyActiveOrgs,
+    hasEmptyActiveOrgs: emptyActiveOrgs.length > 0,
     // The single field a cron or dashboard should branch on.
-    ok: driftedListings.length === 0 && !overQuotaMismatch && invariantHolds !== false,
+    ok: driftedListings.length === 0 && !overQuotaMismatch && invariantHolds !== false && emptyActiveOrgs.length === 0,
   };
 };
 

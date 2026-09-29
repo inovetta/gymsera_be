@@ -33,7 +33,11 @@ const _getTravelerVisibleListingIds = async () => {
         const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
         const { Branch } = tenantDb.models;
         const branches = await Branch.findAll({
-          where: { status: 'ACTIVE', travelerVisibilityStatus: 'active' },
+          where: {
+            status: 'ACTIVE',
+            travelerVisibilityStatus: 'active',
+            adminSuspended: { [Op.ne]: true },
+          },
           attributes: ['id', 'gymListingId'],
         });
         for (const b of branches) {
@@ -97,7 +101,11 @@ const _getAllActiveBranches = async () => {
 
         const [branches, plans] = await Promise.all([
           Branch.findAll({
-            where: { status: 'ACTIVE', travelerVisibilityStatus: 'active' },
+            where: {
+              status: 'ACTIVE',
+              travelerVisibilityStatus: 'active',
+              adminSuspended: { [Op.ne]: true },
+            },
           }),
           MembershipPlan.findAll({
             where: { status: 'ACTIVE', isPublic: true },
@@ -398,6 +406,7 @@ const getGym = async (id) => {
           where: {
             status: 'ACTIVE',
             travelerVisibilityStatus: 'active',
+            adminSuspended: { [Op.ne]: true },
             ...(gymIdToUse ? { gymId: gymIdToUse } : {}),
           },
           attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
@@ -584,6 +593,7 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
           where: {
             status: 'ACTIVE',
             travelerVisibilityStatus: 'active',
+            adminSuspended: { [Op.ne]: true },
             ...(isPrimaryGym
               ? {
                   [Op.or]: [
@@ -693,6 +703,7 @@ const listOrganizationBranches = async (gymId) => {
           where: {
             status: 'ACTIVE',
             travelerVisibilityStatus: 'active',
+            adminSuspended: { [Op.ne]: true },
             ...(isPrimaryGym
               ? {
                   [Op.or]: [

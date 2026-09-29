@@ -250,6 +250,19 @@ const _reconcileCapacityForAllTenants = async () => {
         throw err;
       }
 
+      // Enforce branch billing locks on over-quota tenants (CAP-01)
+      try {
+        const branchBillingLockService = require('../services/branch-billing-lock.service');
+        const lockRes = await branchBillingLockService.enforceBranchBillingLocksForTenant(sub.tenantId, tenantDb);
+        if (lockRes.lockedCount > 0 || lockRes.unlockedCount > 0) {
+          console.log(
+            `[Cron] Tenant ${sub.tenantId}: branch billing lock sweep: locked ${lockRes.lockedCount}, unlocked ${lockRes.unlockedCount}`
+          );
+        }
+      } catch (lockErr) {
+        console.error(`[Cron] Branch billing lock sweep failed for tenant ${sub.tenantId}:`, lockErr.message);
+      }
+
       // Integrity check, after reconciliation rather than before, so what it
       // reports is what's still wrong once the self-healing pass has done
       // everything it can. reconcileCapacity enforces the invariant against
@@ -321,6 +334,14 @@ const runExpiryCheck = async () => {
 
   // ── Platform subscriptions ────────────────────────────────────────────────
   await _processPlatformSubscriptions();
+
+  // ── Capacity Outbox sweep (CAP-02) ───────────────────────────────────────
+  try {
+    const capacityOutboxService = require('../services/capacity-outbox.service');
+    await capacityOutboxService.sweepAllTenantsOutbox();
+  } catch (err) {
+    console.error('[Cron] Capacity outbox sweep failed:', err.message);
+  }
 
   // ── Capacity invariant safety net ────────────────────────────────────────
   await _reconcileCapacityForAllTenants();

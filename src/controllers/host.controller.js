@@ -245,25 +245,28 @@ const getBranchQuota = async (req, res, next) => {
 
     const remainingBranches = Math.max(0, maxBranches - usedBranches);
 
+    const overquotaGraceDays = require('../config/billing.config').overquotaGraceDays;
+    const graceDays = overquotaGraceDays();
+    let overQuotaGraceRemainingDays = null;
+    let isOverQuotaGraceExpired = false;
+    if (activeSub && activeSub.overQuotaCount > 0) {
+      const change = activeSub.pendingChange;
+      const appliedAt = change?.appliedAt ? new Date(change.appliedAt) : new Date(activeSub.updatedAt);
+      const graceExpiry = new Date(appliedAt.getTime() + graceDays * 24 * 60 * 60 * 1000);
+      isOverQuotaGraceExpired = Date.now() >= graceExpiry.getTime();
+      overQuotaGraceRemainingDays = Math.max(0, Math.ceil((graceExpiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+    }
+
     return sendSuccess(res, {
       maxBranches,
       usedBranches,
       remainingBranches,
-      // activeBranches / buildableBranches are the host-facing pair: real
-      // built branches, and how many more they can still build. That's
-      // deliberately NOT remainingBranches above — an unbuilt reservedSlot
-      // counts as "used" for the invariant's purposes but is still very
-      // much buildable, so remainingBranches understates what the host can
-      // actually do. Where a slot happens to be parked is internal
-      // bookkeeping the app no longer surfaces.
       activeBranches,
       buildableBranches: Math.max(0, maxBranches - activeBranches),
-      // > 0 means a downgrade left more real ACTIVE branches than the
-      // current plan covers, after every unbuilt slot was already trimmed —
-      // see subscription-quota.service.js#reconcileCapacity. Real branches
-      // are never touched to resolve this; the host needs to upgrade or
-      // close branches themselves. Drives the over-quota banner in the app.
       overQuotaCount: activeSub?.overQuotaCount || 0,
+      overQuotaGraceDays: graceDays,
+      overQuotaGraceRemainingDays,
+      isOverQuotaGraceExpired,
       ...(organizationId ? { organizationBranches, organizationReservedSlots } : {}),
     });
   } catch (err) {
@@ -611,26 +614,35 @@ const createListing = async (req, res, next) => {
 
       let branch = null;
       if (branchSource === 'new') {
-        // This organization's first (and, until it grows, only) branch —
-        // reuses the exact same Branch+membership-plan creation gym.service.js
-        // uses for the standalone "add a branch" flow. Not routed through
-        // gymService.createBranch itself: that function opens its own
-        // platformTx and re-locks the same Tenant row, which would deadlock
-        // against the lock this transaction is already holding.
-        branch = await gymService._createBranchRecord(req.tenantDb, gym, listing.id, {
-          branchName: gymName,
-          address,
-          addressLine1: address,
-          cityId: targetCityId,
-          areaId,
-          latitude,
-          longitude,
-          phone: contactPhone || tenant.phone || null,
-          images: Array.isArray(images) && images.length > 0
-            ? images
-            : (coverImageUrl ? [coverImageUrl] : []),
-          packages,
-        }, { transaction: platformTx });
+        // CAP-03: Route through gymService.createBranch with caller's transaction
+        // and capacity already verified/settled above.
+        const branchResult = await gymService.createBranch(
+          req.tenantDb,
+          tenantId,
+          {
+            branchName: gymName,
+            address,
+            addressLine1: address,
+            cityId: targetCityId,
+            areaId,
+            latitude,
+            longitude,
+            phone: contactPhone || tenant.phone || null,
+            images: Array.isArray(images) && images.length > 0
+              ? images
+              : (coverImageUrl ? [coverImageUrl] : []),
+            packages,
+            gymListingId: listing.id,
+          },
+          req.user.sub || req.user.id,
+          {
+            transaction: platformTx,
+            skipCapacityCheck: true,
+            skipCapacityEvent: !!slotDonorListing,
+            reason: `Initial branch "${gymName}" created with new organization`,
+          }
+        );
+        branch = branchResult.branch;
       }
 
       await platformTx.commit();
@@ -814,8 +826,23 @@ const getCurrentSubscription = async (req, res, next) => {
       throw createError('No active subscription found', 404);
     }
 
+    const overquotaGraceDays = require('../config/billing.config').overquotaGraceDays;
+    const graceDays = overquotaGraceDays();
+    let overQuotaGraceRemainingDays = null;
+    let isOverQuotaGraceExpired = false;
+    if (subscription.overQuotaCount > 0) {
+      const change = subscription.pendingChange;
+      const appliedAt = change?.appliedAt ? new Date(change.appliedAt) : new Date(subscription.updatedAt);
+      const graceExpiry = new Date(appliedAt.getTime() + graceDays * 24 * 60 * 60 * 1000);
+      isOverQuotaGraceExpired = Date.now() >= graceExpiry.getTime();
+      overQuotaGraceRemainingDays = Math.max(0, Math.ceil((graceExpiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+    }
+
     return sendSuccess(res, {
       ...subscription.toJSON(),
+      overQuotaGraceDays: graceDays,
+      overQuotaGraceRemainingDays,
+      isOverQuotaGraceExpired,
       paymentIssue: subscriptionMigrationService.paymentIssueFor(subscription),
     });
   } catch (err) {

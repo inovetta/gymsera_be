@@ -17,30 +17,31 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-09-28 |
+| Last updated | 2026-09-29 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Merge: Prompt 1B + Hotfix PR #48** (hotfix PR #48 is merged and deployed; 1B branch being merged; next: Prompt 1C) |
+| Current prompt | **Prompt 1C — Branch Capacity (CAP-01 to CAP-08)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-Hotfix PR #48 is merged and deployed; the 1B branch is being merged; the next prompt is 1C (CAP-01).
-
-Prompt 1B is on `phase-1/prompt-1b-billing-lifecycle` in two repos, with origin/main (hotfix PR #48: closed open routes NEW-04, NEW-05, NEW-29, NEW-30, NEW-31 and router guard test) merged in `gymsera_be`.
+Prompt 1C is committed on branch `phase-1/prompt-1c-branch-capacity` in `gymsera_be`.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1b-billing-lifecycle` (from `phase-1/prompt-1a-billing-core` b4dfb59 — **mobile 1A is not in master yet**; merge 1A first or merge 1B, which contains it) | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1b-billing-lifecycle` (merged with origin/main containing hotfix PR #48) | see `git log` | no |
+| gyms_era | `phase-1/prompt-1b-billing-lifecycle` | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
+| gymsera_be | `phase-1/prompt-1c-branch-capacity` | 2dcaec8 fix(capacity): prevent connection pool starvation and verify concurrency controls (CAP-08) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
-| gymsera_web | `phase-1/prompt-1a-billing-core` (from main f84b784) | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
+| gymsera_web | `phase-1/prompt-1a-billing-core` | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Hotfix PR #48 is merged and deployed; the 1B branch is being merged; the next prompt is **Prompt 1C** (CAP-01) from `GYMSERA_AGENT_PLAYBOOK.md` (CAP-01 branch billing lock and the rest of 1C).
-> CAP-01 must read the host's keep-list through `subscription-quota.service.js#getBranchesToKeep(tenantId)` (BILL-03) and use `OVERQUOTA_GRACE_DAYS=7` (R-3) and `MEMBER_CHECKIN_GRACE_DAYS=7` (R-2) — neither setting exists in code yet; add each once, in `src/config/billing.config.js` next to `PAY_LATER_GRACE_DAYS`.
+> Prompt 1C is DONE. Next prompt is **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** from `GYMSERA_AGENT_PLAYBOOK.md`:
+> Read spec §0.5, §8 (especially §8.3 Team & Access — approved design from mobile) and issues: RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, SEC-06, RBAC-03.
+> RBAC-07 first: every path that grants or removes staff access must go through the /team service and RoleAssignment. Do NOT change mobile Team & Access UX.
+> RBAC-03: generate endpoint x persona test suite from real route list and constants/permissions.js, and commit docs/PERMISSIONS.md.
+> Branch to create: `phase-1/prompt-1d-access-control`.
 
 ### Work in progress that is NOT committed
 
@@ -77,29 +78,16 @@ Prompt 1B is on `phase-1/prompt-1b-billing-lifecycle` in two repos, with origin/
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-**Prompt 1B — Billing lifecycle:**
-- [x] STEP 0 — §14 R-22 owner confirmed; R-17 = R-22 = one setting (be 043066a)
-- [x] 1. BILL-04 — GRACE / ON_HOLD / PAUSED (p004) (be f5543f2)
-- [x] 2. BILL-05 — amount/currency from the provider's charge (p005) (be e7d61f5)
-- [x] 3. BILL-03 — deferred downgrade, pendingChange + keepBranchIds (p006) (be 900506e, app b8909df; lock = CAP-01)
-- [x] 4. BILL-13 — pay-later GRACE MANUAL row, PAY_LATER_GRACE_DAYS (be fc76f8b)
-- [x] 5. FLOW-03 — one entitlement at approval (be 6142e65; NEW-18 partly fixed)
-- [x] 6. BILL-08 — Google PENDING purchases (be 07043f3, app 520a49b)
-- [x] §13 rows with hashes, 3 consecutive full runs, pre-check SQL, this handoff
-
-**Hotfix — Close open routes & guard (PR #48):**
-- [x] 1. NEW-04 — /debug-sync-db removed completely, fetch_sync.js removed, returns 404 with 0 DB writes (be 0cc58d8)
-- [x] 2. NEW-05 — /system/recycle removed completely, returns 404 with 0 DB writes (be 271ca62)
-- [x] 3. Part 1c — Audit calls to /debug-sync-db and /system/recycle (only fetch_sync.js called /debug-sync-db; approved and removed)
-- [x] 4. Part 1d — Audit unauthenticated mutating routes in src/routes/index.js and mounted files
-- [x] 5. Part 2 — Suspended tenant bypass report (src/middleware/tenantContext.js:134) & spec §12 NEW-26 recorded
-- [x] 6. Part 3 — Spec §12 NEW-27 (mobile restore purchase retry loop) & NEW-28 (33 Redis sockets, DeviceToken.sync) recorded
-- [x] 7. Part 1a (Part 2) — Search 4 repos, scripts, CI, docs for callers of debug-cleanup-indexes, seed-conversations, debug-activate-branches (none found)
-- [x] 8. NEW-29 — /debug-cleanup-indexes removed completely, returns 404 with 0 DB writes (be 0ae5cdf)
-- [x] 9. NEW-30 — /discovery/seed-conversations removed completely, returns 404 with 0 DB writes (be 58237df)
-- [x] 10. NEW-31 (resolves NEW-01) — /discovery/debug-activate-branches removed completely, returns 404 with 0 DB writes (be 2aaa986)
-- [x] 11. Part 2 (Part 2) — Security report on the four /system routes
-- [x] 12. Part 3 (Part 2) — Router walk guard test enforcing allow-list for unauthenticated routes (be ee7232d)
+**Prompt 1C — Branch Capacity (CAP-01 to CAP-08):**
+- [x] 1. CAP-03 — Route all branch creation through `createBranch` and guard lifecycle doors (be 0d81080)
+- [x] 2. CAP-04 — Separate admin policy disable from deletion, add migration 008, guard discovery (be 9444ca2)
+- [x] 3. CAP-02 — Add tenant capacity outbox for cross-database durability, add migration 009, sweep hook (be 03493c5)
+- [x] 4. CAP-01 — Enforce real branch billing lock on over-quota tenants, add migration 010 & p007, middleware guard (be a023dad)
+- [x] 5. CAP-05 — Return capacity on pending organization rejection via `deleteBranch` (be 262846e)
+- [x] 6. CAP-06 — Reactivate auto-deactivated organization on branch restore (be a85db2d)
+- [x] 7. CAP-07 — Enforce organization never empty everywhere and report in `auditCapacity` (be 5463307)
+- [x] 8. CAP-08 — Verify concurrency controls for parallel create, delete+restore, and donor slot competition (be 2dcaec8)
+- [x] §13 rows with hashes, 3 consecutive full runs, pre-check SQL queries, this handoff
 
 ---
 
@@ -209,3 +197,4 @@ Prompt 1B is on `phase-1/prompt-1b-billing-lifecycle` in two repos, with origin/
 | 18 | 2026-09-28 | Claude Code (Opus 5.5) | Prompt 1B | BILL-04, BILL-05, BILL-03 (lock = CAP-01), BILL-13, FLOW-03, BILL-08 | task complete | yes |
 | 19 | 2026-09-28 | Claude Code (Opus 5.5) | 1B close-out | TEST-FLAKE-1B (cause proven, fixed); backward-compat report; NEW-19…NEW-25 + §16 sandbox list | task complete | yes |
 | 20 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Merge: 1B + Hotfix PR #48 | Resolve docs merge conflicts in AGENT_HANDOFF.md and GYMSERA_PRODUCTION_ARCHITECTURE.md | task complete | yes |
+| 21 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1C (Branch capacity) | CAP-01..CAP-08 (branch billing lock, capacity outbox, lifecycle doors, admin suspend, reject pending org, restore auto-deactivated org, org never empty, concurrency controls) | task complete | yes |

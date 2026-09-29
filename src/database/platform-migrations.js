@@ -26,6 +26,12 @@ const { runTenantMigrations } = require('./tenant-migration-runner');
  * human, like p003. Already widened → nothing to do.
  */
 const _widenEnumColumn = async (sequelize, { table, column, values, defaultValue, migrationName }) => {
+  const [tableExists] = await sequelize.query(
+    'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+    { replacements: [table], type: QueryTypes.SELECT }
+  );
+  if (!tableExists) return null;
+
   const [col] = await sequelize.query(
     'SELECT COLUMN_TYPE AS type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
       'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
@@ -212,6 +218,31 @@ const PLATFORM_MIGRATIONS = [
         type: 'JSON',
         expectedType: 'json',
         migrationName: 'p006',
+      });
+    },
+  },
+  {
+    version: 7,
+    name: 'p007_widen_capacity_events_action',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      return _widenEnumColumn(sequelize, {
+        table: 'capacity_events',
+        column: 'action',
+        values: [
+          'BRANCH_DELETED',
+          'BRANCH_RESTORED',
+          'SLOT_TRANSFERRED',
+          'SLOT_TRIMMED_DOWNGRADE',
+          'SLOT_ATTRIBUTED_UPGRADE',
+          'SLOT_CONSUMED_BUILD',
+          'ORG_DELETED',
+          'ORG_BRANCHES_MOVED',
+          'BRANCH_BILLING_LOCKED',
+          'BRANCH_BILLING_UNLOCKED',
+        ],
+        defaultValue: 'BRANCH_DELETED',
+        migrationName: 'p007',
       });
     },
   },

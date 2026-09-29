@@ -201,14 +201,23 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
     if (gym) {
       let branch = await Branch.findOne({ where: { gymId: gym.id } }) || await Branch.findOne();
       if (!branch) {
-        branch = await Branch.create({
-          gymId: gym.id,
-          branchName: b.name || tenant.gymName || 'Main Branch',
-          address: b.address || tenant.address || null,
-          cityId: b.cityId || tenant.cityId || null,
-          status: 'ACTIVE',
-          travelerVisibilityStatus: 'active',
-        });
+        const gymService = require('./gym.service');
+        branch = await gymService.createBranch(
+          tenantDb,
+          gym.id,
+          {
+            branchName: b.name || tenant.gymName || 'Main Branch',
+            address: b.address || tenant.address || null,
+            cityId: b.cityId || tenant.cityId || null,
+          },
+          tenantId,
+          {
+            skipCapacityCheck: true,
+            skipCapacityEvent: true,
+            isProvisioning: true,
+            allowDefaultPackage: false,
+          }
+        );
       }
 
       if (branch && rawPlans.length > 0) {
@@ -303,6 +312,8 @@ const createPlan = async (tenantDb, data, { transaction } = {}) => {
   if (data.branchId) {
     const branch = await Branch.findOne({ where: { id: data.branchId, status: 'ACTIVE' } });
     if (!branch) throw createError('Branch not found or has been deleted', 404);
+    const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+    assertBranchNotBillingLocked(branch);
   }
 
   const plan = await MembershipPlan.create({
@@ -353,11 +364,19 @@ const _validateRemainingPlansForBranch = async (tenantDb, plan, actionVerb = 're
 // ── Host: update plan ─────────────────────────────────────────────────────────
 const updatePlan = async (tenantDb, planId, data) => {
   await _ensureSchema(tenantDb);
-  const { MembershipPlan } = tenantDb.models;
+  const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
+
+  if (plan.branchId) {
+    const branch = await Branch.findByPk(plan.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   const allowed = ['name', 'description', 'durationType', 'durationValue', 'price',
     'joiningFee', 'securityFee', 'visitLimit', 'freezeLimitDays', 'isTrial', 'isPublic', 'isDeactivated', 'status'];
@@ -402,11 +421,19 @@ const deletePlan = async (tenantDb, planId) => {
 // ── Host: toggle plan deactivation (isDeactivated: true ↔ false) ─────────────
 const toggleStatus = async (tenantDb, planId) => {
   await _ensureSchema(tenantDb);
-  const { MembershipPlan } = tenantDb.models;
+  const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
+
+  if (plan.branchId) {
+    const branch = await Branch.findByPk(plan.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   const newIsDeactivated = !plan.isDeactivated;
   if (newIsDeactivated) {
@@ -428,11 +455,19 @@ const toggleStatus = async (tenantDb, planId) => {
 // ── Host: toggle public visibility (isPublic) ─────────────────────────────────
 const togglePublic = async (tenantDb, planId) => {
   await _ensureSchema(tenantDb);
-  const { MembershipPlan } = tenantDb.models;
+  const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
+
+  if (plan.branchId) {
+    const branch = await Branch.findByPk(plan.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   const newIsPublic = !plan.isPublic;
   if (!newIsPublic) {
@@ -446,11 +481,19 @@ const togglePublic = async (tenantDb, planId) => {
 
 // ── Host: update plan poster image ────────────────────────────────────────────
 const updatePoster = async (tenantDb, planId, posterUrl) => {
-  const { MembershipPlan } = tenantDb.models;
+  const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
+
+  if (plan.branchId) {
+    const branch = await Branch.findByPk(plan.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   await plan.update({ posterUrl });
   return plan.reload();
@@ -460,11 +503,19 @@ const updatePoster = async (tenantDb, planId, posterUrl) => {
 // Unfeatures all other plans for this gym, then features the requested one.
 // Calling this on an already-featured plan unfeatures it (toggle behaviour).
 const setFeatured = async (tenantDb, planId) => {
-  const { MembershipPlan } = tenantDb.models;
+  const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
+
+  if (plan.branchId) {
+    const branch = await Branch.findByPk(plan.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
 
   const newIsFeatured = !plan.isFeatured;
 
