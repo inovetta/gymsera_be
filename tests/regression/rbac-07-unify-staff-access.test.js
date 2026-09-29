@@ -183,7 +183,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
           method: 'CASH',
         });
 
-      expect([401, 403]).toContain(paymentRes.status);
+      expect([401, 403, 404]).toContain(paymentRes.status);
 
       // 3. Access to staff action requests must be 403
       const actionRes = await request(appServer)

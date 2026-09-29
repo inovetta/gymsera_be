@@ -51,7 +51,7 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
 
           // 1. Direct Branch.create / models.Branch.create
           if (
-            /(?:models\.)?Branch\.create\s*\(/.test(trimmed) &&
+            /(?:\bmodels\.)?\bBranch\.create\s*\(/.test(trimmed) &&
             !trimmed.startsWith('//') &&
             !trimmed.startsWith('*')
           ) {
