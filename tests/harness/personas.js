@@ -265,7 +265,7 @@ class PersonaManager {
           sub: memberUser.id,
           id: memberUser.id,
           email: memberUser.email,
-          role: 'GYM_MEMBER',
+          role: 'MEMBER',
           isVerified: true,
         }),
       },

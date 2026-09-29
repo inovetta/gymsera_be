@@ -20,9 +20,9 @@ next agent won't know it.
 | Last updated | 2026-09-29 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | RBAC-03 |
-| Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | (all Prompt 1D issues committed and verified) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
@@ -31,17 +31,17 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1d-access-control` | 78f346e fix(security): resolve tenant identity strictly from auth and validate selectors (SEC-02) | no |
+| gymsera_be | `phase-1/prompt-1d-access-control` | b1af219 docs(spec): record SEC-01 commit hash in §13 | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1D issue 7: **RBAC-03 — Endpoint × persona permission test suite + `docs/PERMISSIONS.md`**.
-> Generate the endpoint × persona permission test suite from the real route list and `constants/permissions.js`,
-> and commit `docs/PERMISSIONS.md` generated from the code.
-> Test all mutating endpoints as every persona from spec §8.4 (Owner, Org admin, Manager, Front desk, Trainer, Cleaner, Member, different tenant Owner, anonymous).
-> Must ensure no mutating endpoint returns 2xx for an unauthorized persona and no cross-tenant leakage.
+> Start **Prompt 1E — Member money: idempotency, ledger, refunds, payouts**.
+> Read `docs/GYMSERA_PRODUCTION_ARCHITECTURE.md` §6.3, §7.7, §11.2 and these issues:
+> REL-01 (idempotency middleware — do this first, the rest use it), PAY-01, PAY-02, PAY-03, PAY-04, PAY-07, PAY-10, SEC-13.
+> Money must be atomic, auditable and idempotent. Ledger entries are never updated or deleted: corrections are reversing entries.
+> If changing the money column type is risky (PAY-02), stop and propose a migration plan before doing it.
 
 ### Work in progress that is NOT committed
 
@@ -199,4 +199,4 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | 21 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1C (Branch capacity) | CAP-01..CAP-08 (branch billing lock, capacity outbox, lifecycle doors, admin suspend, reject pending org, restore auto-deactivated org, org never empty, concurrency controls) | task complete | yes |
 | 22 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-26 | NEW-26 (suspended tenant complete blocking, cache invalidation, updateMyTenant, webhook audit-only R-23, cron sweep, platform admin exception verified) | task complete | yes |
 | 23 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-28 (Option B) | NEW-28 (removed Bull/Redis queue dependency for member notifications PAYMENT_FAILED, SUBSCRIPTION_RENEWED, SUBSCRIPTION_EXPIRING_SOON; direct in-app/push/email dispatch; deleted queues.js & notifications.processor.js) | task complete | yes |
-| 24 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1D (Access control) | (in progress) | in progress | in progress |
+| 24 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1D (Access control) | RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, RBAC-03 (permissions doc & test matrix) | task complete | yes |
