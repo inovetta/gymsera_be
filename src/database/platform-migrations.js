@@ -272,6 +272,40 @@ const PLATFORM_MIGRATIONS = [
       } catch (_) {}
     },
   },
+  {
+    version: 9,
+    name: 'p009_otp_security_hash_and_attempts',
+    up: async (sequelize, context = {}) => {
+      if (context.dryRun) return;
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['otps'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return;
+
+      try {
+        await sequelize.query('ALTER TABLE `otps` MODIFY COLUMN `code` VARCHAR(64) NOT NULL;');
+      } catch (_) {}
+
+      const [attemptsCol] = await sequelize.query(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
+          'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        { replacements: ['otps', 'attempts'], type: QueryTypes.SELECT }
+      );
+      if (!attemptsCol) {
+        await sequelize.query('ALTER TABLE `otps` ADD COLUMN `attempts` INT NOT NULL DEFAULT 0;');
+      }
+
+      const [maxAttemptsCol] = await sequelize.query(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
+          'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        { replacements: ['otps', 'max_attempts'], type: QueryTypes.SELECT }
+      );
+      if (!maxAttemptsCol) {
+        await sequelize.query('ALTER TABLE `otps` ADD COLUMN `max_attempts` INT NOT NULL DEFAULT 5;');
+      }
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

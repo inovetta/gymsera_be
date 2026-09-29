@@ -15,8 +15,37 @@ const generateOtpCode = () => {
 const OTP_TTL_MS = 10 * 60 * 1000;
 
 /**
- * Returns the OTP expiry Date from now.
+ * Returns the OTP expiry Date from now (defaults to OTP_TTL_MS = 10 minutes).
  */
-const getOtpExpiry = () => new Date(Date.now() + OTP_TTL_MS);
+const getOtpExpiry = (minutes = 10) => new Date(Date.now() + minutes * 60 * 1000);
 
-module.exports = { generateOtpCode, OTP_TTL_MS, getOtpExpiry };
+/**
+ * Hash an OTP code with SHA-256 for secure storage at rest (AUTH-04).
+ * Salted with identifier (userId or email) to prevent precomputed rainbow tables.
+ */
+const hashOtpCode = (code, salt = '') => {
+  return crypto
+    .createHash('sha256')
+    .update(`${salt}:${String(code).trim()}`)
+    .digest('hex');
+};
+
+/**
+ * Constant-time comparison between submitted OTP and stored hash (AUTH-04).
+ */
+const verifyOtpHash = (submittedCode, storedHash, salt = '') => {
+  if (!submittedCode || !storedHash) return false;
+  const computed = hashOtpCode(submittedCode, salt);
+  const bufA = Buffer.from(computed, 'hex');
+  const bufB = Buffer.from(storedHash, 'hex');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+};
+
+module.exports = {
+  generateOtpCode,
+  OTP_TTL_MS,
+  getOtpExpiry,
+  hashOtpCode,
+  verifyOtpHash,
+};

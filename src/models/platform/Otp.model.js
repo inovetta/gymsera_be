@@ -18,7 +18,17 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       code: {
-        type: DataTypes.STRING(6),
+        type: DataTypes.STRING(64),
+        allowNull: false,
+      },
+      attempts: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+        allowNull: false,
+      },
+      maxAttempts: {
+        type: DataTypes.INTEGER,
+        defaultValue: 5,
         allowNull: false,
       },
       type: {

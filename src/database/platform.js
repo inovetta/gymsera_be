@@ -137,6 +137,23 @@ const connect = async () => {
     _logIfUnexpected('refresh_tokens.family_id', err);
   }
 
+  // OTP code column widening and attempts tracking (AUTH-04)
+  try {
+    await sequelize.query('ALTER TABLE `otps` MODIFY COLUMN `code` VARCHAR(64) NOT NULL;');
+  } catch (err) {
+    _logIfUnexpected('otps.code', err);
+  }
+  try {
+    await sequelize.query('ALTER TABLE `otps` ADD COLUMN `attempts` INT NOT NULL DEFAULT 0;');
+  } catch (err) {
+    _logIfUnexpected('otps.attempts', err);
+  }
+  try {
+    await sequelize.query('ALTER TABLE `otps` ADD COLUMN `max_attempts` INT NOT NULL DEFAULT 5;');
+  } catch (err) {
+    _logIfUnexpected('otps.max_attempts', err);
+  }
+
   // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
   // store-verified-purchase columns. Additive and idempotent — safe to run on
   // every boot, in every environment, same as the block above. See

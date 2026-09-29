@@ -7,7 +7,12 @@ const { v4: uuidv4 } = require('uuid');
 
 const { User, Tenant, RefreshToken, Otp } = require('../models/platform');
 const { signToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt.utils');
-const { generateOtpCode, getOtpExpiry } = require('../utils/otp.utils');
+const {
+  generateOtpCode,
+  getOtpExpiry,
+  hashOtpCode,
+  verifyOtpHash,
+} = require('../utils/otp.utils');
 const { createError } = require('../utils/response.utils');
 const emailService = require('./email.service');
 const { UserRole } = require('../constants/roles');
@@ -50,6 +55,54 @@ const _getRefreshTokenExpiry = () => {
   return new Date(Date.now() + ms);
 };
 
+const OTP_COOLDOWN_MS = 60 * 1000; // 60-second resend cooldown (AUTH-04)
+const MAX_OTP_ATTEMPTS = 5; // 5 failed attempts locks code (AUTH-04)
+
+/**
+ * Enforce a 60-second cooldown between OTP requests for the same target (AUTH-04).
+ */
+const _assertOtpCooldown = async (userId, email, type) => {
+  const conditions = [];
+  if (userId) conditions.push({ userId });
+  if (email) conditions.push({ email });
+  if (conditions.length === 0) return;
+
+  const latest = await Otp.findOne({
+    where: {
+      type,
+      [Op.or]: conditions,
+    },
+    order: [['createdAt', 'DESC']],
+  });
+
+  if (latest) {
+    const elapsedMs = Date.now() - new Date(latest.createdAt).getTime();
+    if (elapsedMs < OTP_COOLDOWN_MS) {
+      const waitSec = Math.ceil((OTP_COOLDOWN_MS - elapsedMs) / 1000);
+      const err = createError(`Please wait ${waitSec} seconds before requesting a new code.`, 429);
+      err.retryAfter = waitSec;
+      throw err;
+    }
+  }
+};
+
+/**
+ * Enforce per-identifier rate limiting: max 10 OTP requests per hour per email (AUTH-04).
+ */
+const _assertIdentifierRateLimit = async (email) => {
+  if (!email) return;
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const count = await Otp.count({
+    where: {
+      email,
+      createdAt: { [Op.gt]: oneHourAgo },
+    },
+  });
+  if (count >= 10) {
+    throw createError('Too many verification codes requested for this email. Please try again later.', 429);
+  }
+};
+
 /**
  * Invalidate all unused OTPs of a given type for a user.
  */
@@ -61,18 +114,46 @@ const _invalidatePreviousOtps = async (userId, type) => {
 };
 
 /**
- * Find a valid (unused, unexpired) OTP.
+ * Verify submitted OTP against hashed DB record with attempt counting and lockout (AUTH-04).
  */
-const _findValidOtp = async (userId, code, type) => {
-  return Otp.findOne({
+const _verifyAndConsumeOtp = async (userId, submittedCode, type) => {
+  const otp = await Otp.findOne({
     where: {
       userId,
-      code,
       type,
-      isUsed: false,
       expiresAt: { [Op.gt]: new Date() },
     },
+    order: [['createdAt', 'DESC']],
   });
+
+  if (!otp) {
+    throw createError('Invalid or expired OTP', 400);
+  }
+
+  if (otp.attempts >= (otp.maxAttempts || MAX_OTP_ATTEMPTS)) {
+    if (!otp.isUsed) await otp.update({ isUsed: true });
+    throw createError('Too many failed attempts. This code has been locked. Please request a new code.', 400);
+  }
+
+  if (otp.isUsed) {
+    throw createError('This verification code has already been used. Please request a new code.', 400);
+  }
+
+  const isValid = verifyOtpHash(submittedCode, otp.code, userId);
+  if (!isValid) {
+    await otp.increment('attempts', { by: 1 });
+    await otp.reload();
+    if (otp.attempts >= (otp.maxAttempts || MAX_OTP_ATTEMPTS)) {
+      await otp.update({ isUsed: true });
+      throw createError('Too many failed attempts. This code has been locked. Please request a new code.', 400);
+    }
+    const remaining = (otp.maxAttempts || MAX_OTP_ATTEMPTS) - otp.attempts;
+    throw createError(`Invalid OTP code. ${remaining} attempts remaining.`, 400);
+  }
+
+  // Mark OTP used
+  await otp.update({ isUsed: true });
+  return otp;
 };
 
 /**
@@ -156,6 +237,9 @@ const _sanitizeUser = (user, tenantId = null) => ({
  * Sends an OTP to the provided email for verification.
  */
 const register = async ({ fullName, email, password, phone }) => {
+  await _assertIdentifierRateLimit(email);
+  await _assertOtpCooldown(null, email, 'EMAIL_VERIFICATION');
+
   const existing = await User.findOne({ where: { email } });
   if (existing) {
     if (!existing.isVerified) {
@@ -170,10 +254,13 @@ const register = async ({ fullName, email, password, phone }) => {
       await _invalidatePreviousOtps(existing.id, 'EMAIL_VERIFICATION');
 
       const code = generateOtpCode();
+      const hashCode = hashOtpCode(code, existing.id);
       const otp = await Otp.create({
         userId: existing.id,
         email,
-        code,
+        code: hashCode,
+        attempts: 0,
+        maxAttempts: 5,
         type: 'EMAIL_VERIFICATION',
         expiresAt: getOtpExpiry(),
       });
@@ -205,10 +292,13 @@ const register = async ({ fullName, email, password, phone }) => {
   });
 
   const code = generateOtpCode();
+  const hashCode = hashOtpCode(code, user.id);
   const otp = await Otp.create({
     userId: user.id,
     email,
-    code,
+    code: hashCode,
+    attempts: 0,
+    maxAttempts: 5,
     type: 'EMAIL_VERIFICATION',
     expiresAt: getOtpExpiry(),
   });
@@ -235,14 +325,9 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
 
   if (user.isVerified) throw createError('Account is already verified', 400);
 
-  const otp = await _findValidOtp(user.id, code, 'EMAIL_VERIFICATION');
-  if (!otp) throw createError('Invalid or expired OTP', 400);
+  await _verifyAndConsumeOtp(user.id, code, 'EMAIL_VERIFICATION');
 
-  // Mark OTP used and activate user in a single transaction
-  await Promise.all([
-    otp.update({ isUsed: true }),
-    user.update({ isVerified: true, status: 'ACTIVE' }),
-  ]);
+  await user.update({ isVerified: true, status: 'ACTIVE' });
 
   setImmediate(() => {
     try {
@@ -260,6 +345,8 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
  * Resend a fresh OTP to the user's email for email verification.
  */
 const resendOtp = async ({ email }) => {
+  await _assertIdentifierRateLimit(email);
+
   const user = await User.findOne({ where: { email } });
 
   // Don't reveal if email exists — return the same message either way
@@ -267,13 +354,17 @@ const resendOtp = async ({ email }) => {
     return { message: 'If this email is registered and unverified, a new code has been sent.' };
   }
 
+  await _assertOtpCooldown(user.id, email, 'EMAIL_VERIFICATION');
   await _invalidatePreviousOtps(user.id, 'EMAIL_VERIFICATION');
 
   const code = generateOtpCode();
+  const hashCode = hashOtpCode(code, user.id);
   await Otp.create({
     userId: user.id,
     email,
-    code,
+    code: hashCode,
+    attempts: 0,
+    maxAttempts: 5,
     type: 'EMAIL_VERIFICATION',
     expiresAt: getOtpExpiry(),
   });
@@ -302,29 +393,45 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
   if (!passwordMatch) throw createError('Invalid email or password', 401);
 
   if (!user.isVerified) {
-    // Auto-resend a fresh OTP so the user can complete verification without
-    // having to manually call /auth/otp/resend — matches .NET behaviour
-    await _invalidatePreviousOtps(user.id, 'EMAIL_VERIFICATION');
-    const code = generateOtpCode();
-    const otp = await Otp.create({
-      userId: user.id,
-      email,
-      code,
-      type: 'EMAIL_VERIFICATION',
-      expiresAt: getOtpExpiry(),
+    // If within cooldown, do not spam a fresh code; return existing OTP expiry
+    let latestOtp = await Otp.findOne({
+      where: {
+        userId: user.id,
+        type: 'EMAIL_VERIFICATION',
+        isUsed: false,
+        expiresAt: { [Op.gt]: new Date() },
+      },
+      order: [['createdAt', 'DESC']],
     });
-    try {
-      await emailService.sendOtpEmail(email, user.fullName, code);
-    } catch (emailErr) {
-      console.warn('[Auth] OTP email failed (login):', emailErr.message);
+
+    let code;
+    if (!latestOtp) {
+      await _assertOtpCooldown(user.id, user.email, 'EMAIL_VERIFICATION');
+      await _invalidatePreviousOtps(user.id, 'EMAIL_VERIFICATION');
+      code = generateOtpCode();
+      const hashCode = hashOtpCode(code, user.id);
+      latestOtp = await Otp.create({
+        userId: user.id,
+        email: user.email,
+        code: hashCode,
+        attempts: 0,
+        maxAttempts: 5,
+        type: 'EMAIL_VERIFICATION',
+        expiresAt: getOtpExpiry(),
+      });
+      try {
+        await emailService.sendOtpEmail(email, user.fullName, code);
+      } catch (emailErr) {
+        console.warn('[Auth] OTP email failed (login):', emailErr.message);
+      }
     }
 
     const payload = {
       email: user.email,
       fullName: user.fullName,
-      otpExpiresAtUtc: otp.expiresAt,
+      otpExpiresAtUtc: latestOtp.expiresAt,
     };
-    if (process.env.NODE_ENV !== 'production') payload.debugCode = code;
+    if (code && process.env.NODE_ENV !== 'production') payload.debugCode = code;
 
     // Use a structured error so the controller can return success:false + data
     const err = createError('Account is not verified. A new OTP has been sent to your email.', 403);
@@ -740,6 +847,8 @@ const refreshTokens = async (token, ipAddress, userAgent) => {
  * Always returns 200 to prevent email enumeration.
  */
 const passwordResetRequest = async ({ email }) => {
+  await _assertIdentifierRateLimit(email);
+
   const user = await User.findOne({ where: { email } });
 
   if (!user) {
@@ -751,16 +860,21 @@ const passwordResetRequest = async ({ email }) => {
     return { message: 'If this email is registered, a password reset code has been sent.' };
   }
 
+  await _assertOtpCooldown(user.id, email, 'PASSWORD_RESET');
+
   // Invalidate any existing unused RESET OTPs
   await _invalidatePreviousOtps(user.id, 'PASSWORD_RESET');
 
   const code = generateOtpCode();
+  const hashCode = hashOtpCode(code, user.id);
   const expiresAt = getOtpExpiry(10); // 10 minutes
 
   await Otp.create({
     userId: user.id,
     email,
-    code,
+    code: hashCode,
+    attempts: 0,
+    maxAttempts: 5,
     type: 'PASSWORD_RESET',
     expiresAt,
   });
@@ -782,21 +896,7 @@ const passwordResetConfirm = async ({ email, code, password }) => {
     throw createError('Invalid or expired password reset code', 400);
   }
 
-  const otp = await Otp.findOne({
-    where: {
-      userId: user.id,
-      code,
-      type: 'PASSWORD_RESET',
-      isUsed: false,
-      expiresAt: { [Op.gt]: new Date() },
-    },
-  });
-
-  if (!otp) {
-    throw createError('Invalid or expired password reset code', 400);
-  }
-
-  await otp.update({ isUsed: true });
+  await _verifyAndConsumeOtp(user.id, code, 'PASSWORD_RESET');
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await user.update({ passwordHash, isVerified: true });

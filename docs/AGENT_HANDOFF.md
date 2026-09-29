@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | AUTH-04 |
+| Issue in progress | AUTH-09 |
 | Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,16 +31,17 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1d-access-control` | d296268 fix(rbac): unify staff access through Team & Access (RBAC-07) | no |
+| gymsera_be | `phase-1/prompt-1d-access-control` | d312572 fix(auth): secure OTPs with salted hashing, attempt lockout, and cooldown (AUTH-04) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1D issue 3: **AUTH-04 — OTP security**.
-> Confirm: 6-digit codes, hashed at rest (never stored or logged in plaintext), 5–10 minute expiry,
-> maximum attempts before lockout, a resend cooldown, and rate limits per IP and per identifier.
-> Audit existing OTP creation and verification flows, write failing regression test, fix gaps, make green.
+> Prompt 1D issue 4: **AUTH-09 — Admin "add tenant" links or creates accounts by email with no ownership proof**.
+> Find the current flow in admin controller / tenant provisioning service. If it links or auto-creates
+> an account from a typed email with no verification, replace it with an invitation: an email link
+> the recipient must click to prove ownership before the link happens. Audit the action either way.
+> Write failing regression test, implement fix, make green, update §13 and handoff, commit.
 
 ### Work in progress that is NOT committed
 
@@ -78,9 +79,9 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
 **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR:**
-- [ ] 1. RBAC-07 — Unify staff access through Team & Access (P0)
-- [ ] 2. AUTH-01 — Refresh token rotation and reuse detection
-- [ ] 3. AUTH-04 — OTP security
+- [x] 1. RBAC-07 — Unify staff access through Team & Access (P0) (`d296268`)
+- [x] 2. AUTH-01 — Refresh token rotation and reuse detection (`4adc58d`)
+- [x] 3. AUTH-04 — OTP security
 - [ ] 4. AUTH-09 — Admin "add tenant" links or creates accounts by email with no ownership proof
 - [ ] 5. SEC-02 — Tenant identity must come from authentication, never from client input
 - [ ] 6. SEC-01 — No IDOR (Insecure Direct Object Reference)
