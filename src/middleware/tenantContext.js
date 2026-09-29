@@ -90,7 +90,7 @@ const applyLegacyRoleShim = async (req, tenantDb, tenantId) => {
  */
 const userBelongsToTenant = async (userId, tenantId) => {
   if (!userId || !tenantId) return false;
-  const { UserOrgIndex, Tenant } = require('../models/platform');
+  const { UserOrgIndex, Tenant, UserGymMembership } = require('../models/platform');
 
   // 1. Direct tenant ownership
   const owned = await Tenant.findOne({
@@ -99,12 +99,19 @@ const userBelongsToTenant = async (userId, tenantId) => {
   });
   if (owned) return true;
 
-  // 2. Active membership in UserOrgIndex
+  // 2. Active membership in UserOrgIndex (staff / team)
   const inIndex = await UserOrgIndex.findOne({
     where: { userId, tenantId, status: 'ACTIVE' },
     attributes: ['tenantId'],
   });
   if (inIndex) return true;
+
+  // 3. Gym member in UserGymMembership
+  const inMemberIndex = await UserGymMembership.findOne({
+    where: { userId, tenantId },
+    attributes: ['id'],
+  });
+  if (inMemberIndex) return true;
 
   // 3. Fallback: check RoleAssignment directly in tenant DB (e.g. before index sync)
   try {

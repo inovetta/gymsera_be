@@ -109,20 +109,9 @@ const _resolveTenant = async (gymListingId) => {
  * to handle cases where the client sends the membership record's own PK.
  */
 const _resolveBySubscriptionId = async (subscriptionId, userId) => {
-  const user = await User.findByPk(userId);
-  const isStaff = user && ['GYM_HOST', 'BRANCH_MANAGER', 'FRONT_DESK'].includes(user.role);
-
-  let index;
-  if (isStaff) {
-    index = await UserGymMembership.findOne({ where: { subscriptionId } });
-    if (!index) {
-      index = await UserGymMembership.findOne({ where: { id: subscriptionId } });
-    }
-  } else {
-    index = await UserGymMembership.findOne({ where: { subscriptionId, userId } });
-    if (!index) {
-      index = await UserGymMembership.findOne({ where: { id: subscriptionId, userId } });
-    }
+  let index = await UserGymMembership.findOne({ where: { subscriptionId, userId } });
+  if (!index) {
+    index = await UserGymMembership.findOne({ where: { id: subscriptionId, userId } });
   }
 
   if (!index) throw createError('Subscription not found', 404);

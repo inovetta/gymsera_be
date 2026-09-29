@@ -1,6 +1,7 @@
 const gymService = require('../services/gym.service');
 const { sendSuccess, createError, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
+const { hasBranchAccess } = require('../utils/branchAccess.utils');
 
 // ── GET /gyms/profile ─────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -48,6 +49,9 @@ const createBranch = async (req, res, next) => {
 const getBranch = async (req, res, next) => {
   try {
     const result = await gymService.getBranch(req.tenantDb, req.params.branchId);
+    if (!(await hasBranchAccess(req, result.branch.id, 'branches.view'))) {
+      throw createError('Branch not found or has been deleted', 404);
+    }
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -57,6 +61,9 @@ const getBranch = async (req, res, next) => {
 // ── PATCH /gyms/branches/:branchId ───────────────────────────────────────────
 const updateBranch = async (req, res, next) => {
   try {
+    if (!(await hasBranchAccess(req, req.params.branchId, 'branches.manage'))) {
+      throw createError('Branch not found', 404);
+    }
     const result = await gymService.updateBranch(req.tenantDb, req.params.branchId, req.body);
     return sendSuccess(res, result, 'Branch updated successfully');
   } catch (err) {
@@ -114,6 +121,9 @@ const deleteBranch = async (req, res, next) => {
 // ── GET /gyms/branches/:branchId/staff ────────────────────────────────────────
 const listStaff = async (req, res, next) => {
   try {
+    if (!(await hasBranchAccess(req, req.params.branchId, 'team.view'))) {
+      throw createError('Branch not found', 404);
+    }
     const result = await gymService.listStaff(req.tenantDb, req.params.branchId);
     return sendSuccess(res, result);
   } catch (err) {

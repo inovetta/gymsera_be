@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { User } = require('../models/platform');
 const { ROLE_META } = require('../constants/roles');
 
@@ -195,7 +196,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
           ],
           status: 'active',
         },
-        attributes: ['id', 'userId', 'email', 'branchId', 'designation', 'role'],
+        attributes: ['id', 'userId', 'email', 'branchId', 'designation'],
       });
       for (const s of staffMembers) {
         const staffJson = s.toJSON();

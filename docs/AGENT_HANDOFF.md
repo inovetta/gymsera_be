@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1D — Access control: sessions, OTP, RBAC unification, IDOR** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | SEC-01 |
+| Issue in progress | RBAC-03 |
 | Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,22 +31,17 @@ Prompt 1D is on branch `phase-1/prompt-1d-access-control` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1d-access-control` | 476c3c6 fix(auth): replace admin tenant creation with verified invitation flow (AUTH-09) | yes (SEC-02 ready to commit) |
+| gymsera_be | `phase-1/prompt-1d-access-control` | 78f346e fix(security): resolve tenant identity strictly from auth and validate selectors (SEC-02) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 1D issue 6: **SEC-01 — No IDOR (Insecure Direct Object Reference)**.
-> For every by-ID read or write in the backend (a member record, a payment, a subscription,
-> an invoice, a branch, anything fetched by :id in the URL), confirm the query is scoped to what
-> the caller is actually allowed to see (their own tenant, their own branches, their own member
-> record if they are a member) — not just "does this ID exist".
-> An out-of-scope ID must return 404, not 403 (403 confirms existence, 404 does not).
-> Audit high-value targets (member personal data, payment/invoice records, subscription records,
-> branch data). Write matrix test: as tenant A, try to read/write every by-ID resource belonging
-> to tenant B — all must 404. List endpoints checked and fixed.
-> Stop and ask if expanding beyond expected scope.
+> Prompt 1D issue 7: **RBAC-03 — Endpoint × persona permission test suite + `docs/PERMISSIONS.md`**.
+> Generate the endpoint × persona permission test suite from the real route list and `constants/permissions.js`,
+> and commit `docs/PERMISSIONS.md` generated from the code.
+> Test all mutating endpoints as every persona from spec §8.4 (Owner, Org admin, Manager, Front desk, Trainer, Cleaner, Member, different tenant Owner, anonymous).
+> Must ensure no mutating endpoint returns 2xx for an unauthorized persona and no cross-tenant leakage.
 
 ### Work in progress that is NOT committed
 

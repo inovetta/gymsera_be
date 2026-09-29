@@ -118,12 +118,19 @@ const resolveDefaultTenantForUser = async (userId) => {
   const memberships = await listUserTenants(userId, { activeOnly: true });
   if (memberships.length > 0) return memberships[0].tenantId;
 
-  const { Tenant } = require('../models/platform');
+  const { Tenant, UserGymMembership } = require('../models/platform');
   const owned = await Tenant.findOne({
     where: { ownerUserId: userId, status: 'ACTIVE' },
     attributes: ['id'],
   });
-  return owned ? owned.id : null;
+  if (owned) return owned.id;
+
+  const memberGym = await UserGymMembership.findOne({
+    where: { userId },
+    order: [['createdAt', 'DESC']],
+    attributes: ['tenantId'],
+  });
+  return memberGym ? memberGym.tenantId : null;
 };
 
 /**

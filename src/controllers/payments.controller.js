@@ -3,55 +3,7 @@ const paymentService = require('../services/payment.service');
 const accessService = require('../services/access.service');
 const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
 
-/**
- * Whether the caller holds `permissionKey` on `branchId`.
- *
- * The routes this guards used to sit behind a router-level
- * `authorize('GYM_HOST', 'BRANCH_MANAGER')` — literally the platform role
- * string, which is never true for a team member no matter what the permission
- * catalogue grants them, and which rejected the request before any of this
- * ever ran. A Branch Admin holding `payments.verify` could not verify a single
- * payment. Same shape as `hasExpenseAccess` in expenses.controller.js: owner
- * fast path, then the real resolved grant for the branch in question — never
- * a client-supplied one where the caller could claim a branch they don't work
- * at — then the legacy `GymStaff` admin-designation fallback for a tenant that
- * hasn't run the RBAC backfill yet.
- */
-const hasBranchAccess = async (req, branchId, permissionKey) => {
-  if (req.user.role === 'GYM_HOST' || req.user.isHost === true) return true;
-  if (!branchId) return false;
-
-  const userId = req.user.id || req.user.sub;
-  const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
-  if (userId && tenantId && req.tenantDb) {
-    try {
-      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
-      if (grants.has(permissionKey)) return true;
-    } catch (err) {
-      console.warn('[payments] permission resolution failed, falling back to legacy check:', err.message);
-    }
-  }
-
-  return false;
-};
-
-/** Whether the caller holds the DIRECT-tier twin of `permissionKey` on `branchId`. */
-const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
-  if (req.user.role === 'GYM_HOST' || req.user.isHost === true) return true;
-  if (!branchId) return false;
-
-  const userId = req.user.id || req.user.sub;
-  const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
-  if (!userId || !tenantId || !req.tenantDb) return false;
-
-  try {
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
-    return grants.has(`${permissionKey}.direct`);
-  } catch (err) {
-    console.warn('[payments] permission resolution failed:', err.message);
-    return false;
-  }
-};
+const { hasBranchAccess, hasDirectBranchAccess } = require('../utils/branchAccess.utils');
 
 // ── POST /payments ─────────────────────────────────────────────────────────────
 const recordPayment = async (req, res, next) => {
@@ -100,7 +52,7 @@ const getPaymentById = async (req, res, next) => {
   try {
     const payment = await paymentService.getPayment(req.tenantDb, req.params.id);
     if (!(await hasBranchAccess(req, payment.branchId, 'payments.view'))) {
-      throw createError('You do not have permission to view payments at this branch', 403);
+      throw createError('Payment not found', 404);
     }
     return sendSuccess(res, { payment }, 'Payment retrieved');
   } catch (err) {
@@ -149,7 +101,7 @@ const verifyPayment = async (req, res, next) => {
     if (!existing) throw createError('Payment not found', 404);
 
     if (!(await hasBranchAccess(req, existing.branchId, 'payments.verify'))) {
-      throw createError('You do not have permission to verify payments at this branch', 403);
+      throw createError('Payment not found', 404);
     }
 
     const payment = await paymentService.verifyPayment(
@@ -184,7 +136,7 @@ const verifyOrReject = async (req, res, next) => {
       : await hasBranchAccess(req, existing.branchId, permissionKey);
 
     if (!allowed) {
-      throw createError('You do not have permission to do that with payments at this branch', 403);
+      throw createError('Payment not found', 404);
     }
 
     const payment = await paymentService.verifyOrRejectPayment(
@@ -214,7 +166,7 @@ const uploadProof = async (req, res, next) => {
     const existing = await Payment.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
     if (!existing) throw createError('Payment not found', 404);
     if (!(await hasBranchAccess(req, existing.branchId, 'payments.record'))) {
-      throw createError('You do not have permission to record payments at this branch', 403);
+      throw createError('Payment not found', 404);
     }
 
     const proofUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/payment-proofs/${req.params.id}-${Date.now()}.jpg`;
@@ -231,7 +183,7 @@ const markPrinted = async (req, res, next) => {
     const existing = await Payment.findByPk(req.params.id);
     if (!existing) throw createError('Payment not found', 404);
     if (!(await hasBranchAccess(req, existing.branchId, 'payments.view'))) {
-      throw createError('You do not have permission to view payments at this branch', 403);
+      throw createError('Payment not found', 404);
     }
 
     await existing.update({
