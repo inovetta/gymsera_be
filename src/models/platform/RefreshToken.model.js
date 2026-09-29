@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
       familyId: {
         type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
-        allowNull: false,
+        allowNull: true,
       },
       token: {
         type: DataTypes.TEXT,

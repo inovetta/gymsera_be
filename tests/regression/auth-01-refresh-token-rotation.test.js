@@ -139,4 +139,60 @@ describe('AUTH-01: Refresh Token Rotation & Family Reuse Detection', () => {
     expect(device2Res.status).toBe(200);
     expect(device2Res.body.data.refreshToken).toBeDefined();
   });
+
+  test('Backward-compatibility: pre-deploy session with old-format unhashed token refreshes cleanly, upgrades to family, and is protected against reuse', async () => {
+    // 1. Simulate a session that existed BEFORE AUTH-01 was deployed:
+    // Raw plaintext token string, familyId is null
+    const legacyRawToken = 'legacy_pre_deploy_refresh_token_' + Date.now();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const legacyRow = await RefreshToken.create({
+      userId: testUser.id,
+      familyId: null,
+      token: legacyRawToken,
+      expiresAt,
+      isRevoked: false,
+    });
+
+    // 2. User calls /auth/refresh with the old token after deploy
+    const refreshRes = await request(appServer)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: legacyRawToken });
+
+    expect(refreshRes.status).toBe(200);
+    const { accessToken, refreshToken: upgradedToken } = refreshRes.body.data;
+    expect(accessToken).toBeDefined();
+    expect(upgradedToken).toBeDefined();
+    expect(upgradedToken).not.toBe(legacyRawToken);
+
+    // 3. Confirm old token in DB is now REVOKED
+    await legacyRow.reload();
+    expect(legacyRow.isRevoked).toBe(true);
+
+    // 4. Confirm new upgraded token is stored hashed and has a newly assigned familyId
+    const upgradedHash = crypto.createHash('sha256').update(upgradedToken).digest('hex');
+    const storedUpgraded = await RefreshToken.findOne({ where: { token: upgradedHash } });
+    expect(storedUpgraded).not.toBeNull();
+    expect(storedUpgraded.isRevoked).toBe(false);
+    expect(storedUpgraded.familyId).toBeDefined();
+    expect(typeof storedUpgraded.familyId).toBe('string');
+    expect(storedUpgraded.familyId.length).toBeGreaterThan(10);
+
+    // 5. Attacker attempts to reuse the old legacy token
+    const reuseRes = await request(appServer)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: legacyRawToken });
+
+    expect(reuseRes.status).toBe(401);
+
+    // 6. Reuse detection revoked all tokens for this user because familyId was null on the legacy row
+    await storedUpgraded.reload();
+    expect(storedUpgraded.isRevoked).toBe(true);
+
+    // 7. Legitimate client trying to use the upgraded token is now also rejected (session killed)
+    const afterReuseRes = await request(appServer)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: upgradedToken });
+    expect(afterReuseRes.status).toBe(401);
+  });
 });
