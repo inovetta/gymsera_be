@@ -22,6 +22,7 @@ const { SubscriptionStatus } = require('../constants/subscription-status');
 const emailService = require('../services/email.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
 const { PAY_LATER_ID_PREFIX, expirePayLaterGrace } = require('../services/subscription-migration.service');
+const { safeRedisDel } = require('../config/redis.config');
 
 const EXPIRY_CRON = '0 1 * * *'; // 01:00 every day
 const WARNING_DAYS = 3;
@@ -170,6 +171,8 @@ const _processPlatformSubscriptions = async () => {
       if (!tenant || tenant.status === 'SUSPENDED') continue;
 
       await tenant.update({ status: 'SUSPENDED' });
+      await safeRedisDel(`tenant:${tenant.id}:connStr`);
+      await TenantDbManager.release(tenant.id).catch(() => {});
 
       // Hide their gym listing
       await GymListing.update(
@@ -225,8 +228,8 @@ const _reconcileCapacityForAllTenants = async () => {
   let reconciled = 0;
   let audited = 0;
   for (const sub of activeSubs) {
-    const tenant = await Tenant.findByPk(sub.tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
-    if (!tenant?.connectionStringEncrypted) continue;
+    const tenant = await Tenant.findByPk(sub.tenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
+    if (!tenant || tenant.status !== 'ACTIVE' || !tenant.connectionStringEncrypted) continue;
 
     try {
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
@@ -367,7 +370,14 @@ const runExpiryCheck = async () => {
       }
     }
   } else {
+    const activeTenants = await Tenant.findAll({
+      where: { status: 'ACTIVE' },
+      attributes: ['id'],
+    });
+    const activeTenantIds = new Set(activeTenants.map((t) => t.id));
+
     for (const [tenantId, tenantDb] of entries) {
+      if (!activeTenantIds.has(tenantId)) continue;
       try {
         await _processTenant(tenantId, tenantDb);
       } catch (err) {

@@ -93,7 +93,16 @@ const safeRedisDel = async (key) => {
   try {
     if (isRedisDisabled) return;
     const redis = getRedisClient();
-    if (!redis || redis.status !== 'ready') return;
+    if (!redis) return;
+    if (redis.status !== 'ready') {
+      if (redis.status === 'connecting' || redis.status === 'connect') {
+        await new Promise((resolve) => {
+          redis.once('ready', resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+      if (redis.status !== 'ready') return;
+    }
     await redis.del(key);
   } catch (err) {
     console.warn(`[Redis Cache] DEL failed for key "${key}":`, err.message);

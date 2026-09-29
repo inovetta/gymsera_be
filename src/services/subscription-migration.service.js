@@ -92,6 +92,7 @@ const requestProviderChange = async (
   // this has to happen before the ACTIVE-row check below, not after.
   const tenant = await Tenant.findByPk(tenantId, { transaction, lock: true });
   if (!tenant) throw new Error(`Tenant ${tenantId} not found`);
+  const isSuspended = tenant.status === 'SUSPENDED';
 
   // ACTIVE or GRACE — a row in grace is still the tenant's one entitlement,
   // so a new purchase supersedes it like an ACTIVE one (BILL-04).
@@ -108,7 +109,7 @@ const requestProviderChange = async (
       { transaction }
     );
 
-    if (tenantDb) {
+    if (tenantDb && !isSuspended) {
       await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, newSubscriptionValues.branchCount, {
         transaction,
         previousMaxBranches: null,
@@ -150,7 +151,7 @@ const requestProviderChange = async (
     { transaction }
   );
 
-  if (tenantDb) {
+  if (tenantDb && !isSuspended) {
     await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, newSubscriptionValues.branchCount, {
       transaction,
       previousMaxBranches,
@@ -475,7 +476,7 @@ const _applyVerifiedSubscriptionOnce = async (
 
     const tenantDbFor = async () => {
       const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-      if (!tenant?.connectionStringEncrypted) return null;
+      if (!tenant?.connectionStringEncrypted || tenant.status === 'SUSPENDED') return null;
       return TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
     };
 

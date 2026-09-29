@@ -19,19 +19,19 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-29 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 1C — Branch Capacity (CAP-01 to CAP-08)** |
+| Current prompt | **NEW-26 — Suspended Tenant Full Blocking** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | done <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-Prompt 1C is committed on branch `phase-1/prompt-1c-branch-capacity` in `gymsera_be`.
+NEW-26 is committed on branch `phase-1/new-26-suspended-tenant-blocking` in `gymsera_be`.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-1/prompt-1b-billing-lifecycle` | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1c-branch-capacity` | 2dcaec8 fix(capacity): prevent connection pool starvation and verify concurrency controls (CAP-08) | no |
+| gymsera_be | `phase-1/new-26-suspended-tenant-blocking` | ee571f5 fix(access): completely block suspended tenants on tenant routes with immediate cache invalidation (NEW-26) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | `phase-1/prompt-1a-billing-core` | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
@@ -66,7 +66,7 @@ Prompt 1C is committed on branch `phase-1/prompt-1c-branch-capacity` in `gymsera
   so this only matters once a web provider is live).
 - **NEW-15 is DONE** and R-21 is DECIDED (`GET /host/subscription/current` is read-only; be 6f3506f, 5d984de).
   New P2 item NEW-18 (spec §12.13.11): plan creation at approval fails silently — recorded, partly fixed in 1B.
-- **NEW-26 (P1)**: Suspended tenant context bypass recorded in spec §12.13.12 (report only, not fixed).
+- **NEW-26 is DONE**: Suspended tenant complete blocking, immediate Redis cache invalidation (`safeRedisDel`) and pool release on suspend, `updateMyTenant` ACTIVE check, renewal webhooks record on `TenantSubscription` without granting entitlement or reconciling capacity (decision R-23), nightly cron skips suspended tenants in capacity reconciliation and iteration, platform admin access verified intact via separate admin routes. Tests in `tests/regression/new-26-suspended-tenant-blocking.test.js`.
 - **NEW-27 (P2)**: Mobile restore purchase retry loop on 409 recorded in spec §12.13.12.
 - **NEW-28 (P2)**: Unclosed Redis clients in Bull queues & un-awaited DeviceToken.sync() recorded in spec §12.13.12.
 - **Part 2 of Hotfix Part 2**: Decisions pending on the four /system routes (`/system/run-install`, `/system/run-pull`,
@@ -198,3 +198,4 @@ Prompt 1C is committed on branch `phase-1/prompt-1c-branch-capacity` in `gymsera
 | 19 | 2026-09-28 | Claude Code (Opus 5.5) | 1B close-out | TEST-FLAKE-1B (cause proven, fixed); backward-compat report; NEW-19…NEW-25 + §16 sandbox list | task complete | yes |
 | 20 | 2026-09-28 | Gemini (Gemini 3.8 Flash) | Merge: 1B + Hotfix PR #48 | Resolve docs merge conflicts in AGENT_HANDOFF.md and GYMSERA_PRODUCTION_ARCHITECTURE.md | task complete | yes |
 | 21 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1C (Branch capacity) | CAP-01..CAP-08 (branch billing lock, capacity outbox, lifecycle doors, admin suspend, reject pending org, restore auto-deactivated org, org never empty, concurrency controls) | task complete | yes |
+| 22 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-26 | NEW-26 (suspended tenant complete blocking, cache invalidation, updateMyTenant, webhook audit-only R-23, cron sweep, platform admin exception verified) | task complete | yes |
