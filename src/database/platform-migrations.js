@@ -250,68 +250,127 @@ const PLATFORM_MIGRATIONS = [
     version: 8,
     name: 'p008_refresh_tokens_family_id',
     up: async (sequelize, context = {}) => {
-      if (context.dryRun) return;
+      if (context?.dryRun === true) return;
       const [tableExists] = await sequelize.query(
         'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
         { replacements: ['refresh_tokens'], type: QueryTypes.SELECT }
       );
-      if (!tableExists) return;
+      if (!tableExists) return null;
 
-      const [col] = await sequelize.query(
-        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
-          'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-        { replacements: ['refresh_tokens', 'family_id'], type: QueryTypes.SELECT }
-      );
-      if (!col) {
-        await sequelize.query('ALTER TABLE `refresh_tokens` ADD COLUMN `family_id` CHAR(36) NULL;');
-      }
+      const res = await _addNullableColumn(sequelize, {
+        table: 'refresh_tokens',
+        column: 'family_id',
+        type: 'CHAR(36)',
+        expectedType: 'char(36)',
+        migrationName: 'p008',
+      });
+      if (res?.skipped) return res;
 
       // Add indexes if missing
       try {
         await sequelize.query('CREATE INDEX `refresh_tokens_family_id` ON `refresh_tokens` (`family_id`);');
       } catch (_) {}
+      return null;
     },
   },
   {
     version: 9,
     name: 'p009_otp_security_hash_and_attempts',
     up: async (sequelize, context = {}) => {
-      if (context.dryRun) return;
+      if (context?.dryRun === true) return;
       const [tableExists] = await sequelize.query(
         'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
         { replacements: ['otps'], type: QueryTypes.SELECT }
       );
-      if (!tableExists) return;
+      if (!tableExists) return null;
 
-      try {
-        await sequelize.query('ALTER TABLE `otps` MODIFY COLUMN `code` VARCHAR(64) NOT NULL;');
-      } catch (_) {}
+      // Check code column
+      const [codeCol] = await sequelize.query(
+        'SELECT COLUMN_TYPE AS type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        { replacements: ['otps', 'code'], type: QueryTypes.SELECT }
+      );
+      if (codeCol && !String(codeCol.type).toLowerCase().startsWith('varchar')) {
+        console.warn(
+          `[PlatformMigration] SKIPPING p009: otps.code already exists as ${codeCol.type}; expected VARCHAR. Resolve it by hand, then re-run.`
+        );
+        return {
+          skipped: true,
+          reason: 'column_exists_with_other_type',
+          column: 'code',
+          existingType: codeCol.type,
+        };
+      }
 
+      // Check attempts column
       const [attemptsCol] = await sequelize.query(
-        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
-          'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        'SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
         { replacements: ['otps', 'attempts'], type: QueryTypes.SELECT }
       );
+      if (attemptsCol && !String(attemptsCol.type).toLowerCase().startsWith('int')) {
+        console.warn(
+          `[PlatformMigration] SKIPPING p009: otps.attempts already exists as ${attemptsCol.type}; expected INT. Resolve it by hand, then re-run.`
+        );
+        return {
+          skipped: true,
+          reason: 'column_exists_with_other_type',
+          column: 'attempts',
+          existingType: attemptsCol.type,
+        };
+      }
+
+      // Check max_attempts column
+      const [maxAttemptsCol] = await sequelize.query(
+        'SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        { replacements: ['otps', 'max_attempts'], type: QueryTypes.SELECT }
+      );
+      if (maxAttemptsCol && !String(maxAttemptsCol.type).toLowerCase().startsWith('int')) {
+        console.warn(
+          `[PlatformMigration] SKIPPING p009: otps.max_attempts already exists as ${maxAttemptsCol.type}; expected INT. Resolve it by hand, then re-run.`
+        );
+        return {
+          skipped: true,
+          reason: 'column_exists_with_other_type',
+          column: 'max_attempts',
+          existingType: maxAttemptsCol.type,
+        };
+      }
+
+      // All checks passed — perform DDL modifications
+      await sequelize.query('ALTER TABLE `otps` MODIFY COLUMN `code` VARCHAR(64) NOT NULL;');
       if (!attemptsCol) {
         await sequelize.query('ALTER TABLE `otps` ADD COLUMN `attempts` INT NOT NULL DEFAULT 0;');
       }
-
-      const [maxAttemptsCol] = await sequelize.query(
-        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
-          'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-        { replacements: ['otps', 'max_attempts'], type: QueryTypes.SELECT }
-      );
       if (!maxAttemptsCol) {
         await sequelize.query('ALTER TABLE `otps` ADD COLUMN `max_attempts` INT NOT NULL DEFAULT 5;');
       }
+      return null;
     },
   },
   {
     version: 10,
     name: 'p010_tenant_invitations_and_audit',
     description: 'Create tenant_invitations and platform_audit_logs tables for AUTH-09 admin tenant invitation flow',
-    up: async (sequelize, context) => {
-      if (context.dryRun) return;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return;
+
+      const [invCol] = await sequelize.query(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        { replacements: ['tenant_invitations', 'token_hash'], type: QueryTypes.SELECT }
+      );
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['tenant_invitations'], type: QueryTypes.SELECT }
+      );
+      if (tableExists && !invCol) {
+        console.warn(
+          '[PlatformMigration] SKIPPING p010: tenant_invitations table exists without token_hash column. Resolve it by hand, then re-run.'
+        );
+        return {
+          skipped: true,
+          reason: 'table_exists_with_other_schema',
+          table: 'tenant_invitations',
+        };
+      }
 
       await sequelize.query(`
         CREATE TABLE IF NOT EXISTS \`tenant_invitations\` (
@@ -353,6 +412,7 @@ const PLATFORM_MIGRATIONS = [
           KEY \`idx_platform_audit_action\` (\`action\`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+      return null;
     },
   },
 ];
