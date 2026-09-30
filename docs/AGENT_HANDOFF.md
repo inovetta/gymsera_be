@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1E — Member money: idempotency, ledger, refunds, payouts** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | PAY-10 |
+| Issue in progress | SEC-13 |
 | Step within issue | committed <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,17 +31,17 @@ Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1e-member-money` | 88a236b feat(payments): member payment refunds with ledger reversal and approval tier (PAY-07) | yes (SEC-13) |
+| gymsera_be | `phase-1/prompt-1e-member-money` | bbceb49 feat(payouts): ledger-derived payout balance and idempotent payout requests (PAY-10) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Commit SEC-13 (Payout account protection: platform migration p012 for payment_details_updated_at, password/OAuth re-auth on bank details update, owner security alert notifications, and 24h cooling period blocking immediate payout), with regression test in tests/regression/sec-13-payout-cooling-and-reauth.test.js. Then write read-only check script for member money per Rule 7, run full suite 3x, update spec §13, and finish Prompt 1E.
+> Write read-only check script for member money per Rule 7 (`src/scripts/gymsera-member-money-check.js`), run full suite 3x, update spec §13, and finish Prompt 1E.
 
 ### Work in progress that is NOT committed
 
-- SEC-13: implemented and tested, awaiting separate commit.
+- (none)
 
 ### Blocked / waiting on the owner
 

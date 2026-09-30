@@ -1,5 +1,5 @@
 /**
- * Platform and Tenant migrations added in Prompt 1E (p011 and 011), each proven
+ * Platform and Tenant migrations added in Prompt 1E (p011/p012 and 011/012), each proven
  * on its own: `--dry-run` writes nothing, conflicting schema makes the migration
  * skip (not recorded, nothing changed), applying is idempotent.
  *
@@ -14,7 +14,7 @@ const { runTenantMigrations, TARGET_SCHEMA_VERSION, MIGRATIONS } = require('../.
 const SCRATCH_PLATFORM_DB = 'gymsera_test_platform_mig_1e';
 const SCRATCH_TENANT_DB = 'gymsera_test_tenant_mig_1e';
 
-describe('Prompt 1E Migrations (p011 & 011)', () => {
+describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
   let platformSeq;
   let tenantSeq;
 
@@ -59,6 +59,18 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
         );
       }
     }
+
+    // Seed minimal tenants table
+    await platformSeq.query(`
+      CREATE TABLE IF NOT EXISTS tenants (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        tenant_code VARCHAR(50) NOT NULL,
+        gym_name VARCHAR(255) NOT NULL,
+        payment_details_json JSON NULL,
+        created_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
   };
 
   const createTenantDbBefore1E = async () => {
@@ -109,7 +121,7 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
     test('--dry-run reports wouldRun and writes NOTHING', async () => {
       await createPlatformDbBefore1E();
       const before = await snapshot(platformSeq);
-      const res = await runPlatformMigrations(platformSeq, { dryRun: true });
+      const res = await runPlatformMigrations(platformSeq, { dryRun: true, targetVersion: 11 });
 
       expect(res.dryRun).toBe(true);
       expect(res.wouldRun).toContain(P011);
@@ -127,7 +139,7 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
       `);
 
       const before = await snapshot(platformSeq);
-      const res = await runPlatformMigrations(platformSeq);
+      const res = await runPlatformMigrations(platformSeq, { targetVersion: 11 });
       expect(res.applied).not.toContain(P011);
 
       const [record] = await platformSeq.query(
@@ -139,7 +151,7 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
 
     test('apply creates idempotency_records and is idempotent', async () => {
       await createPlatformDbBefore1E();
-      const res1 = await runPlatformMigrations(platformSeq);
+      const res1 = await runPlatformMigrations(platformSeq, { targetVersion: 11 });
       expect(res1.finalVersion).toBe(11);
       expect(res1.applied).toContain(P011);
 
@@ -151,9 +163,60 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
       expect(cols.response_body).toBeDefined();
 
       // Second run is idempotent
-      const res2 = await runPlatformMigrations(platformSeq);
+      const res2 = await runPlatformMigrations(platformSeq, { targetVersion: 11 });
       expect(res2.applied).toHaveLength(0);
       expect(res2.finalVersion).toBe(11);
+    });
+  });
+
+  describe('p012_add_payment_details_updated_at (Platform DB)', () => {
+    const P012 = 'p012_add_payment_details_updated_at';
+
+    test('--dry-run reports wouldRun and writes NOTHING', async () => {
+      await createPlatformDbBefore1E();
+      // apply v11 first
+      await runPlatformMigrations(platformSeq, { targetVersion: 11 });
+      const before = await snapshot(platformSeq);
+
+      const res = await runPlatformMigrations(platformSeq, { dryRun: true, targetVersion: 12 });
+      expect(res.dryRun).toBe(true);
+      expect(res.wouldRun).toContain(P012);
+      expect(await snapshot(platformSeq)).toEqual(before);
+    });
+
+    test('p012 skips cleanly when column exists with conflicting type', async () => {
+      await createPlatformDbBefore1E();
+      await runPlatformMigrations(platformSeq, { targetVersion: 11 });
+      await platformSeq.query(`
+        ALTER TABLE tenants ADD COLUMN payment_details_updated_at INT NOT NULL
+      `);
+
+      const before = await snapshot(platformSeq);
+      const res = await runPlatformMigrations(platformSeq, { targetVersion: 12 });
+      expect(res.applied).not.toContain(P012);
+
+      const [record] = await platformSeq.query(
+        'SELECT version FROM schema_migrations WHERE version = 12'
+      );
+      expect(record).toHaveLength(0);
+      expect(await snapshot(platformSeq)).toEqual(before);
+    });
+
+    test('apply adds payment_details_updated_at and is idempotent', async () => {
+      await createPlatformDbBefore1E();
+      await runPlatformMigrations(platformSeq, { targetVersion: 11 });
+
+      const res1 = await runPlatformMigrations(platformSeq, { targetVersion: 12 });
+      expect(res1.finalVersion).toBe(12);
+      expect(res1.applied).toContain(P012);
+
+      const cols = await platformSeq.getQueryInterface().describeTable('tenants');
+      expect(cols.payment_details_updated_at).toBeDefined();
+
+      // Second run is idempotent
+      const res2 = await runPlatformMigrations(platformSeq, { targetVersion: 12 });
+      expect(res2.applied).toHaveLength(0);
+      expect(res2.finalVersion).toBe(12);
     });
   });
 
@@ -166,6 +229,7 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
       const res = await runTenantMigrations(tenantSeq, {
         tenantId: 'scratch-tenant',
         dryRun: true,
+        targetVersion: 11,
       });
 
       expect(res.dryRun).toBe(true);
@@ -177,6 +241,7 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
       await createTenantDbBefore1E();
       const res = await runTenantMigrations(tenantSeq, {
         tenantId: 'scratch-tenant',
+        targetVersion: 11,
       });
       expect(res.finalVersion).toBe(11);
       expect(res.applied).toContain(M011);
@@ -189,9 +254,80 @@ describe('Prompt 1E Migrations (p011 & 011)', () => {
       // Second run is idempotent
       const res2 = await runTenantMigrations(tenantSeq, {
         tenantId: 'scratch-tenant',
+        targetVersion: 11,
       });
       expect(res2.applied).toHaveLength(0);
       expect(res2.finalVersion).toBe(11);
+    });
+  });
+
+  describe('012_create_payouts_table (Tenant DB)', () => {
+    const M012 = '012_create_payouts_table';
+
+    test('--dry-run writes nothing to tenant DB', async () => {
+      await createTenantDbBefore1E();
+      await runTenantMigrations(tenantSeq, { tenantId: 'scratch-tenant', targetVersion: 11 });
+      const before = await snapshot(tenantSeq);
+
+      const res = await runTenantMigrations(tenantSeq, {
+        tenantId: 'scratch-tenant',
+        dryRun: true,
+        targetVersion: 12,
+      });
+
+      expect(res.dryRun).toBe(true);
+      expect(res.wouldRun).toContain(M012);
+      expect(await snapshot(tenantSeq)).toEqual(before);
+    });
+
+    test('012 skips cleanly when table exists without amount column', async () => {
+      await createTenantDbBefore1E();
+      await runTenantMigrations(tenantSeq, { tenantId: 'scratch-tenant', targetVersion: 11 });
+      await tenantSeq.query(`
+        CREATE TABLE IF NOT EXISTS payouts (
+          id CHAR(36) NOT NULL PRIMARY KEY,
+          legacy_text VARCHAR(100) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      const before = await snapshot(tenantSeq);
+      const res = await runTenantMigrations(tenantSeq, {
+        tenantId: 'scratch-tenant',
+        targetVersion: 12,
+      });
+      expect(res.applied).not.toContain(M012);
+
+      const [record] = await tenantSeq.query(
+        'SELECT version FROM schema_migrations WHERE version = 12'
+      );
+      expect(record).toHaveLength(0);
+      expect(await snapshot(tenantSeq)).toEqual(before);
+    });
+
+    test('apply creates payouts table on tenant DB and is idempotent', async () => {
+      await createTenantDbBefore1E();
+      await runTenantMigrations(tenantSeq, { tenantId: 'scratch-tenant', targetVersion: 11 });
+
+      const res = await runTenantMigrations(tenantSeq, {
+        tenantId: 'scratch-tenant',
+        targetVersion: 12,
+      });
+      expect(res.finalVersion).toBe(12);
+      expect(res.applied).toContain(M012);
+
+      const cols = await tenantSeq.getQueryInterface().describeTable('payouts');
+      expect(cols.amount).toBeDefined();
+      expect(cols.currency).toBeDefined();
+      expect(cols.status).toBeDefined();
+      expect(cols.idempotency_key).toBeDefined();
+
+      // Second run is idempotent
+      const res2 = await runTenantMigrations(tenantSeq, {
+        tenantId: 'scratch-tenant',
+        targetVersion: 12,
+      });
+      expect(res2.applied).toHaveLength(0);
+      expect(res2.finalVersion).toBe(12);
     });
   });
 });

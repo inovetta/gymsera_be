@@ -16,7 +16,48 @@ const getProfile = async (req, res, next) => {
 // ── PATCH /gyms/profile ───────────────────────────────────────────────────────
 const updateProfile = async (req, res, next) => {
   try {
-    const result = await gymService.updateProfile(req.tenantDb, req.user.tenantId, req.body);
+    const tenantId = req.user.tenantId || req.tenantId;
+    const userId = req.user.id || req.user.sub;
+
+    // SEC-13: If updating payment/bank details, require permission & re-auth
+    if (req.body && req.body.paymentDetailsJson !== undefined) {
+      const accessService = require('../services/access.service');
+      const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
+      if (!grants.isOwner && !grants.has('payouts.bank.manage')) {
+        throw createError('You do not have permission to manage bank payout details', 403);
+      }
+
+      const { password, provider: reauthProvider, idToken: reauthIdToken } = req.body;
+      if (!password && !(reauthProvider && reauthIdToken)) {
+        const err = createError('Re-authentication required: password confirmation needed to change payout bank details', 401);
+        err.code = 'reauth_required';
+        throw err;
+      }
+
+      if (password) {
+        const { User: PlatformUser } = require('../models/platform');
+        const bcrypt = require('bcrypt');
+        const user = await PlatformUser.findByPk(userId);
+        if (user && user.passwordHash) {
+          const isMatch = await bcrypt.compare(password, user.passwordHash);
+          if (!isMatch) {
+            const err = createError('Incorrect password', 401);
+            err.code = 'invalid_credentials';
+            throw err;
+          }
+        }
+      }
+
+      if (reauthProvider && reauthIdToken) {
+        const authService = require('../services/auth.service');
+        await authService.verifyReauthCredential(userId, {
+          provider: reauthProvider,
+          idToken: reauthIdToken,
+        });
+      }
+    }
+
+    const result = await gymService.updateProfile(req.tenantDb, tenantId, req.body);
     return sendSuccess(res, result, 'Gym profile updated successfully');
   } catch (err) {
     next(err);

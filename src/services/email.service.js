@@ -438,4 +438,5 @@ module.exports = {
   sendTenantSubscriptionSuspendedEmail,
   sendTenantAccountReactivatedEmail,
   sendTenantInvitationEmail,
+  sendMail,
 };

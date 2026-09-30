@@ -461,6 +461,38 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 12,
+    name: 'p012_add_payment_details_updated_at',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [col] = await sequelize.query(
+        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'payment_details_updated_at'",
+        { type: QueryTypes.SELECT }
+      );
+      if (col) {
+        if (col.DATA_TYPE !== 'datetime' && col.DATA_TYPE !== 'timestamp') {
+          console.warn(
+            '[PlatformMigration] SKIPPING p012: payment_details_updated_at exists with non-datetime type. Resolve by hand, then re-run.'
+          );
+          return {
+            skipped: true,
+            reason: 'column_exists_with_other_type',
+            table: 'tenants',
+          };
+        }
+        return null;
+      }
+
+      await sequelize.query(`
+        ALTER TABLE \`tenants\`
+        ADD COLUMN \`payment_details_updated_at\` DATETIME NULL
+        AFTER \`payment_details_json\`;
+      `);
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
