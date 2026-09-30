@@ -462,9 +462,17 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
  * The actual Google idToken verification — shared by googleLogin (a brand
  * new or returning session) and verifyReauthCredential below (re-confirming
  * an already-signed-in account for a sensitive action, e.g. deleting a
- * branch). Same claims, same network-timeout-tolerant fallback either way;
- * the two callers differ only in what they do with the resulting payload.
+ * branch).
+ *
+ * Only a token whose signature verifies against Google's certificates, for
+ * one of our client IDs, from Google's issuer, not expired, with a verified
+ * e-mail, is accepted. Any failure — including Google's certificates being
+ * unreachable or slow — is a 401. There is no unverified fallback (NEW-03):
+ * it used to `jwt.decode` the token when the verifier's error mentioned
+ * "network"/"certificates"/…, text an attacker could put in the token header.
  */
+const GOOGLE_VERIFY_TIMEOUT_MS = 4000;
+
 const _verifyGoogleIdToken = async (idToken) => {
   const audiences = [
     process.env.GOOGLE_CLIENT_ID,
@@ -478,54 +486,26 @@ const _verifyGoogleIdToken = async (idToken) => {
   }
 
   let payload;
+  let timer;
   try {
-    // Attempt verification with a 4-second timeout to avoid hanging if server outbound firewall drops Google cert requests
-    const verifyPromise = googleClient.verifyIdToken({
-      idToken,
-      audience: audiences,
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Google certificate fetch timed out')), GOOGLE_VERIFY_TIMEOUT_MS);
     });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Google certificate fetch timed out')), 4000)
-    );
-
-    const ticket = await Promise.race([verifyPromise, timeoutPromise]);
+    const ticket = await Promise.race([googleClient.verifyIdToken({ idToken, audience: audiences }), timeout]);
     payload = ticket.getPayload();
   } catch (err) {
-    console.warn('[Google Auth] verifyIdToken check failed or timed out:', err.message);
-
-    // Fallback: If network/cert retrieval fails or times out, decode and validate claims locally
-    const decoded = jwt.decode(idToken);
-    const isNetworkOrCertError =
-      err.message.includes('timed out') ||
-      err.message.includes('certificates') ||
-      err.message.includes('ECONNREFUSED') ||
-      err.message.includes('ETIMEDOUT') ||
-      err.message.includes('ENOTFOUND') ||
-      err.message.includes('network');
-
-    if (isNetworkOrCertError && decoded && typeof decoded === 'object') {
-      const isIssValid = decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com';
-      const isAudValid = audiences.includes(decoded.aud) || audiences.includes(decoded.azp);
-      const isNotExpired = decoded.exp && decoded.exp * 1000 > Date.now();
-
-      if (isIssValid && isAudValid && isNotExpired && decoded.sub && decoded.email) {
-        console.log('[Google Auth] Fallback payload accepted for:', decoded.email);
-        payload = decoded;
-      } else {
-        console.warn('[Google Auth] Fallback validation rejected. Claims:', {
-          iss: decoded?.iss,
-          aud: decoded?.aud,
-          azp: decoded?.azp,
-          exp: decoded?.exp,
-        });
-        throw createError('Invalid Google ID token claims', 401);
-      }
-    } else {
-      throw createError('Invalid Google ID token', 401);
-    }
+    // The library's messages can echo the token; the redaction layer (SEC-07)
+    // strips JWTs, and only the first line is logged.
+    console.warn('[Google Auth] ID token rejected:', String(err.message || err).split('\n')[0].slice(0, 200));
+    throw createError('Invalid Google ID token', 401);
+  } finally {
+    clearTimeout(timer);
   }
 
-  if (!payload.email_verified && payload.email_verified !== 'true') {
+  if (!payload || !payload.sub) {
+    throw createError('Invalid Google ID token', 401);
+  }
+  if (payload.email_verified !== true && payload.email_verified !== 'true') {
     throw createError('Google account email is not verified', 401);
   }
 
@@ -655,47 +635,111 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = fals
   return _issueTokenPair(user, ipAddress, userAgent);
 };
 
+// ── Apple identity token verification (NEW-02) ───────────────────────────────
+// The identity token is verified against Apple's published keys (JWKS):
+// RS256 signature, issuer, audience (our bundle / service IDs), expiry. The
+// keys are cached for a day; an unknown `kid` (Apple rotated keys) refetches
+// at most once a minute, so a stream of bogus kids cannot hammer Apple.
+/* global fetch, AbortSignal */ // Node 20 built-ins (eslint config has no node globals)
+const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
+const APPLE_ISSUERS = ['https://appleid.apple.com', 'appleid.apple.com'];
+const APPLE_KEYS_TTL_MS = 24 * 60 * 60 * 1000;
+const APPLE_UNKNOWN_KID_REFETCH_MS = 60 * 1000;
+const APPLE_KEYS_FETCH_TIMEOUT_MS = 5000;
+
+let _appleKeys = { byKid: new Map(), fetchedAt: 0, lastUnknownKidFetchAt: 0 };
+
+const _fetchAppleKeys = async () => {
+  const res = await fetch(APPLE_JWKS_URL, { signal: AbortSignal.timeout(APPLE_KEYS_FETCH_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`Apple JWKS responded ${res.status}`);
+  const body = await res.json();
+  const byKid = new Map();
+  for (const k of Array.isArray(body?.keys) ? body.keys : []) {
+    if (k && k.kty === 'RSA' && k.kid) byKid.set(k.kid, crypto.createPublicKey({ key: k, format: 'jwk' }));
+  }
+  if (byKid.size === 0) throw new Error('Apple JWKS contained no usable keys');
+  _appleKeys = { ..._appleKeys, byKid, fetchedAt: Date.now() };
+};
+
+const _appleKeyFor = async (kid) => {
+  const fresh = Date.now() - _appleKeys.fetchedAt < APPLE_KEYS_TTL_MS;
+  if (fresh && _appleKeys.byKid.has(kid)) return _appleKeys.byKid.get(kid);
+  if (!fresh) {
+    await _fetchAppleKeys();
+  } else if (Date.now() - _appleKeys.lastUnknownKidFetchAt >= APPLE_UNKNOWN_KID_REFETCH_MS) {
+    _appleKeys.lastUnknownKidFetchAt = Date.now();
+    await _fetchAppleKeys();
+  }
+  return _appleKeys.byKid.get(kid) || null;
+};
+
+/** Test hook: forget cached Apple keys. */
+const _resetAppleKeyCacheForTests = () => {
+  _appleKeys = { byKid: new Map(), fetchedAt: 0, lastUnknownKidFetchAt: 0 };
+};
+
 /**
- * Login or register via Apple Identity Token.
- * On first login, creates a new ACTIVE + verified account automatically.
+ * Verifies an Apple identity token and returns its payload. Any failure —
+ * bad signature, unknown key, wrong issuer/audience, expired, Apple's keys
+ * unreachable — is a 401. Shared by appleLogin and verifyReauthCredential.
  */
-const appleLogin = async ({ identityToken, userIdentifier, email, fullName }, ipAddress, userAgent) => {
-  if (!identityToken) {
-    throw createError('Apple identity token is required', 400);
-  }
-
-  // Decode identityToken (JWT)
-  const decoded = jwt.decode(identityToken);
-  if (!decoded || typeof decoded !== 'object') {
-    throw createError('Invalid Apple identity token', 401);
-  }
-
-  // Validate claims
-  const isIssValid = decoded.iss === 'https://appleid.apple.com' || decoded.iss === 'appleid.apple.com';
-  const expectedAud = [
+const _verifyAppleIdentityToken = async (identityToken) => {
+  const audiences = [
     'com.inovettatech.gymsera',
     process.env.APPLE_BUNDLE_ID,
     process.env.APPLE_CLIENT_ID,
   ].filter(Boolean);
-  const isAudValid = expectedAud.length === 0 || expectedAud.includes(decoded.aud);
-  const isNotExpired = decoded.exp && decoded.exp * 1000 > Date.now();
 
-  if (!isIssValid || !isNotExpired) {
-    console.warn('[Apple Auth] Token validation failed:', {
-      iss: decoded.iss,
-      aud: decoded.aud,
-      exp: decoded.exp,
-    });
+  // The header is read only to choose Apple's key; nothing in it is trusted.
+  const header = jwt.decode(identityToken, { complete: true })?.header;
+  if (!header || header.alg !== 'RS256' || !header.kid) {
+    throw createError('Invalid Apple identity token', 401);
+  }
+
+  let key;
+  try {
+    key = await _appleKeyFor(header.kid);
+  } catch (err) {
+    console.warn('[Apple Auth] Could not load Apple public keys:', err.message);
+    throw createError('Invalid Apple identity token', 401);
+  }
+  if (!key) throw createError('Invalid Apple identity token', 401);
+
+  let payload;
+  try {
+    payload = jwt.verify(identityToken, key, { algorithms: ['RS256'], issuer: APPLE_ISSUERS, audience: audiences });
+  } catch (err) {
+    console.warn('[Apple Auth] Identity token rejected:', err.name, err.message);
     throw createError('Invalid or expired Apple identity token', 401);
   }
-
-  const appleId = userIdentifier || decoded.sub;
-  const userEmail = (decoded.email || email || '').toLowerCase().trim();
-  const userName = fullName || (userEmail ? userEmail.split('@')[0] : 'Apple User');
-
-  if (!appleId) {
-    throw createError('Unable to resolve Apple user identifier', 401);
+  if (!payload || typeof payload !== 'object' || !payload.sub) {
+    throw createError('Invalid Apple identity token', 401);
   }
+  return payload;
+};
+
+/**
+ * Login or register via Apple Identity Token.
+ * On first login, creates a new ACTIVE + verified account automatically.
+ *
+ * The Apple user id and e-mail come only from the verified token (NEW-02).
+ * `userIdentifier` and `email` in the body are ignored: the app sends the same
+ * values Apple put in the token, and trusting the body let a caller pick whose
+ * account to enter. `fullName` is display data only (Apple gives the name to
+ * the app, not in the token).
+ */
+const appleLogin = async ({ identityToken, fullName }, ipAddress, userAgent) => {
+  if (!identityToken) {
+    throw createError('Apple identity token is required', 400);
+  }
+
+  const payload = await _verifyAppleIdentityToken(identityToken);
+  const appleId = payload.sub;
+  const userEmail = (payload.email || '').toLowerCase().trim();
+  if (userEmail && payload.email_verified !== true && payload.email_verified !== 'true') {
+    throw createError('Apple account email is not verified', 401);
+  }
+  const userName = fullName || (userEmail ? userEmail.split('@')[0] : 'Apple User');
 
   console.log(`[Apple Auth] Processing login for ${userEmail || 'hidden email'} (appleId: ${appleId})`);
 
@@ -990,15 +1034,7 @@ const verifyReauthCredential = async (userId, { provider, idToken }) => {
 
   if (provider === 'APPLE') {
     if (!user.appleId) throw createError('This account is not linked to an Apple sign-in', 400);
-    const decoded = jwt.decode(idToken);
-    if (!decoded || typeof decoded !== 'object') {
-      throw createError('Invalid Apple identity token', 401);
-    }
-    const isIssValid = decoded.iss === 'https://appleid.apple.com' || decoded.iss === 'appleid.apple.com';
-    const isNotExpired = decoded.exp && decoded.exp * 1000 > Date.now();
-    if (!isIssValid || !isNotExpired) {
-      throw createError('Invalid or expired Apple identity token', 401);
-    }
+    const decoded = await _verifyAppleIdentityToken(idToken);
     if (decoded.sub !== user.appleId) {
       throw createError('That Apple account does not match your GymsEra account', 401);
     }
@@ -1178,4 +1214,5 @@ module.exports = {
   verifyReauthCredential,
   verifyTenantInvitation,
   acceptTenantInvitation,
+  _resetAppleKeyCacheForTests,
 };

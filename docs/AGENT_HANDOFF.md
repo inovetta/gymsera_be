@@ -19,14 +19,14 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-09-30 |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Prompt 1F — Remaining P0 security and provisioning** (the playbook heading; an older "Next action" called it "Onboarding, KYC…", which was wrong) |
+| Current prompt | **NEW-02 + NEW-03 — unverified social sign-in tokens** (owner task after Prompt 1F) |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be` (off origin/main f83de34, after the 1E and precheck-script merges). Not pushed. gyms_era work is on `phase-1/prompt-1f-security` (4ca8277), also not pushed.
+NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gymsera_be` (off origin/main 93587ab, after the 1F merge). Not pushed. Commits: 30eb602 (NEW-03 Google), 35bad3e (NEW-02 Apple).
 
 **1F verification (2026-09-30, all 8 still open):**
 - SEC-03 PARTIAL: Apple JWS and Stripe `constructEvent` are fine; Google RTDN still uses a static `?token=` (`src/routes/billing.routes.js:147-164`), not the Pub/Sub OIDC token.
@@ -49,7 +49,7 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 
 > Prompt 1F DONE (not pushed, per the owner). Next: **Prompt 1G — Resumable tenant provisioning (FLOW-02)** in the playbook (split out by R-24), then 1H (SEC-10), then 1I (AUTH-07).
 > Owner items from 1F: (1) run `gymsera-r25-tenant-db-credentials-check.js` on the live DB; (2) seed-script credential fallback: fixed with owner approval (6cfdcab); (3) before deploying: turn on Pub/Sub push authentication and set `GOOGLE_PLAY_RTDN_AUDIENCE` / `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT` (R-26), and set `TENANT_DB_ADMIN_USER` explicitly (R-25).
-> Still-open P0s with no prompt yet: NEW-02 (Apple unsigned token, `auth.service.js:668,993`), NEW-03 (Google unsigned fallback, `auth.service.js:494-514`), NEW-06, NEW-07 (routes still present, not re-verified), NEW-08 (probably closed by SEC-01, not recorded), SEC-06 (verified 2026-09-30: OPEN/PARTIAL, unknown fields accepted, no mass-assignment hole found; §13 row). NEW-33 now tracked as P1 in §12.4.
+> NEW-02 and NEW-03 DONE (35bad3e, 30eb602). **Deploy:** the server must reach `https://www.googleapis.com/oauth2/v1/certs` and `https://appleid.apple.com/auth/keys`, or social sign-in returns 401. Still-open P0s with no prompt yet: NEW-06, NEW-07 (routes still present, not re-verified), NEW-08 (probably closed by SEC-01, not recorded), SEC-06 (verified 2026-09-30: OPEN/PARTIAL, unknown fields accepted, no mass-assignment hole found; §13 row). NEW-33 now tracked as P1 in §12.4.
 
 ### Work in progress that is NOT committed
 
@@ -210,3 +210,4 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 | 24 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1D (Access control) | RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, RBAC-03 (permissions doc & test matrix) | task complete | yes |
 | 25 | 2026-09-30 | Gemini (Gemini 3.8 Flash) | Prompt 1E (Member money) | REL-01, PAY-01, PAY-02, PAY-03, PAY-04, PAY-07, PAY-10, SEC-13 | task complete | yes |
 | 26 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1F | SEC-03, SEC-07, RT-04, R-25, SEC-09, UX-12 (plan); FLOW-02/SEC-10/AUTH-07 split to 1G–1I (R-24) | task complete | yes |
+| 27 | 2026-09-30 | Claude Code (Opus 5.5) | Owner task: NEW-02 + NEW-03 | NEW-03 (Google: fallback removed), NEW-02 (Apple: JWKS verification, identity only from the token) | task complete | yes |
