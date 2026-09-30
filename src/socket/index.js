@@ -22,6 +22,33 @@ const jwt = require('jsonwebtoken');
 let _io = null;
 
 /**
+ * Room authorization (RT-04, spec §9.2). The server decides every room a
+ * socket is in; a client can only ask to join a conversation, and only one it
+ * belongs to:
+ *  - as the traveler/member (`conversation.userId`), or
+ *  - as the host side, when the token's tenant owns the conversation and the
+ *    user still belongs to that tenant.
+ * Returns `{ conversation, side: 'HOST' | 'USER' }`, or null (treated as
+ * "not found": nothing is joined, sent or marked).
+ */
+const authorizeConversation = async (user, conversationId) => {
+  if (!conversationId || typeof conversationId !== 'string') return null;
+  const { Conversation } = require('../models/platform');
+  const conversation = await Conversation.findByPk(conversationId, { attributes: ['id', 'tenantId', 'userId'] });
+  if (!conversation) return null;
+
+  const role = (user.role || '').toUpperCase();
+  if (role === 'GYM_HOST' && user.tenantId && conversation.tenantId === user.tenantId) {
+    const { userBelongsToTenant } = require('../middleware/tenantContext');
+    if (await userBelongsToTenant(user.id, conversation.tenantId)) return { conversation, side: 'HOST' };
+  }
+  if (conversation.userId === user.id) return { conversation, side: 'USER' };
+  return null;
+};
+
+const conversationRoom = (conversationId) => `conversation:${conversationId}`;
+
+/**
  * Initialize Socket.IO with HTTP server instance.
  */
 const init = (httpServer) => {
@@ -53,10 +80,10 @@ const init = (httpServer) => {
   _io.use((socket, next) => {
     try {
       const authHeader = socket.handshake.headers?.authorization;
+      // Never from the query string: URLs end up in access logs (RT-04, SEC-07).
       const token =
         socket.handshake.auth?.token ||
-        (authHeader && authHeader.replace(/^Bearer\s+/i, '')) ||
-        socket.handshake.query?.token;
+        (authHeader && authHeader.replace(/^Bearer\s+/i, ''));
 
       if (!token) {
         return next(new Error('Authentication error: Token required'));
@@ -85,29 +112,45 @@ const init = (httpServer) => {
     const user = socket.user;
     const userId = user.id;
     const role = (user.role || '').toUpperCase();
-    const isHost = role === 'GYM_HOST' || role === 'PLATFORM_ADMIN';
     console.log(`[Socket] User connected: ${userId} (${role || 'USER'}) [socketId: ${socket.id}]`);
 
     // Auto-join user-specific room
     socket.join(`user:${userId}`);
 
-    // If host or staff with tenantId, join tenant room for team broadcasts
+    // Tenant room for team broadcasts: only while the user still belongs to
+    // the token's tenant (a token outlives a revoked role).
     if (user.tenantId) {
-      socket.join(`tenant:${user.tenantId}`);
+      const { userBelongsToTenant } = require('../middleware/tenantContext');
+      userBelongsToTenant(userId, user.tenantId)
+        .then((belongs) => {
+          if (belongs && socket.connected) socket.join(`tenant:${user.tenantId}`);
+        })
+        .catch((err) => console.warn('[Socket] Tenant room check failed:', err.message));
     }
 
-    // Join active conversation room
-    socket.on('join_conversation', ({ conversationId }) => {
-      if (!conversationId) return;
-      socket.join(`conversation:${conversationId}`);
-      console.log(`[Socket] ${userId} joined conversation:${conversationId}`);
+    // Join a conversation room: only one this user is part of (RT-04).
+    socket.on('join_conversation', async (payload, callback) => {
+      const conversationId = payload?.conversationId;
+      const ack = typeof callback === 'function' ? callback : () => {};
+      try {
+        const access = await authorizeConversation(user, conversationId);
+        if (!access) {
+          console.warn(`[Socket] ${userId} denied join for conversation:${conversationId}`);
+          return ack({ success: false, error: 'Conversation not found' });
+        }
+        socket.join(conversationRoom(conversationId));
+        return ack({ success: true });
+      } catch (err) {
+        console.warn('[Socket join_conversation error]:', err.message);
+        return ack({ success: false, error: 'Conversation not found' });
+      }
     });
 
     // Leave conversation room
-    socket.on('leave_conversation', ({ conversationId }) => {
+    socket.on('leave_conversation', (payload) => {
+      const conversationId = payload?.conversationId;
       if (!conversationId) return;
-      socket.leave(`conversation:${conversationId}`);
-      console.log(`[Socket] ${userId} left conversation:${conversationId}`);
+      socket.leave(conversationRoom(conversationId));
     });
 
     // Real-time message dispatch
@@ -123,19 +166,23 @@ const init = (httpServer) => {
 
         const inboxService = require('../services/inbox.service');
 
-        let messageRecord;
-        if (isHost) {
-          let tenantIdToUse = user.tenantId;
-          if (!tenantIdToUse) {
-            const { Conversation } = require('../models/platform');
-            const conv = await Conversation.findByPk(conversationId, { attributes: ['tenantId'] });
-            tenantIdToUse = conv?.tenantId;
+        // The conversation's own tenant is never borrowed: the sender must
+        // belong to it (RT-04).
+        const access = await authorizeConversation(user, conversationId);
+        if (!access) {
+          if (typeof callback === 'function') {
+            return callback({ success: false, error: 'Conversation not found' });
           }
+          return;
+        }
+
+        let messageRecord;
+        if (access.side === 'HOST') {
           messageRecord = await inboxService.replyToInquiry(
             conversationId,
             userId,
             text.trim(),
-            tenantIdToUse,
+            access.conversation.tenantId,
             { tempId }
           );
         } else {
@@ -172,10 +219,11 @@ const init = (httpServer) => {
       }
     });
 
-    // Typing indicators
-    socket.on('typing_start', ({ conversationId }) => {
-      if (!conversationId) return;
-      socket.to(`conversation:${conversationId}`).emit('user_typing', {
+    // Typing indicators: only into a room this socket was allowed to join.
+    socket.on('typing_start', (payload) => {
+      const conversationId = payload?.conversationId;
+      if (!conversationId || !socket.rooms.has(conversationRoom(conversationId))) return;
+      socket.to(conversationRoom(conversationId)).emit('user_typing', {
         conversationId,
         userId,
         userName: user.fullName || user.email || 'User',
@@ -183,9 +231,10 @@ const init = (httpServer) => {
       });
     });
 
-    socket.on('typing_stop', ({ conversationId }) => {
-      if (!conversationId) return;
-      socket.to(`conversation:${conversationId}`).emit('user_typing', {
+    socket.on('typing_stop', (payload) => {
+      const conversationId = payload?.conversationId;
+      if (!conversationId || !socket.rooms.has(conversationRoom(conversationId))) return;
+      socket.to(conversationRoom(conversationId)).emit('user_typing', {
         conversationId,
         userId,
         isTyping: false,
@@ -193,12 +242,15 @@ const init = (httpServer) => {
     });
 
     // Real-time read receipt
-    socket.on('mark_read', async ({ conversationId }) => {
+    socket.on('mark_read', async (payload) => {
+      const conversationId = payload?.conversationId;
       if (!conversationId) return;
       try {
         const inboxService = require('../services/inbox.service');
-        if (isHost) {
-          await inboxService.markInquiryRead(conversationId, user.tenantId);
+        const access = await authorizeConversation(user, conversationId);
+        if (!access) return;
+        if (access.side === 'HOST') {
+          await inboxService.markInquiryRead(conversationId, access.conversation.tenantId);
         } else {
           await inboxService.markTravelerRead(conversationId, userId);
         }
