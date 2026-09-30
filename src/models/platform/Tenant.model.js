@@ -2,7 +2,7 @@ const { DataTypes } = require('sequelize');
 const { TenantStatus, KycStatus } = require('../../constants/subscription-status');
 
 module.exports = (sequelize) => {
-  return sequelize.define(
+  const Tenant = sequelize.define(
     'Tenant',
     {
       id: {
@@ -142,6 +142,30 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'AES-256-CBC encrypted MySQL connection URL',
       },
+      // ── Resumable provisioning (FLOW-02, platform migration p013) ────────────
+      // Last finished step (tenant-provisioning.service.js#PROVISIONING_STEPS);
+      // NULL = never provisioned under FLOW-02 (older tenants).
+      provisioningState: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+        field: 'provisioning_state',
+      },
+      // Lease lock: the run holding it, and until when. Never sent to clients.
+      provisioningLockToken: {
+        type: DataTypes.CHAR(36),
+        allowNull: true,
+        field: 'provisioning_lock_token',
+      },
+      provisioningLockedUntil: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'provisioning_locked_until',
+      },
+      provisioningError: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        field: 'provisioning_error',
+      },
       paymentDetailsJson: {
         type: DataTypes.JSON,
         allowNull: true,
@@ -173,4 +197,14 @@ module.exports = (sequelize) => {
       ],
     }
   );
+
+  // The provisioning lock token identifies the run holding the lease (FLOW-02);
+  // it is server-side state only and never part of an API response.
+  Tenant.prototype.toJSON = function toJSON() {
+    const values = this.get({ plain: true });
+    delete values.provisioningLockToken;
+    return values;
+  };
+
+  return Tenant;
 };

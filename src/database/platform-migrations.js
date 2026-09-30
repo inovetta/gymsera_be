@@ -499,6 +499,55 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 13,
+    name: 'p013_tenants_provisioning_state',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      // Resumable provisioning (FLOW-02): the last finished step, a lease lock
+      // (token + expiry) so only one run provisions a tenant, and the last
+      // error for the admin. All NULL on existing rows; no data is rewritten.
+      const columns = [
+        { column: 'provisioning_state', type: 'VARCHAR(32)', expectedType: 'varchar(32)' },
+        { column: 'provisioning_lock_token', type: 'CHAR(36)', expectedType: 'char(36)' },
+        { column: 'provisioning_locked_until', type: 'DATETIME', expectedType: 'datetime' },
+        { column: 'provisioning_error', type: 'VARCHAR(500)', expectedType: 'varchar(500)' },
+      ];
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['tenants'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
+      // Check every column before changing anything, so a conflict leaves the
+      // table exactly as it was (like _addNullableColumn, but all-or-nothing).
+      const existing = await sequelize.query(
+        'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS ' +
+          'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenants\' AND COLUMN_NAME IN (?)',
+        { replacements: [columns.map((c) => c.column)], type: QueryTypes.SELECT }
+      );
+      const toAdd = [];
+      for (const c of columns) {
+        const col = existing.find((e) => e.name === c.column);
+        if (!col) {
+          toAdd.push(c);
+          continue;
+        }
+        if (String(col.type).toLowerCase() !== c.expectedType || col.nullable !== 'YES') {
+          console.warn(
+            `[PlatformMigration] SKIPPING p013: tenants.${c.column} already exists as ${col.type} ` +
+              `(nullable: ${col.nullable}); expected ${c.expectedType} NULL. Resolve it by hand, then re-run.`
+          );
+          return { skipped: true, reason: 'column_exists_with_other_type', column: c.column, existingType: col.type };
+        }
+      }
+      if (toAdd.length === 0) return null;
+      await sequelize.query(
+        `ALTER TABLE \`tenants\` ${toAdd.map((c) => `ADD COLUMN \`${c.column}\` ${c.type} NULL`).join(', ')}`
+      );
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

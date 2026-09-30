@@ -16,7 +16,7 @@ const {
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
-const { processTenantProvisioning } = require('./tenant-provisioning.service');
+const { processTenantProvisioning, provisioningSummary, PROVISIONING_REQUESTED } = require('./tenant-provisioning.service');
 const emailService = require('./email.service');
 const TenantDbManager = require('../database/TenantDbManager');
 const { safeRedisDel } = require('../config/redis.config');
@@ -256,6 +256,8 @@ const getTenant = async (tenantId) => {
   if (!tenant) throw createError('Tenant not found', 404);
 
   const tenantJson = tenant.toJSON();
+  // "Provisioning… (step n/6)" / Resume in the admin console (FLOW-02).
+  tenantJson.provisioning = provisioningSummary(tenant);
 
   let gymListing;
   if (listingId) {
@@ -330,9 +332,13 @@ const getTenant = async (tenantId) => {
  * works the same whether the API runs on Vercel serverless or a traditional
  * always-on server, with no dependency on a separate worker process.
  *
- * If provisioning fails partway, the tenant stays in APPROVED (not ACTIVE)
- * and re-calling approve safely retries it (CREATE DATABASE IF NOT EXISTS /
- * sync are idempotent).
+ * Provisioning is a resumable step machine (FLOW-02,
+ * tenant-provisioning.service.js): if it fails partway, the tenant stays
+ * APPROVED at the last finished step and re-calling approve (the admin's
+ * Resume) continues from there. While another run holds the tenant's
+ * provisioning lease, approve changes nothing and returns
+ * `provisioning.inProgress` (the controller answers 202). The route also takes
+ * an optional Idempotency-Key (REL-01 middleware).
  */
 const approveTenant = async (tenantId, adminUserId) => {
   const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
@@ -374,24 +380,39 @@ const approveTenant = async (tenantId, adminUserId) => {
     throw createError('Tenant is not in a reviewable state', 400);
   }
 
-  await tenant.update({
-    status: TenantStatus.APPROVED,
-    approvedAt: new Date(),
-    approvedBy: adminUserId,
-    rejectedAt: null,
-    rejectedBy: null,
-    rejectionReason: null,
-    kycStatus: KycStatus.APPROVED,
-  });
+  // Re-approving an APPROVED tenant is Resume (FLOW-02): the first approval's
+  // record is kept.
+  if (tenant.status !== TenantStatus.APPROVED) {
+    await tenant.update({
+      status: TenantStatus.APPROVED,
+      approvedAt: new Date(),
+      approvedBy: adminUserId,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+      kycStatus: KycStatus.APPROVED,
+    });
+  }
+  // Record the intent to provision (only if nothing is recorded yet, so a
+  // concurrent approve never rewinds a running provisioning's step).
+  await Tenant.update(
+    { provisioningState: PROVISIONING_REQUESTED },
+    { where: { id: tenant.id, provisioningState: null } }
+  );
 
+  let run;
   try {
-    await processTenantProvisioning(tenant.id);
+    run = await processTenantProvisioning(tenant.id);
   } catch (err) {
     console.error(`[approveTenant] Provisioning failed for tenant ${tenant.id}:`, err.message);
     throw createError(`Tenant approved, but database provisioning failed: ${err.message}. Re-approve to retry.`, 502);
   }
 
   await tenant.reload();
+  const provisioning = provisioningSummary(tenant);
+
+  // Another run is provisioning this tenant: report where it is, change nothing.
+  if (run.inProgress || run.alreadyActive) return { tenant, provisioning };
 
   // Real-time notification to Gym Host that their tenant account is active
   if (tenant.ownerUserId) {
@@ -407,7 +428,7 @@ const approveTenant = async (tenantId, adminUserId) => {
     }).catch(err => console.error('[approveTenant] Notification error:', err.message));
   }
 
-  return { tenant };
+  return { tenant, provisioning };
 };
 
 // ── rejectTenant ──────────────────────────────────────────────────────────────

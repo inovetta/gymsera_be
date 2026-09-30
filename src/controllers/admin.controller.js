@@ -37,6 +37,15 @@ const getTenant = async (req, res, next) => {
 const approveTenant = async (req, res, next) => {
   try {
     const result = await adminService.approveTenant(req.params.id, req.user.sub);
+    // Another run is provisioning this tenant (FLOW-02): 202 with its step.
+    if (result.provisioning?.inProgress) {
+      return sendSuccess(
+        res,
+        result,
+        `Provisioning is already in progress (step ${result.provisioning.step}/${result.provisioning.totalSteps}).`,
+        202
+      );
+    }
     return sendSuccess(res, result, 'Tenant approved and database provisioned successfully.');
   } catch (err) {
     next(err);
