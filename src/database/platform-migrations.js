@@ -467,6 +467,12 @@ const PLATFORM_MIGRATIONS = [
     up: async (sequelize, context) => {
       if (context?.dryRun === true) return null;
 
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['tenants'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
       const [col] = await sequelize.query(
         "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'payment_details_updated_at'",
         { type: QueryTypes.SELECT }
