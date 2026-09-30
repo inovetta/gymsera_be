@@ -48,8 +48,8 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 ### Next action (exact, so another agent can do it without guessing)
 
 > Prompt 1F DONE (not pushed, per the owner). Next: **Prompt 1G — Resumable tenant provisioning (FLOW-02)** in the playbook (split out by R-24), then 1H (SEC-10), then 1I (AUTH-07).
-> Owner items from 1F: (1) run `gymsera-r25-tenant-db-credentials-check.js` on the live DB; (2) decide on the seed script's hard-coded credential fallback (`src/scripts/provision-seeded-tenants.js:18-25`); (3) before deploying: turn on Pub/Sub push authentication and set `GOOGLE_PLAY_RTDN_AUDIENCE` / `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT` (R-26), and set `TENANT_DB_ADMIN_USER` explicitly (R-25).
-> Still-open P0s with no prompt yet: NEW-02 (Apple unsigned token, `auth.service.js:668,993`), NEW-03 (Google unsigned fallback, `auth.service.js:494-514`), NEW-06, NEW-07 (routes still present, not re-verified), NEW-08 (probably closed by SEC-01, not recorded), SEC-06 (no §13 row).
+> Owner items from 1F: (1) run `gymsera-r25-tenant-db-credentials-check.js` on the live DB; (2) seed-script credential fallback: fixed with owner approval (6cfdcab); (3) before deploying: turn on Pub/Sub push authentication and set `GOOGLE_PLAY_RTDN_AUDIENCE` / `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT` (R-26), and set `TENANT_DB_ADMIN_USER` explicitly (R-25).
+> Still-open P0s with no prompt yet: NEW-02 (Apple unsigned token, `auth.service.js:668,993`), NEW-03 (Google unsigned fallback, `auth.service.js:494-514`), NEW-06, NEW-07 (routes still present, not re-verified), NEW-08 (probably closed by SEC-01, not recorded), SEC-06 (verified 2026-09-30: OPEN/PARTIAL, unknown fields accepted, no mass-assignment hole found; §13 row). NEW-33 now tracked as P1 in §12.4.
 
 ### Work in progress that is NOT committed
 
