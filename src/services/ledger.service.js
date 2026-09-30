@@ -338,6 +338,14 @@ const addAdjustment = async (ctx, { ledgerDayId, type, relatedPaymentId, amount,
 
   const ledgerDay = await LedgerDay.findByPk(ledgerDayId);
   if (!ledgerDay) throw createError('Ledger day not found', 404);
+  if (ledgerDay.status === 'CLOSED') {
+    const err = createError(
+      `Ledger day ${ledgerDay.businessDate} is closed. Late adjustments must be posted against an open business day referencing the closed day.`,
+      409
+    );
+    err.code = 'ledger_day_closed';
+    throw err;
+  }
   // The permission check upstream resolved grants against ctx.branchId (a
   // client-supplied value) — cross-check it actually matches this day's real
   // branch, the same "never trust the client's branch claim" rule payments and
@@ -372,6 +380,7 @@ const addAdjustment = async (ctx, { ledgerDayId, type, relatedPaymentId, amount,
  * for approval_requests — two people racing to close the same day, only one
  * wins, the other gets a clean 409 instead of a double-closed or corrupted row.
  *
+ * Idempotent: closing an already closed day returns the existing closed day.
  * Immutable afterward: nothing in this codebase updates a CLOSED LedgerDay.
  */
 const closeDay = async (ctx, { ledgerDayId }) => {
@@ -379,7 +388,9 @@ const closeDay = async (ctx, { ledgerDayId }) => {
   const ledgerDay = await LedgerDay.findByPk(ledgerDayId);
   if (!ledgerDay) throw createError('Ledger day not found', 404);
   if (ledgerDay.status === 'CLOSED') {
-    throw createError('This day is already closed', 409);
+    const err = createError('This day is already closed', 409);
+    err.code = 'ledger_day_closed';
+    throw err;
   }
 
   const { totals } = await _paymentTotals(ctx.tenantDb, ledgerDay.branchId, ledgerDay.businessDate, ledgerDay.businessDate);
@@ -395,7 +406,9 @@ const closeDay = async (ctx, { ledgerDayId }) => {
     { where: { id: ledgerDayId, status: 'OPEN' } }
   );
   if (affected === 0) {
-    throw createError('This day was just closed by someone else', 409);
+    const err = createError('This day was just closed by someone else', 409);
+    err.code = 'ledger_day_closed';
+    throw err;
   }
 
   await ledgerDay.reload();

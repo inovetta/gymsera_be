@@ -136,6 +136,25 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
   });
   const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId, collectionTime);
 
+  const effectiveBranchId = data.branchId || targetBranchId;
+  if (effectiveBranchId && businessDate && tenantDb.models.LedgerDay) {
+    const closedDay = await tenantDb.models.LedgerDay.findOne({
+      where: {
+        branchId: effectiveBranchId,
+        businessDate,
+        status: 'CLOSED',
+      },
+    });
+    if (closedDay) {
+      const err = createError(
+        `Ledger day ${businessDate} for this branch is closed. Cannot post new payments into a closed day.`,
+        409
+      );
+      err.code = 'ledger_day_closed';
+      throw err;
+    }
+  }
+
   const { payment, invoice } = await tenantDb.sequelize.transaction(async (tx) => {
     const createdPayment = await Payment.create(
       {
@@ -339,6 +358,25 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
     };
     const originalTime = ledgerService.getPaymentCollectionTime(effectivePayment);
     updatePayload.businessDate = await ledgerService.stampBusinessDate(tenantDb, payment.branchId, originalTime);
+  }
+
+  const targetBusinessDate = payment.businessDate || updatePayload.businessDate;
+  if (payment.branchId && targetBusinessDate && tenantDb.models.LedgerDay) {
+    const closedDay = await tenantDb.models.LedgerDay.findOne({
+      where: {
+        branchId: payment.branchId,
+        businessDate: targetBusinessDate,
+        status: 'CLOSED',
+      },
+    });
+    if (closedDay) {
+      const err = createError(
+        `Ledger day ${targetBusinessDate} for this branch is closed. Cannot verify payment into a closed day.`,
+        409
+      );
+      err.code = 'ledger_day_closed';
+      throw err;
+    }
   }
 
   await payment.update(updatePayload, { fromPaymentServiceTransition: true });
