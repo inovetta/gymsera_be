@@ -15,7 +15,11 @@ const _invoiceNo = () => {
   return `INV-${date}-${rand}`;
 };
 
-const _createInvoice = async (models, { userId, payment, subscription, plan, createdBy, createdByRole, branchId }) => {
+const _createInvoice = async (
+  models,
+  { userId, payment, subscription, plan, createdBy, createdByRole, branchId },
+  transaction = null
+) => {
   const { Invoice } = models;
 
   const totalAmount = parseFloat(payment.amount);
@@ -25,41 +29,49 @@ const _createInvoice = async (models, { userId, payment, subscription, plan, cre
   const security = Math.min(parseFloat(plan.securityFee || 0), remaining);
   const joining = Math.max(0, remaining - security);
 
-  return Invoice.create({
-    userId,
-    invoiceNo: _invoiceNo(),
-    invoiceType: 'MEMBERSHIP',
-    referenceEntityId: subscription.id,
-    branchId: branchId || subscription?.branchId || payment?.branchId || null,
-    subtotal,
-    discountAmount: 0,
-    taxAmount: 0,
-    totalAmount,
-    dueDate: new Date().toISOString().split('T')[0],
-    paidAt: payment.status === PaymentStatus.COMPLETED ? new Date() : null,
-    status: payment.status === PaymentStatus.COMPLETED
-      ? InvoiceStatus.PAID
-      : InvoiceStatus.ISSUED,
-    createdBy: createdBy || payment?.createdBy || null,
-    createdByRole: createdByRole || payment?.createdByRole || null,
-  });
+  return Invoice.create(
+    {
+      userId,
+      invoiceNo: _invoiceNo(),
+      invoiceType: 'MEMBERSHIP',
+      referenceEntityId: subscription.id,
+      branchId: branchId || subscription?.branchId || payment?.branchId || null,
+      subtotal,
+      discountAmount: 0,
+      taxAmount: 0,
+      totalAmount,
+      dueDate: new Date().toISOString().split('T')[0],
+      paidAt: payment.status === PaymentStatus.COMPLETED ? new Date() : null,
+      status: payment.status === PaymentStatus.COMPLETED
+        ? InvoiceStatus.PAID
+        : InvoiceStatus.ISSUED,
+      createdBy: createdBy || payment?.createdBy || null,
+      createdByRole: createdByRole || payment?.createdByRole || null,
+    },
+    transaction ? { transaction } : {}
+  );
 };
 
 /**
  * Activate a PENDING subscription after tenant gives final payment approval.
- * Non-fatal — logs a warning rather than rolling back the payment on failure.
+ * Transactional: updates MemberSubscription inside transaction, and syncs platform
+ * UserGymMembership after transaction commit.
  */
-const _activateSubscription = async (tenantDb, subscriptionId) => {
-  try {
-    const { MemberSubscription } = tenantDb.models;
-    const sub = await MemberSubscription.findByPk(subscriptionId);
-    if (sub && sub.status === 'PENDING') {
-      const qrCode = sub.qrCode || `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
-      await sub.update({ status: 'ACTIVE', qrCode });
-      await UserGymMembership.update({ status: 'ACTIVE' }, { where: { subscriptionId } });
+const _activateSubscription = async (tenantDb, subscriptionId, transaction = null) => {
+  const { MemberSubscription } = tenantDb.models;
+  const sub = await MemberSubscription.findByPk(subscriptionId, transaction ? { transaction } : {});
+  if (sub && sub.status === 'PENDING') {
+    const qrCode = sub.qrCode || `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
+    await sub.update({ status: 'ACTIVE', qrCode }, transaction ? { transaction } : {});
+    if (transaction) {
+      transaction.afterCommit(async () => {
+        await UserGymMembership.update({ status: 'ACTIVE' }, { where: { subscriptionId } }).catch((err) => {
+          console.warn('[Payment] Failed to sync UserGymMembership after commit:', err.message);
+        });
+      });
+    } else {
+      await UserGymMembership.update({ status: 'ACTIVE' }, { where: { subscriptionId } }).catch(() => {});
     }
-  } catch (err) {
-    console.warn('[Payment] Failed to activate subscription after payment:', err.message);
   }
 };
 
@@ -121,52 +133,64 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
   });
   const businessDate = await ledgerService.stampBusinessDate(tenantDb, data.branchId, collectionTime);
 
-  const payment = await Payment.create({
-    userId: data.userId,
-    paymentFor: data.paymentFor || 'MEMBERSHIP',
-    referenceEntityId: data.referenceEntityId || null,
-    branchId: data.branchId || null,
-    method: data.method,
-    gatewayName: data.method === 'TEST' ? 'TEST_GATEWAY' : (data.gatewayName || null),
-    gatewayTransactionId: data.method === 'TEST'
-      ? `TEST-${Date.now()}`
-      : (data.gatewayTransactionId || null),
-    amount: data.amount,
-    currency: data.currency || 'PKR',
-    status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
-    paidAt,
-    collectedAt,
-    staffCollectedBy: data.staffCollectedBy || (data.method === 'CASH' ? staffUserId : null),
-    notes: data.notes || null,
-    createdBy: staffUserId || null,
-    createdByRole: resolvedRole,
-    businessDate,
-    idempotencyKey: data.idempotencyKey || null,
-  });
-  if (data.branchId) ledgerService.notifyLedgerUpdated(tenantDb.tenantId, data.branchId, businessDate);
+  const { payment, invoice } = await tenantDb.sequelize.transaction(async (tx) => {
+    const createdPayment = await Payment.create(
+      {
+        userId: data.userId,
+        paymentFor: data.paymentFor || 'MEMBERSHIP',
+        referenceEntityId: data.referenceEntityId || null,
+        branchId: data.branchId || null,
+        method: data.method,
+        gatewayName: data.method === 'TEST' ? 'TEST_GATEWAY' : (data.gatewayName || null),
+        gatewayTransactionId: data.method === 'TEST'
+          ? `TEST-${Date.now()}`
+          : (data.gatewayTransactionId || null),
+        amount: data.amount,
+        currency: data.currency || 'PKR',
+        status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
+        paidAt,
+        collectedAt,
+        staffCollectedBy: data.staffCollectedBy || (data.method === 'CASH' ? staffUserId : null),
+        notes: data.notes || null,
+        createdBy: staffUserId || null,
+        createdByRole: resolvedRole,
+        businessDate,
+        idempotencyKey: data.idempotencyKey || null,
+      },
+      { transaction: tx }
+    );
 
-  let invoice = null;
+    let createdInvoice = null;
 
-  if (data.paymentFor === 'MEMBERSHIP' && data.referenceEntityId) {
-    const subscription = await MemberSubscription.findByPk(data.referenceEntityId);
-    if (subscription) {
-      const plan = await MembershipPlan.findByPk(subscription.membershipPlanId);
-      if (plan) {
-        invoice = await _createInvoice(tenantDb.models, {
-          userId: data.userId,
-          payment,
-          subscription,
-          plan,
-          createdBy: staffUserId,
-          createdByRole: resolvedRole,
-          branchId: data.branchId || subscription.branchId,
-        });
-      }
-      if (autoComplete) {
-        await _activateSubscription(tenantDb, data.referenceEntityId);
+    if (data.paymentFor === 'MEMBERSHIP' && data.referenceEntityId) {
+      const subscription = await MemberSubscription.findByPk(data.referenceEntityId, { transaction: tx });
+      if (subscription) {
+        const plan = await MembershipPlan.findByPk(subscription.membershipPlanId, { transaction: tx });
+        if (plan) {
+          createdInvoice = await _createInvoice(
+            tenantDb.models,
+            {
+              userId: data.userId,
+              payment: createdPayment,
+              subscription,
+              plan,
+              createdBy: staffUserId,
+              createdByRole: resolvedRole,
+              branchId: data.branchId || subscription.branchId,
+            },
+            tx
+          );
+        }
+        if (autoComplete) {
+          await _activateSubscription(tenantDb, data.referenceEntityId, tx);
+        }
       }
     }
-  }
+
+    return { payment: createdPayment, invoice: createdInvoice };
+  });
+
+  if (data.branchId) ledgerService.notifyLedgerUpdated(tenantDb.tenantId, data.branchId, businessDate);
 
   if (!autoComplete) {
     try {

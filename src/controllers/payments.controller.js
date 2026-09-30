@@ -34,11 +34,18 @@ const recordPayment = async (req, res, next) => {
     // the service — req.body.branchId alone is what was missing before, which
     // meant a payment recorded via the subscription fallback silently got no
     // branch at all, and with it no ledger business date.
+    const idempotencyKey =
+      req.idempotencyKey ||
+      req.headers['idempotency-key'] ||
+      req.headers['x-idempotency-key'] ||
+      req.body.idempotencyKey ||
+      null;
+
     const result = await paymentService.recordPayment(
       req.tenantDb,
       req.user.id,
       req.user.role,
-      { ...req.body, branchId },
+      { ...req.body, branchId, idempotencyKey },
       isDirect
     );
     return sendSuccess(res, result, 'Payment recorded', 201);
