@@ -7,11 +7,11 @@
  *
  * Flow:
  *  1. Load tenant from platform DB
- *  2. Connect to tenant MySQL server with admin credentials (with multi-host and credential fallback)
+ *  2. Connect to tenant MySQL server with the configured admin credentials (no credential fallback, R-25)
  *  3. CREATE DATABASE `gymsera_{tenantCode}`
  *  4. Configure user privileges (with graceful error catching)
  *  5. Build + encrypt the connection string
- *  6. Sync tenant Sequelize models (with auto-fallback to admin credentials if appUser fails)
+ *  6. Sync tenant Sequelize models as the configured tenant app user
  *  7. Create or activate GymListing record on platform DB (cross-DB linking)
  *  8. Create Gym & initial Branch records in tenant DB
  *  9. Update Tenant: status=ACTIVE, dbName, connectionStringEncrypted
@@ -31,19 +31,40 @@ const { safeRedisSetex } = require('../config/redis.config');
 const { TenantStatus } = require('../constants/subscription-status');
 
 // ── Env helpers ───────────────────────────────────────────────────────────────
-const getTenantDbConfig = () => {
-  const host = process.env.TENANT_DB_HOST || process.env.PLATFORM_DB_HOST || '127.0.0.1';
-  const port = parseInt(process.env.TENANT_DB_PORT || process.env.PLATFORM_DB_PORT || '3306');
-  const adminUser = process.env.TENANT_DB_ADMIN_USER || process.env.PLATFORM_DB_USER || 'root';
-  const adminPassword = (process.env.TENANT_DB_ADMIN_PASS !== undefined && process.env.TENANT_DB_ADMIN_PASS !== '')
-    ? process.env.TENANT_DB_ADMIN_PASS
-    : (process.env.PLATFORM_DB_PASS !== undefined ? process.env.PLATFORM_DB_PASS : '');
-  const appUser = process.env.TENANT_DB_USER || process.env.PLATFORM_DB_USER || adminUser;
-  const appPassword = (process.env.TENANT_DB_PASS !== undefined && process.env.TENANT_DB_PASS !== '')
-    ? process.env.TENANT_DB_PASS
-    : (process.env.PLATFORM_DB_PASS !== undefined ? process.env.PLATFORM_DB_PASS : adminPassword);
+// Credentials come ONLY from TENANT_DB_ADMIN_USER / TENANT_DB_ADMIN_PASS (to
+// create the database) and TENANT_DB_USER / TENANT_DB_PASS (what the tenant
+// runs as). No platform credentials, no `root`, no empty-password guess: a
+// missing or rejected credential stops provisioning with a clear error
+// (decision R-25, same approach as SEC-DB-FALLBACK). An explicitly empty
+// password is allowed (local/CI MySQL without one); an empty user is not.
+const REQUIRED_TENANT_DB_SETTINGS = ['TENANT_DB_ADMIN_USER', 'TENANT_DB_ADMIN_PASS', 'TENANT_DB_USER', 'TENANT_DB_PASS'];
 
-  return { host, port, adminUser, adminPassword, appUser, appPassword };
+const tenantDbNotConfigured = (message) => {
+  const err = new Error(message);
+  err.code = 'TENANT_DB_NOT_CONFIGURED';
+  return err;
+};
+
+const getTenantDbConfig = (env = process.env) => {
+  const missing = REQUIRED_TENANT_DB_SETTINGS.filter(
+    (key) => env[key] === undefined || (key.endsWith('_USER') && String(env[key]).trim() === '')
+  );
+  if (missing.length > 0) {
+    throw tenantDbNotConfigured(
+      `Tenant database server is not configured: missing ${missing.join(', ')}. ` +
+        'Provisioning uses only these settings (there is no fallback to other credentials).'
+    );
+  }
+  const host = env.TENANT_DB_HOST || env.PLATFORM_DB_HOST || '127.0.0.1';
+  const port = parseInt(env.TENANT_DB_PORT || env.PLATFORM_DB_PORT || '3306');
+  return {
+    host,
+    port,
+    adminUser: env.TENANT_DB_ADMIN_USER,
+    adminPassword: env.TENANT_DB_ADMIN_PASS,
+    appUser: env.TENANT_DB_USER,
+    appPassword: env.TENANT_DB_PASS,
+  };
 };
 
 /**
@@ -56,54 +77,37 @@ const buildDbName = (tenantCode) => {
 };
 
 /**
- * Helper to safely connect to MySQL with fallback hosts (127.0.0.1 <-> localhost)
- * and fallback credentials (admin credentials <-> platform credentials).
+ * Connect to the tenant MySQL server as the configured admin user. Only the
+ * host spelling may be retried (127.0.0.1 <-> localhost, same server);
+ * credentials never change (R-25).
  */
 const createSafeAdminConnection = async (dbConfig) => {
   const hostsToTry = [dbConfig.host];
   if (dbConfig.host === 'localhost') hostsToTry.push('127.0.0.1');
   else if (dbConfig.host === '127.0.0.1') hostsToTry.push('localhost');
 
-  const credentialPairs = [
-    { user: dbConfig.adminUser, password: dbConfig.adminPassword },
-  ];
-
-  if (process.env.PLATFORM_DB_USER && (process.env.PLATFORM_DB_USER !== dbConfig.adminUser || process.env.PLATFORM_DB_PASS !== dbConfig.adminPassword)) {
-    credentialPairs.push({
-      user: process.env.PLATFORM_DB_USER,
-      password: process.env.PLATFORM_DB_PASS || '',
-    });
-  }
-
-  // Also try root with empty password as a fallback
-  if (dbConfig.adminUser !== 'root' || dbConfig.adminPassword !== '') {
-    credentialPairs.push({ user: 'root', password: '' });
-  }
-
   let lastError;
-  for (const cred of credentialPairs) {
-    for (const host of hostsToTry) {
-      try {
-        const conn = await mysql.createConnection({
-          host,
-          port: dbConfig.port,
-          user: cred.user,
-          password: cred.password,
-          connectTimeout: 10000,
-        });
-        // Success: update dbConfig with working parameters
-        dbConfig.host = host;
-        dbConfig.adminUser = cred.user;
-        dbConfig.adminPassword = cred.password;
-        console.log(`[Provisioning] Connected to MySQL as '${cred.user}' on ${host}:${dbConfig.port}`);
-        return conn;
-      } catch (err) {
-        lastError = err;
-      }
+  for (const host of hostsToTry) {
+    try {
+      const conn = await mysql.createConnection({
+        host,
+        port: dbConfig.port,
+        user: dbConfig.adminUser,
+        password: dbConfig.adminPassword,
+        connectTimeout: 10000,
+      });
+      dbConfig.host = host;
+      console.log(`[Provisioning] Connected to MySQL as '${dbConfig.adminUser}' on ${host}:${dbConfig.port}`);
+      return conn;
+    } catch (err) {
+      lastError = err;
     }
   }
 
-  throw new Error(`MySQL admin connection failed (${lastError?.message || 'Unknown error'})`);
+  throw new Error(
+    `MySQL admin connection failed for TENANT_DB_ADMIN_USER '${dbConfig.adminUser}' (${lastError?.code || lastError?.message || 'Unknown error'}). ` +
+      'Check TENANT_DB_ADMIN_USER / TENANT_DB_ADMIN_PASS; no other credentials are tried.'
+  );
 };
 
 // ── Main processor ────────────────────────────────────────────────────────────
@@ -181,12 +185,12 @@ const processTenantProvisioning = async (tenantId) => {
     await adminConn.end().catch(() => {});
   }
 
-  // ── Step 5: Build connection string and test connection with auto-fallback ─
-  let activeUser = dbConfig.appUser;
-  let activePassword = dbConfig.appPassword;
-  let connUrl = `mysql://${encodeURIComponent(activeUser)}:${encodeURIComponent(activePassword)}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
+  // ── Step 5: Build connection string and test it as the tenant app user ──
+  // Never switch to the admin credentials: they would be stored as this
+  // tenant's permanent connection string (R-25).
+  const connUrl = `mysql://${encodeURIComponent(dbConfig.appUser)}:${encodeURIComponent(dbConfig.appPassword)}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
 
-  let tenantSequelize = new Sequelize(connUrl, {
+  const tenantSequelize = new Sequelize(connUrl, {
     dialect: 'mysql',
     logging: false,
     pool: { max: 3, min: 0, acquire: 20000, idle: 10000 },
@@ -195,23 +199,13 @@ const processTenantProvisioning = async (tenantId) => {
 
   try {
     await tenantSequelize.authenticate();
-    console.log(`[Provisioning] Authenticated with appUser '${activeUser}'`);
+    console.log(`[Provisioning] Authenticated with appUser '${dbConfig.appUser}'`);
   } catch (authErr) {
-    console.warn(`[Provisioning] Connection with appUser '${activeUser}' failed (${authErr.message}). Switching to verified admin credentials...`);
     await tenantSequelize.close().catch(() => {});
-
-    activeUser = dbConfig.adminUser;
-    activePassword = dbConfig.adminPassword;
-    connUrl = `mysql://${encodeURIComponent(activeUser)}:${encodeURIComponent(activePassword)}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
-
-    tenantSequelize = new Sequelize(connUrl, {
-      dialect: 'mysql',
-      logging: false,
-      pool: { max: 3, min: 0, acquire: 20000, idle: 10000 },
-      dialectOptions: { connectTimeout: 15000 },
-    });
-    await tenantSequelize.authenticate();
-    console.log(`[Provisioning] Authenticated with fallback admin credentials '${activeUser}'`);
+    throw new Error(
+      `Tenant app user '${dbConfig.appUser}' cannot connect to '${dbName}' (${authErr.original?.code || authErr.name}). ` +
+        'Check TENANT_DB_USER / TENANT_DB_PASS; the admin credentials are never used as a fallback.'
+    );
   }
 
   const connectionStringEncrypted = encrypt(connUrl);
@@ -619,4 +613,4 @@ const processTenantProvisioning = async (tenantId) => {
   console.log(`[Provisioning] ✅ Tenant ${tenantId} fully provisioned and ACTIVE`);
 };
 
-module.exports = { processTenantProvisioning };
+module.exports = { processTenantProvisioning, getTenantDbConfig, createSafeAdminConnection, REQUIRED_TENANT_DB_SETTINGS };
