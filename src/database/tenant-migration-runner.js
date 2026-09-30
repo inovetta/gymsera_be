@@ -304,6 +304,81 @@ const MIGRATIONS = [
       await ensureCol('branches', 'billing_lock_reason', '`billing_lock_reason` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
     },
   },
+  {
+    version: 11,
+    name: '011_create_idempotency_records_table',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`idempotency_records\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`idempotency_key\` VARCHAR(128) NOT NULL,
+          \`user_id\` CHAR(36) NULL,
+          \`route\` VARCHAR(255) NOT NULL,
+          \`request_hash\` VARCHAR(64) NOT NULL,
+          \`status\` ENUM('IN_PROGRESS', 'RESOLVED', 'FAILED') NOT NULL DEFAULT 'IN_PROGRESS',
+          \`status_code\` INT NULL,
+          \`response_body\` MEDIUMTEXT NULL,
+          \`expires_at\` DATETIME NOT NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`idx_idempotency_records_key\` (\`idempotency_key\`),
+          KEY \`idx_idempotency_records_expires_at\` (\`expires_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+    },
+  },
+  {
+    version: 12,
+    name: '012_create_payouts_table',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [amountCol] = await sequelize.query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payouts' AND COLUMN_NAME = 'amount'",
+        { type: QueryTypes.SELECT }
+      );
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['payouts'], type: QueryTypes.SELECT }
+      );
+      if (tableExists && !amountCol) {
+        console.warn(
+          '[TenantMigration] SKIPPING 012: payouts table exists without amount column. Resolve it by hand, then re-run.'
+        );
+        return {
+          skipped: true,
+          reason: 'table_exists_with_other_schema',
+          table: 'payouts',
+        };
+      }
+
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`payouts\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`branch_id\` CHAR(36) NULL,
+          \`amount\` DECIMAL(10, 2) NOT NULL,
+          \`currency\` VARCHAR(3) NOT NULL DEFAULT 'PKR',
+          \`status\` ENUM('PENDING', 'APPROVED', 'PROCESSING', 'COMPLETED', 'REJECTED', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
+          \`destination_json\` JSON NULL,
+          \`notes\` TEXT NULL,
+          \`idempotency_key\` VARCHAR(120) NULL,
+          \`requested_by\` CHAR(36) NOT NULL,
+          \`approved_by\` CHAR(36) NULL,
+          \`paid_at\` DATETIME NULL,
+          \`transaction_ref\` VARCHAR(255) NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`idx_payouts_idempotency_key\` (\`idempotency_key\`),
+          KEY \`idx_payouts_branch_status\` (\`branch_id\`, \`status\`),
+          KEY \`idx_payouts_created_at\` (\`created_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

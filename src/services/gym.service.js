@@ -182,22 +182,68 @@ const updateProfile = async (tenantDb, tenantId, data) => {
   });
   await gym.save();
 
-  // If paymentDetailsJson is provided, update the platform Tenant model
+  // If paymentDetailsJson is provided, update the platform Tenant model (SEC-13)
   if (data.paymentDetailsJson !== undefined) {
+    const now = new Date();
     await Tenant.update(
-      { paymentDetailsJson: data.paymentDetailsJson },
+      {
+        paymentDetailsJson: data.paymentDetailsJson,
+        paymentDetailsUpdatedAt: now,
+      },
       { where: { id: tenantId } }
     );
+
+    // SEC-13: Notify owner by in-app notification, push, and email
+    try {
+      const tenantRecord = await Tenant.findByPk(tenantId, { attributes: ['ownerUserId', 'gymName'] });
+      if (tenantRecord && tenantRecord.ownerUserId) {
+        const { User: PlatformUser } = require('../models/platform');
+        const ownerUser = await PlatformUser.findByPk(tenantRecord.ownerUserId, { attributes: ['id', 'email', 'fullName'] });
+        if (ownerUser) {
+          const pushService = require('./push.service');
+          const notificationsService = require('./notifications.service');
+          const emailService = require('./email.service');
+
+          const alertTitle = 'Security Alert: Payout Account Changed';
+          const alertMsg = `Bank payout details for ${tenantRecord.gymName || 'your gym'} were updated. A 24-hour cooling period is in effect. If this wasn't you, contact support immediately.`;
+
+          await notificationsService.createNotification({
+            userId: ownerUser.id,
+            tenantId,
+            title: alertTitle,
+            body: alertMsg,
+            type: 'SECURITY_ALERT',
+            data: { event: 'payout_details_changed' },
+          }).catch((e) => console.warn('[SEC-13] Notification error:', e.message));
+
+          await pushService.sendToUser(ownerUser.id, alertTitle, alertMsg, {
+            type: 'SECURITY_ALERT',
+          }).catch((e) => console.warn('[SEC-13] Push error:', e.message));
+
+          if (ownerUser.email) {
+            await emailService.sendMail({
+              to: ownerUser.email,
+              subject: 'GymsEra Security Alert: Payout Bank Details Updated',
+              text: `Hi ${ownerUser.fullName || 'Gym Owner'},\n\n${alertMsg}\n\nGymsEra Security Team`,
+              html: `<p>Hi <strong>${ownerUser.fullName || 'Gym Owner'}</strong>,</p><p>${alertMsg}</p><p>GymsEra Security Team</p>`,
+            }).catch((e) => console.warn('[SEC-13] Email error:', e.message));
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.warn('[SEC-13] Failed to notify owner about bank details update:', notifErr.message);
+    }
   }
 
   // Keep the public gym_listings record in sync
   await _syncGymListing(tenantId, data);
 
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['paymentDetailsJson'] });
+  const tenant = await Tenant.findByPk(tenantId, { attributes: ['paymentDetailsJson', 'paymentDetailsUpdatedAt'] });
   return {
     gym: {
       ...gym.toJSON(),
       paymentDetailsJson: tenant ? tenant.paymentDetailsJson : null,
+      paymentDetailsUpdatedAt: tenant ? tenant.paymentDetailsUpdatedAt : null,
     }
   };
 };

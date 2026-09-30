@@ -43,6 +43,10 @@ const gymsValidators = {
       .optional({ nullable: true })
       .isObject()
       .withMessage('paymentDetailsJson must be a JSON object'),
+
+    body('password').optional().isString(),
+    body('provider').optional().isString(),
+    body('idToken').optional().isString(),
   ],
 
   createBranch: [

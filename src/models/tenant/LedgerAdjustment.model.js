@@ -10,7 +10,7 @@ const { DataTypes } = require('sequelize');
  * attributable, timestamped fact next to it.
  */
 module.exports = (sequelize) => {
-  return sequelize.define(
+  const LedgerAdjustment = sequelize.define(
     'LedgerAdjustment',
     {
       id: {
@@ -61,4 +61,22 @@ module.exports = (sequelize) => {
       ],
     }
   );
+
+  LedgerAdjustment.beforeUpdate(() => {
+    throw new Error('LedgerAdjustment is append-only and cannot be updated');
+  });
+
+  LedgerAdjustment.beforeBulkUpdate(() => {
+    throw new Error('LedgerAdjustment is append-only and cannot be updated');
+  });
+
+  LedgerAdjustment.beforeDestroy(() => {
+    throw new Error('LedgerAdjustment is append-only and cannot be deleted');
+  });
+
+  LedgerAdjustment.beforeBulkDestroy(() => {
+    throw new Error('LedgerAdjustment is append-only and cannot be deleted');
+  });
+
+  return LedgerAdjustment;
 };

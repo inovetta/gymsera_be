@@ -64,8 +64,41 @@ router.use(authenticate, tenantContext);
  *       201:
  *         description: Payment recorded; invoice auto-generated for membership payments
  */
+const idempotency = require('../middleware/idempotency');
+const { hasBranchAccess } = require('../utils/branchAccess.utils');
+
+const requirePaymentBranchAccess = async (req, _res, next) => {
+  try {
+    let branchId = req.body?.branchId || null;
+    if (!branchId && req.body?.paymentFor === 'MEMBERSHIP' && req.body?.referenceEntityId) {
+      const { MemberSubscription } = req.tenantDb?.models || {};
+      if (MemberSubscription) {
+        const subscription = await MemberSubscription.findByPk(req.body.referenceEntityId, {
+          attributes: ['id', 'branchId'],
+        });
+        branchId = subscription?.branchId || null;
+      }
+    }
+    if (!(await hasBranchAccess(req, branchId, 'payments.record'))) {
+      const err = new Error(
+        branchId
+          ? 'You do not have permission to record payments at this branch'
+          : 'A branch is required to record this payment'
+      );
+      err.statusCode = branchId ? 403 : 400;
+      return next(err);
+    }
+    req.resolvedBranchId = branchId;
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
 router.post(
   '/',
+  requirePaymentBranchAccess,
+  idempotency({ required: true }),
   // TEST payment key guard — only enforced when method === TEST
   (req, _res, next) => {
     if (req.body && req.body.method === 'TEST') {
@@ -252,6 +285,12 @@ router.post('/:id/printed', controller.markPrinted);
  *         description: Payments marked as collected
  */
 router.post('/collection-action', controller.collectionAction);
+
+router.post(
+  '/:id/refund',
+  idempotency({ required: true }),
+  controller.refundPayment
+);
 
 /**
  * @swagger

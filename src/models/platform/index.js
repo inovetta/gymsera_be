@@ -34,6 +34,7 @@ const CapacityEvent = require('./CapacityEvent.model')(sequelize);
 const BillingEvent = require('./BillingEvent.model')(sequelize);
 const TenantInvitation = require('./TenantInvitation.model')(sequelize);
 const PlatformAuditLog = require('./PlatformAuditLog.model')(sequelize);
+const IdempotencyRecord = require('./IdempotencyRecord.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -212,4 +213,5 @@ module.exports = {
   BillingEvent,
   TenantInvitation,
   PlatformAuditLog,
+  IdempotencyRecord,
 };

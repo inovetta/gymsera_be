@@ -415,6 +415,90 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 11,
+    name: 'p011_create_idempotency_records',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+
+      const [idemCol] = await sequelize.query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'idempotency_records' AND COLUMN_NAME = 'idempotency_key'",
+        { type: QueryTypes.SELECT }
+      );
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['idempotency_records'], type: QueryTypes.SELECT }
+      );
+      if (tableExists && !idemCol) {
+        console.warn(
+          '[PlatformMigration] SKIPPING p011: idempotency_records table exists without idempotency_key column. Resolve it by hand, then re-run.'
+        );
+        return {
+          skipped: true,
+          reason: 'table_exists_with_other_schema',
+          table: 'idempotency_records',
+        };
+      }
+
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`idempotency_records\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`idempotency_key\` VARCHAR(128) NOT NULL,
+          \`user_id\` CHAR(36) NULL,
+          \`route\` VARCHAR(255) NOT NULL,
+          \`request_hash\` VARCHAR(64) NOT NULL,
+          \`status\` ENUM('IN_PROGRESS', 'RESOLVED', 'FAILED') NOT NULL DEFAULT 'IN_PROGRESS',
+          \`status_code\` INT NULL,
+          \`response_body\` MEDIUMTEXT NULL,
+          \`expires_at\` DATETIME NOT NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`idx_idempotency_records_key\` (\`idempotency_key\`),
+          KEY \`idx_idempotency_records_expires_at\` (\`expires_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      return null;
+    },
+  },
+  {
+    version: 12,
+    name: 'p012_add_payment_details_updated_at',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['tenants'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
+      const [col] = await sequelize.query(
+        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'payment_details_updated_at'",
+        { type: QueryTypes.SELECT }
+      );
+      if (col) {
+        if (col.DATA_TYPE !== 'datetime' && col.DATA_TYPE !== 'timestamp') {
+          console.warn(
+            '[PlatformMigration] SKIPPING p012: payment_details_updated_at exists with non-datetime type. Resolve by hand, then re-run.'
+          );
+          return {
+            skipped: true,
+            reason: 'column_exists_with_other_type',
+            table: 'tenants',
+          };
+        }
+        return null;
+      }
+
+      await sequelize.query(`
+        ALTER TABLE \`tenants\`
+        ADD COLUMN \`payment_details_updated_at\` DATETIME NULL
+        AFTER \`payment_details_json\`;
+      `);
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

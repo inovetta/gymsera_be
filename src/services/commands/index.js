@@ -80,3 +80,5 @@ require('./announcement.commands');
 require('./schedule.commands');
 require('./plan.commands');
 require('./ledger.commands');
+require('./payment.commands');
+require('./payout.commands');

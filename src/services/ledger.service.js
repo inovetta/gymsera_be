@@ -18,6 +18,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { createError } = require('../utils/response.utils');
 const { PaymentStatus } = require('../constants/payment-status');
+const { toMinorUnits, fromMinorUnits, toMajorUnitsNumber, sumMinor } = require('../utils/money.utils');
 const auditService = require('./audit.service');
 
 // Statuses that represent money genuinely in play for the day — everything a
@@ -155,38 +156,36 @@ const _paymentTotals = async (tenantDb, branchId, fromDate, toDate) => {
     order: [['createdAt', 'DESC']],
   });
 
-  const expectedTotal = rows.reduce((s, p) => s + parseFloat(p.amount), 0);
-  const collectedTotal = rows
-    .filter((p) => COLLECTED_STATUSES.includes(p.status))
-    .reduce((s, p) => s + parseFloat(p.amount), 0);
-  const verifiedTotal = rows
-    .filter((p) => p.status === PaymentStatus.COMPLETED)
-    .reduce((s, p) => s + parseFloat(p.amount), 0);
-  const pendingTotal = expectedTotal - collectedTotal;
+  const expectedMinor = sumMinor(rows.map((p) => p.amount));
+  const collectedMinor = sumMinor(rows.filter((p) => COLLECTED_STATUSES.includes(p.status)).map((p) => p.amount));
+  const verifiedMinor = sumMinor(rows.filter((p) => p.status === PaymentStatus.COMPLETED).map((p) => p.amount));
+  const pendingMinor = expectedMinor - collectedMinor;
+  const varianceMinor = collectedMinor - verifiedMinor;
 
-  const byMethod = {};
+  const byMethodMinor = {};
   for (const p of rows) {
-    byMethod[p.method] = (byMethod[p.method] || 0) + parseFloat(p.amount);
+    const amtMinor = toMinorUnits(p.amount);
+    byMethodMinor[p.method] = (byMethodMinor[p.method] || 0) + amtMinor;
   }
 
-  const byCollector = {};
+  const byCollectorMinor = {};
   for (const p of rows) {
     if (!COLLECTED_STATUSES.includes(p.status)) continue;
     const collectorId = p.staffCollectedBy || p.createdBy || 'unknown';
-    if (!byCollector[collectorId]) byCollector[collectorId] = { collectorId, total: 0, count: 0 };
-    byCollector[collectorId].total += parseFloat(p.amount);
-    byCollector[collectorId].count += 1;
+    if (!byCollectorMinor[collectorId]) byCollectorMinor[collectorId] = { collectorId, totalMinor: 0, count: 0 };
+    byCollectorMinor[collectorId].totalMinor += toMinorUnits(p.amount);
+    byCollectorMinor[collectorId].count += 1;
   }
 
   // Names for the collector-wise breakdown — platform users, cross-DB, so a
   // second cheap lookup rather than a join.
-  const collectorIds = Object.keys(byCollector).filter((id) => id !== 'unknown');
+  const collectorIds = Object.keys(byCollectorMinor).filter((id) => id !== 'unknown');
   if (collectorIds.length > 0) {
     try {
       const { User } = require('../models/platform');
       const users = await User.findAll({ where: { id: collectorIds }, attributes: ['id', 'fullName'] });
       for (const u of users) {
-        if (byCollector[u.id]) byCollector[u.id].collectorName = u.fullName;
+        if (byCollectorMinor[u.id]) byCollectorMinor[u.id].collectorName = u.fullName;
       }
     } catch (_) { /* names are a display nicety, never worth failing the ledger over */ }
   }
@@ -194,18 +193,23 @@ const _paymentTotals = async (tenantDb, branchId, fromDate, toDate) => {
   return {
     payments: rows,
     totals: {
-      expected: round2(expectedTotal),
-      collected: round2(collectedTotal),
-      verified: round2(verifiedTotal),
-      pending: round2(pendingTotal),
-      variance: round2(collectedTotal - verifiedTotal),
+      expected: toMajorUnitsNumber(expectedMinor),
+      collected: toMajorUnitsNumber(collectedMinor),
+      verified: toMajorUnitsNumber(verifiedMinor),
+      pending: toMajorUnitsNumber(pendingMinor),
+      variance: toMajorUnitsNumber(varianceMinor),
     },
-    byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, round2(v)])),
-    byCollector: Object.values(byCollector).map((c) => ({ ...c, total: round2(c.total) })),
+    byMethod: Object.fromEntries(Object.entries(byMethodMinor).map(([k, v]) => [k, toMajorUnitsNumber(v)])),
+    byCollector: Object.values(byCollectorMinor).map((c) => ({
+      collectorId: c.collectorId,
+      ...(c.collectorName ? { collectorName: c.collectorName } : {}),
+      total: toMajorUnitsNumber(c.totalMinor),
+      count: c.count,
+    })),
   };
 };
 
-const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const round2 = (n) => toMajorUnitsNumber(toMinorUnits(n));
 
 /**
  * Today's Ledger for a branch: the day's collections, its OPEN/CLOSED state, and
@@ -334,6 +338,14 @@ const addAdjustment = async (ctx, { ledgerDayId, type, relatedPaymentId, amount,
 
   const ledgerDay = await LedgerDay.findByPk(ledgerDayId);
   if (!ledgerDay) throw createError('Ledger day not found', 404);
+  if (ledgerDay.status === 'CLOSED') {
+    const err = createError(
+      `Ledger day ${ledgerDay.businessDate} is closed. Late adjustments must be posted against an open business day referencing the closed day.`,
+      409
+    );
+    err.code = 'ledger_day_closed';
+    throw err;
+  }
   // The permission check upstream resolved grants against ctx.branchId (a
   // client-supplied value) — cross-check it actually matches this day's real
   // branch, the same "never trust the client's branch claim" rule payments and
@@ -368,6 +380,7 @@ const addAdjustment = async (ctx, { ledgerDayId, type, relatedPaymentId, amount,
  * for approval_requests — two people racing to close the same day, only one
  * wins, the other gets a clean 409 instead of a double-closed or corrupted row.
  *
+ * Idempotent: closing an already closed day returns the existing closed day.
  * Immutable afterward: nothing in this codebase updates a CLOSED LedgerDay.
  */
 const closeDay = async (ctx, { ledgerDayId }) => {
@@ -375,7 +388,9 @@ const closeDay = async (ctx, { ledgerDayId }) => {
   const ledgerDay = await LedgerDay.findByPk(ledgerDayId);
   if (!ledgerDay) throw createError('Ledger day not found', 404);
   if (ledgerDay.status === 'CLOSED') {
-    throw createError('This day is already closed', 409);
+    const err = createError('This day is already closed', 409);
+    err.code = 'ledger_day_closed';
+    throw err;
   }
 
   const { totals } = await _paymentTotals(ctx.tenantDb, ledgerDay.branchId, ledgerDay.businessDate, ledgerDay.businessDate);
@@ -391,7 +406,9 @@ const closeDay = async (ctx, { ledgerDayId }) => {
     { where: { id: ledgerDayId, status: 'OPEN' } }
   );
   if (affected === 0) {
-    throw createError('This day was just closed by someone else', 409);
+    const err = createError('This day was just closed by someone else', 409);
+    err.code = 'ledger_day_closed';
+    throw err;
   }
 
   await ledgerDay.reload();

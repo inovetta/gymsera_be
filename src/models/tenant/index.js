@@ -40,7 +40,17 @@ const registerTenantModels = (sequelize) => {
   // ── Capacity Outbox (see spec §6.2, CAP-02) ──────────────────────────────────
   const CapacityOutbox = require('./CapacityOutbox.model')(sequelize);
 
+  // ── Idempotency (see spec §11.2, REL-01) ─────────────────────────────────────
+  const IdempotencyRecord = require('./IdempotencyRecord.model')(sequelize);
+
+  // ── Payouts (see spec §6.3, PAY-10) ──────────────────────────────────────────
+  const Payout = require('./Payout.model')(sequelize);
+
   // ── Associations ─────────────────────────────────────────────────────────────
+
+  // Branch ↔ Payout
+  Branch.hasMany(Payout, { foreignKey: 'branchId', as: 'payouts' });
+  Payout.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
 
   // Gym ↔ Branch
   Gym.hasMany(Branch, { foreignKey: 'gymId', as: 'branches', onDelete: 'CASCADE' });
@@ -156,6 +166,8 @@ const registerTenantModels = (sequelize) => {
     LedgerAdjustment,
     CapacityOutbox,
     Outbox: CapacityOutbox,
+    IdempotencyRecord,
+    Payout,
   };
 };
 

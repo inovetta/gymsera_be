@@ -235,6 +235,22 @@ module.exports = (sequelize) => {
       return;
     }
 
+    // Financial immutability: once a payment is completed, its amount, currency, and branch cannot be modified
+    if (prevStatus === PaymentStatus.COMPLETED) {
+      if (instance.changed('amount')) {
+        throw new Error('Completed payments cannot have their amount modified. Use a refund or ledger adjustment.');
+      }
+      if (instance.changed('currency')) {
+        throw new Error('Completed payments cannot have their currency modified.');
+      }
+      if (instance.changed('branchId') || instance.changed('branch_id')) {
+        throw new Error('Completed payments cannot have their branch modified.');
+      }
+      if (instance.changed('paidAt') || instance.changed('paid_at')) {
+        throw new Error('Completed payments cannot have their paidAt date modified.');
+      }
+    }
+
     // 2. NEVER change an existing business_date: if an update tries to change it, throw an error
     if (previousBDate) {
       if (instance.changed('businessDate') && currentBDate !== previousBDate) {
@@ -243,7 +259,7 @@ module.exports = (sequelize) => {
       return;
     }
 
-    // 2. If an old row has NULL business_date:
+    // 3. If an old row has NULL business_date:
     // If update explicitly provided a businessDate, allow it to be set once
     if (currentBDate) {
       return;
@@ -265,6 +281,14 @@ module.exports = (sequelize) => {
     if (options.attributes && ('businessDate' in options.attributes || 'business_date' in options.attributes)) {
       throw new Error('business_date cannot be changed via bulk update');
     }
+  });
+
+  Payment.beforeDestroy(() => {
+    throw new Error('Payment records are append-only financial records and cannot be deleted');
+  });
+
+  Payment.beforeBulkDestroy(() => {
+    throw new Error('Payment records are append-only financial records and cannot be deleted');
   });
 
   return Payment;
