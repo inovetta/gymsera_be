@@ -31,7 +31,7 @@ Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1e-member-money` | b9585f2 feat(scripts): add read-only member money audit check script (Rule 7) | no |
+| gymsera_be | `phase-1/prompt-1e-member-money` | c8ee3e6 fix(migrations): check tenants table existence before applying p012 | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
