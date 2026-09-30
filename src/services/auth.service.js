@@ -462,9 +462,17 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
  * The actual Google idToken verification — shared by googleLogin (a brand
  * new or returning session) and verifyReauthCredential below (re-confirming
  * an already-signed-in account for a sensitive action, e.g. deleting a
- * branch). Same claims, same network-timeout-tolerant fallback either way;
- * the two callers differ only in what they do with the resulting payload.
+ * branch).
+ *
+ * Only a token whose signature verifies against Google's certificates, for
+ * one of our client IDs, from Google's issuer, not expired, with a verified
+ * e-mail, is accepted. Any failure — including Google's certificates being
+ * unreachable or slow — is a 401. There is no unverified fallback (NEW-03):
+ * it used to `jwt.decode` the token when the verifier's error mentioned
+ * "network"/"certificates"/…, text an attacker could put in the token header.
  */
+const GOOGLE_VERIFY_TIMEOUT_MS = 4000;
+
 const _verifyGoogleIdToken = async (idToken) => {
   const audiences = [
     process.env.GOOGLE_CLIENT_ID,
@@ -478,54 +486,26 @@ const _verifyGoogleIdToken = async (idToken) => {
   }
 
   let payload;
+  let timer;
   try {
-    // Attempt verification with a 4-second timeout to avoid hanging if server outbound firewall drops Google cert requests
-    const verifyPromise = googleClient.verifyIdToken({
-      idToken,
-      audience: audiences,
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Google certificate fetch timed out')), GOOGLE_VERIFY_TIMEOUT_MS);
     });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Google certificate fetch timed out')), 4000)
-    );
-
-    const ticket = await Promise.race([verifyPromise, timeoutPromise]);
+    const ticket = await Promise.race([googleClient.verifyIdToken({ idToken, audience: audiences }), timeout]);
     payload = ticket.getPayload();
   } catch (err) {
-    console.warn('[Google Auth] verifyIdToken check failed or timed out:', err.message);
-
-    // Fallback: If network/cert retrieval fails or times out, decode and validate claims locally
-    const decoded = jwt.decode(idToken);
-    const isNetworkOrCertError =
-      err.message.includes('timed out') ||
-      err.message.includes('certificates') ||
-      err.message.includes('ECONNREFUSED') ||
-      err.message.includes('ETIMEDOUT') ||
-      err.message.includes('ENOTFOUND') ||
-      err.message.includes('network');
-
-    if (isNetworkOrCertError && decoded && typeof decoded === 'object') {
-      const isIssValid = decoded.iss === 'https://accounts.google.com' || decoded.iss === 'accounts.google.com';
-      const isAudValid = audiences.includes(decoded.aud) || audiences.includes(decoded.azp);
-      const isNotExpired = decoded.exp && decoded.exp * 1000 > Date.now();
-
-      if (isIssValid && isAudValid && isNotExpired && decoded.sub && decoded.email) {
-        console.log('[Google Auth] Fallback payload accepted for:', decoded.email);
-        payload = decoded;
-      } else {
-        console.warn('[Google Auth] Fallback validation rejected. Claims:', {
-          iss: decoded?.iss,
-          aud: decoded?.aud,
-          azp: decoded?.azp,
-          exp: decoded?.exp,
-        });
-        throw createError('Invalid Google ID token claims', 401);
-      }
-    } else {
-      throw createError('Invalid Google ID token', 401);
-    }
+    // The library's messages can echo the token; the redaction layer (SEC-07)
+    // strips JWTs, and only the first line is logged.
+    console.warn('[Google Auth] ID token rejected:', String(err.message || err).split('\n')[0].slice(0, 200));
+    throw createError('Invalid Google ID token', 401);
+  } finally {
+    clearTimeout(timer);
   }
 
-  if (!payload.email_verified && payload.email_verified !== 'true') {
+  if (!payload || !payload.sub) {
+    throw createError('Invalid Google ID token', 401);
+  }
+  if (payload.email_verified !== true && payload.email_verified !== 'true') {
     throw createError('Google account email is not verified', 401);
   }
 
