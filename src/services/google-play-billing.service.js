@@ -11,8 +11,9 @@
  *     no certificate chain to verify because the call itself is already
  *     server-to-server and authenticated.
  *   - Real-time Developer Notifications (RTDN) arrive via Google Cloud
- *     Pub/Sub push, with no embedded signature — authenticated instead by a
- *     secret token on the push endpoint's own URL (see billing.routes.js).
+ *     Pub/Sub push. Each push carries a Google-signed OIDC token in the
+ *     Authorization header; verifyRtdnPush below checks its signature,
+ *     audience and service account (SEC-03, decision R-26).
  *   - A purchase must be acknowledged within 3 days or Google auto-refunds
  *     it. The server acknowledges every verified purchase itself inside
  *     syncFromGoogle (BILL-06), for the app's /sync and for RTDNs alike, and
@@ -25,7 +26,7 @@
  * are stubbed (see platform.js's placeholder-ID backfill).
  */
 const { URLSearchParams } = require('url');
-const { JWT } = require('google-auth-library');
+const { JWT, OAuth2Client } = require('google-auth-library');
 const { BillingPlan } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionMigrationService = require('./subscription-migration.service');
@@ -248,6 +249,46 @@ const listVoidedPurchases = async (startTimeMillis) => {
 
 const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoidedPurchases };
 
+// ── RTDN push authentication (SEC-03, decision R-26) ─────────────────────────
+
+const GOOGLE_OIDC_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
+const _oidcClient = new OAuth2Client();
+
+/** Google's OIDC signing certificates ({ kid: PEM }); google-auth-library caches them. Tests replace this. */
+const rtdnAuth = {
+  getSigningCerts: async () => (await _oidcClient.getFederatedSignonCertsAsync()).certs,
+};
+
+/**
+ * Verifies the OIDC token Pub/Sub push puts in the Authorization header:
+ * signed by Google, not expired, issued for GOOGLE_PLAY_RTDN_AUDIENCE, and
+ * belonging to GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT with a verified email.
+ * Returns the token payload; throws 401 otherwise. The library's own error
+ * messages contain the token, so they are never passed on or logged.
+ */
+const verifyRtdnPush = async (authorizationHeader) => {
+  const audience = process.env.GOOGLE_PLAY_RTDN_AUDIENCE;
+  const serviceAccount = process.env.GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT;
+  if (!audience || !serviceAccount) {
+    throw createError('RTDN push authentication is not configured on the server', 401);
+  }
+  const match = /^Bearer\s+(\S+)$/i.exec(authorizationHeader || '');
+  if (!match) throw createError('Missing push token', 401);
+
+  let payload;
+  try {
+    const certs = await rtdnAuth.getSigningCerts();
+    const ticket = await _oidcClient.verifySignedJwtWithCertsAsync(match[1], certs, audience, GOOGLE_OIDC_ISSUERS);
+    payload = ticket.getPayload();
+  } catch (_) {
+    throw createError('Invalid push token', 401);
+  }
+  if (!payload || payload.email !== serviceAccount || payload.email_verified !== true) {
+    throw createError('Invalid push token', 401);
+  }
+  return payload;
+};
+
 /**
  * The one entry point both POST /billing/android/sync and the RTDN processor
  * (billing-event.service.js) use: re-fetch the purchase from the Play
@@ -347,6 +388,8 @@ const _acknowledgeVerifiedPurchase = async (purchase, purchaseToken, { throwOnAc
 
 module.exports = {
   playApi,
+  rtdnAuth,
+  verifyRtdnPush,
   getSubscriptionPurchase,
   findPlanForProductId,
   syncSubscriptionFromPurchase,

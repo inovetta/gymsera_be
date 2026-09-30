@@ -34,7 +34,6 @@ describe('BILL-03: deferred downgrade with a branch choice', () => {
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
-    process.env.GOOGLE_PLAY_RTDN_TOKEN = 'test-rtdn-token';
   });
 
   afterAll(async () => {

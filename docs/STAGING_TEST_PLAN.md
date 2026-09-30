@@ -26,7 +26,8 @@ instead of patching it.
       → base plan → eligibility) — without this, every Android→Android scenario below will fail at the Play
       Billing sheet itself, not in GymsEra's code; real product/base-plan IDs written into `billing_plans` via
       the CMS Billing Plans page (replacing the `PLACEHOLDER_*` values `platform.js` seeded); Pub/Sub topic +
-      push subscription at `POST /billing/webhooks/google?token=<GOOGLE_PLAY_RTDN_TOKEN>`; a License Tester
+      push subscription at `POST /billing/webhooks/google` **with authentication enabled** (service account
+      = `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT`, audience = `GOOGLE_PLAY_RTDN_AUDIENCE`, SEC-03 / R-26); a License Tester
       account added; app uploaded to at least Internal Testing (a local debug build cannot complete a Play
       Billing purchase at all).
 - [ ] **Stripe**: test-mode account; 10 Products/Prices created via the CMS Billing Plans page's "Sync Stripe
@@ -78,7 +79,11 @@ curl -X POST https://<staging-host>/api/v1/billing/webhooks/stripe \
   -H "Content-Type: application/json" -H "Stripe-Signature: <captured>" \
   --data-binary @captured-event.json
 
-curl -X POST "https://<staging-host>/api/v1/billing/webhooks/google?token=<GOOGLE_PLAY_RTDN_TOKEN>" \
+# RTDN needs a Google-signed OIDC token for the push service account (SEC-03), e.g.:
+#   gcloud auth print-identity-token --impersonate-service-account=<GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT> \
+#     --audiences=<GOOGLE_PLAY_RTDN_AUDIENCE> --include-email
+curl -X POST "https://<staging-host>/api/v1/billing/webhooks/google" \
+  -H "Authorization: Bearer <identity-token>" \
   -H "Content-Type: application/json" --data-binary @captured-rtdn.json
 ```
 

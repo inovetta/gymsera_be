@@ -28,7 +28,6 @@ describe('BILL-06: server-side Android acknowledgement', () => {
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
-    process.env.GOOGLE_PLAY_RTDN_TOKEN = 'test-rtdn-token';
   });
 
   afterAll(async () => {
@@ -76,7 +75,7 @@ describe('BILL-06: server-side Android acknowledgement', () => {
     expect(ack).not.toHaveBeenCalled();
 
     truth['tok-b'] = unacked({ latestOrderId: 'GPA.0000-0000-0000-00002' });
-    await request(app).post('/api/v1/billing/webhooks/google?token=test-rtdn-token').send(fakes.rtdnBody({
+    await request(app).post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader()).send(fakes.rtdnBody({
       messageId: 'pubsub-purchased',
       notification: { subscriptionNotification: { notificationType: 4, purchaseToken: 'tok-b', subscriptionId: plan3.androidProductId } },
     }));

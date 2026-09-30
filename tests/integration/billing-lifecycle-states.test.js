@@ -38,7 +38,6 @@ describe('BILL-04: grace, hold and pause states', () => {
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
-    process.env.GOOGLE_PLAY_RTDN_TOKEN = 'test-rtdn-token';
   });
 
   afterAll(async () => {
@@ -80,7 +79,7 @@ describe('BILL-04: grace, hold and pause states', () => {
     let truth;
     const rtdn = (messageId, purchaseToken, notificationType) =>
       request(app)
-        .post('/api/v1/billing/webhooks/google?token=test-rtdn-token')
+        .post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader())
         .send(fakes.rtdnBody({
           messageId,
           notification: { subscriptionNotification: { notificationType, purchaseToken, subscriptionId: plan5.androidProductId } },

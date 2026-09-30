@@ -314,6 +314,67 @@ Finish like this:
 - Stop after this report.
 ```
 
+#### Prompt 1G — Resumable tenant provisioning (split out of 1F, decision R-24)
+
+```text
+Start: follow AGENTS.md. Read docs/AGENT_HANDOFF.md first; if this prompt is already IN PROGRESS there,
+continue from its "Next action" instead of starting over. Checkpoint the handoff file as AGENTS.md says.
+
+Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §0.1, §14 and issue FLOW-02. The Prompt 1F verification
+(AGENT_HANDOFF.md, 2026-09-30) found it still open; verify again against the current code before you start.
+Make provisioning resumable and idempotent without adding a background-job system. Adding
+Tenant.provisioningState is a platform migration on the Tenant model: apply it for real before the tenant
+migration runner can be dry-run (tenant discovery reads the Tenant model; see p012 in Prompt 1E).
+The admin "Provisioning… (step n/6) / Resume" state belongs in gymsera_cms too.
+
+Finish like this:
+- Run the full test suites of every repo you changed and paste the pass/fail summary.
+- Update §13: one row, with status, root cause file:line, pattern reused, test files, commit hash.
+- Update docs/AGENT_HANDOFF.md: prompt status DONE, next action = the next prompt, close your session-log row.
+- Give me a short report: what you changed, what you could not verify, and any risk you noticed.
+- Stop after this report.
+```
+
+#### Prompt 1H — KYC data protection (split out of 1F, decision R-24)
+
+```text
+Start: follow AGENTS.md. Read docs/AGENT_HANDOFF.md first; if this prompt is already IN PROGRESS there,
+continue from its "Next action" instead of starting over. Checkpoint the handoff file as AGENTS.md says.
+
+Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §0.1, §14 and issue SEC-10. The Prompt 1F verification
+(AGENT_HANDOFF.md, 2026-09-30) found it still open; verify again against the current code before you start.
+Retention is decided in R-16 (KYC files deleted 90 days after rejection or tenant deletion). A private
+bucket or new storage credentials are a NEW owner decision: ask, then record it in §14. Clients that upload
+KYC (web wizard, mobile) and the CMS admin view are in scope.
+
+Finish like this:
+- Run the full test suites of every repo you changed and paste the pass/fail summary.
+- Update §13: one row, with status, root cause file:line, pattern reused, test files, commit hash.
+- Update docs/AGENT_HANDOFF.md: prompt status DONE, next action = the next prompt, close your session-log row.
+- Give me a short report: what you changed, what you could not verify, and any risk you noticed.
+- Stop after this report.
+```
+
+#### Prompt 1I — Self-service account and tenant deletion (split out of 1F, decision R-24)
+
+```text
+Start: follow AGENTS.md. Read docs/AGENT_HANDOFF.md first; if this prompt is already IN PROGRESS there,
+continue from its "Next action" instead of starting over. Checkpoint the handoff file as AGENTS.md says.
+
+Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §0.1, §14 and issue AUTH-07. The Prompt 1F verification
+(AGENT_HANDOFF.md, 2026-09-30) found it still open; verify again against the current code before you start.
+Retention is decided in R-16 (30-day undo, financial records 6 years anonymized). Ask before any step that
+drops a database automatically, and before adding Apple Sign-In revoke credentials. Mobile is the reference
+for the flow; the web privacy page must match what the backend really does.
+
+Finish like this:
+- Run the full test suites of every repo you changed and paste the pass/fail summary.
+- Update §13: one row, with status, root cause file:line, pattern reused, test files, commit hash.
+- Update docs/AGENT_HANDOFF.md: prompt status DONE, next action = the next prompt, close your session-log row.
+- Give me a short report: what you changed, what you could not verify, and any risk you noticed.
+- Stop after this report.
+```
+
 **You:** before Phase 2, test on a staging build:
 - A real sandbox purchase, upgrade and downgrade on iOS and Android.
 - Deleting and restoring a branch.

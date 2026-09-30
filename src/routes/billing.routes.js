@@ -2,6 +2,7 @@ const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const controller = require('../controllers/billing.controller');
+const googlePlayBilling = require('../services/google-play-billing.service');
 
 const router = Router();
 
@@ -147,32 +148,23 @@ router.post('/android/sync', authenticate, controller.syncAndroidPurchase);
  *   post:
  *     summary: Real-time Developer Notifications (RTDN) receiver
  *     description: >
- *       No bearer auth — Google Cloud Pub/Sub push isn't carrying one.
- *       Authenticated instead by a secret ?token= query param, checked
- *       before this reaches the handler (see the middleware below).
+ *       No user bearer auth. Google Cloud Pub/Sub push sends a Google-signed
+ *       OIDC token in the Authorization header; it is verified (signature,
+ *       audience, service account) before this reaches the handler (SEC-03).
  *     tags: [Billing]
  *     responses:
  *       200: { description: Notification applied }
  *       401: { description: Missing/invalid push token }
  */
-const verifyRtdnToken = (req, res, next) => {
-  const crypto = require('crypto');
-  const expected = process.env.GOOGLE_PLAY_RTDN_TOKEN;
-  const provided = typeof req.query.token === 'string' ? req.query.token : '';
-  // Constant-time comparison — a plain !== leaks timing information about
-  // how many leading characters matched, same class of concern signature
-  // checks elsewhere in this codebase (Apple's JWS, Stripe's HMAC) are
-  // already immune to by construction.
-  const expectedBuf = Buffer.from(expected || '');
-  const providedBuf = Buffer.from(provided);
-  const matches =
-    !!expected && expectedBuf.length === providedBuf.length && crypto.timingSafeEqual(expectedBuf, providedBuf);
-  if (!matches) {
-    return res.status(401).json({ received: false, message: 'Invalid push token' });
+const verifyRtdnPush = async (req, res, next) => {
+  try {
+    await googlePlayBilling.verifyRtdnPush(req.headers.authorization);
+    next();
+  } catch (err) {
+    res.status(401).json({ received: false, message: err.message });
   }
-  next();
 };
-router.post('/webhooks/google', verifyRtdnToken, controller.googleRtdnWebhook);
+router.post('/webhooks/google', verifyRtdnPush, controller.googleRtdnWebhook);
 
 /**
  * @swagger

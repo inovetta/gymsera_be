@@ -1,5 +1,10 @@
 require('dotenv').config();
 
+// SEC-07: redact secrets and personal data from every log line, before any
+// other module can log.
+const logRedaction = require('./src/utils/log-redaction');
+logRedaction.installConsoleRedaction();
+
 const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
@@ -118,6 +123,7 @@ app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody 
 app.use(express.urlencoded({ extended: true }));
 
 // ── Request logging ───────────────────────────────────────────────────────────
+logRedaction.installMorganRedaction(morgan);
 if (appConfig.nodeEnv !== 'test') {
   app.use(morgan(appConfig.nodeEnv === 'development' ? 'dev' : 'combined'));
 }
