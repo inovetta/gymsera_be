@@ -18,15 +18,25 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-09-30 |
-| Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 1E — Member money: idempotency, ledger, refunds, payouts** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Updated by | Claude Code (Opus 5.5) |
+| Current prompt | **Prompt 1F — Remaining P0 security and provisioning** (the playbook heading; an older "Next action" called it "Onboarding, KYC…", which was wrong) |
+| Prompt status | `BLOCKED ON OWNER` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none: verification finished, no code changed yet) |
+| Step within issue | verify (done for all 8) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
+Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be` (off origin/main f83de34, after the 1E and precheck-script merges). No commits on it yet.
+
+**1F verification (2026-09-30, all 8 still open):**
+- SEC-03 PARTIAL: Apple JWS and Stripe `constructEvent` are fine; Google RTDN still uses a static `?token=` (`src/routes/billing.routes.js:147-164`), not the Pub/Sub OIDC token.
+- SEC-07 CONFIRMED: no redaction layer. Emails logged in clear (`auth.service.js:557,590,617,633,700,723,750,759,856,885`; `email.service.js:36,42,45`; `me.service.js:455`; `subscription-expiry.cron.js:161,163,216`); `auditLog.js:34` prints raw entries; `morgan('combined')` (`app.js:122`) logs full URLs.
+- SEC-09 CONFIRMED (no PCI exposure today): raw card/CVV fields in `gyms_era/lib/features/subscriptions/presentation/screens/add_card_screen.dart`; fake "Visa 4242" card in `me_providers.dart:149-171`, shown in `profile_screen.dart:297-349` and linked from `payment_screen.dart:302`.
+- SEC-10 CONFIRMED: KYC URLs saved as sent by the client (`tenant.service.js:94`); one public R2 bucket (`storage.service.js`); no private storage, signed URLs, access log, watermark or retention.
+- RT-04 CONFIRMED: `join_conversation` joins any id (`src/socket/index.js:100-104`); a host token without tenantId replies to any conversation (`:128-133`); `mark_read` with no tenant has no filter (`inbox.service.js:129-130`); token accepted in the query string (`:58`). Mobile uses `setAuth` (`chat_socket_service.dart:102`), so the query token can be dropped.
+- FLOW-02 CONFIRMED (partly improved by 1A/1B: `planForApproval` runs first and throws; ACTIVE is set after migrations): no provisioningState, APPROVED re-approvable with no lock (`admin.service.js:372`), no Idempotency-Key, no resume/sweep; legacy subscription step swallows errors (`tenant-provisioning.service.js:541-543`). **Hard-coded credential fallback** to platform creds and `root`/empty password (`tenant-provisioning.service.js:34-44, 67-81`), reported to the owner.
+- AUTH-07 CONFIRMED: `me.service.js:449-456` only sets INACTIVE (and logs the email). Retention is already decided (R-16).
+- UX-12: plan only.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
@@ -37,7 +47,7 @@ Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Proceed to **Prompt 1F — Onboarding, KYC, and applicant lifecycle** in `docs/GYMSERA_AGENT_PLAYBOOK.md`.
+> Waiting on the owner. The prompt is bigger than described: SEC-10, FLOW-02 and AUTH-07 each need multi-repo work plus new decisions (root-credential fallback removal, RTDN OIDC cutover, a private KYC bucket, automatic tenant-DB drop after 30 days, an Apple Sign-In revoke key). Asked the owner how to split it. Once they answer, record the answer in §14 and start with the issues they approve.
 
 ### Work in progress that is NOT committed
 
@@ -198,3 +208,4 @@ Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
 | 23 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-28 (Option B) | NEW-28 (removed Bull/Redis queue dependency for member notifications PAYMENT_FAILED, SUBSCRIPTION_RENEWED, SUBSCRIPTION_EXPIRING_SOON; direct in-app/push/email dispatch; deleted queues.js & notifications.processor.js) | task complete | yes |
 | 24 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1D (Access control) | RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, RBAC-03 (permissions doc & test matrix) | task complete | yes |
 | 25 | 2026-09-30 | Gemini (Gemini 3.8 Flash) | Prompt 1E (Member money) | REL-01, PAY-01, PAY-02, PAY-03, PAY-04, PAY-07, PAY-10, SEC-13 | task complete | yes |
+| 26 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1F | — (verified all 8 issues; blocked on scope/decisions) | blocked | yes |
