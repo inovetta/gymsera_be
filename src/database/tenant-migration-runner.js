@@ -304,6 +304,31 @@ const MIGRATIONS = [
       await ensureCol('branches', 'billing_lock_reason', '`billing_lock_reason` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL');
     },
   },
+  {
+    version: 11,
+    name: '011_create_idempotency_records_table',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`idempotency_records\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`idempotency_key\` VARCHAR(128) NOT NULL,
+          \`user_id\` CHAR(36) NULL,
+          \`route\` VARCHAR(255) NOT NULL,
+          \`request_hash\` VARCHAR(64) NOT NULL,
+          \`status\` ENUM('IN_PROGRESS', 'RESOLVED', 'FAILED') NOT NULL DEFAULT 'IN_PROGRESS',
+          \`status_code\` INT NULL,
+          \`response_body\` MEDIUMTEXT NULL,
+          \`expires_at\` DATETIME NOT NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`idx_idempotency_records_key\` (\`idempotency_key\`),
+          KEY \`idx_idempotency_records_expires_at\` (\`expires_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

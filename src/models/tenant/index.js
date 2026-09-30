@@ -40,6 +40,9 @@ const registerTenantModels = (sequelize) => {
   // ── Capacity Outbox (see spec §6.2, CAP-02) ──────────────────────────────────
   const CapacityOutbox = require('./CapacityOutbox.model')(sequelize);
 
+  // ── Idempotency (see spec §11.2, REL-01) ─────────────────────────────────────
+  const IdempotencyRecord = require('./IdempotencyRecord.model')(sequelize);
+
   // ── Associations ─────────────────────────────────────────────────────────────
 
   // Gym ↔ Branch
@@ -156,6 +159,7 @@ const registerTenantModels = (sequelize) => {
     LedgerAdjustment,
     CapacityOutbox,
     Outbox: CapacityOutbox,
+    IdempotencyRecord,
   };
 };
 

@@ -415,6 +415,52 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 11,
+    name: 'p011_create_idempotency_records',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return;
+
+      const [idemCol] = await sequelize.query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'idempotency_records' AND COLUMN_NAME = 'idempotency_key'",
+        { type: QueryTypes.SELECT }
+      );
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['idempotency_records'], type: QueryTypes.SELECT }
+      );
+      if (tableExists && !idemCol) {
+        console.warn(
+          '[PlatformMigration] SKIPPING p011: idempotency_records table exists without idempotency_key column. Resolve it by hand, then re-run.'
+        );
+        return {
+          skipped: true,
+          reason: 'table_exists_with_other_schema',
+          table: 'idempotency_records',
+        };
+      }
+
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`idempotency_records\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`idempotency_key\` VARCHAR(128) NOT NULL,
+          \`user_id\` CHAR(36) NULL,
+          \`route\` VARCHAR(255) NOT NULL,
+          \`request_hash\` VARCHAR(64) NOT NULL,
+          \`status\` ENUM('IN_PROGRESS', 'RESOLVED', 'FAILED') NOT NULL DEFAULT 'IN_PROGRESS',
+          \`status_code\` INT NULL,
+          \`response_body\` MEDIUMTEXT NULL,
+          \`expires_at\` DATETIME NOT NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`idx_idempotency_records_key\` (\`idempotency_key\`),
+          KEY \`idx_idempotency_records_expires_at\` (\`expires_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
