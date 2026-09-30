@@ -281,7 +281,68 @@ const getInvoice = async (req, res, next) => {
   }
 };
 
+const refundPayment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { amount, reason } = req.body || {};
+
+    const payment = await req.tenantDb.models.Payment.findByPk(id);
+    if (!payment) {
+      throw createError('Payment not found', 404);
+    }
+
+    const approvalService = require('../services/approval.service');
+    const accessService = require('../services/access.service');
+
+    const tenantId = req.tenantId || req.user?.tenantId || req.tenant?.id;
+    const userId = req.user.id || req.user.sub;
+    const branchId = payment.branchId || req.branchId || null;
+    const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, branchId));
+
+    const ctx = {
+      tenantDb: req.tenantDb,
+      tenantId,
+      userId,
+      branchId,
+      grants,
+      roleKey: (grants.roleKeys || [])[0] || null,
+      req,
+    };
+
+    const idempotencyKey =
+      req.idempotencyKey ||
+      req.headers['idempotency-key'] ||
+      req.headers['x-idempotency-key'] ||
+      req.body?.idempotencyKey ||
+      null;
+
+    const outcome = await approvalService.perform(
+      ctx,
+      'payments.refund',
+      { paymentId: id, amount, reason },
+      { idempotencyKey }
+    );
+
+    if (outcome.status === 'EXECUTED') {
+      return sendSuccess(res, outcome.result, 'Payment refunded', 200);
+    }
+
+    return sendSuccess(
+      res,
+      {
+        approvalRequestId: outcome.request.id,
+        status: 'PENDING',
+        summary: outcome.request.summary,
+      },
+      'Refund request submitted for approval',
+      202
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   recordPayment, listPayments, getPaymentById, verifyPayment, verifyOrReject,
-  uploadProof, markPrinted, collectionAction, listInvoices, getInvoice,
+  uploadProof, markPrinted, collectionAction, listInvoices, getInvoice, refundPayment,
 };

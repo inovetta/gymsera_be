@@ -286,6 +286,12 @@ router.post('/:id/printed', controller.markPrinted);
  */
 router.post('/collection-action', controller.collectionAction);
 
+router.post(
+  '/:id/refund',
+  idempotency({ required: true }),
+  controller.refundPayment
+);
+
 /**
  * @swagger
  * /invoices/{id}:
