@@ -373,6 +373,14 @@ const CATALOGUE = [
       { key: 'audit.view', label: 'View the audit log', tiers: ['F', 'F', 'V', 'x', 'x', 'x', 'x'] },
       { key: 'payouts.view', label: 'View payouts', dangerous: true, orgOnly: true, tiers: ['F', 'x', 'x', 'x', 'x', 'x', 'x'] },
       {
+        key: 'payouts.request',
+        label: 'Request payout',
+        approvable: true,
+        dangerous: true,
+        orgOnly: false,
+        tiers: ['D', 'R', 'R', 'x', 'x', 'x', 'x'],
+      },
+      {
         key: 'payouts.bank.manage',
         label: 'Manage bank details',
         dangerous: true,

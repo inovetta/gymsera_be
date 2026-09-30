@@ -2,14 +2,21 @@ const { Router } = require('express');
 const hostController = require('../controllers/host.controller');
 const gymsController = require('../controllers/gyms.controller');
 const expensesController = require('../controllers/expenses.controller');
+const payoutsController = require('../controllers/payouts.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const idempotency = require('../middleware/idempotency');
 const gymsValidators = require('../validators/gyms.validator');
 const validate = require('../middleware/validate');
 const upload = require('../middleware/upload');
 
 const router = Router();
+
+// Payouts (PAY-10, SEC-13)
+router.get('/payouts/balance', authenticate, tenantContext, payoutsController.getBalance);
+router.get('/payouts', authenticate, tenantContext, payoutsController.listPayouts);
+router.post('/payouts', authenticate, tenantContext, idempotency({ required: true }), payoutsController.requestPayout);
 
 // Expense Categories
 router.get('/expense-categories', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.listExpenseCategories);
