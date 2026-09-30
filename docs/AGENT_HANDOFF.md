@@ -26,7 +26,7 @@ next agent won't know it.
 
 ### Branches and last commits
 
-Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be` (off origin/main f83de34, after the 1E and precheck-script merges). No commits on it yet.
+Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be` (off origin/main f83de34, after the 1E and precheck-script merges). Not pushed. gyms_era work is on `phase-1/prompt-1f-security` (4ca8277), also not pushed.
 
 **1F verification (2026-09-30, all 8 still open):**
 - SEC-03 PARTIAL: Apple JWS and Stripe `constructEvent` are fine; Google RTDN still uses a static `?token=` (`src/routes/billing.routes.js:147-164`), not the Pub/Sub OIDC token.
