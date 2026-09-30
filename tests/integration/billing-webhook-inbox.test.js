@@ -159,7 +159,6 @@ describe('BILL-12: billing webhook inbox', () => {
 
   describe('Google Play RTDN', () => {
     test('the same Pub/Sub message delivered 3× is stored once and the purchase is re-fetched once', async () => {
-      process.env.GOOGLE_PLAY_RTDN_TOKEN = 'test-rtdn-token';
       const { get } = fakes.installGoogleFakes({ 'tok-1': fakes.googlePurchase({ productId: plan3.androidProductId }) });
       await request(app).post('/api/v1/billing/android/sync').set('Authorization', `Bearer ${token}`)
         .send({ purchaseToken: 'tok-1', productId: plan3.androidProductId });
@@ -170,7 +169,7 @@ describe('BILL-12: billing webhook inbox', () => {
         notification: { subscriptionNotification: { notificationType: 2, purchaseToken: 'tok-1', subscriptionId: plan3.androidProductId } },
       });
       for (let i = 0; i < 3; i++) {
-        const res = await request(app).post('/api/v1/billing/webhooks/google?token=test-rtdn-token').send(body);
+        const res = await request(app).post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader()).send(body);
         expect(res.status).toBe(200);
       }
 

@@ -109,6 +109,50 @@ const rtdnBody = ({ messageId, notification }) => ({
   subscription: 'projects/test/subscriptions/rtdn',
 });
 
+/**
+ * RTDN push authentication (SEC-03). Pub/Sub push sends a Google-signed OIDC
+ * token; here a local RSA key stands in for Google's, and the signing-cert
+ * lookup is pointed at it, so the real verifier runs without network.
+ */
+const RTDN_TEST_AUDIENCE = 'https://api.gymsera.test/api/v1/billing/webhooks/google';
+const RTDN_TEST_SERVICE_ACCOUNT = 'rtdn-push@gymsera-test.iam.gserviceaccount.com';
+const RTDN_TEST_KID = 'rtdn-test-key';
+let _rtdnKeys = null;
+
+const installRtdnAuthFakes = () => {
+  if (!_rtdnKeys) {
+    _rtdnKeys = require('crypto').generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+  }
+  process.env.GOOGLE_PLAY_RTDN_AUDIENCE = RTDN_TEST_AUDIENCE;
+  process.env.GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT = RTDN_TEST_SERVICE_ACCOUNT;
+  if (!jest.isMockFunction(googlePlayBilling.rtdnAuth.getSigningCerts)) {
+    jest.spyOn(googlePlayBilling.rtdnAuth, 'getSigningCerts').mockResolvedValue({ [RTDN_TEST_KID]: _rtdnKeys.publicKey });
+  }
+  return _rtdnKeys;
+};
+
+/** `Authorization` header value for an RTDN push. `claims` overrides the token's payload. */
+const rtdnAuthHeader = (claims = {}, { privateKey } = {}) => {
+  const keys = installRtdnAuthFakes();
+  const token = require('jsonwebtoken').sign(
+    {
+      iss: 'https://accounts.google.com',
+      aud: RTDN_TEST_AUDIENCE,
+      sub: '100000000000000000001',
+      email: RTDN_TEST_SERVICE_ACCOUNT,
+      email_verified: true,
+      ...claims,
+    },
+    privateKey || keys.privateKey,
+    { algorithm: 'RS256', keyid: RTDN_TEST_KID, expiresIn: '5m' }
+  );
+  return `Bearer ${token}`;
+};
+
 /** A Stripe subscription object, as Stripe's API would report it. */
 const stripeSubscription = ({
   id, priceId, status = 'active', tenantId, cancelAtPeriodEnd = false, unitAmount = undefined, currency = 'pkr',
@@ -151,6 +195,10 @@ module.exports = {
   googlePurchase,
   installGoogleFakes,
   rtdnBody,
+  RTDN_TEST_AUDIENCE,
+  RTDN_TEST_SERVICE_ACCOUNT,
+  installRtdnAuthFakes,
+  rtdnAuthHeader,
   stripeSubscription,
   installStripeFakes,
 };

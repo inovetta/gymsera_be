@@ -31,7 +31,6 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
-    process.env.GOOGLE_PLAY_RTDN_TOKEN = 'test-rtdn-token';
   });
 
   afterAll(async () => {
@@ -107,11 +106,11 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
       messageId: 'pubsub-revoked',
       notification: { subscriptionNotification: { notificationType: 12, purchaseToken: 'tok-rev', subscriptionId: plan5.androidProductId } },
     });
-    await request(app).post('/api/v1/billing/webhooks/google?token=test-rtdn-token').send(body);
+    await request(app).post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader()).send(body);
     await expectRevoked('tok-rev');
 
     const before = await snapshot();
-    await request(app).post('/api/v1/billing/webhooks/google?token=test-rtdn-token').send(body);
+    await request(app).post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader()).send(body);
     expect(await snapshot()).toEqual(before);
   });
 
@@ -124,7 +123,7 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
       messageId: 'pubsub-voided',
       notification: { voidedPurchaseNotification: { purchaseToken: 'tok-void', orderId: 'GPA.1', productType: 1, refundType: 1 } },
     });
-    await request(app).post('/api/v1/billing/webhooks/google?token=test-rtdn-token').send(body);
+    await request(app).post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader()).send(body);
     await expectRevoked('tok-void');
 
     // A later resync of the same (unchanged) period must not resurrect it.

@@ -32,7 +32,6 @@ describe('BILL-08: pending Android purchases', () => {
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
-    process.env.GOOGLE_PLAY_RTDN_TOKEN = 'test-rtdn-token';
   });
 
   afterAll(async () => {
@@ -60,7 +59,7 @@ describe('BILL-08: pending Android purchases', () => {
   const sync = () => request(app).post('/api/v1/billing/android/sync').set('Authorization', `Bearer ${token}`)
     .send({ purchaseToken: 'tok-pend' });
   const rtdn = (messageId, notificationType) =>
-    request(app).post('/api/v1/billing/webhooks/google?token=test-rtdn-token').send(fakes.rtdnBody({
+    request(app).post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader()).send(fakes.rtdnBody({
       messageId,
       notification: { subscriptionNotification: { notificationType, purchaseToken: 'tok-pend', subscriptionId: plan5.androidProductId } },
     }));

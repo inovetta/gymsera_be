@@ -32,7 +32,6 @@ describe('BILL-01: store purchases are bound to one tenant', () => {
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
-    process.env.GOOGLE_PLAY_RTDN_TOKEN = 'test-rtdn-token';
   });
 
   afterAll(async () => {

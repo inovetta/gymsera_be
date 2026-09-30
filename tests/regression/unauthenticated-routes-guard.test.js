@@ -13,7 +13,7 @@ const authenticate = require('../../src/middleware/authenticate');
 const ALLOWED_NON_LOGIN_OPERATIONAL_ROUTES = [
   // Provider webhooks (signature checked)
   { method: 'POST', path: '/api/v1/billing/webhooks/apple', reason: 'Apple ASN v2 webhook: payload is a cryptographically signed JWS verified with Apple root certificates' },
-  { method: 'POST', path: '/api/v1/billing/webhooks/google', reason: 'Google RTDN webhook: protected by query token parameter and Google PubSub signature' },
+  { method: 'POST', path: '/api/v1/billing/webhooks/google', reason: 'Google RTDN webhook: protected by the Pub/Sub push OIDC token (SEC-03)' },
   { method: 'POST', path: '/api/v1/billing/webhooks/stripe', reason: 'Stripe webhook: payload verified with HMAC-SHA256 signature using STRIPE_WEBHOOK_SECRET' },
 
   // /auth/* public routes (public authentication, registration, password reset)
