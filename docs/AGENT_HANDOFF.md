@@ -20,9 +20,9 @@ next agent won't know it.
 | Last updated | 2026-09-30 |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1F — Remaining P0 security and provisioning** (the playbook heading; an older "Next action" called it "Onboarding, KYC…", which was wrong) |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | RT-04 |
-| Step within issue | fix <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | (none) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
@@ -40,14 +40,16 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
+| gyms_era | `phase-1/prompt-1f-security` | 4ca8277 fix(security): remove raw card entry and the fake saved card (SEC-09) | no |
 | gymsera_be | `phase-1/prompt-1e-member-money` | 39e5af2 fix(payments): add paidAt immutability check and close-out verification tests (Prompt 1E) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Owner answered (R-24 split, R-25 remove root fallback, R-26 OIDC only). Done: SEC-03 (884713b), SEC-07 (d50216b). Next: RT-04 socket room authorization in `src/socket/index.js` (reuse `inbox.service` scoping + `tenantContext.userBelongsToTenant`; drop the query-string token), then R-25 provisioning credential fallback, then SEC-09 (gyms_era), then the UX-12 plan, then 3× full suite and close-out.
+> Prompt 1F DONE (not pushed, per the owner). Next: **Prompt 1G — Resumable tenant provisioning (FLOW-02)** in the playbook (split out by R-24), then 1H (SEC-10), then 1I (AUTH-07).
+> Owner items from 1F: (1) run `gymsera-r25-tenant-db-credentials-check.js` on the live DB; (2) decide on the seed script's hard-coded credential fallback (`src/scripts/provision-seeded-tenants.js:18-25`); (3) before deploying: turn on Pub/Sub push authentication and set `GOOGLE_PLAY_RTDN_AUDIENCE` / `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT` (R-26), and set `TENANT_DB_ADMIN_USER` explicitly (R-25).
+> Still-open P0s with no prompt yet: NEW-02 (Apple unsigned token, `auth.service.js:668,993`), NEW-03 (Google unsigned fallback, `auth.service.js:494-514`), NEW-06, NEW-07 (routes still present, not re-verified), NEW-08 (probably closed by SEC-01, not recorded), SEC-06 (no §13 row).
 
 ### Work in progress that is NOT committed
 
@@ -87,11 +89,11 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 **Prompt 1F — Remaining P0 security and provisioning (scope per R-24):**
 - [x] 1. SEC-03 — Google RTDN OIDC (884713b)
 - [x] 2. SEC-07 — log redaction (d50216b)
-- [ ] 3. RT-04 — socket room authorization
-- [ ] 4. R-25 — remove hard-coded DB credential fallback in provisioning
-- [ ] 5. SEC-09 — remove raw card fields and the fake saved card (gyms_era)
-- [ ] 6. UX-12 — plan only, §13 PLANNED
-- [ ] §13 rows with hashes, full suite 3× in a row, handoff clean
+- [x] 3. RT-04 — socket room authorization (2bddcae)
+- [x] 4. R-25 — remove hard-coded DB credential fallback in provisioning (d9520b8) + read-only check script
+- [x] 5. SEC-09 — remove raw card fields and the fake saved card (gyms_era 4ca8277)
+- [x] 6. UX-12 — plan only, §13 PLANNED (5bf2fff)
+- [x] §13 rows with hashes; backend 3× 71/71 suites 439/439 tests; Flutter 3× 19/19
 - Split out (not in 1F): FLOW-02 → Prompt 1G, SEC-10 → 1H, AUTH-07 → 1I
 
 ---
@@ -207,4 +209,4 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 | 23 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-28 (Option B) | NEW-28 (removed Bull/Redis queue dependency for member notifications PAYMENT_FAILED, SUBSCRIPTION_RENEWED, SUBSCRIPTION_EXPIRING_SOON; direct in-app/push/email dispatch; deleted queues.js & notifications.processor.js) | task complete | yes |
 | 24 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1D (Access control) | RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, RBAC-03 (permissions doc & test matrix) | task complete | yes |
 | 25 | 2026-09-30 | Gemini (Gemini 3.8 Flash) | Prompt 1E (Member money) | REL-01, PAY-01, PAY-02, PAY-03, PAY-04, PAY-07, PAY-10, SEC-13 | task complete | yes |
-| 26 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1F | — (verified all 8 issues; blocked on scope/decisions) | blocked | yes |
+| 26 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1F | SEC-03, SEC-07, RT-04, R-25, SEC-09, UX-12 (plan); FLOW-02/SEC-10/AUTH-07 split to 1G–1I (R-24) | task complete | yes |
