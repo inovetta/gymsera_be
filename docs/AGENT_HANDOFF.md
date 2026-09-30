@@ -20,9 +20,9 @@ next agent won't know it.
 | Last updated | 2026-09-30 |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 1F — Remaining P0 security and provisioning** (the playbook heading; an older "Next action" called it "Onboarding, KYC…", which was wrong) |
-| Prompt status | `BLOCKED ON OWNER` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none: verification finished, no code changed yet) |
-| Step within issue | verify (done for all 8) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | RT-04 |
+| Step within issue | fix <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
@@ -47,7 +47,7 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Waiting on the owner. The prompt is bigger than described: SEC-10, FLOW-02 and AUTH-07 each need multi-repo work plus new decisions (root-credential fallback removal, RTDN OIDC cutover, a private KYC bucket, automatic tenant-DB drop after 30 days, an Apple Sign-In revoke key). Asked the owner how to split it. Once they answer, record the answer in §14 and start with the issues they approve.
+> Owner answered (R-24 split, R-25 remove root fallback, R-26 OIDC only). Done: SEC-03 (884713b), SEC-07 (d50216b). Next: RT-04 socket room authorization in `src/socket/index.js` (reuse `inbox.service` scoping + `tenantContext.userBelongsToTenant`; drop the query-string token), then R-25 provisioning credential fallback, then SEC-09 (gyms_era), then the UX-12 plan, then 3× full suite and close-out.
 
 ### Work in progress that is NOT committed
 
@@ -84,16 +84,15 @@ Prompt 1F is on branch `phase-1/prompt-1f-security-provisioning` in `gymsera_be`
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
-**Prompt 1E — Member money: idempotency, ledger, refunds, payouts:**
-- [ ] 1. REL-01 — Idempotency middleware (§11.2)
-- [ ] 2. PAY-01 — Recording a payment is idempotent
-- [ ] 3. PAY-02 — Money is never a float (DECIMAL storage retained per §6.3, float arithmetic removed)
-- [ ] 4. PAY-03 — Ledger is append-only
-- [ ] 5. PAY-04 — Daily close immutable & timezone-safe
-- [ ] 6. PAY-07 — Refunds (approval tier, reversing ledger entry, membership adjustment)
-- [ ] 7. PAY-10 — Payouts (ledger-derived balance, approval, idempotent execution)
-- [ ] 8. SEC-13 — Payout account / public payment details changes require re-auth + notification + cooling period
-- [ ] §13 rows with hashes, full test suite pass 3× in a row, handoff clean
+**Prompt 1F — Remaining P0 security and provisioning (scope per R-24):**
+- [x] 1. SEC-03 — Google RTDN OIDC (884713b)
+- [x] 2. SEC-07 — log redaction (d50216b)
+- [ ] 3. RT-04 — socket room authorization
+- [ ] 4. R-25 — remove hard-coded DB credential fallback in provisioning
+- [ ] 5. SEC-09 — remove raw card fields and the fake saved card (gyms_era)
+- [ ] 6. UX-12 — plan only, §13 PLANNED
+- [ ] §13 rows with hashes, full suite 3× in a row, handoff clean
+- Split out (not in 1F): FLOW-02 → Prompt 1G, SEC-10 → 1H, AUTH-07 → 1I
 
 ---
 
