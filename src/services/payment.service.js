@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
+const { toMinorUnits, fromMinorUnits } = require('../utils/money.utils');
 const notificationsService = require('./notifications.service');
 const emailService = require('./email.service');
 const { User, UserGymMembership } = require('../models/platform');
@@ -22,12 +23,14 @@ const _createInvoice = async (
 ) => {
   const { Invoice } = models;
 
-  const totalAmount = parseFloat(payment.amount);
-  const subtotal = Math.min(parseFloat(plan.price), totalAmount);
-  const remaining = Math.max(0, totalAmount - subtotal);
+  const totalAmountMinor = toMinorUnits(payment.amount);
+  const planPriceMinor = toMinorUnits(plan.price);
+  const subtotalMinor = Math.min(planPriceMinor, totalAmountMinor);
+  const remainingMinor = Math.max(0, totalAmountMinor - subtotalMinor);
 
-  const security = Math.min(parseFloat(plan.securityFee || 0), remaining);
-  const joining = Math.max(0, remaining - security);
+  const securityFeeMinor = toMinorUnits(plan.securityFee || 0);
+  const securityMinor = Math.min(securityFeeMinor, remainingMinor);
+  const joiningMinor = Math.max(0, remainingMinor - securityMinor);
 
   return Invoice.create(
     {
@@ -36,10 +39,10 @@ const _createInvoice = async (
       invoiceType: 'MEMBERSHIP',
       referenceEntityId: subscription.id,
       branchId: branchId || subscription?.branchId || payment?.branchId || null,
-      subtotal,
-      discountAmount: 0,
-      taxAmount: 0,
-      totalAmount,
+      subtotal: fromMinorUnits(subtotalMinor),
+      discountAmount: '0.00',
+      taxAmount: '0.00',
+      totalAmount: fromMinorUnits(totalAmountMinor),
       dueDate: new Date().toISOString().split('T')[0],
       paidAt: payment.status === PaymentStatus.COMPLETED ? new Date() : null,
       status: payment.status === PaymentStatus.COMPLETED
@@ -308,21 +311,21 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
     throw createError(`Payment is already ${payment.status.toLowerCase()}`, 409);
   }
 
-  let finalAmount = parseFloat(payment.amount);
+  let finalAmountMinor = toMinorUnits(payment.amount);
   if (payment.referenceEntityId && payment.paymentFor === 'MEMBERSHIP' && (waiveJoiningFee === true || waiveJoiningFee === 'true')) {
     const subscription = await MemberSubscription.findByPk(payment.referenceEntityId);
     if (subscription) {
       const plan = await MembershipPlan.findByPk(subscription.membershipPlanId);
-      if (plan && parseFloat(plan.joiningFee) > 0) {
-        const joining = parseFloat(plan.joiningFee);
-        finalAmount = Math.max(0, finalAmount - joining);
+      const joiningFeeMinor = toMinorUnits(plan?.joiningFee || 0);
+      if (joiningFeeMinor > 0) {
+        finalAmountMinor = Math.max(0, finalAmountMinor - joiningFeeMinor);
       }
     }
   }
 
   const updatePayload = {
     status: PaymentStatus.COMPLETED,
-    amount: finalAmount,
+    amount: fromMinorUnits(finalAmountMinor),
     paidAt: new Date(),
     verifiedAt: new Date(),
     verifiedBy: verifiedByUserId,

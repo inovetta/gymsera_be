@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1E — Member money: idempotency, ledger, refunds, payouts** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | PAY-02 |
+| Issue in progress | PAY-03 |
 | Step within issue | verify <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
@@ -31,13 +31,13 @@ Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1e-member-money` | 5f24c8b feat(middleware): request idempotency middleware and migrations (REL-01) | no |
+| gymsera_be | `phase-1/prompt-1e-member-money` | a5f26da fix(payments): payment idempotency and transactional atomicity (PAY-01) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> PAY-01 committed. Next: Verify and fix PAY-02 (Money float arithmetic removal) by implementing minor units integer utility in `src/utils/money.utils.js`, removing floating-point calculations across payment, ledger, and subscription services, adding unit and regression tests, and committing as `fix(payments): eliminate float arithmetic using minor units utility (PAY-02)`.
+> PAY-02 committed. Next: Verify and fix PAY-03 (Ledger is append-only) by enforcing immutability hooks on Payment (preventing destroy and preventing mutation of amount, branch_id, or business_date on completed payments) and LedgerAdjustment models, adding regression tests in `tests/regression/pay-03-append-only-ledger.test.js`, and committing as `fix(ledger): enforce append-only ledger and immutable payment history (PAY-03)`.
 
 ### Work in progress that is NOT committed
 

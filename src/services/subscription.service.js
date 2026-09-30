@@ -5,6 +5,13 @@ const TenantDbManager = require('../database/TenantDbManager');
 const { createError, buildPagination } = require('../utils/response.utils');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
+const {
+  toMinorUnits,
+  fromMinorUnits,
+  toMajorUnitsNumber,
+  compareMoney,
+  subtractMoney,
+} = require('../utils/money.utils');
 const notificationsService = require('./notifications.service');
 const emailService = require('./email.service');
 
@@ -212,10 +219,11 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   });
 
   // Create pending payment + issued invoice
-  const subtotal = parseFloat(plan.price);
-  const joining = hasPreviousSubscription ? 0.0 : parseFloat(plan.joiningFee || 0);
-  const security = parseFloat(plan.securityFee || 0);
-  const totalAmount = subtotal + joining + security;
+  const subtotalMinor = toMinorUnits(plan.price);
+  const joiningMinor = hasPreviousSubscription ? 0 : toMinorUnits(plan.joiningFee || 0);
+  const securityMinor = toMinorUnits(plan.securityFee || 0);
+  const totalAmountMinor = subtotalMinor + joiningMinor + securityMinor;
+  const totalAmount = fromMinorUnits(totalAmountMinor);
 
   const ledgerService = require('./ledger.service');
   const businessDate = await ledgerService.stampBusinessDate({ models }, branchIdToUse);
@@ -238,9 +246,9 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     invoiceNo: _invoiceNo(),
     invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
-    subtotal,
-    discountAmount: 0,
-    taxAmount: 0,
+    subtotal: fromMinorUnits(subtotalMinor),
+    discountAmount: '0.00',
+    taxAmount: '0.00',
     totalAmount,
     dueDate,
     status: InvoiceStatus.ISSUED,
@@ -595,16 +603,19 @@ const previewSubscription = async (tenantDb, { planId, startDate, autoRenew }) =
   const start = startDate || new Date().toISOString().split('T')[0];
   const endDate = _calcEndDate(start, plan.durationType, plan.durationValue);
 
-  const totalPrice = parseFloat(plan.price) + parseFloat(plan.joiningFee || 0) + parseFloat(plan.securityFee || 0);
+  const priceMinor = toMinorUnits(plan.price);
+  const joiningMinor = toMinorUnits(plan.joiningFee || 0);
+  const securityMinor = toMinorUnits(plan.securityFee || 0);
+  const totalMinor = priceMinor + joiningMinor + securityMinor;
 
   return {
     plan: { id: plan.id, name: plan.name, durationType: plan.durationType, durationValue: plan.durationValue },
     startDate: start,
     endDate,
-    price: parseFloat(plan.price),
-    joiningFee: parseFloat(plan.joiningFee || 0),
-    securityFee: parseFloat(plan.securityFee || 0),
-    totalPrice,
+    price: toMajorUnitsNumber(priceMinor),
+    joiningFee: toMajorUnitsNumber(joiningMinor),
+    securityFee: toMajorUnitsNumber(securityMinor),
+    totalPrice: toMajorUnitsNumber(totalMinor),
     autoRenew: autoRenew ?? false,
   };
 };
@@ -736,7 +747,7 @@ const getUpgradeOptions = async (userId, subscriptionId) => {
   });
 
   // Filter to plans priced strictly higher than the current plan
-  const upgradeOptions = allPlans.filter((p) => Number(p.price) > Number(currentPlan.price));
+  const upgradeOptions = allPlans.filter((p) => compareMoney(p.price, currentPlan.price) > 0);
 
   return {
     currentPlan,
@@ -771,11 +782,11 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     throw createError('Selected upgrade plan not found or inactive', 404);
   }
 
-  if (Number(newPlan.price) <= Number(currentPlan.price)) {
+  if (compareMoney(newPlan.price, currentPlan.price) <= 0) {
     throw createError('Selected plan must be priced strictly higher than the current plan', 409);
   }
 
-  const amountToPay = Number(newPlan.price) - Number(currentPlan.price);
+  const amountToPay = subtractMoney(newPlan.price, currentPlan.price);
 
   // 1. Update subscription IMMEDIATELY
   await sub.update({
