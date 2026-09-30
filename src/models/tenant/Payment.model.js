@@ -246,6 +246,9 @@ module.exports = (sequelize) => {
       if (instance.changed('branchId') || instance.changed('branch_id')) {
         throw new Error('Completed payments cannot have their branch modified.');
       }
+      if (instance.changed('paidAt') || instance.changed('paid_at')) {
+        throw new Error('Completed payments cannot have their paidAt date modified.');
+      }
     }
 
     // 2. NEVER change an existing business_date: if an update tries to change it, throw an error
