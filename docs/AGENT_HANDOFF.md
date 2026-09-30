@@ -20,9 +20,9 @@ next agent won't know it.
 | Last updated | 2026-09-30 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
 | Current prompt | **Prompt 1E — Member money: idempotency, ledger, refunds, payouts** |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | SEC-13 |
-| Step within issue | committed <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | (none) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
@@ -31,13 +31,13 @@ Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | master | 520a49b fix(billing): pending Android purchases show 'payment pending', never success (BILL-08) | no |
-| gymsera_be | `phase-1/prompt-1e-member-money` | bbceb49 feat(payouts): ledger-derived payout balance and idempotent payout requests (PAY-10) | no |
+| gymsera_be | `phase-1/prompt-1e-member-money` | b9585f2 feat(scripts): add read-only member money audit check script (Rule 7) | no |
 | gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Write read-only check script for member money per Rule 7 (`src/scripts/gymsera-member-money-check.js`), run full suite 3x, update spec §13, and finish Prompt 1E.
+> Proceed to **Prompt 1F — Onboarding, KYC, and applicant lifecycle** in `docs/GYMSERA_AGENT_PLAYBOOK.md`.
 
 ### Work in progress that is NOT committed
 
@@ -197,4 +197,4 @@ Prompt 1E is on branch `phase-1/prompt-1e-member-money` in `gymsera_be`.
 | 22 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-26 | NEW-26 (suspended tenant complete blocking, cache invalidation, updateMyTenant, webhook audit-only R-23, cron sweep, platform admin exception verified) | task complete | yes |
 | 23 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | NEW-28 (Option B) | NEW-28 (removed Bull/Redis queue dependency for member notifications PAYMENT_FAILED, SUBSCRIPTION_RENEWED, SUBSCRIPTION_EXPIRING_SOON; direct in-app/push/email dispatch; deleted queues.js & notifications.processor.js) | task complete | yes |
 | 24 | 2026-09-29 | Gemini (Gemini 3.8 Flash) | Prompt 1D (Access control) | RBAC-07, AUTH-01, AUTH-04, AUTH-09, SEC-02, SEC-01, RBAC-03 (permissions doc & test matrix) | task complete | yes |
-| 25 | 2026-09-30 | Gemini (Gemini 3.8 Flash) | Prompt 1E (Member money) | (in progress: REL-01, PAY-01..04, PAY-07, PAY-10, SEC-13) | in progress | yes |
+| 25 | 2026-09-30 | Gemini (Gemini 3.8 Flash) | Prompt 1E (Member money) | REL-01, PAY-01, PAY-02, PAY-03, PAY-04, PAY-07, PAY-10, SEC-13 | task complete | yes |
