@@ -5,6 +5,11 @@
  * (the seeder creates them with connectionStringEncrypted = 'PENDING_PROVISIONING').
  *
  * Run with:   node src/scripts/provision-seeded-tenants.js
+ *
+ * Credentials come only from TENANT_DB_ADMIN_USER / TENANT_DB_ADMIN_PASS and
+ * TENANT_DB_USER / TENANT_DB_PASS, through the same getTenantDbConfig as tenant
+ * provisioning (R-25). There is no fallback to root, an empty password or a
+ * built-in password; a missing setting stops the script before it connects.
  */
 require('dotenv').config();
 const mysql     = require('mysql2/promise');
@@ -14,15 +19,7 @@ const { connect: initPlatformDb } = require('../database/platform');
 const { Tenant }         = require('../models/platform');
 const registerTenantModels = require('../models/tenant');
 const { encrypt }        = require('../utils/crypto.utils');
-
-const getTenantDbConfig = () => ({
-  host:          process.env.TENANT_DB_HOST       || 'localhost',
-  port:          parseInt(process.env.TENANT_DB_PORT || '3306'),
-  adminUser:     process.env.TENANT_DB_ADMIN_USER  || 'root',
-  adminPassword: process.env.TENANT_DB_ADMIN_PASS  || '',
-  appUser:       process.env.TENANT_DB_USER        || 'gymsera_tenant',
-  appPassword:   process.env.TENANT_DB_PASS        || 'tenant_pass',
-});
+const { getTenantDbConfig } = require('../services/tenant-provisioning.service');
 
 const buildDbName = (tenantCode) => {
   const safe = tenantCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
@@ -100,6 +97,9 @@ async function provisionTenant(tenant, dbConfig) {
 async function main() {
   console.log('🚀 Provisioning seeded tenant databases...\n');
 
+  // Checked first: a missing credential stops the script before any connection (R-25).
+  const dbConfig = getTenantDbConfig();
+
   await initPlatformDb();
 
   const tenants = await Tenant.findAll({
@@ -113,8 +113,6 @@ async function main() {
 
   console.log(`Found ${tenants.length} tenant(s) to provision: ${tenants.map(t => t.tenantCode).join(', ')}`);
 
-  const dbConfig = getTenantDbConfig();
-
   for (const tenant of tenants) {
     await provisionTenant(tenant, dbConfig);
   }
@@ -123,7 +121,11 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error('❌ Provisioning failed:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('❌ Provisioning failed:', err.code === 'TENANT_DB_NOT_CONFIGURED' ? err.message : err);
+    process.exit(1);
+  });
+}
+
+module.exports = { getTenantDbConfig, provisionTenant };
