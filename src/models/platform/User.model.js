@@ -76,6 +76,12 @@ module.exports = (sequelize) => {
         defaultValue: 1,
         field: 'permission_version',
       },
+      // Sign in with Apple refresh token, encrypted (crypto.utils#encrypt); only for revoking at deletion.
+      appleRefreshTokenEncrypted: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'apple_refresh_token_encrypted',
+      },
       deletionRequestedAt: {
         type: DataTypes.DATE,
         allowNull: true,

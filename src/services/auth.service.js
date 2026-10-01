@@ -747,7 +747,7 @@ const _verifyAppleIdentityToken = async (identityToken) => {
  * account to enter. `fullName` is display data only (Apple gives the name to
  * the app, not in the token).
  */
-const appleLogin = async ({ identityToken, fullName }, ipAddress, userAgent) => {
+const appleLogin = async ({ identityToken, fullName, authorizationCode }, ipAddress, userAgent) => {
   if (!identityToken) {
     throw createError('Apple identity token is required', 400);
   }
@@ -828,6 +828,13 @@ const appleLogin = async ({ identityToken, fullName }, ipAddress, userAgent) => 
   }
 
   await user.update({ lastLoginAt: new Date() }).catch(() => null);
+
+  // AUTH-07: keep Apple's refresh token (encrypted) so deleting the account can revoke it. Never blocks sign-in.
+  if (authorizationCode) {
+    await require('./apple-signin-revoke.service').storeRefreshToken(user, authorizationCode).catch((err) => {
+      console.warn('[Apple Auth] Could not store the Apple refresh token:', String(err.message).slice(0, 120));
+    });
+  }
 
   // Check and trigger pending staff invites
   setImmediate(() => {

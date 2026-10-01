@@ -87,6 +87,7 @@ const authValidators = {
 
   appleLogin: [
     body('identityToken').notEmpty().withMessage('Apple identity token is required'),
+    body('authorizationCode').optional().isString().isLength({ max: 2000 }),
   ],
 
   refreshToken: [

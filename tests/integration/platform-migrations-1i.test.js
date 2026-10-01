@@ -4,6 +4,7 @@
  *          deletion_scheduled_for, deleted_at
  *   p015 — `tenants`: the same two statuses + the same three columns +
  *          status_before_deletion (what "undo" restores)
+ *   p016 — `users.apple_refresh_token_encrypted` (Sign in with Apple revoke on deletion)
  *
  * Proven like every earlier migration: `--dry-run` writes nothing, a conflicting
  * column makes it skip (not recorded, nothing changed), applying keeps every row
@@ -23,6 +24,7 @@ const { PLATFORM_MIGRATIONS, PLATFORM_TARGET_VERSION, runPlatformMigrations } = 
 const SCRATCH_DB = 'gymsera_test_platform_mig_1i';
 const P014 = 'p014_users_account_deletion';
 const P015 = 'p015_tenants_account_deletion';
+const P016 = 'p016_users_apple_refresh_token';
 const DELETION_COLUMNS = ['deleted_at', 'deletion_requested_at', 'deletion_scheduled_for'];
 
 describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuses)', () => {
@@ -123,8 +125,9 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     await teardownTestDatabases();
   });
 
-  test('p014 and p015 are the last platform migrations, in order', () => {
-    expect(PLATFORM_TARGET_VERSION).toBe(15);
+  test('p014, p015 and p016 are the last platform migrations, in order', () => {
+    expect(PLATFORM_TARGET_VERSION).toBe(16);
+    expect(PLATFORM_MIGRATIONS.find((m) => m.version === 16).name).toBe(P016);
     expect(PLATFORM_MIGRATIONS.find((m) => m.version === 14).name).toBe(P014);
     expect(PLATFORM_MIGRATIONS.find((m) => m.version === 15).name).toBe(P015);
   });
@@ -134,7 +137,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     const before = await snapshot();
     const res = await runPlatformMigrations(seq, { dryRun: true });
     expect(res.dryRun).toBe(true);
-    expect(res.wouldRun).toEqual([P014, P015]);
+    expect(res.wouldRun).toEqual([P014, P015, P016]);
     expect(await snapshot()).toEqual(before);
   });
 
@@ -157,7 +160,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     await runPlatformMigrations(seq, { targetVersion: 14 }); // p014 may apply; p015 is what we test
     const before = await snapshot();
 
-    await runPlatformMigrations(seq);
+    await runPlatformMigrations(seq, { targetVersion: 15 });
 
     expect(await snapshot()).toEqual(before);
     const [row] = await seq.query('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 15', { type: QueryTypes.SELECT });
@@ -170,7 +173,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     const tenantsBefore = await seq.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id', { type: QueryTypes.SELECT });
 
     const res = await runPlatformMigrations(seq);
-    expect(res.applied).toEqual([P014, P015]);
+    expect(res.applied).toEqual([P014, P015, P016]);
 
     expect(await enumOf('users')).toEqual(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'PENDING_DELETION', 'DELETED']);
     expect(await enumOf('tenants')).toEqual([
@@ -207,8 +210,50 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     await createPlatformDbBefore1I();
     await seq.query('ALTER TABLE users ADD COLUMN deleted_at DATETIME NULL');
     const res = await runPlatformMigrations(seq);
-    expect(res.applied).toEqual([P014, P015]);
+    expect(res.applied).toEqual([P014, P015, P016]);
     expect((await columns('users', 'deletion%')).map((c) => c.name)).toEqual(DELETION_COLUMNS);
+  });
+
+  describe('p016 (users.apple_refresh_token_encrypted)', () => {
+    const appleColumn = async () =>
+      (await seq.query(
+        "SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() " +
+          "AND TABLE_NAME = 'users' AND COLUMN_NAME = 'apple_refresh_token_encrypted'",
+        { type: QueryTypes.SELECT }
+      ))[0];
+
+    test('adds one nullable TEXT column, keeps every row, no backfill; re-run is a no-op', async () => {
+      await createPlatformDbBefore1I();
+      await runPlatformMigrations(seq, { targetVersion: 15 });
+      const before = await seq.query('SELECT id, email, status FROM users ORDER BY id', { type: QueryTypes.SELECT });
+
+      const res = await runPlatformMigrations(seq);
+
+      expect(res.applied).toEqual([P016]);
+      expect(await appleColumn()).toEqual({ type: 'text', nullable: 'YES' });
+      expect(await seq.query('SELECT id, email, status FROM users ORDER BY id', { type: QueryTypes.SELECT })).toEqual(before);
+      const [{ n }] = await seq.query('SELECT COUNT(*) AS n FROM users WHERE apple_refresh_token_encrypted IS NOT NULL', { type: QueryTypes.SELECT });
+      expect(Number(n)).toBe(0);
+      const afterApply = await snapshot();
+      expect((await runPlatformMigrations(seq)).applied).toEqual([]);
+      expect(await snapshot()).toEqual(afterApply);
+    });
+
+    test('--dry-run writes nothing; a column of another type makes it skip (not recorded, data untouched)', async () => {
+      await createPlatformDbBefore1I();
+      await runPlatformMigrations(seq, { targetVersion: 15 });
+      const before = await snapshot();
+      expect((await runPlatformMigrations(seq, { dryRun: true })).wouldRun).toEqual([P016]);
+      expect(await snapshot()).toEqual(before);
+
+      await seq.query('ALTER TABLE users ADD COLUMN apple_refresh_token_encrypted INT NULL');
+      await seq.query("UPDATE users SET apple_refresh_token_encrypted = 9 WHERE email = 'a@x.test'");
+      const conflicted = await snapshot();
+      await runPlatformMigrations(seq);
+      expect(await snapshot()).toEqual(conflicted);
+      const [row] = await seq.query('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 16', { type: QueryTypes.SELECT });
+      expect(Number(row.n)).toBe(0);
+    });
   });
 
   test('a row in an unexpected status is never rewritten (widening keeps every existing value)', async () => {

@@ -654,6 +654,22 @@ const PLATFORM_MIGRATIONS = [
       });
     },
   },
+  {
+    version: 16,
+    name: 'p016_users_apple_refresh_token',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      // Sign in with Apple: the (encrypted) refresh token, kept only so account deletion can
+      // revoke it at Apple (AUTH-07, R-28 point 5). NULL for everyone until their next Apple sign-in.
+      return _addNullableColumn(sequelize, {
+        table: 'users',
+        column: 'apple_refresh_token_encrypted',
+        type: 'TEXT',
+        expectedType: 'text',
+        migrationName: 'p016',
+      });
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

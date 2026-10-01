@@ -45,6 +45,7 @@ const { safeRedisDel } = require('../config/redis.config');
 const stripeBilling = require('./stripe-billing.service');
 const storageService = require('./storage.service');
 const { LIVE_SUBSCRIPTION_STATUSES } = require('./account-deletion.service');
+const { revokeAppleSignIn } = require('./apple-signin-revoke.service');
 
 const DELETED_NAME = 'Deleted user';
 const deletedEmail = (id) => `deleted-${id}@deleted.gymsera.invalid`;
@@ -203,6 +204,10 @@ const _finalizeUser = async (user, now) => {
   await _scrubInvitations({ ownerEmail: user.email });
   await _deleteFiles([user.profileImageUrl]);
 
+  // Apple wants the Sign in with Apple token revoked (guideline 5.1.1(v)). With no key configured this
+  // is recorded and skipped; if Apple is configured and fails, this throws and the sweep retries.
+  await revokeAppleSignIn(user);
+
   // Last: after this the account is final.
   await user.update({
     fullName: DELETED_NAME,
@@ -211,6 +216,7 @@ const _finalizeUser = async (user, now) => {
     passwordHash: null,
     googleId: null,
     appleId: null,
+    appleRefreshTokenEncrypted: null,
     profileImageUrl: null,
     isVerified: false,
     status: 'DELETED',
