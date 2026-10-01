@@ -22,10 +22,17 @@
  *   ACTIVE_NO_CONNECTION    ACTIVE without a stored connection string.
  *   ACTIVE_NO_LISTING       ACTIVE with no GymListing.
  *   ACTIVE_NO_PLAN          ACTIVE with no tenant_subscriptions row at all.
- *   DUPLICATE_GYM           more than one row in the tenant DB `gyms` table.
+ *   DUPLICATE_GYM           two or more rows in the tenant DB `gyms` table share one
+ *                           gym_listing_id, or there are more gyms (at least two) than the
+ *                           tenant has listings. One gym per organization is NORMAL: adding
+ *                           an organization creates its own listing and its own gym row
+ *                           (src/controllers/host.controller.js:534, :598-613), so a tenant
+ *                           with N organizations has up to N gyms and is not flagged.
  *   BRANCH_WITHOUT_LISTING  a tenant DB branch with no gym_listing_id.
- *   DUPLICATE_LISTING_AT_APPROVAL  two or more listings created within 5 minutes of
- *                           each other before any other (a double approval).
+ *   DUPLICATE_LISTING_AT_APPROVAL  two listings of one tenant with the SAME title created
+ *                           within 5 minutes of each other (a double approval). Listings with
+ *                           different titles are different organizations, however close in
+ *                           time (e.g. seed data), and are not flagged.
  *   UNREACHABLE_TENANT_DB   the tenant database could not be read (listed, not guessed).
  * And databases on the tenant server:
  *   ORPHAN_DATABASE         a `gymsera_*` database no tenant's code maps to, or whose
@@ -35,8 +42,9 @@
  *   - Every connection runs `SET SESSION TRANSACTION READ ONLY` and works inside a
  *     READ ONLY transaction: MySQL rejects any write (ERROR 1792). There is no --apply.
  *   - Only SELECTs on the platform DB, information_schema, and each tenant DB's
- *     `gyms` / `branches` tables (counts only). No personal data is printed:
- *     tenant ids, codes, statuses, database names and counts.
+ *     `gyms` / `branches` tables (counts only). Listing titles are read to compare
+ *     them, never printed. No personal data is printed: tenant ids, codes, statuses,
+ *     database names and counts.
  *
  * Environment variables:
  *   CHK_HOST / CHK_PORT  platform DB server (defaults 127.0.0.1 / 3306)
@@ -64,6 +72,8 @@ const q = (name) => {
 /** Same rule as tenant-provisioning.service.js#buildDbName. */
 const dbNameFor = (tenantCode) => `gymsera_${String(tenantCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
 
+const normTitle = (title) => String(title ?? '').trim().toLowerCase();
+
 const LIVE_STATUSES = new Set(['APPROVED', 'ACTIVE', 'SUSPENDED']);
 const DOUBLE_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 
@@ -71,10 +81,11 @@ const DOUBLE_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
  * Pure classification.
  * @param {object} data
  *   tenants:   [{ id, tenant_code, status, db_name, has_connection, provisioning_state? }]
- *   listings:  [{ tenant_id, created_at }]
+ *   listings:  [{ tenant_id, title, created_at }]
  *   planCounts: { [tenantId]: n }
  *   databases: string[]                          gymsera_* databases on the tenant server
- *   tenantDbs: { [dbName]: { gyms, branchesWithoutListing } | { error } }
+ *   tenantDbs: { [dbName]: { gyms, gymsSharingListing, branchesWithoutListing } | { error } }
+ *              gymsSharingListing = gym rows whose gym_listing_id is also on another gym row
  *   platformDb: string
  */
 function classify({ tenants, listings, planCounts, databases, tenantDbs, platformDb }) {
@@ -97,13 +108,23 @@ function classify({ tenants, listings, planCounts, databases, tenantDbs, platfor
       if (tl.length === 0) verdicts.push('ACTIVE_NO_LISTING');
       if (!planCounts[t.id]) verdicts.push('ACTIVE_NO_PLAN');
     }
-    if (tl.length >= 2 && new Date(tl[1].created_at) - new Date(tl[0].created_at) <= DOUBLE_APPROVAL_WINDOW_MS) {
-      verdicts.push('DUPLICATE_LISTING_AT_APPROVAL');
-    }
+    // Same title, created minutes apart = the same organization inserted twice.
+    // Different titles are different organizations and are normal.
+    const sameTitleCloseInTime = tl.some((a, i) =>
+      tl.slice(i + 1).some(
+        (b) =>
+          normTitle(a.title) !== '' &&
+          normTitle(a.title) === normTitle(b.title) &&
+          new Date(b.created_at) - new Date(a.created_at) <= DOUBLE_APPROVAL_WINDOW_MS
+      )
+    );
+    if (sameTitleCloseInTime) verdicts.push('DUPLICATE_LISTING_AT_APPROVAL');
     const info = exists ? tenantDbs[dbName] : undefined;
     if (info?.error) verdicts.push('UNREACHABLE_TENANT_DB');
     else if (info) {
-      if (info.gyms > 1) verdicts.push('DUPLICATE_GYM');
+      // One gym per organization is normal (host.controller.js:598-613). A duplicate
+      // is two gyms on one listing, or at least two gyms and more gyms than listings.
+      if (info.gymsSharingListing > 0 || (info.gyms > 1 && info.gyms > tl.length)) verdicts.push('DUPLICATE_GYM');
       if (info.branchesWithoutListing > 0) verdicts.push('BRANCH_WITHOUT_LISTING');
     }
     if (verdicts.length) {
@@ -118,6 +139,7 @@ function classify({ tenants, listings, planCounts, databases, tenantDbs, platfor
         listings: tl.length,
         plans: planCounts[t.id] || 0,
         gyms: info && !info.error ? info.gyms : null,
+        gymsSharingListing: info && !info.error ? info.gymsSharingListing : null,
         branchesWithoutListing: info && !info.error ? info.branchesWithoutListing : null,
         error: info?.error || null,
         verdicts,
@@ -173,7 +195,7 @@ async function main() {
       `SELECT id, tenant_code, status, db_name, (connection_string_encrypted IS NOT NULL AND connection_string_encrypted <> 'PENDING_PROVISIONING') AS has_connection` +
         `${hasState ? ', provisioning_state' : ''} FROM ${q(platformDb)}.tenants ORDER BY created_at, id`
     );
-    [listings] = await pconn.query(`SELECT tenant_id, created_at FROM ${q(platformDb)}.gym_listings`);
+    [listings] = await pconn.query(`SELECT tenant_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
     [plans] = await pconn.query(`SELECT tenant_id, COUNT(*) AS n FROM ${q(platformDb)}.tenant_subscriptions GROUP BY tenant_id`);
     await pconn.query('ROLLBACK');
   } finally {
@@ -193,14 +215,28 @@ async function main() {
       "SELECT TABLE_SCHEMA AS db, TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA LIKE 'gymsera\\_%' AND TABLE_NAME IN ('gyms','branches')"
     );
     const has = new Set(tables.map((r) => `${r.db}.${r.t}`));
+    const [gymCols] = await tconn.query(
+      'SELECT TABLE_SCHEMA AS db FROM information_schema.COLUMNS WHERE TABLE_SCHEMA LIKE ? AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+      ['gymsera\\_%', 'gyms', 'gym_listing_id']
+    );
+    const hasGymListingId = new Set(gymCols.map((r) => r.db));
     for (const db of databases) {
       if (db === platformDb) continue;
       try {
         const gyms = has.has(`${db}.gyms`) ? Number((await tconn.query(`SELECT COUNT(*) AS n FROM ${q(db)}.gyms`))[0][0].n) : 0;
+        // Gym rows whose listing is also on another gym row (0 on very old schemas without the column).
+        const gymsSharingListing = hasGymListingId.has(db)
+          ? Number(
+            (await tconn.query(
+              `SELECT COALESCE(SUM(n), 0) AS n FROM (SELECT COUNT(*) AS n FROM ${q(db)}.gyms ` +
+                'WHERE gym_listing_id IS NOT NULL GROUP BY gym_listing_id HAVING COUNT(*) > 1) shared'
+            ))[0][0].n
+          )
+          : 0;
         const branchesWithoutListing = has.has(`${db}.branches`)
           ? Number((await tconn.query(`SELECT COUNT(*) AS n FROM ${q(db)}.branches WHERE gym_listing_id IS NULL`))[0][0].n)
           : 0;
-        tenantDbs[db] = { gyms, branchesWithoutListing };
+        tenantDbs[db] = { gyms, gymsSharingListing, branchesWithoutListing };
       } catch (err) {
         tenantDbs[db] = { error: err.code || 'ERROR' };
       }
@@ -225,7 +261,7 @@ async function main() {
     if (f.kind === 'TENANT') {
       console.log(
         `  tenant=${f.id} code=${f.tenantCode} status=${f.status} state=${f.provisioningState ?? '-'} db=${f.dbName} dbExists=${f.dbExists} ` +
-          `listings=${f.listings} plans=${f.plans} gyms=${f.gyms ?? '-'} branchesWithoutListing=${f.branchesWithoutListing ?? '-'}` +
+          `listings=${f.listings} plans=${f.plans} gyms=${f.gyms ?? '-'} gymsSharingListing=${f.gymsSharingListing ?? '-'} branchesWithoutListing=${f.branchesWithoutListing ?? '-'}` +
           `${f.error ? ` error=${f.error}` : ''}  → ${f.verdicts.join(', ')}`
       );
     } else {

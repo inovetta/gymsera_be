@@ -11,7 +11,7 @@ const { setupTestDatabases, teardownTestDatabases, getAdminConnection, factories
 const { Tenant, GymListing, TenantSubscription, City } = require('../../src/models/platform');
 const { classify, dbNameFor } = require('../../gymsera-flow02-provisioning-check');
 
-const DBS = ['gymsera_test_f02chk_b', 'gymsera_test_f02chk_d', 'gymsera_test_f02chk_orphan'];
+const DBS = ['gymsera_test_f02chk_b', 'gymsera_test_f02chk_d', 'gymsera_test_f02chk_e', 'gymsera_test_f02chk_f', 'gymsera_test_f02chk_orphan'];
 
 beforeAll(async () => {
   await setupTestDatabases();
@@ -43,21 +43,61 @@ describe('classify', () => {
     expect(f.verdicts).toEqual(['ACTIVE_NO_CONNECTION', 'ACTIVE_NO_LISTING', 'ACTIVE_NO_PLAN']);
   });
 
-  test('two listings created minutes apart = a double approval; far apart = a second organization', () => {
-    const tenants = [t(), t({ id: 't2', tenant_code: 'GYM-2' })];
+  test('listings: same title minutes apart = a double approval; different titles, or far apart, are organizations', () => {
+    const tenants = ['t1', 't2', 't3', 't4'].map((id, n) => t({ id, tenant_code: `GYM-${n + 1}` }));
+    const at = (tenant_id, title, created_at) => ({ tenant_id, title, created_at });
     const listings = [
-      { tenant_id: 't1', created_at: '2026-09-01 10:00:00' }, { tenant_id: 't1', created_at: '2026-09-01 10:00:03' },
-      { tenant_id: 't2', created_at: '2026-09-01 10:00:00' }, { tenant_id: 't2', created_at: '2026-09-20 10:00:00' },
+      // t1: the same organization inserted twice by two approvals at once
+      at('t1', 'Iron Gym', '2026-09-01 10:00:00'), at('t1', ' iron gym ', '2026-09-01 10:00:03'),
+      // t2: seed data / a host adding organizations — three different titles in the same second
+      at('t2', 'Peak — DHA', '2026-09-01 10:00:00'), at('t2', 'Peak — Clifton', '2026-09-01 10:00:00'), at('t2', 'Peak — E-11', '2026-09-01 10:00:00'),
+      // t3: the same title again weeks later (re-created organization), not an approval race
+      at('t3', 'Solo Gym', '2026-09-01 10:00:00'), at('t3', 'Solo Gym', '2026-09-20 10:00:00'),
+      // t4: the duplicate pair is not the two oldest listings
+      at('t4', 'First Org', '2026-08-01 09:00:00'), at('t4', 'Second Org', '2026-09-01 10:00:00'), at('t4', 'Second Org', '2026-09-01 10:01:00'),
     ];
-    const f = classify({ ...base, tenants, listings, planCounts: { t1: 1, t2: 1 } });
-    expect(f.map((x) => [x.id, x.verdicts])).toEqual([['t1', ['DUPLICATE_LISTING_AT_APPROVAL']]]);
+    const f = classify({ ...base, tenants, listings, planCounts: { t1: 1, t2: 1, t3: 1, t4: 1 } });
+    expect(f.map((x) => [x.id, x.verdicts])).toEqual([
+      ['t1', ['DUPLICATE_LISTING_AT_APPROVAL']],
+      ['t4', ['DUPLICATE_LISTING_AT_APPROVAL']],
+    ]);
+  });
+
+  test('gyms: one gym per organization is normal (host.controller.js:598-613); shared listing or more gyms than listings is a duplicate', () => {
+    const codes = ['t1', 't2', 't3', 't4', 't5', 't6'];
+    const tenants = codes.map((id, n) => t({ id, tenant_code: `GYM-${n + 1}` }));
+    const listing = (tenant_id, title) => ({ tenant_id, title, created_at: '2026-09-01 10:00:00' });
+    const listings = [
+      listing('t1', 'Org A'), listing('t1', 'Org B'), listing('t1', 'Org C'), // 3 organizations, 3 gyms
+      listing('t2', 'Org A'), listing('t2', 'Org B'), listing('t2', 'Org C'), // seeded: 3 listings, 1 gym
+      listing('t3', 'Org A'), listing('t3', 'Org B'), // 2 gyms on the SAME listing
+      listing('t4', 'Org A'), // 2 gyms, 1 listing
+      listing('t5', 'Org A'), // 1 gym, 1 listing
+      // t6: no listing at all, one gym — that is ACTIVE_NO_LISTING, not a duplicate gym
+    ];
+    const db = (gyms, gymsSharingListing = 0) => ({ gyms, gymsSharingListing, branchesWithoutListing: 0 });
+    const f = classify({
+      ...base,
+      tenants,
+      listings,
+      planCounts: Object.fromEntries(codes.map((c) => [c, 1])),
+      databases: codes.map((_, n) => `gymsera_gym_${n + 1}`),
+      tenantDbs: {
+        gymsera_gym_1: db(3), gymsera_gym_2: db(1), gymsera_gym_3: db(2, 2), gymsera_gym_4: db(2), gymsera_gym_5: db(1), gymsera_gym_6: db(1),
+      },
+    });
+    expect(f.map((x) => [x.id, x.verdicts])).toEqual([
+      ['t3', ['DUPLICATE_GYM']],
+      ['t4', ['DUPLICATE_GYM']],
+      ['t6', ['ACTIVE_NO_LISTING']],
+    ]);
   });
 
   test('tenant DB contents, unreadable DB, orphan databases; a healthy tenant is not listed', () => {
     const tenants = [
       t(), t({ id: 't2', tenant_code: 'GYM-2' }), t({ id: 't3', tenant_code: 'GYM-3' }), t({ id: 't4', tenant_code: 'GYM-4', status: 'REJECTED' }),
     ];
-    const listings = ['t1', 't2', 't3'].map((id) => ({ tenant_id: id, created_at: '2026-09-01 10:00:00' }));
+    const listings = ['t1', 't2', 't3'].map((id) => ({ tenant_id: id, title: `Gym ${id}`, created_at: '2026-09-01 10:00:00' }));
     const f = classify({
       ...base,
       tenants,
@@ -65,14 +105,14 @@ describe('classify', () => {
       planCounts: { t1: 1, t2: 1, t3: 1 },
       databases: ['gymsera', 'gymsera_gym_1', 'gymsera_gym_2', 'gymsera_gym_3', 'gymsera_gym_4', 'gymsera_leftover'],
       tenantDbs: {
-        gymsera_gym_1: { gyms: 1, branchesWithoutListing: 0 },
-        gymsera_gym_2: { gyms: 2, branchesWithoutListing: 1 },
+        gymsera_gym_1: { gyms: 1, gymsSharingListing: 0, branchesWithoutListing: 0 },
+        gymsera_gym_2: { gyms: 1, gymsSharingListing: 0, branchesWithoutListing: 1 },
         gymsera_gym_3: { error: 'ER_TABLEACCESS_DENIED_ERROR' },
-        gymsera_gym_4: { gyms: 1, branchesWithoutListing: 0 },
+        gymsera_gym_4: { gyms: 1, gymsSharingListing: 0, branchesWithoutListing: 0 },
       },
     });
     expect(f.map((x) => [x.id || x.dbName, x.verdicts])).toEqual([
-      ['t2', ['DUPLICATE_GYM', 'BRANCH_WITHOUT_LISTING']],
+      ['t2', ['BRANCH_WITHOUT_LISTING']],
       ['t3', ['UNREACHABLE_TENANT_DB']],
       ['gymsera_gym_4', ['ORPHAN_DATABASE']], // its tenant was REJECTED
       ['gymsera_leftover', ['ORPHAN_DATABASE']],
@@ -87,14 +127,39 @@ describe('the script against real databases', () => {
     const stuckPartial = await factories.createTenant({ tenantCode: 'test_f02chk_b', status: 'APPROVED', connectionStringEncrypted: null });
     await conn.query('CREATE DATABASE IF NOT EXISTS `gymsera_test_f02chk_b`');
     const activeBare = await factories.createTenant({ tenantCode: 'test_f02chk_c', status: 'ACTIVE' });
+    // A real duplicate: one organization (one listing) with two gym rows on it, and a branch on no listing.
     const activeDup = await factories.createTenant({ tenantCode: 'test_f02chk_d', status: 'ACTIVE' });
-    await factories.createGymListing(activeDup.id);
+    const dupListing = await factories.createGymListing(activeDup.id, { title: 'Dup Gym' });
     await factories.createTenantSubscription(activeDup.id);
     await conn.query('CREATE DATABASE IF NOT EXISTS `gymsera_test_f02chk_d`');
-    await conn.query('CREATE TABLE `gymsera_test_f02chk_d`.gyms (id CHAR(36) PRIMARY KEY)');
-    await conn.query("INSERT INTO `gymsera_test_f02chk_d`.gyms VALUES ('g1'), ('g2')");
+    await conn.query('CREATE TABLE `gymsera_test_f02chk_d`.gyms (id CHAR(36) PRIMARY KEY, gym_listing_id CHAR(36) NULL)');
+    await conn.query('INSERT INTO `gymsera_test_f02chk_d`.gyms VALUES (?, ?), (?, ?)', ['g1', dupListing.id, 'g2', dupListing.id]);
     await conn.query('CREATE TABLE `gymsera_test_f02chk_d`.branches (id CHAR(36) PRIMARY KEY, gym_listing_id CHAR(36) NULL)');
     await conn.query("INSERT INTO `gymsera_test_f02chk_d`.branches VALUES ('b1', NULL)");
+
+    // The normal multi-organization tenant (host.controller.js:534, :598-613): each organization
+    // has its own listing AND its own gym row, here created in the same second like seed data.
+    // It must NOT be listed.
+    const multiOrg = await factories.createTenant({ tenantCode: 'test_f02chk_e', status: 'ACTIVE' });
+    const orgA = await factories.createGymListing(multiOrg.id, { title: 'Multi Org — DHA' });
+    const orgB = await factories.createGymListing(multiOrg.id, { title: 'Multi Org — Clifton' });
+    const orgC = await factories.createGymListing(multiOrg.id, { title: 'Multi Org — E-11' });
+    await factories.createTenantSubscription(multiOrg.id);
+    await conn.query('CREATE DATABASE IF NOT EXISTS `gymsera_test_f02chk_e`');
+    await conn.query('CREATE TABLE `gymsera_test_f02chk_e`.gyms (id CHAR(36) PRIMARY KEY, gym_listing_id CHAR(36) NULL)');
+    await conn.query('INSERT INTO `gymsera_test_f02chk_e`.gyms VALUES (?, ?), (?, ?), (?, ?)', ['g1', orgA.id, 'g2', orgB.id, 'g3', orgC.id]);
+    await conn.query('CREATE TABLE `gymsera_test_f02chk_e`.branches (id CHAR(36) PRIMARY KEY, gym_listing_id CHAR(36) NULL)');
+    await conn.query('INSERT INTO `gymsera_test_f02chk_e`.branches VALUES (?, ?), (?, ?)', ['b1', orgA.id, 'b2', orgB.id]);
+
+    // A double approval: the same listing title twice within seconds; and three gym rows for
+    // two listings, on an old schema without gyms.gym_listing_id (the count rule still works).
+    const doubled = await factories.createTenant({ tenantCode: 'test_f02chk_f', status: 'ACTIVE' });
+    await factories.createGymListing(doubled.id, { title: 'Doubled Gym' });
+    await factories.createGymListing(doubled.id, { title: 'Doubled Gym' });
+    await factories.createTenantSubscription(doubled.id);
+    await conn.query('CREATE DATABASE IF NOT EXISTS `gymsera_test_f02chk_f`');
+    await conn.query('CREATE TABLE `gymsera_test_f02chk_f`.gyms (id CHAR(36) PRIMARY KEY)');
+    await conn.query("INSERT INTO `gymsera_test_f02chk_f`.gyms VALUES ('g1'), ('g2'), ('g3')");
     await conn.query('CREATE DATABASE IF NOT EXISTS `gymsera_test_f02chk_orphan`');
 
     const snapshot = async () => JSON.stringify([
@@ -125,7 +190,12 @@ describe('the script against real databases', () => {
     expect(res.stdout).toMatch(new RegExp(`tenant=${stuckNoDb.id} .*→ STUCK_APPROVED_NO_DB`));
     expect(res.stdout).toMatch(new RegExp(`tenant=${stuckPartial.id} .*dbExists=true.*→ STUCK_APPROVED_PARTIAL`));
     expect(res.stdout).toMatch(new RegExp(`tenant=${activeBare.id} .*→ ACTIVE_NO_LISTING, ACTIVE_NO_PLAN`));
-    expect(res.stdout).toMatch(new RegExp(`tenant=${activeDup.id} .*gyms=2 branchesWithoutListing=1 .*→ DUPLICATE_GYM, BRANCH_WITHOUT_LISTING`));
+    expect(res.stdout).toMatch(new RegExp(`tenant=${activeDup.id} .*listings=1 .*gyms=2 gymsSharingListing=2 branchesWithoutListing=1 .*→ DUPLICATE_GYM, BRANCH_WITHOUT_LISTING`));
+    expect(res.stdout).toMatch(new RegExp(`tenant=${doubled.id} .*listings=2 .*gyms=3 gymsSharingListing=0 .*→ DUPLICATE_LISTING_AT_APPROVAL, DUPLICATE_GYM`));
+    // The legitimate multi-organization tenant (3 listings, 3 gyms, created together) is not reported at all.
+    expect(res.stdout).not.toContain(multiOrg.id);
+    expect(res.stdout).not.toContain('test_f02chk_e');
+    expect(res.stdout).not.toMatch(/Multi Org|Dup Gym|Doubled Gym/); // titles are compared, never printed
     expect(res.stdout).toMatch(/database=gymsera_test_f02chk_orphan .*→ ORPHAN_DATABASE/);
     expect(res.stdout).not.toMatch(/@/); // no e-mail addresses or connection strings
     expect(await snapshot()).toBe(before);
