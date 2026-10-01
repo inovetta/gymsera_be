@@ -100,6 +100,94 @@ const updateMyTenant = async (req, res, next) => {
   }
 };
 
+// ── POST /tenants/:id/kyc-documents ───────────────────────────────────────────
+const uploadKycDocuments = async (req, res, next) => {
+  try {
+    let files = [];
+    if (req.files && Array.isArray(req.files)) {
+      files = req.files;
+    } else if (req.file) {
+      files = [req.file];
+    }
+
+    const { documentType } = req.body;
+    const result = await tenantService.uploadKycDocuments({
+      tenantId: req.params.id,
+      userId: req.user.sub,
+      userRole: req.user.role,
+      files,
+      documentType,
+    });
+    return sendSuccess(res, result, 'KYC document(s) uploaded successfully', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /tenants/:id/kyc-documents ────────────────────────────────────────────
+const getKycDocuments = async (req, res, next) => {
+  try {
+    const result = await tenantService.getKycDocuments({
+      tenantId: req.params.id,
+      userId: req.user.sub,
+      userRole: req.user.role,
+    });
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /tenants/:id/kyc-documents/:documentId/stream ─────────────────────────
+const streamKycDocument = async (req, res, next) => {
+  try {
+    const reqInfo = {
+      ip: req.ip || req.connection?.remoteAddress,
+      userAgent: req.get('user-agent'),
+    };
+    const { stream, doc, contentType, contentLength } = await tenantService.getKycDocumentStream({
+      tenantId: req.params.id,
+      documentId: req.params.documentId,
+      userId: req.user.sub,
+      userRole: req.user.role,
+      reqInfo,
+    });
+
+    res.setHeader('Content-Type', contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.originalName || 'document')}"`);
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+
+    if (stream.pipe) {
+      stream.pipe(res);
+    } else {
+      res.send(stream);
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /tenants/:id/kyc-documents/:documentId ─────────────────────────────
+const deleteKycDocument = async (req, res, next) => {
+  try {
+    const result = await tenantService.deleteKycDocument({
+      tenantId: req.params.id,
+      documentId: req.params.documentId,
+      userId: req.user.sub,
+      userRole: req.user.role,
+    });
+    return sendSuccess(res, result, 'KYC document deleted successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   register,
   submitGymProfile,
@@ -109,4 +197,9 @@ module.exports = {
   finalizeApplication,
   getMyTenant,
   updateMyTenant,
+  uploadKycDocuments,
+  getKycDocuments,
+  streamKycDocument,
+  deleteKycDocument,
 };
+

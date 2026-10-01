@@ -18,40 +18,35 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-10-01 |
-| Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Prompt 1G — Resumable tenant provisioning (FLOW-02)** |
+| Updated by | Gemini (Gemini 3.8 Flash) |
+| Current prompt | **Prompt 1H — KYC data protection (SEC-10)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
-| Step within issue | (none) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Step within issue | committed <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-Prompt 1G is on branch `phase-1/prompt-1g-resumable-provisioning` in `gymsera_be` (off origin/main 7e2b246: 8155631 checkpoint, d326909 FLOW-02, then the docs commit) and in `gymsera_cms` (off origin/main a99547e: 355b29f). Not pushed, no PR (owner's instruction).
-
-
-NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gymsera_be` (off origin/main 93587ab, after the 1F merge). Not pushed. Commits: 30eb602 (NEW-03 Google), 35bad3e (NEW-02 Apple).
-
-**1F verification (2026-09-30, all 8 still open):**
-- SEC-03 PARTIAL: Apple JWS and Stripe `constructEvent` are fine; Google RTDN still uses a static `?token=` (`src/routes/billing.routes.js:147-164`), not the Pub/Sub OIDC token.
-- SEC-07 CONFIRMED: no redaction layer. Emails logged in clear (`auth.service.js:557,590,617,633,700,723,750,759,856,885`; `email.service.js:36,42,45`; `me.service.js:455`; `subscription-expiry.cron.js:161,163,216`); `auditLog.js:34` prints raw entries; `morgan('combined')` (`app.js:122`) logs full URLs.
-- SEC-09 CONFIRMED (no PCI exposure today): raw card/CVV fields in `gyms_era/lib/features/subscriptions/presentation/screens/add_card_screen.dart`; fake "Visa 4242" card in `me_providers.dart:149-171`, shown in `profile_screen.dart:297-349` and linked from `payment_screen.dart:302`.
-- SEC-10 CONFIRMED: KYC URLs saved as sent by the client (`tenant.service.js:94`); one public R2 bucket (`storage.service.js`); no private storage, signed URLs, access log, watermark or retention.
-- RT-04 CONFIRMED: `join_conversation` joins any id (`src/socket/index.js:100-104`); a host token without tenantId replies to any conversation (`:128-133`); `mark_read` with no tenant has no filter (`inbox.service.js:129-130`); token accepted in the query string (`:58`). Mobile uses `setAuth` (`chat_socket_service.dart:102`), so the query token can be dropped.
-- FLOW-02 CONFIRMED (partly improved by 1A/1B: `planForApproval` runs first and throws; ACTIVE is set after migrations): no provisioningState, APPROVED re-approvable with no lock (`admin.service.js:372`), no Idempotency-Key, no resume/sweep; legacy subscription step swallows errors (`tenant-provisioning.service.js:541-543`). **Hard-coded credential fallback** to platform creds and `root`/empty password (`tenant-provisioning.service.js:34-44, 67-81`), reported to the owner.
-- AUTH-07 CONFIRMED: `me.service.js:449-456` only sets INACTIVE (and logs the email). Retention is already decided (R-16).
-- UX-12: plan only.
+Prompt 1H is on branch `phase-1/prompt-1h-kyc-data-protection` in all four repos:
+- `gymsera_be`: a7969cb feat(security): private encrypted storage, access logging, and 90-day retention for KYC (SEC-10)
+- `gymsera_cms`: ce48011 feat(admin): audited watermarked KYC document preview dialog (SEC-10)
+- `gymsera_web`: 558938c feat(onboarding): add KYC document upload in registration wizard (SEC-10)
+- `gyms_era`: 287d81a feat(host): add KYC document upload during host onboarding (SEC-10)
+Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1f-security` | 4ca8277 fix(security): remove raw card entry and the fake saved card (SEC-09) | no |
-| gymsera_be | `phase-1/prompt-1e-member-money` | 39e5af2 fix(payments): add paidAt immutability check and close-out verification tests (Prompt 1E) | no |
-| gymsera_cms | main | 4c631b1 test(cms): add Playwright login smoke test and CI workflow | no (not touched) |
-| gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
+| gyms_era | `phase-1/prompt-1h-kyc-data-protection` | 287d81a feat(host): add KYC document upload during host onboarding (SEC-10) | no |
+| gymsera_be | `phase-1/prompt-1h-kyc-data-protection` | a7969cb feat(security): private encrypted storage, access logging, and 90-day retention for KYC (SEC-10) | no |
+| gymsera_cms | `phase-1/prompt-1h-kyc-data-protection` | ce48011 feat(admin): audited watermarked KYC document preview dialog (SEC-10) | no |
+| gymsera_web | `phase-1/prompt-1h-kyc-data-protection` | 558938c feat(onboarding): add KYC document upload in registration wizard (SEC-10) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Prompt 1G DONE (FLOW-02; not pushed).** Next: **Prompt 1H — KYC data protection (SEC-10)**, then 1I (AUTH-07).
-> Owner items from 1G: (1) run `gymsera-flow02-provisioning-check.js` on the live DB (read-only; needs `CHK_USER` / `CHK_PASSWORD`) and decide on any finding other than STUCK_*; (2) **deploy order:** `node src/scripts/run-platform-migrations.js --dry-run`, then without the flag (p013), BEFORE the 1G backend goes live and before `run-tenant-migrations.js --dry-run` — every Tenant query reads the new columns; (3) deploy the backend before the CMS (the CMS falls back to a plain "Resume provisioning" button if the API sends no provisioning state); (4) tenants that were already APPROVED before 1G are not resumed by the sweep — an admin opens each and clicks Resume. (5) **NEW-34 (P2, spec §12.13.11) recorded 2026-10-01:** rejecting a tenant during (or after a failed) provisioning leaves its partial database as an orphan; the check script lists it as ORPHAN_DATABASE; cleanup is manual, to be decided with AUTH-07 (Prompt 1I).
+> **Prompt 1H DONE (SEC-10; not pushed).** Next: **Prompt 1I — Self-service account and tenant deletion (AUTH-07)** in the playbook.
+> Owner items from 1H:
+> 1. Run `gymsera-sec10-kyc-check.js` on the live DB (`CHK_USER=... CHK_PASSWORD=... node gymsera-sec10-kyc-check.js`). It is strictly read-only (`SET SESSION TRANSACTION READ ONLY`) and audits whether legacy KYC documents exist as public URLs and whether rejected/deleted tenants older than 90 days are pending retention purge.
+> 2. Retention sweep: run `node src/scripts/run-kyc-retention-sweep.js --dry-run` to preview any 90-day KYC purge candidates before running with `--apply`.
+> 3. Cloudflare R2 bucket: create private bucket `R2_KYC_BUCKET` in Cloudflare R2, configure environment variable `R2_KYC_BUCKET=<bucket_name>` in deployment environments. (When unset, local private directory `storage/private/kyc/` outside public roots is used).
 
 > Prompt 1F DONE (not pushed, per the owner). Next: **Prompt 1G — Resumable tenant provisioning (FLOW-02)** in the playbook (split out by R-24), then 1H (SEC-10), then 1I (AUTH-07).
 > Owner items from 1F: (1) run `gymsera-r25-tenant-db-credentials-check.js` on the live DB; (2) seed-script credential fallback: fixed with owner approval (6cfdcab); (3) before deploying: turn on Pub/Sub push authentication and set `GOOGLE_PLAY_RTDN_AUDIENCE` / `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT` (R-26), and set `TENANT_DB_ADMIN_USER` explicitly (R-25).
@@ -232,3 +227,4 @@ NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gy
 | 26 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1F | SEC-03, SEC-07, RT-04, R-25, SEC-09, UX-12 (plan); FLOW-02/SEC-10/AUTH-07 split to 1G–1I (R-24) | task complete | yes |
 | 27 | 2026-09-30 | Claude Code (Opus 5.5) | Owner task: NEW-02 + NEW-03 | NEW-03 (Google: fallback removed), NEW-02 (Apple: JWKS verification, identity only from the token) | task complete | yes |
 | 28 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1G | FLOW-02 (be d326909, cms 355b29f); read-only check script | task complete | yes |
+| 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |

@@ -287,4 +287,32 @@ router.post(
   tenantsController.finalizeApplication
 );
 
+// ── KYC Document endpoints (SEC-10) ──────────────────────────────────────────
+router.post(
+  '/:id/kyc-documents',
+  authenticate,
+  upload.documents('documents', 5),
+  upload.handleMulterError,
+  tenantsController.uploadKycDocuments
+);
+
+router.get(
+  '/:id/kyc-documents',
+  authenticate,
+  tenantsController.getKycDocuments
+);
+
+router.get(
+  '/:id/kyc-documents/:documentId/stream',
+  authenticate,
+  tenantsController.streamKycDocument
+);
+
+router.delete(
+  '/:id/kyc-documents/:documentId',
+  authenticate,
+  tenantsController.deleteKycDocument
+);
+
 module.exports = router;
+

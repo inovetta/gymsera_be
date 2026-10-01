@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const { Tenant, User, PlatformPackage, City, TenantSubscription } = require('../models/platform');
+const { Tenant, User, PlatformPackage, City, TenantSubscription, PlatformAuditLog } = require('../models/platform');
+const kycStorageService = require('./kyc-storage.service');
 const { createError } = require('../utils/response.utils');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
@@ -309,6 +310,164 @@ const getMyTenant = async (userId) => {
   return { tenant, subscription };
 };
 
+/**
+ * Uploads KYC documents to private storage and updates tenant record (SEC-10).
+ */
+const uploadKycDocuments = async ({ tenantId, userId, userRole, files, documentType }) => {
+  const tenant = await Tenant.findByPk(tenantId);
+  if (!tenant) throw createError('Tenant not found', 404);
+
+  // Authorization: must be the tenant owner or PLATFORM_ADMIN
+  if (tenant.ownerUserId !== userId && userRole !== UserRole.PLATFORM_ADMIN) {
+    throw createError('Access denied: only tenant owner or platform admin can upload KYC documents', 403);
+  }
+
+  if (!files || files.length === 0) {
+    throw createError('At least one document file is required', 422);
+  }
+
+  const newDocs = [];
+  for (const file of files) {
+    const docDescriptor = await kycStorageService.uploadKycDocument({
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      tenantId,
+      originalName: file.originalname,
+      documentType,
+    });
+    newDocs.push(docDescriptor);
+  }
+
+  const existingDocs = kycStorageService.normalizeKycDocuments(tenant.kycDocumentsJson);
+  const updatedDocs = [...existingDocs, ...newDocs];
+
+  const updateFields = {
+    kycDocumentsJson: updatedDocs,
+  };
+
+  if (tenant.kycStatus === KycStatus.NOT_SUBMITTED) {
+    updateFields.kycStatus = KycStatus.PENDING;
+  }
+
+  await tenant.update(updateFields);
+
+  // Audit log
+  await PlatformAuditLog.create({
+    actorUserId: userId,
+    action: 'KYC_DOCUMENT_UPLOADED',
+    targetType: 'Tenant',
+    targetId: tenant.id,
+    details: {
+      uploadedCount: newDocs.length,
+      documentIds: newDocs.map((d) => d.documentId),
+      filenames: newDocs.map((d) => d.originalName),
+    },
+    createdAt: new Date(),
+  });
+
+  return newDocs;
+};
+
+/**
+ * Lists KYC documents for a tenant with secure stream URLs.
+ */
+const getKycDocuments = async ({ tenantId, userId, userRole }) => {
+  const tenant = await Tenant.findByPk(tenantId);
+  if (!tenant) throw createError('Tenant not found', 404);
+
+  // Authorization: must be the tenant owner or PLATFORM_ADMIN
+  if (tenant.ownerUserId !== userId && userRole !== UserRole.PLATFORM_ADMIN) {
+    throw createError('Access denied: only tenant owner or platform admin can view KYC documents', 403);
+  }
+
+  const docs = kycStorageService.normalizeKycDocuments(tenant.kycDocumentsJson);
+
+  return docs.map((doc) => ({
+    documentId: doc.documentId,
+    originalName: doc.originalName,
+    mimetype: doc.mimetype,
+    size: doc.size,
+    documentType: doc.documentType,
+    uploadedAt: doc.uploadedAt,
+    streamUrl: `/api/v1/tenants/${tenant.id}/kyc-documents/${doc.documentId}/stream`,
+  }));
+};
+
+/**
+ * Streams a private KYC document with access audit logging (SEC-10).
+ */
+const getKycDocumentStream = async ({ tenantId, documentId, userId, userRole, reqInfo }) => {
+  const tenant = await Tenant.findByPk(tenantId);
+  if (!tenant) throw createError('Tenant not found', 404);
+
+  // Authorization: must be the tenant owner or PLATFORM_ADMIN
+  if (tenant.ownerUserId !== userId && userRole !== UserRole.PLATFORM_ADMIN) {
+    throw createError('Access denied: only tenant owner or platform admin can access KYC documents', 403);
+  }
+
+  const docs = kycStorageService.normalizeKycDocuments(tenant.kycDocumentsJson);
+  const doc = docs.find((d) => d.documentId === documentId);
+  if (!doc) throw createError('KYC document not found', 404);
+
+  // Audit access in PlatformAuditLog
+  await PlatformAuditLog.create({
+    actorUserId: userId,
+    action: 'KYC_DOCUMENT_ACCESSED',
+    targetType: 'Tenant',
+    targetId: tenant.id,
+    details: {
+      documentId: doc.documentId,
+      originalName: doc.originalName,
+      mimetype: doc.mimetype,
+      size: doc.size,
+      ip: reqInfo?.ip,
+      userAgent: reqInfo?.userAgent,
+      isPlatformAdmin: userRole === UserRole.PLATFORM_ADMIN,
+    },
+    createdAt: new Date(),
+  });
+
+  const { stream, contentType, contentLength } = await kycStorageService.getKycStream(doc.key);
+  return { stream, doc, contentType: doc.mimetype || contentType || 'application/octet-stream', contentLength };
+};
+
+/**
+ * Deletes a KYC document from storage and tenant record.
+ */
+const deleteKycDocument = async ({ tenantId, documentId, userId, userRole }) => {
+  const tenant = await Tenant.findByPk(tenantId);
+  if (!tenant) throw createError('Tenant not found', 404);
+
+  if (tenant.ownerUserId !== userId && userRole !== UserRole.PLATFORM_ADMIN) {
+    throw createError('Access denied: only tenant owner or platform admin can delete KYC documents', 403);
+  }
+
+  const docs = kycStorageService.normalizeKycDocuments(tenant.kycDocumentsJson);
+  const doc = docs.find((d) => d.documentId === documentId);
+  if (!doc) throw createError('KYC document not found', 404);
+
+  await kycStorageService.deleteKycFile(doc.key);
+
+  const updatedDocs = docs.filter((d) => d.documentId !== documentId);
+  await tenant.update({
+    kycDocumentsJson: updatedDocs.length > 0 ? updatedDocs : null,
+  });
+
+  await PlatformAuditLog.create({
+    actorUserId: userId,
+    action: 'KYC_DOCUMENT_DELETED',
+    targetType: 'Tenant',
+    targetId: tenant.id,
+    details: {
+      documentId: doc.documentId,
+      originalName: doc.originalName,
+    },
+    createdAt: new Date(),
+  });
+
+  return { remainingCount: updatedDocs.length };
+};
+
 module.exports = {
   registerTenant,
   submitGymProfile,
@@ -318,4 +477,9 @@ module.exports = {
   finalizeApplication,
   getMyTenant,
   updateMyTenant,
+  uploadKycDocuments,
+  getKycDocuments,
+  getKycDocumentStream,
+  deleteKycDocument,
 };
+
