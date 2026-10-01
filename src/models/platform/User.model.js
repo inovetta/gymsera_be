@@ -34,7 +34,8 @@ module.exports = (sequelize) => {
         defaultValue: UserRole.MEMBER,
       },
       status: {
-        type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'SUSPENDED'),
+        // PENDING_DELETION / DELETED: account deletion (AUTH-07, R-28, platform migration p014).
+        type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'SUSPENDED', 'PENDING_DELETION', 'DELETED'),
         allowNull: false,
         defaultValue: 'INACTIVE',
       },
@@ -74,6 +75,21 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 1,
         field: 'permission_version',
+      },
+      deletionRequestedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deletion_requested_at',
+      },
+      deletionScheduledFor: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deletion_scheduled_for',
+      },
+      deletedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deleted_at',
       },
     },
     {

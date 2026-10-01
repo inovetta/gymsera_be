@@ -89,6 +89,81 @@ const _addNullableColumn = async (sequelize, { table, column, type, expectedType
   return null;
 };
 
+/**
+ * Appends `add` to the END of an ENUM column's current values (keeps every value
+ * the column has today and their order, so MySQL changes it in place). Reuses
+ * _widenEnumColumn for the checks and the ALTER. Already has them → nothing to do.
+ */
+const _appendEnumValues = async (sequelize, { table, column, add, defaultValue, migrationName }) => {
+  const [col] = await sequelize.query(
+    'SELECT COLUMN_TYPE AS type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ' +
+      'AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+    { replacements: [table, column], type: QueryTypes.SELECT }
+  );
+  if (!col) throw new Error(`${migrationName}: ${table}.${column} does not exist`);
+  const current = [...String(col.type).matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, '\''));
+  return _widenEnumColumn(sequelize, {
+    table,
+    column,
+    values: [...current, ...add.filter((v) => !current.includes(v))],
+    defaultValue,
+    migrationName,
+  });
+};
+
+/**
+ * Account-deletion schema for one table (AUTH-07): widen `status`, then add the
+ * nullable columns. ALL-OR-NOTHING: every column is checked before anything is
+ * written, so a conflict (a column someone added by hand with another type, or
+ * NOT NULL) leaves the table exactly as it was — skipped, not recorded, listed.
+ */
+const _addAccountDeletionSchema = async (sequelize, { table, extraColumns = [], addStatuses, defaultStatus, migrationName }) => {
+  const [tableExists] = await sequelize.query(
+    'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+    { replacements: [table], type: QueryTypes.SELECT }
+  );
+  if (!tableExists) return null;
+
+  const wanted = [
+    { column: 'deletion_requested_at', type: 'DATETIME', expectedType: 'datetime' },
+    { column: 'deletion_scheduled_for', type: 'DATETIME', expectedType: 'datetime' },
+    { column: 'deleted_at', type: 'DATETIME', expectedType: 'datetime' },
+    ...extraColumns,
+  ];
+  const existing = await sequelize.query(
+    'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS ' +
+      'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME IN (?)',
+    { replacements: [table, wanted.map((c) => c.column)], type: QueryTypes.SELECT }
+  );
+  const toAdd = [];
+  for (const c of wanted) {
+    const col = existing.find((e) => e.name === c.column);
+    if (!col) {
+      toAdd.push(c);
+      continue;
+    }
+    if (String(col.type).toLowerCase() !== c.expectedType || col.nullable !== 'YES') {
+      console.warn(
+        `[PlatformMigration] SKIPPING ${migrationName}: ${table}.${c.column} already exists as ${col.type} ` +
+          `(nullable: ${col.nullable}); expected ${c.expectedType} NULL. Resolve it by hand, then re-run.`
+      );
+      return { skipped: true, reason: 'column_exists_with_other_type', column: c.column, existingType: col.type };
+    }
+  }
+
+  const widened = await _appendEnumValues(sequelize, {
+    table, column: 'status', add: addStatuses, defaultValue: defaultStatus, migrationName,
+  });
+  if (widened?.skipped) return widened;
+
+  if (toAdd.length > 0) {
+    await sequelize.query(
+      `ALTER TABLE \`${table}\` ${toAdd.map((c) => `ADD COLUMN \`${c.column}\` ${c.type} NULL`).join(', ')}`
+    );
+  }
+  return null;
+};
+
 const PLATFORM_MIGRATIONS = [
   {
     version: 1,
@@ -546,6 +621,37 @@ const PLATFORM_MIGRATIONS = [
         `ALTER TABLE \`tenants\` ${toAdd.map((c) => `ADD COLUMN \`${c.column}\` ${c.type} NULL`).join(', ')}`
       );
       return null;
+    },
+  },
+  {
+    version: 14,
+    name: 'p014_users_account_deletion',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      // Self-service account deletion (AUTH-07, R-28): PENDING_DELETION = inside the
+      // 30-day undo window, DELETED = anonymized. All new columns are NULL on
+      // existing rows; no data is rewritten.
+      return _addAccountDeletionSchema(sequelize, {
+        table: 'users',
+        addStatuses: ['PENDING_DELETION', 'DELETED'],
+        defaultStatus: 'INACTIVE',
+        migrationName: 'p014',
+      });
+    },
+  },
+  {
+    version: 15,
+    name: 'p015_tenants_account_deletion',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      // Same for tenants (AUTH-07, R-28); `status_before_deletion` is what undo restores.
+      return _addAccountDeletionSchema(sequelize, {
+        table: 'tenants',
+        extraColumns: [{ column: 'status_before_deletion', type: 'VARCHAR(20)', expectedType: 'varchar(20)' }],
+        addStatuses: ['PENDING_DELETION', 'DELETED'],
+        defaultStatus: 'DRAFT',
+        migrationName: 'p015',
+      });
     },
   },
 ];

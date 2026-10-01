@@ -166,6 +166,29 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'provisioning_error',
       },
+      // ── Account deletion (AUTH-07, R-28, platform migration p015) ────────────
+      // The owner's request starts a 30-day undo window; `statusBeforeDeletion`
+      // is what undo restores; `deletedAt` is when the deletion finished.
+      deletionRequestedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deletion_requested_at',
+      },
+      deletionScheduledFor: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deletion_scheduled_for',
+      },
+      deletedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'deleted_at',
+      },
+      statusBeforeDeletion: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'status_before_deletion',
+      },
       paymentDetailsJson: {
         type: DataTypes.JSON,
         allowNull: true,
