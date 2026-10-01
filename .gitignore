@@ -9,3 +9,7 @@ coverage/
 
 # App Store Connect API private keys — never committed.
 *.p8
+
+# Local private/uploaded storage
+storage/
+
