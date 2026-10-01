@@ -20,38 +20,34 @@ next agent won't know it.
 | Last updated | 2026-10-02 |
 | Updated by | Claude Code (Sonnet 5.5) |
 | Current prompt | **Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34** |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | AUTH-07 (owner decisions recorded as R-28 in §14; plan approved) |
-| Step within issue | committed: p014/p015 (f2c6598), request/undo (6f3ab27), day-30 sweep (3043e1d), NEW-34 (27ed2a5), Apple revoke (this commit); next: read-only check script, mobile flow, web copy, CMS statuses, §13 <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | committed <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
-Prompt 1H is on branch `phase-1/prompt-1h-kyc-data-protection` in all four repos:
-- `gymsera_be`: a7969cb feat(security): private encrypted storage, access logging, and 90-day retention for KYC (SEC-10)
-- `gymsera_cms`: ce48011 feat(admin): audited watermarked KYC document preview dialog (SEC-10)
-- `gymsera_web`: 558938c feat(onboarding): add KYC document upload in registration wizard (SEC-10)
-- `gyms_era`: 287d81a feat(host): add KYC document upload during host onboarding (SEC-10)
-Not pushed, no PRs opened.
+Prompt 1I is on branch `phase-1/prompt-1i-account-deletion` in `gymsera_be`, `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1H main). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1h-kyc-data-protection` | 287d81a feat(host): add KYC document upload during host onboarding (SEC-10) | no |
-| gymsera_be | `phase-1/prompt-1h-kyc-data-protection` | a7969cb feat(security): private encrypted storage, access logging, and 90-day retention for KYC (SEC-10) | no |
-| gymsera_cms | `phase-1/prompt-1h-kyc-data-protection` | ce48011 feat(admin): audited watermarked KYC document preview dialog (SEC-10) | no |
-| gymsera_web | `phase-1/prompt-1h-kyc-data-protection` | 558938c feat(onboarding): add KYC document upload in registration wizard (SEC-10) | no |
+| gyms_era | `phase-1/prompt-1i-account-deletion` | 7705380 feat(me): re-confirmed account deletion with 30-day undo and store-subscription guidance (AUTH-07) | no |
+| gymsera_be | `phase-1/prompt-1i-account-deletion` | (the docs commit after 462e561; see `git log`) | no |
+| gymsera_cms | `phase-1/prompt-1i-account-deletion` | b0ae3f8 feat(admin): show PENDING_DELETION and DELETED statuses (AUTH-07) | no |
+| gymsera_web | `phase-1/prompt-1i-account-deletion` | 4b83fbe docs(privacy): describe the real account deletion process (AUTH-07) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Prompt 1I IN PROGRESS (branch `phase-1/prompt-1i-account-deletion` off origin/main 608d849, gymsera_be).** Owner decisions: spec §14 R-28 (do not re-ask). Plan, in commit order: (1) AUTH-07a platform migration p014 (users/tenants: PENDING_DELETION + DELETED statuses, deletion_* columns) with dry-run/conflict tests, (2) AUTH-07b request/cancel/preflight + auth-path guards (`/me/request-deletion` keeps its path), (3) AUTH-07c day-30 finalize sweep (anonymize in place, NO drop), (4) NEW-34 reject 409 during lease + orphan DB report/manual-drop script, (5) Apple revoke behind config, (6) mobile flow, (7) web privacy copy, (8) read-only check script, (9) §13 rows. Apply p014 for real on the local scratch DB before any tenant-migration dry-run (1E/1G lesson).
-> Previous: **Prompt 1H DONE (SEC-10; merged).** Next was: **Prompt 1I — Self-service account and tenant deletion (AUTH-07)** in the playbook.
-> Owner items from 1H:
-> 1. Run `gymsera-sec10-kyc-check.js` on the live DB (`CHK_USER=... CHK_PASSWORD=... node gymsera-sec10-kyc-check.js`). It is strictly read-only (`SET SESSION TRANSACTION READ ONLY`) and audits whether legacy KYC documents exist as public URLs and whether rejected/deleted tenants older than 90 days are pending retention purge.
-> 2. Retention sweep: run `node src/scripts/run-kyc-retention-sweep.js --dry-run` to preview any 90-day KYC purge candidates before running with `--apply`.
-> 3. Cloudflare R2 bucket: create private bucket `R2_KYC_BUCKET` in Cloudflare R2, configure environment variable `R2_KYC_BUCKET=<bucket_name>` in deployment environments. (When unset, local private directory `storage/private/kyc/` outside public roots is used).
+> **Prompt 1I DONE (AUTH-07 + NEW-34; not pushed).** Next: the playbook's staging checks ("You: before Phase 2, test on a staging build"), then **Prompt 2A** (Phase 2 — Reliability).
+> Owner items from 1I (details in spec §13 AUTH-07 / NEW-34 and §12.13.11 NEW-35..37):
+> 1. **Deploy order (critical):** platform migrations **p014, p015, p016** must be applied BEFORE this backend goes live (the User/Tenant models read the new columns): `node src/scripts/run-platform-migrations.js --dry-run`, then without the flag. Apply them before any `run-tenant-migrations.js --dry-run` too (tenant discovery reads the Tenant model).
+> 2. Run the read-only `CHK_USER=... CHK_PASSWORD=... node gymsera-auth07-deletion-check.js` on the live DB first. Expect: verified users stuck at INACTIVE from the old flow (LEGACY_DELETION_REQUEST) and REJECTED tenants whose database still exists (REJECTED_TENANT_DATABASE). Decide whether to honour the legacy requests.
+> 3. Run `node src/scripts/run-account-deletion-sweep.js --dry-run` and decide how often to run it (NEW-36: not scheduled).
+> 4. Sign in with Apple revoke needs `APPLE_SIGNIN_TEAM_ID`, `APPLE_SIGNIN_KEY_ID`, `APPLE_SIGNIN_CLIENT_ID`, `APPLE_SIGNIN_PRIVATE_KEY_PATH` (see `.env.example`). Unset = recorded as skipped. Users only become revocable after they sign in with Apple on a build that sends `authorizationCode` (mobile 7705380).
+> 5. Dropping an orphan database is manual: `node src/scripts/drop-orphan-tenant-database.js <db>` (dry run), then `--apply --confirm <db>`.
+> 6. NEW-35 (P1): re-auth for payout details / delete-branch accepts any password for social-only accounts: needs its own prompt.
+> 7. The privacy page still offers "email support@gymsera.com to delete"; someone must be ready to handle those requests (nothing automates it).
 
-> Prompt 1F DONE (not pushed, per the owner). Next: **Prompt 1G — Resumable tenant provisioning (FLOW-02)** in the playbook (split out by R-24), then 1H (SEC-10), then 1I (AUTH-07).
-> Owner items from 1F: (1) run `gymsera-r25-tenant-db-credentials-check.js` on the live DB; (2) seed-script credential fallback: fixed with owner approval (6cfdcab); (3) before deploying: turn on Pub/Sub push authentication and set `GOOGLE_PLAY_RTDN_AUDIENCE` / `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT` (R-26), and set `TENANT_DB_ADMIN_USER` explicitly (R-25).
-> NEW-02 and NEW-03 DONE (35bad3e, 30eb602). **Deploy:** the server must reach `https://www.googleapis.com/oauth2/v1/certs` and `https://appleid.apple.com/auth/keys`, or social sign-in returns 401. Still-open P0s with no prompt yet: NEW-06, NEW-07 (routes still present, not re-verified), NEW-08 (probably closed by SEC-01, not recorded), SEC-06 (verified 2026-09-30: OPEN/PARTIAL, unknown fields accepted, no mass-assignment hole found; §13 row). NEW-33 now tracked as P1 in §12.4.
+> Previous: Prompt 1H DONE (SEC-10; merged). Its owner items (1H): run `gymsera-sec10-kyc-check.js`, preview the KYC retention sweep, create the private R2 bucket `R2_KYC_BUCKET`.
 
 ### Work in progress that is NOT committed
 
@@ -87,6 +83,17 @@ Not pushed, no PRs opened.
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34:**
+- [x] Plan approved through the question tool; decisions recorded as R-28 (df17932)
+- [x] p014/p015 migrations (f2c6598), request / preflight / undo + auth guards (6f3ab27), day-30 sweep (3043e1d)
+- [x] NEW-34: reject 409 during a live lease, listing INACTIVE, manual orphan-database drop (27ed2a5)
+- [x] Apple Sign-In revoke behind config, p016 (0ca2b99, fix 462e561); read-only check script (3c75de1)
+- [x] Clients: mobile 7705380, web privacy copy 4b83fbe, CMS statuses b0ae3f8
+- [x] §13 rows (AUTH-07, NEW-34); new findings NEW-35, NEW-36, NEW-37
+- [x] Backend 3× 84/84 suites 625/625 tests; Flutter 3× 29/29; CMS vitest 3× 12/12, Playwright 1/1; web vitest 3× 10/10, Playwright 1/1
+
+---
 
 **Prompt 1F — Remaining P0 security and provisioning (scope per R-24):**
 - [x] 1. SEC-03 — Google RTDN OIDC (884713b)
@@ -193,6 +200,13 @@ Not pushed, no PRs opened.
   - Mobile `admin_repository.dart#approveTenant` has no caller in the UI; nothing to update there.
   - Full backend suite now takes ~11 minutes.
 
+- **Prompt 1I additions (2026-10-02):**
+  - Deletion = statuses, not a new gate: `PENDING_DELETION` tenants are already closed by `tenantContext` (ACTIVE only) and discovery (ACTIVE only). A pending USER's token carries `dp: true` and `middleware/authenticate.js` allows only profile / preflight / cancel-deletion / refresh / logout.
+  - Services: `account-deletion.service.js` (request / preflight / undo), `account-deletion-finalize.service.js` (day 30; anonymize in place; never drops), `apple-signin-revoke.service.js`, `orphan-database.service.js` (manual drop with hard refusals). Scripts: `run-account-deletion-sweep.js`, `drop-orphan-tenant-database.js`; read-only `gymsera-auth07-deletion-check.js`.
+  - Test-harness gotchas: all factory tenants share `gymsera_test_tenant_1` unless given another connection string; a sweep that scrubs a whole tenant DB (`where: {}`) must use tenant 2. MySQL DATETIME keeps whole seconds: compare timestamps the database returned, not `new Date()` with milliseconds.
+  - A migration test that pins an older version must pass `targetVersion` (1G's test now does); every new platform migration must skip a missing table (the full suite, not the targeted tests, caught p016 without it).
+  - Full backend suite now ~13 minutes.
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -229,4 +243,4 @@ Not pushed, no PRs opened.
 | 27 | 2026-09-30 | Claude Code (Opus 5.5) | Owner task: NEW-02 + NEW-03 | NEW-03 (Google: fallback removed), NEW-02 (Apple: JWKS verification, identity only from the token) | task complete | yes |
 | 28 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1G | FLOW-02 (be d326909, cms 355b29f); read-only check script | task complete | yes |
 | 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |
-| 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07, NEW-34 (in progress) | — | — |
+| 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07 (be f2c6598, 6f3ab27, 3043e1d, 0ca2b99, 462e561, 3c75de1; cms b0ae3f8; web 4b83fbe; app 7705380), NEW-34 (be 27ed2a5); NEW-35/36/37 recorded | task complete | yes |
