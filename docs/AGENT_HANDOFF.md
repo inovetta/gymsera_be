@@ -17,14 +17,17 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-09-30 |
+| Last updated | 2026-10-01 |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **NEW-02 + NEW-03 — unverified social sign-in tokens** (owner task after Prompt 1F) |
+| Current prompt | **Prompt 1G — Resumable tenant provisioning (FLOW-02)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
+
+Prompt 1G is on branch `phase-1/prompt-1g-resumable-provisioning` in `gymsera_be` (off origin/main 7e2b246: 8155631 checkpoint, d326909 FLOW-02, then the docs commit) and in `gymsera_cms` (off origin/main a99547e: 355b29f). Not pushed, no PR (owner's instruction).
+
 
 NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gymsera_be` (off origin/main 93587ab, after the 1F merge). Not pushed. Commits: 30eb602 (NEW-03 Google), 35bad3e (NEW-02 Apple).
 
@@ -46,6 +49,9 @@ NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gy
 | gymsera_web | main | f5fa208 fix(billing): Stripe return page never trusts ?checkout=success (BILL-14) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
+
+> **Prompt 1G DONE (FLOW-02; not pushed).** Next: **Prompt 1H — KYC data protection (SEC-10)**, then 1I (AUTH-07).
+> Owner items from 1G: (1) run `gymsera-flow02-provisioning-check.js` on the live DB (read-only; needs `CHK_USER` / `CHK_PASSWORD`) and decide on any finding other than STUCK_*; (2) **deploy order:** `node src/scripts/run-platform-migrations.js --dry-run`, then without the flag (p013), BEFORE the 1G backend goes live and before `run-tenant-migrations.js --dry-run` — every Tenant query reads the new columns; (3) deploy the backend before the CMS (the CMS falls back to a plain "Resume provisioning" button if the API sends no provisioning state); (4) tenants that were already APPROVED before 1G are not resumed by the sweep — an admin opens each and clicks Resume. (5) **NEW-34 (P2, spec §12.13.11) recorded 2026-10-01:** rejecting a tenant during (or after a failed) provisioning leaves its partial database as an orphan; the check script lists it as ORPHAN_DATABASE; cleanup is manual, to be decided with AUTH-07 (Prompt 1I).
 
 > Prompt 1F DONE (not pushed, per the owner). Next: **Prompt 1G — Resumable tenant provisioning (FLOW-02)** in the playbook (split out by R-24), then 1H (SEC-10), then 1I (AUTH-07).
 > Owner items from 1F: (1) run `gymsera-r25-tenant-db-credentials-check.js` on the live DB; (2) seed-script credential fallback: fixed with owner approval (6cfdcab); (3) before deploying: turn on Pub/Sub push authentication and set `GOOGLE_PLAY_RTDN_AUDIENCE` / `GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT` (R-26), and set `TENANT_DB_ADMIN_USER` explicitly (R-25).
@@ -97,6 +103,11 @@ NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gy
 - Split out (not in 1F): FLOW-02 → Prompt 1G, SEC-10 → 1H, AUTH-07 → 1I
 
 ---
+
+**Prompt 1G — Resumable tenant provisioning:**
+- [x] FLOW-02 verified again (still open, 3 defects proven on 7e2b246), fixed (be d326909, cms 355b29f), §13 row
+- [x] p013 migration with dry-run / conflict / re-run tests; read-only `gymsera-flow02-provisioning-check.js`
+- [x] Backend 3× 77/77 suites 516/516; CMS 3× vitest 8/8, Playwright 1/1
 
 ## 3. Notes for the next agent
 
@@ -177,6 +188,15 @@ NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gy
     `PUT /billing/downgrade-choice`); CMS admin "Verify payment" button (`POST /admin/tenants/:id/subscriptions/:subId/verify-payment`);
     host countdown/banner from `paymentIssue` on `GET /host/subscription/current` (mobile, CMS, web).
 
+- **Prompt 1G additions (2026-10-01):**
+  - Provisioning = `tenant-provisioning.service.js` step machine; test seam `provisioningHooks.onStep(step, phase)`.
+    Lease writes: MySQL returns *changed* rows, and DATETIME has 1-second precision, so a same-second renewal
+    reports 0 rows — `writeUnderLease` re-reads before deciding the lease was lost. Keep that in mind for any
+    other conditional UPDATE used as a lock.
+  - `jest.restoreAllMocks()` in a test also removes `installMailFake()`; reinstall it after, or restore spies one by one.
+  - Mobile `admin_repository.dart#approveTenant` has no caller in the UI; nothing to update there.
+  - Full backend suite now takes ~11 minutes.
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -211,3 +231,4 @@ NEW-02/NEW-03 are on branch `phase-1/new-02-03-social-token-verification` in `gy
 | 25 | 2026-09-30 | Gemini (Gemini 3.8 Flash) | Prompt 1E (Member money) | REL-01, PAY-01, PAY-02, PAY-03, PAY-04, PAY-07, PAY-10, SEC-13 | task complete | yes |
 | 26 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1F | SEC-03, SEC-07, RT-04, R-25, SEC-09, UX-12 (plan); FLOW-02/SEC-10/AUTH-07 split to 1G–1I (R-24) | task complete | yes |
 | 27 | 2026-09-30 | Claude Code (Opus 5.5) | Owner task: NEW-02 + NEW-03 | NEW-03 (Google: fallback removed), NEW-02 (Apple: JWKS verification, identity only from the token) | task complete | yes |
+| 28 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1G | FLOW-02 (be d326909, cms 355b29f); read-only check script | task complete | yes |

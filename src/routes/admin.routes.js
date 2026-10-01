@@ -8,6 +8,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const upload = require('../middleware/upload');
+const idempotency = require('../middleware/idempotency');
 
 const router = Router();
 
@@ -87,8 +88,8 @@ router.get('/tenants/:id', adminController.getTenant);
  * @swagger
  * /admin/tenants/{id}/approve:
  *   post:
- *     summary: Approve a tenant and trigger database provisioning
- *     description: Sets tenant status to APPROVED and enqueues a Bull job to provision the tenant MySQL database. The status moves to ACTIVE once provisioning completes.
+ *     summary: Approve a tenant and provision it (resumable, FLOW-02)
+ *     description: Sets tenant status to APPROVED and provisions the tenant database in six recorded steps. Calling it again on an APPROVED tenant resumes from the last finished step.
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -97,15 +98,24 @@ router.get('/tenants/:id', adminController.getTenant);
  *         name: id
  *         required: true
  *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: Idempotency-Key
+ *         required: false
+ *         schema: { type: string, maxLength: 128 }
+ *         description: One key per approve/resume click; a repeat replays the first answer.
  *     responses:
  *       200:
- *         description: Tenant approved, provisioning queued
+ *         description: Tenant provisioned and ACTIVE (data.provisioning.step = 6)
+ *       202:
+ *         description: Another run is provisioning this tenant; data.provisioning has its step
  *       400:
  *         description: Tenant is not in a reviewable state
  *       404:
  *         description: Tenant not found
+ *       502:
+ *         description: A provisioning step failed; the tenant stays APPROVED and can be resumed
  */
-router.post('/tenants/:id/approve', adminController.approveTenant);
+router.post('/tenants/:id/approve', idempotency(), adminController.approveTenant);
 
 /**
  * @swagger

@@ -356,6 +356,17 @@ const runExpiryCheck = async () => {
     console.error('[Cron] Billing reconciliation failed:', err.message);
   }
 
+  // ── Provisioning that stopped halfway (FLOW-02): finish it ───────────────
+  try {
+    const { resumeStalledProvisioning } = require('../services/tenant-provisioning.service');
+    const prov = await resumeStalledProvisioning();
+    if (prov.resumed.length || prov.failed.length) {
+      console.log(`[Cron] Provisioning sweep: ${prov.resumed.length} finished, ${prov.failed.length} still failing`);
+    }
+  } catch (err) {
+    console.error('[Cron] Provisioning sweep failed:', err.message);
+  }
+
   // ── Platform subscriptions ────────────────────────────────────────────────
   await _processPlatformSubscriptions();
 
