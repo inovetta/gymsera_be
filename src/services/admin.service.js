@@ -501,6 +501,14 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
     throw createError('Tenant cannot be rejected from its current status', 400);
   }
 
+  // NEW-34: a provisioning run that holds a live lease keeps creating the database, listing and
+  // branch; rejecting now would orphan them. The run stops by itself or its lease expires — reject then.
+  if (provisioningSummary(tenant).inProgress) {
+    const err = createError('Provisioning is still running for this tenant. Wait for it to stop, then reject.', 409);
+    err.code = 'provisioning_in_progress';
+    throw err;
+  }
+
   await tenant.update({
     status: TenantStatus.REJECTED,
     rejectedAt: new Date(),
@@ -508,6 +516,8 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
     rejectionReason: reason.trim(),
     kycStatus: KycStatus.REJECTED,
   });
+  // NEW-34: a rejected tenant's live listing must not stay ACTIVE (PENDING / REJECTED ones are left as they are).
+  await GymListing.update({ status: 'INACTIVE' }, { where: { tenantId: tenant.id, status: 'ACTIVE' } });
 
   await safeRedisDel(`tenant:${actualTenantId}:connStr`);
   await TenantDbManager.release(actualTenantId).catch(() => {});

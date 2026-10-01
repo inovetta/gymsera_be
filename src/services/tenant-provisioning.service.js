@@ -862,6 +862,7 @@ module.exports = {
   PROVISIONING_REQUESTED,
   PROVISIONING_LEASE_MS,
   getTenantDbConfig,
+  buildDbName,
   createSafeAdminConnection,
   REQUIRED_TENANT_DB_SETTINGS,
 };
