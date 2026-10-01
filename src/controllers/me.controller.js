@@ -1,4 +1,5 @@
 const meService = require('../services/me.service');
+const accountDeletionService = require('../services/account-deletion.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
 const inboxService = require('../services/inbox.service');
@@ -203,11 +204,38 @@ const unsaveGym = async (req, res, next) => {
   }
 };
 
+// ── GET /me/deletion-preflight ────────────────────────────────────────────────
+const deletionPreflight = async (req, res, next) => {
+  try {
+    const result = await accountDeletionService.getDeletionPreflight(req.user.sub);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── POST /me/request-deletion ────────────────────────────────────────────────
+// AUTH-07: needs a password or a fresh Google/Apple token; starts the 30-day undo window.
 const requestDeletion = async (req, res, next) => {
   try {
-    await meService.requestAccountDeletion(req.user.sub);
-    return sendSuccess(res, null, 'Account deletion requested. You will be contacted within 7 days.', 200);
+    const { password, provider, idToken } = req.body || {};
+    const result = await accountDeletionService.requestDeletion(req.user.sub, { password, provider, idToken });
+    return sendSuccess(
+      res,
+      { scheduledFor: result.scheduledFor, requestedAt: result.requestedAt, windowDays: accountDeletionService.DELETION_WINDOW_DAYS },
+      'Account deletion requested. You can cancel it by signing in again within 30 days.',
+      200
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /me/cancel-deletion ─────────────────────────────────────────────────
+const cancelDeletion = async (req, res, next) => {
+  try {
+    await accountDeletionService.cancelDeletion(req.user.sub);
+    return sendSuccess(res, null, 'Account deletion cancelled', 200);
   } catch (err) {
     next(err);
   }
@@ -358,6 +386,8 @@ module.exports = {
   saveGym,
   unsaveGym,
   requestDeletion,
+  cancelDeletion,
+  deletionPreflight,
   listMyInbox,
   getMyConversation,
   replyToMyConversation,

@@ -184,6 +184,9 @@ const _buildTokenPayload = async (user) => {
     isHost: !!user.isHost,
     tenantId,
     branchId: null,
+    // AUTH-07: inside the 30-day undo window the token only reaches the undo/profile
+    // routes (middleware/authenticate.js). Re-derived from the user on every refresh.
+    ...(user.status === 'PENDING_DELETION' && { dp: true }),
   };
 };
 
@@ -229,7 +232,21 @@ const _sanitizeUser = (user, tenantId = null) => ({
   isHost: !!user.isHost,
   profileImageUrl: user.profileImageUrl || null,
   tenantId,
+  ...(user.status === 'PENDING_DELETION' && {
+    deletionPending: { requestedAt: user.deletionRequestedAt, scheduledFor: user.deletionScheduledFor },
+  }),
 });
+
+/**
+ * Statuses a sign-in must never overwrite with ACTIVE (AUTH-07). Google/Apple
+ * sign-in used to set status = ACTIVE on every login unless SUSPENDED, which
+ * silently undid the old "deletion" (INACTIVE) — and would undo PENDING_DELETION.
+ */
+const _KEEP_STATUS_ON_SIGN_IN = ['SUSPENDED', 'PENDING_DELETION', 'DELETED'];
+const _statusAfterSignIn = (status) => (_KEEP_STATUS_ON_SIGN_IN.includes(status) ? status : 'ACTIVE');
+const _assertNotDeleted = (user) => {
+  if (user.status === 'DELETED') throw createError('This account has been deleted.', 401);
+};
 
 // ── Public service methods ────────────────────────────────────────────────────
 
@@ -440,7 +457,8 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
     throw err;
   }
 
-  if (user.status !== 'ACTIVE') {
+  _assertNotDeleted(user);
+  if (user.status !== 'ACTIVE' && user.status !== 'PENDING_DELETION') {
     throw createError('Your account has been suspended. Please contact support.', 403);
   }
 
@@ -549,7 +567,7 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = fals
 
     if (user) {
       // Link Google ID to existing account and activate it (email verified by Google)
-      const newStatus = user.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
+      const newStatus = _statusAfterSignIn(user.status);
       const baseUpdate = {
         isVerified: true,
         status: newStatus,
@@ -597,8 +615,8 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = fals
       console.log(`[Google Auth] Created new user account for ${email} (id: ${user.id})`);
     }
   } else {
-    // Existing Google account: ensure active & verified unless explicitly suspended
-    if (user.status !== 'SUSPENDED') {
+    // Existing Google account: ensure active & verified unless suspended / being deleted
+    if (!_KEEP_STATUS_ON_SIGN_IN.includes(user.status)) {
       const updateFields = {
         isVerified: true,
         status: 'ACTIVE',
@@ -613,6 +631,7 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = fals
     console.log(`[Google Auth] Logged in existing Google user ${email} (id: ${user.id})`);
   }
 
+  _assertNotDeleted(user);
   if (user.status === 'SUSPENDED') {
     throw createError('Your account has been suspended. Please contact support.', 403);
   }
@@ -756,7 +775,7 @@ const appleLogin = async ({ identityToken, fullName }, ipAddress, userAgent) => 
     user = await User.findOne({ where: { email: userEmail } });
     if (user) {
       // Link appleId to existing account
-      const newStatus = user.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
+      const newStatus = _statusAfterSignIn(user.status);
       await user.update({
         appleId,
         isVerified: true,
@@ -793,8 +812,8 @@ const appleLogin = async ({ identityToken, fullName }, ipAddress, userAgent) => 
     }
     console.log(`[Apple Auth] Created new user account for ${userEmail} (id: ${user.id})`);
   } else {
-    // Existing Apple account: ensure active & verified unless suspended
-    if (user.status !== 'SUSPENDED') {
+    // Existing Apple account: ensure active & verified unless suspended / being deleted
+    if (!_KEEP_STATUS_ON_SIGN_IN.includes(user.status)) {
       await user.update({
         isVerified: true,
         status: 'ACTIVE',
@@ -803,6 +822,7 @@ const appleLogin = async ({ identityToken, fullName }, ipAddress, userAgent) => 
     console.log(`[Apple Auth] Logged in existing Apple user ${user.email} (id: ${user.id})`);
   }
 
+  _assertNotDeleted(user);
   if (user.status === 'SUSPENDED') {
     throw createError('Your account has been suspended. Please contact support.', 403);
   }
@@ -879,7 +899,7 @@ const refreshTokens = async (token, ipAddress, userAgent) => {
 
   // Load the user
   const user = await User.findByPk(stored.userId);
-  if (!user || user.status === 'SUSPENDED') {
+  if (!user || user.status === 'SUSPENDED' || user.status === 'DELETED') {
     throw createError('User not found or account is suspended', 401);
   }
 
@@ -1042,6 +1062,34 @@ const verifyReauthCredential = async (userId, { provider, idToken }) => {
   }
 
   throw createError(`Unsupported re-authentication provider "${provider}"`, 400);
+};
+
+/**
+ * Re-authentication for a sensitive action (AUTH-07 account deletion): the
+ * current password, OR a fresh Google/Apple token for the SAME provider identity
+ * (verifyReauthCredential above, the SEC-13 pattern).
+ *
+ * A password is only ever compared against the user's own hash: an account with
+ * no password (social-only) cannot pass with some password string.
+ */
+const assertReauth = async (userId, { password, provider, idToken } = {}) => {
+  if (!password && !(provider && idToken)) {
+    const err = createError('Re-authentication required: confirm with your password or sign in again', 401);
+    err.code = 'reauth_required';
+    throw err;
+  }
+  if (provider && idToken) {
+    return module.exports.verifyReauthCredential(userId, { provider, idToken });
+  }
+  const user = await User.findByPk(userId);
+  if (!user) throw createError('User not found', 404);
+  const ok = Boolean(user.passwordHash) && (await bcrypt.compare(String(password), user.passwordHash));
+  if (!ok) {
+    const err = createError('Incorrect password', 401);
+    err.code = 'invalid_credentials';
+    throw err;
+  }
+  return true;
 };
 
 /**
@@ -1212,6 +1260,7 @@ module.exports = {
   passwordResetConfirm,
   getMe,
   verifyReauthCredential,
+  assertReauth,
   verifyTenantInvitation,
   acceptTenantInvitation,
   _resetAppleKeyCacheForTests,
