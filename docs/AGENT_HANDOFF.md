@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-01 |
-| Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 1H — KYC data protection (SEC-10)** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | committed <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Last updated | 2026-10-02 |
+| Updated by | Claude Code (Sonnet 5.5) |
+| Current prompt | **Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34** |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | AUTH-07 (owner decisions recorded as R-28 in §14; plan approved) |
+| Step within issue | verify done; next: p014 migration test (red) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
@@ -42,7 +42,8 @@ Not pushed, no PRs opened.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Prompt 1H DONE (SEC-10; not pushed).** Next: **Prompt 1I — Self-service account and tenant deletion (AUTH-07)** in the playbook.
+> **Prompt 1I IN PROGRESS (branch `phase-1/prompt-1i-account-deletion` off origin/main 608d849, gymsera_be).** Owner decisions: spec §14 R-28 (do not re-ask). Plan, in commit order: (1) AUTH-07a platform migration p014 (users/tenants: PENDING_DELETION + DELETED statuses, deletion_* columns) with dry-run/conflict tests, (2) AUTH-07b request/cancel/preflight + auth-path guards (`/me/request-deletion` keeps its path), (3) AUTH-07c day-30 finalize sweep (anonymize in place, NO drop), (4) NEW-34 reject 409 during lease + orphan DB report/manual-drop script, (5) Apple revoke behind config, (6) mobile flow, (7) web privacy copy, (8) read-only check script, (9) §13 rows. Apply p014 for real on the local scratch DB before any tenant-migration dry-run (1E/1G lesson).
+> Previous: **Prompt 1H DONE (SEC-10; merged).** Next was: **Prompt 1I — Self-service account and tenant deletion (AUTH-07)** in the playbook.
 > Owner items from 1H:
 > 1. Run `gymsera-sec10-kyc-check.js` on the live DB (`CHK_USER=... CHK_PASSWORD=... node gymsera-sec10-kyc-check.js`). It is strictly read-only (`SET SESSION TRANSACTION READ ONLY`) and audits whether legacy KYC documents exist as public URLs and whether rejected/deleted tenants older than 90 days are pending retention purge.
 > 2. Retention sweep: run `node src/scripts/run-kyc-retention-sweep.js --dry-run` to preview any 90-day KYC purge candidates before running with `--apply`.
@@ -228,3 +229,4 @@ Not pushed, no PRs opened.
 | 27 | 2026-09-30 | Claude Code (Opus 5.5) | Owner task: NEW-02 + NEW-03 | NEW-03 (Google: fallback removed), NEW-02 (Apple: JWKS verification, identity only from the token) | task complete | yes |
 | 28 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1G | FLOW-02 (be d326909, cms 355b29f); read-only check script | task complete | yes |
 | 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |
+| 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07, NEW-34 (in progress) | — | — |
