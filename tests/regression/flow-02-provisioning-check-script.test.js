@@ -213,3 +213,5 @@ describe('the script against real databases', () => {
     expect(res.stderr).toMatch(/Set CHK_USER and CHK_PASSWORD/);
   });
 });
+
+// CI verification only (no behaviour change): gives GitHub Actions a commit to run against main at d445872.
