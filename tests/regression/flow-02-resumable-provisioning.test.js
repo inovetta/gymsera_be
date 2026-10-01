@@ -378,3 +378,86 @@ describe('FLOW-02: resuming into a half-made, mixed-collation tenant database', 
     expect(Number(mig.v)).toBe(TARGET_SCHEMA_VERSION);
   });
 });
+
+describe('FLOW-02: a tenant app user with no server-wide privileges', () => {
+  // Neither the local test server nor CI runs the tenant app user restricted (locally it holds
+  // ALL ON *.*, in CI it is root), so this test makes one: USAGE only, then whatever step 1 grants.
+  const mysql = require('mysql2/promise');
+  const { decrypt } = require('../../src/utils/crypto.utils');
+  const LIMITED_USER = 'f02_limited_app';
+  const limitedPass = require('crypto').randomBytes(12).toString('hex');
+  const saved = {};
+
+  const dropLimitedUser = async () => {
+    const conn = await getAdminConnection();
+    await conn.query(`DROP USER IF EXISTS '${LIMITED_USER}'@'%'`);
+    await conn.query(`DROP USER IF EXISTS '${LIMITED_USER}'@'localhost'`);
+  };
+
+  beforeAll(async () => {
+    await dropLimitedUser();
+    const conn = await getAdminConnection();
+    await conn.query(`CREATE USER '${LIMITED_USER}'@'%' IDENTIFIED BY '${limitedPass}'`);
+    for (const k of ['TENANT_DB_USER', 'TENANT_DB_PASS']) saved[k] = process.env[k];
+    process.env.TENANT_DB_USER = LIMITED_USER;
+    process.env.TENANT_DB_PASS = limitedPass;
+  });
+
+  afterAll(async () => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    await dropLimitedUser();
+  });
+
+  const globalPrivileges = async () => {
+    const conn = await getAdminConnection();
+    const [rows] = await conn.query(
+      'SELECT PRIVILEGE_TYPE AS p FROM information_schema.USER_PRIVILEGES WHERE GRANTEE LIKE ?',
+      [`'${LIMITED_USER}'@%`]
+    );
+    return [...new Set(rows.map((r) => r.p))];
+  };
+
+  test('provisioning, and a resumed provisioning, complete as that user; it can reach only its own tenant database', async () => {
+    expect(await globalPrivileges()).toEqual(['USAGE']);
+
+    // One run straight through.
+    const tenant = await pendingTenant();
+    await adminService.approveTenant(tenant.id, admin.id);
+    await expectFullyProvisioned(tenant);
+    expect(decodeURIComponent(new URL(decrypt(tenant.connectionStringEncrypted)).username)).toBe(LIMITED_USER);
+
+    // One run that stops after the tables are made and is resumed (the resumed run skips step 1).
+    const resumed = await pendingTenant();
+    provisioning.provisioningHooks.onStep = (step, phase) => {
+      if (step === 'MODELS_SYNCED' && phase === 'after') throw new Error('injected');
+    };
+    await expect(adminService.approveTenant(resumed.id, admin.id)).rejects.toMatchObject({ statusCode: 502 });
+    provisioning.provisioningHooks.onStep = null;
+    await adminService.approveTenant(resumed.id, admin.id);
+    await expectFullyProvisioned(resumed);
+
+    // Still no server-wide privilege, and no way into the platform database or another tenant's.
+    expect(await globalPrivileges()).toEqual(['USAGE']);
+    const asApp = await mysql.createConnection({
+      host: process.env.TENANT_DB_HOST || '127.0.0.1',
+      port: Number(process.env.TENANT_DB_PORT),
+      user: LIMITED_USER,
+      password: limitedPass,
+    });
+    try {
+      const [[own]] = await asApp.query(`SELECT COUNT(*) AS n FROM \`gymsera_${tenant.tenantCode}\`.branches`);
+      expect(Number(own.n)).toBe(1);
+      await expect(asApp.query(`SELECT COUNT(*) AS n FROM \`${process.env.PLATFORM_DB_NAME}\`.tenants`)).rejects.toMatchObject({
+        code: expect.stringMatching(/ER_TABLEACCESS_DENIED_ERROR|ER_DBACCESS_DENIED_ERROR/),
+      });
+      await expect(asApp.query('SELECT COUNT(*) AS n FROM `gymsera_test_tenant_1`.branches')).rejects.toMatchObject({
+        code: expect.stringMatching(/ER_TABLEACCESS_DENIED_ERROR|ER_DBACCESS_DENIED_ERROR/),
+      });
+    } finally {
+      await asApp.end().catch(() => {});
+    }
+  });
+});
