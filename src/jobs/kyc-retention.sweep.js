@@ -39,6 +39,12 @@ async function runKycRetentionSweep({ sequelize, dryRun = false, olderThanDays =
           status: 'INACTIVE',
           updatedAt: { [Op.lte]: cutoffDate },
         },
+        {
+          // AUTH-07: deleted tenants count from the day the deletion finished, not from
+          // `updatedAt` (anonymizing the row touched it).
+          status: 'DELETED',
+          deletedAt: { [Op.lte]: cutoffDate },
+        },
       ],
       kycDocumentsJson: {
         [Op.ne]: null,

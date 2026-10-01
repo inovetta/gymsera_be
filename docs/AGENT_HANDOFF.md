@@ -22,7 +22,7 @@ next agent won't know it.
 | Current prompt | **Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34** |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | AUTH-07 (owner decisions recorded as R-28 in §14; plan approved) |
-| Step within issue | verify done; next: p014 migration test (red) <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Step within issue | committed: p014/p015 (f2c6598), request/undo (6f3ab27), day-30 sweep (this commit); next: NEW-34 <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
 
 ### Branches and last commits
 
