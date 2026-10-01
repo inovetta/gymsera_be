@@ -239,6 +239,17 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
       expect(await snapshot()).toEqual(afterApply);
     });
 
+    test('a platform database with no `users` table at all: nothing to alter, no error (like p013/p014)', async () => {
+      await createPlatformDbBefore1I();
+      await seq.query('DROP TABLE users');
+      await runPlatformMigrations(seq, { targetVersion: 15 });
+
+      const res = await runPlatformMigrations(seq);
+
+      expect(res.applied).toEqual([P016]);
+      expect(await appleColumn()).toBeUndefined();
+    });
+
     test('--dry-run writes nothing; a column of another type makes it skip (not recorded, data untouched)', async () => {
       await createPlatformDbBefore1I();
       await runPlatformMigrations(seq, { targetVersion: 15 });

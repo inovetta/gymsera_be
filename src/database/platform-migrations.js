@@ -661,6 +661,12 @@ const PLATFORM_MIGRATIONS = [
       if (context?.dryRun === true) return null;
       // Sign in with Apple: the (encrypted) refresh token, kept only so account deletion can
       // revoke it at Apple (AUTH-07, R-28 point 5). NULL for everyone until their next Apple sign-in.
+      // A platform database without a `users` table yet (a scratch/partial database) has nothing to alter.
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['users'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
       return _addNullableColumn(sequelize, {
         table: 'users',
         column: 'apple_refresh_token_encrypted',
