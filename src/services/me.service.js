@@ -446,16 +446,6 @@ const unsaveGym = async (userId, gymListingId) => {
   });
 };
 
-const requestAccountDeletion = async (userId) => {
-  const user = await User.findByPk(userId);
-  if (!user) throw createError('User not found', 404);
-
-  // Soft delete or set user as INACTIVE
-  await user.update({ status: 'INACTIVE' });
-  console.log(`[Account Deletion] User ${user.email} (${user.id}) has requested account deletion.`);
-  return { success: true };
-};
-
 module.exports = {
   getMyProfile,
   updateMyProfile,
@@ -469,5 +459,4 @@ module.exports = {
   getSavedGyms,
   saveGym,
   unsaveGym,
-  requestAccountDeletion,
 };

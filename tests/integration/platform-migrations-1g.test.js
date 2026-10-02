@@ -96,15 +96,16 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
     await teardownTestDatabases();
   });
 
-  test('p013 is the platform target version', () => {
-    expect(PLATFORM_TARGET_VERSION).toBe(13);
+  // Pinned to its own version: later migrations (p014+) have their own tests.
+  test('p013 exists at version 13', () => {
+    expect(PLATFORM_TARGET_VERSION).toBeGreaterThanOrEqual(13);
     expect(PLATFORM_MIGRATIONS.find((m) => m.version === 13).name).toBe(P013);
   });
 
   test('--dry-run reports p013 and writes NOTHING', async () => {
     await createPlatformDbBefore1G();
     const before = await snapshot();
-    const res = await runPlatformMigrations(seq, { dryRun: true });
+    const res = await runPlatformMigrations(seq, { dryRun: true, targetVersion: 13 });
     expect(res.dryRun).toBe(true);
     expect(res.wouldRun).toEqual([P013]);
     expect(await snapshot()).toEqual(before);
@@ -116,7 +117,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
     await seq.query("UPDATE tenants SET provisioning_state = 7 WHERE tenant_code = 'GYM-STUCK'");
     const before = await snapshot();
 
-    await runPlatformMigrations(seq);
+    await runPlatformMigrations(seq, { targetVersion: 13 });
 
     expect(await snapshot()).toEqual(before); // no other column added either (all-or-nothing)
     const [row] = await seq.query('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 13', { type: QueryTypes.SELECT });
@@ -127,7 +128,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
     await createPlatformDbBefore1G();
     await seq.query("ALTER TABLE tenants ADD COLUMN provisioning_error VARCHAR(500) NOT NULL DEFAULT ''");
     const before = await snapshot();
-    await runPlatformMigrations(seq);
+    await runPlatformMigrations(seq, { targetVersion: 13 });
     expect(await snapshot()).toEqual(before);
   });
 
@@ -135,7 +136,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
     await createPlatformDbBefore1G();
     const rowsBefore = await seq.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id', { type: QueryTypes.SELECT });
 
-    const res = await runPlatformMigrations(seq);
+    const res = await runPlatformMigrations(seq, { targetVersion: 13 });
     expect(res.applied).toEqual([P013]);
     expect(await columns()).toEqual([
       { name: 'provisioning_error', type: 'varchar(500)', nullable: 'YES' },
@@ -148,7 +149,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
     expect(states.every((r) => COLUMNS.every((c) => r[c] === null))).toBe(true); // no backfill
 
     const afterApply = await snapshot();
-    const again = await runPlatformMigrations(seq);
+    const again = await runPlatformMigrations(seq, { targetVersion: 13 });
     expect(again.applied).toEqual([]);
     expect(await snapshot()).toEqual(afterApply);
   });
@@ -158,7 +159,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
     await seq.query(
       'ALTER TABLE tenants ADD COLUMN provisioning_state VARCHAR(32) NULL, ADD COLUMN provisioning_lock_token CHAR(36) NULL'
     );
-    const res = await runPlatformMigrations(seq);
+    const res = await runPlatformMigrations(seq, { targetVersion: 13 });
     expect(res.applied).toEqual([P013]);
     expect((await columns()).map((c) => c.name)).toEqual([
       'provisioning_error', 'provisioning_lock_token', 'provisioning_locked_until', 'provisioning_state',

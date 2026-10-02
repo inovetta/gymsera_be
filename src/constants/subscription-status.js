@@ -14,6 +14,11 @@ const TenantStatus = {
   REJECTED: 'REJECTED',
   SUSPENDED: 'SUSPENDED',
   ACTIVE: 'ACTIVE',
+  // Account deletion (AUTH-07, R-28, platform migration p015): inside the 30-day undo
+  // window / finished (anonymized in place, database kept). Appended last on purpose —
+  // the DB enum was widened by appending.
+  PENDING_DELETION: 'PENDING_DELETION',
+  DELETED: 'DELETED',
 };
 
 const KycStatus = {

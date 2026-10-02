@@ -274,8 +274,10 @@ router.get('/saved-gyms', meController.getSavedGyms);
 router.post('/saved-gyms/:gymId', meController.saveGym);
 router.delete('/saved-gyms/:gymId', meController.unsaveGym);
 
-// ── Account Deletion Request ──────────────────────────────────────────────────
+// ── Account deletion (AUTH-07): preflight → re-authenticated request → 30-day undo ──
+router.get('/deletion-preflight', meController.deletionPreflight);
 router.post('/request-deletion', meController.requestDeletion);
+router.post('/cancel-deletion', meController.cancelDeletion);
 
 // ── Traveler Inbox ────────────────────────────────────────────────────────────
 router.get('/inbox', meController.listMyInbox);
