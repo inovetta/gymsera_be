@@ -838,12 +838,27 @@ const getCurrentSubscription = async (req, res, next) => {
       overQuotaGraceRemainingDays = Math.max(0, Math.ceil((graceExpiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
     }
 
+    // BILL-09: Check if any superseded subscription for this tenant is still billing at the store
+    const duplicateRow = await TenantSubscription.findOne({
+      where: { tenantId, duplicateBilling: true },
+      attributes: ['id', 'platform', 'externalOriginalTransactionId'],
+    });
+
+    const storeManageUrls = {
+      IOS: 'https://apps.apple.com/account/subscriptions',
+      ANDROID: 'https://play.google.com/store/account/subscriptions',
+      STRIPE: 'https://gymsera.com/billing',
+    };
+
     return sendSuccess(res, {
       ...subscription.toJSON(),
       overQuotaGraceDays: graceDays,
       overQuotaGraceRemainingDays,
       isOverQuotaGraceExpired,
       paymentIssue: subscriptionMigrationService.paymentIssueFor(subscription),
+      duplicateBilling: !!duplicateRow,
+      duplicateBillingPlatform: duplicateRow?.platform || null,
+      duplicateBillingManageUrl: duplicateRow ? (storeManageUrls[duplicateRow.platform] || null) : null,
     });
   } catch (err) {
     next(err);

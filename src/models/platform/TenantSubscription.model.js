@@ -168,6 +168,13 @@ module.exports = (sequelize) => {
         type: DataTypes.JSON,
         allowNull: true,
       },
+      // BILL-09: Set true when the provider still reports a superseded row as auto-renewing.
+      duplicateBilling: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'duplicate_billing',
+      },
     },
     {
       tableName: 'tenant_subscriptions',
