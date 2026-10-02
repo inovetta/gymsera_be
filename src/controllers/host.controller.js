@@ -8,6 +8,7 @@ const accessService = require('../services/access.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
 const subscriptionMigrationService = require('../services/subscription-migration.service');
 const storageService = require('../services/storage.service');
+const authService = require('../services/auth.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 
 const getTodaySummary = async (req, res, next) => {
@@ -711,7 +712,14 @@ const updateListing = async (req, res, next) => {
 
 /**
  * DELETE /host/listings/:id
- * Body (only required if the organization has branches or unbuilt slots):
+ * Body:
+ *   Re-auth (required unless exempt): { password } or { provider, idToken } / { reauthProvider, reauthIdToken }
+ *     - Exempt ONLY if ALL of these hold (NEW-38 rollback window):
+ *       1. Belongs to caller (listing.tenantId === tenantId)
+ *       2. Zero branches (zero ACTIVE or INACTIVE in tenant DB)
+ *       3. Created < 5 minutes ago
+ *       4. No strategy/cascade flag set
+ *   Optional strategy (only required if the organization has branches or unbuilt slots):
  *   { strategy: 'moveBranches', targetListingId } | { strategy: 'deleteBranches' }
  */
 const deleteListing = async (req, res, next) => {
@@ -719,12 +727,48 @@ const deleteListing = async (req, res, next) => {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw createError('Tenant not found', 404);
     const { id } = req.params;
-    const { strategy, targetListingId } = req.body;
+    const { strategy, targetListingId, password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
+
+    const userId = req.user.sub || req.user.id;
+
+    // Check exemption from re-auth: empty organization rollback within 5 minutes of creation
+    const listing = await GymListing.findByPk(id);
+    const belongsToCaller = Boolean(listing && listing.tenantId === tenantId && listing.status !== 'INACTIVE');
+
+    let hasZeroBranches = false;
+    if (belongsToCaller && req.tenantDb && req.tenantDb.models && req.tenantDb.models.Branch) {
+      const branchCount = await req.tenantDb.models.Branch.count({
+        where: {
+          gymListingId: id,
+          status: { [Op.in]: ['ACTIVE', 'INACTIVE'] },
+        },
+      });
+      hasZeroBranches = branchCount === 0;
+    }
+
+    const ROLLBACK_WINDOW_MS = 5 * 60 * 1000;
+    const createdAtMs = listing && listing.createdAt ? new Date(listing.createdAt).getTime() : 0;
+    const isRecent = Boolean(
+      listing && (Date.now() - createdAtMs) < ROLLBACK_WINDOW_MS && (Date.now() - createdAtMs) >= 0
+    );
+    const noCascadeOrStrategy = !strategy && !req.body?.cascade && !req.body?.cascadeDelete;
+
+    const isExempt = belongsToCaller && hasZeroBranches && isRecent && noCascadeOrStrategy;
+    const hasCredentials = Boolean(password || provider || reauthProvider || idToken || reauthIdToken);
+    const allowWithoutReauth = !hasCredentials && isExempt;
+
+    if (!allowWithoutReauth) {
+      await authService.assertReauth(userId, {
+        password,
+        provider: provider || reauthProvider,
+        idToken: idToken || reauthIdToken,
+      });
+    }
 
     const result = await gymService.deleteOrganization(req.tenantDb, tenantId, id, {
       strategy,
       targetListingId,
-      deletedByUserId: req.user.sub || req.user.id,
+      deletedByUserId: userId,
     });
     return sendSuccess(res, result, result.message);
   } catch (err) {
