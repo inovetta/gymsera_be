@@ -367,6 +367,21 @@ const runExpiryCheck = async () => {
     console.error('[Cron] Provisioning sweep failed:', err.message);
   }
 
+  // ── Account deletions whose 30-day undo window has passed (AUTH-07, NEW-36, R-28) ─
+  // Applies for real (anonymize in place, never drops a database). A failing account is
+  // retried by the next daily run; a failing sweep never stops the rest of this job.
+  try {
+    const { runDeletionFinalizeSweep } = require('../services/account-deletion-finalize.service');
+    const del = await runDeletionFinalizeSweep();
+    if (del.finalizedTenants.length || del.finalizedUsers.length || del.failed.length) {
+      console.log(
+        `[Cron] Account deletion sweep: ${del.finalizedTenants.length} tenant(s), ${del.finalizedUsers.length} user(s) finalized, ${del.failed.length} will retry`
+      );
+    }
+  } catch (err) {
+    console.error('[Cron] Account deletion sweep failed:', err.message);
+  }
+
   // ── Platform subscriptions ────────────────────────────────────────────────
   await _processPlatformSubscriptions();
 
