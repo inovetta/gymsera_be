@@ -433,6 +433,21 @@ router.post(
  */
 router.get('/me', authenticate, authController.me);
 
+// ── Sessions & Logout (AUTH-02) ───────────────────────────────────────────────
+router.post(
+  '/logout',
+  (req, res, next) => {
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      return authenticate(req, res, next);
+    }
+    next();
+  },
+  authController.logout
+);
+router.get('/sessions', authenticate, authController.getSessions);
+router.delete('/sessions/:id', authenticate, authController.revokeSession);
+router.delete('/sessions', authenticate, authController.revokeAllSessions);
+
 // ── Tenant Invitations (AUTH-09) ──────────────────────────────────────────────
 router.get('/tenant-invitations/verify', authController.verifyTenantInvitation);
 router.post('/tenant-invitations/accept', authController.acceptTenantInvitation);

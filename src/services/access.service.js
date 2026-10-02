@@ -308,7 +308,9 @@ const can = async (tenantDb, tenantId, userId, permissionKey, branchId = null) =
 const bumpUserPermissionVersion = async (userId) => {
   if (!userId) return;
   const { User } = require('../models/platform');
+  const { safeRedisDel } = require('../config/redis.config');
   await User.increment('permissionVersion', { where: { id: userId } }).catch(() => {});
+  await safeRedisDel(`user:${userId}:auth`).catch(() => {});
 };
 
 /**

@@ -30,6 +30,7 @@ const { createError } = require('../utils/response.utils');
 const authService = require('./auth.service');
 const stripeBilling = require('./stripe-billing.service');
 const notificationsService = require('./notifications.service');
+const accessService = require('./access.service');
 
 /** R-16: the undo window after a deletion request. */
 const DELETION_WINDOW_DAYS = 30;
@@ -214,6 +215,9 @@ const requestDeletion = async (userId, credential = {}) => {
     await _notifyMembers(tenant);
   }
 
+  // Invalidate any active access tokens via AUTH-08 permission version (NEW-37)
+  await accessService.bumpUserPermissionVersion(userId);
+
   return { alreadyRequested: false, requestedAt, scheduledFor };
 };
 
@@ -264,6 +268,7 @@ const cancelDeletion = async (userId) => {
   });
 
   for (const tenant of restored) await _closeTenantConnections(tenant.id);
+  await accessService.bumpUserPermissionVersion(userId);
   return { cancelled: true };
 };
 
