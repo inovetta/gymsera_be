@@ -369,4 +369,7 @@ router.use('/devices', devicesHostRouter);
 // ── Scheduled job HTTP triggers (Vercel Cron / external scheduler) ──────────
 router.use('/cron', require('./cron.routes'));
 
+// ── Meta catalog & client support (spec §4.2) ───────────────────────────────
+router.use('/meta', require('./meta.routes'));
+
 module.exports = router;

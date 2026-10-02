@@ -20,9 +20,18 @@ try {
 const routes = require('./src/routes');
 const errorHandler = require('./src/middleware/errorHandler');
 const auditLog = require('./src/middleware/auditLog');
+const requestId = require('./src/middleware/requestId');
+const { requestTimeout } = require('./src/middleware/timeout');
+const { sendError } = require('./src/utils/response.utils');
 const appConfig = require('./src/config/app.config');
 
 const app = express();
+
+// ── Request ID tracing (spec §4.1) ──────────────────────────────────────────
+app.use(requestId);
+
+// ── Request timeout: 15s (spec §4.1 / API-02) ───────────────────────────────
+app.use(requestTimeout(15000));
 
 // ── Trust proxy (required on Vercel / any reverse-proxy host) ─────────────────
 // Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
@@ -36,7 +45,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-device-api-key, X-Requested-With, Accept, Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-device-api-key, X-Requested-With, Accept, Origin, X-Request-Id, Idempotency-Key');
     res.setHeader('Access-Control-Max-Age', '86400');
   }
 
@@ -102,7 +111,7 @@ const corsOptions = {
     callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-device-api-key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-device-api-key', 'X-Request-Id', 'Idempotency-Key'],
   credentials: true,
   optionsSuccessStatus: 204,
 };
@@ -223,7 +232,7 @@ app.use('/api/v1', routes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => {
-  res.status(404).json({ success: false, message: 'Route not found' });
+  return sendError(res, 404, 'Route not found', 'route_not_found');
 });
 
 // ── Global error handler (must be last) ──────────────────────────────────────
