@@ -1072,21 +1072,23 @@ const verifyReauthCredential = async (userId, { provider, idToken }) => {
 };
 
 /**
- * Re-authentication for a sensitive action (AUTH-07 account deletion): the
- * current password, OR a fresh Google/Apple token for the SAME provider identity
- * (verifyReauthCredential above, the SEC-13 pattern).
+ * Re-authentication for a sensitive action (AUTH-07 account deletion, SEC-13 payout
+ * bank details, branch deletion): the current password, OR a fresh Google/Apple token
+ * for the SAME provider identity (verifyReauthCredential above).
  *
  * A password is only ever compared against the user's own hash: an account with
  * no password (social-only) cannot pass with some password string.
  */
-const assertReauth = async (userId, { password, provider, idToken } = {}) => {
-  if (!password && !(provider && idToken)) {
+const assertReauth = async (userId, { password, provider, reauthProvider, idToken, reauthIdToken } = {}) => {
+  const effectiveProvider = provider || reauthProvider;
+  const effectiveIdToken = idToken || reauthIdToken;
+  if (!password && !(effectiveProvider && effectiveIdToken)) {
     const err = createError('Re-authentication required: confirm with your password or sign in again', 401);
     err.code = 'reauth_required';
     throw err;
   }
-  if (provider && idToken) {
-    return module.exports.verifyReauthCredential(userId, { provider, idToken });
+  if (effectiveProvider && effectiveIdToken) {
+    return module.exports.verifyReauthCredential(userId, { provider: effectiveProvider, idToken: effectiveIdToken });
   }
   const user = await User.findByPk(userId);
   if (!user) throw createError('User not found', 404);
