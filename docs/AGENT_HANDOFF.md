@@ -18,36 +18,27 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-10-02 |
-| Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34** |
+| Updated by | Gemini (Gemini 3.8 Flash) |
+| Current prompt | **Prompt 2A — Reliability (API-01, API-02, REL-02, REL-03, REL-04, REL-05, BILL-07, BILL-09, AUTH-02, AUTH-03, AUTH-08)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
-| Step within issue | committed <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 1I is on branch `phase-1/prompt-1i-account-deletion` in `gymsera_be`, `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1H main). Not pushed, no PRs opened.
+Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be`, `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1I state). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1i-account-deletion` | 7705380 feat(me): re-confirmed account deletion with 30-day undo and store-subscription guidance (AUTH-07) | no |
-| gymsera_be | `phase-1/prompt-1i-account-deletion` | (the docs commit after 462e561; see `git log`) | no |
-| gymsera_cms | `phase-1/prompt-1i-account-deletion` | b0ae3f8 feat(admin): show PENDING_DELETION and DELETED statuses (AUTH-07) | no |
-| gymsera_web | `phase-1/prompt-1i-account-deletion` | 4b83fbe docs(privacy): describe the real account deletion process (AUTH-07) | no |
+| gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
+| gymsera_be | `phase-2/prompt-2a-reliability` | bedc13f feat(auth): session management, permission version revocation, and immediate deletion invalidation (AUTH-02, AUTH-08, NEW-37) | no |
+| gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
+| gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Prompt 1I DONE (AUTH-07 + NEW-34; not pushed).** Next: the playbook's staging checks ("You: before Phase 2, test on a staging build"), then **Prompt 2A** (Phase 2 — Reliability).
-> Owner items from 1I (details in spec §13 AUTH-07 / NEW-34 and §12.13.11 NEW-35..37):
-> 1. **Deploy order (critical):** platform migrations **p014, p015, p016** must be applied BEFORE this backend goes live (the User/Tenant models read the new columns): `node src/scripts/run-platform-migrations.js --dry-run`, then without the flag. Apply them before any `run-tenant-migrations.js --dry-run` too (tenant discovery reads the Tenant model).
-> 2. Run the read-only `CHK_USER=... CHK_PASSWORD=... node gymsera-auth07-deletion-check.js` on the live DB first. Expect: verified users stuck at INACTIVE from the old flow (LEGACY_DELETION_REQUEST) and REJECTED tenants whose database still exists (REJECTED_TENANT_DATABASE). Decide whether to honour the legacy requests.
-> 3. NEW-36 DONE: the sweep now runs for real inside the daily `runExpiryCheck` (node-cron + Vercel `/cron/subscription-expiry`). Preview first with `node src/scripts/run-account-deletion-sweep.js --dry-run`. Note: the KYC retention sweep (1H) is still CLI-only, not scheduled.
-> 4. Sign in with Apple revoke needs `APPLE_SIGNIN_TEAM_ID`, `APPLE_SIGNIN_KEY_ID`, `APPLE_SIGNIN_CLIENT_ID`, `APPLE_SIGNIN_PRIVATE_KEY_PATH` (see `.env.example`). Unset = recorded as skipped. Users only become revocable after they sign in with Apple on a build that sends `authorizationCode` (mobile 7705380).
-> 5. Dropping an orphan database is manual: `node src/scripts/drop-orphan-tenant-database.js <db>` (dry run), then `--apply --confirm <db>`.
-> 6. NEW-35 (P1): re-auth for payout details / delete-branch accepts any password for social-only accounts: needs its own prompt.
-> 7. The privacy page still offers "email support@gymsera.com to delete"; someone must be ready to handle those requests (nothing automates it).
-
-> Previous: Prompt 1H DONE (SEC-10; merged). Its owner items (1H): run `gymsera-sec10-kyc-check.js`, preview the KYC retention sweep, create the private R2 bucket `R2_KYC_BUCKET`.
+> Start **Prompt 2B** from `docs/GYMSERA_AGENT_PLAYBOOK.md` Part B:
+> "Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §5.3 and these issues: FLOW-05 (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), FLOW-06, FLOW-08, FLOW-09, FLOW-10, FLOW-12, FLOW-13, RBAC-04, RBAC-05, RBAC-08, RBAC-09, PAY-05…PAY-08, PAY-12. For FLOW-05, record in the handoff file which hypotheses you already ruled out and how."
 
 ### Work in progress that is NOT committed
 
@@ -83,6 +74,21 @@ Prompt 1I is on branch `phase-1/prompt-1i-account-deletion` in `gymsera_be`, `gy
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 2A — Reliability (API-01, API-02, REL-02, REL-03, REL-04, REL-05, BILL-07, BILL-09, AUTH-02, AUTH-03, AUTH-08):**
+- [x] 1. API-01 — One response/error envelope (§4.1) with backward compatibility + shared error-copy table (§4.2) (be bfaf8fb, app 406e690, cms 3dcf23a, web 41b167c)
+- [x] 2. API-02 — Timeouts + retry policy (§4.1) (dio/fetch interceptors; server timeouts 15s) (be bfaf8fb, app 406e690)
+- [x] 3. REL-02 — Busy state on mutating controls (`AppButton.busy` / `isLoading` debounce timer) (app 406e690)
+- [x] 4. REL-03 — Cron/sweeps safe with >1 instance (distributed lock per job, resumable & batched) (be dd52c24)
+- [x] 5. REL-04 — Billing cron skips SUSPENDED/deleted tenants and never mutates tenant status (be dd52c24)
+- [x] 6. REL-05 — Graceful shutdown (drain in-flight requests, flush buffers, clean exit) (be dd52c24)
+- [x] 7. BILL-07 — Cross-provider double billing prevention (`POST /billing/purchase-intent`) (be 495c827)
+- [x] 8. BILL-09 — Superseded row still billing visibility (`duplicateBilling` flag & banner) (be 495c827)
+- [x] 9. AUTH-02 — Sessions & devices (`UserSession` model, session list/revoke, `POST /auth/logout`) (be bedc13f)
+- [x] 10. AUTH-03 — Single-flight refresh on clients (fixed unhandled promise rejection leak in subscriber queue) (cms 3dcf23a, web 41b167c)
+- [x] 11. AUTH-08 — Immediate permission revocation (`ver` claim checking & NEW-37 immediate token invalidation) (be bedc13f)
+
+---
 
 **Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34:**
 - [x] Plan approved through the question tool; decisions recorded as R-28 (df17932)
@@ -244,3 +250,5 @@ Prompt 1I is on branch `phase-1/prompt-1i-account-deletion` in `gymsera_be`, `gy
 | 28 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1G | FLOW-02 (be d326909, cms 355b29f); read-only check script | task complete | yes |
 | 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |
 | 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07 (be f2c6598, 6f3ab27, 3043e1d, 0ca2b99, 462e561, 3c75de1; cms b0ae3f8; web 4b83fbe; app 7705380), NEW-34 (be 27ed2a5); NEW-35/36/37 recorded | task complete | yes |
+| 31 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | Prompt 2A (Reliability) | API-01, API-02, REL-02..05, BILL-07/09, AUTH-02/03/08, NEW-37 | task complete | yes |
+
