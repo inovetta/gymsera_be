@@ -27,34 +27,13 @@ const updateProfile = async (req, res, next) => {
         throw createError('You do not have permission to manage bank payout details', 403);
       }
 
-      const { password, provider: reauthProvider, idToken: reauthIdToken } = req.body;
-      if (!password && !(reauthProvider && reauthIdToken)) {
-        const err = createError('Re-authentication required: password confirmation needed to change payout bank details', 401);
-        err.code = 'reauth_required';
-        throw err;
-      }
-
-      if (password) {
-        const { User: PlatformUser } = require('../models/platform');
-        const bcrypt = require('bcrypt');
-        const user = await PlatformUser.findByPk(userId);
-        if (user && user.passwordHash) {
-          const isMatch = await bcrypt.compare(password, user.passwordHash);
-          if (!isMatch) {
-            const err = createError('Incorrect password', 401);
-            err.code = 'invalid_credentials';
-            throw err;
-          }
-        }
-      }
-
-      if (reauthProvider && reauthIdToken) {
-        const authService = require('../services/auth.service');
-        await authService.verifyReauthCredential(userId, {
-          provider: reauthProvider,
-          idToken: reauthIdToken,
-        });
-      }
+      const authService = require('../services/auth.service');
+      const { password, provider, reauthProvider, idToken, reauthIdToken } = req.body;
+      await authService.assertReauth(userId, {
+        password,
+        provider: provider || reauthProvider,
+        idToken: idToken || reauthIdToken,
+      });
     }
 
     const result = await gymService.updateProfile(req.tenantDb, tenantId, req.body);
@@ -115,34 +94,13 @@ const updateBranch = async (req, res, next) => {
 // ── DELETE /gyms/branches/:branchId ──────────────────────────────────────────
 const deleteBranch = async (req, res, next) => {
   try {
-    const { password, provider: reauthProvider, idToken: reauthIdToken } = req.body || {};
-
-    // If password is sent (e.g. mobile confirmation dialog), verify it
-    if (password) {
-      const { User: PlatformUser } = require('../models/platform');
-      const bcrypt = require('bcrypt');
-
-      const user = await PlatformUser.findByPk(req.user.sub);
-      if (user && user.passwordHash) {
-        const isMatch = await bcrypt.compare(password, user.passwordHash);
-        if (!isMatch) {
-          throw createError('Incorrect password', 401);
-        }
-      }
-    }
-
-    // A GOOGLE/APPLE-signed-in host has no passwordHash for the check above
-    // to verify — the client sends a fresh provider idToken instead (see
-    // listing_branches_screen.dart's delete dialog), confirmed here against
-    // this user's own linked account. See auth.service.js#verifyReauthCredential
-    // for why this is a separate, narrower thing than a real login.
-    if (reauthProvider && reauthIdToken) {
-      const authService = require('../services/auth.service');
-      await authService.verifyReauthCredential(req.user.sub, {
-        provider: reauthProvider,
-        idToken: reauthIdToken,
-      });
-    }
+    const authService = require('../services/auth.service');
+    const { password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
+    await authService.assertReauth(req.user.sub, {
+      password,
+      provider: provider || reauthProvider,
+      idToken: idToken || reauthIdToken,
+    });
 
     // confirmOrganizationDeletion is the client acknowledging the 409
     // `last_branch_in_organization` warning — deleting this branch will take

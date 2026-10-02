@@ -18,20 +18,20 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-10-02 |
-| Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34** |
+| Updated by | Gemini (Gemini 3.8 Flash) |
+| Current prompt | **NEW-35 — Social account re-authentication (SEC-13 & delete branch)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
-| Step within issue | committed <!-- verify / root cause / test written (red) / fix / test green / §13 row / committed --> |
+| Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 1I is on branch `phase-1/prompt-1i-account-deletion` in `gymsera_be`, `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1H main). Not pushed, no PRs opened.
+NEW-35 is on branch `fix/new-35-social-account-reauth` in `gymsera_be` (cut from main at 95a4f42). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-1/prompt-1i-account-deletion` | 7705380 feat(me): re-confirmed account deletion with 30-day undo and store-subscription guidance (AUTH-07) | no |
-| gymsera_be | `phase-1/prompt-1i-account-deletion` | (the docs commit after 462e561; see `git log`) | no |
+| gymsera_be | `fix/new-35-social-account-reauth` | 2b4ad6e fix(auth): enforce strict re-auth via assertReauth for social and password accounts (NEW-35) | no |
 | gymsera_cms | `phase-1/prompt-1i-account-deletion` | b0ae3f8 feat(admin): show PENDING_DELETION and DELETED statuses (AUTH-07) | no |
 | gymsera_web | `phase-1/prompt-1i-account-deletion` | 4b83fbe docs(privacy): describe the real account deletion process (AUTH-07) | no |
 
@@ -244,3 +244,4 @@ Prompt 1I is on branch `phase-1/prompt-1i-account-deletion` in `gymsera_be`, `gy
 | 28 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1G | FLOW-02 (be d326909, cms 355b29f); read-only check script | task complete | yes |
 | 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |
 | 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07 (be f2c6598, 6f3ab27, 3043e1d, 0ca2b99, 462e561, 3c75de1; cms b0ae3f8; web 4b83fbe; app 7705380), NEW-34 (be 27ed2a5); NEW-35/36/37 recorded | task complete | yes |
+| 31 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | NEW-35 | NEW-35: social account re-auth on payout bank details and branch deletion routed through assertReauth | task complete | yes |
