@@ -17,9 +17,9 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-02 |
+| Last updated | 2026-10-03 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 2A — Reliability (API-01, API-02, REL-02, REL-03, REL-04, REL-05, BILL-07, BILL-09, AUTH-02, AUTH-03, AUTH-08)** |
+| Current prompt | **Prompt 2A — Reliability (Review Blockers 1, 2, 3)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
@@ -31,7 +31,7 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be`, `gymsera
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `phase-2/prompt-2a-reliability` | bedc13f feat(auth): session management, permission version revocation, and immediate deletion invalidation (AUTH-02, AUTH-08, NEW-37) | no |
+| gymsera_be | `phase-2/prompt-2a-reliability` | 158b3ed fix(reliability): log unhandled rejections without process termination (REL-05) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
@@ -85,8 +85,10 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be`, `gymsera
 - [x] 7. BILL-07 — Cross-provider double billing prevention (`POST /billing/purchase-intent`) (be 495c827)
 - [x] 8. BILL-09 — Superseded row still billing visibility (`duplicateBilling` flag & banner) (be 495c827)
 - [x] 9. AUTH-02 — Sessions & devices (`UserSession` model, session list/revoke, `POST /auth/logout`) (be bedc13f)
-- [x] 10. AUTH-03 — Single-flight refresh on clients (fixed unhandled promise rejection leak in subscriber queue) (cms 3dcf23a, web 41b167c)
 - [x] 11. AUTH-08 — Immediate permission revocation (`ver` claim checking & NEW-37 immediate token invalidation) (be bedc13f)
+- [x] 12. Review Blocker 1: Upload route timeout (120s) exemption & idempotency retry protection across 408 timeouts (be dc394e4)
+- [x] 13. Review Blocker 2: In-process bounded cache for `permissionVersion` & user status without Redis (30s TTL, 5000 max entries) (be 7b21589)
+- [x] 14. Review Blocker 3: Log `unhandledRejection` without process termination (be 158b3ed)
 
 ---
 
@@ -251,4 +253,5 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be`, `gymsera
 | 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |
 | 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07 (be f2c6598, 6f3ab27, 3043e1d, 0ca2b99, 462e561, 3c75de1; cms b0ae3f8; web 4b83fbe; app 7705380), NEW-34 (be 27ed2a5); NEW-35/36/37 recorded | task complete | yes |
 | 31 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | Prompt 2A (Reliability) | API-01, API-02, REL-02..05, BILL-07/09, AUTH-02/03/08, NEW-37 | task complete | yes |
+| 32 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Prompt 2A Review Blockers | 2A Blockers 1, 2, 3 (upload timeout exemption & idempotency protection, in-process permissionVersion cache, unhandledRejection logging), p017 deploy prerequisite, GET_LOCK note | task complete | yes |
 
