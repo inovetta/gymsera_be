@@ -1,6 +1,11 @@
 const { verifyToken } = require('../utils/jwt.utils');
 const { safeRedisGet, safeRedisSet } = require('../config/redis.config');
 const { User } = require('../models/platform');
+const {
+  getUserAuthCache,
+  setUserAuthCache,
+  clearUserAuthCache,
+} = require('../utils/user-auth-cache');
 
 // AUTH-07: a token issued while the account is PENDING_DELETION (`dp` claim) may only
 // look at the profile, read the deletion preflight, and cancel the deletion.
@@ -44,14 +49,25 @@ const authenticate = async (req, _res, next) => {
     const userId = decoded.sub || decoded.id;
 
     // Check user status and permission version (AUTH-08 & NEW-37)
-    let userMeta = null;
+    // 1. Fast in-process cache (30s TTL, bounded) — prevents per-request DB queries when Redis is absent
+    let userMeta = getUserAuthCache(userId);
     const cacheKey = `user:${userId}:auth`;
-    try {
-      const cached = await safeRedisGet(cacheKey);
-      if (cached) userMeta = JSON.parse(cached);
-    } catch (_) {}
+
+    if (!userMeta) {
+      // 2. Redis fallback
+      try {
+        const cached = await safeRedisGet(cacheKey);
+        if (cached) {
+          userMeta = JSON.parse(cached);
+          if (userMeta) {
+            setUserAuthCache(userId, userMeta);
+          }
+        }
+      } catch (_) {}
+    }
 
     if (!userMeta && userId) {
+      // 3. Platform DB query (only when in-process and Redis both miss)
       const dbUser = await User.findByPk(userId, {
         attributes: ['id', 'status', 'permissionVersion'],
       });
@@ -60,6 +76,7 @@ const authenticate = async (req, _res, next) => {
           status: dbUser.status,
           ver: dbUser.permissionVersion || 1,
         };
+        setUserAuthCache(userId, userMeta);
         try {
           await safeRedisSet(cacheKey, JSON.stringify(userMeta), 60);
         } catch (_) {}
@@ -97,5 +114,8 @@ const authenticate = async (req, _res, next) => {
     next(err);
   }
 };
+
+authenticate.clearUserAuthCache = clearUserAuthCache;
+authenticate.getUserAuthCache = getUserAuthCache;
 
 module.exports = authenticate;

@@ -222,6 +222,12 @@ const _finalizeUser = async (user, now) => {
     status: 'DELETED',
     deletedAt: now,
   });
+
+  try {
+    const { clearUserAuthCache } = require('../utils/user-auth-cache');
+    clearUserAuthCache(user.id);
+  } catch (_) {}
+  await safeRedisDel(`user:${user.id}:auth`).catch(() => {});
 };
 
 /**
