@@ -34,6 +34,7 @@ const CapacityEvent = require('./CapacityEvent.model')(sequelize);
 const BillingEvent = require('./BillingEvent.model')(sequelize);
 const TenantInvitation = require('./TenantInvitation.model')(sequelize);
 const PlatformAuditLog = require('./PlatformAuditLog.model')(sequelize);
+const AuditLog = require('./AuditLog.model')(sequelize);
 const IdempotencyRecord = require('./IdempotencyRecord.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
@@ -185,6 +186,12 @@ TenantInvitation.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 User.hasMany(PlatformAuditLog, { foreignKey: 'actorUserId', as: 'platformAuditLogs' });
 PlatformAuditLog.belongsTo(User, { foreignKey: 'actorUserId', as: 'actor' });
 
+// AuditLog (HTTP mutation audit trail) associations
+User.hasMany(AuditLog, { foreignKey: 'userId', as: 'auditLogs', constraints: false });
+AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user', constraints: false });
+Tenant.hasMany(AuditLog, { foreignKey: 'tenantId', as: 'auditLogs', constraints: false });
+AuditLog.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
+
 module.exports = {
   sequelize,
   User,
@@ -213,5 +220,6 @@ module.exports = {
   BillingEvent,
   TenantInvitation,
   PlatformAuditLog,
+  AuditLog,
   IdempotencyRecord,
 };

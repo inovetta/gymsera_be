@@ -202,6 +202,28 @@ const connect = async () => {
   } catch (err) {
     _logIfUnexpected('platform_audit_logs', err);
   }
+  try {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS \`audit_logs\` (
+        \`id\` CHAR(36) NOT NULL,
+        \`user_id\` CHAR(36) NULL,
+        \`tenant_id\` CHAR(36) NULL,
+        \`method\` VARCHAR(10) NOT NULL,
+        \`path\` VARCHAR(500) NOT NULL,
+        \`status_code\` SMALLINT NOT NULL,
+        \`ip_address\` VARCHAR(45) NULL,
+        \`user_agent\` TEXT NULL,
+        \`duration_ms\` INT NOT NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`idx_audit_logs_user_id\` (\`user_id\`),
+        KEY \`idx_audit_logs_tenant_id\` (\`tenant_id\`),
+        KEY \`idx_audit_logs_created_at\` (\`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+  } catch (err) {
+    _logIfUnexpected('audit_logs', err);
+  }
 
   // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
   // store-verified-purchase columns. Additive and idempotent — safe to run on
