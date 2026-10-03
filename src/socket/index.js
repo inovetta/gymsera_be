@@ -345,8 +345,20 @@ const emitConversationUpdated = async (conversationId, extraData = {}) => {
   }
 };
 
+const close = async () => {
+  if (_io) {
+    try {
+      await new Promise((resolve) => _io.close(resolve));
+    } catch (err) {
+      console.warn('[Socket] Error closing socket gateway:', err.message);
+    }
+    _io = null;
+  }
+};
+
 module.exports = {
   init,
+  close,
   getIO,
   emitToUser,
   emitToConversation,

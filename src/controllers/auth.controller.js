@@ -181,6 +181,66 @@ const acceptTenantInvitation = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /auth/logout (AUTH-02)
+ */
+const logout = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body || {};
+    const userId = req.user?.id || req.user?.sub;
+
+    if (refreshToken) {
+      await authService.revokeRefreshToken(refreshToken);
+    } else if (userId) {
+      await authService.revokeAllSessions(userId);
+    }
+
+    return sendSuccess(res, null, 'Logged out successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /auth/sessions (AUTH-02)
+ */
+const getSessions = async (req, res, next) => {
+  try {
+    const userId = req.user.id || req.user.sub;
+    const sessions = await authService.getUserSessions(userId);
+    return sendSuccess(res, { sessions });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /auth/sessions/:id (AUTH-02)
+ */
+const revokeSession = async (req, res, next) => {
+  try {
+    const userId = req.user.id || req.user.sub;
+    const { id } = req.params;
+    await authService.revokeSession(userId, id);
+    return sendSuccess(res, null, 'Session revoked successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /auth/sessions (AUTH-02)
+ */
+const revokeAllSessions = async (req, res, next) => {
+  try {
+    const userId = req.user.id || req.user.sub;
+    await authService.revokeAllSessions(userId);
+    return sendSuccess(res, null, 'All sessions revoked successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   register,
   verifyOtp,
@@ -190,6 +250,10 @@ module.exports = {
   googleLoginStaff,
   appleLogin,
   refreshToken,
+  logout,
+  getSessions,
+  revokeSession,
+  revokeAllSessions,
   passwordResetRequest,
   passwordResetConfirm,
   me,

@@ -109,6 +109,20 @@ module.exports = (sequelize) => {
         { name: 'users_google_id', fields: ['google_id'] },
         { name: 'users_apple_id', fields: ['apple_id'] },
       ],
+      hooks: {
+        afterUpdate: (user) => {
+          try {
+            const { clearUserAuthCache } = require('../../utils/user-auth-cache');
+            if (user?.id) clearUserAuthCache(user.id);
+          } catch (_) {}
+        },
+        afterDestroy: (user) => {
+          try {
+            const { clearUserAuthCache } = require('../../utils/user-auth-cache');
+            if (user?.id) clearUserAuthCache(user.id);
+          } catch (_) {}
+        },
+      },
     }
   );
 };

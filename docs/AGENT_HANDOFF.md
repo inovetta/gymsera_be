@@ -19,35 +19,26 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-03 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **NEW-38 — Organization deletion re-authentication & rollback exemption** |
+| Current prompt | **Prompt 2A — Reliability (merged after NEW-38)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-NEW-38 is on branch `fix/new-38-delete-listing-reauth` in `gymsera_be` (cut from main at ca08cb7) and `gyms_era` (cut from origin/master at b875158). Not pushed, no PRs opened.
+Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged with `origin/main` after NEW-38), `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1I state). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `fix/new-38-delete-listing-reauth` | 55037b9 feat(host): prompt credentials for organization deletion re-auth (NEW-38) | no |
-| gymsera_be | `fix/new-38-delete-listing-reauth` | (this commit) fix(host): enforce assertReauth and allow rollback exemption on DELETE /host/listings/:id (NEW-38) | no |
-| gymsera_cms | `fix/new-38-delete-listing-reauth` | ec90d8a Merge pull request #13 from inovetta/fix/new-35-cms-branch-delete-reauth | no |
-| gymsera_web | `main` | 7898534 Merge pull request #8 from inovetta/phase-1/prompt-1i-account-deletion | no |
+| gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
+| gymsera_be | `phase-2/prompt-2a-reliability` | (merge commit) Merge origin/main into phase-2/prompt-2a-reliability (NEW-35, NEW-38 merged) | no |
+| gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
+| gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Prompt 1I DONE (AUTH-07 + NEW-34; not pushed).** Next: the playbook's staging checks ("You: before Phase 2, test on a staging build"), then **Prompt 2A** (Phase 2 — Reliability).
-> Owner items from 1I (details in spec §13 AUTH-07 / NEW-34 and §12.13.11 NEW-35..37):
-> 1. **Deploy order (critical):** platform migrations **p014, p015, p016** must be applied BEFORE this backend goes live (the User/Tenant models read the new columns): `node src/scripts/run-platform-migrations.js --dry-run`, then without the flag. Apply them before any `run-tenant-migrations.js --dry-run` too (tenant discovery reads the Tenant model).
-> 2. Run the read-only `CHK_USER=... CHK_PASSWORD=... node gymsera-auth07-deletion-check.js` on the live DB first. Expect: verified users stuck at INACTIVE from the old flow (LEGACY_DELETION_REQUEST) and REJECTED tenants whose database still exists (REJECTED_TENANT_DATABASE). Decide whether to honour the legacy requests.
-> 3. NEW-36 DONE: the sweep now runs for real inside the daily `runExpiryCheck` (node-cron + Vercel `/cron/subscription-expiry`). Preview first with `node src/scripts/run-account-deletion-sweep.js --dry-run`. Note: the KYC retention sweep (1H) is still CLI-only, not scheduled.
-> 4. Sign in with Apple revoke needs `APPLE_SIGNIN_TEAM_ID`, `APPLE_SIGNIN_KEY_ID`, `APPLE_SIGNIN_CLIENT_ID`, `APPLE_SIGNIN_PRIVATE_KEY_PATH` (see `.env.example`). Unset = recorded as skipped. Users only become revocable after they sign in with Apple on a build that sends `authorizationCode` (mobile 7705380).
-> 5. Dropping an orphan database is manual: `node src/scripts/drop-orphan-tenant-database.js <db>` (dry run), then `--apply --confirm <db>`.
-> 6. NEW-35 (P1): re-auth for payout details / delete-branch accepts any password for social-only accounts: needs its own prompt.
-> 7. The privacy page still offers "email support@gymsera.com to delete"; someone must be ready to handle those requests (nothing automates it).
-
-> Previous: Prompt 1H DONE (SEC-10; merged). Its owner items (1H): run `gymsera-sec10-kyc-check.js`, preview the KYC retention sweep, create the private R2 bucket `R2_KYC_BUCKET`.
+> Start **Prompt 2B** from `docs/GYMSERA_AGENT_PLAYBOOK.md` Part B:
+> "Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §5.3 and these issues: FLOW-05 (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), FLOW-06, FLOW-08, FLOW-09, FLOW-10, FLOW-12, FLOW-13, RBAC-04, RBAC-05, RBAC-08, RBAC-09, PAY-05…PAY-08, PAY-12. For FLOW-05, record in the handoff file which hypotheses you already ruled out and how."
 
 ### Work in progress that is NOT committed
 
@@ -83,6 +74,23 @@ NEW-38 is on branch `fix/new-38-delete-listing-reauth` in `gymsera_be` (cut from
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 2A — Reliability (API-01, API-02, REL-02, REL-03, REL-04, REL-05, BILL-07, BILL-09, AUTH-02, AUTH-03, AUTH-08):**
+- [x] 1. API-01 — One response/error envelope (§4.1) with backward compatibility + shared error-copy table (§4.2) (be bfaf8fb, app 406e690, cms 3dcf23a, web 41b167c)
+- [x] 2. API-02 — Timeouts + retry policy (§4.1) (dio/fetch interceptors; server timeouts 15s) (be bfaf8fb, app 406e690)
+- [x] 3. REL-02 — Busy state on mutating controls (`AppButton.busy` / `isLoading` debounce timer) (app 406e690)
+- [x] 4. REL-03 — Cron/sweeps safe with >1 instance (distributed lock per job, resumable & batched) (be dd52c24)
+- [x] 5. REL-04 — Billing cron skips SUSPENDED/deleted tenants and never mutates tenant status (be dd52c24)
+- [x] 6. REL-05 — Graceful shutdown (drain in-flight requests, flush buffers, clean exit) (be dd52c24)
+- [x] 7. BILL-07 — Cross-provider double billing prevention (`POST /billing/purchase-intent`) (be 495c827)
+- [x] 8. BILL-09 — Superseded row still billing visibility (`duplicateBilling` flag & banner) (be 495c827)
+- [x] 9. AUTH-02 — Sessions & devices (`UserSession` model, session list/revoke, `POST /auth/logout`) (be bedc13f)
+- [x] 11. AUTH-08 — Immediate permission revocation (`ver` claim checking & NEW-37 immediate token invalidation) (be bedc13f)
+- [x] 12. Review Blocker 1: Upload route timeout (120s) exemption & idempotency retry protection across 408 timeouts (be dc394e4)
+- [x] 13. Review Blocker 2: In-process bounded cache for `permissionVersion` & user status without Redis (30s TTL, 5000 max entries) (be 7b21589)
+- [x] 14. Review Blocker 3: Log `unhandledRejection` without process termination (be 158b3ed)
+
+---
 
 **Prompt 1I — Account and tenant deletion (AUTH-07) + NEW-34:**
 - [x] Plan approved through the question tool; decisions recorded as R-28 (df17932)
@@ -247,3 +255,6 @@ NEW-38 is on branch `fix/new-38-delete-listing-reauth` in `gymsera_be` (cut from
 | 31 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | NEW-35 | NEW-35: social account re-auth on payout bank details and branch deletion routed through assertReauth | task complete | yes |
 | 32 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | NEW-38 | Organization deletion re-authentication via assertReauth | task complete | yes |
 | 33 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | NEW-38 (Rollback gap fix) | Empty-organization rollback promptless exemption (< 5m, 0 branches, caller-owned, no cascade); honest error on cleanup failure | task complete | yes |
+| 34 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | Prompt 2A (Reliability) | API-01, API-02, REL-02..05, BILL-07/09, AUTH-02/03/08, NEW-37 | task complete | yes |
+| 35 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Prompt 2A Review Blockers | 2A Blockers 1, 2, 3 (upload timeout exemption & idempotency protection, in-process permissionVersion cache, unhandledRejection logging), p017 deploy prerequisite, GET_LOCK note | task complete | yes |
+| 36 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Merge: Prompt 2A + origin/main (NEW-38) | Merged origin/main into phase-2/prompt-2a-reliability after NEW-38; resolved doc conflicts; kept all spec & handoff rows; verified platform migrations p014-p017; ran full backend suite 3x | task complete | yes |

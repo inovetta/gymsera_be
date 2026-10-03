@@ -125,8 +125,8 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     await teardownTestDatabases();
   });
 
-  test('p014, p015 and p016 are the last platform migrations, in order', () => {
-    expect(PLATFORM_TARGET_VERSION).toBe(16);
+  test('p014, p015 and p016 exist at versions 14, 15 and 16', () => {
+    expect(PLATFORM_TARGET_VERSION).toBeGreaterThanOrEqual(16);
     expect(PLATFORM_MIGRATIONS.find((m) => m.version === 16).name).toBe(P016);
     expect(PLATFORM_MIGRATIONS.find((m) => m.version === 14).name).toBe(P014);
     expect(PLATFORM_MIGRATIONS.find((m) => m.version === 15).name).toBe(P015);
@@ -135,7 +135,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
   test('--dry-run reports both and writes NOTHING', async () => {
     await createPlatformDbBefore1I();
     const before = await snapshot();
-    const res = await runPlatformMigrations(seq, { dryRun: true });
+    const res = await runPlatformMigrations(seq, { dryRun: true, targetVersion: 16 });
     expect(res.dryRun).toBe(true);
     expect(res.wouldRun).toEqual([P014, P015, P016]);
     expect(await snapshot()).toEqual(before);
@@ -172,7 +172,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     const usersBefore = await seq.query('SELECT id, email, status FROM users ORDER BY id', { type: QueryTypes.SELECT });
     const tenantsBefore = await seq.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id', { type: QueryTypes.SELECT });
 
-    const res = await runPlatformMigrations(seq);
+    const res = await runPlatformMigrations(seq, { targetVersion: 16 });
     expect(res.applied).toEqual([P014, P015, P016]);
 
     expect(await enumOf('users')).toEqual(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'PENDING_DELETION', 'DELETED']);
@@ -201,7 +201,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     expect(Number(filled[0].n)).toBe(0); // no backfill
 
     const afterApply = await snapshot();
-    const again = await runPlatformMigrations(seq);
+    const again = await runPlatformMigrations(seq, { targetVersion: 16 });
     expect(again.applied).toEqual([]);
     expect(await snapshot()).toEqual(afterApply);
   });
@@ -209,7 +209,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
   test('columns added by hand with the right types → recorded without changes to them', async () => {
     await createPlatformDbBefore1I();
     await seq.query('ALTER TABLE users ADD COLUMN deleted_at DATETIME NULL');
-    const res = await runPlatformMigrations(seq);
+    const res = await runPlatformMigrations(seq, { targetVersion: 16 });
     expect(res.applied).toEqual([P014, P015, P016]);
     expect((await columns('users', 'deletion%')).map((c) => c.name)).toEqual(DELETION_COLUMNS);
   });
@@ -227,7 +227,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
       await runPlatformMigrations(seq, { targetVersion: 15 });
       const before = await seq.query('SELECT id, email, status FROM users ORDER BY id', { type: QueryTypes.SELECT });
 
-      const res = await runPlatformMigrations(seq);
+      const res = await runPlatformMigrations(seq, { targetVersion: 16 });
 
       expect(res.applied).toEqual([P016]);
       expect(await appleColumn()).toEqual({ type: 'text', nullable: 'YES' });
@@ -235,7 +235,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
       const [{ n }] = await seq.query('SELECT COUNT(*) AS n FROM users WHERE apple_refresh_token_encrypted IS NOT NULL', { type: QueryTypes.SELECT });
       expect(Number(n)).toBe(0);
       const afterApply = await snapshot();
-      expect((await runPlatformMigrations(seq)).applied).toEqual([]);
+      expect((await runPlatformMigrations(seq, { targetVersion: 16 })).applied).toEqual([]);
       expect(await snapshot()).toEqual(afterApply);
     });
 
@@ -244,7 +244,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
       await seq.query('DROP TABLE users');
       await runPlatformMigrations(seq, { targetVersion: 15 });
 
-      const res = await runPlatformMigrations(seq);
+      const res = await runPlatformMigrations(seq, { targetVersion: 16 });
 
       expect(res.applied).toEqual([P016]);
       expect(await appleColumn()).toBeUndefined();
@@ -254,13 +254,13 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
       await createPlatformDbBefore1I();
       await runPlatformMigrations(seq, { targetVersion: 15 });
       const before = await snapshot();
-      expect((await runPlatformMigrations(seq, { dryRun: true })).wouldRun).toEqual([P016]);
+      expect((await runPlatformMigrations(seq, { dryRun: true, targetVersion: 16 })).wouldRun).toEqual([P016]);
       expect(await snapshot()).toEqual(before);
 
       await seq.query('ALTER TABLE users ADD COLUMN apple_refresh_token_encrypted INT NULL');
       await seq.query("UPDATE users SET apple_refresh_token_encrypted = 9 WHERE email = 'a@x.test'");
       const conflicted = await snapshot();
-      await runPlatformMigrations(seq);
+      await runPlatformMigrations(seq, { targetVersion: 16 });
       expect(await snapshot()).toEqual(conflicted);
       const [row] = await seq.query('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 16', { type: QueryTypes.SELECT });
       expect(Number(row.n)).toBe(0);
@@ -273,10 +273,11 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
     await seq.query("ALTER TABLE users MODIFY COLUMN status ENUM('ACTIVE','INACTIVE','SUSPENDED','LEGACY_X') NOT NULL DEFAULT 'INACTIVE'");
     await seq.query("UPDATE users SET status = 'LEGACY_X' WHERE email = 'c@x.test'");
 
-    await runPlatformMigrations(seq);
+    await runPlatformMigrations(seq, { targetVersion: 16 });
 
     expect(await enumOf('users')).toEqual(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'LEGACY_X', 'PENDING_DELETION', 'DELETED']);
     const [row] = await seq.query("SELECT status FROM users WHERE email = 'c@x.test'", { type: QueryTypes.SELECT });
     expect(row.status).toBe('LEGACY_X');
   });
 });
+

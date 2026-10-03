@@ -170,18 +170,24 @@ function idempotency(options = {}) {
       const originalSend = res.send.bind(res);
 
       let saved = false;
-      const saveRecord = async (body) => {
+      const saveRecord = async (body, explicitStatus = null) => {
         if (saved) return;
         saved = true;
         try {
-          const statusCode = res.statusCode || 200;
-          if (statusCode >= 200 && statusCode < 500) {
+          const statusCode = explicitStatus || res.statusCode || 200;
+          if (statusCode >= 200 && statusCode < 400) {
             await record.update({
               status: 'RESOLVED',
               statusCode,
               responseBody: body,
             });
-          } else {
+          } else if (statusCode >= 400 && statusCode < 500 && statusCode !== 408) {
+            await record.update({
+              status: 'RESOLVED',
+              statusCode,
+              responseBody: body,
+            });
+          } else if (statusCode >= 500) {
             // 5xx server error: allow retry by destroying in-progress record
             await record.destroy().catch(() => {});
           }
@@ -191,6 +197,18 @@ function idempotency(options = {}) {
       };
 
       res.json = function (data) {
+        // If request timed out, 408 was sent to client. Keep record IN_PROGRESS
+        // while handler is running so retries do not cause duplicate writes.
+        if (req.timedOut) {
+          if (res.statusCode === 408 && (data?.code === 'request_timeout' || data?.error?.code === 'request_timeout')) {
+            return originalJson(data);
+          }
+          // The background handler finished after timeout: resolve with the actual completed result
+          const resolvedStatus = res.statusCode && res.statusCode !== 408 ? res.statusCode : 200;
+          saveRecord(data, resolvedStatus);
+          return;
+        }
+
         res.set('Idempotency-Key', key);
         saveRecord(data).finally(() => {
           originalJson(data);
@@ -198,21 +216,31 @@ function idempotency(options = {}) {
       };
 
       res.send = function (data) {
-        res.set('Idempotency-Key', key);
         let parsed = data;
         if (typeof data === 'string') {
           try {
             parsed = JSON.parse(data);
           } catch (_) {}
         }
+
+        if (req.timedOut) {
+          if (res.statusCode === 408 && (parsed?.code === 'request_timeout' || parsed?.error?.code === 'request_timeout')) {
+            return originalSend(data);
+          }
+          const resolvedStatus = res.statusCode && res.statusCode !== 408 ? res.statusCode : 200;
+          saveRecord(parsed, resolvedStatus);
+          return;
+        }
+
+        res.set('Idempotency-Key', key);
         saveRecord(parsed).finally(() => {
           originalSend(data);
         });
       };
 
-      // Clean up in-progress record if socket closes prematurely
+      // Clean up in-progress record if socket closes prematurely (not on timeout)
       res.on('close', () => {
-        if (!saved) {
+        if (!saved && !req.timedOut) {
           record.destroy().catch(() => {});
         }
       });

@@ -316,6 +316,7 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
 
   return {
     ...incomingValues,
+    duplicateBilling: true,
     status: existingRow.status,
     statusNote:
       existingRow.statusNote ||

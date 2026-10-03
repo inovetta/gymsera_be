@@ -22,6 +22,7 @@
  */
 const { Op, UniqueConstraintError } = require('sequelize');
 const { BillingEvent, TenantSubscription } = require('../models/platform');
+const { withDistributedLock } = require('../utils/distributed-lock');
 
 const ALERT_AFTER_ATTEMPTS = 5;
 const MAX_SWEEP_ATTEMPTS = 20;
@@ -140,15 +141,17 @@ const receiveEvent = async (fields) => {
  * server.js and daily by the subscription-expiry cron (Vercel).
  */
 const processPendingEvents = async ({ limit = 50 } = {}) => {
-  const pending = await BillingEvent.findAll({
-    where: { status: { [Op.in]: ['RECEIVED', 'FAILED'] }, attempts: { [Op.lt]: MAX_SWEEP_ATTEMPTS } },
-    order: [['receivedAt', 'ASC']],
-    limit,
+  return withDistributedLock('cron:billing-events', 120000, async () => {
+    const pending = await BillingEvent.findAll({
+      where: { status: { [Op.in]: ['RECEIVED', 'FAILED'] }, attempts: { [Op.lt]: MAX_SWEEP_ATTEMPTS } },
+      order: [['receivedAt', 'ASC']],
+      limit,
+    });
+    for (const event of pending) {
+      await processEvent(event);
+    }
+    return { processed: pending.length };
   });
-  for (const event of pending) {
-    await processEvent(event);
-  }
-  return { processed: pending.length };
 };
 
 /**

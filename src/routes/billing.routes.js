@@ -32,6 +32,28 @@ router.get('/plans', controller.getPlans);
 
 /**
  * @swagger
+ * /billing/purchase-intent:
+ *   post:
+ *     summary: Check cross-provider conflicts and decide purchase mechanism (BILL-07)
+ *     tags: [Billing]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [platform]
+ *             properties:
+ *               platform: { type: string, enum: [IOS, ANDROID, STRIPE, ios, android, web] }
+ *               planId: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: Purchase intent evaluated }
+ */
+router.post('/purchase-intent', authenticate, controller.purchaseIntent);
+
+/**
+ * @swagger
  * /billing/ios/sync:
  *   post:
  *     summary: Verify and apply an iOS StoreKit purchase

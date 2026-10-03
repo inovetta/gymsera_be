@@ -23,6 +23,7 @@ const emailService = require('../services/email.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
 const { PAY_LATER_ID_PREFIX, expirePayLaterGrace } = require('../services/subscription-migration.service');
 const { safeRedisDel } = require('../config/redis.config');
+const { withDistributedLock } = require('../utils/distributed-lock');
 
 const EXPIRY_CRON = '0 1 * * *'; // 01:00 every day
 const WARNING_DAYS = 3;
@@ -130,12 +131,12 @@ const _processTenant = async (tenantId, tenantDb) => {
  */
 const _processPlatformSubscriptions = async () => {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
 
   // ── 1. 2-day warning ──────────────────────────────────────────────────────
   const warningDate = new Date(today);
-  warningDate.setDate(warningDate.getDate() + 2);
+  warningDate.setUTCDate(warningDate.getUTCDate() + 2);
   const warningDateStr = warningDate.toISOString().split('T')[0];
 
   const expiringSoon = await TenantSubscription.findAll({
@@ -144,7 +145,12 @@ const _processPlatformSubscriptions = async () => {
       endDate: { [Op.between]: [todayStr, warningDateStr] },
     },
     include: [
-      { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['email', 'fullName'] }] },
+      {
+        model: Tenant,
+        as: 'tenant',
+        where: { status: 'ACTIVE' },
+        include: [{ model: User, as: 'owner', attributes: ['email', 'fullName'] }],
+      },
       { model: PlatformPackage, as: 'package', attributes: ['name'] },
     ],
   });
@@ -176,7 +182,12 @@ const _processPlatformSubscriptions = async () => {
       endDate: { [Op.lt]: todayStr },
     },
     include: [
-      { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['email', 'fullName'] }] },
+      {
+        model: Tenant,
+        as: 'tenant',
+        where: { status: 'ACTIVE' },
+        include: [{ model: User, as: 'owner', attributes: ['email', 'fullName'] }],
+      },
       { model: PlatformPackage, as: 'package', attributes: ['name'] },
     ],
   });
@@ -187,33 +198,23 @@ const _processPlatformSubscriptions = async () => {
       if (sub.status === 'GRACE') await expirePayLaterGrace(sub);
       else await sub.update({ status: 'EXPIRED' });
 
-      // Auto-suspend the tenant
+      // REL-04: Never mutate tenant status from billing jobs (tenant stays as-is, capacity handles quota)
       const tenant = sub.tenant;
-      if (!tenant || tenant.status === 'SUSPENDED') continue;
+      if (!tenant) continue;
 
-      await tenant.update({ status: 'SUSPENDED' });
-      await safeRedisDel(`tenant:${tenant.id}:connStr`);
-      await TenantDbManager.release(tenant.id).catch(() => {});
+      console.log(`[Cron] Subscription expired for tenant ${tenant.id} (${tenant.businessName})`);
 
-      // Hide their gym listing
-      await GymListing.update(
-        { status: 'INACTIVE' },
-        { where: { tenantId: tenant.id, status: 'ACTIVE' } }
-      );
-
-      console.log(`[Cron] Auto-suspended tenant ${tenant.id} (${tenant.businessName}) — subscription expired`);
-
-      // Send suspension email
+      // Send notice email to gym host
       const owner = tenant.owner;
       if (owner) {
         try {
-          await emailService.sendTenantSubscriptionSuspendedEmail(owner.email, owner.fullName, {
+          await emailService.sendTenantSubscriptionWarningEmail(owner.email, owner.fullName, {
             businessName: tenant.businessName,
             packageName: sub.package?.name || 'Platform',
             endDate: sub.endDate,
           });
         } catch (emailErr) {
-          console.error(`[Cron] Failed to send suspension email to ${owner.email}:`, emailErr.message);
+          console.error(`[Cron] Failed to send expiration notice email to ${owner.email}:`, emailErr.message);
         }
       }
     } catch (err) {
@@ -222,7 +223,7 @@ const _processPlatformSubscriptions = async () => {
   }
 
   if (expiringSoon.length || expiredSubs.length) {
-    console.log(`[Cron] Platform subscriptions: ${expiringSoon.length} warning(s) sent, ${expiredSubs.length} expired & suspended`);
+    console.log(`[Cron] Platform subscriptions: ${expiringSoon.length} warning(s) sent, ${expiredSubs.length} expired`);
   }
 };
 
@@ -339,101 +340,109 @@ const _reconcileCapacityForAllTenants = async () => {
  * Main cron handler — iterates over all loaded tenant connections.
  */
 const runExpiryCheck = async () => {
-  console.log('[Cron] subscription-expiry: starting daily check');
+  const lockRes = await withDistributedLock('cron:subscription-expiry', 600000, async () => {
+    console.log('[Cron] subscription-expiry: starting daily check');
 
-  // ── Billing webhooks: retry failed inbox events, then re-fetch every
-  // store-backed subscription so a notification that never arrived can't
-  // leave a row stale before the expiry pass below reads it (BILL-12). ────
-  try {
-    const billingEvents = require('../services/billing-event.service');
-    await billingEvents.processPendingEvents({ limit: 500 });
-    await billingEvents.sweepGoogleVoidedPurchases().catch((err) =>
-      console.warn('[Cron] Google voided-purchases sweep skipped:', err.message)
-    );
-    const recon = await billingEvents.reconcileStoreSubscriptions();
-    if (recon.failed > 0) console.warn(`[Cron] Store reconciliation: ${recon.failed}/${recon.checked} subscription(s) failed to refresh`);
-  } catch (err) {
-    console.error('[Cron] Billing reconciliation failed:', err.message);
-  }
-
-  // ── Provisioning that stopped halfway (FLOW-02): finish it ───────────────
-  try {
-    const { resumeStalledProvisioning } = require('../services/tenant-provisioning.service');
-    const prov = await resumeStalledProvisioning();
-    if (prov.resumed.length || prov.failed.length) {
-      console.log(`[Cron] Provisioning sweep: ${prov.resumed.length} finished, ${prov.failed.length} still failing`);
-    }
-  } catch (err) {
-    console.error('[Cron] Provisioning sweep failed:', err.message);
-  }
-
-  // ── Account deletions whose 30-day undo window has passed (AUTH-07, NEW-36, R-28) ─
-  // Applies for real (anonymize in place, never drops a database). A failing account is
-  // retried by the next daily run; a failing sweep never stops the rest of this job.
-  try {
-    const { runDeletionFinalizeSweep } = require('../services/account-deletion-finalize.service');
-    const del = await runDeletionFinalizeSweep();
-    if (del.finalizedTenants.length || del.finalizedUsers.length || del.failed.length) {
-      console.log(
-        `[Cron] Account deletion sweep: ${del.finalizedTenants.length} tenant(s), ${del.finalizedUsers.length} user(s) finalized, ${del.failed.length} will retry`
+    // ── Billing webhooks: retry failed inbox events, then re-fetch every
+    // store-backed subscription so a notification that never arrived can't
+    // leave a row stale before the expiry pass below reads it (BILL-12). ────
+    try {
+      const billingEvents = require('../services/billing-event.service');
+      await billingEvents.processPendingEvents({ limit: 500 });
+      await billingEvents.sweepGoogleVoidedPurchases().catch((err) =>
+        console.warn('[Cron] Google voided-purchases sweep skipped:', err.message)
       );
+      const recon = await billingEvents.reconcileStoreSubscriptions();
+      if (recon.failed > 0) console.warn(`[Cron] Store reconciliation: ${recon.failed}/${recon.checked} subscription(s) failed to refresh`);
+    } catch (err) {
+      console.error('[Cron] Billing reconciliation failed:', err.message);
     }
-  } catch (err) {
-    console.error('[Cron] Account deletion sweep failed:', err.message);
-  }
 
-  // ── Platform subscriptions ────────────────────────────────────────────────
-  await _processPlatformSubscriptions();
+    // ── Provisioning that stopped halfway (FLOW-02): finish it ───────────────
+    try {
+      const { resumeStalledProvisioning } = require('../services/tenant-provisioning.service');
+      const prov = await resumeStalledProvisioning();
+      if (prov.resumed.length || prov.failed.length) {
+        console.log(`[Cron] Provisioning sweep: ${prov.resumed.length} finished, ${prov.failed.length} still failing`);
+      }
+    } catch (err) {
+      console.error('[Cron] Provisioning sweep failed:', err.message);
+    }
 
-  // ── Capacity Outbox sweep (CAP-02) ───────────────────────────────────────
-  try {
-    const capacityOutboxService = require('../services/capacity-outbox.service');
-    await capacityOutboxService.sweepAllTenantsOutbox();
-  } catch (err) {
-    console.error('[Cron] Capacity outbox sweep failed:', err.message);
-  }
-
-  // ── Capacity invariant safety net ────────────────────────────────────────
-  await _reconcileCapacityForAllTenants();
-
-  const entries = TenantDbManager.getAllEntries();
-
-  if (entries.length === 0) {
-    // Load all ACTIVE tenants so we can iterate their DBs
-    const tenants = await Tenant.findAll({
-      where: { status: 'ACTIVE' },
-      attributes: ['id', 'connectionStringEncrypted'],
-    });
-
-    for (const tenant of tenants) {
-      try {
-        const tenantDb = await TenantDbManager.getConnection(
-          tenant.id,
-          tenant.connectionStringEncrypted
+    // ── Account deletions whose 30-day undo window has passed (AUTH-07, NEW-36, R-28) ─
+    // Applies for real (anonymize in place, never drops a database). A failing account is
+    // retried by the next daily run; a failing sweep never stops the rest of this job.
+    try {
+      const { runDeletionFinalizeSweep } = require('../services/account-deletion-finalize.service');
+      const del = await runDeletionFinalizeSweep();
+      if (del.finalizedTenants.length || del.finalizedUsers.length || del.failed.length) {
+        console.log(
+          `[Cron] Account deletion sweep: ${del.finalizedTenants.length} tenant(s), ${del.finalizedUsers.length} user(s) finalized, ${del.failed.length} will retry`
         );
-        await _processTenant(tenant.id, tenantDb);
-      } catch (err) {
-        console.error(`[Cron] Failed to process tenant ${tenant.id}:`, err.message);
       }
+    } catch (err) {
+      console.error('[Cron] Account deletion sweep failed:', err.message);
     }
-  } else {
-    const activeTenants = await Tenant.findAll({
-      where: { status: 'ACTIVE' },
-      attributes: ['id'],
-    });
-    const activeTenantIds = new Set(activeTenants.map((t) => t.id));
 
-    for (const [tenantId, tenantDb] of entries) {
-      if (!activeTenantIds.has(tenantId)) continue;
-      try {
-        await _processTenant(tenantId, tenantDb);
-      } catch (err) {
-        console.error(`[Cron] Failed to process tenant ${tenantId}:`, err.message);
+    // ── Platform subscriptions ────────────────────────────────────────────────
+    await _processPlatformSubscriptions();
+
+    // ── Capacity Outbox sweep (CAP-02) ───────────────────────────────────────
+    try {
+      const capacityOutboxService = require('../services/capacity-outbox.service');
+      await capacityOutboxService.sweepAllTenantsOutbox();
+    } catch (err) {
+      console.error('[Cron] Capacity outbox sweep failed:', err.message);
+    }
+
+    // ── Capacity invariant safety net ────────────────────────────────────────
+    await _reconcileCapacityForAllTenants();
+
+    const entries = TenantDbManager.getAllEntries();
+
+    if (entries.length === 0) {
+      // Load all ACTIVE tenants so we can iterate their DBs
+      const tenants = await Tenant.findAll({
+        where: { status: 'ACTIVE' },
+        attributes: ['id', 'connectionStringEncrypted'],
+      });
+
+      for (const tenant of tenants) {
+        if (!tenant.connectionStringEncrypted) continue;
+        try {
+          const tenantDb = await TenantDbManager.getConnection(
+            tenant.id,
+            tenant.connectionStringEncrypted
+          );
+          await _processTenant(tenant.id, tenantDb);
+        } catch (err) {
+          console.error(`[Cron] Failed to process tenant ${tenant.id}:`, err.message);
+        }
+      }
+    } else {
+      const activeTenants = await Tenant.findAll({
+        where: { status: 'ACTIVE' },
+        attributes: ['id'],
+      });
+      const activeTenantIds = new Set(activeTenants.map((t) => t.id));
+
+      for (const [tenantId, tenantDb] of entries) {
+        if (!activeTenantIds.has(tenantId)) continue;
+        try {
+          await _processTenant(tenantId, tenantDb);
+        } catch (err) {
+          console.error(`[Cron] Failed to process tenant ${tenantId}:`, err.message);
+        }
       }
     }
+
+    console.log('[Cron] subscription-expiry: check complete');
+    return { ok: true };
+  });
+
+  if (lockRes && lockRes.skipped) {
+    console.log('[Cron] subscription-expiry: skipped, another instance is executing');
   }
-
-  console.log('[Cron] subscription-expiry: check complete');
 };
 
 module.exports = { runExpiryCheck, EXPIRY_CRON };

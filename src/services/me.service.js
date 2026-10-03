@@ -185,6 +185,12 @@ const changePassword = async (userId, currentPassword, newPassword) => {
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   await user.update({ passwordHash });
 
+  // AUTH-02: Password change revokes all existing refresh tokens and bumps permissionVersion
+  const { RefreshToken } = require('../models/platform');
+  await RefreshToken.update({ isRevoked: true }, { where: { userId } });
+  const accessService = require('./access.service');
+  await accessService.bumpUserPermissionVersion(userId);
+
   return { message: 'Password changed successfully.' };
 };
 

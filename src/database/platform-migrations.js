@@ -676,6 +676,27 @@ const PLATFORM_MIGRATIONS = [
       });
     },
   },
+  {
+    version: 17,
+    name: 'p017_tenant_subscriptions_duplicate_billing',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      // BILL-09: Flag on superseded subscription rows that the provider still reports
+      // as auto-renewing / billing. Prompts a banner to the host with a manage link.
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['tenant_subscriptions'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+      return _addNullableColumn(sequelize, {
+        table: 'tenant_subscriptions',
+        column: 'duplicate_billing',
+        type: 'TINYINT(1) DEFAULT 0',
+        expectedType: 'tinyint(1)',
+        migrationName: 'p017',
+      });
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

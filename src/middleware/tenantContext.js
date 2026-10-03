@@ -17,6 +17,7 @@
  * services/membership.service.js.
  */
 const { safeRedisGet, safeRedisSetex } = require('../config/redis.config');
+const { sendError } = require('../utils/response.utils');
 const TenantDbManager = require('../database/TenantDbManager');
 const membershipService = require('../services/membership.service');
 const { getRoleLevel } = require('../constants/roles');
@@ -201,6 +202,12 @@ const tenantContext = async (req, res, next) => {
     const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
     // ── SEC-02: Tenant identity from authentication, never client input ───
+    const isV2 = req.headers['x-api-version'] === '2' || req.headers['accept-version'] === '2';
+    const rejectTenantNotFound = (r) => {
+      if (isV2) return sendError(r, 404, 'Tenant not found or not active', 'tenant_not_found');
+      return r.status(404).json({ success: false, message: 'Tenant not found or not active' });
+    };
+
     // 1. If client provided a tenantId in request body:
     //    It must NEVER select tenant. If caller forged an out-of-scope tenant ID,
     //    reject immediately with 404 (without leaking existence).
@@ -212,7 +219,7 @@ const tenantContext = async (req, res, next) => {
       if (!isPlatformAdmin) {
         const belongs = await userBelongsToTenant(userId, bodyTenantId);
         if (!belongs) {
-          return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+          return rejectTenantNotFound(res);
         }
       }
     }
@@ -228,12 +235,12 @@ const tenantContext = async (req, res, next) => {
           attributes: ['id'],
         });
         if (!exists) {
-          return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+          return rejectTenantNotFound(res);
         }
       } else {
         const belongs = await userBelongsToTenant(userId, headerTenantId);
         if (!belongs) {
-          return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+          return rejectTenantNotFound(res);
         }
       }
     }
@@ -241,11 +248,12 @@ const tenantContext = async (req, res, next) => {
     const tenantId = await resolveTenantId(req);
 
     if (!tenantId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'This route requires a gym context. Sign in as a gym host or team member, or send an X-Tenant-Id header.',
-      });
+      return sendError(
+        res,
+        400,
+        'This route requires a gym context. Sign in as a gym host or team member, or send an X-Tenant-Id header.',
+        'missing_tenant_context'
+      );
     }
 
     // ── Connection string, cached ───────────────────────────────────────────
@@ -260,13 +268,15 @@ const tenantContext = async (req, res, next) => {
       });
 
       if (!tenant) {
-        return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
+        return rejectTenantNotFound(res);
       }
       if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
-        return res.status(503).json({
-          success: false,
-          message: 'Tenant database is not provisioned yet. Please wait for admin approval.',
-        });
+        return sendError(
+          res,
+          503,
+          'Tenant database is not provisioned yet. Please wait for admin approval.',
+          'tenant_not_provisioned'
+        );
       }
 
       encryptedConnStr = tenant.connectionStringEncrypted;

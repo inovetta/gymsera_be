@@ -184,6 +184,7 @@ const _buildTokenPayload = async (user) => {
     isHost: !!user.isHost,
     tenantId,
     branchId: null,
+    ver: user.permissionVersion || 1,
     // AUTH-07: inside the 30-day undo window the token only reaches the undo/profile
     // routes (middleware/authenticate.js). Re-derived from the user on every refresh.
     ...(user.status === 'PENDING_DELETION' && { dp: true }),
@@ -1257,6 +1258,77 @@ const acceptTenantInvitation = async ({ token, password, fullName, phone }, auth
   };
 };
 
+/**
+ * Revoke a refresh token and its session family (AUTH-02).
+ */
+const revokeRefreshToken = async (refreshToken) => {
+  if (!refreshToken || typeof refreshToken !== 'string') return;
+  const tokenHash = _hashToken(refreshToken);
+  let stored = await RefreshToken.findOne({ where: { token: tokenHash } });
+  if (!stored) stored = await RefreshToken.findOne({ where: { token: refreshToken } });
+  if (stored) {
+    if (stored.familyId) {
+      await RefreshToken.update({ isRevoked: true }, { where: { familyId: stored.familyId } });
+    } else {
+      await stored.update({ isRevoked: true });
+    }
+  }
+};
+
+/**
+ * List active sessions for a user (AUTH-02).
+ */
+const getUserSessions = async (userId) => {
+  const tokens = await RefreshToken.findAll({
+    where: {
+      userId,
+      isRevoked: false,
+      expiresAt: { [Op.gt]: new Date() },
+    },
+    order: [['updatedAt', 'DESC']],
+  });
+
+  const sessionMap = new Map();
+  for (const token of tokens) {
+    const famId = token.familyId || token.id;
+    if (!sessionMap.has(famId)) {
+      sessionMap.set(famId, {
+        id: famId,
+        ipAddress: token.ipAddress || null,
+        userAgent: token.userAgent || null,
+        createdAt: token.createdAt,
+        lastActiveAt: token.updatedAt,
+      });
+    }
+  }
+
+  return Array.from(sessionMap.values());
+};
+
+/**
+ * Revoke a specific session by familyId (AUTH-02).
+ */
+const revokeSession = async (userId, familyId) => {
+  await RefreshToken.update(
+    { isRevoked: true },
+    { where: { userId, [Op.or]: [{ familyId }, { id: familyId }] } }
+  );
+  const accessService = require('./access.service');
+  await accessService.bumpUserPermissionVersion(userId);
+};
+
+/**
+ * Revoke all sessions for a user (AUTH-02).
+ */
+const revokeAllSessions = async (userId) => {
+  await RefreshToken.update(
+    { isRevoked: true },
+    { where: { userId } }
+  );
+  const accessService = require('./access.service');
+  await accessService.bumpUserPermissionVersion(userId);
+};
+
 module.exports = {
   register,
   verifyOtp,
@@ -1265,6 +1337,10 @@ module.exports = {
   googleLogin,
   appleLogin,
   refreshTokens,
+  revokeRefreshToken,
+  getUserSessions,
+  revokeSession,
+  revokeAllSessions,
   passwordResetRequest,
   passwordResetConfirm,
   getMe,

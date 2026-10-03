@@ -128,4 +128,4 @@ const safeRedisDel = async (key) => {
   }
 };
 
-module.exports = { getRedisClient, safeRedisGet, safeRedisSetex, safeRedisDel };
+module.exports = { getRedisClient, ensureRedisReady, safeRedisGet, safeRedisSetex, safeRedisDel };

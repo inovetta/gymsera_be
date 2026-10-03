@@ -362,8 +362,109 @@ const putDowngradeChoice = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /billing/purchase-intent (BILL-07, spec §7.5.1)
+ * Evaluates whether a proposed purchase is new, upgrade, downgrade, or blocked
+ * by a live subscription with auto-renew on another provider.
+ */
+const purchaseIntent = async (req, res, next) => {
+  try {
+    const { planId: rawPlanId, targetPlanId, platform: rawPlatform, targetPlatform } = req.body || {};
+    const platform = rawPlatform || targetPlatform;
+    const planId = rawPlanId || targetPlanId;
+    if (!platform) {
+      throw createError('platform is required', 400);
+    }
+
+    const { TenantSubscription, Tenant, BillingPlan } = require('../models/platform');
+    const { Op } = require('sequelize');
+
+    let tenantId = req.body.tenantId || req.user.tenantId;
+    if (!tenantId) {
+      const owned = await Tenant.findOne({
+        where: { ownerUserId: req.user.id || req.user.sub },
+        attributes: ['id'],
+      });
+      tenantId = owned?.id;
+    }
+    if (!tenantId) {
+      throw createError('Tenant not found for authenticated user', 404);
+    }
+
+    const normTargetPlatform = platform.toUpperCase();
+    const targetPlan = planId ? await BillingPlan.findByPk(planId) : null;
+
+    const currentActive = await TenantSubscription.findOne({
+      where: { tenantId, status: { [Op.in]: ['ACTIVE', 'GRACE'] } },
+      order: [['createdAt', 'DESC']],
+    });
+
+    const storeManageUrls = {
+      IOS: 'https://apps.apple.com/account/subscriptions',
+      ANDROID: 'https://play.google.com/store/account/subscriptions',
+      STRIPE: 'https://gymsera.com/billing',
+    };
+
+    if (!currentActive) {
+      return sendSuccess(res, {
+        action: 'new',
+        mechanism: 'new',
+        appAccountToken: tenantId,
+        replacementMode: null,
+        blocker: null,
+      });
+    }
+
+    const isDifferentPlatform = currentActive.platform !== normTargetPlatform;
+    const isStorePlatform = currentActive.platform !== 'MANUAL';
+
+    if (isDifferentPlatform && isStorePlatform && currentActive.autoRenew !== false) {
+      const manageUrl = storeManageUrls[currentActive.platform] || 'https://gymsera.com/billing';
+      return sendSuccess(res, {
+        action: 'blocked',
+        mechanism: 'blocked',
+        reason: 'active_subscription_other_provider',
+        currentPlatform: currentActive.platform,
+        manageUrl,
+        appAccountToken: tenantId,
+        replacementMode: null,
+        blocker: {
+          provider: currentActive.platform,
+          manageUrl,
+        },
+      });
+    }
+
+    let mechanism = 'upgrade';
+    let replacementMode = null;
+
+    if (targetPlan && currentActive.branchCount) {
+      if (targetPlan.branchCount > currentActive.branchCount) {
+        mechanism = 'upgrade';
+        replacementMode = normTargetPlatform === 'ANDROID' ? 'IMMEDIATE_WITH_TIME_PRORATION' : null;
+      } else if (targetPlan.branchCount < currentActive.branchCount) {
+        mechanism = 'downgrade';
+        replacementMode = normTargetPlatform === 'ANDROID' ? 'DEFERRED' : null;
+      } else {
+        mechanism = 'same_tier';
+      }
+    }
+
+    return sendSuccess(res, {
+      action: mechanism,
+      mechanism,
+      appAccountToken: tenantId,
+      replacementMode,
+      blocker: null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getPlans,
+  purchaseIntent,
   getDowngradePreview,
   putDowngradeChoice,
   syncIosPurchase,
