@@ -19,19 +19,19 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-03 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 2A — Reliability (Review Blockers 1, 2, 3)** |
+| Current prompt | **Prompt 2A — Reliability (merged after NEW-38)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be`, `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1I state). Not pushed, no PRs opened.
+Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged with `origin/main` after NEW-38), `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1I state). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `phase-2/prompt-2a-reliability` | 158b3ed fix(reliability): log unhandled rejections without process termination (REL-05) | no |
+| gymsera_be | `phase-2/prompt-2a-reliability` | (merge commit) Merge origin/main into phase-2/prompt-2a-reliability (NEW-35, NEW-38 merged) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
@@ -252,6 +252,9 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be`, `gymsera
 | 28 | 2026-09-30 | Claude Code (Opus 5.5) | Prompt 1G | FLOW-02 (be d326909, cms 355b29f); read-only check script | task complete | yes |
 | 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |
 | 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07 (be f2c6598, 6f3ab27, 3043e1d, 0ca2b99, 462e561, 3c75de1; cms b0ae3f8; web 4b83fbe; app 7705380), NEW-34 (be 27ed2a5); NEW-35/36/37 recorded | task complete | yes |
-| 31 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | Prompt 2A (Reliability) | API-01, API-02, REL-02..05, BILL-07/09, AUTH-02/03/08, NEW-37 | task complete | yes |
-| 32 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Prompt 2A Review Blockers | 2A Blockers 1, 2, 3 (upload timeout exemption & idempotency protection, in-process permissionVersion cache, unhandledRejection logging), p017 deploy prerequisite, GET_LOCK note | task complete | yes |
-
+| 31 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | NEW-35 | NEW-35: social account re-auth on payout bank details and branch deletion routed through assertReauth | task complete | yes |
+| 32 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | NEW-38 | Organization deletion re-authentication via assertReauth | task complete | yes |
+| 33 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | NEW-38 (Rollback gap fix) | Empty-organization rollback promptless exemption (< 5m, 0 branches, caller-owned, no cascade); honest error on cleanup failure | task complete | yes |
+| 34 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | Prompt 2A (Reliability) | API-01, API-02, REL-02..05, BILL-07/09, AUTH-02/03/08, NEW-37 | task complete | yes |
+| 35 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Prompt 2A Review Blockers | 2A Blockers 1, 2, 3 (upload timeout exemption & idempotency protection, in-process permissionVersion cache, unhandledRejection logging), p017 deploy prerequisite, GET_LOCK note | task complete | yes |
+| 36 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Merge: Prompt 2A + origin/main (NEW-38) | Merged origin/main into phase-2/prompt-2a-reliability after NEW-38; resolved doc conflicts; kept all spec & handoff rows; verified platform migrations p014-p017; ran full backend suite 3x | task complete | yes |
