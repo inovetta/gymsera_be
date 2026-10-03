@@ -69,15 +69,14 @@ async function shutdown(signal, exitCode = 0) {
   }
 }
 
-// REL-05: Do not swallow uncaught exceptions or unhandled rejections
+// REL-05: Do not swallow uncaught exceptions; log unhandled rejections without terminating server
 process.on('uncaughtException', (err) => {
   console.error('[Process FATAL] Uncaught Exception:', err);
   shutdown('uncaughtException', 1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[Process FATAL] Unhandled Rejection:', reason);
-  shutdown('unhandledRejection', 1);
+  console.error('[Process ERROR] Unhandled Rejection:', reason);
 });
 
 process.on('SIGTERM', () => shutdown('SIGTERM', 0));
