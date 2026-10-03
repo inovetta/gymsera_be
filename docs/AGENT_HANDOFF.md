@@ -258,3 +258,5 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged w
 | 34 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | Prompt 2A (Reliability) | API-01, API-02, REL-02..05, BILL-07/09, AUTH-02/03/08, NEW-37 | task complete | yes |
 | 35 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Prompt 2A Review Blockers | 2A Blockers 1, 2, 3 (upload timeout exemption & idempotency protection, in-process permissionVersion cache, unhandledRejection logging), p017 deploy prerequisite, GET_LOCK note | task complete | yes |
 | 36 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Merge: Prompt 2A + origin/main (NEW-38) | Merged origin/main into phase-2/prompt-2a-reliability after NEW-38; resolved doc conflicts; kept all spec & handoff rows; verified platform migrations p014-p017; ran full backend suite 3x | task complete | yes |
+| 37 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Production Hotfix | REL-03: MySQL GET_LOCK raw query wrapper and releaseConnection fix; SEC-12: platform AuditLog persistence | in progress | yes |
+
