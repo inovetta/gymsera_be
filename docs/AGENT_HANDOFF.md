@@ -17,23 +17,23 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-02 |
+| Last updated | 2026-10-03 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **NEW-35 — Social account re-authentication (SEC-13 & delete branch)** |
+| Current prompt | **NEW-38 — Organization deletion re-authentication & rollback exemption** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-NEW-35 is on branch `fix/new-35-social-account-reauth` in `gymsera_be` (cut from main at 95a4f42). Not pushed, no PRs opened.
+NEW-38 is on branch `fix/new-38-delete-listing-reauth` in `gymsera_be` (cut from main at ca08cb7) and `gyms_era` (cut from origin/master at b875158). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-1/prompt-1i-account-deletion` | 7705380 feat(me): re-confirmed account deletion with 30-day undo and store-subscription guidance (AUTH-07) | no |
-| gymsera_be | `fix/new-35-social-account-reauth` | 2b4ad6e fix(auth): enforce strict re-auth via assertReauth for social and password accounts (NEW-35) | no |
-| gymsera_cms | `phase-1/prompt-1i-account-deletion` | b0ae3f8 feat(admin): show PENDING_DELETION and DELETED statuses (AUTH-07) | no |
-| gymsera_web | `phase-1/prompt-1i-account-deletion` | 4b83fbe docs(privacy): describe the real account deletion process (AUTH-07) | no |
+| gyms_era | `fix/new-38-delete-listing-reauth` | 55037b9 feat(host): prompt credentials for organization deletion re-auth (NEW-38) | no |
+| gymsera_be | `fix/new-38-delete-listing-reauth` | (this commit) fix(host): enforce assertReauth and allow rollback exemption on DELETE /host/listings/:id (NEW-38) | no |
+| gymsera_cms | `fix/new-38-delete-listing-reauth` | ec90d8a Merge pull request #13 from inovetta/fix/new-35-cms-branch-delete-reauth | no |
+| gymsera_web | `main` | 7898534 Merge pull request #8 from inovetta/phase-1/prompt-1i-account-deletion | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
@@ -245,3 +245,5 @@ NEW-35 is on branch `fix/new-35-social-account-reauth` in `gymsera_be` (cut from
 | 29 | 2026-10-01 | Gemini (Gemini 3.8 Flash) | Prompt 1H | SEC-10 (KYC data protection, private AES-256 storage, audit logging, CMS watermark viewer, 90-day retention purge sweep, read-only audit script) | task complete | yes |
 | 30 | 2026-10-02 | Claude Code (Sonnet 5.5) | Prompt 1I | AUTH-07 (be f2c6598, 6f3ab27, 3043e1d, 0ca2b99, 462e561, 3c75de1; cms b0ae3f8; web 4b83fbe; app 7705380), NEW-34 (be 27ed2a5); NEW-35/36/37 recorded | task complete | yes |
 | 31 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | NEW-35 | NEW-35: social account re-auth on payout bank details and branch deletion routed through assertReauth | task complete | yes |
+| 32 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | NEW-38 | Organization deletion re-authentication via assertReauth | task complete | yes |
+| 33 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | NEW-38 (Rollback gap fix) | Empty-organization rollback promptless exemption (< 5m, 0 branches, caller-owned, no cascade); honest error on cleanup failure | task complete | yes |
