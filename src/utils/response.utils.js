@@ -87,9 +87,10 @@ const parsePagination = (query, defaultLimit = 20, maxLimit = 100) => {
 /**
  * Create an Error with a statusCode property (use with next(err)).
  */
-const createError = (message, statusCode = 400) => {
+const createError = (message, statusCode = 400, code = null) => {
   const err = new Error(message);
   err.statusCode = statusCode;
+  if (code) err.code = code;
   return err;
 };
 

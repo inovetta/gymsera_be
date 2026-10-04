@@ -65,6 +65,7 @@ const serializeAssignment = async (assignment, { branchNames = {}, users = {} } 
     branchCount: assignment.scopeType === 'ORG' ? null : branchLinks.length,
     hasCustomAccess: overrides.length > 0,
     overrideCount: overrides.length,
+    version: assignment.version != null ? assignment.version : 1,
     createdAt: assignment.createdAt,
   };
 };
@@ -354,10 +355,25 @@ const updateAssignment = async (ctx, assignmentId, changes) => {
   accessService.assertNotSelf(actorId, assignment.userId);
   accessService.assertCanManageAssignment(actorGrants, assignment);
 
+  // RBAC-08: Optimistic concurrency check
+  if (changes.expectedVersion !== undefined && changes.expectedVersion !== null) {
+    const expected = Number(changes.expectedVersion);
+    const currentVersion = Number(assignment.version || 1);
+    if (!Number.isNaN(expected) && currentVersion !== expected) {
+      throw createError(
+        'This team member was modified by another user. Reload and try again.',
+        409,
+        'grants_changed'
+      );
+    }
+  }
+
   const before = auditService.snapshot(assignment, [
     'roleKey', 'scopeType', 'status', 'jobTitle', 'validUntil',
   ]);
-  const patch = {};
+  const patch = {
+    version: (assignment.version || 1) + 1,
+  };
 
   if (changes.roleKey && changes.roleKey !== assignment.roleKey) {
     if (!isKnownRole(changes.roleKey)) throw createError(`Unknown role: ${changes.roleKey}`, 400);
@@ -432,7 +448,7 @@ const updateAssignment = async (ctx, assignmentId, changes) => {
  * screen, both toggle one thing, the second save resurrects what the first
  * revoked. Send the whole set or send nothing.
  */
-const setOverrides = async (ctx, assignmentId, overrides = []) => {
+const setOverrides = async (ctx, assignmentId, overrides = [], expectedVersion = null) => {
   const { tenantDb, tenantId, grants: actorGrants, userId: actorId } = ctx;
   const { RoleAssignment, AssignmentOverride } = tenantDb.models;
 
@@ -444,6 +460,19 @@ const setOverrides = async (ctx, assignmentId, overrides = []) => {
   accessService.assertNotSelf(actorId, assignment.userId);
   accessService.assertCanManageAssignment(actorGrants, assignment);
   accessService.assertCanGrantOverrides(actorGrants, overrides);
+
+  // RBAC-08: Optimistic concurrency check
+  if (expectedVersion !== undefined && expectedVersion !== null) {
+    const expected = Number(expectedVersion);
+    const currentVersion = Number(assignment.version || 1);
+    if (!Number.isNaN(expected) && currentVersion !== expected) {
+      throw createError(
+        'This team member was modified by another user. Reload and try again.',
+        409,
+        'grants_changed'
+      );
+    }
+  }
 
   for (const o of overrides) {
     if (!isKnownPermission(o.permissionKey)) {
@@ -484,6 +513,7 @@ const setOverrides = async (ctx, assignmentId, overrides = []) => {
 
   await accessService.bumpUserPermissionVersion(assignment.userId);
   await membershipService.syncUserOrgIndex(tenantId, assignment.userId, tenantDb);
+  await assignment.update({ version: (assignment.version || 1) + 1 });
 
   await auditService.record(ctx, {
     action: 'team.permission.override',
