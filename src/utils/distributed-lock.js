@@ -50,29 +50,46 @@ async function acquireDistributedLock(lockName, ttlMs = 300000) {
     const safeName = `gymsera_${lockName}`.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 64);
     const conn = await platformSequelize.connectionManager.getConnection();
 
+    const queryConn = (sql, values) =>
+      new Promise((resolve, reject) => {
+        conn.query(sql, values, (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        });
+      });
+
+    const releaseConn = () => {
+      try {
+        platformSequelize.connectionManager.releaseConnection(conn);
+      } catch (_) {}
+    };
+
     try {
-      const [results] = await conn.query('SELECT GET_LOCK(?, ?) AS lockResult', [safeName, timeoutSec]);
+      const results = await queryConn('SELECT GET_LOCK(?, ?) AS lockResult', [safeName, timeoutSec]);
       const firstRow = Array.isArray(results) ? results[0] : results;
       const lockResult = firstRow && (firstRow.lockResult === 1 || firstRow.lockResult === '1');
 
       if (lockResult) {
+        let isReleased = false;
         return {
           acquired: true,
           release: async () => {
+            if (isReleased) return;
+            isReleased = true;
             try {
-              await conn.query('SELECT RELEASE_LOCK(?) AS unlockResult', [safeName]);
+              await queryConn('SELECT RELEASE_LOCK(?) AS unlockResult', [safeName]);
             } catch (unlockErr) {
               console.warn(`[Lock] MySQL release failed for ${lockName}:`, unlockErr.message);
             } finally {
-              await platformSequelize.connectionManager.releaseConnection(conn).catch(() => {});
+              releaseConn();
             }
           },
         };
       }
-      await platformSequelize.connectionManager.releaseConnection(conn).catch(() => {});
+      releaseConn();
       return { acquired: false, release: async () => {} };
     } catch (queryErr) {
-      await platformSequelize.connectionManager.releaseConnection(conn).catch(() => {});
+      releaseConn();
       throw queryErr;
     }
   } catch (mysqlErr) {

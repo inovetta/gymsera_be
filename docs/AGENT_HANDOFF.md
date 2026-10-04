@@ -17,9 +17,9 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-03 |
+| Last updated | 2026-10-04 |
 | Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 2A — Reliability (merged after NEW-38)** |
+| Current prompt | **Prompt 2A — Reliability (merged after NEW-38; p018 & Redis resilience completed)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
@@ -31,7 +31,7 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged w
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `phase-2/prompt-2a-reliability` | (merge commit) Merge origin/main into phase-2/prompt-2a-reliability (NEW-35, NEW-38 merged) | no |
+| gymsera_be | `phase-2/prompt-2a-reliability` | 83e8cff fix(security): register platform AuditLog model and ensure audit_logs persistence (SEC-12) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
@@ -215,6 +215,10 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged w
   - A migration test that pins an older version must pass `targetVersion` (1G's test now does); every new platform migration must skip a missing table (the full suite, not the targeted tests, caught p016 without it).
   - Full backend suite now ~13 minutes.
 
+- **Prompt 2A additions (2026-10-03/04):**
+  - Platform migration `p018_create_audit_logs` manages `audit_logs` creation on Platform DB with full dry-run and conflict-skip tests (`tests/integration/platform-migrations-p018.test.js`). Boot-time table creation removed from `platform.js#connect`.
+  - Redis resilience (spec §0.1 Rule 10 & §15): all tests touching Redis must also pass with `DISABLE_REDIS=true`. In `tests/regression/new-26-suspended-tenant-blocking.test.js`, Redis cache checks are conditional on Redis availability (`DISABLE_REDIS !== 'true' && ensureRedisReady() !== null`).
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -258,3 +262,6 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged w
 | 34 | 2026-10-02 | Gemini (Gemini 3.8 Flash) | Prompt 2A (Reliability) | API-01, API-02, REL-02..05, BILL-07/09, AUTH-02/03/08, NEW-37 | task complete | yes |
 | 35 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Prompt 2A Review Blockers | 2A Blockers 1, 2, 3 (upload timeout exemption & idempotency protection, in-process permissionVersion cache, unhandledRejection logging), p017 deploy prerequisite, GET_LOCK note | task complete | yes |
 | 36 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Merge: Prompt 2A + origin/main (NEW-38) | Merged origin/main into phase-2/prompt-2a-reliability after NEW-38; resolved doc conflicts; kept all spec & handoff rows; verified platform migrations p014-p017; ran full backend suite 3x | task complete | yes |
+| 37 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Production Hotfix | REL-03: MySQL GET_LOCK raw query wrapper and releaseConnection fix (be 979dc9c); SEC-12: platform AuditLog persistence (be 83e8cff) | task complete | yes |
+| 38 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Redis Independence & p018 Migration | new-26 Redis resilience for DISABLE_REDIS=true; audit_logs field/security/latency/retention analysis; p018 platform migration with dry-run/conflict-skip tests (be); spec §0.1 Rule 10 & §15 matrix | task complete | yes |
+

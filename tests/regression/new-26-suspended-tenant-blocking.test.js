@@ -11,7 +11,7 @@ const {
 const { startTestServer } = require('../harness/test-server');
 const { Tenant, TenantSubscription, PlatformInvoice } = require('../../src/models/platform');
 const { TenantStatus } = require('../../src/constants/subscription-status');
-const { safeRedisGet, safeRedisSetex, safeRedisDel } = require('../../src/config/redis.config');
+const { safeRedisGet, safeRedisSetex, safeRedisDel, ensureRedisReady } = require('../../src/config/redis.config');
 const adminService = require('../../src/services/admin.service');
 const subscriptionMigrationService = require('../../src/services/subscription-migration.service');
 const { runExpiryCheck } = require('../../src/jobs/subscription-expiry.cron');
@@ -151,17 +151,22 @@ describe('NEW-26: Suspended Tenant Full Blocking and Admin Exception', () => {
       const warmRes = await asPersona('owner').get('/gyms/branches');
       expect(warmRes.status).toBe(200);
 
-      // Verify connection string is in Redis
+      // Verify connection string is in Redis (when Redis is enabled)
+      const isRedisDisabled = process.env.DISABLE_REDIS === 'true' || !(await ensureRedisReady());
       const cacheKey = `tenant:${tenant1Record}:connStr`;
-      const cached = await safeRedisGet(cacheKey);
-      expect(cached).toBeTruthy();
+      if (!isRedisDisabled) {
+        const cached = await safeRedisGet(cacheKey);
+        expect(cached).toBeTruthy();
+      }
 
       // 2. Suspend tenant via adminService
       await adminService.suspendTenant(tenant1Record, personas.platformAdmin.user.id, 'Immediate suspension');
 
-      // 3. Verify Redis key is invalidated immediately
-      const cachedAfterSuspend = await safeRedisGet(cacheKey);
-      expect(cachedAfterSuspend).toBeNull();
+      // 3. Verify Redis key is invalidated immediately (when Redis is enabled)
+      if (!isRedisDisabled) {
+        const cachedAfterSuspend = await safeRedisGet(cacheKey);
+        expect(cachedAfterSuspend).toBeNull();
+      }
 
       // 4. Very next request must return 404 (not after 1 hour)
       const nextRes = await asPersona('owner').get('/gyms/branches');

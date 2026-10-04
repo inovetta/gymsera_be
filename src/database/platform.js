@@ -203,6 +203,7 @@ const connect = async () => {
     _logIfUnexpected('platform_audit_logs', err);
   }
 
+
   // ── Billing: BillingPlan / BillingOffer tables + TenantSubscription's
   // store-verified-purchase columns. Additive and idempotent — safe to run on
   // every boot, in every environment, same as the block above. See

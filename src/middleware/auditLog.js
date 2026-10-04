@@ -30,7 +30,7 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * Writes one audit entry. Returns silently on any error.
  */
 const _write = async (entry) => {
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && process.env.AUDIT_LOG_PERSIST !== 'true') {
     console.log('[Audit]', JSON.stringify(entry));
     return;
   }
@@ -38,7 +38,10 @@ const _write = async (entry) => {
   try {
     // Lazy-require to avoid circular dependencies
     const { AuditLog } = require('../models/platform');
-    await AuditLog.create(entry);
+    if (!AuditLog) {
+      throw new Error('AuditLog model is not registered on platform');
+    }
+    return await AuditLog.create(entry);
   } catch (err) {
     // Swallow — audit logging must never break the app
     console.warn('[Audit] Failed to persist audit log:', err.message);
@@ -69,12 +72,14 @@ const auditLog = (req, res, next) => {
     };
 
     // Fire-and-forget — do not await
-    _write(entry).catch(() => {});
+    res._auditPromise = _write(entry).catch(() => {});
 
     return originalJson(body);
   };
 
   next();
 };
+
+auditLog._write = _write;
 
 module.exports = auditLog;
