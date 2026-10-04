@@ -18,27 +18,27 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-10-04 |
-| Updated by | Gemini (Gemini 3.8 Flash) |
-| Current prompt | **Prompt 2A — Reliability (merged after NEW-38; p018 & Redis resilience completed)** |
+| Updated by | Gemini (Antigravity) |
+| Current prompt | **Prompt 2B — Group 1: RBAC & Access Control (RBAC-04, RBAC-05, RBAC-08, RBAC-09)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged with `origin/main` after NEW-38), `gymsera_cms`, `gymsera_web` and `gyms_era` (cut from each repo's merged 1I state). Not pushed, no PRs opened.
+Prompt 2B is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (cut from `origin/main` after Prompt 2A). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `phase-2/prompt-2a-reliability` | 83e8cff fix(security): register platform AuditLog model and ensure audit_logs persistence (SEC-12) | no |
+| gymsera_be | `phase-2/prompt-2b-rbac` | 4370db4 fix(rbac): re-check requester and approver at approval execution time (RBAC-04) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Start **Prompt 2B** from `docs/GYMSERA_AGENT_PLAYBOOK.md` Part B:
-> "Read docs/GYMSERA_PRODUCTION_ARCHITECTURE.md §5.3 and these issues: FLOW-05 (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), FLOW-06, FLOW-08, FLOW-09, FLOW-10, FLOW-12, FLOW-13, RBAC-04, RBAC-05, RBAC-08, RBAC-09, PAY-05…PAY-08, PAY-12. For FLOW-05, record in the handoff file which hypotheses you already ruled out and how."
+> Start **Prompt 2B Part B (Group 2: Member Flows / Money)** from `docs/GYMSERA_AGENT_PLAYBOOK.md`:
+> Issues: `FLOW-05` (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), `FLOW-06`, `FLOW-08`, `FLOW-09`, `FLOW-10`, `FLOW-12`, `FLOW-13` or `PAY-05…PAY-08`, `PAY-12`. For `FLOW-05`, record in the handoff file which hypotheses you already ruled out and how.
 
 ### Work in progress that is NOT committed
 
@@ -74,6 +74,14 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged w
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 2B — Group 1: RBAC & Access Control (RBAC-04, RBAC-05, RBAC-08, RBAC-09):**
+- [x] 1. RBAC-09 — Branch deletion revokes branch-scoped `RoleAssignment`s and cleans up junctions (`be/src/services/gym.service.js:deleteBranch`) (be 43851fa)
+- [x] 2. RBAC-05 — Level rule strictly enforced on invite, update, and acceptance (`accessService.canAssignRole`, `gym.service.js:assignStaff`, `team.service.js:acceptStaffInvite`) (be 4dfa4c4)
+- [x] 3. RBAC-08 — Concurrency versioning on role assignments (`version` column via tenant migration 013, optimistic concurrency checks with `expectedVersion` in `team.service.js`, 409 `grants_changed`) (be 5233633)
+- [x] 4. RBAC-04 — Approval execution re-checks requester existence/membership and approver grants, idempotent execution by `approvalId` (`be/src/services/approval.service.js:decide`) (be 4370db4)
+
+---
 
 **Prompt 2A — Reliability (API-01, API-02, REL-02, REL-03, REL-04, REL-05, BILL-07, BILL-09, AUTH-02, AUTH-03, AUTH-08):**
 - [x] 1. API-01 — One response/error envelope (§4.1) with backward compatibility + shared error-copy table (§4.2) (be bfaf8fb, app 406e690, cms 3dcf23a, web 41b167c)
@@ -264,4 +272,6 @@ Prompt 2A is on branch `phase-2/prompt-2a-reliability` in `gymsera_be` (merged w
 | 36 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Merge: Prompt 2A + origin/main (NEW-38) | Merged origin/main into phase-2/prompt-2a-reliability after NEW-38; resolved doc conflicts; kept all spec & handoff rows; verified platform migrations p014-p017; ran full backend suite 3x | task complete | yes |
 | 37 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Production Hotfix | REL-03: MySQL GET_LOCK raw query wrapper and releaseConnection fix (be 979dc9c); SEC-12: platform AuditLog persistence (be 83e8cff) | task complete | yes |
 | 38 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Redis Independence & p018 Migration | new-26 Redis resilience for DISABLE_REDIS=true; audit_logs field/security/latency/retention analysis; p018 platform migration with dry-run/conflict-skip tests (be); spec §0.1 Rule 10 & §15 matrix | task complete | yes |
+| 39 | 2026-10-04 | Gemini (Antigravity) | Prompt 2B (Group 1: RBAC) | RBAC-04, RBAC-05, RBAC-08, RBAC-09 | task complete | yes |
+
 
