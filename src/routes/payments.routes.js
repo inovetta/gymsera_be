@@ -49,7 +49,7 @@ router.use(authenticate, tenantContext);
  *               method:
  *                 type: string
  *                 enum: [CASH, BANK_TRANSFER, CARD, WALLET, ONLINE, POS, TEST]
- *                 description: Use TEST method with X-Test-Payment-Key header for dev/QA — auto-completes as paid
+ *                 description: Use TEST method with X-Test-Payment-Key header for dev/QA (forbidden in production) — auto-completes as paid
  *               gatewayName:          { type: string }
  *               gatewayTransactionId: { type: string }
  *               amount:               { type: number, minimum: 0.01 }
@@ -59,7 +59,7 @@ router.use(authenticate, tenantContext);
  *       - in: header
  *         name: X-Test-Payment-Key
  *         schema: { type: string }
- *         description: Required only when method is TEST (dev/QA env — matches PAYMENT_TEST_KEY env var)
+ *         description: Required only when method is TEST in non-production (dev/QA only, forbidden in production — matches PAYMENT_TEST_KEY env var)
  *     responses:
  *       201:
  *         description: Payment recorded; invoice auto-generated for membership payments
@@ -99,9 +99,14 @@ router.post(
   '/',
   requirePaymentBranchAccess,
   idempotency({ required: true }),
-  // TEST payment key guard — only enforced when method === TEST
+  // TEST payment key guard — only enforced when method === TEST (impossible in production)
   (req, _res, next) => {
     if (req.body && req.body.method === 'TEST') {
+      if (process.env.NODE_ENV === 'production') {
+        const err = new Error('TEST payment method is not allowed in production');
+        err.statusCode = 403;
+        return next(err);
+      }
       const key = req.headers['x-test-payment-key'];
       const expected = process.env.PAYMENT_TEST_KEY;
       if (!expected || !key || key !== expected) {
