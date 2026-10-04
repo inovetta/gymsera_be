@@ -17,21 +17,21 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-04 |
+| Last updated | 2026-10-05 |
 | Updated by | Gemini (Antigravity) |
-| Current prompt | **Prompt 2B — Group 1: RBAC & Access Control (RBAC-04, RBAC-05, RBAC-08, RBAC-09)** |
+| Current prompt | **Prompt 2B — Group 1: RBAC & Access Control (merged after PAY-08a)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 2B is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (cut from `origin/main` after Prompt 2A). Not pushed, no PRs opened.
+Work is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (merged with `origin/main` after PAY-08a). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `phase-2/prompt-2b-rbac` | 4370db4 fix(rbac): re-check requester and approver at approval execution time (RBAC-04) | no |
+| gymsera_be | `phase-2/prompt-2b-rbac` | (merge commit: Prompt 2B Group 1 + origin/main) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
@@ -273,5 +273,6 @@ Prompt 2B is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (cut from `origi
 | 37 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Production Hotfix | REL-03: MySQL GET_LOCK raw query wrapper and releaseConnection fix (be 979dc9c); SEC-12: platform AuditLog persistence (be 83e8cff) | task complete | yes |
 | 38 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Redis Independence & p018 Migration | new-26 Redis resilience for DISABLE_REDIS=true; audit_logs field/security/latency/retention analysis; p018 platform migration with dry-run/conflict-skip tests (be); spec §0.1 Rule 10 & §15 matrix | task complete | yes |
 | 39 | 2026-10-04 | Gemini (Antigravity) | Prompt 2B (Group 1: RBAC) | RBAC-04, RBAC-05, RBAC-08, RBAC-09 | task complete | yes |
-
+| 40 | 2026-10-05 | Gemini (Antigravity) | PAY-08a & gitignore | PAY-08a (reject method TEST in production with 403, ignore in payment service, test harness regression tests), gitignore (firebase-service-account.json, iisnode/) | task complete | yes |
+| 41 | 2026-10-05 | Gemini (Antigravity) | Merge: Prompt 2B Group 1 + origin/main (PAY-08a) | Merged origin/main into phase-2/prompt-2b-rbac after PAY-08a; resolved doc conflicts in spec §13 and handoff; verified platform p001-p018 and tenant 001-013 migrations; ran full suite twice | task complete | yes |
 
