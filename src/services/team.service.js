@@ -578,31 +578,35 @@ const revokeUserAccess = async (ctx, targetUserId) => {
 /**
  * Revoke branch-scoped assignments when a branch is removed/deleted.
  */
-const revokeBranchAssignments = async (ctx, branchId) => {
+const revokeBranchAssignments = async (ctx, branchId, { transaction = null } = {}) => {
   const { tenantDb, tenantId, userId: actorId } = ctx;
   const { RoleAssignment, RoleAssignmentBranch } = tenantDb.models;
 
-  const links = await RoleAssignmentBranch.findAll({ where: { branchId } });
+  const links = await RoleAssignmentBranch.findAll({ where: { branchId }, transaction });
   const assignmentIds = [...new Set(links.map((l) => l.assignmentId))];
   if (assignmentIds.length === 0) return 0;
 
-  await RoleAssignmentBranch.destroy({ where: { branchId } });
+  await RoleAssignmentBranch.destroy({ where: { branchId }, transaction });
 
   const now = new Date();
   let revokedCount = 0;
   for (const assignmentId of assignmentIds) {
-    const assignment = await RoleAssignment.findByPk(assignmentId);
-    if (assignment && assignment.scopeType === 'BRANCH') {
-      const remaining = await RoleAssignmentBranch.count({ where: { assignmentId } });
-      if (remaining === 0 && assignment.status !== 'REVOKED') {
-        await assignment.update({
-          status: 'REVOKED',
-          revokedAt: now,
-          revokedBy: actorId || 'system:branch_deleted',
-        });
-        revokedCount++;
-        if (assignment.userId) {
-          await accessService.bumpUserPermissionVersion(assignment.userId);
+    const assignment = await RoleAssignment.findByPk(assignmentId, { transaction });
+    if (assignment) {
+      if (assignment.scopeType === 'BRANCH') {
+        const remaining = await RoleAssignmentBranch.count({ where: { assignmentId }, transaction });
+        if (remaining === 0 && assignment.status !== 'REVOKED') {
+          await assignment.update({
+            status: 'REVOKED',
+            revokedAt: now,
+            revokedBy: actorId || 'system:branch_deleted',
+          }, { transaction });
+          revokedCount++;
+        }
+      }
+      if (assignment.userId) {
+        await accessService.bumpUserPermissionVersion(assignment.userId);
+        if (membershipService && membershipService.syncUserOrgIndex) {
           await membershipService.syncUserOrgIndex(tenantId, assignment.userId, tenantDb);
         }
       }

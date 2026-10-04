@@ -946,44 +946,16 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
       );
     }
 
-    if (RoleAssignment && RoleAssignmentBranch) {
-      const branchLinks = await RoleAssignmentBranch.findAll({
-        where: { branchId },
-        transaction: t,
-      });
-
-      const affectedAssignmentIds = [...new Set(branchLinks.map((l) => l.assignmentId))];
-      if (affectedAssignmentIds.length > 0) {
-        await RoleAssignmentBranch.destroy({
-          where: { branchId },
-          transaction: t,
-        });
-
-        for (const assignmentId of affectedAssignmentIds) {
-          const assignment = await RoleAssignment.findByPk(assignmentId, {
-            transaction: t,
-          });
-
-          if (assignment && assignment.scopeType === 'BRANCH') {
-            const remaining = await RoleAssignmentBranch.count({
-              where: { assignmentId },
-              transaction: t,
-            });
-
-            if (remaining === 0 && assignment.status !== 'REVOKED') {
-              await assignment.update(
-                {
-                  status: 'REVOKED',
-                  revokedBy: 'system:branch_deleted',
-                  revokedAt: new Date(),
-                },
-                { transaction: t }
-              );
-            }
-          }
-        }
-      }
-    }
+    const teamService = require('./team.service');
+    await teamService.revokeBranchAssignments(
+      {
+        tenantDb,
+        tenantId: branch.tenantId || tenantDb.tenantId,
+        userId: 'system:branch_deleted',
+      },
+      branchId,
+      { transaction: t }
+    );
 
     // 5. Cancel any pending staff action requests for this branch
     if (StaffActionRequest) {
