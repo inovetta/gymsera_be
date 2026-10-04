@@ -697,6 +697,56 @@ const PLATFORM_MIGRATIONS = [
       });
     },
   },
+  {
+    version: 18,
+    name: 'p018_create_audit_logs',
+    description: 'Create audit_logs table for HTTP mutation audit logging (SEC-12)',
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['audit_logs'], type: QueryTypes.SELECT }
+      );
+      if (tableExists) {
+        const [statusCol] = await sequelize.query(
+          "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'audit_logs' AND COLUMN_NAME = 'status_code'",
+          { type: QueryTypes.SELECT }
+        );
+        if (!statusCol || (statusCol.DATA_TYPE !== 'smallint' && statusCol.DATA_TYPE !== 'int')) {
+          console.warn(
+            '[PlatformMigration] SKIPPING p018: audit_logs table exists without valid status_code column. Resolve it by hand, then re-run.'
+          );
+          return {
+            skipped: true,
+            reason: 'table_exists_with_other_schema',
+            table: 'audit_logs',
+          };
+        }
+        return null;
+      }
+
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`audit_logs\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`user_id\` CHAR(36) NULL,
+          \`tenant_id\` CHAR(36) NULL,
+          \`method\` VARCHAR(10) NOT NULL,
+          \`path\` VARCHAR(500) NOT NULL,
+          \`status_code\` SMALLINT NOT NULL,
+          \`ip_address\` VARCHAR(45) NULL,
+          \`user_agent\` TEXT NULL,
+          \`duration_ms\` INT NOT NULL,
+          \`created_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          KEY \`idx_audit_logs_user_id\` (\`user_id\`),
+          KEY \`idx_audit_logs_tenant_id\` (\`tenant_id\`),
+          KEY \`idx_audit_logs_created_at\` (\`created_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
