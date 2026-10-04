@@ -1387,10 +1387,18 @@ const assignStaff = async (tenantDb, branchId, userId, designation, actor = null
 
   const roleKey = mapDesignationToRoleKey(designation, false);
   const actorId = actor ? actor.id || actor.sub : null;
-  const actorGrants =
-    actor && (actor.role === 'GYM_HOST' || actor.isHost)
-      ? accessService.ownerGrants()
-      : actor?.grants || accessService.ownerGrants();
+  let actorGrants = actor?.grants;
+  if (!actorGrants) {
+    const { Tenant } = require('../models/platform');
+    const tenant = await Tenant.findByPk(tenantDb.tenantId);
+    if (tenant && tenant.ownerUserId === actorId) {
+      actorGrants = accessService.ownerGrants();
+    } else if (actorId) {
+      actorGrants = await accessService.resolve(tenantDb, tenantDb.tenantId, actorId, branchId);
+    } else {
+      actorGrants = accessService.emptyGrants();
+    }
+  }
 
   const ctx = {
     tenantDb,

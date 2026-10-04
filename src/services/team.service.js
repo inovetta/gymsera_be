@@ -627,6 +627,18 @@ const acceptStaffInvite = async ({ tenantDb, tenantId, userId, email, branchId, 
   const roleKey = mapDesignationToRoleKey(designation, false);
   const now = new Date();
 
+  // RBAC-05: Enforce strictly-below level rule on acceptance
+  const inviterId = inviterUserId;
+  if (inviterId) {
+    const { Tenant } = require('../models/platform');
+    const tenant = await Tenant.findByPk(tenantId);
+    const isOwner = tenant && tenant.ownerUserId === inviterId;
+    if (!isOwner) {
+      const inviterGrants = await accessService.resolve(tenantDb, tenantId, inviterId, branchId);
+      accessService.assertCanAssignRole(inviterGrants, roleKey);
+    }
+  }
+
   let assignment = await RoleAssignment.findOne({
     where: {
       userId,
