@@ -13,3 +13,8 @@ coverage/
 # Local private/uploaded storage
 storage/
 
+# Firebase service account credential
+firebase-service-account.json
+
+# IISNode runtime files
+iisnode/
