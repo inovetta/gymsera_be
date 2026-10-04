@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-04 |
+| Last updated | 2026-10-05 |
 | Updated by | Gemini (Antigravity) |
 | Current prompt | **PAY-08a: reject method TEST in production + .gitignore hygiene** |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | PAY-08a |
-| Step within issue | Full suite verification 3x |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | (none) |
 
 ### Branches and last commits
 
@@ -31,21 +31,18 @@ Work is on branch `fix/pay-08a-test-payment-method` in `gymsera_be` (cut from `o
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `fix/new-38-delete-listing-reauth` | 55037b9 feat(org): add re-auth requirement on organization deletion with rollback exemption (NEW-38) | no |
-| gymsera_be | `fix/pay-08a-test-payment-method` | e9c0ec3 chore: add firebase-service-account.json and iisnode/ to .gitignore | yes (PAY-08a fix, tests, spec docs) |
+| gymsera_be | `fix/pay-08a-test-payment-method` | 1a5060c fix(payments): reject method TEST in production with 403 and ignore in service (PAY-08a) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Run full test suite 3x (once with DISABLE_REDIS=true), commit PAY-08a changes, update prompt status to DONE.
+> Continue with Prompt 2B Part B (Group 2: Member Flows / Money) from `docs/GYMSERA_AGENT_PLAYBOOK.md`:
+> Issues: `FLOW-05` (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), `FLOW-06`, `FLOW-08`, `FLOW-09`, `FLOW-10`, `FLOW-12`, `FLOW-13` or `PAY-05…PAY-08`, `PAY-12`.
 
 ### Work in progress that is NOT committed
 
-- `src/routes/payments.routes.js`: 403 guard when `req.body.method === 'TEST'` and `NODE_ENV === 'production'`.
-- `src/services/payment.service.js`: `isTest = data.method === 'TEST' && process.env.NODE_ENV !== 'production'`.
-- `tests/regression/pay-08a-test-payment-method.test.js`: regression tests for production rejection, test env auto-completion, and real methods unaffected.
-- `.env.example`: updated comments clarifying TEST method behavior in production.
-- `docs/GYMSERA_PRODUCTION_ARCHITECTURE.md`: added PAY-08a row to §13.
+- (none)
 
 ### Blocked / waiting on the owner
 
@@ -267,5 +264,5 @@ Work is on branch `fix/pay-08a-test-payment-method` in `gymsera_be` (cut from `o
 | 36 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Merge: Prompt 2A + origin/main (NEW-38) | Merged origin/main into phase-2/prompt-2a-reliability after NEW-38; resolved doc conflicts; kept all spec & handoff rows; verified platform migrations p014-p017; ran full backend suite 3x | task complete | yes |
 | 37 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Production Hotfix | REL-03: MySQL GET_LOCK raw query wrapper and releaseConnection fix (be 979dc9c); SEC-12: platform AuditLog persistence (be 83e8cff) | task complete | yes |
 | 38 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Redis Independence & p018 Migration | new-26 Redis resilience for DISABLE_REDIS=true; audit_logs field/security/latency/retention analysis; p018 platform migration with dry-run/conflict-skip tests (be); spec §0.1 Rule 10 & §15 matrix | task complete | yes |
-| 39 | 2026-10-04 | Gemini (Antigravity) | PAY-08a & gitignore | PAY-08a (reject method TEST in production with 403, ignore in payment service, test harness regression tests), gitignore (firebase-service-account.json, iisnode/) | in progress | yes |
+| 39 | 2026-10-05 | Gemini (Antigravity) | PAY-08a & gitignore | PAY-08a (reject method TEST in production with 403, ignore in payment service, test harness regression tests), gitignore (firebase-service-account.json, iisnode/) | task complete | yes |
 
