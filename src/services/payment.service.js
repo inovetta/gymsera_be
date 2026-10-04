@@ -125,7 +125,8 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
   }
 
   const resolvedRole = await resolveCreatorRole(tenantDb, staffUserId, creatorRole, data.branchId);
-  const autoComplete = isDirect || data.method === 'TEST';
+  const isTest = data.method === 'TEST' && process.env.NODE_ENV !== 'production';
+  const autoComplete = isDirect || isTest;
   const paidAt = data.paidAt || (autoComplete ? new Date() : null);
   const collectedAt = data.collectedAt || (data.method === 'CASH' ? (data.paidAt || new Date()) : (autoComplete ? paidAt : null));
   const collectionTime = ledgerService.getPaymentCollectionTime({
@@ -163,8 +164,8 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
         referenceEntityId: data.referenceEntityId || null,
         branchId: data.branchId || null,
         method: data.method,
-        gatewayName: data.method === 'TEST' ? 'TEST_GATEWAY' : (data.gatewayName || null),
-        gatewayTransactionId: data.method === 'TEST'
+        gatewayName: isTest ? 'TEST_GATEWAY' : (data.gatewayName || null),
+        gatewayTransactionId: isTest
           ? `TEST-${Date.now()}`
           : (data.gatewayTransactionId || null),
         amount: data.amount,
