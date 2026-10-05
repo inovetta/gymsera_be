@@ -707,7 +707,43 @@ const getMySubscriptionDetail = async (userId, subscriptionId) => {
     order: [['createdAt', 'DESC']],
   });
 
+  if (sub.status === SubscriptionStatus.ACTIVE) {
+    const { generateAttendanceQrToken } = require('../utils/qr.utils');
+    const rotatingToken = generateAttendanceQrToken({
+      subscriptionId: sub.id,
+      userId: sub.userId,
+      tenantId: index.tenantId,
+      branchId: sub.branchId,
+    });
+    sub.setDataValue('qrCode', rotatingToken);
+    sub.setDataValue('qrToken', rotatingToken);
+  }
+
   return { subscription: sub, gymMembership: index, payment: latestPayment, invoice };
+};
+
+// ── GET /subscriptions/:id/qr-token ───────────────────────────────────────────
+const getSubscriptionQrToken = async (userId, subscriptionId) => {
+  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { MemberSubscription } = models;
+
+  const sub = await MemberSubscription.findOne({
+    where: { id: resolvedSubscriptionId, userId },
+  });
+  if (!sub) throw createError('Subscription not found', 404);
+  if (sub.status !== SubscriptionStatus.ACTIVE) {
+    throw createError('Subscription is not active', 400);
+  }
+
+  const { generateAttendanceQrToken, QR_TOKEN_TTL_SECONDS } = require('../utils/qr.utils');
+  const qrToken = generateAttendanceQrToken({
+    subscriptionId: sub.id,
+    userId: sub.userId,
+    tenantId: index.tenantId,
+    branchId: sub.branchId,
+  });
+
+  return { qrToken, qrCode: qrToken, expiresIn: QR_TOKEN_TTL_SECONDS };
 };
 
 // ── POST /subscriptions/:id/proof — member uploads payment proof ──────────────
@@ -920,4 +956,5 @@ module.exports = {
   listForStaff, getForStaff, previewSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
+  getSubscriptionQrToken,
 };

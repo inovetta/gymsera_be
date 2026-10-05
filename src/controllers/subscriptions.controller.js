@@ -146,6 +146,16 @@ const getMySubscriptionDetail = async (req, res, next) => {
   }
 };
 
+// ── GET /subscriptions/:id/qr-token ───────────────────────────────────────────
+const getSubscriptionQrToken = async (req, res, next) => {
+  try {
+    const result = await subscriptionService.getSubscriptionQrToken(req.user.id, req.params.id);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── POST /subscriptions/:id/proof — member uploads payment proof ───────────────
 const uploadSubscriptionProof = async (req, res, next) => {
   try {
@@ -252,4 +262,5 @@ module.exports = {
   listForStaff, getForStaff, preview, createStaffSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
+  getSubscriptionQrToken,
 };

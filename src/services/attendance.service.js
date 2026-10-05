@@ -34,18 +34,18 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
   const { assertBranchCheckinAllowed } = require('./branch-billing-lock.service');
   assertBranchCheckinAllowed(branch);
 
-  let subscription = await MemberSubscription.findOne({ where: { qrCode } });
-  if (!subscription) {
-    // Try finding by subscription ID (in case the QR encoded the sub id)
-    subscription = await MemberSubscription.findByPk(qrCode);
+  // Reject raw subscription ID, user ID or legacy static tokens
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!qrCode || typeof qrCode !== 'string' || uuidRegex.test(qrCode) || qrCode.startsWith('GE-')) {
+    throw createError('Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.', 400);
   }
-  if (!subscription) {
-    // Try finding active subscription by userId (in case QR encoded user id)
-    subscription = await MemberSubscription.findOne({
-      where: { userId: qrCode, status: SubscriptionStatus.ACTIVE },
-      order: [['subscribedAt', 'DESC']]
-    });
-  }
+
+  const { verifyAttendanceQrToken } = require('../utils/qr.utils');
+  const decoded = await verifyAttendanceQrToken(qrCode);
+
+  let subscription = await MemberSubscription.findOne({
+    where: { id: decoded.subscriptionId, userId: decoded.userId }
+  });
 
   if (!subscription) {
     throw createError('Invalid QR code. No active subscription found for this code.', 404);
@@ -60,13 +60,17 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
     ? await MembershipPlan.findByPk(subscription.membershipPlanId, { attributes: ['id', 'name', 'durationDays'] }).catch(() => null)
     : null;
 
-  // Check for duplicate scan within the last 5 minutes
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  // Configurable duplicate check-in window (branch setting, fallback env DUPLICATE_CHECKIN_WINDOW_MINUTES, default 5 mins)
+  const windowMinutes = branch.duplicateCheckinWindowMinutes !== undefined && branch.duplicateCheckinWindowMinutes !== null
+    ? branch.duplicateCheckinWindowMinutes
+    : (parseInt(process.env.DUPLICATE_CHECKIN_WINDOW_MINUTES, 10) || 5);
+  const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);
+
   const recentLog = await AttendanceLog.findOne({
     where: {
       userId: subscription.userId,
       branchId,
-      checkInAt: { [Op.gte]: fiveMinutesAgo },
+      checkInAt: { [Op.gte]: windowStart },
     },
     order: [['checkInAt', 'DESC']],
   });

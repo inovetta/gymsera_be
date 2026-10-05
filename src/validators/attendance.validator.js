@@ -4,7 +4,7 @@ const { body, query } = require('express-validator');
 const qrScan = [
   body('qrCode')
     .notEmpty().withMessage('qrCode is required')
-    .isString().isLength({ min: 10, max: 100 }),
+    .isString().isLength({ min: 10, max: 1000 }),
   body('branchId')
     .notEmpty().withMessage('branchId is required')
     .isUUID(4).withMessage('branchId must be a valid UUID'),
