@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
 const { Tenant, User } = require('../models/platform');
@@ -9,17 +10,43 @@ const router = Router();
 router.use(authenticate);
 
 // Helper to find staff and its tenant connection
-const _resolveStaffAndTenant = async (staffId, requestedTenantId) => {
+const _resolveStaffAndTenant = async (staffIdOrToken, requestedTenantId) => {
   let tenantId = requestedTenantId;
   let targetStaff = null;
   let targetTenant = null;
+
+  const computedHash = staffIdOrToken
+    ? crypto.createHash('sha256').update(String(staffIdOrToken)).digest('hex')
+    : null;
+
+  const findStaffOnDb = async (tenantDb) => {
+    let staff = null;
+    try {
+      staff = await tenantDb.models.GymStaff.findByPk(staffIdOrToken);
+    } catch (_) {}
+    if (staff) return staff;
+
+    if (computedHash) {
+      try {
+        staff = await tenantDb.models.GymStaff.findOne({ where: { inviteTokenHash: computedHash } });
+      } catch (_) {}
+      if (staff) return staff;
+    }
+
+    if (staffIdOrToken) {
+      try {
+        staff = await tenantDb.models.GymStaff.findOne({ where: { inviteTokenHash: String(staffIdOrToken).toLowerCase() } });
+      } catch (_) {}
+    }
+    return staff;
+  };
 
   if (tenantId) {
     targetTenant = await Tenant.findByPk(tenantId);
     if (targetTenant) {
       try {
         const tenantDb = await TenantDbManager.getConnection(targetTenant.id, targetTenant.connectionStringEncrypted);
-        targetStaff = await tenantDb.models.GymStaff.findByPk(staffId);
+        targetStaff = await findStaffOnDb(tenantDb);
       } catch (err) {
         console.warn(`[Staff Invite] Failed to connect using provided tenantId:`, err.message);
       }
@@ -32,7 +59,7 @@ const _resolveStaffAndTenant = async (staffId, requestedTenantId) => {
     for (const t of tenants) {
       try {
         const tenantDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
-        const staff = await tenantDb.models.GymStaff.findByPk(staffId);
+        const staff = await findStaffOnDb(tenantDb);
         if (staff) {
           targetStaff = staff;
           targetTenant = t;
@@ -51,6 +78,33 @@ const _resolveStaffAndTenant = async (staffId, requestedTenantId) => {
   return { staff: targetStaff, tenant: targetTenant };
 };
 
+const _assertInviteValid = (staff, reqUser) => {
+  // 1. Single-use: must be pending
+  if (staff.status !== 'pending') {
+    throw createError('Staff invite has already been accepted or is no longer pending', 409);
+  }
+
+  // 2. Expiration: 7-day token expiration
+  const expiresAt = staff.tokenExpiresAt
+    ? new Date(staff.tokenExpiresAt)
+    : new Date(new Date(staff.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000);
+  if (expiresAt < new Date()) {
+    throw createError('Staff invite has expired', 410);
+  }
+
+  // 3. User & email binding:
+  if (staff.userId && staff.userId !== reqUser.id) {
+    throw createError('Access denied: Invite is not assigned to your account', 403);
+  }
+  if (!staff.userId && staff.email) {
+    const userEmail = (reqUser.email || '').toLowerCase().trim();
+    const staffEmail = staff.email.toLowerCase().trim();
+    if (userEmail !== staffEmail) {
+      throw createError('Access denied: Invite is not assigned to your account', 403);
+    }
+  }
+};
+
 // GET /staff-invites/:staffId
 router.get('/:staffId', async (req, res, next) => {
   try {
@@ -61,12 +115,19 @@ router.get('/:staffId', async (req, res, next) => {
     // Get host user details
     const hostUser = await User.findByPk(tenant.ownerUserId);
 
+    const expiresAt = staff.tokenExpiresAt
+      ? new Date(staff.tokenExpiresAt)
+      : new Date(new Date(staff.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000);
+    const isExpired = expiresAt < new Date();
+
     return sendSuccess(res, {
       staff: {
         id: staff.id,
         designation: staff.designation,
         status: staff.status,
         createdAt: staff.createdAt,
+        expiresAt,
+        isExpired,
       },
       branch: branch ? {
         id: branch.id,
@@ -91,10 +152,8 @@ router.post('/:staffId/accept', async (req, res, next) => {
   try {
     const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.tenantId || req.query.tenantId);
     
-    // Ensure this invite is indeed for this authenticated user
-    if (staff.userId && staff.userId !== req.user.id) {
-      throw createError('Access denied: Invite is not assigned to your account', 403);
-    }
+    // Ensure invite is pending, not expired, and assigned to this user/email
+    _assertInviteValid(staff, req.user);
 
     const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
     const branch = await tenantDb.models.Branch.findByPk(staff.branchId);
@@ -103,8 +162,8 @@ router.post('/:staffId/accept', async (req, res, next) => {
       assertBranchNotBillingLocked(branch);
     }
 
-    // Accept invite
-    await staff.update({ status: 'active', userId: req.user.id });
+    // Accept invite - single-use: mark active and consume invite token
+    await staff.update({ status: 'active', userId: req.user.id, inviteTokenHash: null });
 
     // Single authority: acceptStaffInvite creates or activates RoleAssignment
     const teamService = require('../services/team.service');
@@ -137,8 +196,7 @@ router.post('/:staffId/accept', async (req, res, next) => {
 
     // Send confirmation notification to the Host
     try {
-      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-      const branch = await tenantDb.models.Branch.findByPk(staff.branchId);
+      const user = await User.findByPk(req.user.id);
       const branchName = branch ? branch.branchName : 'branch';
       
       await notificationsService.createNotification({
@@ -146,7 +204,7 @@ router.post('/:staffId/accept', async (req, res, next) => {
         role: 'host',
         type: 'staff_invite_accepted',
         title: 'Staff Invite Accepted',
-        message: `${user.fullName} has accepted the invite to join ${branchName} as staff.`,
+        message: `${user?.fullName || 'A staff member'} has accepted the invite to join ${branchName} as staff.`,
         priority: 'normal',
         deepLink: `/host/gyms/${staff.branchId}/staff`,
         metadataJson: { staffId: staff.id, branchId: staff.branchId, tenantId: tenant.id }
@@ -166,13 +224,11 @@ router.post('/:staffId/decline', async (req, res, next) => {
   try {
     const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.tenantId || req.query.tenantId);
 
-    if (staff.userId && staff.userId !== req.user.id) {
-      throw createError('Access denied: Invite is not assigned to your account', 403);
-    }
+    // Validate invite is pending, not expired, and assigned to this user/email
+    _assertInviteValid(staff, req.user);
 
-    // Decline invite
-    await staff.update({ status: 'declined' });
-    // Remove the pending staff record
+    // Decline invite - mark declined, clear token, and remove
+    await staff.update({ status: 'declined', employmentStatus: 'TERMINATED', inviteTokenHash: null });
     await staff.destroy();
 
     // Mark notification read
@@ -204,7 +260,7 @@ router.post('/:staffId/decline', async (req, res, next) => {
         role: 'host',
         type: 'staff_invite_declined',
         title: 'Staff Invite Declined',
-        message: `${user.fullName} has declined the invite to join ${branchName} as staff.`,
+        message: `${user?.fullName || 'An invitee'} has declined the invite to join ${branchName} as staff.`,
         priority: 'normal',
         deepLink: `/host/gyms/${staff.branchId}/staff`,
         metadataJson: { branchId: staff.branchId, tenantId: tenant.id }

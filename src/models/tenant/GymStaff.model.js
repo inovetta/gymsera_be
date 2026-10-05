@@ -36,6 +36,14 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'pending',
       },
+      inviteTokenHash: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      },
+      tokenExpiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
     },
     {
       tableName: 'gym_staff',
@@ -44,6 +52,7 @@ module.exports = (sequelize) => {
       indexes: [
         { fields: ['branch_id'] },
         { fields: ['user_id'] },
+        { fields: ['invite_token_hash'] },
       ],
     }
   );
