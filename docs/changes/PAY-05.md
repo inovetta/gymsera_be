@@ -1,0 +1,34 @@
+# PAY-05: Gapless Per-Branch Invoice Sequences
+
+- **Issue ID**: PAY-05
+- **Title**: Gapless, per-branch invoice numbers (replace random INV-date-hex generators)
+- **Status**: RESOLVED
+- **Root Cause**:
+  - `src/services/payment.service.js:12-17`: generated non-sequential invoice numbers via `Math.random().toString(16).slice(2, 8)` (`INV-YYYYMMDD-HEX`).
+  - `src/services/gym.service.js:9-14`: duplicate implementation of random hex invoice number generator.
+  - `src/services/subscription.service.js:42-47`: third copy of random hex invoice number generator.
+  - Random invoice numbers were not sequential, not gapless, prone to collisions, and not per-branch.
+- **Pattern Reused**:
+  - Versioned tenant migration runner (`src/database/tenant-migration-runner.js`) adding Migration 014 `014_create_invoice_sequences_table`.
+  - Row-level lock (`SELECT ... FOR UPDATE`) inside the payment transaction on `invoice_sequences` table.
+  - Zero-write `--dry-run` and conflicting-data skip test (Rule 5).
+  - Existing invoices preserve historical numbers untouched (`existing invoices keep their numbers`).
+- **Implementation**:
+  - Migration 014 adds `invoice_sequences` table (`branch_id VARCHAR(64) PRIMARY KEY`, `prefix VARCHAR(32) NOT NULL DEFAULT 'INV'`, `next_number INT UNSIGNED NOT NULL DEFAULT 1`, timestamps).
+  - Created `src/models/tenant/InvoiceSequence.model.js` and registered in `src/models/tenant/index.js`.
+  - Created `src/services/invoice-sequence.service.js` with `getNextInvoiceNumber(dbTarget, branchId, transaction)` utilizing `SELECT ... FOR UPDATE` on `invoice_sequences` row with deadlock retry protection.
+  - Replaced random `_invoiceNo` in `payment.service.js`, `gym.service.js`, and `subscription.service.js` with `getNextInvoiceNumber`.
+- **Tests Added**:
+  - `tests/regression/pay-05-gapless-invoice-numbers.test.js`:
+    - Generates sequential, gapless invoice numbers for a branch (`-000001`, `-000002`, `-000003`).
+    - 50 concurrent invoice requests produce 50 gapless numbers with 0 duplicates under parallel execution.
+    - Branch B maintains an independent sequence starting at 000001.
+    - Preserves existing historical invoice numbers.
+  - `tests/integration/tenant-migrations-014.test.js`:
+    - `--dry-run` preview writes nothing to tenant database.
+    - Conflicting-data skip test when `invoice_sequences` exists with missing `next_number` column.
+    - Migration applies successfully and is idempotent.
+- **Migration & Deploy Order**:
+  - Migration: Tenant Migration 014 (`014_create_invoice_sequences_table`).
+  - Required deploy order:
+    1. Tenant migration 014 can be applied before or simultaneously with code. `invoice-sequence.service.js` automatically creates missing sequence rows via `ensureSequenceRow` if needed. Running migration 014 beforehand ensures zero lock contention during initial creation.

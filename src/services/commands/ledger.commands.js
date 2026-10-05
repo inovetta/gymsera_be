@@ -49,3 +49,44 @@ register({
     return ledgerService.closeDay(ctx, { ledgerDayId: day.id });
   },
 });
+
+register({
+  actionKey: 'ledger.verify',
+
+  targetType: 'ledger_day',
+
+  summarize: (payload) =>
+    `Ledger adjustment — ${payload.type || 'ADJUSTMENT'}${payload.amount != null ? ` (${payload.amount})` : ''}: ${payload.reason || ''}`,
+
+  validate: async (ctx, payload) => {
+    if (!payload.reason || !payload.reason.trim()) {
+      throw createError('A reason is required for a ledger adjustment', 422);
+    }
+    const { LedgerDay } = ctx.tenantDb.models;
+    const ledgerDayId = payload.ledgerDayId;
+    if (!ledgerDayId) throw createError('ledgerDayId is required', 422);
+
+    const ledgerDay = await LedgerDay.findByPk(ledgerDayId);
+    if (!ledgerDay) throw createError('Ledger day not found', 404);
+
+    if (ledgerDay.status === 'CLOSED') {
+      const err = createError(
+        `Ledger day ${ledgerDay.businessDate} is closed. Late adjustments must be posted against an open business day referencing the closed day.`,
+        409
+      );
+      err.code = 'ledger_day_closed';
+      throw err;
+    }
+
+    const effectiveBranchId = ctx.branchId || payload.branchId;
+    if (effectiveBranchId && ledgerDay.branchId !== effectiveBranchId) {
+      throw createError('That ledger day does not belong to this branch', 403);
+    }
+  },
+
+  execute: async (ctx, payload) => {
+    const ledgerService = require('../ledger.service');
+    return ledgerService.addAdjustment(ctx, payload);
+  },
+});
+

@@ -34,90 +34,128 @@ const WARNING_DAYS = 3;
  * @param {{ sequelize, models }} tenantDb
  */
 const _processTenant = async (tenantId, tenantDb) => {
-  const { MemberSubscription } = tenantDb.models;
-  const today = new Date().toISOString().split('T')[0];
+  const { MemberSubscription, Branch } = tenantDb.models;
+  const { computeBusinessDate } = require('../services/ledger.service');
 
-  // ── 1. Expire overdue subscriptions ────────────────────────────────────────
-  const [expiredCount] = await MemberSubscription.update(
-    { status: SubscriptionStatus.EXPIRED },
-    {
-      where: {
-        status: SubscriptionStatus.ACTIVE,
-        endDate: { [Op.lt]: today },
-      },
-    }
-  );
+  // Load all branches to map their timezones (spec §12.3, FLOW-06)
+  const branches = await Branch.findAll({ attributes: ['id', 'timezone'] }).catch(() => []);
+  const defaultTz = 'Asia/Karachi';
+  const tzToBranchIds = new Map();
+  tzToBranchIds.set(defaultTz, [null]);
 
-  if (expiredCount > 0) {
-    console.log(`[Cron] Tenant ${tenantId}: expired ${expiredCount} subscription(s)`);
-
-    // Sync platform index
-    await UserGymMembership.update(
-      { status: SubscriptionStatus.EXPIRED },
-      {
-        where: {
-          tenantId,
-          status: SubscriptionStatus.ACTIVE,
-          endDate: { [Op.lt]: today },
-        },
-      }
-    );
+  for (const b of branches) {
+    const tz = b.timezone || defaultTz;
+    if (!tzToBranchIds.has(tz)) tzToBranchIds.set(tz, []);
+    tzToBranchIds.get(tz).push(b.id);
   }
 
-  // ── 2. Queue expiry-warning notifications (3-day window) ──────────────────
-  const warningDate = new Date();
-  warningDate.setDate(warningDate.getDate() + WARNING_DAYS);
-  const warningDateStr = warningDate.toISOString().split('T')[0];
+  for (const [tz, branchIds] of tzToBranchIds.entries()) {
+    const todayInTz = computeBusinessDate(new Date(), tz);
+    const branchCondition = branchIds.includes(null)
+      ? { [Op.or]: [{ branchId: { [Op.in]: branchIds.filter(Boolean) } }, { branchId: null }] }
+      : { branchId: { [Op.in]: branchIds } };
 
-  const expiringSoon = await MemberSubscription.findAll({
-    where: {
-      status: SubscriptionStatus.ACTIVE,
-      endDate: { [Op.between]: [today, warningDateStr] },
-    },
-  });
-
-  for (const sub of expiringSoon) {
-    // Load user from platform DB to get email
-    const user = await User.findByPk(sub.userId, {
-      attributes: ['id', 'email', 'fullName'],
-    });
-    if (!user) continue;
-
-    // Get gym name from platform index
-    const index = await UserGymMembership.findOne({
-      where: { subscriptionId: sub.id },
-      attributes: ['gymName'],
-    });
-
-    const gymName = index?.gymName || 'your gym';
-
-    // 1. In-app notification, WebSocket broadcast, and FCM push
-    await notificationsService.createNotification({
-      userId: user.id,
-      role: 'traveler',
-      type: 'expiry',
-      title: 'Plan Expiring Soon',
-      message: `Your membership at ${gymName} expires on ${sub.endDate}. Renew now!`,
-      deepLink: '/traveler/subscriptions',
-      metadataJson: {
-        event: 'subscription_expiring_soon',
-        subscriptionId: sub.id,
-        gymName,
-        endDate: sub.endDate,
+    // ── 1. Expire overdue ACTIVE subscriptions in this branch timezone ──────────
+    const overdueSubs = await MemberSubscription.findAll({
+      where: {
+        status: SubscriptionStatus.ACTIVE,
+        endDate: { [Op.lt]: todayInTz },
+        ...branchCondition,
       },
-    }).catch((notifErr) => {
-      console.warn('[Notification Error] Failed to create SUBSCRIPTION_EXPIRING_SOON notification:', notifErr.message);
+      attributes: ['id'],
     });
 
-    // 2. Direct email delivery via SMTP
-    await emailService.sendSubscriptionExpiringSoonEmail(
-      user.email,
-      user.fullName,
-      gymName,
-      sub.endDate
-    ).catch((mailErr) => {
-      console.warn('[Email Error] Failed to send SUBSCRIPTION_EXPIRING_SOON email:', mailErr.message);
+    if (overdueSubs.length > 0) {
+      const subIds = overdueSubs.map((s) => s.id);
+      await MemberSubscription.update(
+        { status: SubscriptionStatus.EXPIRED },
+        { where: { id: { [Op.in]: subIds } } }
+      );
+      await UserGymMembership.update(
+        { status: SubscriptionStatus.EXPIRED },
+        { where: { subscriptionId: { [Op.in]: subIds } } }
+      );
+      console.log(`[Cron] Tenant ${tenantId} (${tz}): expired ${subIds.length} subscription(s)`);
+    }
+
+    // ── 2. Unfreeze / transition elapsed FROZEN subscriptions (FLOW-06) ────────
+    const elapsedFrozen = await MemberSubscription.findAll({
+      where: {
+        status: SubscriptionStatus.FROZEN,
+        freezeTo: { [Op.lt]: todayInTz },
+        ...branchCondition,
+      },
     });
+
+    for (const sub of elapsedFrozen) {
+      const nextStatus = sub.endDate < todayInTz ? SubscriptionStatus.EXPIRED : SubscriptionStatus.ACTIVE;
+      await sub.update({
+        status: nextStatus,
+      });
+      await UserGymMembership.update(
+        { status: nextStatus, endDate: sub.endDate },
+        { where: { subscriptionId: sub.id } }
+      );
+      console.log(`[Cron] Tenant ${tenantId} (${tz}): unfroze subscription ${sub.id} -> ${nextStatus}`);
+    }
+
+    // ── 3. Queue expiry-warning notifications (3-day window) ──────────────────
+    const warningDateStr = computeBusinessDate(
+      new Date(Date.now() + WARNING_DAYS * 86400000),
+      tz
+    );
+
+    const expiringSoon = await MemberSubscription.findAll({
+      where: {
+        status: SubscriptionStatus.ACTIVE,
+        endDate: { [Op.between]: [todayInTz, warningDateStr] },
+        ...branchCondition,
+      },
+    });
+
+    for (const sub of expiringSoon) {
+      // Load user from platform DB to get email
+      const user = await User.findByPk(sub.userId, {
+        attributes: ['id', 'email', 'fullName'],
+      });
+      if (!user) continue;
+
+      // Get gym name from platform index
+      const index = await UserGymMembership.findOne({
+        where: { subscriptionId: sub.id },
+        attributes: ['gymName'],
+      });
+
+      const gymName = index?.gymName || 'your gym';
+
+      // 1. In-app notification, WebSocket broadcast, and FCM push
+      await notificationsService.createNotification({
+        userId: user.id,
+        role: 'traveler',
+        type: 'expiry',
+        title: 'Plan Expiring Soon',
+        message: `Your membership at ${gymName} expires on ${sub.endDate}. Renew now!`,
+        deepLink: '/traveler/subscriptions',
+        metadataJson: {
+          event: 'subscription_expiring_soon',
+          subscriptionId: sub.id,
+          gymName,
+          endDate: sub.endDate,
+        },
+      }).catch((notifErr) => {
+        console.warn('[Notification Error] Failed to create SUBSCRIPTION_EXPIRING_SOON notification:', notifErr.message);
+      });
+
+      // 2. Direct email delivery via SMTP
+      await emailService.sendSubscriptionExpiringSoonEmail(
+        user.email,
+        user.fullName,
+        gymName,
+        sub.endDate
+      ).catch((mailErr) => {
+        console.warn('[Email Error] Failed to send SUBSCRIPTION_EXPIRING_SOON email:', mailErr.message);
+      });
+    }
   }
 };
 

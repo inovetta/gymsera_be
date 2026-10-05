@@ -418,6 +418,67 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 14,
+    name: '014_create_invoice_sequences_table',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [nextNumberCol] = await sequelize.query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoice_sequences' AND COLUMN_NAME = 'next_number'",
+        { type: QueryTypes.SELECT }
+      );
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['invoice_sequences'], type: QueryTypes.SELECT }
+      );
+      if (tableExists && !nextNumberCol) {
+        console.warn(
+          '[TenantMigration] SKIPPING 014: invoice_sequences table exists without next_number column. Resolve it by hand, then re-run.'
+        );
+        return {
+          skipped: true,
+          reason: 'table_exists_with_other_schema',
+          table: 'invoice_sequences',
+        };
+      }
+
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`invoice_sequences\` (
+          \`branch_id\` VARCHAR(64) NOT NULL,
+          \`prefix\` VARCHAR(32) NOT NULL DEFAULT 'INV',
+          \`next_number\` INT UNSIGNED NOT NULL DEFAULT 1,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`branch_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // Initialize GLOBAL sequence row
+      await sequelize.query(`
+        INSERT IGNORE INTO \`invoice_sequences\` (\`branch_id\`, \`prefix\`, \`next_number\`, \`created_at\`, \`updated_at\`)
+        VALUES ('GLOBAL', 'INV-ORG', 1, NOW(), NOW())
+      `).catch(() => {});
+
+      // Initialize sequence rows for all existing branches
+      const branchRows = await sequelize.query(
+        'SELECT id FROM branches',
+        { type: QueryTypes.SELECT }
+      ).catch(() => []);
+
+      for (const b of branchRows) {
+        if (b.id) {
+          const tag = b.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'BRANCH';
+          await sequelize.query(
+            'INSERT IGNORE INTO `invoice_sequences` (`branch_id`, `prefix`, `next_number`, `created_at`, `updated_at`) VALUES (?, ?, 1, NOW(), NOW())',
+            { replacements: [b.id, `INV-${tag}`] }
+          ).catch(() => {});
+        }
+      }
+
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

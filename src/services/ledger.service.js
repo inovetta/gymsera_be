@@ -333,7 +333,7 @@ const monthRange = (businessDate) => {
  * whatever's in ledger_adjustments as an addend, computed at read time.
  */
 const addAdjustment = async (ctx, { ledgerDayId, type, relatedPaymentId, amount, reason }) => {
-  if (!reason || !reason.trim()) throw createError('A reason is required for a ledger adjustment', 400);
+  if (!reason || !reason.trim()) throw createError('A reason is required for a ledger adjustment', 422);
   const { LedgerDay, LedgerAdjustment } = ctx.tenantDb.models;
 
   const ledgerDay = await LedgerDay.findByPk(ledgerDayId);

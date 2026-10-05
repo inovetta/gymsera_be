@@ -7,14 +7,9 @@ const notificationsService = require('./notifications.service');
 const emailService = require('./email.service');
 const { User, UserGymMembership } = require('../models/platform');
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 
-const _invoiceNo = () => {
-  const d = new Date();
-  const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const rand = Math.random().toString(16).slice(2, 8).toUpperCase();
-  return `INV-${date}-${rand}`;
-};
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const _createInvoice = async (
   models,
@@ -32,10 +27,13 @@ const _createInvoice = async (
   const securityMinor = Math.min(securityFeeMinor, remainingMinor);
   const joiningMinor = Math.max(0, remainingMinor - securityMinor);
 
+  const effectiveBranchId = branchId || subscription?.branchId || payment?.branchId || null;
+  const invoiceNo = await getNextInvoiceNumber(models.Invoice.sequelize, effectiveBranchId, transaction);
+
   return Invoice.create(
     {
       userId,
-      invoiceNo: _invoiceNo(),
+      invoiceNo,
       invoiceType: 'MEMBERSHIP',
       referenceEntityId: subscription.id,
       branchId: branchId || subscription?.branchId || payment?.branchId || null,

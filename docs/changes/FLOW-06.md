@@ -1,0 +1,31 @@
+# FLOW-06: Subscription Expiry & Freeze Dates in Branch Timezone and Max Renewal Dates
+
+- **Issue ID**: FLOW-06
+- **Title**: Expiry and freeze dates: compute in the branch timezone (or UTC), freeze extends endDate by the frozen days, renewal extends from max(now, endDate).
+- **Status**: RESOLVED
+- **Root Cause**:
+  - `src/services/subscription.service.js:370-388`: `freeze` only set `status = 'FROZEN'`, `freezeFrom`, `freezeTo` on `MemberSubscription` without adjusting `endDate`. `UserGymMembership` was not updated, and when thawed the member lost the days they were frozen.
+  - `src/services/subscription.service.js:410-440`: `renew` set `startDate = sub.endDate`, meaning subscriptions renewed after expiry started in the past, penalizing members by subtracting lapsed days from their renewal period.
+  - `src/jobs/subscription-expiry.cron.js:45-75`: The daily expiry cron calculated `today = new Date().toISOString().split('T')[0]` using server UTC time rather than each branch's configured timezone. Subscriptions whose `freezeTo` elapsed had no auto-thaw / unfreeze logic in the cron.
+- **Pattern Reused**:
+  - Reused `computeBusinessDate(date, timezone)` from `src/services/ledger.service.js` for branch timezone calculations.
+  - Reused `GymListing.findByPk(branchId, { attributes: ['id', 'timezone'] })` / `Branch` for branch timezone resolution.
+  - Mirrored dual updates to tenant `MemberSubscription` and platform `UserGymMembership`.
+  - Reused transactional locks and distributed locking (`withDistributedLock`).
+- **Files Modified / Created**:
+  - `src/services/subscription.service.js`:
+    - `freeze`: Extended `endDate` by `freezeDays` on both `MemberSubscription` and `UserGymMembership`.
+    - `unfreeze`: Added and exported unfreeze helper.
+    - `renew`: Computes `todayInBranchTz` and sets `startDate = max(todayInBranchTz, sub.endDate)`.
+  - `src/jobs/subscription-expiry.cron.js`:
+    - Computed `todayInTz = computeBusinessDate(new Date(), tz)` per branch.
+    - Added unfreeze / auto-thaw for `FROZEN` subscriptions where `freezeTo < todayInTz` (transitioning to `ACTIVE` or `EXPIRED`).
+  - `src/scripts/check-subscription-dates.js`:
+    - Read-only diagnostic script verifying historical subscription date defects.
+  - `tests/regression/flow-06-subscription-dates.test.js`:
+    - Regression test covering freeze extension, renewal `max(now, endDate)`, branch timezone cron expiry & unfreeze.
+  - `tests/regression/flow-06-subscription-dates-check-script.test.js`:
+    - Rule 8 test proving strict zero writes and accurate detection of 4 defect classes.
+- **Client Impact**:
+  - No breaking schema or contract changes.
+  - Mobile, CMS, and Web endpoints receive correctly extended end dates and properly thawed statuses.

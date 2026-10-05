@@ -46,6 +46,9 @@ const registerTenantModels = (sequelize) => {
   // ── Payouts (see spec §6.3, PAY-10) ──────────────────────────────────────────
   const Payout = require('./Payout.model')(sequelize);
 
+  // ── Invoice Sequences (see spec §12.4, PAY-05) ──────────────────────────────
+  const InvoiceSequence = require('./InvoiceSequence.model')(sequelize);
+
   // ── Associations ─────────────────────────────────────────────────────────────
 
   // Branch ↔ Payout
@@ -168,6 +171,7 @@ const registerTenantModels = (sequelize) => {
     Outbox: CapacityOutbox,
     IdempotencyRecord,
     Payout,
+    InvoiceSequence,
   };
 };
 
