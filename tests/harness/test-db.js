@@ -269,9 +269,9 @@ async function resetTestDatabases() {
     }
   }
 
-  // Clear TenantDbManager cache
+  // Close and release all TenantDbManager pooled connections
   const TenantDbManager = require('../../src/database/TenantDbManager');
-  TenantDbManager.pool.clear();
+  await TenantDbManager.releaseAll().catch(() => {});
 }
 
 /**
@@ -280,6 +280,9 @@ async function resetTestDatabases() {
 async function teardownTestDatabases() {
   // The 127.0.0.1 test server, if this file started one (TEST-FLAKE-1B).
   await require('./test-server').stopTestServer();
+  // Close and release all TenantDbManager pooled connections
+  const TenantDbManager = require('../../src/database/TenantDbManager');
+  await TenantDbManager.releaseAll().catch(() => {});
   const { sequelize: platformSequelize } = require('../../src/database/platform');
   if (platformSequelize) {
     await platformSequelize.close().catch(() => {});
