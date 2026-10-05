@@ -45,11 +45,15 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
       throw createError('Invalid QR code. QR code is required.', 400);
     }
 
-    const legacyUntil = process.env.ATTENDANCE_LEGACY_QR_UNTIL
-      ? new Date(process.env.ATTENDANCE_LEGACY_QR_UNTIL)
-      : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // default 60 days after deploy
+    let legacyGraceActive = false;
+    if (process.env.ATTENDANCE_LEGACY_QR_UNTIL) {
+      const legacyUntil = new Date(process.env.ATTENDANCE_LEGACY_QR_UNTIL);
+      if (!isNaN(legacyUntil.getTime()) && Date.now() <= legacyUntil.getTime()) {
+        legacyGraceActive = true;
+      }
+    }
 
-    if (Date.now() > legacyUntil.getTime()) {
+    if (!legacyGraceActive) {
       throw createError('Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.', 400);
     }
 

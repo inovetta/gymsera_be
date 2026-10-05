@@ -92,7 +92,35 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     }
   });
 
-  test('1. After ATTENDANCE_LEGACY_QR_UNTIL has passed: Reject raw subscriptionId when scanned as QR code (must reject with 400)', async () => {
+  test('1a. When ATTENDANCE_LEGACY_QR_UNTIL is UNSET: Grace is OFF, reject raw subscriptionId (400)', async () => {
+    delete process.env.ATTENDANCE_LEGACY_QR_UNTIL; // Explicitly unset
+    const res = await request(appServer)
+      .post('/api/v1/attendance/qr-scan')
+      .set('Authorization', `Bearer ${personas.manager.token}`)
+      .send({
+        qrCode: subscription.id,
+        branchId: branch.id,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message || res.body.error?.message).toMatch(/raw subscription or user IDs are not permitted/i);
+  });
+
+  test('1b. When ATTENDANCE_LEGACY_QR_UNTIL is INVALID: Grace is OFF, reject raw subscriptionId (400)', async () => {
+    process.env.ATTENDANCE_LEGACY_QR_UNTIL = 'not-a-valid-date-string';
+    const res = await request(appServer)
+      .post('/api/v1/attendance/qr-scan')
+      .set('Authorization', `Bearer ${personas.manager.token}`)
+      .send({
+        qrCode: subscription.id,
+        branchId: branch.id,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message || res.body.error?.message).toMatch(/raw subscription or user IDs are not permitted/i);
+  });
+
+  test('1c. After ATTENDANCE_LEGACY_QR_UNTIL has passed: Grace is OFF, reject raw subscriptionId (400)', async () => {
     process.env.ATTENDANCE_LEGACY_QR_UNTIL = '2020-01-01T00:00:00.000Z'; // Expired grace window
     const res = await request(appServer)
       .post('/api/v1/attendance/qr-scan')

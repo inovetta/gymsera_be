@@ -41,8 +41,9 @@
   - Released host scanner (`qr_scanner_screen.dart`): reads the displayed QR code string and sends `POST /api/v1/attendance/qr-scan` with `{ qrCode, branchId }`, which processes cleanly.
   - Old / offline app behavior: If an old app cached an offline subscription with raw `widget.subscriptionId` or a member attempts to scan a static screenshot or raw UUID, the backend responds with HTTP 400 (`Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.`). The member simply opens the app online to display the rotating QR.
 - **Grace Mode (`ATTENDANCE_LEGACY_QR_UNTIL`)**:
-  - To prevent sudden disruption for members using older app builds or offline cached static QR codes, `ATTENDANCE_LEGACY_QR_UNTIL` allows a transitional grace window (defaults to 60 days after deploy).
-  - During the grace window (`Date.now() <= legacyUntil`):
+  - `ATTENDANCE_LEGACY_QR_UNTIL` must be set **explicitly** in the environment to an ISO date string (e.g. `2026-12-05T00:00:00.000Z`).
+  - If `ATTENDANCE_LEGACY_QR_UNTIL` is **unset** or **invalid**, grace mode is strictly **OFF**, and raw IDs / static QR codes are rejected with HTTP 400 immediately.
+  - When explicitly configured and active (`Date.now() <= legacyUntil`):
     - Raw subscription ID, user ID, and static `GE-` formats are resolved using the legacy database lookup.
     - Each legacy scan is logged for auditability (`[Attendance] Legacy QR scan accepted under grace mode: branchId=..., subscriptionId=...`) with no personal data (no email, names, or phone numbers).
   - After the grace date has passed (`Date.now() > legacyUntil`):
