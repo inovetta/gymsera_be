@@ -98,7 +98,7 @@ async function discoverTenantDatabases(conn, platformDb) {
   let tenants = [];
   if (await tableExists(conn, platformDb, 'tenants')) {
     const [rows] = await conn.query(
-      'SELECT id, name, status, connection_string_encrypted FROM tenants'
+      `SELECT id, business_name, status, connection_string_encrypted FROM \`${platformDb}\`.tenants`
     );
     tenants = rows;
   }
@@ -168,7 +168,7 @@ async function auditTenantDatabase(conn, dbName, tenant) {
     return {
       dbName,
       tenantId: tenant ? tenant.id : null,
-      tenantName: tenant ? tenant.name : null,
+      tenantName: tenant ? (tenant.business_name || tenant.name) : null,
       skipped: true,
       reason: 'Missing RBAC or branch tables',
       issues: [],
@@ -190,7 +190,7 @@ async function auditTenantDatabase(conn, dbName, tenant) {
       b.branch_name,
       b.status AS branch_status
     FROM \`${dbName}\`.role_assignments ra
-    LEFT JOIN \`${dbName}\`.role_assignment_branches rab ON rab.role_assignment_id = ra.id
+    LEFT JOIN \`${dbName}\`.role_assignment_branches rab ON rab.assignment_id = ra.id
     LEFT JOIN \`${dbName}\`.branches b ON b.id = rab.branch_id
     WHERE ra.status = 'ACTIVE'
       AND ra.scope_type = 'BRANCH'
@@ -272,7 +272,7 @@ async function auditTenantDatabase(conn, dbName, tenant) {
   return {
     dbName,
     tenantId: tenant ? tenant.id : null,
-    tenantName: tenant ? tenant.name : null,
+    tenantName: tenant ? (tenant.business_name || tenant.name) : null,
     totalScanned: assignments.size,
     issues,
   };

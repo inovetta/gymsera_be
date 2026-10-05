@@ -275,4 +275,5 @@ Work is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (merged with `origin/
 | 39 | 2026-10-04 | Gemini (Antigravity) | Prompt 2B (Group 1: RBAC) | RBAC-04, RBAC-05, RBAC-08, RBAC-09 | task complete | yes |
 | 40 | 2026-10-05 | Gemini (Antigravity) | PAY-08a & gitignore | PAY-08a (reject method TEST in production with 403, ignore in payment service, test harness regression tests), gitignore (firebase-service-account.json, iisnode/) | task complete | yes |
 | 41 | 2026-10-05 | Gemini (Antigravity) | Merge: Prompt 2B Group 1 + origin/main (PAY-08a) | Merged origin/main into phase-2/prompt-2b-rbac after PAY-08a; resolved doc conflicts in spec §13 and handoff; verified platform p001-p018 and tenant 001-013 migrations; ran full suite twice | task complete | yes |
+| 42 | 2026-10-05 | Gemini (Antigravity) | Hotfix: RBAC-09 check script | Fixed Unknown column 'name' (tenants.business_name) and 'rab.role_assignment_id' (rab.assignment_id) in gymsera-rbac09-stale-branch-assignments-check.js; added regression test against migrated schema | task complete | yes |
 
