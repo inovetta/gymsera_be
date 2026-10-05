@@ -485,6 +485,12 @@ const MIGRATIONS = [
     up: async (sequelize, context) => {
       if (context?.dryRun === true) return null;
 
+      const [tableExists] = await sequelize.query(
+        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'gym_staff'",
+        { type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
       const [tokenHashCol] = await sequelize.query(
         "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'gym_staff' AND COLUMN_NAME = 'invite_token_hash'",
         { type: QueryTypes.SELECT }
@@ -532,49 +538,65 @@ const MIGRATIONS = [
   {
     version: 16,
     name: '016_add_payment_shift_and_ledger_closed_collectors',
-    up: async (sequelize) => {
-      // 1. Check payments.shift
-      const [shiftCol] = await sequelize.query(
-        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'shift'",
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [paymentsExists] = await sequelize.query(
+        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments'",
         { type: QueryTypes.SELECT }
       );
 
-      if (shiftCol && shiftCol.DATA_TYPE !== 'varchar') {
-        return {
-          skipped: true,
-          reason: 'column_exists_with_other_type',
-          table: 'payments',
-          column: 'shift',
-          type: shiftCol.DATA_TYPE,
-        };
+      if (paymentsExists) {
+        // 1. Check payments.shift
+        const [shiftCol] = await sequelize.query(
+          "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'shift'",
+          { type: QueryTypes.SELECT }
+        );
+
+        if (shiftCol && shiftCol.DATA_TYPE !== 'varchar') {
+          return {
+            skipped: true,
+            reason: 'column_exists_with_other_type',
+            table: 'payments',
+            column: 'shift',
+            type: shiftCol.DATA_TYPE,
+          };
+        }
+
+        if (!shiftCol) {
+          await sequelize.query(
+            "ALTER TABLE `payments` ADD COLUMN `shift` VARCHAR(20) NULL DEFAULT 'DEFAULT'"
+          );
+        }
       }
 
-      // 2. Check ledger_days.closed_collectors_json
-      const [closedCol] = await sequelize.query(
-        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ledger_days' AND COLUMN_NAME = 'closed_collectors_json'",
+      const [ledgerExists] = await sequelize.query(
+        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ledger_days'",
         { type: QueryTypes.SELECT }
       );
 
-      if (closedCol && !['text', 'mediumtext', 'longtext'].includes(closedCol.DATA_TYPE.toLowerCase())) {
-        return {
-          skipped: true,
-          reason: 'column_exists_with_other_type',
-          table: 'ledger_days',
-          column: 'closed_collectors_json',
-          type: closedCol.DATA_TYPE,
-        };
-      }
-
-      if (!shiftCol) {
-        await sequelize.query(
-          "ALTER TABLE `payments` ADD COLUMN `shift` VARCHAR(20) NULL DEFAULT 'DEFAULT'"
+      if (ledgerExists) {
+        // 2. Check ledger_days.closed_collectors_json
+        const [closedCol] = await sequelize.query(
+          "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ledger_days' AND COLUMN_NAME = 'closed_collectors_json'",
+          { type: QueryTypes.SELECT }
         );
-      }
 
-      if (!closedCol) {
-        await sequelize.query(
-          'ALTER TABLE `ledger_days` ADD COLUMN `closed_collectors_json` TEXT NULL'
-        );
+        if (closedCol && !['text', 'mediumtext', 'longtext'].includes(closedCol.DATA_TYPE.toLowerCase())) {
+          return {
+            skipped: true,
+            reason: 'column_exists_with_other_type',
+            table: 'ledger_days',
+            column: 'closed_collectors_json',
+            type: closedCol.DATA_TYPE,
+          };
+        }
+
+        if (!closedCol) {
+          await sequelize.query(
+            'ALTER TABLE `ledger_days` ADD COLUMN `closed_collectors_json` TEXT NULL'
+          );
+        }
       }
 
       return null;
