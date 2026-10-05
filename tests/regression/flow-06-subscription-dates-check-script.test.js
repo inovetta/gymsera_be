@@ -186,4 +186,68 @@ describe('FLOW-06: Read-Only Check Script for Historical Subscription Date Defec
       expect(new Date(afterRow.updated_at).getTime()).toBe(new Date(beforeRow.updated_at).getTime());
     }
   });
+
+  test('--verbose mode lists each anomaly with required metadata, zero personal data, and zero writes', async () => {
+    const { MemberSubscription } = models;
+    const fixedToday = '2026-10-05';
+
+    // Snapshot before
+    const snapshotBefore = await MemberSubscription.findAll({
+      order: [['id', 'ASC']],
+      raw: true,
+    });
+
+    const loggedMessages = [];
+    const logSpy = jest.spyOn(console, 'log').mockImplementation((...args) => {
+      loggedMessages.push(args.join(' '));
+    });
+
+    try {
+      const result = await processTenantSubscriptionDatesCheck(
+        tenantSeq,
+        { tenantId: 'test-tenant-verbose', gymName: 'Vitality Fit Studio' },
+        { verbose: true, quiet: false, todayOverride: fixedToday }
+      );
+
+      // Snapshot after
+      const snapshotAfter = await MemberSubscription.findAll({
+        order: [['id', 'ASC']],
+        raw: true,
+      });
+
+      const fullOutput = loggedMessages.join('\n');
+
+      // ── VERIFY VERBOSE OUTPUT ─────────────────────────────────────────────
+      expect(fullOutput).toContain('Detailed Anomalies (4):');
+
+      // 1. Lists each anomaly with Subscription ID
+      for (const a of result.anomalies) {
+        expect(fullOutput).toContain(`Subscription ID: ${a.subscriptionId}`);
+        expect(fullOutput).toContain(`Type:            ${a.issueType}`);
+        expect(fullOutput).toContain(`Status:          ${a.status}`);
+        expect(fullOutput).toContain(`Start Date:      ${a.startDate}`);
+        expect(fullOutput).toContain(`End Date:        ${a.endDate}`);
+      }
+
+      // 2. Freeze dates specifically listed for frozen subscriptions
+      expect(fullOutput).toContain('Freeze Dates:    2026-09-20 -> 2026-10-01');
+      expect(fullOutput).toContain('Freeze Dates:    2026-09-20 -> 2026-09-25');
+
+      // 3. ZERO PERSONAL DATA (spec & rule 8)
+      // Must not contain email addresses, passwords, phone numbers, or user names
+      expect(fullOutput).not.toMatch(/@/); // No email
+      expect(fullOutput).not.toMatch(/\+?[0-9]{10,13}/); // No phone numbers
+      expect(fullOutput).not.toContain('password');
+
+      // 4. ZERO WRITES ASSERTION
+      expect(snapshotAfter.length).toBe(snapshotBefore.length);
+      for (let i = 0; i < snapshotBefore.length; i++) {
+        expect(snapshotAfter[i].id).toBe(snapshotBefore[i].id);
+        expect(snapshotAfter[i].status).toBe(snapshotBefore[i].status);
+        expect(new Date(snapshotAfter[i].updated_at).getTime()).toBe(new Date(snapshotBefore[i].updated_at).getTime());
+      }
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
 });
