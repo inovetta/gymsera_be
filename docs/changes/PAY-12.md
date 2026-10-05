@@ -1,0 +1,29 @@
+# PAY-12: Ledger Adjustments Approval Engine Integration
+
+- **Issue ID**: PAY-12
+- **Title**: Ledger adjustments go through the approval tier engine (previously only checked `can('ledger.verify')`)
+- **Status**: RESOLVED
+- **Root Cause**:
+  - `src/controllers/ledger.controller.js:143-157`: `createAdjustment` previously only checked `can('ledger.verify')` and directly invoked `ledgerService.addAdjustment()`. Roles with the `REQUEST` tier for `ledger.verify` could not create approval requests.
+  - `src/constants/permissions.js:119`: `ledger.verify` was configured with `approvable: false` and tiers `['D', 'D', 'D', 'x', 'x', 'x', 'x']`.
+  - `src/services/commands/ledger.commands.js`: Did not have `ledger.verify` registered, preventing execution through the approval engine action runner.
+  - `src/services/ledger.service.js:132`: Missing reason threw a 400 error instead of the platform standard 422 Unprocessable Entity.
+- **Pattern Reused**:
+  - Reused `approvalService.perform(ctx, 'ledger.verify', payload, executeFn)`.
+  - Reused command registration pattern in `src/services/commands/ledger.commands.js` with `validate` and `execute`.
+  - Reused `PlatformAuditLog` audit logging in command / controller.
+  - Standardized validation failure to 422 HTTP status.
+- **Tests Added**:
+  - `tests/regression/pay-12-ledger-adjustment-approval.test.js`:
+    - 422 when reason is omitted, empty, or whitespace.
+    - 201 direct execution for DIRECT tier (Owner, OrgAdmin, Manager).
+    - 202 PENDING approval request for REQUEST tier (Branch Admin / custom role).
+    - Approval by approver (`POST /approvals/:id/approve`) successfully executes adjustment.
+    - Command door execution via `POST /actions/ledger.verify`.
+    - 409 conflict when ledger day is closed (`ledger_day_closed`).
+    - 403 Forbidden for unpermitted roles (Front Desk, Trainer, Cleaner).
+- **Client Impact**:
+  - `POST /api/v1/ledger/:ledgerDayId/adjustments`:
+    - For DIRECT tier roles (Owner, Org Admin, Manager), behavior remains 201 Created with adjustment payload.
+    - For REQUEST tier roles, response is 202 Accepted with `{ status: 'PENDING', approvalRequestId }`.
+    - Empty reason now returns 422 instead of 400.

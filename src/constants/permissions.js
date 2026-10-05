@@ -400,7 +400,8 @@ const CATALOGUE = [
       {
         key: 'ledger.verify',
         label: 'Verify / reconcile ledger',
-        tiers: ['A', 'A', 'A', 'x', 'x', 'x', 'x'],
+        approvable: true,
+        tiers: ['D', 'D', 'D', 'R', 'x', 'x', 'x'],
         note: 'Marks collections reviewed and logs discrepancy/variance adjustments. Never edits a payment record.',
       },
       {

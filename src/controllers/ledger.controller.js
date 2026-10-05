@@ -1,4 +1,5 @@
 const ledgerService = require('../services/ledger.service');
+const approvalService = require('../services/approval.service');
 const { sendSuccess, createError } = require('../utils/response.utils');
 
 // ── GET /ledger/today ────────────────────────────────────────────────────────
@@ -83,21 +84,49 @@ const createAdjustment = async (req, res, next) => {
       tenantDb: req.tenantDb,
       tenantId: req.tenantId,
       userId: req.user.id || req.user.sub,
-      branchId: req.branchId,
+      branchId: req.branchId || req.body.branchId,
+      grants: req.grants,
       roleKey: (req.grants.roleKeys || [])[0] || null,
       req,
     };
-    const adjustment = await ledgerService.addAdjustment(ctx, {
-      ledgerDayId: req.params.ledgerDayId,
-      type: req.body.type,
-      relatedPaymentId: req.body.relatedPaymentId,
-      amount: req.body.amount,
-      reason: req.body.reason,
-    });
-    return sendSuccess(res, { adjustment }, 'Adjustment recorded', 201);
+    const outcome = await approvalService.perform(
+      ctx,
+      'ledger.verify',
+      {
+        ledgerDayId: req.params.ledgerDayId,
+        type: req.body.type,
+        relatedPaymentId: req.body.relatedPaymentId,
+        amount: req.body.amount,
+        reason: req.body.reason,
+        branchId: req.branchId || req.body.branchId,
+      },
+      {
+        idempotencyKey:
+          req.headers['x-idempotency-key'] ||
+          req.headers['idempotency-key'] ||
+          req.body?.idempotencyKey ||
+          null,
+      }
+    );
+
+    if (outcome.status === 'EXECUTED') {
+      return sendSuccess(res, { adjustment: outcome.result }, 'Adjustment recorded', 201);
+    }
+
+    return sendSuccess(
+      res,
+      {
+        approvalRequestId: outcome.request.id,
+        status: 'PENDING',
+        summary: outcome.request.summary,
+      },
+      'Adjustment request submitted for approval',
+      202
+    );
   } catch (err) {
     next(err);
   }
 };
 
 module.exports = { getToday, getDay, getOpenDays, getWeekly, getMonthly, createAdjustment };
+
