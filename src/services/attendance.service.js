@@ -34,21 +34,54 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
   const { assertBranchCheckinAllowed } = require('./branch-billing-lock.service');
   assertBranchCheckinAllowed(branch);
 
-  // Reject raw subscription ID, user ID or legacy static tokens
+  // Grace mode for legacy static QR / raw ID format
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!qrCode || typeof qrCode !== 'string' || uuidRegex.test(qrCode) || qrCode.startsWith('GE-')) {
-    throw createError('Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.', 400);
-  }
+  const isLegacyFormat = !qrCode || typeof qrCode !== 'string' || uuidRegex.test(qrCode) || qrCode.startsWith('GE-');
 
-  const { verifyAttendanceQrToken } = require('../utils/qr.utils');
-  const decoded = await verifyAttendanceQrToken(qrCode);
+  let subscription;
 
-  let subscription = await MemberSubscription.findOne({
-    where: { id: decoded.subscriptionId, userId: decoded.userId }
-  });
+  if (isLegacyFormat) {
+    if (!qrCode || typeof qrCode !== 'string') {
+      throw createError('Invalid QR code. QR code is required.', 400);
+    }
 
-  if (!subscription) {
-    throw createError('Invalid QR code. No active subscription found for this code.', 404);
+    const legacyUntil = process.env.ATTENDANCE_LEGACY_QR_UNTIL
+      ? new Date(process.env.ATTENDANCE_LEGACY_QR_UNTIL)
+      : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // default 60 days after deploy
+
+    if (Date.now() > legacyUntil.getTime()) {
+      throw createError('Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.', 400);
+    }
+
+    // Grace window is active: resolve subscription using legacy resolution logic
+    subscription = await MemberSubscription.findOne({ where: { qrCode } });
+    if (!subscription) {
+      subscription = await MemberSubscription.findByPk(qrCode);
+    }
+    if (!subscription) {
+      subscription = await MemberSubscription.findOne({
+        where: { userId: qrCode, status: SubscriptionStatus.ACTIVE },
+        order: [['subscribedAt', 'DESC']]
+      });
+    }
+
+    if (!subscription) {
+      throw createError('Invalid QR code. No active subscription found for this code.', 404);
+    }
+
+    // Log each legacy scan (branch, subscription id, no personal data)
+    console.log(`[Attendance] Legacy QR scan accepted under grace mode: branchId=${branchId}, subscriptionId=${subscription.id}`);
+  } else {
+    const { verifyAttendanceQrToken } = require('../utils/qr.utils');
+    const decoded = await verifyAttendanceQrToken(qrCode);
+
+    subscription = await MemberSubscription.findOne({
+      where: { id: decoded.subscriptionId, userId: decoded.userId }
+    });
+
+    if (!subscription) {
+      throw createError('Invalid QR code. No active subscription found for this code.', 404);
+    }
   }
 
   const { User } = require('../models/platform');

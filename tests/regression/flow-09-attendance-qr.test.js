@@ -85,11 +85,15 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     await teardownTestDatabases();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     _clearInMemoryNonces();
+    if (dbHarness?.tenant1?.models?.AttendanceLog) {
+      await dbHarness.tenant1.models.AttendanceLog.destroy({ where: {} });
+    }
   });
 
-  test('1. Reject raw subscriptionId when scanned as QR code (must reject with 400)', async () => {
+  test('1. After ATTENDANCE_LEGACY_QR_UNTIL has passed: Reject raw subscriptionId when scanned as QR code (must reject with 400)', async () => {
+    process.env.ATTENDANCE_LEGACY_QR_UNTIL = '2020-01-01T00:00:00.000Z'; // Expired grace window
     const res = await request(appServer)
       .post('/api/v1/attendance/qr-scan')
       .set('Authorization', `Bearer ${personas.manager.token}`)
@@ -102,7 +106,8 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     expect(res.body.message || res.body.error?.message).toMatch(/raw subscription or user IDs are not permitted/i);
   });
 
-  test('2. Reject raw userId when scanned as QR code (must reject with 400)', async () => {
+  test('2. After ATTENDANCE_LEGACY_QR_UNTIL has passed: Reject raw userId when scanned as QR code (must reject with 400)', async () => {
+    process.env.ATTENDANCE_LEGACY_QR_UNTIL = '2020-01-01T00:00:00.000Z'; // Expired grace window
     const res = await request(appServer)
       .post('/api/v1/attendance/qr-scan')
       .set('Authorization', `Bearer ${personas.manager.token}`)
@@ -113,6 +118,59 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
 
     expect(res.status).toBe(400);
     expect(res.body.message || res.body.error?.message).toMatch(/raw subscription or user IDs are not permitted/i);
+  });
+
+  test('2b. Before ATTENDANCE_LEGACY_QR_UNTIL has passed (Grace Mode Active): Accept raw subscriptionId and log scan without personal data', async () => {
+    process.env.ATTENDANCE_LEGACY_QR_UNTIL = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(); // 60 days in future
+
+    const { AttendanceLog } = dbHarness.tenant1.models;
+    await AttendanceLog.destroy({ where: { userId: memberUser.id } });
+
+    const logSpy = jest.spyOn(console, 'log');
+
+    const res = await request(appServer)
+      .post('/api/v1/attendance/qr-scan')
+      .set('Authorization', `Bearer ${personas.manager.token}`)
+      .send({
+        qrCode: subscription.id,
+        branchId: branch.id,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.log.attendanceType).toBe('CHECK_IN');
+    expect(res.body.data.log.userId).toBe(memberUser.id);
+
+    // Verify logged legacy scan message
+    const graceLogCall = logSpy.mock.calls.find((call) =>
+      typeof call[0] === 'string' && call[0].includes('[Attendance] Legacy QR scan accepted under grace mode')
+    );
+    expect(graceLogCall).toBeDefined();
+    const logMessage = graceLogCall[0];
+    expect(logMessage).toContain(`branchId=${branch.id}`);
+    expect(logMessage).toContain(`subscriptionId=${subscription.id}`);
+    // Assert no personal data in log
+    expect(logMessage).not.toContain(memberUser.email);
+    expect(logMessage).not.toContain(memberUser.fullName);
+
+    logSpy.mockRestore();
+  });
+
+  test('2c. Before ATTENDANCE_LEGACY_QR_UNTIL has passed (Grace Mode Active): Accept legacy static GE- code', async () => {
+    process.env.ATTENDANCE_LEGACY_QR_UNTIL = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { AttendanceLog } = dbHarness.tenant1.models;
+    await AttendanceLog.destroy({ where: { userId: memberUser.id } });
+
+    const res = await request(appServer)
+      .post('/api/v1/attendance/qr-scan')
+      .set('Authorization', `Bearer ${personas.manager.token}`)
+      .send({
+        qrCode: 'GE-STATIC-TOKEN-12345',
+        branchId: branch.id,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.log.attendanceType).toBe('CHECK_IN');
   });
 
   test('3. Valid rotating signed QR token is accepted and records check-in', async () => {

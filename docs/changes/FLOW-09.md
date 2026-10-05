@@ -40,6 +40,14 @@
   - Released mobile app (`qr_full_screen.dart`): queries `GET /api/v1/me/subscriptions/:id` and reads `sub.qrCode`. Because the backend dynamically attaches the rotating signed token, released mobile app displays the rotating QR token without client changes.
   - Released host scanner (`qr_scanner_screen.dart`): reads the displayed QR code string and sends `POST /api/v1/attendance/qr-scan` with `{ qrCode, branchId }`, which processes cleanly.
   - Old / offline app behavior: If an old app cached an offline subscription with raw `widget.subscriptionId` or a member attempts to scan a static screenshot or raw UUID, the backend responds with HTTP 400 (`Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.`). The member simply opens the app online to display the rotating QR.
+- **Grace Mode (`ATTENDANCE_LEGACY_QR_UNTIL`)**:
+  - To prevent sudden disruption for members using older app builds or offline cached static QR codes, `ATTENDANCE_LEGACY_QR_UNTIL` allows a transitional grace window (defaults to 60 days after deploy).
+  - During the grace window (`Date.now() <= legacyUntil`):
+    - Raw subscription ID, user ID, and static `GE-` formats are resolved using the legacy database lookup.
+    - Each legacy scan is logged for auditability (`[Attendance] Legacy QR scan accepted under grace mode: branchId=..., subscriptionId=...`) with no personal data (no email, names, or phone numbers).
+  - After the grace date has passed (`Date.now() > legacyUntil`):
+    - Raw IDs and static codes are strictly rejected with HTTP 400 (`Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.`).
 - **Migration & Deploy Order**:
   - No database migration required.
   - Backend can be deployed immediately.
+
