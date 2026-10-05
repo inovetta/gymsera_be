@@ -251,6 +251,23 @@ async function processTenantSubscriptionDatesCheck(tenantSeq, context = {}, opti
 
   if (!options.quiet) {
     console.log(`[${context.gymName || context.tenantId || 'Tenant'}] Scanned: ${subscriptions.length} subscriptions, Found: ${anomalies.length} anomaly(ies).`);
+    if (options.verbose) {
+      if (anomalies.length === 0) {
+        console.log(`  (No subscription date anomalies detected)`);
+      } else {
+        console.log(`  Detailed Anomalies (${anomalies.length}):`);
+        for (const a of anomalies) {
+          console.log(`    - Subscription ID: ${a.subscriptionId}`);
+          console.log(`      Type:            ${a.issueType}`);
+          console.log(`      Status:          ${a.status}`);
+          console.log(`      Start Date:      ${a.startDate || '(none)'}`);
+          console.log(`      End Date:        ${a.endDate || '(none)'}`);
+          console.log(`      Freeze Dates:    ${a.freezeFrom ? `${a.freezeFrom} -> ${a.freezeTo}` : '(none)'}`);
+          console.log(`      Details:         ${a.details}`);
+          console.log(`      Action:          ${a.recommendedAction}`);
+        }
+      }
+    }
   }
 
   return {
@@ -279,9 +296,14 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
 
   let activeTenants = allTenants.filter((t) => t.connectionStringEncrypted);
   if (options.tenantFilter) {
-    activeTenants = activeTenants.filter(
-      (t) => t.id === options.tenantFilter || t.tenantCode?.toLowerCase() === options.tenantFilter.toLowerCase()
-    );
+    const filter = String(options.tenantFilter).trim().toLowerCase();
+    activeTenants = activeTenants.filter((t) => {
+      const idMatch = t.id?.toLowerCase() === filter;
+      const codeMatch = t.tenantCode?.toLowerCase() === filter;
+      const businessMatch = t.businessName?.toLowerCase().includes(filter);
+      const gymMatch = t.gymName?.toLowerCase().includes(filter);
+      return idMatch || codeMatch || businessMatch || gymMatch;
+    });
   }
 
   console.log(`\n============================================================`);
@@ -310,7 +332,7 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
         tenantSeq,
         {
           tenantId: tenant.id,
-          gymName: tenant.gymName,
+          gymName: tenant.businessName || tenant.gymName || tenant.tenantCode,
           tenantCode: tenant.tenantCode,
         },
         options
@@ -323,7 +345,7 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
       console.error(`❌ [Tenant Error] ${tenant.gymName || tenant.tenantCode} (${tenant.id}):`, err.message);
       reports.push({
         tenantId: tenant.id,
-        gymName: tenant.gymName,
+        gymName: tenant.businessName || tenant.gymName || tenant.tenantCode,
         success: false,
         error: err.message,
       });
@@ -358,11 +380,12 @@ if (require.main === module) {
   if (tenantIdx !== -1 && args[tenantIdx + 1]) {
     tenantFilter = args[tenantIdx + 1];
   }
+  const verbose = args.includes('--verbose') || args.includes('-v');
 
   (async () => {
     try {
       await connectPlatform();
-      await checkAllTenantsSubscriptionDates({ tenantFilter });
+      await checkAllTenantsSubscriptionDates({ tenantFilter, verbose });
       process.exit(0);
     } catch (err) {
       console.error('Fatal subscription dates check error:', err.message);
