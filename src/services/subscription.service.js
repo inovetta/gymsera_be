@@ -315,7 +315,10 @@ const listMySubscriptions = async (userId, { status, page, limit, offset }) => {
 };
 
 // ── POST /subscriptions/:id/freeze ────────────────────────────────────────────
-const freeze = async (userId, subscriptionId, { freezeFrom, freezeTo }) => {
+const freeze = async (userId, subscriptionId, optsOrFrom, maybeTo) => {
+  const freezeFrom = typeof optsOrFrom === 'object' && optsOrFrom !== null ? optsOrFrom.freezeFrom : optsOrFrom;
+  const freezeTo = typeof optsOrFrom === 'object' && optsOrFrom !== null ? optsOrFrom.freezeTo : maybeTo;
+
   const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription } = models;
 
@@ -330,15 +333,63 @@ const freeze = async (userId, subscriptionId, { freezeFrom, freezeTo }) => {
   if (plan && plan.freezeLimitDays === 0) {
     throw createError('This plan does not allow freezing', 400);
   }
-  const freezeDays = Math.ceil((new Date(freezeTo) - new Date(freezeFrom)) / 86400000);
+  const startEpoch = new Date(freezeFrom).getTime();
+  const endEpoch = new Date(freezeTo).getTime();
+  const freezeDays = Math.max(1, Math.round((endEpoch - startEpoch) / 86400000));
   if (plan && freezeDays > plan.freezeLimitDays) {
     throw createError(`Freeze duration exceeds the plan limit of ${plan.freezeLimitDays} days`, 400);
   }
 
-  await sub.update({ status: SubscriptionStatus.FROZEN, freezeFrom, freezeTo });
+  // Extend endDate by the frozen days (spec §12.3, FLOW-06)
+  const curEndDate = new Date(sub.endDate);
+  curEndDate.setDate(curEndDate.getDate() + freezeDays);
+  const extendedEndDate = curEndDate.toISOString().split('T')[0];
 
-  // Sync status in Platform index
-  await index.update({ status: SubscriptionStatus.FROZEN });
+  await sub.update({
+    status: SubscriptionStatus.FROZEN,
+    freezeFrom,
+    freezeTo,
+    endDate: extendedEndDate,
+  });
+
+  // Sync status and extended endDate in Platform index
+  await index.update({
+    status: SubscriptionStatus.FROZEN,
+    endDate: extendedEndDate,
+  });
+
+  return sub.reload();
+};
+
+// ── POST /subscriptions/:id/unfreeze ──────────────────────────────────────────
+const unfreeze = async (userId, subscriptionId) => {
+  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { MemberSubscription, Branch } = models;
+
+  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
+  if (!sub) throw createError('Subscription not found in tenant database', 404);
+  if (sub.status !== SubscriptionStatus.FROZEN) {
+    throw createError(`Cannot unfreeze a subscription with status: ${sub.status}`, 409);
+  }
+
+  let branchTimezone = 'Asia/Karachi';
+  if (sub.branchId) {
+    const branch = await Branch.findByPk(sub.branchId);
+    if (branch && branch.timezone) branchTimezone = branch.timezone;
+  }
+
+  const { computeBusinessDate } = require('./ledger.service');
+  const todayInTz = computeBusinessDate(new Date(), branchTimezone);
+  const nextStatus = sub.endDate < todayInTz ? SubscriptionStatus.EXPIRED : SubscriptionStatus.ACTIVE;
+
+  await sub.update({
+    status: nextStatus,
+  });
+
+  await index.update({
+    status: nextStatus,
+    endDate: sub.endDate,
+  });
 
   return sub.reload();
 };
@@ -396,8 +447,24 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
     throw createError('The associated membership plan is no longer available', 409);
   }
 
-  // Extend from customStartDate or current endDate (or today if neither is available)
-  const baseDate = customStartDate || sub.endDate || new Date().toISOString().split('T')[0];
+  // Extend from customStartDate or max(now, sub.endDate) in the branch timezone (FLOW-06)
+  let branchTimezone = 'Asia/Karachi';
+  if (sub.branchId) {
+    const branch = await models.Branch.findByPk(sub.branchId);
+    if (branch && branch.timezone) {
+      branchTimezone = branch.timezone;
+    }
+  }
+
+  const { computeBusinessDate } = require('./ledger.service');
+  const todayInBranchTz = computeBusinessDate(new Date(), branchTimezone);
+
+  let defaultBaseDate = todayInBranchTz;
+  if (sub.endDate && sub.endDate > todayInBranchTz) {
+    defaultBaseDate = sub.endDate;
+  }
+
+  const baseDate = customStartDate || defaultBaseDate;
   const newEndDate = _calcEndDate(baseDate, plan.durationType, plan.durationValue);
   const newQr = _generateQrToken();
 
@@ -849,7 +916,7 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
 };
 
 module.exports = {
-  subscribe, listMySubscriptions, freeze, cancel, renew, changePlan,
+  subscribe, listMySubscriptions, freeze, unfreeze, cancel, renew, changePlan,
   listForStaff, getForStaff, previewSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
