@@ -34,17 +34,12 @@ const _calcEndDate = (startDate, durationType, durationValue) => {
   return d.toISOString().split('T')[0];
 };
 
+const { getNextInvoiceNumber } = require('./invoice-sequence.service');
+
 /**
  * Generate a unique QR token for a new subscription.
  */
 const _generateQrToken = () => `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
-
-const _invoiceNo = () => {
-  const d = new Date();
-  const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const rand = Math.random().toString(16).slice(2, 8).toUpperCase();
-  return `INV-${date}-${rand}`;
-};
 
 /**
  * Resolve tenant DB from a GymListing UUID.
@@ -241,9 +236,10 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   });
 
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const invoiceNo = await getNextInvoiceNumber(models.Invoice.sequelize, branchIdToUse);
   const invoice = await Invoice.create({
     userId,
-    invoiceNo: _invoiceNo(),
+    invoiceNo,
     invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
     subtotal: fromMinorUnits(subtotalMinor),
@@ -831,9 +827,10 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
 
   // 3. Create Invoice (status ISSUED)
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const invoiceNo = await getNextInvoiceNumber(models.Invoice.sequelize, sub.branchId);
   const invoice = await Invoice.create({
     userId: sub.userId,
-    invoiceNo: _invoiceNo(),
+    invoiceNo,
     invoiceType: 'MEMBERSHIP',
     referenceEntityId: sub.id,
     subtotal: amountToPay,

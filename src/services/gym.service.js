@@ -5,13 +5,7 @@ const { createError, buildPagination } = require('../utils/response.utils');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
 const subscriptionQuotaService = require('./subscription-quota.service');
-
-const _invoiceNo = () => {
-  const d = new Date();
-  const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const rand = Math.random().toString(16).slice(2, 8).toUpperCase();
-  return `INV-${date}-${rand}`;
-};
+const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 
 const _calcEndDate = (startDate, durationType, durationValue) => {
   const d = new Date(startDate);
@@ -1783,9 +1777,10 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   });
   if (autoComplete || preCollected) ledgerService.notifyLedgerUpdated(tenantId, branchId, businessDate);
 
+  const invoiceNo = await getNextInvoiceNumber(tenantDb, branchId);
   const invoice = await Invoice.create({
     userId: user.id,
-    invoiceNo: _invoiceNo(),
+    invoiceNo,
     invoiceType: 'MEMBERSHIP',
     referenceEntityId: subscription.id,
     branchId,
