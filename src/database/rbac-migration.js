@@ -28,6 +28,7 @@ const TABLES = {
       accepted_at  DATETIME     NULL,
       revoked_at   DATETIME     NULL,
       revoked_by   CHAR(36)     NULL,
+      version      INT          NOT NULL DEFAULT 1,
       created_at   DATETIME     NOT NULL,
       updated_at   DATETIME     NOT NULL,
       PRIMARY KEY (id),

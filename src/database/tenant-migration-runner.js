@@ -379,6 +379,45 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 13,
+    name: '013_add_role_assignment_version',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['role_assignments'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
+      const [versionCol] = await sequelize.query(
+        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_assignments' AND COLUMN_NAME = 'version'",
+        { type: QueryTypes.SELECT }
+      );
+
+      if (versionCol) {
+        if (['int', 'smallint', 'tinyint', 'bigint', 'mediumint'].includes(String(versionCol.DATA_TYPE).toLowerCase())) {
+          return null;
+        }
+        console.warn(
+          `[TenantMigration] SKIPPING 013: role_assignments.version already exists as ${versionCol.DATA_TYPE}. Resolve it by hand, then re-run.`
+        );
+        return {
+          skipped: true,
+          reason: 'column_exists_with_other_type',
+          table: 'role_assignments',
+          column: 'version',
+          type: versionCol.DATA_TYPE,
+        };
+      }
+
+      await sequelize.query(
+        'ALTER TABLE `role_assignments` ADD COLUMN `version` INT NOT NULL DEFAULT 1'
+      );
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

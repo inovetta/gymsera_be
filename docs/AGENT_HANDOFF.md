@@ -19,26 +19,26 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-05 |
 | Updated by | Gemini (Antigravity) |
-| Current prompt | **PAY-08a: reject method TEST in production + .gitignore hygiene** |
+| Current prompt | **Prompt 2B — Group 1: RBAC & Access Control (merged after PAY-08a)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Work is on branch `fix/pay-08a-test-payment-method` in `gymsera_be` (cut from `origin/main` at `9495a5f`). Not pushed, no PRs opened.
+Work is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (merged with `origin/main` after PAY-08a). Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `fix/new-38-delete-listing-reauth` | 55037b9 feat(org): add re-auth requirement on organization deletion with rollback exemption (NEW-38) | no |
-| gymsera_be | `fix/pay-08a-test-payment-method` | 1a5060c fix(payments): reject method TEST in production with 403 and ignore in service (PAY-08a) | no |
+| gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
+| gymsera_be | `phase-2/prompt-2b-rbac` | (merge commit: Prompt 2B Group 1 + origin/main) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Continue with Prompt 2B Part B (Group 2: Member Flows / Money) from `docs/GYMSERA_AGENT_PLAYBOOK.md`:
-> Issues: `FLOW-05` (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), `FLOW-06`, `FLOW-08`, `FLOW-09`, `FLOW-10`, `FLOW-12`, `FLOW-13` or `PAY-05…PAY-08`, `PAY-12`.
+> Start **Prompt 2B Part B (Group 2: Member Flows / Money)** from `docs/GYMSERA_AGENT_PLAYBOOK.md`:
+> Issues: `FLOW-05` (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), `FLOW-06`, `FLOW-08`, `FLOW-09`, `FLOW-10`, `FLOW-12`, `FLOW-13` or `PAY-05…PAY-08`, `PAY-12`. For `FLOW-05`, record in the handoff file which hypotheses you already ruled out and how.
 
 ### Work in progress that is NOT committed
 
@@ -74,6 +74,14 @@ Work is on branch `fix/pay-08a-test-payment-method` in `gymsera_be` (cut from `o
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 2B — Group 1: RBAC & Access Control (RBAC-04, RBAC-05, RBAC-08, RBAC-09):**
+- [x] 1. RBAC-09 — Branch deletion revokes branch-scoped `RoleAssignment`s and cleans up junctions (`be/src/services/gym.service.js:deleteBranch`) (be 43851fa)
+- [x] 2. RBAC-05 — Level rule strictly enforced on invite, update, and acceptance (`accessService.canAssignRole`, `gym.service.js:assignStaff`, `team.service.js:acceptStaffInvite`) (be 4dfa4c4)
+- [x] 3. RBAC-08 — Concurrency versioning on role assignments (`version` column via tenant migration 013, optimistic concurrency checks with `expectedVersion` in `team.service.js`, 409 `grants_changed`) (be 5233633)
+- [x] 4. RBAC-04 — Approval execution re-checks requester existence/membership and approver grants, idempotent execution by `approvalId` (`be/src/services/approval.service.js:decide`) (be 4370db4)
+
+---
 
 **Prompt 2A — Reliability (API-01, API-02, REL-02, REL-03, REL-04, REL-05, BILL-07, BILL-09, AUTH-02, AUTH-03, AUTH-08):**
 - [x] 1. API-01 — One response/error envelope (§4.1) with backward compatibility + shared error-copy table (§4.2) (be bfaf8fb, app 406e690, cms 3dcf23a, web 41b167c)
@@ -264,5 +272,7 @@ Work is on branch `fix/pay-08a-test-payment-method` in `gymsera_be` (cut from `o
 | 36 | 2026-10-03 | Gemini (Gemini 3.8 Flash) | Merge: Prompt 2A + origin/main (NEW-38) | Merged origin/main into phase-2/prompt-2a-reliability after NEW-38; resolved doc conflicts; kept all spec & handoff rows; verified platform migrations p014-p017; ran full backend suite 3x | task complete | yes |
 | 37 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Production Hotfix | REL-03: MySQL GET_LOCK raw query wrapper and releaseConnection fix (be 979dc9c); SEC-12: platform AuditLog persistence (be 83e8cff) | task complete | yes |
 | 38 | 2026-10-04 | Gemini (Gemini 3.8 Flash) | Redis Independence & p018 Migration | new-26 Redis resilience for DISABLE_REDIS=true; audit_logs field/security/latency/retention analysis; p018 platform migration with dry-run/conflict-skip tests (be); spec §0.1 Rule 10 & §15 matrix | task complete | yes |
-| 39 | 2026-10-05 | Gemini (Antigravity) | PAY-08a & gitignore | PAY-08a (reject method TEST in production with 403, ignore in payment service, test harness regression tests), gitignore (firebase-service-account.json, iisnode/) | task complete | yes |
+| 39 | 2026-10-04 | Gemini (Antigravity) | Prompt 2B (Group 1: RBAC) | RBAC-04, RBAC-05, RBAC-08, RBAC-09 | task complete | yes |
+| 40 | 2026-10-05 | Gemini (Antigravity) | PAY-08a & gitignore | PAY-08a (reject method TEST in production with 403, ignore in payment service, test harness regression tests), gitignore (firebase-service-account.json, iisnode/) | task complete | yes |
+| 41 | 2026-10-05 | Gemini (Antigravity) | Merge: Prompt 2B Group 1 + origin/main (PAY-08a) | Merged origin/main into phase-2/prompt-2b-rbac after PAY-08a; resolved doc conflicts in spec §13 and handoff; verified platform p001-p018 and tenant 001-013 migrations; ran full suite twice | task complete | yes |
 

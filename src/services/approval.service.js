@@ -194,6 +194,30 @@ const decide = async (ctx, requestId, decision, reason = null) => {
     throw createError('You cannot decide your own request', 403);
   }
 
+  // RBAC-04: Re-check that the requester still exists and is an active team member
+  if (decision === 'APPROVE' && request.requestedBy) {
+    const { User, Tenant } = require('../models/platform');
+    const requester = await User.findByPk(request.requestedBy);
+    if (!requester || requester.status === 'DELETED') {
+      throw createError('The requester account no longer exists', 422);
+    }
+    if (requester.status === 'SUSPENDED') {
+      throw createError('The requester account has been suspended', 422);
+    }
+
+    const tenant = await Tenant.findByPk(ctx.tenantId);
+    const isRequesterOwner = tenant && tenant.ownerUserId === request.requestedBy;
+    if (!isRequesterOwner) {
+      const { RoleAssignment } = ctx.tenantDb.models;
+      const requesterAssignment = await RoleAssignment.findOne({
+        where: { userId: request.requestedBy, status: 'ACTIVE' },
+      });
+      if (!requesterAssignment) {
+        throw createError('The requester is no longer an active team member', 422);
+      }
+    }
+  }
+
   const decidedAt = new Date();
   const nextStatus = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
 
@@ -233,6 +257,8 @@ const decide = async (ctx, requestId, decision, reason = null) => {
   const execCtx = {
     ...ctx,
     branchId: request.branchId,
+    approvalId: request.id,
+    idempotencyKey: request.idempotencyKey || `approval:${request.id}`,
     grants: approverGrants,
     requestedBy: request.requestedBy,
     // Someone may have already marked this collected — see markCollected()

@@ -946,44 +946,16 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
       );
     }
 
-    if (RoleAssignment && RoleAssignmentBranch) {
-      const branchLinks = await RoleAssignmentBranch.findAll({
-        where: { branchId },
-        transaction: t,
-      });
-
-      const affectedAssignmentIds = [...new Set(branchLinks.map((l) => l.assignmentId))];
-      if (affectedAssignmentIds.length > 0) {
-        await RoleAssignmentBranch.destroy({
-          where: { branchId },
-          transaction: t,
-        });
-
-        for (const assignmentId of affectedAssignmentIds) {
-          const assignment = await RoleAssignment.findByPk(assignmentId, {
-            transaction: t,
-          });
-
-          if (assignment && assignment.scopeType === 'BRANCH') {
-            const remaining = await RoleAssignmentBranch.count({
-              where: { assignmentId },
-              transaction: t,
-            });
-
-            if (remaining === 0 && assignment.status !== 'REVOKED') {
-              await assignment.update(
-                {
-                  status: 'REVOKED',
-                  revokedBy: 'system:branch_deleted',
-                  revokedAt: new Date(),
-                },
-                { transaction: t }
-              );
-            }
-          }
-        }
-      }
-    }
+    const teamService = require('./team.service');
+    await teamService.revokeBranchAssignments(
+      {
+        tenantDb,
+        tenantId: branch.tenantId || tenantDb.tenantId,
+        userId: 'system:branch_deleted',
+      },
+      branchId,
+      { transaction: t }
+    );
 
     // 5. Cancel any pending staff action requests for this branch
     if (StaffActionRequest) {
@@ -1415,10 +1387,18 @@ const assignStaff = async (tenantDb, branchId, userId, designation, actor = null
 
   const roleKey = mapDesignationToRoleKey(designation, false);
   const actorId = actor ? actor.id || actor.sub : null;
-  const actorGrants =
-    actor && (actor.role === 'GYM_HOST' || actor.isHost)
-      ? accessService.ownerGrants()
-      : actor?.grants || accessService.ownerGrants();
+  let actorGrants = actor?.grants;
+  if (!actorGrants) {
+    const { Tenant } = require('../models/platform');
+    const tenant = await Tenant.findByPk(tenantDb.tenantId);
+    if (tenant && tenant.ownerUserId === actorId) {
+      actorGrants = accessService.ownerGrants();
+    } else if (actorId) {
+      actorGrants = await accessService.resolve(tenantDb, tenantDb.tenantId, actorId, branchId);
+    } else {
+      actorGrants = accessService.emptyGrants();
+    }
+  }
 
   const ctx = {
     tenantDb,

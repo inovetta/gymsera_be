@@ -106,8 +106,16 @@ const invite = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const ctx = buildCtx(req);
-    const assignment = await teamService.updateAssignment(ctx, req.params.assignmentId, req.body);
-    return sendSuccess(res, { id: assignment.id, roleKey: assignment.roleKey, status: assignment.status }, 'Team member updated');
+    const payload = {
+      ...req.body,
+      expectedVersion: req.body.expectedVersion ?? req.headers['if-match'],
+    };
+    const assignment = await teamService.updateAssignment(ctx, req.params.assignmentId, payload);
+    return sendSuccess(
+      res,
+      { id: assignment.id, roleKey: assignment.roleKey, status: assignment.status, version: assignment.version },
+      'Team member updated'
+    );
   } catch (err) {
     return next(err);
   }
@@ -121,7 +129,8 @@ const setPermissions = async (req, res, next) => {
   try {
     const ctx = buildCtx(req);
     const overrides = Array.isArray(req.body.overrides) ? req.body.overrides : [];
-    const member = await teamService.setOverrides(ctx, req.params.assignmentId, overrides);
+    const expectedVersion = req.body.expectedVersion ?? req.headers['if-match'];
+    const member = await teamService.setOverrides(ctx, req.params.assignmentId, overrides, expectedVersion);
     return sendSuccess(res, member, 'Access updated');
   } catch (err) {
     return next(err);
