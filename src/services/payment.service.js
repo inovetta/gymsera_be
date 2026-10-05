@@ -172,6 +172,7 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
         paidAt,
         collectedAt,
         staffCollectedBy: data.staffCollectedBy || (data.method === 'CASH' ? staffUserId : null),
+        shift: data.shift || 'DEFAULT',
         notes: data.notes || null,
         createdBy: staffUserId || null,
         createdByRole: resolvedRole,
@@ -526,7 +527,7 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
  *  verify   → (PENDING | STAFF_COLLECTED) → COMPLETED (step 2)
  *  reject   → (PENDING | STAFF_COLLECTED) → FAILED
  */
-const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole, { action, notes, rejectedReason, waiveJoiningFee }) => {
+const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole, { action, notes, rejectedReason, waiveJoiningFee, shift }) => {
   const { Payment, Invoice } = tenantDb.models;
 
   const payment = await Payment.findByPk(paymentId);
@@ -546,6 +547,7 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
     await payment.update({
       status: PaymentStatus.STAFF_COLLECTED,
       staffCollectedBy: actorUserId,
+      shift: shift || payment.shift || 'DEFAULT',
       collectedAt: new Date(),
       notes: notes || payment.notes,
     });

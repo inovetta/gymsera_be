@@ -152,7 +152,7 @@ const _paymentTotals = async (tenantDb, branchId, fromDate, toDate) => {
 
   const rows = await Payment.findAll({
     where,
-    attributes: ['id', 'userId', 'amount', 'method', 'status', 'businessDate', 'staffCollectedBy', 'createdBy', 'paidAt', 'referenceEntityId'],
+    attributes: ['id', 'userId', 'amount', 'method', 'status', 'businessDate', 'staffCollectedBy', 'createdBy', 'paidAt', 'referenceEntityId', 'shift'],
     order: [['createdAt', 'DESC']],
   });
 
@@ -170,11 +170,52 @@ const _paymentTotals = async (tenantDb, branchId, fromDate, toDate) => {
 
   const byCollectorMinor = {};
   for (const p of rows) {
-    if (!COLLECTED_STATUSES.includes(p.status)) continue;
+    const isCollected = COLLECTED_STATUSES.includes(p.status);
+    const isCash = p.method === 'CASH';
     const collectorId = p.staffCollectedBy || p.createdBy || 'unknown';
-    if (!byCollectorMinor[collectorId]) byCollectorMinor[collectorId] = { collectorId, totalMinor: 0, count: 0 };
-    byCollectorMinor[collectorId].totalMinor += toMinorUnits(p.amount);
-    byCollectorMinor[collectorId].count += 1;
+
+    if (!byCollectorMinor[collectorId]) {
+      byCollectorMinor[collectorId] = {
+        collectorId,
+        totalMinor: 0,
+        count: 0,
+        cashCollectedMinor: 0,
+        cashExpectedMinor: 0,
+        shifts: {},
+      };
+    }
+
+    const rec = byCollectorMinor[collectorId];
+    const amtMinor = toMinorUnits(p.amount);
+    const shiftName = p.shift || 'DEFAULT';
+
+    if (!rec.shifts[shiftName]) {
+      rec.shifts[shiftName] = {
+        shift: shiftName,
+        totalMinor: 0,
+        cashCollectedMinor: 0,
+        cashExpectedMinor: 0,
+        count: 0,
+      };
+    }
+    const shiftRec = rec.shifts[shiftName];
+
+    if (isCash) {
+      rec.cashExpectedMinor += amtMinor;
+      shiftRec.cashExpectedMinor += amtMinor;
+    }
+
+    if (isCollected) {
+      rec.totalMinor += amtMinor;
+      rec.count += 1;
+      shiftRec.totalMinor += amtMinor;
+      shiftRec.count += 1;
+
+      if (isCash) {
+        rec.cashCollectedMinor += amtMinor;
+        shiftRec.cashCollectedMinor += amtMinor;
+      }
+    }
   }
 
   // Names for the collector-wise breakdown — platform users, cross-DB, so a
@@ -204,7 +245,21 @@ const _paymentTotals = async (tenantDb, branchId, fromDate, toDate) => {
       collectorId: c.collectorId,
       ...(c.collectorName ? { collectorName: c.collectorName } : {}),
       total: toMajorUnitsNumber(c.totalMinor),
+      cashCollected: toMajorUnitsNumber(c.cashCollectedMinor),
+      cashExpected: toMajorUnitsNumber(c.cashExpectedMinor),
       count: c.count,
+      shifts: Object.fromEntries(
+        Object.entries(c.shifts).map(([k, s]) => [
+          k,
+          {
+            shift: s.shift,
+            total: toMajorUnitsNumber(s.totalMinor),
+            cashCollected: toMajorUnitsNumber(s.cashCollectedMinor),
+            cashExpected: toMajorUnitsNumber(s.cashExpectedMinor),
+            count: s.count,
+          },
+        ])
+      ),
     })),
   };
 };
@@ -230,6 +285,17 @@ const getDayLedger = async (tenantDb, branchId, businessDate) => {
     order: [['createdAt', 'ASC']],
   });
 
+  let closedCollectors = null;
+  if (ledgerDay.status === 'CLOSED' && ledgerDay.closedCollectorsJson) {
+    try {
+      closedCollectors = typeof ledgerDay.closedCollectorsJson === 'string'
+        ? JSON.parse(ledgerDay.closedCollectorsJson)
+        : ledgerDay.closedCollectorsJson;
+    } catch (_) {
+      closedCollectors = null;
+    }
+  }
+
   return {
     ledgerDay,
     businessDate,
@@ -237,7 +303,8 @@ const getDayLedger = async (tenantDb, branchId, businessDate) => {
     payments,
     totals,
     byMethod,
-    byCollector,
+    byCollector: closedCollectors || byCollector,
+    closedCollectors,
     adjustments,
   };
 };
@@ -393,7 +460,7 @@ const closeDay = async (ctx, { ledgerDayId }) => {
     throw err;
   }
 
-  const { totals } = await _paymentTotals(ctx.tenantDb, ledgerDay.branchId, ledgerDay.businessDate, ledgerDay.businessDate);
+  const { totals, byCollector } = await _paymentTotals(ctx.tenantDb, ledgerDay.branchId, ledgerDay.businessDate, ledgerDay.businessDate);
 
   const [affected] = await LedgerDay.update(
     {
@@ -402,6 +469,7 @@ const closeDay = async (ctx, { ledgerDayId }) => {
       closedAt: new Date(),
       closedExpectedTotal: totals.expected,
       closedVerifiedTotal: totals.verified,
+      closedCollectorsJson: JSON.stringify(byCollector),
     },
     { where: { id: ledgerDayId, status: 'OPEN' } }
   );
@@ -418,7 +486,7 @@ const closeDay = async (ctx, { ledgerDayId }) => {
     branchId: ledgerDay.branchId,
     targetType: 'ledger_day',
     targetId: ledgerDay.id,
-    after: { businessDate: ledgerDay.businessDate, ...totals },
+    after: { businessDate: ledgerDay.businessDate, ...totals, collectors: byCollector },
   });
 
   try {
@@ -452,10 +520,38 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
     }
     for (const c of b.byCollector) {
       if (!byCollector[c.collectorId]) {
-        byCollector[c.collectorId] = { collectorId: c.collectorId, collectorName: c.collectorName, total: 0, count: 0 };
+        byCollector[c.collectorId] = {
+          collectorId: c.collectorId,
+          collectorName: c.collectorName,
+          total: 0,
+          cashCollected: 0,
+          cashExpected: 0,
+          count: 0,
+          shifts: {},
+        };
       }
-      byCollector[c.collectorId].total += c.total;
-      byCollector[c.collectorId].count += c.count;
+      byCollector[c.collectorId].total += c.total || 0;
+      byCollector[c.collectorId].cashCollected = (byCollector[c.collectorId].cashCollected || 0) + (c.cashCollected || 0);
+      byCollector[c.collectorId].cashExpected = (byCollector[c.collectorId].cashExpected || 0) + (c.cashExpected || 0);
+      byCollector[c.collectorId].count += c.count || 0;
+      if (c.shifts) {
+        for (const [sName, sData] of Object.entries(c.shifts)) {
+          if (!byCollector[c.collectorId].shifts[sName]) {
+            byCollector[c.collectorId].shifts[sName] = {
+              shift: sName,
+              total: 0,
+              cashCollected: 0,
+              cashExpected: 0,
+              count: 0,
+            };
+          }
+          const tgt = byCollector[c.collectorId].shifts[sName];
+          tgt.total += sData.total || 0;
+          tgt.cashCollected += sData.cashCollected || 0;
+          tgt.cashExpected += sData.cashExpected || 0;
+          tgt.count += sData.count || 0;
+        }
+      }
     }
     for (const p of b.payments) {
       const plain = typeof p.get === 'function' ? p.get({ plain: true }) : p;

@@ -59,6 +59,11 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
       },
+      // Cash per collector snapshot at daily close (PAY-06)
+      closedCollectorsJson: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
     },
     {
       tableName: 'ledger_days',
