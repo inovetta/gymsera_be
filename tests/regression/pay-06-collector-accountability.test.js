@@ -50,7 +50,9 @@ describe('PAY-06: Collector accountability & cash per collector at daily close',
       fullName: 'Member Two',
     });
 
-    businessDate = '2026-10-05';
+    const { computeBusinessDate, getPaymentCollectionTime } = ledgerService;
+    const collectionTime = getPaymentCollectionTime({ paidAt: new Date(), method: 'CASH' });
+    businessDate = computeBusinessDate(collectionTime, branch.timezone);
   });
 
   afterAll(async () => {
