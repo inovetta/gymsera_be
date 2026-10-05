@@ -235,9 +235,14 @@ describe('FLOW-06: Read-Only Check Script for Historical Subscription Date Defec
 
       // 3. ZERO PERSONAL DATA (spec & rule 8)
       // Must not contain email addresses, passwords, phone numbers, or user names
-      expect(fullOutput).not.toMatch(/@/); // No email
-      expect(fullOutput).not.toMatch(/\+?[0-9]{10,13}/); // No phone numbers
-      expect(fullOutput).not.toContain('password');
+      // Strip UUIDs first so random hexadecimal runs in UUIDs do not false-positive match phone patterns
+      const outputWithoutUuids = fullOutput.replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        ''
+      );
+      expect(outputWithoutUuids).not.toMatch(/@/); // No email
+      expect(outputWithoutUuids).not.toMatch(/\b\+?[0-9]{10,13}\b/); // No phone numbers
+      expect(outputWithoutUuids).not.toContain('password');
 
       // 4. ZERO WRITES ASSERTION
       expect(snapshotAfter.length).toBe(snapshotBefore.length);
