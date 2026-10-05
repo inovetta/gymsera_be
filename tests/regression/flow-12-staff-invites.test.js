@@ -143,12 +143,16 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     expect(res.body.message || res.body.error?.message).toMatch(/declined|revoked|not pending|no longer pending/i);
   });
 
-  test('5. Accepting an invite preserves platform User.role as MEMBER (no global role mutation) and creates RoleAssignment', async () => {
+  test('5. Accepting an invite preserves platform User.role as MEMBER (no global role mutation), creates RoleAssignment, consumes token, and delivers host notification', async () => {
+    const crypto = require('crypto');
     const { GymStaff, RoleAssignment } = dbHarness.tenant1.models;
-    const { User } = require('../../src/models/platform');
+    const { User, Notification } = require('../../src/models/platform');
 
-    // Clean any prior role assignment for member2
+    // Clean any prior role assignment for member2 and prior host notifications
     await RoleAssignment.destroy({ where: { userId: member2User.id } });
+    await Notification.destroy({ where: { type: 'staff_invite_accepted' } });
+
+    const tokenHash = crypto.createHash('sha256').update('secret-staff-token-xyz').digest('hex');
 
     const staffInvite = await GymStaff.create({
       branchId: branch.id,
@@ -157,6 +161,8 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
       designation: 'Front Desk',
       status: 'pending',
       employmentStatus: 'ACTIVE',
+      inviteTokenHash: tokenHash,
+      tokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
     const res = await request(appServer)
@@ -176,6 +182,19 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     });
     expect(assignment).toBeDefined();
     expect(assignment.roleKey).toBe('DESK');
+
+    // Verify single-use token was consumed
+    const staffAfter = await GymStaff.findByPk(staffInvite.id);
+    expect(staffAfter.status).toBe('active');
+    expect(staffAfter.inviteTokenHash).toBeNull();
+
+    // Verify host notification was created and delivered with member name
+    const hostNotif = await Notification.findOne({
+      where: { userId: personas.owner.user.id, type: 'staff_invite_accepted' },
+      order: [['createdAt', 'DESC']],
+    });
+    expect(hostNotif).toBeDefined();
+    expect(hostNotif.message).toContain('Second Member');
   });
 
   test('6. Invite can be accepted using raw token when inviteTokenHash is stored', async () => {
