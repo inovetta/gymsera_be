@@ -342,9 +342,10 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
     }
   }
 
+  const finalAmount = fromMinorUnits(finalAmountMinor);
   const updatePayload = {
     status: PaymentStatus.COMPLETED,
-    amount: fromMinorUnits(finalAmountMinor),
+    amount: finalAmount,
     paidAt: new Date(),
     verifiedAt: new Date(),
     verifiedBy: verifiedByUserId,
