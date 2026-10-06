@@ -22,8 +22,8 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     tenant1Seq = dbHarness.tenant1.sequelize;
     platformSeq = dbHarness.platform.sequelize;
 
-    const { Branch, GymStaff, MemberSubscription, LedgerDay, MembershipPlan } = dbHarness.tenant1.models;
-    const { Tenant, GymListing } = require('../../src/models/platform');
+    const { Branch, GymStaff, MemberSubscription, LedgerDay, MembershipPlan, Payment } = dbHarness.tenant1.models;
+    const { Tenant, GymListing, User, GymReview } = require('../../src/models/platform');
 
     const branch = await Branch.findOne();
     branchId = branch.id;
@@ -46,17 +46,23 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     });
 
     // 2. Seed review without valid subscription (FLOW-10): user with no subscription
-    const nonMemberUserId = uuidv4();
-    await platformSeq.query(
-      `INSERT INTO users (id, full_name, email, role, created_at, updated_at)
-       VALUES (?, 'Non Member User', 'nonmember@gymsera.test', 'MEMBER', NOW(), NOW())`,
-      { replacements: [nonMemberUserId] }
-    );
-    await platformSeq.query(
-      `INSERT INTO gym_reviews (id, gym_listing_id, branch_id, user_id, tenant_id, rating, title, body, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 5, 'Great Facility', 'Nice place!', 'PENDING', NOW(), NOW())`,
-      { replacements: [uuidv4(), listingId, branchId, nonMemberUserId, tenantId] }
-    );
+    const nonMemberUser = await User.create({
+      id: uuidv4(),
+      fullName: 'Non Member User',
+      email: 'nonmember@gymsera.test',
+      role: 'MEMBER',
+    });
+    await GymReview.create({
+      id: uuidv4(),
+      gymListingId: listingId,
+      branchId,
+      userId: nonMemberUser.id,
+      tenantId,
+      rating: 5,
+      title: 'Great Facility',
+      body: 'Nice place!',
+      status: 'PENDING',
+    });
 
     // 3. Seed active subscription on legacy static QR (FLOW-09): qr_code LIKE 'GE-%'
     const plan = await MembershipPlan.create({
@@ -99,11 +105,16 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     });
 
     // 6. Seed cash payment without shift (PAY-06): method = 'CASH' and shift is NULL
-    await tenant1Seq.query(
-      `INSERT INTO payments (id, user_id, branch_id, amount, method, status, shift, created_at, updated_at)
-       VALUES (?, ?, ?, 500.00, 'CASH', 'COMPLETED', NULL, NOW(), NOW())`,
-      { replacements: [uuidv4(), memberUserId, branchId] }
-    );
+    await Payment.create({
+      id: uuidv4(),
+      userId: memberUserId,
+      branchId,
+      amount: '500.00',
+      currency: 'PKR',
+      method: 'CASH',
+      status: 'COMPLETED',
+      shift: null,
+    });
   });
 
   afterAll(async () => {
