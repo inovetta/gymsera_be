@@ -280,7 +280,8 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
         payload.memberUserId,
         payload.subscriptionId,
         payload.planId,
-        payload.startDate
+        payload.startDate,
+        { approvedByHost: true }
       );
     } else if (request.actionType === 'change_plan') {
       actionResult = await subscriptionService.changePlan(

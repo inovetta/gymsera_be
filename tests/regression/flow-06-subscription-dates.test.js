@@ -12,6 +12,16 @@ const subscriptionService = require('../../src/services/subscription.service');
 const { runExpiryCheck } = require('../../src/jobs/subscription-expiry.cron');
 const { SubscriptionStatus } = require('../../src/constants/subscription-status');
 const { computeBusinessDate } = require('../../src/services/ledger.service');
+const paymentService = require('../../src/services/payment.service');
+
+// NEW-40: a member's renewal applies once its payment is verified. Renew as the
+// member, then verify as the owner; the FLOW-06 date rule is checked after that.
+const renewAndVerify = async (tenantDb, userId, subscriptionId, verifierId) => {
+  await subscriptionService.renew(userId, subscriptionId);
+  const payment = await tenantDb.models.Payment.findOne({ where: { referenceEntityId: subscriptionId, status: 'PENDING' } });
+  await paymentService.verifyPayment(tenantDb, payment.id, verifierId, null);
+  return { subscription: await tenantDb.models.MemberSubscription.findByPk(subscriptionId) };
+};
 
 describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry', () => {
   let dbHarness;
@@ -20,6 +30,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
   let platformSeq;
   let platformModels;
   let testTenantId;
+  let ownerId;
   let listing;
 
   beforeAll(async () => {
@@ -33,6 +44,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
     platformModels = require('../../src/models/platform');
 
     testTenantId = personaManager.personas.owner.tenantId;
+    ownerId = personaManager.personas.owner.user.id;
 
     const { Gym, Branch, MembershipPlan } = models;
     const { User } = platformModels;
@@ -152,7 +164,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
         status: SubscriptionStatus.EXPIRED,
       });
 
-      const { subscription: renewed } = await subscriptionService.renew(user.id, expiredSub.id);
+      const { subscription: renewed } = await renewAndVerify(dbHarness.tenant1, user.id, expiredSub.id, ownerId);
 
       const todayInTz = computeBusinessDate(new Date(), branch.timezone);
       // Renewing must start from today, NOT from 2026-01-31
@@ -192,7 +204,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
         status: SubscriptionStatus.ACTIVE,
       });
 
-      const { subscription: renewed } = await subscriptionService.renew(user.id, activeSub.id);
+      const { subscription: renewed } = await renewAndVerify(dbHarness.tenant1, user.id, activeSub.id, ownerId);
 
       // Renewal extends from futureEnd
       expect(renewed.startDate).toBe(futureEnd);

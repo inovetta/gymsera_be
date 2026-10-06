@@ -430,6 +430,8 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
       const change = subscriptionService.parsePendingChange(payment);
       if (change && change.type === 'UPGRADE') {
         await subscriptionService.applyUpgrade(tenantDb.models, payment.referenceEntityId, change.planId);
+      } else if (change && change.type === 'RENEW') {
+        await subscriptionService.applyRenewal(tenantDb.models, payment.referenceEntityId, change.planId);
       }
     }
   }

@@ -70,7 +70,7 @@ const renew = async (req, res, next) => {
       req.body.planId,
       req.body.startDate
     );
-    return sendSuccess(res, result, 'Subscription renewed');
+    return sendSuccess(res, result, 'Renewal requested — it starts once the payment is verified');
   } catch (err) {
     next(err);
   }

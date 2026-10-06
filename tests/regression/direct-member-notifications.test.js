@@ -123,11 +123,14 @@ describe('Direct Member Notifications (Option B - Redis/Bull removed for member 
       endDate: '2026-09-01',
     });
 
+    // NEW-40: the member's renewal applies (and notifies) once its payment is verified.
     await subscriptionService.renew(member.id, sub.id, null, '2026-09-01');
+    const renewalPayment = await tenantDb.models.Payment.findOne({ where: { referenceEntityId: sub.id, status: 'PENDING' } });
+    await paymentService.verifyPayment(tenantDb, renewalPayment.id, member.id, null);
 
-    // 1. Verify in-app notification in MySQL
+    // 1. Verify in-app notification in MySQL (verify also notifies the member, so pick the renewal one)
     const notif = await Notification.findOne({
-      where: { userId: member.id },
+      where: { userId: member.id, title: 'Subscription Renewed' },
     });
     expect(notif).toBeTruthy();
     expect(notif.title).toBe('Subscription Renewed');
