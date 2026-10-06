@@ -18,26 +18,32 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-10-06 |
-| Updated by | Gemini (Antigravity) |
-| Current prompt | **Hotfix: check-prompt-2b-group3-data and check-tenant-entitlement scripts** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Updated by | Claude Code (Opus 5.5) |
+| Current prompt | **Prompt 3A — Team & Access + Approvals in the CMS** |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | UX-12 (CMS `/gym/team`), then UX-13 approvals part (`/gym/approvals`), `/gym/staff` redirect, Trainers link |
+| Step within issue | Reading done (mobile screens, backend routes). Branches created. No CMS code written yet. |
 
 ### Branches and last commits
 
-Work is on branch `fix/check-prompt-2b-group3-data` in `gymsera_be`. Not pushed, no PRs opened.
+Prompt 3A code is CMS-only, on `phase-3/prompt-3a-team-approvals` (cut from `origin/main` 3849333, tracks its own name, not pushed).
+Docs for 3A (this file, spec §13 / §3.3) are on `docs/prompt-3a-cms-team-approvals` in `gymsera_be` (cut from `origin/main` c9e8728,
+not pushed). That docs branch lives in a separate git worktree at `../gymsera_be_docs_3a` so the main `gymsera_be` checkout is untouched.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `fix/check-prompt-2b-group3-data` | (hotfix commit: check scripts real column names) | no |
-| gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
-| gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
+| gyms_era | `fix/new-38-delete-listing-reauth` (read only in 3A) | 55037b9 feat(host): prompt credentials for organization deletion re-auth (NEW-38) | no |
+| gymsera_be | `phase-2/prompt-2b-group-4` (untouched; merged to main as c9e8728) / docs worktree `docs/prompt-3a-cms-team-approvals` | c9e8728 Merge pull request #72 | docs worktree: this file |
+| gymsera_cms | `phase-3/prompt-3a-team-approvals` | 3849333 Merge pull request #14 (no 3A commit yet) | no |
+| gymsera_web | not touched in 3A | — | — |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Check scripts verified against migrated schema and test suite 100% green. Continue from next prompt in `docs/GYMSERA_AGENT_PLAYBOOK.md`.
+> Prompt 3A, commit 1 of 4 (team page). In `gymsera_cms` on `phase-3/prompt-3a-team-approvals`: add `src/lib/api/team.ts`
+> (the endpoint list is in §3 Notes "Prompt 3A"), then `src/app/(dashboard)/gym/team/page.tsx` + components under
+> `src/components/features/team/`, with tests in `tests/components/team-*.test.tsx` written failing first
+> (409 `grants_changed` reload, roles with `assignableByMe: false` disabled). Then commit 2 `/gym/approvals`,
+> commit 3 `/gym/staff` redirect + sidebar, commit 4 Trainers link. One commit per page. Do not push.
 
 ### Work in progress that is NOT committed
 
@@ -226,6 +232,20 @@ Work is on branch `fix/check-prompt-2b-group3-data` in `gymsera_be`. Not pushed,
   - Platform migration `p018_create_audit_logs` manages `audit_logs` creation on Platform DB with full dry-run and conflict-skip tests (`tests/integration/platform-migrations-p018.test.js`). Boot-time table creation removed from `platform.js#connect`.
   - Redis resilience (spec §0.1 Rule 10 & §15): all tests touching Redis must also pass with `DISABLE_REDIS=true`. In `tests/regression/new-26-suspended-tenant-blocking.test.js`, Redis cache checks are conditional on Redis availability (`DISABLE_REDIS !== 'true' && ensureRedisReady() !== null`).
 
+- **Prompt 3A (2026-10-06) — endpoints the mobile Team & Access and Approvals screens call** (the CMS must call the same ones):
+  - Repository: `gyms_era/lib/features/host/data/repositories/team_repository.dart`; providers `presentation/providers/team_provider.dart`;
+    screens `team_access_screen.dart`, `permission_editor_screen.dart`, `add_team_member_screen.dart`, `approvals_inbox_screen.dart`.
+  - `GET /team/meta/roles` (`:33`; each role carries `assignableByMe` and its `preset`), `GET /team/meta/permissions` (`:43`),
+    `GET /team` (`:58`), `GET /team/:assignmentId` (`:71`; returns `overrides`, `effectivePermissions`, `effectiveScopes`, `version`),
+    `POST /team/invites` (`:92`), `PATCH /team/:assignmentId` (`:121`; in the repository but no mobile screen calls it),
+    `PUT /team/:assignmentId/permissions` (`:144`; whole-set replace), `DELETE /team/:assignmentId` (`:153`; revoke, row kept).
+  - `GET /approvals?status=PENDING` (`:160`), `GET /approvals/mine` (`:170`), `POST /approvals/:id/approve` (`:180`),
+    `POST /approvals/:id/reject` (`:188`, reason required), `POST /approvals/:id/cancel` (`:195`).
+  - The host screens send no `X-Tenant-Id` (server default); only the team-member workspace passes one.
+  - Mobile does NOT send `expectedVersion` yet and has no 409 `grants_changed` handling (RBAC-08 is backend-only so far).
+  - None of the `/team` or `/approvals` routes asks for re-auth, and none answers 202 (team permissions are not approvable).
+    202 comes from `/actions/:key`, ledger adjustments, payouts and `POST /payments/:id/refund`.
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -277,6 +297,4 @@ Work is on branch `fix/check-prompt-2b-group3-data` in `gymsera_be`. Not pushed,
 | 42 | 2026-10-05 | Gemini (Antigravity) | Hotfix: RBAC-09 check script | Fixed Unknown column 'name' (tenants.business_name) and 'rab.role_assignment_id' (rab.assignment_id) in gymsera-rbac09-stale-branch-assignments-check.js; added regression test against migrated schema | task complete | yes |
 | 43 | 2026-10-06 | Gemini (Antigravity) | Hotfix: Prompt 2B Group 3 check script | Fixed Unknown column 'name' in check-prompt-2b-group3-data.js (business_name, tenant_code, user_gym_memberships schema) & check-tenant-entitlement.js (title); fixed regression test with real migration runners & zero writes; audited 15 scripts; ran full test suite twice (normal + DISABLE_REDIS=true) | task complete | yes |
 | 44 | 2026-10-06 | Gemini (Antigravity) | Fix regression test raw SQL inserts | Fixed CI failure on fresh DB (ER_NO_DEFAULT_FOR_FIELD business_date due to Migration 006 NOT NULL & STRICT_TRANS_TABLES); converted test to Payment.create, User.create, GymReview.create; ran full suite twice | task complete | yes |
-
-
-
+| 45 | 2026-10-06 | Claude Code (Opus 5.5) | Prompt 3A (CMS Team & Access + Approvals) | (in progress) | — | — |
