@@ -76,6 +76,82 @@ const _activateSubscription = async (tenantDb, subscriptionId, transaction = nul
   }
 };
 
+// ── Member pending payments: deadline and expiry (PAY-08) ─────────────────────
+const DEFAULT_MEMBER_PAYMENT_TTL_HOURS = 168; // 7 days, the invoice due date
+
+/** Deadline for a payment a member starts (checkout, upgrade, renewal). */
+const memberPaymentExpiresAt = (from = new Date()) => {
+  const configured = Number(process.env.MEMBER_PAYMENT_PENDING_TTL_HOURS);
+  const hours = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MEMBER_PAYMENT_TTL_HOURS;
+  return new Date(from.getTime() + hours * 60 * 60 * 1000);
+};
+
+const isMemberPaymentExpiryEnabled = () => process.env.MEMBER_PAYMENT_EXPIRY_ENABLED === 'true';
+
+/**
+ * Mark member-started PENDING payments past their deadline EXPIRED (PAY-08).
+ * Nothing is activated. A payment with an uploaded proof waits for the host
+ * instead (the member says they paid). Staff-recorded payments have no
+ * deadline. The UPDATE is conditional on status = PENDING, so a payment the
+ * host verifies at the same moment stays verified.
+ *
+ * For a first checkout the membership never started: it becomes CANCELLED and
+ * its open invoice CANCELLED. For an upgrade or renewal the old plan simply
+ * continues and only that payment's invoice is cancelled.
+ */
+const expireStalePendingPayments = async (tenantDb, { now = new Date(), batchSize = 200 } = {}) => {
+  const { Payment, Invoice, MemberSubscription } = tenantDb.models;
+  const result = { expired: 0, membershipsCancelled: 0 };
+
+  for (;;) {
+    const due = await Payment.findAll({
+      where: {
+        status: PaymentStatus.PENDING,
+        expiresAt: { [Op.ne]: null, [Op.lte]: now },
+        proofUrl: null,
+      },
+      order: [['expiresAt', 'ASC']],
+      limit: batchSize,
+    });
+    if (due.length === 0) break;
+
+    for (const payment of due) {
+      const [changed] = await Payment.update(
+        { status: PaymentStatus.EXPIRED },
+        { where: { id: payment.id, status: PaymentStatus.PENDING } }
+      );
+      if (changed !== 1) continue;
+      result.expired += 1;
+
+      if (!payment.referenceEntityId || payment.paymentFor !== 'MEMBERSHIP') continue;
+
+      const invoice = await Invoice.findOne({
+        where: { referenceEntityId: payment.referenceEntityId, status: InvoiceStatus.ISSUED, totalAmount: payment.amount },
+        order: [['createdAt', 'DESC']],
+      });
+      if (invoice) await invoice.update({ status: InvoiceStatus.CANCELLED });
+
+      if (payment.pendingChangeJson) continue; // upgrade/renewal: the old plan continues
+
+      const sub = await MemberSubscription.findByPk(payment.referenceEntityId);
+      if (!sub || sub.status !== 'PENDING') continue;
+      const stillOpen = await Payment.count({
+        where: { referenceEntityId: sub.id, status: [PaymentStatus.PENDING, PaymentStatus.STAFF_COLLECTED] },
+      });
+      if (stillOpen > 0) continue;
+      await sub.update({ status: 'CANCELLED', cancelledAt: new Date() });
+      await UserGymMembership.update({ status: 'CANCELLED' }, { where: { subscriptionId: sub.id } }).catch((err) => {
+        console.warn('[payments] Failed to sync UserGymMembership after payment expiry:', err.message);
+      });
+      result.membershipsCancelled += 1;
+    }
+
+    if (due.length < batchSize) break;
+  }
+
+  return result;
+};
+
 // ── POST /payments ─────────────────────────────────────────────────────────────
 /**
  * Record a payment.
@@ -826,4 +902,5 @@ module.exports = {
   recordPayment, listPayments, getPayment, verifyPayment, verifyOrRejectPayment,
   uploadPaymentProof, collectionAction, markPaymentFailed,
   listInvoices, getInvoice,
+  memberPaymentExpiresAt, isMemberPaymentExpiryEnabled, expireStalePendingPayments,
 };

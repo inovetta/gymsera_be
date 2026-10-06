@@ -37,6 +37,19 @@ const _processTenant = async (tenantId, tenantDb) => {
   const { MemberSubscription, Branch } = tenantDb.models;
   const { computeBusinessDate } = require('../services/ledger.service');
 
+  // ── 0. Member pending payments past their deadline → EXPIRED (PAY-08) ──────
+  const paymentService = require('../services/payment.service');
+  if (paymentService.isMemberPaymentExpiryEnabled()) {
+    try {
+      const exp = await paymentService.expireStalePendingPayments(tenantDb);
+      if (exp.expired > 0) {
+        console.log(`[Cron] Tenant ${tenantId}: ${exp.expired} pending payment(s) expired, ${exp.membershipsCancelled} unpaid membership(s) cancelled`);
+      }
+    } catch (err) {
+      console.error(`[Cron] Tenant ${tenantId}: pending payment expiry failed:`, err.message);
+    }
+  }
+
   // Load all branches to map their timezones (spec §12.3, FLOW-06)
   const branches = await Branch.findAll({ attributes: ['id', 'timezone'] }).catch(() => []);
   const defaultTz = 'Asia/Karachi';

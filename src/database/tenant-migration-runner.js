@@ -638,6 +638,72 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // PAY-08: member pending payments get a deadline and can end EXPIRED.
+    // Appending a value to the ENUM is metadata-only on MySQL 5.7.
+    version: 18,
+    name: '018_add_payment_expiry',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [paymentsExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payments\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (!paymentsExists) return null;
+
+      // payments.status exists in two shapes in the wild: the model's ENUM
+      // (values in any order) and VARCHAR on older tenants (see the
+      // mixed-collation fixture). VARCHAR already holds 'EXPIRED'; an ENUM gets
+      // it appended, keeping its order, nullability and default.
+      const KNOWN_STATUSES = ['PENDING', 'STAFF_COLLECTED', 'COMPLETED', 'FAILED', 'REFUNDED'];
+      const [statusCol] = await sequelize.query(
+        'SELECT DATA_TYPE, COLUMN_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payments\' AND COLUMN_NAME = \'status\'',
+        { type: QueryTypes.SELECT }
+      );
+      const dataType = String(statusCol?.DATA_TYPE || '').toLowerCase();
+      let statusAlter = null;
+      if (dataType === 'enum') {
+        const values = [...String(statusCol.COLUMN_TYPE).matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1]);
+        const missing = KNOWN_STATUSES.filter((v) => !values.includes(v));
+        if (missing.length > 0) {
+          console.warn(
+            `[TenantMigration] SKIPPING 018: payments.status is ${statusCol.COLUMN_TYPE}; it lacks ${missing.join(', ')}. Resolve it by hand, then re-run.`
+          );
+          return { skipped: true, reason: 'unexpected_column_type', table: 'payments', column: 'status', type: statusCol.COLUMN_TYPE };
+        }
+        if (!values.includes('EXPIRED')) {
+          const list = [...values, 'EXPIRED'].map((v) => `'${v}'`).join(',');
+          const nullSql = statusCol.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL';
+          const defaultSql = statusCol.COLUMN_DEFAULT != null ? ` DEFAULT '${String(statusCol.COLUMN_DEFAULT).replace(/'/g, '\'\'')}'` : '';
+          statusAlter = `ALTER TABLE \`payments\` MODIFY COLUMN \`status\` ENUM(${list}) ${nullSql}${defaultSql}`;
+        }
+      } else if (!(['varchar', 'char'].includes(dataType) && Number(statusCol.CHARACTER_MAXIMUM_LENGTH) >= 'EXPIRED'.length)) {
+        console.warn(
+          `[TenantMigration] SKIPPING 018: payments.status is ${statusCol?.COLUMN_TYPE}; expected an ENUM or VARCHAR. Resolve it by hand, then re-run.`
+        );
+        return { skipped: true, reason: 'unexpected_column_type', table: 'payments', column: 'status', type: statusCol?.COLUMN_TYPE };
+      }
+
+      const [expiresCol] = await sequelize.query(
+        'SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payments\' AND COLUMN_NAME = \'expires_at\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (expiresCol && !['datetime', 'timestamp'].includes(String(expiresCol.DATA_TYPE).toLowerCase())) {
+        console.warn(
+          `[TenantMigration] SKIPPING 018: payments.expires_at already exists as ${expiresCol.DATA_TYPE}. Resolve it by hand, then re-run.`
+        );
+        return { skipped: true, reason: 'column_exists_with_other_type', table: 'payments', column: 'expires_at', type: expiresCol.DATA_TYPE };
+      }
+
+      if (statusAlter) await sequelize.query(statusAlter);
+      if (!expiresCol) {
+        await sequelize.query('ALTER TABLE `payments` ADD COLUMN `expires_at` DATETIME NULL');
+        await sequelize.query('ALTER TABLE `payments` ADD INDEX payments_status_expires_at (`status`, `expires_at`)').catch(() => {});
+      }
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

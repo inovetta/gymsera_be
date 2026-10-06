@@ -41,7 +41,7 @@ const listPayments = [
     .isUUID(4).withMessage('userId must be a valid UUID'),
   query('status')
     .optional()
-    .isIn(['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED'])
+    .isIn(['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'EXPIRED'])
     .withMessage('Invalid status'),
   query('method')
     .optional()

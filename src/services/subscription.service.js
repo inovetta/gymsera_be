@@ -243,6 +243,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     currency: 'PKR',
     status: PaymentStatus.PENDING,
     businessDate,
+    expiresAt: require('./payment.service').memberPaymentExpiresAt(),
   });
 
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -587,6 +588,7 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
     notes: `Renewal: ${plan.name}`,
     businessDate,
     pendingChangeJson: JSON.stringify({ type: 'RENEW', planId: plan.id }),
+    expiresAt: require('./payment.service').memberPaymentExpiresAt(),
   });
 
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -1029,6 +1031,7 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId, { approved
     notes: `Upgrade to ${newPlan.name}`,
     businessDate,
     pendingChangeJson: approvedByHost ? null : JSON.stringify({ type: 'UPGRADE', planId: newPlan.id }),
+    expiresAt: approvedByHost ? null : require('./payment.service').memberPaymentExpiresAt(),
   });
 
   // Create unified Traveler notification

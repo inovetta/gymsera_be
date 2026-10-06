@@ -336,6 +336,7 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
       status: 'PENDING',
       notes: notes || null,
       businessDate,
+      expiresAt: require('./payment.service').memberPaymentExpiresAt(),
     });
   }
 
