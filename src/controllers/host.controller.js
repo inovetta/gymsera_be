@@ -350,6 +350,9 @@ const getListings = async (req, res, next) => {
   try {
     const tenantId = req.user.tenantId;
     if (!tenantId) {
+      // FLOW-05 diagnostic: the only way this endpoint answers an empty list
+      // to a host. Seen right after onboarding, it means a stale token.
+      console.warn('[FLOW-05] GET /host/listings: token has no tenantId; returning an empty list');
       return sendSuccess(res, []);
     }
 
@@ -362,6 +365,15 @@ const getListings = async (req, res, next) => {
       where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
       order: [['updated_at', 'DESC']]
     });
+
+    // FLOW-05 diagnostic (temporary, DEBUG_FLOW05=true): counts only, no ids.
+    if (process.env.DEBUG_FLOW05 === 'true') {
+      const byStatus = {};
+      for (const l of listings) byStatus[l.status] = (byStatus[l.status] || 0) + 1;
+      const header = req.headers['x-tenant-id'];
+      const headerVsToken = !header ? 'absent' : (header === tenantId ? 'matches' : 'differs');
+      console.log(`[FLOW-05] GET /host/listings: ${listings.length} listing(s) ${JSON.stringify(byStatus)}; X-Tenant-Id ${headerVsToken}`);
+    }
 
     return sendSuccess(res, listings);
   } catch (err) {
