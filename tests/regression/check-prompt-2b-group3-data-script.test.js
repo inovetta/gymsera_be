@@ -1,4 +1,5 @@
 const { QueryTypes } = require('sequelize');
+const { v4: uuidv4 } = require('uuid');
 const {
   setupTestDatabases,
   teardownTestDatabases,
@@ -10,19 +11,117 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
   let dbHarness;
   let tenant1Seq;
   let platformSeq;
+  let branchId;
+  let listingId;
+  let tenantId;
+  let memberUserId;
 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
-    await setupPersonas(dbHarness);
+    const personas = await setupPersonas(dbHarness);
     tenant1Seq = dbHarness.tenant1.sequelize;
     platformSeq = dbHarness.platform.sequelize;
+
+    const { Branch, GymStaff, MemberSubscription, LedgerDay, MembershipPlan, Payment } = dbHarness.tenant1.models;
+    const { Tenant, GymListing, User, GymReview } = require('../../src/models/platform');
+
+    const branch = await Branch.findOne();
+    branchId = branch.id;
+    const listing = await GymListing.findOne();
+    listingId = listing.id;
+    const tenant = await Tenant.findOne({ where: { status: 'ACTIVE' } });
+    tenantId = tenant.id;
+    memberUserId = personas.member.user.id;
+
+    // 1. Seed legacy staff invite (FLOW-12): pending with null invite_token_hash / token_expires_at
+    await GymStaff.create({
+      id: uuidv4(),
+      branchId,
+      email: 'legacy-staff-invite@gymsera.test',
+      designation: 'Assistant Trainer',
+      employmentStatus: 'ACTIVE',
+      status: 'pending',
+      inviteTokenHash: null,
+      tokenExpiresAt: null,
+    });
+
+    // 2. Seed review without valid subscription (FLOW-10): user with no subscription
+    const nonMemberUser = await User.create({
+      id: uuidv4(),
+      fullName: 'Non Member User',
+      email: 'nonmember@gymsera.test',
+      role: 'MEMBER',
+    });
+    await GymReview.create({
+      id: uuidv4(),
+      gymListingId: listingId,
+      branchId,
+      userId: nonMemberUser.id,
+      tenantId,
+      rating: 5,
+      title: 'Great Facility',
+      body: 'Nice place!',
+      status: 'PENDING',
+    });
+
+    // 3. Seed active subscription on legacy static QR (FLOW-09): qr_code LIKE 'GE-%'
+    const plan = await MembershipPlan.create({
+      id: uuidv4(),
+      gymId: branch.gymId,
+      branchId,
+      name: 'Standard Monthly',
+      durationType: 'MONTHLY',
+      durationValue: 1,
+      price: '5000.00',
+    });
+    await MemberSubscription.create({
+      id: uuidv4(),
+      userId: memberUserId,
+      branchId,
+      membershipPlanId: plan.id,
+      startDate: '2026-01-01',
+      endDate: '2026-12-31',
+      status: 'ACTIVE',
+      qrCode: 'GE-STATIC-LEGACY-001',
+    });
+
+    // 4. Seed missed open ledger day (PAY-06): OPEN with business_date < CURRENT_DATE()
+    await LedgerDay.create({
+      id: uuidv4(),
+      branchId,
+      businessDate: '2026-01-01',
+      status: 'OPEN',
+    });
+
+    // 5. Seed closed ledger day without collector snapshot (PAY-06): CLOSED with null closed_collectors_json
+    await LedgerDay.create({
+      id: uuidv4(),
+      branchId,
+      businessDate: '2026-01-02',
+      status: 'CLOSED',
+      closedExpectedTotal: '1500.00',
+      closedVerifiedTotal: '1500.00',
+      closedCollectorsJson: null,
+    });
+
+    // 6. Seed cash payment without shift (PAY-06): method = 'CASH' and shift is NULL
+    await Payment.create({
+      id: uuidv4(),
+      userId: memberUserId,
+      branchId,
+      amount: '500.00',
+      currency: 'PKR',
+      method: 'CASH',
+      status: 'COMPLETED',
+      shift: null,
+    });
   });
 
   afterAll(async () => {
     await teardownTestDatabases();
   });
 
-  test('checkHistoricalData executes cleanly and produces zero database writes', async () => {
+  test('checkHistoricalData executes cleanly, detects all seeded legacy rows, and produces zero database writes', async () => {
     // Snapshot table counts before running check script
     const getCounts = async () => {
       const [pUsers] = await platformSeq.query('SELECT COUNT(*) AS c FROM users', { type: QueryTypes.SELECT });
@@ -51,18 +150,31 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     const logs = [];
     const customLogger = (msg) => logs.push(msg);
 
-    // Run the check script
+    // Run the check script without options.tenantDbs so it performs real tenant discovery via platform DB
     const results = await checkHistoricalData({
       platformSeq,
-      tenantDbs: [dbHarness.tenant1],
       logger: customLogger,
     });
 
     expect(results).toBeDefined();
-    expect(results.staffInvites).toBeDefined();
-    expect(results.reviews).toBeDefined();
-    expect(results.attendanceQr).toBeDefined();
-    expect(results.ledger).toBeDefined();
+
+    // 1. FLOW-12: Legacy staff invites
+    expect(results.staffInvites.legacyInvitesCount).toBe(1);
+
+    // 2. FLOW-10: Reviews lacking valid subscription
+    expect(results.reviews.invalidSubscriptionCount).toBe(1);
+
+    // 3. FLOW-09: Active subscriptions on legacy static QR
+    expect(results.attendanceQr.staticQrSubscriptionsCount).toBe(1);
+
+    // 4. PAY-06: Missed open ledger days
+    expect(results.ledger.missedOpenDaysCount).toBe(1);
+
+    // 5. PAY-06: Closed days without collector snapshot
+    expect(results.ledger.closedDaysWithoutSnapshotCount).toBe(1);
+
+    // 6. PAY-06: Cash payments without shift
+    expect(results.ledger.cashPaymentsWithoutShiftCount).toBe(1);
 
     const countsAfter = await getCounts();
 
@@ -77,3 +189,4 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     expect(countsAfter.tMigrations).toBe(countsBefore.tMigrations);
   });
 });
+

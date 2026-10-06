@@ -48,14 +48,14 @@ if (!tenantId) {
     });
 
     const [listings] = await sequelize.query(
-      `SELECT id, name, status, reserved_slots FROM gym_listings WHERE tenant_id = ? ORDER BY created_at ASC`,
+      `SELECT id, title, status, reserved_slots FROM gym_listings WHERE tenant_id = ? ORDER BY created_at ASC`,
       { replacements: [tenantId] }
     );
     console.log(`=== GymListings (reservedSlots) for tenant ${tenantId} ===`);
     let reservedTotal = 0;
     listings.forEach((l) => {
       if (l.status !== 'INACTIVE') reservedTotal += l.reserved_slots;
-      console.log(`[${l.status}] ${l.name}  reservedSlots=${l.reserved_slots}  id=${l.id}`);
+      console.log(`[${l.status}] ${l.title || l.id}  reservedSlots=${l.reserved_slots}  id=${l.id}`);
     });
     console.log(`Total reservedSlots (non-INACTIVE): ${reservedTotal}\n`);
 

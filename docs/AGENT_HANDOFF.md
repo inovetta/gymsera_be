@@ -17,28 +17,27 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-05 |
+| Last updated | 2026-10-06 |
 | Updated by | Gemini (Antigravity) |
-| Current prompt | **Prompt 2B — Group 1: RBAC & Access Control (merged after PAY-08a)** |
+| Current prompt | **Hotfix: check-prompt-2b-group3-data and check-tenant-entitlement scripts** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Work is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (merged with `origin/main` after PAY-08a). Not pushed, no PRs opened.
+Work is on branch `fix/check-prompt-2b-group3-data` in `gymsera_be`. Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
 | gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `phase-2/prompt-2b-rbac` | (merge commit: Prompt 2B Group 1 + origin/main) | no |
+| gymsera_be | `fix/check-prompt-2b-group3-data` | (hotfix commit: check scripts real column names) | no |
 | gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Start **Prompt 2B Part B (Group 2: Member Flows / Money)** from `docs/GYMSERA_AGENT_PLAYBOOK.md`:
-> Issues: `FLOW-05` (stale Listings tab — follow the four hypotheses in order, with debug logs, and fix the proven cause), `FLOW-06`, `FLOW-08`, `FLOW-09`, `FLOW-10`, `FLOW-12`, `FLOW-13` or `PAY-05…PAY-08`, `PAY-12`. For `FLOW-05`, record in the handoff file which hypotheses you already ruled out and how.
+> Check scripts verified against migrated schema and test suite 100% green. Continue from next prompt in `docs/GYMSERA_AGENT_PLAYBOOK.md`.
 
 ### Work in progress that is NOT committed
 
@@ -276,4 +275,8 @@ Work is on branch `phase-2/prompt-2b-rbac` in `gymsera_be` (merged with `origin/
 | 40 | 2026-10-05 | Gemini (Antigravity) | PAY-08a & gitignore | PAY-08a (reject method TEST in production with 403, ignore in payment service, test harness regression tests), gitignore (firebase-service-account.json, iisnode/) | task complete | yes |
 | 41 | 2026-10-05 | Gemini (Antigravity) | Merge: Prompt 2B Group 1 + origin/main (PAY-08a) | Merged origin/main into phase-2/prompt-2b-rbac after PAY-08a; resolved doc conflicts in spec §13 and handoff; verified platform p001-p018 and tenant 001-013 migrations; ran full suite twice | task complete | yes |
 | 42 | 2026-10-05 | Gemini (Antigravity) | Hotfix: RBAC-09 check script | Fixed Unknown column 'name' (tenants.business_name) and 'rab.role_assignment_id' (rab.assignment_id) in gymsera-rbac09-stale-branch-assignments-check.js; added regression test against migrated schema | task complete | yes |
+| 43 | 2026-10-06 | Gemini (Antigravity) | Hotfix: Prompt 2B Group 3 check script | Fixed Unknown column 'name' in check-prompt-2b-group3-data.js (business_name, tenant_code, user_gym_memberships schema) & check-tenant-entitlement.js (title); fixed regression test with real migration runners & zero writes; audited 15 scripts; ran full test suite twice (normal + DISABLE_REDIS=true) | task complete | yes |
+| 44 | 2026-10-06 | Gemini (Antigravity) | Fix regression test raw SQL inserts | Fixed CI failure on fresh DB (ER_NO_DEFAULT_FOR_FIELD business_date due to Migration 006 NOT NULL & STRICT_TRANS_TABLES); converted test to Payment.create, User.create, GymReview.create; ran full suite twice | task complete | yes |
+
+
 

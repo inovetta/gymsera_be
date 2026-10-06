@@ -36,39 +36,45 @@ async function checkHistoricalData(options = {}) {
   // ── FLOW-10 Check: Reviews auto-approved or without active/past subscription ─
   try {
     const allReviews = await pSeq.query(
-      "SELECT id, branch_id, user_id, rating, status, created_at FROM gym_reviews",
+      "SELECT id, branch_id, user_id, tenant_id, rating, status, created_at FROM gym_reviews",
       { type: QueryTypes.SELECT }
     );
 
     for (const rev of allReviews) {
-      // Check if user had active/past subscription for that branch in UserGymMembership
-      const [sub] = await pSeq.query(
-        "SELECT id, status FROM user_gym_memberships WHERE user_id = ? AND branch_id = ? AND status IN ('ACTIVE', 'EXPIRED', 'FROZEN') LIMIT 1",
-        { replacements: [rev.user_id, rev.branch_id], type: QueryTypes.SELECT }
-      );
+      // Check if user had active/past subscription for that tenant in UserGymMembership
+      let sub = null;
+      if (rev.tenant_id) {
+        [sub] = await pSeq.query(
+          "SELECT id, status FROM user_gym_memberships WHERE user_id = ? AND tenant_id = ? AND status IN ('ACTIVE', 'EXPIRED', 'FROZEN') LIMIT 1",
+          { replacements: [rev.user_id, rev.tenant_id], type: QueryTypes.SELECT }
+        );
+      }
       if (!sub) {
         results.reviews.invalidSubscriptionCount += 1;
         results.reviews.details.push({
           reviewId: rev.id,
           userId: rev.user_id,
           branchId: rev.branch_id,
+          tenantId: rev.tenant_id,
           status: rev.status,
           reason: 'NO_VALID_SUBSCRIPTION_FOUND',
         });
       }
     }
-  } catch (_) {}
+  } catch (err) {
+    logger(`[Platform DB] Warning checking reviews: ${err.message}`);
+  }
 
   // 2. Discover Tenant DBs
   let tenantDbsToInspect = [];
   if (options.tenantDbs) {
     tenantDbsToInspect = options.tenantDbs.map((tdb, idx) => ({
-      code: tdb.tenantCode || `TENANT_${idx + 1}`,
+      code: tdb.tenantCode || tdb.code || `TENANT_${idx + 1}`,
       sequelize: tdb.sequelize,
     }));
   } else {
     const tenants = await pSeq.query(
-      "SELECT id, name, code, connection_string_encrypted FROM tenants WHERE status = 'ACTIVE'",
+      "SELECT id, business_name, tenant_code, connection_string_encrypted FROM tenants WHERE status = 'ACTIVE'",
       { type: QueryTypes.SELECT }
     );
     logger(`[Platform DB] Found ${tenants.length} active tenant(s) to inspect.\n`);
@@ -80,15 +86,33 @@ async function checkHistoricalData(options = {}) {
 
       try {
         const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connection_string_encrypted);
-        tenantDbsToInspect.push({ code: tenant.code, sequelize: tenantDb.sequelize });
+        tenantDbsToInspect.push({ code: tenant.tenant_code, sequelize: tenantDb.sequelize });
       } catch (err) {
-        logger(`[Tenant ${tenant.code}] Failed to connect: ${err.message}`);
+        logger(`[Tenant ${tenant.tenant_code}] Failed to connect: ${err.message}`);
       }
     }
   }
 
   for (const tenant of tenantDbsToInspect) {
     const tSeq = tenant.sequelize;
+
+    // ── FLOW-12 Check: Staff invites without single-use expiring tokens ──────────
+    try {
+      const legacyInvites = await tSeq.query(
+        "SELECT id, branch_id, email, status FROM gym_staff WHERE status = 'pending' AND (invite_token_hash IS NULL OR token_expires_at IS NULL)",
+        { type: QueryTypes.SELECT }
+      );
+      if (legacyInvites.length > 0) {
+        results.staffInvites.legacyInvitesCount += legacyInvites.length;
+        results.staffInvites.details.push({
+          tenantCode: tenant.code,
+          count: legacyInvites.length,
+          sampleIds: legacyInvites.slice(0, 5).map((s) => s.id),
+        });
+      }
+    } catch (err) {
+      logger(`[Tenant ${tenant.code}] Warning checking staff invites: ${err.message}`);
+    }
 
     // ── FLOW-09 Check: Subscriptions on legacy static GE- QR codes ─────────────
     try {
@@ -104,7 +128,9 @@ async function checkHistoricalData(options = {}) {
           sampleSubIds: staticSubs.slice(0, 5).map((s) => s.id),
         });
       }
-    } catch (_) {}
+    } catch (err) {
+      logger(`[Tenant ${tenant.code}] Warning checking attendance QR: ${err.message}`);
+    }
 
     // ── PAY-06 Check: Ledger Days and Cash Payments ────────────────────────────
     try {
@@ -139,7 +165,9 @@ async function checkHistoricalData(options = {}) {
       if (unassignedCash.length > 0) {
         results.ledger.cashPaymentsWithoutShiftCount += unassignedCash.length;
       }
-    } catch (_) {}
+    } catch (err) {
+      logger(`[Tenant ${tenant.code}] Warning checking ledger and payments: ${err.message}`);
+    }
   }
 
   logger('=== Summary of Inspection Findings ===');
