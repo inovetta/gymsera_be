@@ -20,30 +20,33 @@ next agent won't know it.
 | Last updated | 2026-10-06 |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Prompt 3A — Team & Access + Approvals in the CMS** |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | UX-12 (CMS `/gym/team`), then UX-13 approvals part (`/gym/approvals`), `/gym/staff` redirect, Trainers link |
-| Step within issue | Reading done (mobile screens, backend routes). Branches created. No CMS code written yet. |
+| Prompt status | `DONE` (local commits only; waiting for the owner to review, then push and open the PRs) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 3A code is CMS-only, on `phase-3/prompt-3a-team-approvals` (cut from `origin/main` 3849333, tracks its own name, not pushed).
-Docs for 3A (this file, spec §13 / §3.3) are on `docs/prompt-3a-cms-team-approvals` in `gymsera_be` (cut from `origin/main` c9e8728,
-not pushed). That docs branch lives in a separate git worktree at `../gymsera_be_docs_3a` so the main `gymsera_be` checkout is untouched.
+Nothing from Prompt 3A is pushed and no PR is open (owner instruction: no push, no PR, no merge).
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
+| gymsera_cms | `phase-3/prompt-3a-team-approvals` (cut from `origin/main` 3849333; upstream set to its own name, not yet on the remote) | b09e776 feat(trainers): link each trainer to their Team & access record (UX-12) | no |
+| gymsera_be | docs only: `docs/prompt-3a-cms-team-approvals` (cut from `origin/main` c9e8728), checked out in a separate worktree at `../gymsera_be_docs_3a`. The main `gymsera_be` checkout is untouched on `phase-2/prompt-2b-group-4` (already merged as c9e8728) | docs(spec, handoff): Prompt 3A | no |
 | gyms_era | `fix/new-38-delete-listing-reauth` (read only in 3A) | 55037b9 feat(host): prompt credentials for organization deletion re-auth (NEW-38) | no |
-| gymsera_be | `phase-2/prompt-2b-group-4` (untouched; merged to main as c9e8728) / docs worktree `docs/prompt-3a-cms-team-approvals` | c9e8728 Merge pull request #72 | docs worktree: this file |
-| gymsera_cms | `phase-3/prompt-3a-team-approvals` | 3849333 Merge pull request #14 (no 3A commit yet) | no |
 | gymsera_web | not touched in 3A | — | — |
+
+CMS commits, one per page: 3c28b96 team · 52f374c approvals · 71f36df staff redirect · b09e776 trainers link.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 3A, commit 1 of 4 (team page). In `gymsera_cms` on `phase-3/prompt-3a-team-approvals`: add `src/lib/api/team.ts`
-> (the endpoint list is in §3 Notes "Prompt 3A"), then `src/app/(dashboard)/gym/team/page.tsx` + components under
-> `src/components/features/team/`, with tests in `tests/components/team-*.test.tsx` written failing first
-> (409 `grants_changed` reload, roles with `assignableByMe: false` disabled). Then commit 2 `/gym/approvals`,
-> commit 3 `/gym/staff` redirect + sidebar, commit 4 Trainers link. One commit per page. Do not push.
+> 1. Owner reviews the Prompt 3A report. If accepted: push `phase-3/prompt-3a-team-approvals` (gymsera_cms) and
+>    `docs/prompt-3a-cms-team-approvals` (gymsera_be), open one PR each into `main`, then remove the worktree with
+>    `git worktree remove ../gymsera_be_docs_3a` (run in `gymsera_be`).
+> 2. Owner decisions wanted before more work on these screens (spec §13 "Prompt 3A notes", and NEW-41 / NEW-42 in §12.13.11):
+>    (a) NEW-41: the CMS Trainers page calls `/gyms/trainers`, which the backend does not serve — approve switching it to `/trainers`;
+>    (b) read-only preset rows in the CMS editor vs the switch on mobile — which one wins;
+>    (c) mobile should send `expectedVersion` too (RBAC-08 is not active from the app).
+> 3. Then start **Prompt 3B** (organization switcher, capacity banner, branch flows, new organization) from the playbook.
 
 ### Work in progress that is NOT committed
 
@@ -79,6 +82,16 @@ not pushed). That docs branch lives in a separate git worktree at `../gymsera_be
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 3A — Team & Access + Approvals in the CMS (gymsera_cms, branch `phase-3/prompt-3a-team-approvals`):**
+- [x] 1. `/gym/team` on the mobile `/team` endpoints: chips, 3-choice editor, preset labels, diff, revoke keeps the record, expectedVersion / 409, disabled higher roles (cms 3c28b96)
+- [x] 2. `/gym/approvals` on `/approvals`: Waiting on you / Your requests, sidebar count, 202 helper and notice (cms 52f374c)
+- [x] 3. `/gym/staff` redirects to `/gym/team`; legacy staff calls removed from the CMS client (cms 71f36df)
+- [x] 4. Trainers page linked to the person's team record (cms b09e776)
+- [x] Spec §13 (UX-12, UX-13, Prompt 3A notes), §3.3 parity rows, §8.3.3 wording, NEW-41, NEW-42
+- [ ] Owner review, push, PRs (owner said: do not push)
+
+---
 
 **Prompt 2B — Group 1: RBAC & Access Control (RBAC-04, RBAC-05, RBAC-08, RBAC-09):**
 - [x] 1. RBAC-09 — Branch deletion revokes branch-scoped `RoleAssignment`s and cleans up junctions (`be/src/services/gym.service.js:deleteBranch`) (be 43851fa)
@@ -245,6 +258,18 @@ not pushed). That docs branch lives in a separate git worktree at `../gymsera_be
   - Mobile does NOT send `expectedVersion` yet and has no 409 `grants_changed` handling (RBAC-08 is backend-only so far).
   - None of the `/team` or `/approvals` routes asks for re-auth, and none answers 202 (team permissions are not approvable).
     202 comes from `/actions/:key`, ledger adjustments, payouts and `POST /payments/:id/refund`.
+  - **3A results and gotchas (2026-10-06):**
+    - CMS suites after 3A: `npx vitest run` 14 files / 86 tests (3 runs, all pass); `npx playwright test` 3/3; `npm run build` OK.
+      Run them from `gymsera_cms` itself: `npm test` from another folder picks up an unrelated `package.json`.
+    - `tsc --noEmit` rewrites the tracked `tsconfig.tsbuildinfo`; restore it (`git checkout tsconfig.tsbuildinfo`) before committing.
+    - A Next.js `page.tsx` may export only the page (a second named export fails the build); shared constants live in `src/lib`.
+    - CMS component tests mock the API with `vi.spyOn(<api object>, …)`; fixtures for team shapes are in `tests/fixtures/team.ts`.
+      Playwright tests answer `**/api/v1/**` with `page.route` and seed the session in `localStorage` + the `gymsera_session` cookie
+      (placeholder values only). An open Radix dialog hides the page behind it from role queries (`{ hidden: true }`).
+    - Server 403 / 409 without an explicit code arrive as `forbidden` / `conflict`; the shared resolver then returns the generic table
+      text. `src/lib/team/access.ts#teamErrorMessage` keeps the server's own sentence in that case.
+    - Spec §13 has no rows for Prompt 2B groups 2–4 (they are recorded under `docs/changes/*.md` instead), and this file's §2 checklist
+      stops at group 1. Git is right; the files were not back-filled in 3A.
 
 ## 4. Session log (append-only, newest at the bottom)
 
@@ -297,4 +322,4 @@ not pushed). That docs branch lives in a separate git worktree at `../gymsera_be
 | 42 | 2026-10-05 | Gemini (Antigravity) | Hotfix: RBAC-09 check script | Fixed Unknown column 'name' (tenants.business_name) and 'rab.role_assignment_id' (rab.assignment_id) in gymsera-rbac09-stale-branch-assignments-check.js; added regression test against migrated schema | task complete | yes |
 | 43 | 2026-10-06 | Gemini (Antigravity) | Hotfix: Prompt 2B Group 3 check script | Fixed Unknown column 'name' in check-prompt-2b-group3-data.js (business_name, tenant_code, user_gym_memberships schema) & check-tenant-entitlement.js (title); fixed regression test with real migration runners & zero writes; audited 15 scripts; ran full test suite twice (normal + DISABLE_REDIS=true) | task complete | yes |
 | 44 | 2026-10-06 | Gemini (Antigravity) | Fix regression test raw SQL inserts | Fixed CI failure on fresh DB (ER_NO_DEFAULT_FOR_FIELD business_date due to Migration 006 NOT NULL & STRICT_TRANS_TABLES); converted test to Payment.create, User.create, GymReview.create; ran full suite twice | task complete | yes |
-| 45 | 2026-10-06 | Claude Code (Opus 5.5) | Prompt 3A (CMS Team & Access + Approvals) | (in progress) | — | — |
+| 45 | 2026-10-06 | Claude Code (Opus 5.5) | Prompt 3A (CMS Team & Access + Approvals) | UX-12 (cms 3c28b96, 71f36df, b09e776), UX-13 approvals part (cms 52f374c); CMS side of RBAC-04/05/08; NEW-41, NEW-42 recorded | task complete (not pushed, owner review) | yes |
