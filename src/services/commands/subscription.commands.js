@@ -38,7 +38,9 @@ register({
     // from the current end date, which is what a plain "Renew" action means.
     // Passed, it doubles as a renew-with-a-different-plan action, matching what
     // subscriptionService.renew already supports.
-    return subscriptionService.renew(payload.memberUserId, payload.subscriptionId, payload.planId || null, payload.startDate || null);
+    // Approved (or DIRECT-tier) staff action: applies at once (NEW-40). Only a
+    // member's own renewal waits for its payment.
+    return subscriptionService.renew(payload.memberUserId, payload.subscriptionId, payload.planId || null, payload.startDate || null, { approvedByHost: true });
   },
 });
 
@@ -53,7 +55,9 @@ register({
     const subscriptionService = require('../subscription.service');
     // `upgrade` is a plan change with proration; the caller says which it wants.
     return payload.isUpgrade
-      ? subscriptionService.upgradeSubscription(payload.memberUserId, payload.subscriptionId, payload.newPlanId)
+      // Approved (or DIRECT-tier) staff action: applies at once, like a
+      // host-approved staff upgrade (FLOW-08). Only a member's own upgrade waits.
+      ? subscriptionService.upgradeSubscription(payload.memberUserId, payload.subscriptionId, payload.newPlanId, { approvedByHost: true })
       : subscriptionService.changePlan(payload.memberUserId, payload.subscriptionId, payload.newPlanId);
   },
 });

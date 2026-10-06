@@ -4,6 +4,9 @@ const PaymentStatus = {
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
   REFUNDED: 'REFUNDED',
+  // PAY-08: a member's pending payment nobody verified before its deadline.
+  // Nothing was activated; the payment can no longer be verified.
+  EXPIRED: 'EXPIRED',
 };
 
 const PaymentMethod = {

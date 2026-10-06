@@ -1744,10 +1744,12 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   // Walk-in enrollment: create payment record.
   // GYM_HOST enrollments auto-complete; staff enrollments go to PENDING (collect box).
   const { Payment, Invoice } = tenantDb.models;
-  const subtotal = parseFloat(plan.price);
-  const joining = parseFloat(plan.joiningFee || 0);
-  const security = parseFloat(plan.securityFee || 0);
-  const totalAmount = subtotal + joining + security;
+  // Integer minor units, never float sums (PAY-02, FLOW-08).
+  const { toMinorUnits, fromMinorUnits } = require('../utils/money.utils');
+  const subtotalMinor = toMinorUnits(plan.price);
+  const totalAmountMinor = subtotalMinor + toMinorUnits(plan.joiningFee || 0) + toMinorUnits(plan.securityFee || 0);
+  const subtotal = fromMinorUnits(subtotalMinor);
+  const totalAmount = fromMinorUnits(totalAmountMinor);
 
   const ledgerService = require('./ledger.service');
   const collectionDate = (preCollected && collection?.collectedAt) ? collection.collectedAt : new Date();

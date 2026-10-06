@@ -36,6 +36,9 @@ const _calcEndDate = (startDate, durationType, durationValue) => {
 
 const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 
+// Payments a member has started for a subscription that nobody has settled yet.
+const LIVE_PAYMENT_STATUSES = [PaymentStatus.PENDING, PaymentStatus.STAFF_COLLECTED];
+
 /**
  * Generate a unique QR token for a new subscription.
  */
@@ -135,6 +138,27 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
   return { models, index, resolvedSubscriptionId };
 };
 
+/**
+ * Server price of a membership's first payment, in integer minor units:
+ * plan price + security fee + joining fee (waived when the member already had
+ * a non-pending membership at this branch). The client never sends a price.
+ */
+const priceFirstPayment = async (models, plan, userId, branchId) => {
+  const hasPreviousSubscription = await models.MemberSubscription.findOne({
+    where: {
+      userId,
+      branchId,
+      status: {
+        [Op.not]: SubscriptionStatus.PENDING,
+      },
+    },
+  });
+  const subtotalMinor = toMinorUnits(plan.price);
+  const joiningMinor = hasPreviousSubscription ? 0 : toMinorUnits(plan.joiningFee || 0);
+  const securityMinor = toMinorUnits(plan.securityFee || 0);
+  return { subtotalMinor, totalAmountMinor: subtotalMinor + joiningMinor + securityMinor };
+};
+
 // ── POST /subscriptions ───────────────────────────────────────────────────────
 const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, sourceChannel }) => {
   const { models, tenantId, gymListing } = await _resolveTenant(gymListingId);
@@ -202,22 +226,8 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     status: SubscriptionStatus.PENDING,
   });
 
-  // Check if they have any past approved/completed subscriptions at this branch
-  const hasPreviousSubscription = await MemberSubscription.findOne({
-    where: {
-      userId,
-      branchId: branchIdToUse,
-      status: {
-        [Op.not]: SubscriptionStatus.PENDING,
-      },
-    },
-  });
-
   // Create pending payment + issued invoice
-  const subtotalMinor = toMinorUnits(plan.price);
-  const joiningMinor = hasPreviousSubscription ? 0 : toMinorUnits(plan.joiningFee || 0);
-  const securityMinor = toMinorUnits(plan.securityFee || 0);
-  const totalAmountMinor = subtotalMinor + joiningMinor + securityMinor;
+  const { subtotalMinor, totalAmountMinor } = await priceFirstPayment(models, plan, userId, branchIdToUse);
   const totalAmount = fromMinorUnits(totalAmountMinor);
 
   const ledgerService = require('./ledger.service');
@@ -233,6 +243,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     currency: 'PKR',
     status: PaymentStatus.PENDING,
     businessDate,
+    expiresAt: require('./payment.service').memberPaymentExpiresAt(),
   });
 
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -411,41 +422,18 @@ const cancel = async (userId, subscriptionId) => {
   return sub.reload();
 };
 
-// ── POST /subscriptions/:id/renew ─────────────────────────────────────────────
-const renew = async (userId, subscriptionId, targetPlanId = null, customStartDate = null) => {
-  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+/**
+ * Extend a subscription by one period of `plan` and make it ACTIVE (FLOW-06
+ * dates: from customStartDate, else max(today, endDate) in the branch
+ * timezone). Runs only once the renewal is paid for — from verifyPayment, or
+ * from the host-approved staff renewal. A cancelled subscription is left alone.
+ */
+const applyRenewal = async (models, subscriptionId, planId, customStartDate = null) => {
   const { MemberSubscription } = models;
-
-  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
-  if (!sub) throw createError('Subscription not found in tenant database', 404);
-  if (sub.status === SubscriptionStatus.CANCELLED) {
-    throw createError('Cancelled subscriptions cannot be renewed', 409);
-  }
-
-  if (sub.branchId) {
-    const branch = await models.Branch.findByPk(sub.branchId);
-    if (branch) {
-      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
-      assertBranchNotBillingLocked(branch);
-    }
-  }
-
-  const effectivePlanId = targetPlanId || sub.membershipPlanId;
-  let plan = await models.MembershipPlan.findByPk(effectivePlanId);
-
-  // If plan is not found or inactive, fallback to any active plan for this branch/gym
-  if (!plan || plan.status !== 'ACTIVE') {
-    if (sub.branchId) {
-      plan = await models.MembershipPlan.findOne({
-        where: { branchId: sub.branchId, status: 'ACTIVE' },
-        order: [['createdAt', 'DESC']],
-      });
-    }
-  }
-
-  if (!plan || plan.status !== 'ACTIVE') {
-    throw createError('The associated membership plan is no longer available', 409);
-  }
+  const sub = await MemberSubscription.findByPk(subscriptionId);
+  if (!sub || sub.status === SubscriptionStatus.CANCELLED) return null;
+  const plan = await models.MembershipPlan.findByPk(planId);
+  if (!plan) return null;
 
   // Extend from customStartDate or max(now, sub.endDate) in the branch timezone (FLOW-06)
   let branchTimezone = 'Asia/Karachi';
@@ -479,18 +467,21 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
     freezeTo: null,
     cancelledAt: null,
   });
-  await index.update({
-    status: SubscriptionStatus.ACTIVE,
-    startDate: baseDate,
-    endDate: newEndDate,
-    planName: plan.name,
-  });
+  const index = await UserGymMembership.findOne({ where: { subscriptionId: sub.id } });
+  if (index) {
+    await index.update({
+      status: SubscriptionStatus.ACTIVE,
+      startDate: baseDate,
+      endDate: newEndDate,
+      planName: plan.name,
+    });
+  }
 
   // Direct notifications (in-app, push, email)
   try {
-    const user = await User.findByPk(userId, { attributes: ['id', 'email', 'fullName'] });
+    const user = await User.findByPk(sub.userId, { attributes: ['id', 'email', 'fullName'] });
     if (user) {
-      const gymName = index.gymName || 'your gym';
+      const gymName = (index && index.gymName) || 'your gym';
       // 1. In-app notification, WebSocket broadcast, and FCM push
       await notificationsService.createNotification({
         userId: user.id,
@@ -526,6 +517,97 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
   }
 
   return { subscription: await sub.reload(), qrCode: newQr };
+};
+
+// ── POST /subscriptions/:id/renew ─────────────────────────────────────────────
+// Member path (NEW-40): records a PENDING renewal payment at the server price;
+// the extension applies only when that payment is verified. `approvedByHost`
+// is the host approving a staff renewal request, which applies at once.
+const renew = async (userId, subscriptionId, targetPlanId = null, customStartDate = null, { approvedByHost = false } = {}) => {
+  const { models, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+  const { MemberSubscription, Payment, Invoice } = models;
+
+  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
+  if (!sub) throw createError('Subscription not found in tenant database', 404);
+  if (sub.status === SubscriptionStatus.CANCELLED) {
+    throw createError('Cancelled subscriptions cannot be renewed', 409);
+  }
+
+  if (sub.branchId) {
+    const branch = await models.Branch.findByPk(sub.branchId);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
+    }
+  }
+
+  const effectivePlanId = targetPlanId || sub.membershipPlanId;
+  let plan = await models.MembershipPlan.findByPk(effectivePlanId);
+
+  // If plan is not found or inactive, fallback to any active plan for this branch/gym
+  if (!plan || plan.status !== 'ACTIVE') {
+    if (sub.branchId) {
+      plan = await models.MembershipPlan.findOne({
+        where: { branchId: sub.branchId, status: 'ACTIVE' },
+        order: [['createdAt', 'DESC']],
+      });
+    }
+  }
+
+  if (!plan || plan.status !== 'ACTIVE') {
+    throw createError('The associated membership plan is no longer available', 409);
+  }
+
+  if (approvedByHost) {
+    return applyRenewal(models, sub.id, plan.id, customStartDate);
+  }
+
+  if (sub.status === SubscriptionStatus.PENDING) {
+    throw createError('This membership is still waiting for its first payment', 409);
+  }
+  const openPayment = await Payment.findOne({
+    where: { referenceEntityId: sub.id, status: LIVE_PAYMENT_STATUSES },
+  });
+  if (openPayment) {
+    throw createError('This membership already has a payment awaiting verification', 409);
+  }
+
+  // One period of the plan, integer minor units (PAY-02). Dates are worked
+  // out when the payment is verified, so a member-chosen start date is ignored.
+  const amount = fromMinorUnits(toMinorUnits(plan.price));
+  const businessDate = await require('./ledger.service').stampBusinessDate({ models }, sub.branchId);
+  const payment = await Payment.create({
+    userId: sub.userId,
+    paymentFor: 'MEMBERSHIP',
+    referenceEntityId: sub.id,
+    branchId: sub.branchId,
+    method: 'BANK_TRANSFER',
+    amount,
+    currency: 'PKR',
+    status: PaymentStatus.PENDING,
+    notes: `Renewal: ${plan.name}`,
+    businessDate,
+    pendingChangeJson: JSON.stringify({ type: 'RENEW', planId: plan.id }),
+    expiresAt: require('./payment.service').memberPaymentExpiresAt(),
+  });
+
+  const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const invoiceNo = await getNextInvoiceNumber(models.Invoice.sequelize, sub.branchId);
+  const invoice = await Invoice.create({
+    userId: sub.userId,
+    invoiceNo,
+    invoiceType: 'MEMBERSHIP',
+    referenceEntityId: sub.id,
+    branchId: sub.branchId,
+    subtotal: amount,
+    discountAmount: '0.00',
+    taxAmount: '0.00',
+    totalAmount: amount,
+    dueDate,
+    status: InvoiceStatus.ISSUED,
+  });
+
+  return { subscription: sub, qrCode: null, payment, invoice, applied: false };
 };
 
 // ── POST /subscriptions/:id/change-plan ──────────────────────────────────────────
@@ -854,8 +936,43 @@ const getUpgradeOptions = async (userId, subscriptionId) => {
   };
 };
 
+const _parsePendingChange = (payment) => {
+  if (!payment || !payment.pendingChangeJson) return null;
+  try {
+    return JSON.parse(payment.pendingChangeJson);
+  } catch (_) {
+    return null;
+  }
+};
+
+/**
+ * Switch a subscription to the plan an upgrade payment paid for (FLOW-08).
+ * Called only from verifyPayment, after the payment is COMPLETED, and from the
+ * host-approved staff upgrade. A subscription that has ended since keeps its
+ * plan; the money stays recorded on the payment.
+ */
+const applyUpgrade = async (models, subscriptionId, planId, transaction = null) => {
+  const { MemberSubscription, MembershipPlan } = models;
+  const opts = transaction ? { transaction } : {};
+  const sub = await MemberSubscription.findByPk(subscriptionId, opts);
+  if (!sub) return null;
+  if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status)) return null;
+  const plan = await MembershipPlan.findByPk(planId, opts);
+  if (!plan) return null;
+  if (sub.membershipPlanId !== plan.id) {
+    await sub.update({ membershipPlanId: plan.id }, opts);
+  }
+  await UserGymMembership.update({ planName: plan.name }, { where: { subscriptionId } }).catch((err) => {
+    console.warn('[Subscription] Failed to sync planName after upgrade:', err.message);
+  });
+  return sub;
+};
+
 // ── POST /member/subscriptions/:id/upgrade ───────────────────────────────────────
-const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
+// Member path: the new plan waits for the payment (FLOW-08); until then the
+// member keeps the old plan exactly as it was. `approvedByHost` is the host
+// approving a staff upgrade request, which applies at once as before.
+const upgradeSubscription = async (userId, subscriptionId, newPlanId, { approvedByHost = false } = {}) => {
   const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription, MembershipPlan, Payment, Invoice } = models;
 
@@ -864,6 +981,16 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     include: [{ model: MembershipPlan, as: 'plan' }],
   });
   if (!sub) throw createError('Subscription not found', 404);
+  if (![SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN].includes(sub.status)) {
+    throw createError('Only an active membership can be upgraded', 409);
+  }
+
+  const openPayment = await Payment.findOne({
+    where: { referenceEntityId: sub.id, status: LIVE_PAYMENT_STATUSES },
+  });
+  if (openPayment) {
+    throw createError('This membership already has a payment awaiting verification', 409);
+  }
 
   if (sub.branchId && models.Branch) {
     const branch = await models.Branch.findByPk(sub.branchId);
@@ -887,17 +1014,10 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
 
   const amountToPay = subtractMoney(newPlan.price, currentPlan.price);
 
-  // 1. Update subscription IMMEDIATELY
-  await sub.update({
-    membershipPlanId: newPlanId,
-  });
+  if (approvedByHost) {
+    await applyUpgrade(models, sub.id, newPlan.id);
+  }
 
-  // Update platform index table if needed
-  await index.update({
-    planName: newPlan.name,
-  });
-
-  // 2. Create Payment (status PENDING)
   const businessDate = await require('./ledger.service').stampBusinessDate({ models }, sub.branchId);
   const payment = await Payment.create({
     userId: sub.userId,
@@ -910,6 +1030,8 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     status: PaymentStatus.PENDING,
     notes: `Upgrade to ${newPlan.name}`,
     businessDate,
+    pendingChangeJson: approvedByHost ? null : JSON.stringify({ type: 'UPGRADE', planId: newPlan.id }),
+    expiresAt: approvedByHost ? null : require('./payment.service').memberPaymentExpiresAt(),
   });
 
   // Create unified Traveler notification
@@ -948,6 +1070,9 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     amountToPay,
     invoiceId: invoice.id,
     paymentId: payment.id,
+    // false: the old plan stays until this payment is verified (FLOW-08).
+    applied: approvedByHost,
+    newPlanId: newPlan.id,
   };
 };
 
@@ -956,5 +1081,5 @@ module.exports = {
   listForStaff, getForStaff, previewSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
-  getSubscriptionQrToken,
+  getSubscriptionQrToken, applyUpgrade, applyRenewal, parsePendingChange: _parsePendingChange, priceFirstPayment,
 };

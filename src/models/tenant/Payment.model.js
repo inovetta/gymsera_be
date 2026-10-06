@@ -135,6 +135,19 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: true,
       },
+      // FLOW-08: what this payment unlocks once it is verified, as JSON —
+      // {"type":"UPGRADE","planId":…}. Nothing reads it before verifyPayment,
+      // so the member keeps the old plan until the money is confirmed.
+      pendingChangeJson: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      // PAY-08: deadline for a member-started pending payment. Staff-recorded
+      // payments (cash in the collect box) have none and never expire.
+      expiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
     },
     {
       tableName: 'payments',
@@ -143,6 +156,7 @@ module.exports = (sequelize) => {
       indexes: [
         { fields: ['user_id'] },
         { fields: ['status', 'paid_at'] },
+        { fields: ['status', 'expires_at'] },
         { fields: ['payment_for', 'reference_entity_id'] },
         { fields: ['branch_id'] },
         { fields: ['created_by'] },
