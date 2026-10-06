@@ -83,6 +83,12 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
+      // Shift during which cash/payment was collected (PAY-06)
+      shift: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        defaultValue: 'DEFAULT',
+      },
       // Platform user ID of the tenant who gave final approval (cross-DB reference)
       verifiedBy: {
         type: DataTypes.UUID,

@@ -265,6 +265,7 @@ router.post(
 
 // ── Subscription detail (member self-serve, no tenant context needed) ─────────
 router.get('/subscriptions/:id', subscriptionsController.getMySubscriptionDetail);
+router.get('/subscriptions/:id/qr-token', subscriptionsController.getSubscriptionQrToken);
 
 // ── Attendance logs (cross-tenant, resolved via subscriptionId query param) ───
 router.get('/attendance', meController.getMyAttendance);

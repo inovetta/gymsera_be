@@ -1,0 +1,41 @@
+# PAY-06: Collector Accountability & Cash per Collector at Daily Close
+
+- **Issue ID**: PAY-06
+- **Title**: Cash per collector at daily close, using the existing ledger and closeDay.
+- **Status**: RESOLVED
+- **Root Cause**:
+  - `src/models/tenant/Payment.model.js`: Lacked a `shift` column to record the shift during which cash collections occurred.
+  - `src/models/tenant/LedgerDay.model.js`: Lacked a `closed_collectors_json` column to freeze the cash-per-collector breakdown at daily close.
+  - `src/services/payment.service.js:174,548`: Payment creation and collection did not persist the collector's shift.
+  - `src/services/ledger.service.js:171-209`: `_paymentTotals` aggregated only `total` and `count` for collected payments, without breaking down cash collected (`cashCollected`), cash expected (`cashExpected`), or shift-level breakdowns.
+  - `src/services/ledger.service.js:396-412`: `closeDay` snapshotted only `closedExpectedTotal` and `closedVerifiedTotal`, without capturing the per-collector cash breakdown. Post-close queries therefore could not reconstruct the exact cash per collector accountable at close time if subsequent adjustments occurred.
+- **Pattern Reused**:
+  - Reused `tenant-migration-runner.js` to implement Tenant Migration 016 (`016_add_payment_shift_and_ledger_closed_collectors`) with dry-run and conflict-skip guarantees.
+  - Reused existing `LedgerDay` closure mechanism (`status === 'OPEN'` conditional update for race safety).
+  - Reused `_paymentTotals` collector resolution and money rounding (`toMinorUnits`, `toMajorUnitsNumber`).
+- **Files Modified / Created**:
+  - `src/database/tenant-migration-runner.js`:
+    - Added Tenant Migration 016 adding `shift VARCHAR(20) NULL DEFAULT 'DEFAULT'` to `payments` and `closed_collectors_json TEXT NULL` to `ledger_days`.
+  - `src/models/tenant/Payment.model.js`:
+    - Added `shift` column definition (`STRING(20)`, allowNull: true, defaultValue: `'DEFAULT'`).
+  - `src/models/tenant/LedgerDay.model.js`:
+    - Added `closedCollectorsJson` column definition (`TEXT`, allowNull: true).
+  - `src/services/payment.service.js`:
+    - Persisted `shift` during payment creation (`recordPayment`) and during staff collection (`verifyOrRejectPayment`).
+  - `src/services/ledger.service.js`:
+    - In `_paymentTotals`: queried `shift` and computed `cashCollected`, `cashExpected`, and `shifts` breakdown per collector on `byCollector`.
+    - In `closeDay`: stored the computed `byCollector` breakdown as a JSON string snapshot in `closedCollectorsJson`.
+    - In `getDayLedger`: parsed and returned `closedCollectors` snapshot for closed ledger days.
+    - In `mergeBranchLedgers`: aggregated `cashCollected`, `cashExpected`, and `shifts` across all branches.
+  - `tests/integration/tenant-migrations-016.test.js`:
+    - Verified `--dry-run` writes 0 rows/columns, conflict-skip skips cleanly when column exists with conflicting type, and migration applies idempotently.
+  - `tests/regression/pay-06-collector-accountability.test.js`:
+    - Verified cash payment records `staffCollectedBy` and `shift`.
+    - Verified ledger breakdown shows cash per collector vs expected (`cashCollected`, `cashExpected`, `shifts`).
+    - Verified `closeDay` snapshots cash per collector into `closedCollectors` and post-close ledger queries return the frozen snapshot.
+- **Client Impact**:
+  - Additive non-breaking changes: `byCollector` on ledger endpoints now includes `cashCollected`, `cashExpected`, and `shifts` fields. Existing frontends (CMS/mobile/web) continue to read `total`, `count`, and `collectorName` without breakage.
+  - Closed days now include `closedCollectors` providing an immutable audit snapshot of cash accountability.
+- **Migration & Deploy Order**:
+  - Migration 016 must be applied to tenant databases (`node src/scripts/run-tenant-migrations.js`).
+  - Safe for backward compatibility: if code runs before migration is applied, defaults gracefully handle missing columns.

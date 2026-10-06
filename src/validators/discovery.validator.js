@@ -66,6 +66,9 @@ const discoveryValidators = {
 
   submitReview: [
     param('id').isUUID(4).withMessage('Invalid gym listing ID'),
+    body('branchId')
+      .optional({ checkFalsy: true })
+      .isUUID(4).withMessage('Invalid branch ID'),
     body('rating')
       .notEmpty().withMessage('rating is required')
       .isInt({ min: 1, max: 5 }).withMessage('rating must be 1–5'),
@@ -74,6 +77,10 @@ const discoveryValidators = {
       .isString()
       .isLength({ max: 150 }),
     body('body')
+      .optional({ checkFalsy: true })
+      .isString()
+      .isLength({ max: 2000 }),
+    body('text')
       .optional({ checkFalsy: true })
       .isString()
       .isLength({ max: 2000 }),

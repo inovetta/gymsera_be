@@ -146,6 +146,7 @@ router.post('/:id/change-plan', validate(validators.changePlan), controller.chan
 
 // ── Member: subscription detail with invoice + payment ────────────────────────
 router.get('/:id/detail', controller.getMySubscriptionDetail);
+router.get('/:id/qr-token', controller.getSubscriptionQrToken);
 
 // ── Member: upload payment proof for a pending subscription ───────────────────
 router.post('/:id/proof', upload.image('image'), upload.handleMulterError, controller.uploadSubscriptionProof);

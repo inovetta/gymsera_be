@@ -914,15 +914,27 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
 
   const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
   const { MemberSubscription } = tenantDb.models;
+  const { SubscriptionStatus } = require('../constants/subscription-status');
 
-  // Verify that the user has a subscription to this specific branch
+  // Verify that the user has an active or past subscription to this specific branch
   const subscription = await MemberSubscription.findOne({
-    where: { userId, branchId },
+    where: {
+      userId,
+      branchId,
+      status: {
+        [Op.in]: [
+          SubscriptionStatus.ACTIVE,
+          SubscriptionStatus.EXPIRED,
+          SubscriptionStatus.FROZEN,
+        ],
+      },
+    },
   });
   if (!subscription) {
-    throw createError('You must be a member of this specific branch to leave a review', 403);
+    throw createError('You must have an active or past membership at this gym to leave a review', 403);
   }
 
+  let review = null;
   // One review per user per branch
   const existing = await GymReview.findOne({ where: { userId, branchId } });
   if (existing) {
@@ -930,7 +942,7 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
       rating,
       title: title || null,
       body: body || null,
-      status: 'APPROVED',
+      status: 'PENDING',
       adminNote: null,
     });
     await _recalculateAverageRating(gymListingId, branchId);
@@ -943,9 +955,8 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
       rating,
       title: title || null,
       body: body || null,
-      status: 'APPROVED',
+      status: 'PENDING',
     });
-    await _recalculateAverageRating(gymListingId, branchId);
   }
 
   const finalReview = existing || review;

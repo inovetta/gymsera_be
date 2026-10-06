@@ -34,21 +34,58 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
   const { assertBranchCheckinAllowed } = require('./branch-billing-lock.service');
   assertBranchCheckinAllowed(branch);
 
-  let subscription = await MemberSubscription.findOne({ where: { qrCode } });
-  if (!subscription) {
-    // Try finding by subscription ID (in case the QR encoded the sub id)
-    subscription = await MemberSubscription.findByPk(qrCode);
-  }
-  if (!subscription) {
-    // Try finding active subscription by userId (in case QR encoded user id)
-    subscription = await MemberSubscription.findOne({
-      where: { userId: qrCode, status: SubscriptionStatus.ACTIVE },
-      order: [['subscribedAt', 'DESC']]
-    });
-  }
+  // Grace mode for legacy static QR / raw ID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isLegacyFormat = !qrCode || typeof qrCode !== 'string' || uuidRegex.test(qrCode) || qrCode.startsWith('GE-');
 
-  if (!subscription) {
-    throw createError('Invalid QR code. No active subscription found for this code.', 404);
+  let subscription;
+
+  if (isLegacyFormat) {
+    if (!qrCode || typeof qrCode !== 'string') {
+      throw createError('Invalid QR code. QR code is required.', 400);
+    }
+
+    let legacyGraceActive = false;
+    if (process.env.ATTENDANCE_LEGACY_QR_UNTIL) {
+      const legacyUntil = new Date(process.env.ATTENDANCE_LEGACY_QR_UNTIL);
+      if (!isNaN(legacyUntil.getTime()) && Date.now() <= legacyUntil.getTime()) {
+        legacyGraceActive = true;
+      }
+    }
+
+    if (!legacyGraceActive) {
+      throw createError('Invalid QR code. Raw subscription or user IDs are not permitted for check-in. Please use the rotating QR code in the app.', 400);
+    }
+
+    // Grace window is active: resolve subscription using legacy resolution logic
+    subscription = await MemberSubscription.findOne({ where: { qrCode } });
+    if (!subscription) {
+      subscription = await MemberSubscription.findByPk(qrCode);
+    }
+    if (!subscription) {
+      subscription = await MemberSubscription.findOne({
+        where: { userId: qrCode, status: SubscriptionStatus.ACTIVE },
+        order: [['subscribedAt', 'DESC']]
+      });
+    }
+
+    if (!subscription) {
+      throw createError('Invalid QR code. No active subscription found for this code.', 404);
+    }
+
+    // Log each legacy scan (branch, subscription id, no personal data)
+    console.log(`[Attendance] Legacy QR scan accepted under grace mode: branchId=${branchId}, subscriptionId=${subscription.id}`);
+  } else {
+    const { verifyAttendanceQrToken } = require('../utils/qr.utils');
+    const decoded = await verifyAttendanceQrToken(qrCode);
+
+    subscription = await MemberSubscription.findOne({
+      where: { id: decoded.subscriptionId, userId: decoded.userId }
+    });
+
+    if (!subscription) {
+      throw createError('Invalid QR code. No active subscription found for this code.', 404);
+    }
   }
 
   const { User } = require('../models/platform');
@@ -60,13 +97,17 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
     ? await MembershipPlan.findByPk(subscription.membershipPlanId, { attributes: ['id', 'name', 'durationDays'] }).catch(() => null)
     : null;
 
-  // Check for duplicate scan within the last 5 minutes
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  // Configurable duplicate check-in window (branch setting, fallback env DUPLICATE_CHECKIN_WINDOW_MINUTES, default 5 mins)
+  const windowMinutes = branch.duplicateCheckinWindowMinutes !== undefined && branch.duplicateCheckinWindowMinutes !== null
+    ? branch.duplicateCheckinWindowMinutes
+    : (parseInt(process.env.DUPLICATE_CHECKIN_WINDOW_MINUTES, 10) || 5);
+  const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);
+
   const recentLog = await AttendanceLog.findOne({
     where: {
       userId: subscription.userId,
       branchId,
-      checkInAt: { [Op.gte]: fiveMinutesAgo },
+      checkInAt: { [Op.gte]: windowStart },
     },
     order: [['checkInAt', 'DESC']],
   });

@@ -141,7 +141,14 @@ const listReviews = async (req, res, next) => {
 // ── POST /discovery/gyms/:id/reviews ─────────────────────────────────────────
 const submitReview = async (req, res, next) => {
   try {
-    const review = await discoveryService.submitReview(req.user.sub, req.params.id, req.body);
+    const { branchId, rating, title, body, text } = req.body || {};
+    const targetBranchId = branchId || req.params.id;
+    const review = await discoveryService.submitReview(
+      req.user.sub || req.user.id,
+      req.params.id,
+      targetBranchId,
+      { rating, title, body: body || text }
+    );
     return sendSuccess(res, { review }, 'Review submitted and pending approval', 201);
   } catch (err) {
     next(err);
@@ -214,18 +221,18 @@ const listBranchReviews = async (req, res, next) => {
 
 const submitBranchReview = async (req, res, next) => {
   try {
-    const { rating, title, text } = req.body;
+    const { rating, title, text, body } = req.body || {};
     const { branchId } = req.params;
 
     const listing = await discoveryService.getGymListingByIdentifier(branchId);
     if (!listing) return res.status(404).json({ success: false, message: 'Gym listing not found' });
 
-    const review = await discoveryService.submitReview(req.user.sub, listing.id, branchId, {
+    const review = await discoveryService.submitReview(req.user.sub || req.user.id, listing.id, branchId, {
       rating,
       title,
-      body: text,
+      body: body || text,
     });
-    return sendSuccess(res, { review }, 'Review submitted and approved', 201);
+    return sendSuccess(res, { review }, 'Review submitted and pending approval', 201);
   } catch (err) {
     next(err);
   }
