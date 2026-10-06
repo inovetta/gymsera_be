@@ -602,6 +602,42 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // FLOW-08: an upgrade waits for its payment. The payment row records the
+    // change it unlocks; verifyPayment applies it. Additive, nullable.
+    version: 17,
+    name: '017_add_payment_pending_change',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [paymentsExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payments\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (!paymentsExists) return null;
+
+      const [col] = await sequelize.query(
+        'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payments\' AND COLUMN_NAME = \'pending_change_json\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (col) {
+        if (['text', 'mediumtext', 'longtext'].includes(String(col.DATA_TYPE).toLowerCase())) return null;
+        console.warn(
+          `[TenantMigration] SKIPPING 017: payments.pending_change_json already exists as ${col.DATA_TYPE}. Resolve it by hand, then re-run.`
+        );
+        return {
+          skipped: true,
+          reason: 'column_exists_with_other_type',
+          table: 'payments',
+          column: 'pending_change_json',
+          type: col.DATA_TYPE,
+        };
+      }
+
+      await sequelize.query('ALTER TABLE `payments` ADD COLUMN `pending_change_json` TEXT NULL');
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

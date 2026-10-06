@@ -424,6 +424,13 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
 
     if (payment.paymentFor === 'MEMBERSHIP') {
       await _activateSubscription(tenantDb, payment.referenceEntityId);
+
+      // FLOW-08: the change this payment paid for applies only now.
+      const subscriptionService = require('./subscription.service');
+      const change = subscriptionService.parsePendingChange(payment);
+      if (change && change.type === 'UPGRADE') {
+        await subscriptionService.applyUpgrade(tenantDb.models, payment.referenceEntityId, change.planId);
+      }
     }
   }
 

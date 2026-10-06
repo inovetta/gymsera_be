@@ -44,9 +44,11 @@ const meValidators = {
       .notEmpty().withMessage('Payment method is required')
       .isIn(['CASH', 'BANK_TRANSFER', 'ONLINE', 'POS'])
       .withMessage('Invalid payment method'),
+    // Ignored by the server (FLOW-08: the server prices the payment). Still
+    // accepted so released apps that send it keep working.
     body('amount')
-      .isFloat({ min: 0.01 }).withMessage('Amount must be a positive number')
-      .toFloat(),
+      .optional()
+      .isFloat({ min: 0.01 }).withMessage('Amount must be a positive number'),
     body('notes').optional().trim().isLength({ max: 500 }),
   ],
 

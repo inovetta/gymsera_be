@@ -219,7 +219,7 @@ const upgradeSubscription = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const result = await subscriptionService.upgradeSubscription(userId, req.params.id, req.body.newPlanId);
-    return sendSuccess(res, result, 'Subscription upgraded');
+    return sendSuccess(res, result, 'Upgrade requested — the new plan starts once the payment is verified');
   } catch (err) {
     next(err);
   }

@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { User, UserGymMembership, Tenant, SavedGym, GymListing, City, Area } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError } = require('../utils/response.utils');
+const { toMinorUnits, fromMinorUnits } = require('../utils/money.utils');
 
 const _resolveBySubscriptionId = async (subscriptionId, userId) => {
   let index = await UserGymMembership.findOne({ where: { subscriptionId, userId } });
@@ -292,21 +293,37 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
       referenceEntityId: resolvedSubscriptionId,
       userId,
       status: 'PENDING'
-    }
+    },
+    order: [['createdAt', 'DESC']],
   });
+
+  // FLOW-08: the server priced this payment when it was created. The member
+  // only says how they paid; the `amount` a client sends is never stored.
+  if (amount !== undefined && amount !== null && payment &&
+      toMinorUnits(amount) !== toMinorUnits(payment.amount)) {
+    console.warn(`[payments] payment request ${payment.id}: client amount ignored, server amount kept`);
+  }
 
   if (payment) {
     // Update the existing pending payment instead of creating a duplicate
     const businessDate = payment.businessDate || (await require('./ledger.service').stampBusinessDate({ models }, subscription.branchId));
     await payment.update({
       method,
-      amount,
       branchId: subscription.branchId,
       notes: notes || payment.notes,
       businessDate,
     });
   } else {
-    // Fallback: create a new one if none exists
+    // Only a membership still waiting for its first payment (say the last
+    // one was rejected) gets a new one, priced here like POST /subscriptions.
+    if (subscription.status !== 'PENDING') {
+      throw createError('There is no payment due for this membership', 409);
+    }
+    const plan = await models.MembershipPlan.findByPk(subscription.membershipPlanId);
+    if (!plan) throw createError('The membership plan is no longer available', 409);
+    const { priceFirstPayment } = require('./subscription.service');
+    const { totalAmountMinor } = await priceFirstPayment(models, plan, userId, subscription.branchId);
+
     const businessDate = await require('./ledger.service').stampBusinessDate({ models }, subscription.branchId);
     payment = await Payment.create({
       userId,
@@ -314,7 +331,7 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
       referenceEntityId: resolvedSubscriptionId,
       branchId: subscription.branchId,
       method,
-      amount,
+      amount: fromMinorUnits(totalAmountMinor),
       currency: 'PKR',
       status: 'PENDING',
       notes: notes || null,

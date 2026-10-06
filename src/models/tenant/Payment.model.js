@@ -135,6 +135,13 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: true,
       },
+      // FLOW-08: what this payment unlocks once it is verified, as JSON —
+      // {"type":"UPGRADE","planId":…}. Nothing reads it before verifyPayment,
+      // so the member keeps the old plan until the money is confirmed.
+      pendingChangeJson: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
     },
     {
       tableName: 'payments',

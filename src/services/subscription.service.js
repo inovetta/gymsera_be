@@ -135,6 +135,27 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
   return { models, index, resolvedSubscriptionId };
 };
 
+/**
+ * Server price of a membership's first payment, in integer minor units:
+ * plan price + security fee + joining fee (waived when the member already had
+ * a non-pending membership at this branch). The client never sends a price.
+ */
+const priceFirstPayment = async (models, plan, userId, branchId) => {
+  const hasPreviousSubscription = await models.MemberSubscription.findOne({
+    where: {
+      userId,
+      branchId,
+      status: {
+        [Op.not]: SubscriptionStatus.PENDING,
+      },
+    },
+  });
+  const subtotalMinor = toMinorUnits(plan.price);
+  const joiningMinor = hasPreviousSubscription ? 0 : toMinorUnits(plan.joiningFee || 0);
+  const securityMinor = toMinorUnits(plan.securityFee || 0);
+  return { subtotalMinor, totalAmountMinor: subtotalMinor + joiningMinor + securityMinor };
+};
+
 // ── POST /subscriptions ───────────────────────────────────────────────────────
 const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, sourceChannel }) => {
   const { models, tenantId, gymListing } = await _resolveTenant(gymListingId);
@@ -202,22 +223,8 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     status: SubscriptionStatus.PENDING,
   });
 
-  // Check if they have any past approved/completed subscriptions at this branch
-  const hasPreviousSubscription = await MemberSubscription.findOne({
-    where: {
-      userId,
-      branchId: branchIdToUse,
-      status: {
-        [Op.not]: SubscriptionStatus.PENDING,
-      },
-    },
-  });
-
   // Create pending payment + issued invoice
-  const subtotalMinor = toMinorUnits(plan.price);
-  const joiningMinor = hasPreviousSubscription ? 0 : toMinorUnits(plan.joiningFee || 0);
-  const securityMinor = toMinorUnits(plan.securityFee || 0);
-  const totalAmountMinor = subtotalMinor + joiningMinor + securityMinor;
+  const { subtotalMinor, totalAmountMinor } = await priceFirstPayment(models, plan, userId, branchIdToUse);
   const totalAmount = fromMinorUnits(totalAmountMinor);
 
   const ledgerService = require('./ledger.service');
@@ -854,8 +861,46 @@ const getUpgradeOptions = async (userId, subscriptionId) => {
   };
 };
 
+// Payments a member has started for this subscription and nobody has settled yet.
+const LIVE_PAYMENT_STATUSES = [PaymentStatus.PENDING, PaymentStatus.STAFF_COLLECTED];
+
+const _parsePendingChange = (payment) => {
+  if (!payment || !payment.pendingChangeJson) return null;
+  try {
+    return JSON.parse(payment.pendingChangeJson);
+  } catch (_) {
+    return null;
+  }
+};
+
+/**
+ * Switch a subscription to the plan an upgrade payment paid for (FLOW-08).
+ * Called only from verifyPayment, after the payment is COMPLETED, and from the
+ * host-approved staff upgrade. A subscription that has ended since keeps its
+ * plan; the money stays recorded on the payment.
+ */
+const applyUpgrade = async (models, subscriptionId, planId, transaction = null) => {
+  const { MemberSubscription, MembershipPlan } = models;
+  const opts = transaction ? { transaction } : {};
+  const sub = await MemberSubscription.findByPk(subscriptionId, opts);
+  if (!sub) return null;
+  if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status)) return null;
+  const plan = await MembershipPlan.findByPk(planId, opts);
+  if (!plan) return null;
+  if (sub.membershipPlanId !== plan.id) {
+    await sub.update({ membershipPlanId: plan.id }, opts);
+  }
+  await UserGymMembership.update({ planName: plan.name }, { where: { subscriptionId } }).catch((err) => {
+    console.warn('[Subscription] Failed to sync planName after upgrade:', err.message);
+  });
+  return sub;
+};
+
 // ── POST /member/subscriptions/:id/upgrade ───────────────────────────────────────
-const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
+// Member path: the new plan waits for the payment (FLOW-08); until then the
+// member keeps the old plan exactly as it was. `approvedByHost` is the host
+// approving a staff upgrade request, which applies at once as before.
+const upgradeSubscription = async (userId, subscriptionId, newPlanId, { approvedByHost = false } = {}) => {
   const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { MemberSubscription, MembershipPlan, Payment, Invoice } = models;
 
@@ -864,6 +909,16 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     include: [{ model: MembershipPlan, as: 'plan' }],
   });
   if (!sub) throw createError('Subscription not found', 404);
+  if (![SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN].includes(sub.status)) {
+    throw createError('Only an active membership can be upgraded', 409);
+  }
+
+  const openPayment = await Payment.findOne({
+    where: { referenceEntityId: sub.id, status: LIVE_PAYMENT_STATUSES },
+  });
+  if (openPayment) {
+    throw createError('This membership already has a payment awaiting verification', 409);
+  }
 
   if (sub.branchId && models.Branch) {
     const branch = await models.Branch.findByPk(sub.branchId);
@@ -887,17 +942,10 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
 
   const amountToPay = subtractMoney(newPlan.price, currentPlan.price);
 
-  // 1. Update subscription IMMEDIATELY
-  await sub.update({
-    membershipPlanId: newPlanId,
-  });
+  if (approvedByHost) {
+    await applyUpgrade(models, sub.id, newPlan.id);
+  }
 
-  // Update platform index table if needed
-  await index.update({
-    planName: newPlan.name,
-  });
-
-  // 2. Create Payment (status PENDING)
   const businessDate = await require('./ledger.service').stampBusinessDate({ models }, sub.branchId);
   const payment = await Payment.create({
     userId: sub.userId,
@@ -910,6 +958,7 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     status: PaymentStatus.PENDING,
     notes: `Upgrade to ${newPlan.name}`,
     businessDate,
+    pendingChangeJson: approvedByHost ? null : JSON.stringify({ type: 'UPGRADE', planId: newPlan.id }),
   });
 
   // Create unified Traveler notification
@@ -948,6 +997,9 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId) => {
     amountToPay,
     invoiceId: invoice.id,
     paymentId: payment.id,
+    // false: the old plan stays until this payment is verified (FLOW-08).
+    applied: approvedByHost,
+    newPlanId: newPlan.id,
   };
 };
 
@@ -956,5 +1008,5 @@ module.exports = {
   listForStaff, getForStaff, previewSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
-  getSubscriptionQrToken,
+  getSubscriptionQrToken, applyUpgrade, parsePendingChange: _parsePendingChange, priceFirstPayment,
 };

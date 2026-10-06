@@ -292,7 +292,8 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
       actionResult = await subscriptionService.upgradeSubscription(
         payload.memberUserId,
         payload.subscriptionId,
-        payload.newPlanId
+        payload.newPlanId,
+        { approvedByHost: true }
       );
     } else if (request.actionType === 'submit_expense') {
       const { Expense } = tenantDb.models;
