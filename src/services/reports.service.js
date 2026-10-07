@@ -8,11 +8,13 @@ const { PaymentStatus } = require('../constants/payment-status');
  * Returns key metrics for a gym host's dashboard from the tenant DB.
  * All counts are fast aggregations; no heavy joins.
  */
-const hostDashboard = async (tenantDb) => {
+const hostDashboard = async (tenantDb, { branchIds = null } = {}) => {
   const { MemberSubscription, AttendanceLog, Payment, MembershipPlan, Branch } = tenantDb.models;
   const today = new Date().toISOString().split('T')[0];
 
-  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  // `branchIds` (NEW-44): add up only these branches; null means every active branch.
+  const activeBranches = (await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] }))
+    .filter((b) => !branchIds || branchIds.includes(b.id));
   const activeBranchIds = activeBranches.map((b) => b.id);
   const branchFilter = { branchId: { [Op.in]: activeBranchIds } };
 
@@ -177,8 +179,10 @@ const platformSummary = async () => {
  * Enhanced dashboard — accepts year/month/packageId/paymentMethod/paymentStatus
  * query filters for drill-down reporting.
  */
-const hostDashboardFiltered = async (tenantDb, { year, month, packageId, paymentMethod, paymentStatus }) => {
+const hostDashboardFiltered = async (tenantDb, { year, month, packageId, paymentMethod, paymentStatus, branchIds = null }) => {
   const { MemberSubscription, AttendanceLog, Payment, MembershipPlan } = tenantDb.models;
+  // NEW-44: null = every branch; otherwise only these.
+  const scope = branchIds ? { branchId: { [Op.in]: branchIds } } : {};
 
   const now = new Date();
   const y = parseInt(year) || now.getFullYear();
@@ -187,10 +191,10 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
   const periodStart = new Date(y, m, 1);
   const periodEnd = new Date(y, m + 1, 0, 23, 59, 59); // last day of month
 
-  const subWhere = { startDate: { [Op.between]: [periodStart.toISOString().split('T')[0], periodEnd.toISOString().split('T')[0]] } };
+  const subWhere = { ...scope, startDate: { [Op.between]: [periodStart.toISOString().split('T')[0], periodEnd.toISOString().split('T')[0]] } };
   if (packageId) subWhere.membershipPlanId = packageId;
 
-  const payWhere = { paidAt: { [Op.between]: [periodStart, periodEnd] } };
+  const payWhere = { ...scope, paidAt: { [Op.between]: [periodStart, periodEnd] } };
   if (paymentMethod) payWhere.method = paymentMethod;
   if (paymentStatus) payWhere.status = paymentStatus;
   else payWhere.status = PaymentStatus.COMPLETED;
@@ -198,9 +202,10 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
   const [newSubscriptions, periodRevenue, activeMembers, checkIns] = await Promise.all([
     MemberSubscription.count({ where: subWhere }),
     Payment.sum('amount', { where: payWhere }),
-    MemberSubscription.count({ where: { status: SubscriptionStatus.ACTIVE } }),
+    MemberSubscription.count({ where: { ...scope, status: SubscriptionStatus.ACTIVE } }),
     AttendanceLog.count({
       where: {
+        ...scope,
         checkInAt: { [Op.between]: [periodStart, periodEnd] },
         attendanceType: 'CHECK_IN',
       },
@@ -274,7 +279,7 @@ const monthlyBreakdown = async (tenantDb, { year, month }) => {
 };
 
 // ── Yearly revenue by month ────────────────────────────────────────────────────
-const yearlyRevenue = async (tenantDb, year) => {
+const yearlyRevenue = async (tenantDb, year, { branchIds = null } = {}) => {
   const seq = tenantDb.sequelize;
   const y = parseInt(year) || new Date().getFullYear();
 
@@ -284,6 +289,8 @@ const yearlyRevenue = async (tenantDb, year) => {
       [seq.fn('SUM', seq.col('amount')), 'revenue'],
     ],
     where: {
+      // NEW-44: null = every branch; otherwise only the branches the caller holds revenue at.
+      ...(branchIds ? { branchId: { [Op.in]: branchIds } } : {}),
       status: PaymentStatus.COMPLETED,
       paidAt: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31, 23, 59, 59)] },
     },

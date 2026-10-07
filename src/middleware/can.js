@@ -24,6 +24,7 @@
 const accessService = require('../services/access.service');
 const { createError } = require('../utils/response.utils');
 const { getPermission } = require('../constants/permissions');
+const { branchIdsWithPermission } = require('../utils/branchAccess.utils');
 
 /**
  * Read a dotted path off the request: 'params.branchId', 'body.branch_id'.
@@ -134,6 +135,33 @@ can.any = (permissionKeys, opts = {}) => async (req, _res, next) => {
     req.grants = grants;
     req.branchId = branchId;
     req.tenantId = tenantId;
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
+ * Pass if the caller holds `permissionKey` at one or more branches (or
+ * organization-wide). For routes that add up several branches — reports — where no
+ * single branch is in the URL (NEW-44).
+ *
+ * Attaches `req.permittedBranchIds`: the branches the key is held at, or `null` for
+ * "every branch" (owner, host). The handler must scope what it returns to that list.
+ */
+can.atAnyBranch = (permissionKey) => async (req, _res, next) => {
+  try {
+    if (!req.user) return next(createError('Unauthorized', 401));
+    if (!req.tenantDb) return next(createError('This route requires a tenant context', 400));
+
+    const ids = await branchIdsWithPermission(req, permissionKey);
+    if (ids !== null && ids.length === 0) {
+      const perm = getPermission(permissionKey);
+      const label = perm ? perm.label.toLowerCase() : permissionKey;
+      return next(createError(`You do not have permission to ${label} here`, 403));
+    }
+
+    req.permittedBranchIds = ids;
     return next();
   } catch (err) {
     return next(err);
