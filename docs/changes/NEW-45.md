@@ -45,3 +45,46 @@
 - **Fix**: both checks use `branch.settings` (Owner, Org Admin, Manager = DIRECT; Branch Admin and below = none), at the branch in the URL. A denied caller still gets 404 ("Branch not found"), not 403, because the SEC-01 IDOR matrix requires ids not to be probeable.
 - **Test**: `tests/regression/new-45-branch-detail-permissions.test.js` (Manager of A reads and edits A, gets 404 for B; Front Desk gets 404 even at their own branch; Org Admin reads any branch; owner unchanged).
 - **Clients**: CMS `branches/[id]/page.tsx:80` (`getBranch`) and `branches/page.tsx:167` (`updateBranch`); mobile `gyms_repository.dart:689`, `:709`. Owners are unchanged. Org Admins and Managers gain access they should have had; nothing that worked stops working.
+
+# CMS items (gymsera_cms, branch `fix/new-45-cms-dashboard-payments`)
+
+## (f) Dashboard: revenue only with `dashboard.revenue.view`
+
+- **Root cause**: `dashboard/page.tsx` requested `GET /reports/dashboard` and `GET /reports/yearly` and rendered the Revenue Overview chart and the Monthly Revenue card for everyone. Since NEW-44 the backend refuses those two routes without the key, so a Front Desk user would have seen `0` and `—`.
+- **Fix** (commit `fc7d53a`): the chart, the card and their two requests exist only when the context says the user holds `dashboard.revenue.view` at one branch or more (the server adds up only those branches). Without it, Active Members, Active Subscriptions and Today's Attendance are summed from `GET /host/branches/:branchId/dashboard`, **an existing endpoint** (the one the mobile team workspace calls, `reports_repository.dart:25`, `workspace_repository.dart`), asked for only the branches where `dashboard.view` is held; its revenue fields are never read. Recent Members is requested only with `members.view`. No new endpoint.
+- **Which route needs only `dashboard.view`**: `GET /host/branches/:branchId/dashboard` (`host.routes.js:98`). Its **guard is still the role check** (`authorize('GYM_HOST','BRANCH_MANAGER')`), and the handler blanks revenue for callers without the key (`host.controller.js:1119-1130`) but does **not** check that the caller has any grant at `:branchId`. So `dashboard.view` is enforced by the CMS only. Closing that is a backend change (item 3 of NEW-44's list): `can('dashboard.view')` on the route.
+- **Test**: `tests/components/dashboard-permissions.test.tsx`.
+
+## (g) Payments page, owner-only buttons, header role
+
+- **Root cause**: `gym/payments/page.tsx:69-76` listed payments with no branch, and the server answers 400 to anyone but the host (`payments.controller.js:77-83`); the buttons keyed off `isGymHost` (`:64`, `:200`, `:250`, `:391`), as did the branch detail page (`gym/branches/[id]/page.tsx:73,255`); `sidebar.tsx:247` and `header.tsx:204` printed `user.role` (MEMBER for every team member).
+- **Fix** (commit `1d72227`):
+  - The list sends a branch: the owner may list all branches and may pick one; a team member lists one branch where `payments.view` is held, with a picker when there are several. No request is made when none is held.
+  - Collect, Reject and Record Payment need `payments.record`; Final approval needs `payments.verify`; the "automatically approved" note shows only with `payments.record.direct`. These are the keys the server asks for (`payments.controller.js` `ACTION_PERMISSION`). The branch detail page applies the same keys at that branch.
+  - The sidebar and the top-bar menu show the team role (`Front Desk`), `Owner` for the owner, and the account role only when the user has no organization (platform admin).
+- **Remaining `isGymHost`**: the payments page's "may list every branch" check (the server accepts the host role unscoped) and `useGymAccess` (owner billing). Both are the host-account rule the backend still uses.
+- **Tests**: `tests/components/payments-permissions.test.tsx`, `tests/components/branch-detail-and-role-label.test.tsx`.
+
+# Client impact
+
+| Route / behaviour | Mobile (`gyms_era` master) | CMS | Effect |
+|---|---|---|---|
+| `POST /gyms/members/enroll` (a) | `gyms_repository.dart:875-896`, `host_members_tab.dart:544` (owner screen) | `members/page.tsx:79` | Owner: same 201 body. A team member at "needs approval" now gets 202 and `data.approvalRequestId`. **Neither client handles 202**: both would say "enrolled". Follow-up. |
+| `GET /gyms/profile` (b) | `gyms_repository.dart:387`, `edit_organization_screen.dart:83` | `gym.ts:67`, `gym/profile/page.tsx:47` | Owner: unchanged. Others: `paymentDetailsJson` absent. Neither client reads it from this route. |
+| `GET /gyms/members/search` (c) | `gyms_repository.dart:866`, `host_members_tab.dart:455` | `members/page.tsx:117` | Owner unchanged. Trainer/Support: 403 (they have no enrol dialog). |
+| Profile writes and image routes (d) | `gyms_repository.dart:392-416,647-690` (owner) | `gym/profile/page.tsx`, `branches/[id]/page.tsx:117,127` | Owner and Org Admin unchanged. Manager and below: 403 on profile writes; Manager keeps own branch photos. |
+| `GET`/`PATCH /gyms/branches/:id` (e) | `gyms_repository.dart:689,709` (owner) | `branches/[id]/page.tsx:80`, `branches/page.tsx:167` | Owner unchanged. Org Admin and Manager now work (they were 404). |
+| Dashboard (f) | not used | `dashboard/page.tsx` | Revenue users unchanged; others get counts from the per-branch route and no revenue. |
+| Payments, header (g) | not used | `gym/payments/page.tsx`, `sidebar.tsx`, `header.tsx` | Front Desk now sees their branch's payments instead of an empty list. |
+
+# Deploy order
+
+1. **Backend (a)–(e)**. Compatible for owners and hosts. Needs NEW-44 already deployed (it is merged to `main`).
+2. **CMS (f), (g)**. Works with either backend version for owners; for team members it needs NEW-44 (the dashboard no longer asks the refused routes). Can go before or after step 1.
+3. **Follow-ups, not done here**: (1) show "submitted for approval" when enrolment answers 202 (CMS has `readApprovalOutcome` and `SubmittedForApprovalNotice` from Prompt 3A; mobile needs the same); (2) `can('dashboard.view')` on `GET /host/branches/:id/dashboard`; (3) the remaining routes in NEW-44 item 3.
+4. No mobile release is needed for owners.
+
+# Other findings
+
+- `/approvals` routes check grants **organization-wide** (`approvals.routes.js`: `can('approvals.view' | 'approvals.decide', { orgWide: true })`), so a branch-scoped Branch Manager, who holds `approvals.decide` at their branch, cannot decide a request through the API even though `approvals.controller.js#decidableBranchIds` was written to scope them to their branches.
+- A Front Desk request enrolled through (a) needs an Org Admin or the owner to approve it for the same reason.
