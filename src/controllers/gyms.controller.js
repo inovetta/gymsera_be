@@ -1,12 +1,22 @@
 const gymService = require('../services/gym.service');
 const { sendSuccess, createError, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
-const { hasBranchAccess, branchIdsWithAnyGrant } = require('../utils/branchAccess.utils');
+const { hasBranchAccess, branchIdsWithAnyGrant, hasAllBranches } = require('../utils/branchAccess.utils');
 
 // ── GET /gyms/profile ─────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
   try {
     const result = await gymService.getProfile(req.tenantDb, req.user.tenantId);
+
+    // NEW-45: bank details are shown only to someone who may manage them
+    // (payouts.bank.manage — the owner), the same rule PATCH applies to changing them.
+    const accessService = require('../services/access.service');
+    const tenantId = req.user.tenantId || req.tenantId;
+    const userId = req.user.id || req.user.sub;
+    const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
+    if (!grants.isOwner && !grants.has('payouts.bank.manage')) {
+      delete result.gym.paymentDetailsJson;
+    }
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -71,7 +81,7 @@ const createBranch = async (req, res, next) => {
 const getBranch = async (req, res, next) => {
   try {
     const result = await gymService.getBranch(req.tenantDb, req.params.branchId);
-    if (!(await hasBranchAccess(req, result.branch.id, 'branches.view'))) {
+    if (!(await hasBranchAccess(req, result.branch.id, 'branch.settings'))) {
       throw createError('Branch not found or has been deleted', 404);
     }
     return sendSuccess(res, result);
@@ -83,7 +93,7 @@ const getBranch = async (req, res, next) => {
 // ── PATCH /gyms/branches/:branchId ───────────────────────────────────────────
 const updateBranch = async (req, res, next) => {
   try {
-    if (!(await hasBranchAccess(req, req.params.branchId, 'branches.manage'))) {
+    if (!(await hasBranchAccess(req, req.params.branchId, 'branch.settings'))) {
       throw createError('Branch not found', 404);
     }
     const result = await gymService.updateBranch(req.tenantDb, req.params.branchId, req.body);
@@ -292,8 +302,46 @@ const searchMember = async (req, res, next) => {
 // ── POST /gyms/members/enroll ─────────────────────────────────────────────────
 const enrollMember = async (req, res, next) => {
   try {
-    const result = await gymService.enrollMember(req.tenantDb, req.user.tenantId, req.body, req.user);
-    return sendSuccess(res, result, 'Member enrolled successfully', 201);
+    // NEW-45: enrolment is the approvable action `members.create`, the same engine as
+    // POST /actions/members.create. DIRECT tier enrols at once (201, same body as
+    // before); REQUEST tier files an approval request (202); no tier is a 403.
+    const { branchId } = req.body;
+    if (!branchId) throw createError('A branch is required to enrol a member', 400);
+
+    const accessService = require('../services/access.service');
+    const approvalService = require('../services/approval.service');
+    const userId = req.user.id || req.user.sub;
+    const tenantId = req.tenantDb.tenantId || req.user.tenantId;
+
+    // A host account was never limited by permissions here; keep that. Everyone else
+    // is resolved at the branch they are enrolling into.
+    const grants = hasAllBranches(req)
+      ? accessService.ownerGrants()
+      : await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+
+    const ctx = {
+      tenantDb: req.tenantDb,
+      tenantId,
+      userId,
+      branchId,
+      grants,
+      roleKey: (grants.roleKeys || [])[0] || null,
+      req,
+    };
+    const idempotencyKey =
+      req.idempotencyKey || req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body.idempotencyKey || null;
+
+    const outcome = await approvalService.perform(ctx, 'members.create', req.body, { idempotencyKey });
+
+    if (outcome.status === 'EXECUTED') {
+      return sendSuccess(res, outcome.result, 'Member enrolled successfully', 201);
+    }
+    return sendSuccess(
+      res,
+      { approvalRequestId: outcome.request.id, status: 'PENDING', summary: outcome.request.summary },
+      'Enrolment request submitted for approval',
+      202
+    );
   } catch (err) {
     next(err);
   }
