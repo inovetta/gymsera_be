@@ -76,9 +76,35 @@ const branchIdsWithPermission = async (req, permissionKey) => {
   return allowed;
 };
 
+/**
+ * The ACTIVE branches at which the caller holds any permission at all — "the
+ * branches I work at" (NEW-44). Same null convention as branchIdsWithPermission:
+ * null means every branch (owner, host, platform admin), not "none".
+ */
+const branchIdsWithAnyGrant = async (req) => {
+  if (hasAllBranches(req)) return null;
+  const userId = req.user?.id || req.user?.sub;
+  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+  if (!userId || !tenantId || !req.tenantDb) return [];
+
+  const { Branch } = req.tenantDb.models;
+  const branches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const allowed = [];
+  for (const { id } of branches) {
+    try {
+      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, id);
+      if (grants.keys().length > 0) allowed.push(id);
+    } catch (err) {
+      console.warn('[branchAccess] permission resolution failed:', err.message);
+    }
+  }
+  return allowed;
+};
+
 module.exports = {
   hasBranchAccess,
   hasDirectBranchAccess,
   hasAllBranches,
   branchIdsWithPermission,
+  branchIdsWithAnyGrant,
 };

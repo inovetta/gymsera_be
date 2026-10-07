@@ -19,6 +19,15 @@
 - Cost: one cached grant resolution per active branch per request.
 - Tests: `tests/regression/new-44-report-permissions.test.js` (uses `tests/harness/two-branch-team.js`, real models, team members with account role MEMBER).
 
+## Item 2 — branches list (commit 2)
+
+- `branchIdsWithAnyGrant(req)` (`src/utils/branchAccess.utils.js`): the ACTIVE branches at which the caller's resolved grants are not empty; `null` (every branch) for owner, host and platform admin.
+- `gyms.controller.js#listBranches` passes it to `gymService.listBranches`, which adds `id IN (…)`. The same handler serves `GET /host/branches`, `/host/listings/:id/branches` and `/host/gyms/:id/branches`; those are owner-only, so they are unchanged.
+- An ORG-scoped assignment (Org Admin) resolves at every branch, so it still lists them all.
+- `includeInactive` for a team member still only lists branches they hold a grant at; the restore flow is owner-only.
+- A revoked member is stopped earlier (the role shim gives no role), so they see nothing.
+- Tests: `tests/regression/new-44-branches-list-scope.test.js`.
+
 ## Item 3 — every other route still guarded only by the role check (reported, not fixed)
 
 All of these pass for any team member through the shim. "Should require" is the permission from `src/constants/permissions.js`.
