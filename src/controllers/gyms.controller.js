@@ -7,6 +7,16 @@ const { hasBranchAccess, branchIdsWithAnyGrant, hasAllBranches } = require('../u
 const getProfile = async (req, res, next) => {
   try {
     const result = await gymService.getProfile(req.tenantDb, req.user.tenantId);
+
+    // NEW-45: bank details are shown only to someone who may manage them
+    // (payouts.bank.manage — the owner), the same rule PATCH applies to changing them.
+    const accessService = require('../services/access.service');
+    const tenantId = req.user.tenantId || req.tenantId;
+    const userId = req.user.id || req.user.sub;
+    const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
+    if (!grants.isOwner && !grants.has('payouts.bank.manage')) {
+      delete result.gym.paymentDetailsJson;
+    }
     return sendSuccess(res, result);
   } catch (err) {
     next(err);

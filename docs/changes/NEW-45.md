@@ -13,3 +13,10 @@
 - **Behaviour change to know**: a team member who holds `members.create.direct` now enrols as host-level (payment auto-completed), the same as `POST /actions/members.create`; before, the shim's `BRANCH_MANAGER` role left the payment pending.
 - **Test**: `tests/regression/new-45-enroll-members-create.test.js`.
 - **Clients**: CMS `members/page.tsx:79` and mobile `host_members_tab.dart:544` (`gyms_repository.dart:875-896`) send `{email, fullName?, phone?, planId, branchId, startDate?, notes?, paymentMethod?}`: both already send `branchId` and `planId`, so no request change. Owners get the same 201 body. Neither client handles `202`: the mobile screen would say "Member enrolled successfully" for a Front Desk user, and the CMS toast likewise reads `res.data.userCreated`. Today only owners reach these screens in normal use; a follow-up should show the pending notice (the CMS has `SubmittedForApprovalNotice` / `readApprovalOutcome` from Prompt 3A).
+
+## (b) GET /gyms/profile hides `paymentDetailsJson` unless the caller has `payouts.bank.manage`
+
+- **Root cause**: `gym.service.js:159-168` adds the tenant's `paymentDetailsJson` (bank details) to the profile; `gyms.controller.js#getProfile` returned it to every team member. Only the write side (`updateProfile`, SEC-13) checked `payouts.bank.manage`.
+- **Fix**: `getProfile` resolves the caller's organization-wide grants (same as `updateProfile`) and removes the field unless the caller is the owner or holds `payouts.bank.manage` (owner-only in the catalogue). The rest of the profile is unchanged.
+- **Test**: `tests/regression/new-45-profile-bank-details.test.js` (Front Desk, Branch Manager, Org Admin: field absent; owner: present).
+- **Clients**: the CMS profile page reads `getGymProfile` (`gym.ts:67`, `gym/profile/page.tsx:47`) and does not use `paymentDetailsJson`; the mobile app's host payment details come from other routes (`host_payment_details`, `me_repository.dart`), not from `/gyms/profile`. Owners see no change.
