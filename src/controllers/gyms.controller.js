@@ -1,7 +1,7 @@
 const gymService = require('../services/gym.service');
 const { sendSuccess, createError, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
-const { hasBranchAccess } = require('../utils/branchAccess.utils');
+const { hasBranchAccess, branchIdsWithAnyGrant } = require('../utils/branchAccess.utils');
 
 // ── GET /gyms/profile ─────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -48,7 +48,9 @@ const listBranches = async (req, res, next) => {
   try {
     const organizationId = req.params.gymId || req.params.listingId || req.query.organizationId || req.query.gymId;
     const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1';
-    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId, organizationId, { includeInactive });
+    // NEW-44: a team member sees only the branches they hold a grant at (null = every branch).
+    const branchIds = await branchIdsWithAnyGrant(req);
+    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId, organizationId, { includeInactive, branchIds });
     return sendSuccess(res, result);
   } catch (err) {
     next(err);

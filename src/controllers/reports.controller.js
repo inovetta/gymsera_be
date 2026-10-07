@@ -7,8 +7,8 @@ const hostDashboard = async (req, res, next) => {
     const { year, month, packageId, paymentMethod, paymentStatus } = req.query;
     const hasFilter = year || month || packageId || paymentMethod || paymentStatus;
     const kpis = hasFilter
-      ? await reportsService.hostDashboardFiltered(req.tenantDb, { year, month, packageId, paymentMethod, paymentStatus })
-      : await reportsService.hostDashboard(req.tenantDb);
+      ? await reportsService.hostDashboardFiltered(req.tenantDb, { year, month, packageId, paymentMethod, paymentStatus, branchIds: req.permittedBranchIds })
+      : await reportsService.hostDashboard(req.tenantDb, { branchIds: req.permittedBranchIds });
     return sendSuccess(res, kpis);
   } catch (err) {
     next(err);
@@ -139,7 +139,7 @@ const platformSummary = async (req, res, next) => {
 
 const yearlyRevenue = async (req, res, next) => {
   try {
-    const data = await reportsService.yearlyRevenue(req.tenantDb, req.query.year);
+    const data = await reportsService.yearlyRevenue(req.tenantDb, req.query.year, { branchIds: req.permittedBranchIds });
     return sendSuccess(res, data);
   } catch (err) { next(err); }
 };

@@ -244,7 +244,7 @@ const updateProfile = async (tenantDb, tenantId, data) => {
 
 // ── Branches ──────────────────────────────────────────────────────────────────
 
-const listBranches = async (tenantDb, tenantId, organizationId, { includeInactive = false } = {}) => {
+const listBranches = async (tenantDb, tenantId, organizationId, { includeInactive = false, branchIds = null } = {}) => {
   const { Gym, Branch } = tenantDb.models;
   let gym = await Gym.findOne();
 
@@ -263,6 +263,8 @@ const listBranches = async (tenantDb, tenantId, organizationId, { includeInactiv
   const branches = await Branch.findAll({
     where: {
       ...whereClause,
+      // NEW-44: only these branches (null = no restriction).
+      ...(branchIds ? { id: { [Op.in]: branchIds } } : {}),
       // includeInactive surfaces deleted branches too (status ordering puts
       // ACTIVE ones first) — used only by the "restore a deleted branch" UI,
       // never by any default listing.
