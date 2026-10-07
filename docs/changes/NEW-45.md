@@ -38,3 +38,10 @@
 - **Test**: `tests/regression/new-45-listing-image-permissions.test.js` (Front Desk and Branch Manager refused on every profile write; Org Admin and owner pass; branch images refused at a branch the Manager is not assigned to). Image routes are called without a file, so nothing is stored.
 - **Clients**: mobile `edit_organization_screen.dart` (`gyms_repository.dart:392-416`, `:647-690`) and CMS `gym/profile/page.tsx` / `branches/[id]/page.tsx:117,127` — owner screens; owners and Org Admins are unchanged. A Branch Manager can no longer change the organization's profile or logo (they never should have been able to) but keeps their own branch's photos.
 - **Edge**: the check resolves grants for the account; a host account that is not the tenant's `ownerUserId` and has no assignment has no `listing.manage` here. The tenant owner always does.
+
+## (e) GET and PATCH /gyms/branches/:branchId use `branch.settings` at the branch
+
+- **Root cause**: `gyms.controller.js:72` asked `hasBranchAccess(req, branchId, 'branches.view')` and `:84` asked `'branches.manage'`. Neither key exists in `src/constants/permissions.js` (the catalogue has `branch.create` and `branch.settings`), so for everyone but the owner/host the answer was always "no" and the handler answered 404: an Org Admin and a Branch Manager could not open or edit a branch they run.
+- **Fix**: both checks use `branch.settings` (Owner, Org Admin, Manager = DIRECT; Branch Admin and below = none), at the branch in the URL. A denied caller still gets 404 ("Branch not found"), not 403, because the SEC-01 IDOR matrix requires ids not to be probeable.
+- **Test**: `tests/regression/new-45-branch-detail-permissions.test.js` (Manager of A reads and edits A, gets 404 for B; Front Desk gets 404 even at their own branch; Org Admin reads any branch; owner unchanged).
+- **Clients**: CMS `branches/[id]/page.tsx:80` (`getBranch`) and `branches/page.tsx:167` (`updateBranch`); mobile `gyms_repository.dart:689`, `:709`. Owners are unchanged. Org Admins and Managers gain access they should have had; nothing that worked stops working.

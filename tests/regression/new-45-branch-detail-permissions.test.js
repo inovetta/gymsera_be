@@ -58,9 +58,11 @@ describe('NEW-45 (e): branch detail and edit use branch.settings at the branch',
     expect((await call('patch', `/gyms/branches/${team.branchA.id}`, team.frontDeskOff.token, { tagline: 'nope' })).status).toBe(404);
   });
 
-  test('Org Admin and the owner are unchanged: 200 at any branch', async () => {
-    for (const token of [team.orgAdmin.token, team.ownerToken]) {
-      expect((await call('get', `/gyms/branches/${team.branchB.id}`, token)).status).toBe(200);
-    }
+  test('the owner is unchanged: 200 at any branch', async () => {
+    expect((await call('get', `/gyms/branches/${team.branchB.id}`, team.ownerToken)).status).toBe(200);
+  });
+
+  test('an Org Admin (branch.settings organization-wide) can read any branch (was 404 for every non-owner)', async () => {
+    expect((await call('get', `/gyms/branches/${team.branchB.id}`, team.orgAdmin.token)).status).toBe(200);
   });
 });

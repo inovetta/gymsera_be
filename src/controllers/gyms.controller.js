@@ -81,7 +81,7 @@ const createBranch = async (req, res, next) => {
 const getBranch = async (req, res, next) => {
   try {
     const result = await gymService.getBranch(req.tenantDb, req.params.branchId);
-    if (!(await hasBranchAccess(req, result.branch.id, 'branches.view'))) {
+    if (!(await hasBranchAccess(req, result.branch.id, 'branch.settings'))) {
       throw createError('Branch not found or has been deleted', 404);
     }
     return sendSuccess(res, result);
@@ -93,7 +93,7 @@ const getBranch = async (req, res, next) => {
 // ── PATCH /gyms/branches/:branchId ───────────────────────────────────────────
 const updateBranch = async (req, res, next) => {
   try {
-    if (!(await hasBranchAccess(req, req.params.branchId, 'branches.manage'))) {
+    if (!(await hasBranchAccess(req, req.params.branchId, 'branch.settings'))) {
       throw createError('Branch not found', 404);
     }
     const result = await gymService.updateBranch(req.tenantDb, req.params.branchId, req.body);
