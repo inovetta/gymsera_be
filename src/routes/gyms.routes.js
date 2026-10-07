@@ -6,6 +6,7 @@ const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
 const upload = require('../middleware/upload');
+const can = require('../middleware/can');
 
 const router = Router();
 
@@ -311,7 +312,8 @@ router.delete(
 
 // ── Members (tenant-scoped) ───────────────────────────────────────────────────
 // /members/search must be defined before /members to avoid :id conflicts
-router.get('/members/search', gymsController.searchMember);
+// NEW-45: looking someone up is part of adding them, so it needs members.create (at one branch or more).
+router.get('/members/search', can.atAnyBranch('members.create'), gymsController.searchMember);
 router.post('/members/enroll', gymsController.enrollMember);
 router.get('/members', gymsController.listMembers);
 

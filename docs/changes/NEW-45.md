@@ -20,3 +20,11 @@
 - **Fix**: `getProfile` resolves the caller's organization-wide grants (same as `updateProfile`) and removes the field unless the caller is the owner or holds `payouts.bank.manage` (owner-only in the catalogue). The rest of the profile is unchanged.
 - **Test**: `tests/regression/new-45-profile-bank-details.test.js` (Front Desk, Branch Manager, Org Admin: field absent; owner: present).
 - **Clients**: the CMS profile page reads `getGymProfile` (`gym.ts:67`, `gym/profile/page.tsx:47`) and does not use `paymentDetailsJson`; the mobile app's host payment details come from other routes (`host_payment_details`, `me_repository.dart`), not from `/gyms/profile`. Owners see no change.
+
+## (c) GET /gyms/members/search requires `members.create`
+
+- **Root cause**: `gyms.routes.js` (`/members/search`) had no check beyond the role guard, and `gymService.searchMember` looks up any platform user by e-mail (id, name, phone, status, photo). Any team member, a Trainer or Support account included, could use it as a user directory.
+- **Fix**: the route uses `can.atAnyBranch('members.create')` (NEW-44): held at one branch or more, or organization-wide; owner and host unchanged. Front Desk (needs-approval tier) can search because they can start an enrolment.
+- **Not changed**: what a permitted caller sees about the found user (phone, status). Narrowing it is a separate decision.
+- **Test**: `tests/regression/new-45-member-search.test.js`.
+- **Clients**: CMS `members/page.tsx:117` and mobile `host_members_tab.dart:455` (`gyms_repository.dart:866`), both the enrol dialog's e-mail lookup. Owners see no change.
