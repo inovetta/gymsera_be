@@ -28,3 +28,13 @@
 - **Not changed**: what a permitted caller sees about the found user (phone, status). Narrowing it is a separate decision.
 - **Test**: `tests/regression/new-45-member-search.test.js`.
 - **Clients**: CMS `members/page.tsx:117` and mobile `host_members_tab.dart:455` (`gyms_repository.dart:866`), both the enrol dialog's e-mail lookup. Owners see no change.
+
+## (d) Profile writes and image routes need `listing.manage` / `branch.settings`
+
+- **Root cause**: the routes below had only the role guard (`gyms.routes.js:13`): any team member could change the gym's public profile and logo, cover and gallery, and add or delete any branch's photos. (Bank details already needed `payouts.bank.manage` plus re-auth, SEC-13.)
+- **Fix** (`src/routes/gyms.routes.js`, using the existing `can()` middleware, placed before the upload middleware so a refused request never reaches storage):
+  - `POST /gyms/profile/logo`, `/profile/cover`, `/profile/images`, `DELETE /gyms/profile/images`, `PATCH /gyms/profile` → `can('listing.manage', { orgWide: true })` (Owner and Org Admin; Branch Manager and below are refused).
+  - `POST` and `DELETE /gyms/branches/:branchId/images` → `can('branch.settings')`, the branch taken from the URL, so it applies at that branch only.
+- **Test**: `tests/regression/new-45-listing-image-permissions.test.js` (Front Desk and Branch Manager refused on every profile write; Org Admin and owner pass; branch images refused at a branch the Manager is not assigned to). Image routes are called without a file, so nothing is stored.
+- **Clients**: mobile `edit_organization_screen.dart` (`gyms_repository.dart:392-416`, `:647-690`) and CMS `gym/profile/page.tsx` / `branches/[id]/page.tsx:117,127` — owner screens; owners and Org Admins are unchanged. A Branch Manager can no longer change the organization's profile or logo (they never should have been able to) but keeps their own branch's photos.
+- **Edge**: the check resolves grants for the account; a host account that is not the tenant's `ownerUserId` and has no assignment has no `listing.manage` here. The tenant owner always does.
