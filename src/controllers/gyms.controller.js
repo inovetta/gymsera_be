@@ -14,7 +14,8 @@ const getProfile = async (req, res, next) => {
     const tenantId = req.user.tenantId || req.tenantId;
     const userId = req.user.id || req.user.sub;
     const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
-    if (!grants.isOwner && !grants.has('payouts.bank.manage')) {
+    const isOwner = grants.isOwner || (await hasAllBranches(req));
+    if (!isOwner && !grants.has('payouts.bank.manage')) {
       delete result.gym.paymentDetailsJson;
     }
     return sendSuccess(res, result);
@@ -33,7 +34,8 @@ const updateProfile = async (req, res, next) => {
     if (req.body && req.body.paymentDetailsJson !== undefined) {
       const accessService = require('../services/access.service');
       const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
-      if (!grants.isOwner && !grants.has('payouts.bank.manage')) {
+      const isOwner = grants.isOwner || (await hasAllBranches(req));
+      if (!isOwner && !grants.has('payouts.bank.manage')) {
         throw createError('You do not have permission to manage bank payout details', 403);
       }
 
@@ -315,7 +317,7 @@ const enrollMember = async (req, res, next) => {
 
     // A host account was never limited by permissions here; keep that. Everyone else
     // is resolved at the branch they are enrolling into.
-    const grants = hasAllBranches(req)
+    const grants = (await hasAllBranches(req))
       ? accessService.ownerGrants()
       : await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
 
