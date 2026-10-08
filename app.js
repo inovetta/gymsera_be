@@ -38,23 +38,6 @@ app.use(requestTimeout(15000));
 // and req.ip returns the proxy IP instead of the real client IP.
 app.set('trust proxy', 1);
 
-// ── Fail-proof CORS & Preflight OPTIONS Handler ──────────────────────────────
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-device-api-key, X-Requested-With, Accept, Origin, X-Request-Id, Idempotency-Key');
-    res.setHeader('Access-Control-Max-Age', '86400');
-  }
-
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
-  next();
-});
-
 // ── Security headers ──────────────────────────────────────────────────────────
 // CSP is relaxed for unpkg.com so the /api/docs Swagger UI can load from CDN.
 app.use(
@@ -88,30 +71,36 @@ const allowedOrigins = [
     : []),
 ];
 
+// Headers a browser client may send. One list for the preflight answer, so a new
+// custom header is added here and nowhere else.
+const allowedHeaders = [
+  'Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With',
+  'x-device-api-key', 'X-Request-Id', 'Idempotency-Key',
+  'X-Tenant-Id', 'X-Api-Version', 'X-Skip-Timeout',
+];
+
+const isAllowedOrigin = (origin) => {
+  try {
+    const url = new URL(origin);
+    const isGymseraDomain = url.hostname === 'gymsera.com' || url.hostname.endsWith('.gymsera.com');
+    const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    return isGymseraDomain || isLocalhost || allowedOrigins.includes(origin);
+  } catch (e) {
+    return allowedOrigins.includes(origin);
+  }
+};
+
 const corsOptions = {
   origin: (origin, callback) => {
     // Mobile apps, curl, server-to-server requests don't send an Origin header
     if (!origin) return callback(null, true);
-
-    try {
-      const url = new URL(origin);
-      const isGymseraDomain = url.hostname === 'gymsera.com' || url.hostname.endsWith('.gymsera.com');
-      const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-
-      if (isGymseraDomain || isLocalhost || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-    } catch (e) {
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-    }
+    if (isAllowedOrigin(origin)) return callback(null, true);
 
     console.warn(`[CORS] Blocked request from origin: ${origin}`);
     callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-device-api-key', 'X-Request-Id', 'Idempotency-Key'],
+  allowedHeaders,
   credentials: true,
   optionsSuccessStatus: 204,
 };
