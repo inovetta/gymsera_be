@@ -5,6 +5,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const can = require('../middleware/can');
 
 const router = Router();
 
@@ -115,11 +116,14 @@ router.post(
  *       200:
  *         description: Paginated attendance log
  */
+// NEW-49: tenantContext first so a team member's role shim applies before authorize;
+// listing needs checkins.view at one or more branches.
 router.get(
   '/',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('checkins.view'),
   validate(validators.list),
   controller.list
 );

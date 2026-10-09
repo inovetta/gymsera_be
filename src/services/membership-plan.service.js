@@ -273,7 +273,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
 };
 
 // ── Host: list all active and inactive plans for the gym ──────────────────────
-const listForHost = async (tenantDb, branchId, tenantId) => {
+const listForHost = async (tenantDb, branchId, tenantId, branchIds) => {
   await _ensureSchema(tenantDb);
   await _ensureTenantOnboardingPlans(tenantDb, tenantId);
 
@@ -285,6 +285,15 @@ const listForHost = async (tenantDb, branchId, tenantId) => {
   if (branchId) {
     where.branchId = {
       [Op.or]: [branchId, null],
+    };
+  } else if (Array.isArray(branchIds)) {
+    // NEW-49: a branch-scoped caller sees plans at their branches plus tenant-wide
+    // (branchId null) plans, which apply at every branch.
+    where.branchId = {
+      [Op.or]: [
+        { [Op.in]: branchIds.filter((id) => activeBranchIds.includes(id)) },
+        null,
+      ],
     };
   } else if (activeBranchIds.length > 0) {
     where.branchId = {

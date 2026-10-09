@@ -17,42 +17,27 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-06 |
-| Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Prompt 3A — Team & Access + Approvals in the CMS** |
-| Prompt status | `DONE` (local commits only; waiting for the owner to review, then push and open the PRs) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Last updated | 2026-10-08 |
+| Updated by | Gemini (Antigravity) |
+| Current prompt | **NEW-46: CMS fixes (catalog, capacity banner, loading state, isTenantOwner, map, cities) and savesto branch report** |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Nothing from Prompt 3A is pushed and no PR is open (owner instruction: no push, no PR, no merge).
+Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_cms | `phase-3/prompt-3a-team-approvals` (cut from `origin/main` 3849333; upstream set to its own name, not yet on the remote) | b09e776 feat(trainers): link each trainer to their Team & access record (UX-12) | no |
-| gymsera_be | docs only: `docs/prompt-3a-cms-team-approvals` (cut from `origin/main` c9e8728), checked out in a separate worktree at `../gymsera_be_docs_3a`. The main `gymsera_be` checkout is untouched on `phase-2/prompt-2b-group-4` (already merged as c9e8728) | docs(spec, handoff): Prompt 3A | no |
-| gyms_era | `fix/new-38-delete-listing-reauth` (read only in 3A) | 55037b9 feat(host): prompt credentials for organization deletion re-auth (NEW-38) | no |
-| gymsera_web | not touched in 3A | — | — |
-
-CMS commits, one per page: 3c28b96 team · 52f374c approvals · 71f36df staff redirect · b09e776 trainers link.
-
-Prompt 3A's CMS branch was merged by the owner (gymsera_cms `main` b25c714, PR #15). **NEW-42** (CMS menu gated by effective permissions)
-is on gymsera_cms `fix/new-42-cms-menu-permissions` (cut from `main` b25c714, upstream set to its own name, not pushed): 86fdbd0.
-The docs branch `docs/prompt-3a-cms-team-approvals` (this worktree) is still local and now also carries the NEW-42 rows.
+| gyms_era | `fix/new-38-delete-listing-reauth` | (clean) | no |
+| gymsera_be | `main` | dbbccc2 Merge pull request #75 from inovetta/fix/new-45-gyms-permissions | no |
+| gymsera_cms | `fix/new-46` | 0b8ceb0 test(layout): ensure dual-owner context for in-flight org switch test | no |
+| gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> 1. Owner reviews the Prompt 3A report. If accepted: push `phase-3/prompt-3a-team-approvals` (gymsera_cms) and
->    `docs/prompt-3a-cms-team-approvals` (gymsera_be), open one PR each into `main`, then remove the worktree with
->    `git worktree remove ../gymsera_be_docs_3a` (run in `gymsera_be`).
-> 2. Owner decisions wanted before more work on these screens (spec §13 "Prompt 3A notes", and NEW-41 / NEW-42 in §12.13.11):
->    (a) NEW-41: the CMS Trainers page calls `/gyms/trainers`, which the backend does not serve — approve switching it to `/trainers`;
->    (b) read-only preset rows in the CMS editor vs the switch on mobile — which one wins;
->    (c) mobile should send `expectedVersion` too (RBAC-08 is not active from the app).
-> 2b. NEW-42: owner reviews, pushes `fix/new-42-cms-menu-permissions` and opens its PR. Owner to confirm the two judgment-call keys
->    (Trainers = `schedule.trainer.assign`, Reports = `dashboard.revenue.view`).
-> 3. Then start **Prompt 3B** (organization switcher, capacity banner, branch flows, new organization) from the playbook.
+> NEW-46 is complete in `gymsera_cms` branch `fix/new-46` (3x Vitest runs 196/196 passed, Playwright 4/4 passed, Next.js build clean). Next action: Prompt 3C (`docs/GYMSERA_AGENT_PLAYBOOK.md`: Ledger, payouts, dashboard, reports, notifications in the CMS).
 
 ### Work in progress that is NOT committed
 
@@ -330,3 +315,7 @@ The docs branch `docs/prompt-3a-cms-team-approvals` (this worktree) is still loc
 | 44 | 2026-10-06 | Gemini (Antigravity) | Fix regression test raw SQL inserts | Fixed CI failure on fresh DB (ER_NO_DEFAULT_FOR_FIELD business_date due to Migration 006 NOT NULL & STRICT_TRANS_TABLES); converted test to Payment.create, User.create, GymReview.create; ran full suite twice | task complete | yes |
 | 45 | 2026-10-06 | Claude Code (Opus 5.5) | Prompt 3A (CMS Team & Access + Approvals) | UX-12 (cms 3c28b96, 71f36df, b09e776), UX-13 approvals part (cms 52f374c); CMS side of RBAC-04/05/08; NEW-41, NEW-42 recorded | task complete (not pushed, owner review) | yes |
 | 46 | 2026-10-06 | Claude Code (Opus 5.5) | NEW-42 (CMS menu by permissions) | NEW-42 (cms 86fdbd0) | task complete (not pushed, owner review) | yes |
+| 45 | 2026-10-08 | Gemini (Antigravity) | NEW-46 | CMS catalog, capacity banner, loading state, isTenantOwner, map, cities, and savesto investigation (items a–g) | task complete | yes |
+
+
+

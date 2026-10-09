@@ -1,5 +1,6 @@
 const attendanceService = require('../services/attendance.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
+const { resolveBranchScope } = require('../utils/branchAccess.utils');
 
 // ── POST /attendance/device-notify ────────────────────────────────────────────
 const deviceNotify = async (req, res, next) => {
@@ -36,9 +37,11 @@ const list = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { branchId, date, userId } = req.query;
+    const scope = await resolveBranchScope(req, branchId, 'checkins.view', 'check-ins');
 
     const result = await attendanceService.list(req.tenantDb, {
-      branchId: branchId || null,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
       date:     date     || null,
       userId:   userId   || null,
       page,

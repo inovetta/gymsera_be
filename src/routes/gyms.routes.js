@@ -6,6 +6,7 @@ const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
 const upload = require('../middleware/upload');
+const can = require('../middleware/can');
 
 const router = Router();
 
@@ -34,10 +35,11 @@ router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'))
  */
 router.get('/profile', gymsController.getProfile);
 
-router.post('/profile/logo', upload.image('logo'), upload.handleMulterError, gymsController.uploadLogo);
-router.post('/profile/cover', upload.image('cover'), upload.handleMulterError, gymsController.uploadCover);
-router.post('/profile/images', upload.images('images', 10), upload.handleMulterError, gymsController.uploadGymImages);
-router.delete('/profile/images', gymsController.deleteGymImage);
+// NEW-45: the gym's public profile and photos need listing.manage (organization-wide).
+router.post('/profile/logo', can('listing.manage', { orgWide: true }), upload.image('logo'), upload.handleMulterError, gymsController.uploadLogo);
+router.post('/profile/cover', can('listing.manage', { orgWide: true }), upload.image('cover'), upload.handleMulterError, gymsController.uploadCover);
+router.post('/profile/images', can('listing.manage', { orgWide: true }), upload.images('images', 10), upload.handleMulterError, gymsController.uploadGymImages);
+router.delete('/profile/images', can('listing.manage', { orgWide: true }), gymsController.deleteGymImage);
 
 /**
  * @swagger
@@ -80,7 +82,7 @@ router.delete('/profile/images', gymsController.deleteGymImage);
  *       200:
  *         description: Profile updated
  */
-router.patch('/profile', validate(gymsValidators.updateProfile), gymsController.updateProfile);
+router.patch('/profile', can('listing.manage', { orgWide: true }), validate(gymsValidators.updateProfile), gymsController.updateProfile);
 
 // ── Branches ──────────────────────────────────────────────────────────────────
 /**
@@ -217,8 +219,9 @@ router.patch(
 router.delete('/branches/:branchId', authorize('GYM_HOST'), gymsController.deleteBranch);
 
 // ── Branch images ──────────────────────────────────────────────────────────────
-router.post('/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, gymsController.uploadBranchImages);
-router.delete('/branches/:branchId/images', gymsController.deleteBranchImage);
+// NEW-45: a branch's photos need branch.settings at that branch.
+router.post('/branches/:branchId/images', can('branch.settings'), upload.images('images', 10), upload.handleMulterError, gymsController.uploadBranchImages);
+router.delete('/branches/:branchId/images', can('branch.settings'), gymsController.deleteBranchImage);
 
 // ── Branch staff ──────────────────────────────────────────────────────────────
 /**
@@ -311,9 +314,11 @@ router.delete(
 
 // ── Members (tenant-scoped) ───────────────────────────────────────────────────
 // /members/search must be defined before /members to avoid :id conflicts
-router.get('/members/search', gymsController.searchMember);
+// NEW-45: looking someone up is part of adding them, so it needs members.create (at one branch or more).
+router.get('/members/search', can.atAnyBranch('members.create'), gymsController.searchMember);
 router.post('/members/enroll', gymsController.enrollMember);
-router.get('/members', gymsController.listMembers);
+// NEW-48: listing members requires members.view at one or more branches.
+router.get('/members', can.atAnyBranch('members.view'), gymsController.listMembers);
 
 // ── Gym-wide staff management (GYM_HOST only) ─────────────────────────────────
 /**

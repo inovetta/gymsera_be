@@ -1,0 +1,24 @@
+# NEW-43: CMS Google sign-in refused team members
+
+- **Issue ID**: NEW-43
+- **Title**: `POST /auth/social/google/staff` allowed only accounts whose `users.role` is GYM_HOST, BRANCH_MANAGER or PLATFORM_ADMIN, so a team member (account role MEMBER) could not sign in to the CMS with Google
+- **Status**: RESOLVED (backend; the CMS side is in gymsera_cms, same issue)
+- **Root Cause**:
+  - `src/services/auth.service.js:534` `STAFF_ROLES = [GYM_HOST, BRANCH_MANAGER, PLATFORM_ADMIN]`.
+  - `src/services/auth.service.js:640-641` threw 403 "This account does not have management portal access." for every other role.
+  - Since RBAC-07 a team member's account role stays MEMBER; their access lives in `role_assignments` (spec §8.3). So Front Desk, Trainer, Manager and Org Admin accounts were refused.
+  - Password sign-in (`auth.service.js` `login`) has no role check; only the Google staff path did.
+- **Pattern Reused**:
+  - `membershipService.listUserTenants` (ACTIVE `user_org_index` rows) for team roles.
+  - The owned-tenant lookup from `src/controllers/context.controller.js` (`Tenant.findAll({ ownerUserId })`), moved into `membershipService.listOwnedTenants` so `GET /me/context` and the sign-in check share one query. The context controller now calls it with its previous statuses (ACTIVE, SUSPENDED) and columns.
+- **Fix**:
+  - New `membershipService.hasPortalAccess(userId)`: true when the user owns an ACTIVE tenant or has an ACTIVE role assignment in any tenant. A revoked assignment leaves no index row; a suspended one has status SUSPENDED; neither counts. A suspended or otherwise inactive tenant they own does not count.
+  - The Google staff check is now: old staff role, OR `hasPortalAccess`. GYM_HOST, BRANCH_MANAGER and PLATFORM_ADMIN work as before, with no tenant and no assignment needed.
+  - Unchanged: the route never creates an account; an unlinked Google account still gets "No GymsEra staff account is linked…"; a plain member with no team role and no ownership is still refused with the same message and status (403).
+- **Tests Added**:
+  - `tests/regression/new-43-google-staff-portal.test.js` (real models and route; Google certificates stubbed): Front Desk allowed; revoked Front Desk refused; suspended Front Desk refused; plain member refused; MEMBER-role owner of an active tenant allowed; owner of a suspended tenant refused; GYM_HOST / BRANCH_MANAGER / PLATFORM_ADMIN allowed; unlinked Google account refused and no user created; `hasPortalAccess` unit check.
+- **Client Impact**:
+  - gymsera_cms already decides portal access from `GET /me/context` after any sign-in; Google sign-in now reaches that check for team members.
+- **Known limits**:
+  - The answer comes from `user_org_index`, which is derived data kept in step by `syncUserOrgIndex` after every assignment write. It does not look at `validFrom` / `validUntil` on an assignment, and does not check that the organization itself is ACTIVE. After sign-in, access is still decided per request by `access.service.js`.
+  - Sign-in is not the same as access: a team member who signs in sees only what their permissions allow.

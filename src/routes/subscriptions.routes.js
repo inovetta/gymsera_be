@@ -5,6 +5,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const can = require('../middleware/can');
 const upload = require('../middleware/upload');
 const { UserRole } = require('../constants/roles');
 
@@ -208,7 +209,8 @@ router.post('/preview', tenantContext, authorize(...staffRoles), controller.prev
  *       200:
  *         description: Paginated subscription list
  */
-router.get('/staff', tenantContext, authorize(...staffRoles), controller.listForStaff);
+// NEW-49: listing needs subscriptions.view at one or more branches.
+router.get('/staff', tenantContext, authorize(...staffRoles), can.atAnyBranch('subscriptions.view'), controller.listForStaff);
 
 /**
  * @swagger

@@ -1,6 +1,6 @@
 const subscriptionService = require('../services/subscription.service');
 const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
-const { hasBranchAccess } = require('../utils/branchAccess.utils');
+const { hasBranchAccess, resolveBranchScope } = require('../utils/branchAccess.utils');
 
 // ── POST /subscriptions ───────────────────────────────────────────────────────
 const subscribe = async (req, res, next) => {
@@ -91,10 +91,12 @@ const listForStaff = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { status, branchId, userId } = req.query;
+    const scope = await resolveBranchScope(req, branchId, 'subscriptions.view', 'subscriptions');
 
     const result = await subscriptionService.listForStaff(req.tenantDb, {
       status: status || null,
-      branchId: branchId || null,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
       userId: userId || null,
       page,
       limit,

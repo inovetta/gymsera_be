@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
 
 // ── POST /trainers ─────────────────────────────────────────────────────────────
@@ -31,10 +32,11 @@ const createTrainer = async (tenantDb, data) => {
 };
 
 // ── GET /trainers ──────────────────────────────────────────────────────────────
-const listTrainers = async (tenantDb, { branchId, status, page, limit, offset }) => {
+const listTrainers = async (tenantDb, { branchId, branchIds, status, page, limit, offset }) => {
   const { Trainer } = tenantDb.models;
   const where = {};
   if (branchId) where.branchId = branchId;
+  else if (Array.isArray(branchIds)) where.branchId = { [Op.in]: branchIds };
   if (status)   where.status   = status;
 
   const { count, rows } = await Trainer.findAndCountAll({

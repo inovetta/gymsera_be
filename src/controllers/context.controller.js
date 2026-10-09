@@ -80,8 +80,8 @@ const getContext = async (req, res, next) => {
 
     // Plus any organization they own outright. Ownership is not an assignment, so
     // it does not appear in the index.
-    const ownedTenants = await Tenant.findAll({
-      where: { ownerUserId: userId, status: ['ACTIVE', 'SUSPENDED'] },
+    const ownedTenants = await membershipService.listOwnedTenants(userId, {
+      statuses: ['ACTIVE', 'SUSPENDED'],
       attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status'],
     });
 

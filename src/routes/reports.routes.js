@@ -3,6 +3,7 @@ const controller = require('../controllers/reports.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const can = require('../middleware/can');
 
 const router = Router();
 
@@ -45,6 +46,9 @@ router.get(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  // NEW-44: takings are their own permission, held per branch; the handler adds up
+  // only the branches it is held at.
+  can.atAnyBranch('dashboard.revenue.view'),
   controller.hostDashboard
 );
 
@@ -131,7 +135,7 @@ router.get(
 // Alias: GET /reports/monthly/export (CMS uses /export, backend has /export-pdf)
 router.get('/monthly/export', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.monthlyExportPdf);
 
-router.get('/yearly', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.yearlyRevenue);
+router.get('/yearly', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can.atAnyBranch('dashboard.revenue.view'), controller.yearlyRevenue);
 router.get('/weekly-attendance', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.weeklyAttendance);
 
 /**

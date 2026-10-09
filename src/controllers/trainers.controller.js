@@ -1,5 +1,6 @@
 const trainerService = require('../services/trainer.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
+const { resolveBranchScope } = require('../utils/branchAccess.utils');
 
 // ── POST /trainers ─────────────────────────────────────────────────────────────
 const createTrainer = async (req, res, next) => {
@@ -16,9 +17,11 @@ const listTrainers = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { branchId, status } = req.query;
+    const scope = await resolveBranchScope(req, branchId, 'team.view', 'the team');
 
     const result = await trainerService.listTrainers(req.tenantDb, {
-      branchId: branchId || null,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
       status:   status   || null,
       page,
       limit,

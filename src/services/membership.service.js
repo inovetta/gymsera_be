@@ -107,6 +107,37 @@ const listUserTenants = async (userId, opts = {}) => {
 };
 
 /**
+ * Organizations a user owns outright. Ownership is not an assignment, so it never
+ * appears in the index (see GET /me/context).
+ *
+ * @param {string} userId
+ * @param {object} [opts]
+ * @param {string[]} [opts.statuses]    tenant statuses that count; ACTIVE by default
+ * @param {string[]} [opts.attributes]  columns to load
+ */
+const listOwnedTenants = async (userId, { statuses = ['ACTIVE'], attributes = ['id', 'status'] } = {}) => {
+  if (!userId) return [];
+  const { Tenant } = require('../models/platform');
+  return Tenant.findAll({ where: { ownerUserId: userId, status: statuses }, attributes });
+};
+
+/**
+ * May this user use the management portal (the CMS)? Yes when they own an active
+ * organization or hold an ACTIVE role assignment in any organization (NEW-43).
+ *
+ * The account role (`users.role`) is deliberately not consulted: a team member's
+ * stays MEMBER. A revoked assignment leaves no index row and a suspended one has
+ * status SUSPENDED, so neither counts. Like the rest of this service it only
+ * decides who may reach the door; what they may do behind it is access.service.
+ */
+const hasPortalAccess = async (userId) => {
+  if (!userId) return false;
+  const memberships = await listUserTenants(userId, { activeOnly: true });
+  if (memberships.length > 0) return true;
+  return (await listOwnedTenants(userId)).length > 0;
+};
+
+/**
  * The tenant a user should be placed in when the request carries no tenant hint.
  *
  * Picks their highest-level active membership, which is nearly always the right
@@ -229,6 +260,8 @@ const rebuildIndexForTenant = async (tenantId, tenantDb) => {
 module.exports = {
   syncUserOrgIndex,
   listUserTenants,
+  listOwnedTenants,
+  hasPortalAccess,
   resolveDefaultTenantForUser,
   resolveTenantForBranch,
   claimInvitesForUser,

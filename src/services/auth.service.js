@@ -15,6 +15,7 @@ const {
 } = require('../utils/otp.utils');
 const { createError } = require('../utils/response.utils');
 const emailService = require('./email.service');
+const membershipService = require('./membership.service');
 const { UserRole } = require('../constants/roles');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 
@@ -546,9 +547,11 @@ const STAFF_ROLES = [UserRole.GYM_HOST, UserRole.BRANCH_MANAGER, UserRole.PLATFO
  * creation is the actual gate here, not something enforced later. With
  * `staffOnly: true`, this never creates a new account, and never lets the
  * request through unless the resolved user already holds a staff role
- * (GYM_HOST/BRANCH_MANAGER/PLATFORM_ADMIN) — an existing staff member who
- * hasn't linked Google yet still gets linked via the normal by-email match
- * below, they just can't be freshly created this way.
+ * (GYM_HOST/BRANCH_MANAGER/PLATFORM_ADMIN), owns an active organization, or
+ * has an ACTIVE team role in any organization (NEW-43: a team member's account
+ * role stays MEMBER) — an existing staff member who hasn't linked Google yet
+ * still gets linked via the normal by-email match below, they just can't be
+ * freshly created this way.
  */
 const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = false } = {}) => {
   const payload = await _verifyGoogleIdToken(idToken);
@@ -637,7 +640,11 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = fals
     throw createError('Your account has been suspended. Please contact support.', 403);
   }
 
-  if (staffOnly && !STAFF_ROLES.includes(user.role)) {
+  if (
+    staffOnly &&
+    !STAFF_ROLES.includes(user.role) &&
+    !(await membershipService.hasPortalAccess(user.id))
+  ) {
     throw createError('This account does not have management portal access.', 403);
   }
 

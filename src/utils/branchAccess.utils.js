@@ -1,4 +1,5 @@
 const accessService = require('../services/access.service');
+const { createError } = require('./response.utils');
 
 /**
  * Check whether the caller has the specified permission on a given branch.
@@ -9,12 +10,11 @@ const accessService = require('../services/access.service');
  * @returns {Promise<boolean>}
  */
 const hasBranchAccess = async (req, branchId, permissionKey) => {
-  if (req.user?.role === 'PLATFORM_ADMIN') return true;
-  if (req.user?.role === 'GYM_HOST' || req.user?.isHost === true) return true;
+  if (await hasAllBranches(req)) return true;
   if (!branchId) return false;
 
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
   if (userId && tenantId && req.tenantDb) {
     try {
       const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
@@ -31,12 +31,11 @@ const hasBranchAccess = async (req, branchId, permissionKey) => {
  * Check whether the caller holds the DIRECT-tier twin of permissionKey on branchId.
  */
 const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
-  if (req.user?.role === 'PLATFORM_ADMIN') return true;
-  if (req.user?.role === 'GYM_HOST' || req.user?.isHost === true) return true;
+  if (await hasAllBranches(req)) return true;
   if (!branchId) return false;
 
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
   if (!userId || !tenantId || !req.tenantDb) return false;
 
   try {
@@ -48,7 +47,113 @@ const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
   }
 };
 
+/**
+ * Callers who are not limited to particular branches: platform admins and the
+ * organization's host/owner. Reuses membershipService.listOwnedTenants when the
+ * account's platform role is MEMBER (NEW-47).
+ */
+const hasAllBranches = async (req) => {
+  if (req?.user?.role === 'PLATFORM_ADMIN' || req?.user?.role === 'GYM_HOST' || req?.user?.isHost === true) {
+    return true;
+  }
+  if (req?.user?.isOwner === true) {
+    return true;
+  }
+  const userId = req?.user?.id || req?.user?.sub;
+  const tenantId = req?.user?.tenantId || req?.tenantDb?.tenantId || req?.tenantId;
+  if (!userId || !tenantId) return false;
+
+  try {
+    const membershipService = require('../services/membership.service');
+    const owned = await membershipService.listOwnedTenants(userId, {
+      statuses: ['ACTIVE', 'SUSPENDED'],
+      attributes: ['id'],
+    });
+    if (owned.some((t) => t.id === tenantId)) {
+      if (req.user) req.user.isOwner = true;
+      return true;
+    }
+  } catch (err) {
+    console.warn('[branchAccess] hasAllBranches owner check failed:', err.message);
+  }
+  return false;
+};
+
+/**
+ * The ACTIVE branches at which the caller holds `permissionKey` (NEW-44).
+ *
+ * Built on hasBranchAccess, branch by branch, so the answer is exactly what a
+ * request for that branch would get. An ORG-scoped assignment resolves at every
+ * branch, so "organization-wide" needs no separate case.
+ *
+ * @returns {Promise<string[]|null>} branch ids, or null for "every branch" (owner,
+ *   host, platform admin) — null means do not filter, not "no branches".
+ */
+const branchIdsWithPermission = async (req, permissionKey) => {
+  if (await hasAllBranches(req)) return null;
+  const { Branch } = req.tenantDb.models;
+  const branches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const allowed = [];
+  for (const { id } of branches) {
+    if (await hasBranchAccess(req, id, permissionKey)) allowed.push(id);
+  }
+  return allowed;
+};
+
+/**
+ * The ACTIVE branches at which the caller holds any permission at all — "the
+ * branches I work at" (NEW-44). Same null convention as branchIdsWithPermission:
+ * null means every branch (owner, host, platform admin), not "none".
+ */
+const branchIdsWithAnyGrant = async (req) => {
+  if (await hasAllBranches(req)) return null;
+  const userId = req.user?.id || req.user?.sub;
+  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
+  if (!userId || !tenantId || !req.tenantDb) return [];
+
+  const { Branch } = req.tenantDb.models;
+  const branches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const allowed = [];
+  for (const { id } of branches) {
+    try {
+      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, id);
+      if (grants.isOwner || grants.keys().length > 0) allowed.push(id);
+    } catch (err) {
+      console.warn('[branchAccess] permission resolution failed:', err.message);
+    }
+  }
+  return allowed;
+};
+
+/**
+ * Branch scope for a list endpoint (NEW-49), the NEW-48 pattern in one place.
+ *
+ * - `branchId` supplied: the caller must hold `permissionKey` there, else 403.
+ * - omitted: scope to the branches where they hold it. `branchIds` is null for an
+ *   owner/org-wide holder ("do not filter"), never a tenant-wide fallback for anyone else.
+ *
+ * Reuses the list can.atAnyBranch already attached (req.permittedBranchIds).
+ *
+ * @returns {Promise<{branchId: string|null, branchIds: string[]|null}>}
+ */
+const resolveBranchScope = async (req, branchId, permissionKey, noun) => {
+  if (branchId) {
+    if (!(await hasBranchAccess(req, branchId, permissionKey))) {
+      throw createError(`You do not have permission to view ${noun} at this branch`, 403);
+    }
+    return { branchId, branchIds: null };
+  }
+  const branchIds = req.permittedBranchIds !== undefined
+    ? req.permittedBranchIds
+    : await branchIdsWithPermission(req, permissionKey);
+  return { branchId: null, branchIds };
+};
+
 module.exports = {
+  resolveBranchScope,
   hasBranchAccess,
   hasDirectBranchAccess,
+  hasAllBranches,
+  branchIdsWithPermission,
+  branchIdsWithAnyGrant,
 };
