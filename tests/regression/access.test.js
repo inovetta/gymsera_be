@@ -6,7 +6,7 @@
  */
 
 // Redis is optional at runtime; stub it so tests never depend on a live instance.
-jest.mock('../src/config/redis.config', () => ({
+jest.mock('../../src/config/redis.config', () => ({
   getRedisClient: () => null,
   safeRedisGet: jest.fn().mockResolvedValue(null),
   safeRedisSetex: jest.fn().mockResolvedValue(true),
@@ -16,13 +16,13 @@ jest.mock('../src/config/redis.config', () => ({
 // The platform DB is mocked so these are pure unit tests with no connection.
 const mockTenant = { findByPk: jest.fn(), increment: jest.fn() };
 const mockUser = { findByPk: jest.fn(), increment: jest.fn() };
-jest.mock('../src/models/platform', () => ({
+jest.mock('../../src/models/platform', () => ({
   Tenant: mockTenant,
   User: mockUser,
 }));
 
-const accessService = require('../src/services/access.service');
-const { ROLE_META } = require('../src/constants/roles');
+const accessService = require('../../src/services/access.service');
+const { ROLE_META } = require('../../src/constants/roles');
 
 const TENANT_ID = 'tenant-1';
 const OWNER_ID = 'user-owner';
@@ -317,8 +317,8 @@ describe('guardrails — privilege escalation', () => {
 });
 
 describe('catalogue integrity', () => {
-  const { PERMISSIONS, DIRECT_TWINS, getPermission, baseKeyFor, directKeyFor } = require('../src/constants/permissions');
-  const { ROLE_PRESETS, ROLE_KEYS } = require('../src/constants/roles');
+  const { PERMISSIONS, DIRECT_TWINS, getPermission, baseKeyFor, directKeyFor } = require('../../src/constants/permissions');
+  const { ROLE_PRESETS, ROLE_KEYS } = require('../../src/constants/roles');
 
   it('gives every approvable permission a .direct twin and nothing else one', () => {
     for (const [key, perm] of PERMISSIONS) {

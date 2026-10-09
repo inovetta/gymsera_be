@@ -8,16 +8,16 @@
  * completed" — nothing could ever succeed at calling this endpoint for
  * anyone but the literal tenant owner.
  */
-jest.mock('../src/services/access.service', () => ({
+jest.mock('../../src/services/access.service', () => ({
   resolve: jest.fn(),
 }));
-jest.mock('../src/services/payment.service', () => ({
+jest.mock('../../src/services/payment.service', () => ({
   verifyPayment: jest.fn(),
 }));
 
-const accessService = require('../src/services/access.service');
-const paymentService = require('../src/services/payment.service');
-const paymentsController = require('../src/controllers/payments.controller');
+const accessService = require('../../src/services/access.service');
+const paymentService = require('../../src/services/payment.service');
+const paymentsController = require('../../src/controllers/payments.controller');
 
 const grantsWith = (keys) => ({ has: (k) => keys.includes(k) });
 
@@ -71,7 +71,9 @@ describe('POST /payments/:id/verify — permission-aware, not role-string-only',
 
     await paymentsController.verifyPayment(req, res, next);
 
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    // SEC-01 (4de6020): a payment the caller has no branch grant for answers a
+    // scoped 404, not 403, so its existence is not revealed.
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
     expect(paymentService.verifyPayment).not.toHaveBeenCalled();
   });
 
