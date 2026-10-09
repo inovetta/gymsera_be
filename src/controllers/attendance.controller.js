@@ -60,9 +60,11 @@ const todayLogs = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { branchId } = req.query;
+    const scope = await resolveBranchScope(req, branchId, 'checkins.view', 'check-ins');
 
     const result = await attendanceService.today(req.tenantDb, {
-      branchId: branchId || null,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
       page,
       limit,
       offset,
@@ -79,10 +81,12 @@ const rangeLogs = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { from, to, branchId, userId } = req.query;
+    const scope = await resolveBranchScope(req, branchId, 'checkins.view', 'check-ins');
 
     const result = await attendanceService.range(req.tenantDb, {
       from, to,
-      branchId: branchId || null,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
       userId:   userId   || null,
       page,
       limit,
@@ -99,8 +103,10 @@ const memberHistory = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { branchId } = req.query;
+    const scope = await resolveBranchScope(req, branchId, 'checkins.view', 'check-ins');
     const result = await attendanceService.memberHistory(req.tenantDb, req.params.userId, {
-      branchId,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
       page,
       limit,
       offset,
@@ -117,9 +123,11 @@ const report = async (req, res, next) => {
   try {
     const { period } = req.params;
     const { branchId, year, month } = req.query;
+    const scope = await resolveBranchScope(req, branchId, 'checkins.view', 'check-ins');
 
     const result = await attendanceService.aggregateReport(req.tenantDb, period, {
-      branchId: branchId || null,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
       year,
       month,
     });

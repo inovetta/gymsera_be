@@ -647,20 +647,21 @@ const listForStaff = async (tenantDb, { status, branchId, branchIds, userId, pag
 
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
+  const empty = () => ({ subscriptions: [], pagination: buildPagination(0, page, limit) });
   if (activeBranchIds.length === 0) {
-    return { count: 0, rows: [] };
+    return empty();
   }
 
   const where = {};
   if (status) where.status = status;
   if (branchId) {
     if (!activeBranchIds.includes(branchId)) {
-      return { count: 0, rows: [] };
+      return empty();
     }
     where.branchId = branchId;
   } else if (Array.isArray(branchIds)) {
     const allowed = branchIds.filter((id) => activeBranchIds.includes(id));
-    if (allowed.length === 0) return { subscriptions: [], pagination: buildPagination(0, page, limit) };
+    if (allowed.length === 0) return empty();
     where.branchId = { [Op.in]: allowed };
   } else {
     where.branchId = { [Op.in]: activeBranchIds };

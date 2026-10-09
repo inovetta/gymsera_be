@@ -182,6 +182,14 @@ const manual = async (tenantDb, staffUserId, { userId, branchId, subscriptionId,
   return log;
 };
 
+// NEW-50: one branch filter for the read endpoints. `branchId` is a single branch the
+// controller already checked; `branchIds` is the caller's permitted set, or null for
+// owner/org-wide ("do not filter").
+const applyBranchScope = (where, branchId, branchIds) => {
+  if (branchId) where.branchId = branchId;
+  else if (Array.isArray(branchIds)) where.branchId = { [Op.in]: branchIds };
+};
+
 // ── GET /attendance ────────────────────────────────────────────────────────────
 const list = async (tenantDb, { branchId, branchIds, date, userId, page, limit, offset }) => {
   const { AttendanceLog } = tenantDb.models;
@@ -243,7 +251,7 @@ const deviceNotify = async (tenantDb, { deviceId, userId, eventTime, branchId })
 };
 
 // ── GET /attendance/today ─────────────────────────────────────────────────────
-const today = async (tenantDb, { branchId, page, limit, offset }) => {
+const today = async (tenantDb, { branchId, branchIds, page, limit, offset }) => {
   const { AttendanceLog } = tenantDb.models;
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -253,7 +261,7 @@ const today = async (tenantDb, { branchId, page, limit, offset }) => {
       [Op.lte]: new Date(`${todayStr}T23:59:59.999Z`),
     },
   };
-  if (branchId) where.branchId = branchId;
+  applyBranchScope(where, branchId, branchIds);
 
   const { count, rows } = await AttendanceLog.findAndCountAll({
     where,
@@ -266,7 +274,7 @@ const today = async (tenantDb, { branchId, page, limit, offset }) => {
 };
 
 // ── GET /attendance/range ─────────────────────────────────────────────────────
-const range = async (tenantDb, { from, to, branchId, userId, page, limit, offset }) => {
+const range = async (tenantDb, { from, to, branchId, branchIds, userId, page, limit, offset }) => {
   const { AttendanceLog } = tenantDb.models;
 
   if (!from || !to) throw createError('from and to query params are required', 400);
@@ -277,7 +285,7 @@ const range = async (tenantDb, { from, to, branchId, userId, page, limit, offset
       [Op.lte]: new Date(`${to}T23:59:59.999Z`),
     },
   };
-  if (branchId) where.branchId = branchId;
+  applyBranchScope(where, branchId, branchIds);
   if (userId)   where.userId   = userId;
 
   const { count, rows } = await AttendanceLog.findAndCountAll({
@@ -290,13 +298,11 @@ const range = async (tenantDb, { from, to, branchId, userId, page, limit, offset
   return { logs: rows, pagination: buildPagination(count, page, limit) };
 };
 
-const memberHistory = async (tenantDb, userId, { branchId, page, limit, offset }) => {
+const memberHistory = async (tenantDb, userId, { branchId, branchIds, page, limit, offset }) => {
   const { AttendanceLog } = tenantDb.models;
 
   const where = { userId };
-  if (branchId) {
-    where.branchId = branchId;
-  }
+  applyBranchScope(where, branchId, branchIds);
 
   const { count, rows } = await AttendanceLog.findAndCountAll({
     where,
@@ -313,7 +319,7 @@ const memberHistory = async (tenantDb, userId, { branchId, page, limit, offset }
  * Aggregate attendance report grouped by period.
  * period: 'daily' | 'weekly' | 'monthly' | 'yearly'
  */
-const aggregateReport = async (tenantDb, period, { branchId, year, month }) => {
+const aggregateReport = async (tenantDb, period, { branchId, branchIds, year, month }) => {
   const { AttendanceLog, sequelize } = tenantDb;
   const seq = tenantDb.sequelize;
   const models = tenantDb.models;
@@ -352,7 +358,7 @@ const aggregateReport = async (tenantDb, period, { branchId, year, month }) => {
   }
 
   const where = { checkInAt: { [Op.between]: [fromDate, toDate] } };
-  if (branchId) where.branchId = branchId;
+  applyBranchScope(where, branchId, branchIds);
 
   const rows = await models.AttendanceLog.findAll({
     attributes: [
