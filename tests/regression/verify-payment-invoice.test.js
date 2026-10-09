@@ -7,7 +7,7 @@
  * exist. A completed payment should always end up with a paid invoice behind
  * it, so verifyPayment now creates the missing one rather than leaving the gap.
  */
-const { PaymentStatus, InvoiceStatus } = require('../src/constants/payment-status');
+const { PaymentStatus, InvoiceStatus } = require('../../src/constants/payment-status');
 
 describe('paymentService.verifyPayment — invoice backfill', () => {
   let paymentService;
@@ -49,6 +49,9 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
         Invoice: { update: jest.fn().mockResolvedValue([0]), create: jest.fn().mockResolvedValue({ id: 'inv-1' }) },
         MemberSubscription: { findByPk: jest.fn().mockResolvedValue(subscriptionRow) },
         MembershipPlan: { findByPk: jest.fn().mockResolvedValue(planRow) },
+        // verifyPayment stamps the branch-local business date (ledger.service
+        // stampBusinessDate reads Branch.timezone), added by fb3cd2a / PAY ledger work.
+        Branch: { findByPk: jest.fn().mockResolvedValue({ id: 'branch-1', timezone: 'Asia/Karachi' }) },
       },
       paymentRow,
     };
@@ -56,7 +59,7 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
 
   beforeEach(() => {
     jest.resetModules();
-    jest.doMock('../src/models/platform', () => ({
+    jest.doMock('../../src/models/platform', () => ({
       Tenant: { findByPk: jest.fn().mockResolvedValue({ id: 'tenant-1', gymName: 'Test Gym' }) },
       User: { findByPk: jest.fn().mockResolvedValue({ id: 'user-1', fullName: 'Test Member' }) },
       UserGymMembership: {
@@ -64,14 +67,21 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
         update: jest.fn().mockResolvedValue([1]),
       },
     }));
-    jest.doMock('../src/services/notifications.service', () => ({ createNotification: jest.fn() }));
-    paymentService = require('../src/services/payment.service');
+    jest.doMock('../../src/services/notifications.service', () => ({ createNotification: jest.fn() }));
+    // PAY-05 (12fa125): invoice numbers now come from a row-locked invoice_sequences
+    // table, which needs a real Sequelize handle. This test is about the backfill
+    // decision, not numbering, so the sequence service is stubbed.
+    jest.doMock('../../src/services/invoice-sequence.service', () => ({
+      getNextInvoiceNumber: jest.fn().mockResolvedValue('INV-BRANCH1-000001'),
+    }));
+    paymentService = require('../../src/services/payment.service');
     tenantDb = buildTenantDb();
   });
 
   afterEach(() => {
-    jest.dontMock('../src/models/platform');
-    jest.dontMock('../src/services/notifications.service');
+    jest.dontMock('../../src/models/platform');
+    jest.dontMock('../../src/services/notifications.service');
+    jest.dontMock('../../src/services/invoice-sequence.service');
   });
 
   it('creates a PAID invoice when no ISSUED invoice existed to update', async () => {
@@ -84,7 +94,10 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
         referenceEntityId: 'sub-1',
         branchId: 'branch-1',
         status: InvoiceStatus.PAID,
-      })
+      }),
+      // _createInvoice always passes an options object ({} when there is no
+      // transaction), so the call is create(payload, {}).
+      {}
     );
   });
 

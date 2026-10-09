@@ -9,15 +9,15 @@
  * threads it through to the command so the eventual Payment is attributed
  * correctly instead.
  */
-jest.mock('../src/services/access.service', () => ({
+jest.mock('../../src/services/access.service', () => ({
   resolve: jest.fn(),
 }));
-jest.mock('../src/services/audit.service', () => ({
+jest.mock('../../src/services/audit.service', () => ({
   record: jest.fn().mockResolvedValue(null),
 }));
 
-const accessService = require('../src/services/access.service');
-const approvalService = require('../src/services/approval.service');
+const accessService = require('../../src/services/access.service');
+const approvalService = require('../../src/services/approval.service');
 
 const grantsWith = (keys, extra = {}) => ({ has: (k) => keys.includes(k), isOwner: false, ...extra });
 
@@ -115,13 +115,13 @@ describe('approval.service — markCollected', () => {
 });
 
 describe('members.create command — pre-collected attribution', () => {
-  const commands = require('../src/services/commands');
+  const commands = require('../../src/services/commands');
 
   it('passes the pre-collection through to enrollMember when the request was marked collected', async () => {
     jest.resetModules();
     const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
-    jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
-    const freshCmd = require('../src/services/commands').get('members.create');
+    jest.doMock('../../src/services/gym.service', () => ({ enrollMember }));
+    const freshCmd = require('../../src/services/commands').get('members.create');
 
     const ctx = {
       tenantId: 'tenant-1',
@@ -141,14 +141,14 @@ describe('members.create command — pre-collected attribution', () => {
       { role: 'GYM_HOST', id: 'approver-1' },
       { collectedBy: 'desk-1', collectedAt: ctx.collectedAt, collectionMethod: 'CASH' }
     );
-    jest.dontMock('../src/services/gym.service');
+    jest.dontMock('../../src/services/gym.service');
   });
 
   it('passes null collection when the request was never pre-collected (the ordinary case)', async () => {
     jest.resetModules();
     const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
-    jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
-    const freshCmd = require('../src/services/commands').get('members.create');
+    jest.doMock('../../src/services/gym.service', () => ({ enrollMember }));
+    const freshCmd = require('../../src/services/commands').get('members.create');
 
     const ctx = { tenantId: 'tenant-1', tenantDb: {}, userId: 'host-1', branchId: 'branch-1' };
     await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1' });
@@ -160,6 +160,6 @@ describe('members.create command — pre-collected attribution', () => {
       { role: 'GYM_HOST', id: 'host-1' },
       null
     );
-    jest.dontMock('../src/services/gym.service');
+    jest.dontMock('../../src/services/gym.service');
   });
 });

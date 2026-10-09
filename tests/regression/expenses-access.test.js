@@ -6,12 +6,12 @@
  * such row, holds `expenses.view` through their role assignment instead, and
  * was rejected outright.
  */
-jest.mock('../src/services/access.service', () => ({
+jest.mock('../../src/services/access.service', () => ({
   resolve: jest.fn(),
 }));
 
-const accessService = require('../src/services/access.service');
-const expensesController = require('../src/controllers/expenses.controller');
+const accessService = require('../../src/services/access.service');
+const expensesController = require('../../src/controllers/expenses.controller');
 
 const fakeRes = () => {
   const res = {};
@@ -64,16 +64,17 @@ describe('expenses endpoints — permission-aware access, not legacy-only', () =
     expect(res.json).not.toHaveBeenCalled();
   });
 
-  it('still accepts a legacy gym_staff admin when the tenant has not been backfilled', async () => {
-    // Simulate an un-migrated tenant: the permission resolver finds no
-    // assignment at all (empty grants), so the legacy designation check must
-    // still be the thing that lets this request through.
+  it('no longer accepts a legacy gym_staff admin with no role assignment', async () => {
+    // RBAC-07 (d296268) removed the legacy GymStaff 'Admin' designation fallback:
+    // staff access now comes only from Team & Access grants. A tenant that was
+    // not backfilled (empty grants) is therefore denied, and GymStaff is never read.
     accessService.resolve.mockResolvedValue(grantsWith([]));
+    const GymStaff = { findOne: jest.fn().mockResolvedValue({ designation: 'Admin' }) };
     const req = baseReq({
       tenantDb: {
         models: {
           Expense: { findAndCountAll: jest.fn().mockResolvedValue({ count: 0, rows: [] }) },
-          GymStaff: { findOne: jest.fn().mockResolvedValue({ designation: 'Admin' }) },
+          GymStaff,
         },
       },
     });
@@ -82,7 +83,8 @@ describe('expenses endpoints — permission-aware access, not legacy-only', () =
 
     await expensesController.listExpenses(req, res, next);
 
-    expect(next).not.toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    expect(GymStaff.findOne).not.toHaveBeenCalled();
   });
 
   it('the owner always passes, without ever resolving grants', async () => {

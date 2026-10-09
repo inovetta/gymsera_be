@@ -6,13 +6,13 @@
  * things that do live here: LedgerDay's OPEN/CLOSED state machine (and its
  * concurrency-safety), and LedgerAdjustment's append-only reconciliation trail.
  */
-jest.mock('../src/services/audit.service', () => ({
+jest.mock('../../src/services/audit.service', () => ({
   record: jest.fn().mockResolvedValue(null),
   snapshot: jest.fn((x) => x),
 }));
 
-const auditService = require('../src/services/audit.service');
-const ledgerService = require('../src/services/ledger.service');
+const auditService = require('../../src/services/audit.service');
+const ledgerService = require('../../src/services/ledger.service');
 
 describe('computeBusinessDate — timezone-safe business dates', () => {
   it('resolves a UTC-late-evening timestamp to the next branch-local day', () => {
@@ -262,7 +262,7 @@ describe('getDayLedger — expected / collected / verified / variance', () => {
 });
 
 describe('ledger.close command', () => {
-  const commands = require('../src/services/commands');
+  const commands = require('../../src/services/commands');
   const cmd = commands.get('ledger.close');
 
   it('is registered', () => {

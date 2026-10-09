@@ -17,27 +17,24 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-08 |
-| Updated by | Gemini (Antigravity) |
-| Current prompt | **NEW-46: CMS fixes (catalog, capacity banner, loading state, isTenantOwner, map, cities) and savesto branch report** |
+| Last updated | 2026-10-10 |
+| Updated by | Claude Code (Sonnet 5.5) |
+| Current prompt | **NEW-53: bring the root-level tests into the suite and triage the failures** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
+`gymsera_be` branch `fix/new-53` (worktree `../gymsera_be_new53`, off origin/main `2373577`). Not pushed, no PR.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `fix/new-38-delete-listing-reauth` | (clean) | no |
-| gymsera_be | `main` | dbbccc2 Merge pull request #75 from inovetta/fix/new-45-gyms-permissions | no |
-| gymsera_cms | `fix/new-46` | 0b8ceb0 test(layout): ensure dual-owner context for in-flight org switch test | no |
-| gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
+| gymsera_be | `fix/new-53` | see `git log -1` on the branch (fix(NEW-53)) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> NEW-46 is complete in `gymsera_cms` branch `fix/new-46` (3x Vitest runs 196/196 passed, Playwright 4/4 passed, Next.js build clean). Next action: Prompt 3C (`docs/GYMSERA_AGENT_PLAYBOOK.md`: Ledger, payouts, dashboard, reports, notifications in the CMS).
+> NEW-53 is done on `fix/new-53`. Next action: Prompt 3C (`docs/GYMSERA_AGENT_PLAYBOOK.md`: Ledger, payouts, dashboard, reports, notifications in the CMS). Open owner decision: NEW-54, the six live-server smoke tests in `tests/` (`admin`, `auth`, `discovery`, `host`, `me`, `member`): rewrite onto the harness, or delete (see `docs/changes/NEW-53.md`).
 
 ### Work in progress that is NOT committed
 
@@ -67,6 +64,10 @@ Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
 - **NEW-28 (P2)**: Unclosed Redis clients in Bull queues & un-awaited DeviceToken.sync() recorded in spec §12.13.12.
 - **Part 2 of Hotfix Part 2**: Decisions pending on the four /system routes (`/system/run-install`, `/system/run-pull`,
   `/system/configure-fcm`, `/system/fcm-test`).
+
+### Notes for running the suite locally
+
+- Use the CI env (root, empty password, Docker MySQL on 127.0.0.1:3308). Use **one** `TENANT_CONN_ENCRYPTION_KEY` for every run that shares a Redis: the tenant connection string is cached in Redis for 1 h, encrypted with that key, and a run with another key gets 500s on every tenant route.
 
 ---
 
@@ -322,6 +323,4 @@ Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
 | 50 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-50 | attendance read routes scope, listForStaff shape (be `d19b112`) | task complete | yes |
 | 51 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-51 | attendance write routes, weekly-attendance, host dashboard/checkins scope (be `3af6de0`) | task complete | yes |
 | 52 | 2026-10-09 | Claude Code (Sonnet 5.5) | NEW-52 | host branch members/announcements/schedule/resubmit routes and `GET /reports/branch/:branchId` scoped by permission at `:branchId` (be branch `fix/new-52`, not pushed); `dashboard-access.test.js` now runs | task complete (not pushed, owner review) | yes |
-
-
-
+| 53 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-53 | 7 root-level test files moved into `tests/regression/` (3 updated to current behaviour); 6 live-server smoke files left out as NEW-54 (be branch `fix/new-53`, not pushed) | task complete (not pushed, owner review) | yes |

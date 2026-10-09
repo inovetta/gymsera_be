@@ -7,7 +7,7 @@
  * validation and then failed, or worse, validated nothing at all, right up until
  * a real approver hit it in production.
  */
-const commands = require('../src/services/commands');
+const commands = require('../../src/services/commands');
 
 describe('members.create command', () => {
   const cmd = commands.get('members.create');
@@ -71,8 +71,8 @@ describe('members.create command', () => {
   it('merges ctx.branchId into the payload enrollMember receives', async () => {
     jest.resetModules();
     const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
-    jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
-    const freshCmd = require('../src/services/commands').get('members.create');
+    jest.doMock('../../src/services/gym.service', () => ({ enrollMember }));
+    const freshCmd = require('../../src/services/commands').get('members.create');
 
     const ctx = { branchId: 'branch-9', tenantId: 'tenant-1', userId: 'user-1', tenantDb: {} };
     await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1' });
@@ -84,14 +84,14 @@ describe('members.create command', () => {
       expect.objectContaining({ id: 'user-1' }),
       null // no pre-approval collection on this ctx
     );
-    jest.dontMock('../src/services/gym.service');
+    jest.dontMock('../../src/services/gym.service');
   });
 
   it('lets a branchId already on the payload win over ctx.branchId', async () => {
     jest.resetModules();
     const enrollMember = jest.fn().mockResolvedValue({ subscription: { id: 'sub-1' }, payment: { id: 'payment-1' } });
-    jest.doMock('../src/services/gym.service', () => ({ enrollMember }));
-    const freshCmd = require('../src/services/commands').get('members.create');
+    jest.doMock('../../src/services/gym.service', () => ({ enrollMember }));
+    const freshCmd = require('../../src/services/commands').get('members.create');
 
     const ctx = { branchId: 'branch-ctx', tenantId: 'tenant-1', userId: 'user-1', tenantDb: {} };
     await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1', branchId: 'branch-explicit' });
@@ -103,7 +103,7 @@ describe('members.create command', () => {
       expect.anything(),
       null // no pre-approval collection on this ctx
     );
-    jest.dontMock('../src/services/gym.service');
+    jest.dontMock('../../src/services/gym.service');
   });
 });
 
@@ -146,8 +146,8 @@ describe('members.update command', () => {
   it('execute() forwards the editable fields to gymService.updateMemberProfile', async () => {
     jest.resetModules();
     const updateMemberProfile = jest.fn().mockResolvedValue({ id: 'u1', fullName: 'Ahmed Raza' });
-    jest.doMock('../src/services/gym.service', () => ({ updateMemberProfile }));
-    const freshCmd = require('../src/services/commands').get('members.update');
+    jest.doMock('../../src/services/gym.service', () => ({ updateMemberProfile }));
+    const freshCmd = require('../../src/services/commands').get('members.update');
 
     const ctx = { branchId: 'branch-1', tenantDb: {} };
     await freshCmd.execute(ctx, { memberUserId: 'u1', fullName: 'Ahmed Raza', email: undefined, phone: undefined, notes: undefined });
@@ -157,7 +157,7 @@ describe('members.update command', () => {
       'u1',
       expect.objectContaining({ fullName: 'Ahmed Raza' })
     );
-    jest.dontMock('../src/services/gym.service');
+    jest.dontMock('../../src/services/gym.service');
   });
 });
 
@@ -228,8 +228,8 @@ describe('plans.create command', () => {
 
   it('falls back to ctx.branchId when the payload has none', async () => {
     const createPlan = jest.fn().mockResolvedValue({ id: 'p1' });
-    jest.doMock('../src/services/membership-plan.service', () => ({ createPlan }));
-    const freshCmd = require('../src/services/commands').get('plans.create');
+    jest.doMock('../../src/services/membership-plan.service', () => ({ createPlan }));
+    const freshCmd = require('../../src/services/commands').get('plans.create');
     const ctx = { branchId: 'branch-9', tenantDb: {} };
 
     await freshCmd.execute(ctx, { name: 'Monthly', durationType: 'MONTHS', durationValue: 1, price: 2000 });
@@ -238,7 +238,7 @@ describe('plans.create command', () => {
       ctx.tenantDb,
       expect.objectContaining({ branchId: 'branch-9', name: 'Monthly' })
     );
-    jest.dontMock('../src/services/membership-plan.service');
+    jest.dontMock('../../src/services/membership-plan.service');
   });
 });
 
