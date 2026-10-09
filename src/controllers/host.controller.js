@@ -3,6 +3,7 @@ const { Tenant, TenantSubscription, PlatformPackage, GymListing, User } = requir
 const { sendSuccess, createError, buildPagination } = require('../utils/response.utils');
 const { Op } = require('sequelize');
 const gymService = require('../services/gym.service');
+const attendanceService = require('../services/attendance.service');
 const inboxService = require('../services/inbox.service');
 const accessService = require('../services/access.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
@@ -1435,12 +1436,12 @@ const lookupBranchMember = async (req, res, next) => {
       return res.status(422).json({ success: false, message: 'Email query parameter is required' });
     }
 
-    const { MemberSubscription } = req.tenantDb.models;
+    const { MemberSubscription, MembershipPlan } = req.tenantDb.models;
 
     // 1. Check globally if user exists
     const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (!user) {
-      return sendSuccess(res, { exists: false });
+      return sendSuccess(res, { exists: false, subscriptions: [] });
     }
 
     // 2. Check if they have subscription in this branch
@@ -1452,6 +1453,24 @@ const lookupBranchMember = async (req, res, next) => {
       },
     });
 
+    // NEW-56: what the CMS Manual Check-in needs, so a team member with checkins.manual.create
+    // but not subscriptions.view need not call GET /subscriptions/staff. Same validity as
+    // POST /attendance/manual; id, plan name, end date and visits left only, nothing financial.
+    const activeSubs = await MemberSubscription.findAll({
+      where: { userId: user.id, branchId, status: SubscriptionStatus.ACTIVE },
+      include: [{ model: MembershipPlan, as: 'plan', attributes: ['name'] }],
+      order: [['endDate', 'ASC']],
+    });
+    const today = new Date().toISOString().split('T')[0];
+    const subscriptions = activeSubs
+      .filter((s) => attendanceService.isCheckinValid(s, today))
+      .map((s) => ({
+        id: s.id,
+        planName: s.plan ? s.plan.name : null,
+        endDate: s.endDate,
+        remainingVisits: s.remainingVisits,
+      }));
+
     if (subscription) {
       return sendSuccess(res, {
         exists: true,
@@ -1462,6 +1481,7 @@ const lookupBranchMember = async (req, res, next) => {
           phone: user.phone || null,
           status: subscription.status,
         },
+        subscriptions,
       });
     }
 
@@ -1474,6 +1494,7 @@ const lookupBranchMember = async (req, res, next) => {
         email: user.email,
         phone: user.phone || null,
       },
+      subscriptions,
     });
   } catch (err) {
     next(err);

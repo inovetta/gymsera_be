@@ -24,6 +24,14 @@ const _validateSubscription = async (models, subscription) => {
   }
 };
 
+// NEW-56: the same three rules as _validateSubscription, as a read-only predicate, so the
+// member lookup lists only subscriptions that POST /attendance/manual would accept.
+// Keep the two in step.
+const isCheckinValid = (subscription, today = new Date().toISOString().split('T')[0]) =>
+  subscription.status === SubscriptionStatus.ACTIVE
+  && today <= subscription.endDate
+  && (subscription.remainingVisits === null || subscription.remainingVisits > 0);
+
 // ── POST /attendance/qr-scan ──────────────────────────────────────────────────
 const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
   const { MemberSubscription, AttendanceLog, Branch, MembershipPlan } = tenantDb.models;
@@ -386,5 +394,5 @@ const checkOut = async (tenantDb, logId) => {
   return log;
 };
 
-module.exports = { qrScan, manual, list, deviceNotify, today, range, memberHistory, aggregateReport, checkOut };
+module.exports = { isCheckinValid, qrScan, manual, list, deviceNotify, today, range, memberHistory, aggregateReport, checkOut };
 
