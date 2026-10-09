@@ -157,6 +157,6 @@ router.get('/weekly-attendance', authenticate, tenantContext, authorize('GYM_HOS
  *       404:
  *         description: Branch not found
  */
-router.get('/branch/:branchId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.branchReport);
+router.get('/branch/:branchId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('dashboard.revenue.view'), controller.branchReport);
 
 module.exports = router;
