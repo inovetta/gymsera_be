@@ -1,7 +1,7 @@
 const gymService = require('../services/gym.service');
 const { sendSuccess, createError, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
-const { hasBranchAccess, branchIdsWithAnyGrant, hasAllBranches } = require('../utils/branchAccess.utils');
+const { hasBranchAccess, branchIdsWithAnyGrant, branchIdsWithPermission, hasAllBranches } = require('../utils/branchAccess.utils');
 
 // ── GET /gyms/profile ─────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -274,13 +274,28 @@ const listMembers = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { q, status } = req.query;
-    let branchId = req.query.branchId;
+    const branchId = req.query.branchId || null;
+    let branchIds = null;
 
-    if (req.user.role === 'BRANCH_MANAGER') {
-      branchId = req.user.branchId;
+    if (branchId) {
+      if (!(await hasBranchAccess(req, branchId, 'members.view'))) {
+        throw createError('You do not have permission to view members at this branch', 403);
+      }
+    } else {
+      branchIds = req.permittedBranchIds !== undefined
+        ? req.permittedBranchIds
+        : await branchIdsWithPermission(req, 'members.view');
     }
 
-    const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, { q, status, branchId, page, limit, offset });
+    const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, {
+      q,
+      status,
+      branchId,
+      branchIds,
+      page,
+      limit,
+      offset,
+    });
     return sendSuccess(res, { members: result.members }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
