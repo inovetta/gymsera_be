@@ -1,5 +1,6 @@
 const membershipPlanService = require('../services/membership-plan.service');
 const { sendSuccess } = require('../utils/response.utils');
+const { resolveBranchScope } = require('../utils/branchAccess.utils');
 
 // ── GET /membership-plans?gymListingId=<uuid>&branchId=<uuid> (public) ────────
 const listPublic = async (req, res, next) => {
@@ -26,7 +27,8 @@ const getPublic = async (req, res, next) => {
 const listForHost = async (req, res, next) => {
   try {
     const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
-    const plans = await membershipPlanService.listForHost(req.tenantDb, req.query.branchId, tenantId);
+    const scope = await resolveBranchScope(req, req.query.branchId, 'plans.view', 'plans');
+    const plans = await membershipPlanService.listForHost(req.tenantDb, scope.branchId, tenantId, scope.branchIds);
     return sendSuccess(res, { plans });
   } catch (err) {
     next(err);

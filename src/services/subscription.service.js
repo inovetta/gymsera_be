@@ -642,7 +642,7 @@ const changePlan = async (userId, subscriptionId, newPlanId) => {
 };
 
 // ── Staff: list all subscriptions in tenant DB ────────────────────────────────
-const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, offset }) => {
+const listForStaff = async (tenantDb, { status, branchId, branchIds, userId, page, limit, offset }) => {
   const { MemberSubscription, MembershipPlan, Branch, Payment } = tenantDb.models;
 
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
@@ -658,6 +658,10 @@ const listForStaff = async (tenantDb, { status, branchId, userId, page, limit, o
       return { count: 0, rows: [] };
     }
     where.branchId = branchId;
+  } else if (Array.isArray(branchIds)) {
+    const allowed = branchIds.filter((id) => activeBranchIds.includes(id));
+    if (allowed.length === 0) return { subscriptions: [], pagination: buildPagination(0, page, limit) };
+    where.branchId = { [Op.in]: allowed };
   } else {
     where.branchId = { [Op.in]: activeBranchIds };
   }
