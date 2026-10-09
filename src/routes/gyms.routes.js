@@ -317,7 +317,8 @@ router.delete(
 // NEW-45: looking someone up is part of adding them, so it needs members.create (at one branch or more).
 router.get('/members/search', can.atAnyBranch('members.create'), gymsController.searchMember);
 router.post('/members/enroll', gymsController.enrollMember);
-router.get('/members', gymsController.listMembers);
+// NEW-48: listing members requires members.view at one or more branches.
+router.get('/members', can.atAnyBranch('members.view'), gymsController.listMembers);
 
 // ── Gym-wide staff management (GYM_HOST only) ─────────────────────────────────
 /**

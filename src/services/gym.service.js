@@ -1542,7 +1542,7 @@ const removeBranchImage = async (tenantDb, branchId, imageUrl) => {
  * Returns platform users who have a subscription record in this gym's tenant DB.
  * Gym hosts only ever see their own gym's members.
  */
-const listMembers = async (tenantDb, tenantId, { q, status, branchId, page, limit, offset }) => {
+const listMembers = async (tenantDb, tenantId, { q, status, branchId, branchIds, page, limit, offset }) => {
   const { MemberSubscription, Branch } = tenantDb.models;
 
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
@@ -1559,6 +1559,12 @@ const listMembers = async (tenantDb, tenantId, { q, status, branchId, page, limi
       return { members: [], pagination: buildPagination(0, page, limit) };
     }
     subWhere.branchId = branchId;
+  } else if (Array.isArray(branchIds)) {
+    const allowed = branchIds.filter((id) => activeBranchIds.includes(id));
+    if (allowed.length === 0) {
+      return { members: [], pagination: buildPagination(0, page, limit) };
+    }
+    subWhere.branchId = { [Op.in]: allowed };
   } else {
     subWhere.branchId = { [Op.in]: activeBranchIds };
   }
