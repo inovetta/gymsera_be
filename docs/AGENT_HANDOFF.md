@@ -17,27 +17,27 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-06 |
+| Last updated | 2026-10-08 |
 | Updated by | Gemini (Antigravity) |
-| Current prompt | **Hotfix: check-prompt-2b-group3-data and check-tenant-entitlement scripts** |
+| Current prompt | **NEW-46: CMS fixes (catalog, capacity banner, loading state, isTenantOwner, map, cities) and savesto branch report** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Work is on branch `fix/check-prompt-2b-group3-data` in `gymsera_be`. Not pushed, no PRs opened.
+Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gyms_era | `phase-2/prompt-2a-reliability` | 406e690 feat(core): debounce primary button and add Dio retry/error interceptors (REL-02, API-01) | no |
-| gymsera_be | `fix/check-prompt-2b-group3-data` | (hotfix commit: check scripts real column names) | no |
-| gymsera_cms | `phase-2/prompt-2a-reliability` | 3dcf23a fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
+| gyms_era | `fix/new-38-delete-listing-reauth` | (clean) | no |
+| gymsera_be | `main` | dbbccc2 Merge pull request #75 from inovetta/fix/new-45-gyms-permissions | no |
+| gymsera_cms | `fix/new-46` | 0b8ceb0 test(layout): ensure dual-owner context for in-flight org switch test | no |
 | gymsera_web | `phase-2/prompt-2a-reliability` | 41b167c fix(auth): prevent refresh subscriber leak and integrate error-copy resolver (AUTH-03, API-01) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Check scripts verified against migrated schema and test suite 100% green. Continue from next prompt in `docs/GYMSERA_AGENT_PLAYBOOK.md`.
+> NEW-46 is complete in `gymsera_cms` branch `fix/new-46` (3x Vitest runs 196/196 passed, Playwright 4/4 passed, Next.js build clean). Next action: Prompt 3C (`docs/GYMSERA_AGENT_PLAYBOOK.md`: Ledger, payouts, dashboard, reports, notifications in the CMS).
 
 ### Work in progress that is NOT committed
 
@@ -277,6 +277,7 @@ Work is on branch `fix/check-prompt-2b-group3-data` in `gymsera_be`. Not pushed,
 | 42 | 2026-10-05 | Gemini (Antigravity) | Hotfix: RBAC-09 check script | Fixed Unknown column 'name' (tenants.business_name) and 'rab.role_assignment_id' (rab.assignment_id) in gymsera-rbac09-stale-branch-assignments-check.js; added regression test against migrated schema | task complete | yes |
 | 43 | 2026-10-06 | Gemini (Antigravity) | Hotfix: Prompt 2B Group 3 check script | Fixed Unknown column 'name' in check-prompt-2b-group3-data.js (business_name, tenant_code, user_gym_memberships schema) & check-tenant-entitlement.js (title); fixed regression test with real migration runners & zero writes; audited 15 scripts; ran full test suite twice (normal + DISABLE_REDIS=true) | task complete | yes |
 | 44 | 2026-10-06 | Gemini (Antigravity) | Fix regression test raw SQL inserts | Fixed CI failure on fresh DB (ER_NO_DEFAULT_FOR_FIELD business_date due to Migration 006 NOT NULL & STRICT_TRANS_TABLES); converted test to Payment.create, User.create, GymReview.create; ran full suite twice | task complete | yes |
+| 45 | 2026-10-08 | Gemini (Antigravity) | NEW-46 | CMS catalog, capacity banner, loading state, isTenantOwner, map, cities, and savesto investigation (items a–g) | task complete | yes |
 
 
 
