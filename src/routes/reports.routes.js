@@ -136,7 +136,7 @@ router.get(
 router.get('/monthly/export', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.monthlyExportPdf);
 
 router.get('/yearly', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can.atAnyBranch('dashboard.revenue.view'), controller.yearlyRevenue);
-router.get('/weekly-attendance', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.weeklyAttendance);
+router.get('/weekly-attendance', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can.atAnyBranch('checkins.view'), controller.weeklyAttendance);
 
 /**
  * @swagger

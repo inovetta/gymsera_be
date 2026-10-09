@@ -309,7 +309,7 @@ const yearlyRevenue = async (tenantDb, year, { branchIds = null } = {}) => {
 };
 
 // ── Weekly attendance (last 7 days) ───────────────────────────────────────────
-const weeklyAttendance = async (tenantDb) => {
+const weeklyAttendance = async (tenantDb, { branchId = null, branchIds = null } = {}) => {
   const seq = tenantDb.sequelize;
   const now = new Date();
   const days = [];
@@ -327,6 +327,8 @@ const weeklyAttendance = async (tenantDb) => {
     where: {
       attendanceType: 'CHECK_IN',
       checkInAt: { [Op.gte]: new Date(`${days[0]}T00:00:00Z`) },
+      // NEW-51: one checked branch, else the caller's permitted set; null branchIds = every branch.
+      ...(branchId ? { branchId } : Array.isArray(branchIds) ? { branchId: { [Op.in]: branchIds } } : {}),
     },
     group: [seq.fn('DATE', seq.col('check_in_at'))],
     raw: true,

@@ -1,6 +1,6 @@
 const attendanceService = require('../services/attendance.service');
-const { sendSuccess, parsePagination } = require('../utils/response.utils');
-const { resolveBranchScope } = require('../utils/branchAccess.utils');
+const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
+const { resolveBranchScope, hasBranchAccess } = require('../utils/branchAccess.utils');
 
 // ── POST /attendance/device-notify ────────────────────────────────────────────
 const deviceNotify = async (req, res, next) => {
@@ -141,6 +141,12 @@ const report = async (req, res, next) => {
 // ── PATCH /attendance/:id/check-out ───────────────────────────────────────────
 const checkOut = async (req, res, next) => {
   try {
+    // NEW-51: the branch is the log's, not the request's, so it is checked here.
+    const existing = await req.tenantDb.models.AttendanceLog.findByPk(req.params.id, { attributes: ['id', 'branchId'] });
+    if (!existing) throw createError('Attendance log not found', 404);
+    if (!(await hasBranchAccess(req, existing.branchId, 'checkins.qr.scan'))) {
+      throw createError('You do not have permission to check members out at this branch', 403);
+    }
     const log = await attendanceService.checkOut(req.tenantDb, req.params.id);
     return sendSuccess(res, { log }, 'Check-out recorded');
   } catch (err) {

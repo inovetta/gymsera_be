@@ -43,11 +43,14 @@ const router = Router();
  *       404:
  *         description: QR code / branch not found
  */
+// NEW-51: tenantContext before authorize (team members are MEMBER-role accounts until the shim
+// runs); can() verifies checkins.qr.scan at the body's branchId.
 router.post(
   '/qr-scan',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can('checkins.qr.scan'),
   validate(validators.qrScan),
   controller.qrScan
 );
@@ -78,11 +81,13 @@ router.post(
  *       403:
  *         description: Subscription not valid
  */
+// NEW-51: same order; checkins.manual.create at the body's branchId.
 router.post(
   '/manual',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can('checkins.manual.create'),
   validate(validators.manual),
   controller.manual
 );
@@ -351,22 +356,25 @@ router.get(
   controller.report
 );
 
-// Alias: POST /attendance/check-in (CMS uses check-in instead of manual)
+// Alias: POST /attendance/check-in (CMS uses check-in instead of manual). NEW-51: same guard as /manual.
 router.post(
   '/check-in',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can('checkins.manual.create'),
   validate(validators.manual),
   controller.manual
 );
 
 // PATCH /attendance/:id/check-out
+// NEW-51: the branch is the log's, so the controller checks checkins.qr.scan there.
 router.patch(
   '/:id/check-out',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('checkins.qr.scan'),
   controller.checkOut
 );
 

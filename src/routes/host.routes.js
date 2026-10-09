@@ -6,6 +6,7 @@ const payoutsController = require('../controllers/payouts.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const can = require('../middleware/can');
 const idempotency = require('../middleware/idempotency');
 const gymsValidators = require('../validators/gyms.validator');
 const validate = require('../middleware/validate');
@@ -95,11 +96,11 @@ router.delete(
 );
 
 // Branch-scoped endpoints for Branch Detail screen tabs
-router.get('/branches/:branchId/dashboard', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchDashboard);
+router.get('/branches/:branchId/dashboard', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('dashboard.view'), hostController.getBranchDashboard);
 router.get('/branches/:branchId/members/lookup', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.lookupBranchMember);
 router.post('/branches/:branchId/members', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.createBranchMember);
 router.get('/branches/:branchId/members', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchMembers);
-router.get('/branches/:branchId/checkins', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchCheckins);
+router.get('/branches/:branchId/checkins', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('checkins.view'), hostController.getBranchCheckins);
 router.get('/branches/:branchId/announcements', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.getBranchAnnouncements);
 router.post('/branches/:branchId/announcements', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.createBranchAnnouncement);
 router.delete('/branches/:branchId/announcements/:announcementId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), hostController.deleteBranchAnnouncement);
