@@ -1,5 +1,6 @@
 const reportsService = require('../services/reports.service');
 const { sendSuccess } = require('../utils/response.utils');
+const { resolveBranchScope } = require('../utils/branchAccess.utils');
 
 // ── GET /reports/dashboard (GYM_HOST / BRANCH_MANAGER) ───────────────────────
 const hostDashboard = async (req, res, next) => {
@@ -146,7 +147,8 @@ const yearlyRevenue = async (req, res, next) => {
 
 const weeklyAttendance = async (req, res, next) => {
   try {
-    const data = await reportsService.weeklyAttendance(req.tenantDb);
+    const scope = await resolveBranchScope(req, req.query.branchId, 'checkins.view', 'check-ins');
+    const data = await reportsService.weeklyAttendance(req.tenantDb, { branchId: scope.branchId, branchIds: scope.branchIds });
     return sendSuccess(res, data);
   } catch (err) { next(err); }
 };
