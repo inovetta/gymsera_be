@@ -218,11 +218,13 @@ router.post(
  *       200:
  *         description: Today's check-ins
  */
+// NEW-50: same guard order and checkins.view scope as GET / (NEW-49) on the read routes below.
 router.get(
   '/today',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('checkins.view'),
   controller.todayLogs
 );
 
@@ -262,8 +264,9 @@ router.get(
 router.get(
   '/range',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('checkins.view'),
   controller.rangeLogs
 );
 
@@ -293,8 +296,9 @@ router.get(
 router.get(
   '/customer/:userId',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('checkins.view'),
   controller.memberHistory
 );
 
@@ -330,8 +334,9 @@ router.get(
 router.get(
   '/report/:period',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('checkins.view'),
   controller.report
 );
 
@@ -339,8 +344,9 @@ router.get(
 router.get(
   '/report',
   authenticate,
-  authorize('GYM_HOST', 'BRANCH_MANAGER'),
   tenantContext,
+  authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('checkins.view'),
   (req, _res, next) => { req.params.period = req.query.period; next(); },
   controller.report
 );
