@@ -74,6 +74,16 @@ Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
+**Prompt 3A — Team & Access + Approvals in the CMS (gymsera_cms, branch `phase-3/prompt-3a-team-approvals`):**
+- [x] 1. `/gym/team` on the mobile `/team` endpoints: chips, 3-choice editor, preset labels, diff, revoke keeps the record, expectedVersion / 409, disabled higher roles (cms 3c28b96)
+- [x] 2. `/gym/approvals` on `/approvals`: Waiting on you / Your requests, sidebar count, 202 helper and notice (cms 52f374c)
+- [x] 3. `/gym/staff` redirects to `/gym/team`; legacy staff calls removed from the CMS client (cms 71f36df)
+- [x] 4. Trainers page linked to the person's team record (cms b09e776)
+- [x] Spec §13 (UX-12, UX-13, Prompt 3A notes), §3.3 parity rows, §8.3.3 wording, NEW-41, NEW-42
+- [ ] Owner review, push, PRs (owner said: do not push)
+
+---
+
 **Prompt 2B — Group 1: RBAC & Access Control (RBAC-04, RBAC-05, RBAC-08, RBAC-09):**
 - [x] 1. RBAC-09 — Branch deletion revokes branch-scoped `RoleAssignment`s and cleans up junctions (`be/src/services/gym.service.js:deleteBranch`) (be 43851fa)
 - [x] 2. RBAC-05 — Level rule strictly enforced on invite, update, and acceptance (`accessService.canAssignRole`, `gym.service.js:assignStaff`, `team.service.js:acceptStaffInvite`) (be 4dfa4c4)
@@ -226,6 +236,32 @@ Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
   - Platform migration `p018_create_audit_logs` manages `audit_logs` creation on Platform DB with full dry-run and conflict-skip tests (`tests/integration/platform-migrations-p018.test.js`). Boot-time table creation removed from `platform.js#connect`.
   - Redis resilience (spec §0.1 Rule 10 & §15): all tests touching Redis must also pass with `DISABLE_REDIS=true`. In `tests/regression/new-26-suspended-tenant-blocking.test.js`, Redis cache checks are conditional on Redis availability (`DISABLE_REDIS !== 'true' && ensureRedisReady() !== null`).
 
+- **Prompt 3A (2026-10-06) — endpoints the mobile Team & Access and Approvals screens call** (the CMS must call the same ones):
+  - Repository: `gyms_era/lib/features/host/data/repositories/team_repository.dart`; providers `presentation/providers/team_provider.dart`;
+    screens `team_access_screen.dart`, `permission_editor_screen.dart`, `add_team_member_screen.dart`, `approvals_inbox_screen.dart`.
+  - `GET /team/meta/roles` (`:33`; each role carries `assignableByMe` and its `preset`), `GET /team/meta/permissions` (`:43`),
+    `GET /team` (`:58`), `GET /team/:assignmentId` (`:71`; returns `overrides`, `effectivePermissions`, `effectiveScopes`, `version`),
+    `POST /team/invites` (`:92`), `PATCH /team/:assignmentId` (`:121`; in the repository but no mobile screen calls it),
+    `PUT /team/:assignmentId/permissions` (`:144`; whole-set replace), `DELETE /team/:assignmentId` (`:153`; revoke, row kept).
+  - `GET /approvals?status=PENDING` (`:160`), `GET /approvals/mine` (`:170`), `POST /approvals/:id/approve` (`:180`),
+    `POST /approvals/:id/reject` (`:188`, reason required), `POST /approvals/:id/cancel` (`:195`).
+  - The host screens send no `X-Tenant-Id` (server default); only the team-member workspace passes one.
+  - Mobile does NOT send `expectedVersion` yet and has no 409 `grants_changed` handling (RBAC-08 is backend-only so far).
+  - None of the `/team` or `/approvals` routes asks for re-auth, and none answers 202 (team permissions are not approvable).
+    202 comes from `/actions/:key`, ledger adjustments, payouts and `POST /payments/:id/refund`.
+  - **3A results and gotchas (2026-10-06):**
+    - CMS suites after 3A: `npx vitest run` 14 files / 86 tests (3 runs, all pass); `npx playwright test` 3/3; `npm run build` OK.
+      Run them from `gymsera_cms` itself: `npm test` from another folder picks up an unrelated `package.json`.
+    - `tsc --noEmit` rewrites the tracked `tsconfig.tsbuildinfo`; restore it (`git checkout tsconfig.tsbuildinfo`) before committing.
+    - A Next.js `page.tsx` may export only the page (a second named export fails the build); shared constants live in `src/lib`.
+    - CMS component tests mock the API with `vi.spyOn(<api object>, …)`; fixtures for team shapes are in `tests/fixtures/team.ts`.
+      Playwright tests answer `**/api/v1/**` with `page.route` and seed the session in `localStorage` + the `gymsera_session` cookie
+      (placeholder values only). An open Radix dialog hides the page behind it from role queries (`{ hidden: true }`).
+    - Server 403 / 409 without an explicit code arrive as `forbidden` / `conflict`; the shared resolver then returns the generic table
+      text. `src/lib/team/access.ts#teamErrorMessage` keeps the server's own sentence in that case.
+    - Spec §13 has no rows for Prompt 2B groups 2–4 (they are recorded under `docs/changes/*.md` instead), and this file's §2 checklist
+      stops at group 1. Git is right; the files were not back-filled in 3A.
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -277,6 +313,8 @@ Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
 | 42 | 2026-10-05 | Gemini (Antigravity) | Hotfix: RBAC-09 check script | Fixed Unknown column 'name' (tenants.business_name) and 'rab.role_assignment_id' (rab.assignment_id) in gymsera-rbac09-stale-branch-assignments-check.js; added regression test against migrated schema | task complete | yes |
 | 43 | 2026-10-06 | Gemini (Antigravity) | Hotfix: Prompt 2B Group 3 check script | Fixed Unknown column 'name' in check-prompt-2b-group3-data.js (business_name, tenant_code, user_gym_memberships schema) & check-tenant-entitlement.js (title); fixed regression test with real migration runners & zero writes; audited 15 scripts; ran full test suite twice (normal + DISABLE_REDIS=true) | task complete | yes |
 | 44 | 2026-10-06 | Gemini (Antigravity) | Fix regression test raw SQL inserts | Fixed CI failure on fresh DB (ER_NO_DEFAULT_FOR_FIELD business_date due to Migration 006 NOT NULL & STRICT_TRANS_TABLES); converted test to Payment.create, User.create, GymReview.create; ran full suite twice | task complete | yes |
+| 45 | 2026-10-06 | Claude Code (Opus 5.5) | Prompt 3A (CMS Team & Access + Approvals) | UX-12 (cms 3c28b96, 71f36df, b09e776), UX-13 approvals part (cms 52f374c); CMS side of RBAC-04/05/08; NEW-41, NEW-42 recorded | task complete (not pushed, owner review) | yes |
+| 46 | 2026-10-06 | Claude Code (Opus 5.5) | NEW-42 (CMS menu by permissions) | NEW-42 (cms 86fdbd0) | task complete (not pushed, owner review) | yes |
 | 45 | 2026-10-08 | Gemini (Antigravity) | NEW-46 | CMS catalog, capacity banner, loading state, isTenantOwner, map, cities, and savesto investigation (items a–g) | task complete | yes |
 
 
