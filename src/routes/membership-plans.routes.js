@@ -5,6 +5,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const can = require('../middleware/can');
 const upload = require('../middleware/upload');
 
 const router = Router();
@@ -66,6 +67,8 @@ router.get(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  // NEW-49: listing needs plans.view at one or more branches.
+  can.atAnyBranch('plans.view'),
   controller.listForHost
 );
 

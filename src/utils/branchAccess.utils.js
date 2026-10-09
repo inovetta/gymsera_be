@@ -1,4 +1,5 @@
 const accessService = require('../services/access.service');
+const { createError } = require('./response.utils');
 
 /**
  * Check whether the caller has the specified permission on a given branch.
@@ -124,7 +125,32 @@ const branchIdsWithAnyGrant = async (req) => {
   return allowed;
 };
 
+/**
+ * Branch scope for a list endpoint (NEW-49), the NEW-48 pattern in one place.
+ *
+ * - `branchId` supplied: the caller must hold `permissionKey` there, else 403.
+ * - omitted: scope to the branches where they hold it. `branchIds` is null for an
+ *   owner/org-wide holder ("do not filter"), never a tenant-wide fallback for anyone else.
+ *
+ * Reuses the list can.atAnyBranch already attached (req.permittedBranchIds).
+ *
+ * @returns {Promise<{branchId: string|null, branchIds: string[]|null}>}
+ */
+const resolveBranchScope = async (req, branchId, permissionKey, noun) => {
+  if (branchId) {
+    if (!(await hasBranchAccess(req, branchId, permissionKey))) {
+      throw createError(`You do not have permission to view ${noun} at this branch`, 403);
+    }
+    return { branchId, branchIds: null };
+  }
+  const branchIds = req.permittedBranchIds !== undefined
+    ? req.permittedBranchIds
+    : await branchIdsWithPermission(req, permissionKey);
+  return { branchId: null, branchIds };
+};
+
 module.exports = {
+  resolveBranchScope,
   hasBranchAccess,
   hasDirectBranchAccess,
   hasAllBranches,

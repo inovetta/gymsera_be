@@ -5,6 +5,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
+const can = require('../middleware/can');
 
 const router = Router();
 
@@ -43,7 +44,8 @@ router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'))
  *       200:
  *         description: Paginated list of trainers
  */
-router.get('/', validate(validators.listTrainers), controller.listTrainers);
+// NEW-49: listing needs team.view at one or more branches.
+router.get('/', can.atAnyBranch('team.view'), validate(validators.listTrainers), controller.listTrainers);
 
 /**
  * @swagger

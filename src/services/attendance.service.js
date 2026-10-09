@@ -183,11 +183,12 @@ const manual = async (tenantDb, staffUserId, { userId, branchId, subscriptionId,
 };
 
 // ── GET /attendance ────────────────────────────────────────────────────────────
-const list = async (tenantDb, { branchId, date, userId, page, limit, offset }) => {
+const list = async (tenantDb, { branchId, branchIds, date, userId, page, limit, offset }) => {
   const { AttendanceLog } = tenantDb.models;
   const where = {};
 
   if (branchId) where.branchId = branchId;
+  else if (Array.isArray(branchIds)) where.branchId = { [Op.in]: branchIds };
   if (userId)   where.userId   = userId;
 
   if (date) {
