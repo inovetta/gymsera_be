@@ -316,6 +316,12 @@ Work is on branch `fix/new-46` in `gymsera_cms`. Not pushed, no PRs opened.
 | 45 | 2026-10-06 | Claude Code (Opus 5.5) | Prompt 3A (CMS Team & Access + Approvals) | UX-12 (cms 3c28b96, 71f36df, b09e776), UX-13 approvals part (cms 52f374c); CMS side of RBAC-04/05/08; NEW-41, NEW-42 recorded | task complete (not pushed, owner review) | yes |
 | 46 | 2026-10-06 | Claude Code (Opus 5.5) | NEW-42 (CMS menu by permissions) | NEW-42 (cms 86fdbd0) | task complete (not pushed, owner review) | yes |
 | 45 | 2026-10-08 | Gemini (Antigravity) | NEW-46 | CMS catalog, capacity banner, loading state, isTenantOwner, map, cities, and savesto investigation (items a–g) | task complete | yes |
+| 47 | 2026-10-08 | (backfilled in NEW-52; original agent not recorded) | NEW-47 | owner with account role MEMBER gets all branches and members (be `478347a`) | task complete (not pushed at the time) | yes |
+| 48 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-48 | multi-branch Branch Manager members list (be `5638190`) | task complete | yes |
+| 49 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-49 | branch-scoped staff lists (be `789862e`) | task complete | yes |
+| 50 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-50 | attendance read routes scope, listForStaff shape (be `d19b112`) | task complete | yes |
+| 51 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-51 | attendance write routes, weekly-attendance, host dashboard/checkins scope (be `3af6de0`) | task complete | yes |
+| 52 | 2026-10-09 | Claude Code (Sonnet 5.5) | NEW-52 | host branch members/announcements/schedule/resubmit routes and `GET /reports/branch/:branchId` scoped by permission at `:branchId` (be branch `fix/new-52`, not pushed); `dashboard-access.test.js` now runs | task complete (not pushed, owner review) | yes |
 
 
 

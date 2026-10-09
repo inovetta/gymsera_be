@@ -10,6 +10,7 @@ const subscriptionMigrationService = require('../services/subscription-migration
 const storageService = require('../services/storage.service');
 const authService = require('../services/auth.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
+const { hasBranchAccess } = require('../utils/branchAccess.utils');
 
 const getTodaySummary = async (req, res, next) => {
   try {
@@ -1332,12 +1333,19 @@ const createBranchAnnouncement = async (req, res, next) => {
       throw createError('Branch not found or has been deleted', 404);
     }
 
+    // The route gate is announcements.create (drafting). A post that goes out to members
+    // (status 'sent', the default) is publishing, which is a separate permission.
+    const finalStatus = status || 'sent';
+    if (finalStatus !== 'draft' && !(await hasBranchAccess(req, branchId, 'announcements.publish'))) {
+      throw createError('You do not have permission to publish to members here', 403);
+    }
+
     const announcement = await Announcement.create({
       branchId,
       title,
       message,
       tag: tag || 'SENT TO ALL MEMBERS',
-      status: status || 'sent',
+      status: finalStatus,
       createdBy: req.user.id
     });
 

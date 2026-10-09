@@ -5,12 +5,12 @@
  * actually enforces that split rather than always returning the financial
  * figures regardless of who asked.
  */
-jest.mock('../src/services/access.service', () => ({
+jest.mock('../../src/services/access.service', () => ({
   resolve: jest.fn(),
 }));
 
-const accessService = require('../src/services/access.service');
-const hostController = require('../src/controllers/host.controller');
+const accessService = require('../../src/services/access.service');
+const hostController = require('../../src/controllers/host.controller');
 
 const grantsWith = (keys) => ({ has: (k) => keys.includes(k) });
 
