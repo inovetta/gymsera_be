@@ -9,12 +9,11 @@ const accessService = require('../services/access.service');
  * @returns {Promise<boolean>}
  */
 const hasBranchAccess = async (req, branchId, permissionKey) => {
-  if (req.user?.role === 'PLATFORM_ADMIN') return true;
-  if (req.user?.role === 'GYM_HOST' || req.user?.isHost === true) return true;
+  if (await hasAllBranches(req)) return true;
   if (!branchId) return false;
 
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
   if (userId && tenantId && req.tenantDb) {
     try {
       const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
@@ -31,12 +30,11 @@ const hasBranchAccess = async (req, branchId, permissionKey) => {
  * Check whether the caller holds the DIRECT-tier twin of permissionKey on branchId.
  */
 const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
-  if (req.user?.role === 'PLATFORM_ADMIN') return true;
-  if (req.user?.role === 'GYM_HOST' || req.user?.isHost === true) return true;
+  if (await hasAllBranches(req)) return true;
   if (!branchId) return false;
 
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
   if (!userId || !tenantId || !req.tenantDb) return false;
 
   try {
@@ -50,10 +48,35 @@ const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
 
 /**
  * Callers who are not limited to particular branches: platform admins and the
- * organization's host/owner. The same short-circuit hasBranchAccess starts with.
+ * organization's host/owner. Reuses membershipService.listOwnedTenants when the
+ * account's platform role is MEMBER (NEW-47).
  */
-const hasAllBranches = (req) =>
-  req.user?.role === 'PLATFORM_ADMIN' || req.user?.role === 'GYM_HOST' || req.user?.isHost === true;
+const hasAllBranches = async (req) => {
+  if (req?.user?.role === 'PLATFORM_ADMIN' || req?.user?.role === 'GYM_HOST' || req?.user?.isHost === true) {
+    return true;
+  }
+  if (req?.user?.isOwner === true) {
+    return true;
+  }
+  const userId = req?.user?.id || req?.user?.sub;
+  const tenantId = req?.user?.tenantId || req?.tenantDb?.tenantId || req?.tenantId;
+  if (!userId || !tenantId) return false;
+
+  try {
+    const membershipService = require('../services/membership.service');
+    const owned = await membershipService.listOwnedTenants(userId, {
+      statuses: ['ACTIVE', 'SUSPENDED'],
+      attributes: ['id'],
+    });
+    if (owned.some((t) => t.id === tenantId)) {
+      if (req.user) req.user.isOwner = true;
+      return true;
+    }
+  } catch (err) {
+    console.warn('[branchAccess] hasAllBranches owner check failed:', err.message);
+  }
+  return false;
+};
 
 /**
  * The ACTIVE branches at which the caller holds `permissionKey` (NEW-44).
@@ -66,7 +89,7 @@ const hasAllBranches = (req) =>
  *   host, platform admin) — null means do not filter, not "no branches".
  */
 const branchIdsWithPermission = async (req, permissionKey) => {
-  if (hasAllBranches(req)) return null;
+  if (await hasAllBranches(req)) return null;
   const { Branch } = req.tenantDb.models;
   const branches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const allowed = [];
@@ -82,9 +105,9 @@ const branchIdsWithPermission = async (req, permissionKey) => {
  * null means every branch (owner, host, platform admin), not "none".
  */
 const branchIdsWithAnyGrant = async (req) => {
-  if (hasAllBranches(req)) return null;
+  if (await hasAllBranches(req)) return null;
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
   if (!userId || !tenantId || !req.tenantDb) return [];
 
   const { Branch } = req.tenantDb.models;
@@ -93,7 +116,7 @@ const branchIdsWithAnyGrant = async (req) => {
   for (const { id } of branches) {
     try {
       const grants = await accessService.resolve(req.tenantDb, tenantId, userId, id);
-      if (grants.keys().length > 0) allowed.push(id);
+      if (grants.isOwner || grants.keys().length > 0) allowed.push(id);
     } catch (err) {
       console.warn('[branchAccess] permission resolution failed:', err.message);
     }

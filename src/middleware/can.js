@@ -24,7 +24,7 @@
 const accessService = require('../services/access.service');
 const { createError } = require('../utils/response.utils');
 const { getPermission } = require('../constants/permissions');
-const { branchIdsWithPermission } = require('../utils/branchAccess.utils');
+const { branchIdsWithPermission, hasAllBranches } = require('../utils/branchAccess.utils');
 
 /**
  * Read a dotted path off the request: 'params.branchId', 'body.branch_id'.
@@ -67,6 +67,13 @@ const attachGrants = (opts = {}) => async (req, _res, next) => {
     const tenantId = req.tenantDb.tenantId || req.user.tenantId;
     const branchId = resolveBranchId(req, opts);
 
+    if (await hasAllBranches(req)) {
+      req.grants = accessService.ownerGrants();
+      req.branchId = branchId;
+      req.tenantId = tenantId;
+      return next();
+    }
+
     req.grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
     req.branchId = branchId;
     req.tenantId = tenantId;
@@ -93,6 +100,13 @@ const can = (permissionKey, opts = {}) => async (req, _res, next) => {
     const userId = req.user.id || req.user.sub;
     const tenantId = req.tenantDb.tenantId || req.user.tenantId;
     const branchId = opts.orgWide ? null : resolveBranchId(req, opts);
+
+    if (await hasAllBranches(req)) {
+      req.grants = accessService.ownerGrants();
+      req.branchId = branchId;
+      req.tenantId = tenantId;
+      return next();
+    }
 
     const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
 
@@ -126,6 +140,13 @@ can.any = (permissionKeys, opts = {}) => async (req, _res, next) => {
     const userId = req.user.id || req.user.sub;
     const tenantId = req.tenantDb.tenantId || req.user.tenantId;
     const branchId = opts.orgWide ? null : resolveBranchId(req, opts);
+
+    if (await hasAllBranches(req)) {
+      req.grants = accessService.ownerGrants();
+      req.branchId = branchId;
+      req.tenantId = tenantId;
+      return next();
+    }
 
     const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
     if (!permissionKeys.some((k) => grants.has(k))) {
