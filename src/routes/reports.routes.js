@@ -78,6 +78,7 @@ router.get(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('dashboard.revenue.view'),
   controller.monthlyBreakdown
 );
 
@@ -107,6 +108,7 @@ router.get(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('dashboard.revenue.view'),
   controller.monthlyExportPdf
 );
 
@@ -129,11 +131,12 @@ router.get(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  can.atAnyBranch('dashboard.revenue.view'),
   controller.monthlyPrintLayout
 );
 
 // Alias: GET /reports/monthly/export (CMS uses /export, backend has /export-pdf)
-router.get('/monthly/export', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), controller.monthlyExportPdf);
+router.get('/monthly/export', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can.atAnyBranch('dashboard.revenue.view'), controller.monthlyExportPdf);
 
 router.get('/yearly', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can.atAnyBranch('dashboard.revenue.view'), controller.yearlyRevenue);
 router.get('/weekly-attendance', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can.atAnyBranch('checkins.view'), controller.weeklyAttendance);

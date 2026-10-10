@@ -19,7 +19,12 @@ const hostDashboard = async (req, res, next) => {
 // ── GET /reports/monthly ──────────────────────────────────────────────────────
 const monthlyBreakdown = async (req, res, next) => {
   try {
-    const data = await reportsService.monthlyBreakdown(req.tenantDb, req.query);
+    const scope = await resolveBranchScope(req, req.query.branchId, 'dashboard.revenue.view', 'revenue');
+    const data = await reportsService.monthlyBreakdown(req.tenantDb, {
+      ...req.query,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
+    });
     return sendSuccess(res, data);
   } catch (err) {
     next(err);
@@ -29,7 +34,12 @@ const monthlyBreakdown = async (req, res, next) => {
 // ── GET /reports/monthly/export-pdf ──────────────────────────────────────────
 const monthlyExportPdf = async (req, res, next) => {
   try {
-    const data = await reportsService.monthlyBreakdown(req.tenantDb, req.query);
+    const scope = await resolveBranchScope(req, req.query.branchId, 'dashboard.revenue.view', 'revenue');
+    const data = await reportsService.monthlyBreakdown(req.tenantDb, {
+      ...req.query,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
+    });
     const PDFDocument = require('pdfkit');
     const doc = new PDFDocument({ margin: 40 });
 
@@ -89,7 +99,12 @@ const monthlyExportPdf = async (req, res, next) => {
 // ── GET /reports/monthly/print-layout ────────────────────────────────────────
 const monthlyPrintLayout = async (req, res, next) => {
   try {
-    const data = await reportsService.monthlyBreakdown(req.tenantDb, req.query);
+    const scope = await resolveBranchScope(req, req.query.branchId, 'dashboard.revenue.view', 'revenue');
+    const data = await reportsService.monthlyBreakdown(req.tenantDb, {
+      ...req.query,
+      branchId: scope.branchId,
+      branchIds: scope.branchIds,
+    });
 
     const rows = (arr, cols) =>
       arr.map((r) => `<tr>${cols.map((c) => `<td>${r[c] ?? ''}</td>`).join('')}</tr>`).join('');

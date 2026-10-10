@@ -18,23 +18,23 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-10-10 |
-| Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **NEW-53: bring the root-level tests into the suite and triage the failures** |
+| Updated by | Gemini (Gemini 3.8 Flash) |
+| Current prompt | **NEW-58/59/60: Payouts permissions, monthly report scoping, STAFF_COLLECTED filter** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-`gymsera_be` branch `fix/new-53` (worktree `../gymsera_be_new53`, off origin/main `2373577`). Not pushed, no PR.
+`gymsera_be` branch `fix/new-58` (worktree `../gymsera_be_new58`, off origin/main `5b4ed8c`). Not pushed, no PR.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `fix/new-53` | see `git log -1` on the branch (fix(NEW-53)) | no |
+| gymsera_be | `fix/new-58` | will commit: fix(money): payouts permissions, monthly report scoping, STAFF_COLLECTED filter (NEW-58, NEW-59, NEW-60) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> NEW-53 is done on `fix/new-53`. Next action: Prompt 3C (`docs/GYMSERA_AGENT_PLAYBOOK.md`: Ledger, payouts, dashboard, reports, notifications in the CMS). Open owner decision: NEW-54, the six live-server smoke tests in `tests/` (`admin`, `auth`, `discovery`, `host`, `me`, `member`): rewrite onto the harness, or delete (see `docs/changes/NEW-53.md`).
+> NEW-58, NEW-59, and NEW-60 are done on `fix/new-58`. Next action: Prompt 3C or remaining money/reports follow-ups. Open owner decision: NEW-54 (six live-server smoke tests in `tests/`).
 
 ### Work in progress that is NOT committed
 
@@ -74,6 +74,28 @@ next agent won't know it.
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 3C — Ledger, payouts, dashboard, reports, notifications in the CMS (gymsera_cms, branch `phase-3/prompt-3c-cms-money`):**
+- [x] 1. Shared helpers: integer-minor-unit money, Idempotency-Key, server-message-first errors, tier from effective permissions, `NoAccess`, `ReauthDialog` (cms 34fd5b4)
+- [x] 2. `/dashboard`: skeletons, no zeros for what did not load, revenue hidden without `dashboard.revenue.view`, error and no-access states (cms 9ef9a29)
+- [x] 3. `/gym/payments`: Idempotency-Key on POST /payments (3 callers), Collected tab no longer 422, reject reason, shift, two-decimal amounts (cms ae46875)
+- [x] 4. `/gym/ledger`: today / open days / week / month, cash per collector, close day, reconciliation notes, 202 notice (cms 756d7d2)
+- [x] 5. Refunds (`POST /payments/:id/refund`, 200 or 202) and branch-scoped `/gym/invoices` (cms 143c3df)
+- [x] 6. `/gym/payouts`: balance, requests, masked bank details, re-auth (password or Google) (cms 4c0a8a2)
+- [x] 7. `/gym/reports`: real response shapes, branch report, org-wide monthly only for org-wide holders (cms 59b4329)
+- [x] 8. Notifications: bell, `/notifications`, socket, mapped deep links (cms 2374126)
+- [x] 9. Playwright flows, `docs/changes/PROMPT-3C.md`, spec §13 and §3.3 rows (cms 6f35745)
+- [x] Vitest 3× 44 files / 320 tests, Playwright 21/21, `tsc --noEmit` clean, `npm run build` exit 0
+- [ ] Owner review, push, PRs (do not push)
+- Proposed backend issues, not fixed: NEW-58 … NEW-67 (spec §13, `cms/docs/changes/PROMPT-3C.md`)
+
+---
+
+**NEW-58, NEW-59, NEW-60 — Payouts permissions, monthly report scoping, STAFF_COLLECTED filter (gymsera_be, branch `fix/new-58`):**
+- [x] 1. NEW-58: Payments list validator accepts `status=STAFF_COLLECTED` from `PaymentStatus` enum (`src/validators/payments.validator.js`, `src/routes/payments.routes.js`).
+- [x] 2. NEW-59: `GET /host/payouts/balance` and `GET /host/payouts` require `can("payouts.view", { orgWide: true })` (`src/routes/host.routes.js`).
+- [x] 3. NEW-60: `GET /reports/monthly`, `/monthly/export-pdf`, `/monthly/print-layout`, `/monthly/export` require `can.atAnyBranch("dashboard.revenue.view")`, scoped via `resolveBranchScope` and branch filters applied to `Payment`, `MemberSubscription`, and `AttendanceLog` queries (`src/routes/reports.routes.js`, `src/controllers/reports.controller.js`, `src/services/reports.service.js`).
+- [x] 4. Regression tests: 28 test cases covering all 3 issues, permission permutations, branch scoping, negative & positive controls (`tests/regression/new-58-59-60-payouts-reports-collected.test.js`).
 
 **Prompt 3A — Team & Access + Approvals in the CMS (gymsera_cms, branch `phase-3/prompt-3a-team-approvals`):**
 - [x] 1. `/gym/team` on the mobile `/team` endpoints: chips, 3-choice editor, preset labels, diff, revoke keeps the record, expectedVersion / 409, disabled higher roles (cms 3c28b96)
@@ -324,3 +346,8 @@ next agent won't know it.
 | 51 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-51 | attendance write routes, weekly-attendance, host dashboard/checkins scope (be `3af6de0`) | task complete | yes |
 | 52 | 2026-10-09 | Claude Code (Sonnet 5.5) | NEW-52 | host branch members/announcements/schedule/resubmit routes and `GET /reports/branch/:branchId` scoped by permission at `:branchId` (be branch `fix/new-52`, not pushed); `dashboard-access.test.js` now runs | task complete (not pushed, owner review) | yes |
 | 53 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-53 | 7 root-level test files moved into `tests/regression/` (3 updated to current behaviour); 6 live-server smoke files left out as NEW-54 (be branch `fix/new-53`, not pushed) | task complete (not pushed, owner review) | yes |
+| 54 | 2026-10-10 | Claude Code (Sonnet 5.5) | Prompt 3C (CMS ledger, payouts, dashboard, reports, notifications) | UX-13 ledger/payouts/refunds (cms 34fd5b4, ae46875, 756d7d2, 143c3df, 4c0a8a2, 6f35745), UX-18 (cms 9ef9a29, 59b4329), UX-23 (cms 2374126), NEW-68; NEW-58…NEW-67 proposed (backend, not fixed). | task complete (not pushed, owner review) | yes |
+| 55 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-55 | CMS manual check-in sends userId, subscriptionId, branchId (cms `0cbbb76`) | task complete | yes |
+| 56 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-56 | Member lookup returns active check-in subscriptions (be `ab125f2`, PR #86 merged) | task complete | yes |
+| 57 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-57 | CMS manual check-in and record payment use member lookup (cms `12598f7`) | task complete | yes |
+| 58 | 2026-10-10 | Gemini (Gemini 3.8 Flash) | NEW-58, NEW-59, NEW-60 | NEW-58 (STAFF_COLLECTED filter), NEW-59 (payouts.view org-wide on /host/payouts), NEW-60 (dashboard.revenue.view & resolveBranchScope on monthly breakdown and exports) (be branch `fix/new-58`) | task complete | yes |

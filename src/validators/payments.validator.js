@@ -1,4 +1,7 @@
 const { body, param, query } = require('express-validator');
+const { PaymentStatus } = require('../constants/payment-status');
+
+const PAYMENT_STATUSES = Object.values(PaymentStatus);
 
 const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'CARD', 'WALLET', 'ONLINE', 'POS', 'TEST'];
 const PAYMENT_FOR     = ['MEMBERSHIP', 'TRAINER', 'PRODUCT', 'OTHER'];
@@ -41,7 +44,7 @@ const listPayments = [
     .isUUID(4).withMessage('userId must be a valid UUID'),
   query('status')
     .optional()
-    .isIn(['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'EXPIRED'])
+    .isIn(PAYMENT_STATUSES)
     .withMessage('Invalid status'),
   query('method')
     .optional()
