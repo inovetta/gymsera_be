@@ -19,24 +19,23 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-10 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 3C: ledger, payouts, dashboard, reports and notifications in the CMS** |
+| Current prompt | **Prompt 3C & NEW-58/59/60: CMS money & backend fixes** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Nothing is pushed; no PRs opened. Prompt 3C changed **only** the CMS (no backend or mobile code).
+Prompt 3C is DONE and merged (CMS PR #23). NEW-58/59/60 merged and deployed (PR #88).
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_cms | `phase-3/prompt-3c-cms-money` (worktree `../gymsera_cms_3c`, off origin/main `00d416b`) | 6f35745 test(e2e): Playwright flows for ledger, money, payouts, reports and notifications | no |
-| gymsera_be | `docs/prompt-3c-cms-money` (docs only; `fix/new-58` was not created because no backend change was made) | see `git log -1` on the branch | no |
+| gymsera_be | `main` | f3919be Merge pull request #88 from inovetta/fix/new-58 | no |
+| gymsera_cms | `main` | merged (CMS PR #23) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 3C is done on `phase-3/prompt-3c-cms-money` (CMS). Next action: **Prompt 3D** (`docs/GYMSERA_AGENT_PLAYBOOK.md`: listing editor, signup unification, website cleanup).
-> Owner decisions waiting: (1) review and push `phase-3/prompt-3c-cms-money`; (2) which of the proposed backend issues NEW-58…NEW-67 to schedule (NEW-59 payouts without a permission check and NEW-60 unscoped monthly revenue are P1); (3) NEW-54 (six live-server smoke tests) is still open.
+> Prompt 3C is DONE and merged (CMS PR #23), and NEW-58/59/60 is merged and deployed (PR #88). Next action: **Prompt 3D** (listing editor, signup unification, website cleanup, per `docs/GYMSERA_AGENT_PLAYBOOK.md`).
 
 ### Work in progress that is NOT committed
 
@@ -44,6 +43,10 @@ Nothing is pushed; no PRs opened. Prompt 3C changed **only** the CMS (no backend
 
 ### Blocked / waiting on the owner
 
+- **Owner decisions waiting:**
+  - **NEW-54:** delete the six live-server smoke tests (`tests/admin|auth|discovery|host|me|member.test.js`), decided: delete.
+  - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`).
+  - **Dependabot criticals.**
 - **Deploy order (critical):** platform migrations **p004–p006 must be applied before this backend code goes live.**
   The model reads `currency` and `pending_change`; without them every `tenant_subscriptions` query fails
   ("Unknown column"). Steps: run the read-only checks in `docs/sql/prompt-1b-precheck.sql`, then
@@ -88,7 +91,7 @@ Nothing is pushed; no PRs opened. Prompt 3C changed **only** the CMS (no backend
 - [x] 8. Notifications: bell, `/notifications`, socket, mapped deep links (cms 2374126)
 - [x] 9. Playwright flows, `docs/changes/PROMPT-3C.md`, spec §13 and §3.3 rows (cms 6f35745)
 - [x] Vitest 3× 44 files / 320 tests, Playwright 21/21, `tsc --noEmit` clean, `npm run build` exit 0
-- [ ] Owner review, push, PRs (do not push)
+- [x] Owner review, push, PRs (CMS PR #23 merged)
 - Proposed backend issues, not fixed: NEW-58 … NEW-67 (spec §13, `cms/docs/changes/PROMPT-3C.md`)
 
 ---
@@ -334,12 +337,14 @@ Nothing is pushed; no PRs opened. Prompt 3C changed **only** the CMS (no backend
 | 44 | 2026-10-06 | Gemini (Antigravity) | Fix regression test raw SQL inserts | Fixed CI failure on fresh DB (ER_NO_DEFAULT_FOR_FIELD business_date due to Migration 006 NOT NULL & STRICT_TRANS_TABLES); converted test to Payment.create, User.create, GymReview.create; ran full suite twice | task complete | yes |
 | 45 | 2026-10-06 | Claude Code (Opus 5.5) | Prompt 3A (CMS Team & Access + Approvals) | UX-12 (cms 3c28b96, 71f36df, b09e776), UX-13 approvals part (cms 52f374c); CMS side of RBAC-04/05/08; NEW-41, NEW-42 recorded | task complete (not pushed, owner review) | yes |
 | 46 | 2026-10-06 | Claude Code (Opus 5.5) | NEW-42 (CMS menu by permissions) | NEW-42 (cms 86fdbd0) | task complete (not pushed, owner review) | yes |
-| 45 | 2026-10-08 | Gemini (Antigravity) | NEW-46 | CMS catalog, capacity banner, loading state, isTenantOwner, map, cities, and savesto investigation (items a–g) | task complete | yes |
-| 47 | 2026-10-08 | (backfilled in NEW-52; original agent not recorded) | NEW-47 | owner with account role MEMBER gets all branches and members (be `478347a`) | task complete (not pushed at the time) | yes |
-| 48 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-48 | multi-branch Branch Manager members list (be `5638190`) | task complete | yes |
-| 49 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-49 | branch-scoped staff lists (be `789862e`) | task complete | yes |
-| 50 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-50 | attendance read routes scope, listForStaff shape (be `d19b112`) | task complete | yes |
-| 51 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-51 | attendance write routes, weekly-attendance, host dashboard/checkins scope (be `3af6de0`) | task complete | yes |
-| 52 | 2026-10-09 | Claude Code (Sonnet 5.5) | NEW-52 | host branch members/announcements/schedule/resubmit routes and `GET /reports/branch/:branchId` scoped by permission at `:branchId` (be branch `fix/new-52`, not pushed); `dashboard-access.test.js` now runs | task complete (not pushed, owner review) | yes |
-| 53 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-53 | 7 root-level test files moved into `tests/regression/` (3 updated to current behaviour); 6 live-server smoke files left out as NEW-54 (be branch `fix/new-53`, not pushed) | task complete (not pushed, owner review) | yes |
-| 54 | 2026-10-10 | Claude Code (Sonnet 5.5) | Prompt 3C (CMS ledger, payouts, dashboard, reports, notifications) | UX-13 ledger/payouts/refunds (cms 34fd5b4, ae46875, 756d7d2, 143c3df, 4c0a8a2, 6f35745), UX-18 (cms 9ef9a29, 59b4329), UX-23 (cms 2374126), NEW-68; NEW-58…NEW-67 proposed (backend, not fixed). Note: NEW-55/56/57 have no §13 rows (only `cms/docs/changes/NEW-55.md`, `NEW-57.md`); not added here | task complete (not pushed, owner review) | yes |
+| 47 | 2026-10-08 | Gemini (Antigravity) | NEW-46 | CMS catalog, capacity banner, loading state, isTenantOwner, map, cities, and savesto investigation (items a–g) | task complete | yes |
+| 48 | 2026-10-08 | (backfilled in NEW-52; original agent not recorded) | NEW-47 | owner with account role MEMBER gets all branches and members (be `478347a`) | task complete (not pushed at the time) | yes |
+| 49 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-48 | multi-branch Branch Manager members list (be `5638190`) | task complete | yes |
+| 50 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-49 | branch-scoped staff lists (be `789862e`) | task complete | yes |
+| 51 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-50 | attendance read routes scope, listForStaff shape (be `d19b112`) | task complete | yes |
+| 52 | 2026-10-09 | (backfilled in NEW-52; original agent not recorded) | NEW-51 | attendance write routes, weekly-attendance, host dashboard/checkins scope (be `3af6de0`) | task complete | yes |
+| 53 | 2026-10-09 | Claude Code (Sonnet 5.5) | NEW-52 | host branch members/announcements/schedule/resubmit routes and `GET /reports/branch/:branchId` scoped by permission at `:branchId` (be branch `fix/new-52`, not pushed); `dashboard-access.test.js` now runs | task complete (not pushed, owner review) | yes |
+| 54 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-53 | 7 root-level test files moved into `tests/regression/` (3 updated to current behaviour); 6 live-server smoke files left out as NEW-54 (be branch `fix/new-53`, not pushed) | task complete (not pushed, owner review) | yes |
+| 55 | 2026-10-10 | Claude Code (Sonnet 5.5) | Prompt 3C (CMS ledger, payouts, dashboard, reports, notifications) | UX-13 ledger/payouts/refunds (cms 34fd5b4, ae46875, 756d7d2, 143c3df, 4c0a8a2, 6f35745), UX-18 (cms 9ef9a29, 59b4329), UX-23 (cms 2374126), NEW-68; NEW-58…NEW-67 proposed (backend, not fixed). | task complete (CMS PR #23 merged) | yes |
+| 56 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-55/56/57 (CMS check-in and member lookup) | NEW-55: manual check-in sends {userId, subscriptionId, branchId} with email lookup (cms 0cbbb76); NEW-56: member lookup returns active check-in subscriptions (be ab125f2); NEW-57: manual check-in and record payment use member lookup (cms 12598f7) | task complete | yes |
+| 57 | 2026-10-10 | (backfilled; original agent not recorded) | NEW-58/59/60 (PR #88) | NEW-58 (status=STAFF_COLLECTED accepted in payments validator), NEW-59 (can('payouts.view', {orgWide: true}) on /host/payouts routes), NEW-60 (dashboard.revenue.view & resolveBranchScope on monthly report and export routes) (be 22f7d69, PR #88) | task complete | yes |
