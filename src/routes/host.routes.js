@@ -15,8 +15,8 @@ const upload = require('../middleware/upload');
 const router = Router();
 
 // Payouts (PAY-10, SEC-13)
-router.get('/payouts/balance', authenticate, tenantContext, payoutsController.getBalance);
-router.get('/payouts', authenticate, tenantContext, payoutsController.listPayouts);
+router.get('/payouts/balance', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
+router.get('/payouts', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
 router.post('/payouts', authenticate, tenantContext, idempotency({ required: true }), payoutsController.requestPayout);
 
 // Expense Categories

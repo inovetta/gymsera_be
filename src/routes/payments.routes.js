@@ -139,7 +139,7 @@ router.post(
  *         description: Filter by branch
  *       - in: query
  *         name: status
- *         schema: { type: string, enum: [PENDING, STAFF_COLLECTED, COMPLETED, FAILED, REFUNDED] }
+ *         schema: { type: string, enum: [PENDING, STAFF_COLLECTED, COMPLETED, FAILED, REFUNDED, EXPIRED] }
  *       - in: query
  *         name: method
  *         schema: { type: string, enum: [CASH, BANK_TRANSFER, CARD, WALLET] }

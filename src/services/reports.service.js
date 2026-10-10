@@ -225,7 +225,7 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
 /**
  * Detailed daily-granular breakdown for a given month.
  */
-const monthlyBreakdown = async (tenantDb, { year, month }) => {
+const monthlyBreakdown = async (tenantDb, { year, month, branchId, branchIds } = {}) => {
   const { Payment, MemberSubscription, AttendanceLog, sequelize } = tenantDb;
   const models = tenantDb.models;
   const seq = tenantDb.sequelize;
@@ -235,6 +235,12 @@ const monthlyBreakdown = async (tenantDb, { year, month }) => {
   const periodStart = new Date(y, m - 1, 1);
   const periodEnd = new Date(y, m, 0, 23, 59, 59);
 
+  const branchWhere = branchId
+    ? { branchId }
+    : Array.isArray(branchIds)
+    ? { branchId: { [Op.in]: branchIds } }
+    : {};
+
   const [revenueByDay, subscriptionsByDay, checkInsByDay] = await Promise.all([
     models.Payment.findAll({
       attributes: [
@@ -242,7 +248,11 @@ const monthlyBreakdown = async (tenantDb, { year, month }) => {
         [seq.fn('SUM', seq.col('amount')), 'totalRevenue'],
         [seq.fn('COUNT', seq.col('id')), 'count'],
       ],
-      where: { status: PaymentStatus.COMPLETED, paidAt: { [Op.between]: [periodStart, periodEnd] } },
+      where: {
+        status: PaymentStatus.COMPLETED,
+        paidAt: { [Op.between]: [periodStart, periodEnd] },
+        ...branchWhere,
+      },
       group: [seq.fn('DATE', seq.col('paid_at'))],
       order: [[seq.fn('DATE', seq.col('paid_at')), 'ASC']],
       raw: true,
@@ -252,7 +262,10 @@ const monthlyBreakdown = async (tenantDb, { year, month }) => {
         [seq.fn('DATE', seq.col('subscribed_at')), 'day'],
         [seq.fn('COUNT', seq.col('id')), 'count'],
       ],
-      where: { subscribedAt: { [Op.between]: [periodStart, periodEnd] } },
+      where: {
+        subscribedAt: { [Op.between]: [periodStart, periodEnd] },
+        ...branchWhere,
+      },
       group: [seq.fn('DATE', seq.col('subscribed_at'))],
       raw: true,
     }),
@@ -264,6 +277,7 @@ const monthlyBreakdown = async (tenantDb, { year, month }) => {
       where: {
         attendanceType: 'CHECK_IN',
         checkInAt: { [Op.between]: [periodStart, periodEnd] },
+        ...branchWhere,
       },
       group: [seq.fn('DATE', seq.col('check_in_at'))],
       raw: true,
