@@ -32,6 +32,19 @@ router.get('/plans', controller.getPlans);
 
 /**
  * @swagger
+ * /billing/bank-instructions:
+ *   get:
+ *     summary: Public bank transfer instructions for platform subscriptions (UX-15)
+ *     tags: [Billing]
+ *     parameters:
+ *       - { in: query, name: currency, schema: { type: string } }
+ *     responses:
+ *       200: { description: Bank transfer instructions retrieved }
+ */
+router.get('/bank-instructions', controller.getBankInstructions);
+
+/**
+ * @swagger
  * /billing/purchase-intent:
  *   post:
  *     summary: Check cross-provider conflicts and decide purchase mechanism (BILL-07)

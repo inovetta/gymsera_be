@@ -36,10 +36,29 @@ const memberCheckinGraceDays = () => {
   return days;
 };
 
+/**
+ * Bank transfer instructions for SaaS platform payments / onboarding (UX-15).
+ * Read strictly from environment variables so no account data is in git.
+ */
+const getBankTransferInstructions = (requestedCurrency) => {
+  const currency = requestedCurrency || process.env.BANK_TRANSFER_CURRENCY || 'PKR';
+  return {
+    bankName: process.env.BANK_TRANSFER_BANK_NAME || null,
+    accountTitle: process.env.BANK_TRANSFER_ACCOUNT_TITLE || null,
+    accountNumber: process.env.BANK_TRANSFER_ACCOUNT_NUMBER || null,
+    iban: process.env.BANK_TRANSFER_IBAN || null,
+    swiftCode: process.env.BANK_TRANSFER_SWIFT || null,
+    currency,
+    instructions: process.env.BANK_TRANSFER_INSTRUCTIONS || null,
+  };
+};
+
 module.exports = {
   payLaterGraceDays,
   overquotaGraceDays,
   memberCheckinGraceDays,
+  getBankTransferInstructions,
   OVERQUOTA_GRACE_DAYS: 7,
   MEMBER_CHECKIN_GRACE_DAYS: 7,
 };
+
