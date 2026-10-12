@@ -5,6 +5,7 @@ const billingEvents = require('../services/billing-event.service');
 const subscriptionMigration = require('../services/subscription-migration.service');
 const { BillingPlan } = require('../models/platform');
 const { sendSuccess, createError } = require('../utils/response.utils');
+const billingConfig = require('../config/billing.config');
 
 /**
  * GET /billing/plans
@@ -462,8 +463,30 @@ const purchaseIntent = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /billing/bank-instructions
+ *
+ * Public read-only endpoint serving bank-transfer instructions for platform
+ * subscriptions / host registration (UX-15).
+ * Configuration comes strictly from environment variables via billing.config.js,
+ * so changes reflect immediately without code changes or deployments, and no
+ * real bank/account details are committed to git.
+ */
+const getBankInstructions = async (req, res, next) => {
+  try {
+    const currency = typeof req.query.currency === 'string' && req.query.currency.trim() !== ''
+      ? req.query.currency.trim().toUpperCase()
+      : null;
+    const instructions = billingConfig.getBankTransferInstructions(currency);
+    return sendSuccess(res, instructions, 'Bank transfer instructions retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getPlans,
+  getBankInstructions,
   purchaseIntent,
   getDowngradePreview,
   putDowngradeChoice,
