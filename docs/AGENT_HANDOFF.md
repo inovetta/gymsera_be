@@ -17,25 +17,28 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-10 |
+| Last updated | 2026-10-12 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 3C & NEW-58/59/60: CMS money & backend fixes** |
+| Current prompt | **Prompt 3D: listing editor, signup unification, website cleanup (close-out)** |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 3C is DONE and merged (CMS PR #23). NEW-58/59/60 merged and deployed (PR #88).
+Prompt 3D is DONE and merged in all four repos (checked against `origin` on 2026-10-12).
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `main` | f3919be Merge pull request #88 from inovetta/fix/new-58 | no |
-| gymsera_cms | `main` | merged (CMS PR #23) | no |
+| gymsera_be | `main` | 7d2508e Merge pull request #94 from inovetta/test/ux-24-tenant-signup-contract | no |
+| gymsera_web | `main` | d26be34 Merge pull request #15 from inovetta/phase-3/prompt-3d-web-terms-cleanup | no |
+| gymsera_cms | `main` | 3de2a9d Merge pull request #24 from inovetta/phase-3/prompt-3d-cms-listing-editor | no |
+| gyms_era | `master` | 2ac8680 Merge pull request #5 from Amirhaiderkhan/phase-3/prompt-3d-mobile-boost | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 3C is DONE and merged (CMS PR #23), and NEW-58/59/60 is merged and deployed (PR #88). Next action: **Prompt 3D** (listing editor, signup unification, website cleanup, per `docs/GYMSERA_AGENT_PLAYBOOK.md`).
+> Prompt 3D is DONE (spec §13 has the rows). Next action: work through the **End-of-project checklist** below, then start the next prompt in `docs/GYMSERA_AGENT_PLAYBOOK.md`.
+> Open issues found in 3D: NEW-69, NEW-70, NEW-71, NEW-72 (code) and NEW-73 (ops, no code); see spec §13.
 
 ### Work in progress that is NOT committed
 
@@ -44,9 +47,9 @@ Prompt 3C is DONE and merged (CMS PR #23). NEW-58/59/60 merged and deployed (PR 
 ### Blocked / waiting on the owner
 
 - **Owner decisions waiting:**
-  - **NEW-54:** delete the six live-server smoke tests (`tests/admin|auth|discovery|host|me|member.test.js`), decided: delete.
-  - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`).
-  - **Dependabot criticals.**
+  - ~~NEW-54: delete the six live-server smoke tests~~ DONE (be PR #90).
+  - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) and NEW-69 to NEW-72 (from Prompt 3D).
+  - ~~Dependabot criticals~~ cleared: bcrypt 6, multer 2, `npm audit fix` (PR #91); nodemailer 10.1.0 (PR #92).
 - **Deploy order (critical):** platform migrations **p004–p006 must be applied before this backend code goes live.**
   The model reads `currency` and `pending_change`; without them every `tenant_subscriptions` query fails
   ("Unknown column"). Steps: run the read-only checks in `docs/sql/prompt-1b-precheck.sql`, then
@@ -70,6 +73,21 @@ Prompt 3C is DONE and merged (CMS PR #23). NEW-58/59/60 merged and deployed (PR 
 - **Part 2 of Hotfix Part 2**: Decisions pending on the four /system routes (`/system/run-install`, `/system/run-pull`,
   `/system/configure-fcm`, `/system/fcm-test`).
 
+### End-of-project checklist (none done yet)
+
+- [ ] Fix outgoing email (NEW-73): Zoho blocks `info@inovetta.com` (`554 5.1.8`); submit the unblock request, then move to a transactional provider (ZeptoMail or SES) by changing `SMTP_*` only
+- [ ] Configure Firebase push (the logs show a `private_key` error)
+- [ ] Install Redis, or set it explicitly off (`DISABLE_REDIS=true`)
+- [ ] Set `BANK_TRANSFER_*` on the API server (UX-15; without them the endpoint returns nulls)
+- [ ] SPF, DKIM and DMARC for the sending domain
+- [ ] Set `NEXT_PUBLIC_CMS_URL` on the web server (UX-02 redirect target)
+- [ ] Mobile release before 2026-12-05; it must include the Boost "Coming soon" change (app `909f3cb`) and NEW-38 re-auth, which is not yet on `gyms_era` master
+- [ ] Add `timeout-minutes` to CI jobs if runs get cancelled
+- [ ] Branch protection on `main` in all repos (a direct push to `main` happened once on `gymsera_web`, `86ec525`)
+- [ ] Schedule the `audit_logs` and KYC retention jobs
+- [ ] Decide the four `/system/*` routes (`run-install`, `run-pull`, `configure-fcm`, `fcm-test`)
+- [ ] `MEMBER_PAYMENT_EXPIRY_ENABLED` stays unset until mobile handles `EXPIRED`
+
 ### Notes for running the suite locally
 
 - Use the CI env (root, empty password, Docker MySQL on 127.0.0.1:3308). Use **one** `TENANT_CONN_ENCRYPTION_KEY` for every run that shares a Redis: the tenant connection string is cached in Redis for 1 h, encrypted with that key, and a run with another key gets 500s on every tenant route.
@@ -79,6 +97,20 @@ Prompt 3C is DONE and merged (CMS PR #23). NEW-58/59/60 merged and deployed (PR 
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 3D: listing editor, signup unification, website cleanup (be, web, cms, gyms_era):**
+- [x] Backend: `GET /billing/bank-instructions` from `BANK_TRANSFER_*` env (UX-15, be `5bfd0d0`, PR #93)
+- [x] Web: `/onboarding` removed with 301, 14-day copy, bank instructions from the API, 422 field errors (UX-01, UX-07, UX-15, web `86ec525`, pushed straight to `main`); `/gym-owner/register` page-props build fix (PR #10)
+- [x] Web: dashboard guard and thin Stripe return page (UX-02, BILL-14 respected, web `ccda9d8`, PR #11)
+- [x] Web: plans step (M1 `423f63c`, PR #12), card option behind `NEXT_PUBLIC_WEB_CARD_PAYMENTS_ENABLED` (M2 `e6d69ce`, PR #13), photos step and mobile step order (`70e24ee`, PR #14), terms checkbox and dead-method removal (`5d75cb6`, PR #15)
+- [x] CMS: branch listing editor at `/gym/branches/[id]/listing` (UX-21, cms `4d193ca`..`51a33c4`, PR #24); UX-20 NOT REPRODUCED (cms `ae3f093`)
+- [x] Mobile: Boost replaced by a disabled "Coming soon" state (BILL-18, R-15, app `909f3cb`, PR #5)
+- [x] Contract tests for `/tenants/*` signup, web and mobile shapes (M3, be `230c978`, PR #94)
+- [x] Dependency work: NEW-54 (PR #90), bcrypt 6 / multer 2 / audit fix (PR #91), nodemailer 10.1.0 (PR #92)
+- [x] Spec §13 rows, §3.3 parity rows, corrected UX-24 audit row; NEW-69 to NEW-73 recorded (this close-out)
+- Not done, recorded: NEW-69, NEW-70, NEW-71, NEW-72, NEW-73
+
+---
 
 **Prompt 3C — Ledger, payouts, dashboard, reports, notifications in the CMS (gymsera_cms, branch `phase-3/prompt-3c-cms-money`):**
 - [x] 1. Shared helpers: integer-minor-unit money, Idempotency-Key, server-message-first errors, tier from effective permissions, `NoAccess`, `ReauthDialog` (cms 34fd5b4)
@@ -348,3 +380,12 @@ Prompt 3C is DONE and merged (CMS PR #23). NEW-58/59/60 merged and deployed (PR 
 | 55 | 2026-10-10 | Claude Code (Sonnet 5.5) | Prompt 3C (CMS ledger, payouts, dashboard, reports, notifications) | UX-13 ledger/payouts/refunds (cms 34fd5b4, ae46875, 756d7d2, 143c3df, 4c0a8a2, 6f35745), UX-18 (cms 9ef9a29, 59b4329), UX-23 (cms 2374126), NEW-68; NEW-58…NEW-67 proposed (backend, not fixed). | task complete (CMS PR #23 merged) | yes |
 | 56 | 2026-10-10 | Claude Code (Sonnet 5.5) | NEW-55/56/57 (CMS check-in and member lookup) | NEW-55: manual check-in sends {userId, subscriptionId, branchId} with email lookup (cms 0cbbb76); NEW-56: member lookup returns active check-in subscriptions (be ab125f2); NEW-57: manual check-in and record payment use member lookup (cms 12598f7) | task complete | yes |
 | 57 | 2026-10-10 | (backfilled; original agent not recorded) | NEW-58/59/60 (PR #88) | NEW-58 (status=STAFF_COLLECTED accepted in payments validator), NEW-59 (can('payouts.view', {orgWide: true}) on /host/payouts routes), NEW-60 (dashboard.revenue.view & resolveBranchScope on monthly report and export routes) (be 22f7d69, PR #88) | task complete | yes |
+| 58 | 2026-10-10 | (not recorded; backfilled in the 3D close-out) | NEW-54 (PR #90) | six live-server smoke tests and `tests/helpers.js` deleted per owner decision (be `23d0b3b`) | task complete | yes |
+| 59 | 2026-10-10 to 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Dependency work (PRs #91, #92) | bcrypt 6, multer 2, `npm audit fix` (be `7ee6a6e`); nodemailer 10.1.0 (be `37ee57a`, `docs/changes/NODEMAILER-10.md`) | task complete | yes |
+| 60 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, backend PR 1 (PR #93) | UX-15 `GET /billing/bank-instructions` (be `5bfd0d0`) | task complete | yes |
+| 61 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, web (no PR, PRs #10, #11) | UX-01, UX-07, UX-15, 422 errors (web `86ec525`, direct push to `main`); page-props fix (`88c2304`); UX-02 (web `ccda9d8`) | task complete | yes |
+| 62 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, web PRs A to D (PRs #12 to #15) | M1 plans step `423f63c`; M2 card flag `e6d69ce`; photos step and step order `70e24ee`; terms checkbox and dead-method removal `5d75cb6` | task complete | yes |
+| 63 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, CMS PR 4 (PR #24) | UX-21 listing editor (cms `4d193ca`..`51a33c4`); UX-20 NOT REPRODUCED | task complete | yes |
+| 64 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, mobile PR 5 (PR #5, `Amirhaiderkhan/gyms_era`) | BILL-18 / R-15 Boost "Coming soon" (app `909f3cb`) | task complete | yes |
+| 65 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, contract tests PR E (PR #94) | M3 `/tenants/*` signup contract tests (be `230c978`) | task complete | yes |
+| 66 | 2026-10-12 | Claude Code (Sonnet 5.5) | Prompt 3D close-out (docs only) | Spec §13 and §3.3 updated, UX-24 audit row corrected, NEW-69 to NEW-73 recorded, end-of-project checklist added | task complete | yes |
