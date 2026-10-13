@@ -512,8 +512,19 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
   const byMethod = {};
   const byCollector = {};
   const payments = [];
+  const perDayByDate = {};
 
   for (const b of perBranch) {
+    // Weekly/monthly branch results carry perDay (no payments list): sum them by date.
+    for (const d of b.perDay || []) {
+      const t = perDayByDate[d.businessDate] || (perDayByDate[d.businessDate] = {
+        businessDate: d.businessDate, status: 'CLOSED', expected: 0, collected: 0, verified: 0,
+      });
+      if (d.status !== 'CLOSED') t.status = 'OPEN';
+      t.expected = round2(t.expected + (d.expected || 0));
+      t.collected = round2(t.collected + (d.collected || 0));
+      t.verified = round2(t.verified + (d.verified || 0));
+    }
     for (const k of Object.keys(totals)) totals[k] += b.totals[k] || 0;
     for (const [method, amount] of Object.entries(b.byMethod)) {
       byMethod[method] = (byMethod[method] || 0) + amount;
@@ -553,7 +564,7 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
         }
       }
     }
-    for (const p of b.payments) {
+    for (const p of b.payments || []) {
       const plain = typeof p.get === 'function' ? p.get({ plain: true }) : p;
       payments.push({ ...plain, branchId: b.branchId, branchName: b.branchName });
     }
@@ -573,6 +584,9 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
     totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round2(v)])),
     byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, round2(v)])),
     byCollector: Object.values(byCollector).map((c) => ({ ...c, total: round2(c.total) })),
+    ...(Object.keys(perDayByDate).length > 0
+      ? { perDay: Object.values(perDayByDate).sort((a, c) => (a.businessDate < c.businessDate ? -1 : 1)) }
+      : {}),
     payments: payments.slice(0, 300),
   };
 };
@@ -580,7 +594,7 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
 /** Every active branch — the scope of every gym-wide (host) ledger read below. */
 const _activeBranches = async (tenantDb) => {
   const { Branch } = tenantDb.models;
-  return Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id', 'name'] });
+  return Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id', 'branchName'] });
 };
 
 /**
@@ -593,7 +607,7 @@ const _activeBranches = async (tenantDb) => {
 const getTodayLedgerAllBranches = async (tenantDb) => {
   const branches = await _activeBranches(tenantDb);
   const perBranch = await Promise.all(
-    branches.map(async (b) => ({ branchId: b.id, branchName: b.name, ...(await getTodayLedger(tenantDb, b.id)) }))
+    branches.map(async (b) => ({ branchId: b.id, branchName: b.branchName, ...(await getTodayLedger(tenantDb, b.id)) }))
   );
   return mergeBranchLedgers(perBranch);
 };
@@ -602,7 +616,7 @@ const getTodayLedgerAllBranches = async (tenantDb) => {
 const getRangeLedgerAllBranches = async (tenantDb, fromDate, toDate) => {
   const branches = await _activeBranches(tenantDb);
   const perBranch = await Promise.all(
-    branches.map(async (b) => ({ branchId: b.id, branchName: b.name, ...(await getRangeLedger(tenantDb, b.id, fromDate, toDate)) }))
+    branches.map(async (b) => ({ branchId: b.id, branchName: b.branchName, ...(await getRangeLedger(tenantDb, b.id, fromDate, toDate)) }))
   );
   return mergeBranchLedgers(perBranch, { fromDate, toDate });
 };
@@ -613,7 +627,7 @@ const listOpenDaysAllBranches = async (tenantDb) => {
   const perBranch = await Promise.all(
     branches.map(async (b) => {
       const days = await listOpenDays(tenantDb, b.id);
-      return days.map((d) => ({ ...d.get({ plain: true }), branchId: b.id, branchName: b.name }));
+      return days.map((d) => ({ ...d.get({ plain: true }), branchId: b.id, branchName: b.branchName }));
     })
   );
   return perBranch.flat().sort((a, c) => (a.businessDate < c.businessDate ? -1 : 1));
