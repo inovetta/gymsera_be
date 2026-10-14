@@ -17,34 +17,33 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-13 |
+| Last updated | 2026-10-14 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 3E: screen-state and design-system pass (close-out)** |
-| Prompt status | `DONE` except **UX-09 string conversion, which is NOT STARTED** (infrastructure PRs, CI check and the 3A-3D screen conversion are still pending) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Prompt 4A: Speed (close-out)** |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> (not measured: device cold start, Lighthouse, production p95; see spec §13 "Prompt 4A close-out notes") |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 3E is merged in all four repos (checked against `origin` on 2026-10-13). The backend row is the
-tip of `origin/main` when the 3E close-out branch was cut; this docs PR will sit on top of it.
+Prompt 4A is merged (be PRs #97 to #105, mobile PR #8; checked against `origin` on 2026-10-14). The backend row is
+the tip of `origin/main` when the 4A close-out branch was cut (it includes the 3E docs, PR #96); this docs PR sits on top.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `main` | 1dab952 Merge pull request #95 from inovetta/docs/prompt-3d-close-out | no |
+| gymsera_be | `main` | 0f50358 Merge pull request #96 from inovetta/docs/prompt-3e-close-out | no |
 | gymsera_web | `main` | 92ad8b5 Merge pull request #16 from inovetta/phase-3/prompt-3e-states | no |
 | gymsera_cms | `main` | c0460d5 Merge pull request #27 from inovetta/phase-3/prompt-3e-ux17 | no |
-| gyms_era | `master` | e7baebd Merge pull request #7 from Amirhaiderkhan/phase-3/prompt-3e-states | no |
+| gyms_era | `master` | 092c8aa Merge pull request #8 from Amirhaiderkhan/perf/phase-4a-mobile | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 3E is DONE except **UX-09** (spec §13 has the rows; owner decisions R-29, R-30, R-31 in §14).
-> Next action: build the UX-09 string work as scoped in R-31 (English only): (1) string infrastructure per client
-> (next-intl in `gymsera_cms` and `gymsera_web`, ARB / `flutter_localizations` in `gyms_era`), (2) a CI check that fails on
-> hard-coded user-facing strings, (3) convert the Phase 3A-3D screens. The CMS and web `docs/changes/PROMPT-3E.md` already
-> list this as "PR 6" (unticked). Then work through the **End-of-project checklist** below and start the next prompt in
-> `docs/GYMSERA_AGENT_PLAYBOOK.md`.
-> Open issues from 3D: NEW-69 to NEW-72 (code), NEW-73 (ops). Open issues from 3E: NEW-74 to NEW-78; see spec §13.
+> Prompt 4A is DONE (spec §13 has the rows and the "Prompt 4A close-out notes"). Next action: **Prompt 5A** (global
+> readiness, realtime and observability, per `docs/GYMSERA_AGENT_PLAYBOOK.md`), then **Prompt 6A** (gap check), then work
+> through the **End-of-project checklist** below.
+> Still open and unscheduled: UX-09 string conversion (3E, scope R-31), NEW-81 and NEW-82 (from 4A), NEW-61 to NEW-67,
+> NEW-69 to NEW-72, NEW-74 to NEW-78. Held back from 4A as separate prompts: API-05 cursor pagination, PERF-03 images,
+> PERF-05 web ISR, PERF-09 reports, PERF-02 / PERF-11 Flutter rebuilds and leaks.
 
 ### Work in progress that is NOT committed
 
@@ -53,9 +52,13 @@ tip of `origin/main` when the 3E close-out branch was cut; this docs PR will sit
 ### Blocked / waiting on the owner
 
 - **Owner decisions waiting:**
+  - **NEW-81 (4A):** where the app-level feature flags, minimum app version and error-copy version live, and whether the mobile app sends its version (no app-version header today). Needed for the bootstrap contract and the §16 force-update check.
+  - **NEW-82 (4A):** make the CMS admin tenants search work on the backend, or remove the search box.
+  - **Before adding a second API instance (4A):** the discovery snapshot invalidation is in process; add a platform-DB version read first (decided single instance on 2026-10-14).
   - ~~NEW-54: delete the six live-server smoke tests~~ DONE (be PR #90).
   - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) NEW-69 to NEW-72 (from Prompt 3D) and NEW-74 to NEW-78 (from Prompt 3E; mobile and CMS/web client work, NEW-78 is a test fix under R-19).
   - ~~Dependabot criticals~~ cleared: bcrypt 6, multer 2, `npm audit fix` (PR #91); nodemailer 10.1.0 (PR #92).
+- **Prompt 4A deploy notes:** no migration. Size MySQL `max_connections` for the tenant pool ceiling (200 pools x 3 connections per API process, soft cap; env `TENANT_POOL_*`). Discovery GETs send `public, s-maxage=60` (`DISCOVERY_CDN_MAX_AGE_S`, 0 = `no-store`); snapshot TTL `DISCOVERY_SNAPSHOT_TTL_MS` (default 60000, 0 = off). The mobile build with `/me/bootstrap` (app `7f90bb6`) falls back to the old calls on a 404, so backend first is safe in either order.
 - **Deploy order (critical):** platform migrations **p004–p006 must be applied before this backend code goes live.**
   The model reads `currency` and `pending_change`; without them every `tenant_subscriptions` query fails
   ("Unknown column"). Steps: run the read-only checks in `docs/sql/prompt-1b-precheck.sql`, then
@@ -93,6 +96,9 @@ tip of `origin/main` when the 3E close-out branch was cut; this docs PR will sit
 - [ ] Schedule the `audit_logs` and KYC retention jobs
 - [ ] Decide the four `/system/*` routes (`run-install`, `run-pull`, `configure-fcm`, `fcm-test`)
 - [ ] `MEMBER_PAYMENT_EXPIRY_ENABLED` stays unset until mobile handles `EXPIRED`
+- [ ] Device test of the 4A mobile startup (app `7f90bb6`): cold start against the 2.5 s budget, request count, no "Gyms" tab flicker for staff, `/host` redirect
+- [ ] Measure the 4A backend changes on staging: discovery p95 (200 RPS), pool count against `max_connections`, `/me/bootstrap` on a real session
+- [ ] Confirm whether the Cloudflare zone caches API paths (`cf-cache-status` on `/api/v1/discovery/*`) given `s-maxage=60`
 
 ### Notes for running the suite locally
 
@@ -103,6 +109,23 @@ tip of `origin/main` when the 3E close-out branch was cut; this docs PR will sit
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 4A: Speed (gymsera_be PRs #97 to #105, gyms_era PR #8; docs in be):**
+- [x] NEW-79: gym-wide ledger reads no longer 500 (be `800ecc7`, PR #97)
+- [x] B1 PERF-07: tenant pool cap 200 x 3, idle-only LRU eviction, metrics, single-flight creation (be `46930d9`, PR #98)
+- [x] NEW-80: expiry cron iterates ACTIVE tenants from the platform DB (be `1fb5d83`, PR #99)
+- [x] B2 PERF-06 / API-04: discovery snapshot, 60 s TTL, immediate invalidation, `s-maxage=60` (be `3dbe022`, PR #100)
+- [x] B3 API-06: content-based ETag, 304, `private, no-cache` (be `bd7eae4`, `4fb51e4`, PR #101)
+- [x] B4 API-07 / API-08: slim `/payments` and `/subscriptions/staff` rows, parallel reads (be `374fc57`, PR #102)
+- [x] B5: per-request tenant memo in `tenantContext` (be `2263a2b`, PR #103)
+- [x] B6 API-03: `GET /me/bootstrap` (be `6d295bb`, PR #104)
+- [x] C1 PERF-01: mobile bootstrap at launch, inbox / staff-status after the first frame (app `7f90bb6`, PR #8)
+- [x] B7 API-04 / PERF-08: admin tenants list, batched first-listing check, SQL LIMIT (be `d985529`, PR #105)
+- [x] Spec §13 rows with before / after numbers and the "Prompt 4A close-out notes" (this close-out); NEW-81, NEW-82 recorded
+- [ ] Held back as separate prompts: API-05, PERF-03, PERF-05, PERF-09, PERF-02 / PERF-11
+- [ ] Not measured: device cold start, Lighthouse, production p95, 200 RPS discovery load, 1,000-tenant pool soak
+
+---
 
 **Prompt 3E: screen-state and design-system pass (cms, web, gyms_era; docs in be):**
 - [x] CMS foundation: design tokens (`design/design-tokens.json` → `src/styles/tokens.css`), shared `ErrorState` / `OfflineBanner` / `SkeletonList`, `SkipLink`, axe harness (UX-08, UX-10, cms `198119b`, PR #25)
@@ -343,6 +366,20 @@ tip of `origin/main` when the 3E close-out branch was cut; this docs PR will sit
   - Mobile still has about 40 error handlers on `SizedBox.shrink()`, one-off `Text` or dummy data (NEW-74), no offline banner (NEW-75, R-10), and an old test that reaches the real staging API (NEW-78, R-19).
   - Per-repo detail: `docs/changes/PROMPT-3E.md` in `gymsera_cms`, `gymsera_web` and `gyms_era`. Test-suite run counts for 3E are not recorded in those notes; re-run the suites before relying on them.
 
+- **Prompt 4A additions (2026-10-14):**
+  - **Run the backend suite locally.** Start Docker, `docker start gymsera-test-mysql57` (port 3308), then `npm test` from the repo (about 15 minutes). Set the CI-style env: `MYSQL_HOST`, `PLATFORM_DB_HOST`, `TENANT_DB_HOST` = `127.0.0.1`, user `root`, empty passwords, `TEST_MYSQL_PORT=3308`, one 64-hex `TENANT_CONN_ENCRYPTION_KEY`, `JWT_SECRET`, `JWT_REFRESH_SECRET`. Redis on (local) is the CI shape; `DISABLE_REDIS=true` must also pass.
+  - **Suite size after 4A:** 161 suites (B7); Flutter `flutter test` 66 tests; `flutter analyze` has 126 pre-existing info-level findings and 0 errors (do not add new ones).
+  - **Query-count tests.** Patch `Sequelize.prototype.query` in a test to count queries per request; warm the per-user auth caches with one request first, or the first request pays an extra query. `asPersona(persona, headers)` takes headers when the caller is created, not on `.get(path)`; it also adds `X-Tenant-Id` = the persona's tenant by default.
+  - **Mutation checks.** For a guard test, temporarily break the guard (an always-idle pool, hooks off, header trusted, memo shared across requests) and confirm the test goes red; revert before committing.
+  - **Discovery snapshot.** Anything that changes what the public listing shows must invalidate it: `discovery-cache.service.js#watchModels` is called in `src/models/tenant/index.js` and `src/models/platform/index.js`. A new model that feeds discovery must be added there. A write that bypasses model hooks (raw SQL) will not invalidate. Reads that authorize a write pass `{ fresh: true }`. Snapshot objects are frozen: copy before sorting or annotating.
+  - **tenantContext memo.** Request-scoped only (`newRequestMemo`, passed by hand). Never move it onto `req`, a module or Redis. The NEW-26 source guard needs `where: { ... status: 'ACTIVE' ... }` to stay in `tenantContext.js`.
+  - **Bootstrap.** `buildContext` in `context.controller.js` is shared by `/me/context` and `/me/bootstrap`; keep both responses' shapes. `X-Tenant-Id` on bootstrap is verified with `userBelongsToTenant` and answers 404 for a tenant the caller does not belong to.
+  - **Mobile.** `startupReadyProvider` is set by the shells in a post-frame callback and reset in `resetIdentityScopedCache`. New first-frame reads belong behind it. `MeRepository.getBootstrap` returns null on any failure by design.
+  - **Environment.** The sandbox may be offline (no `git fetch`); a scratch worktree deleted under a running suite invalidates that run (`ENOENT` on files inside it): keep the branch, re-create the worktree and repeat. B7's 3x ended with runs 1 and 2 green and run 3 interrupted this way (see spec §13).
+  - **Exact measurement numbers** are in spec §13 (rows for PERF-07 through API-04 / PERF-08); the throwaway harness is not committed.
+
+---
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -422,3 +459,14 @@ tip of `origin/main` when the 3E close-out branch was cut; this docs PR will sit
 | 70 | 2026-10-13 | Claude Code (Sonnet 5.5, from the commit trailer) | Prompt 3E, web PR 4 (PR #16) | tokens, states, skip link, axe, state sweep (UX-08, UX-10; web `f4a7afd`) | task complete | yes |
 | 71 | 2026-10-13 | Claude Code (Sonnet 5.5, from the commit trailer) | Prompt 3E, mobile PR 5 (PR #7, `Amirhaiderkhan/gyms_era`) | tokens, `ErrorStateView` / `EmptyStateView`, request id, tooltips (UX-08, UX-10; app `3dab631`) | task complete | yes |
 | 72 | 2026-10-13 | Claude Code (Sonnet 5.5) | Prompt 3E close-out (docs only) | Spec §2.4, §3.3, §13, §14 (R-29 to R-31) updated; `docs/design-tokens.json` added; NEW-74 to NEW-78 recorded; UX-09 recorded as not started | task complete | yes |
+| 73 | 2026-10-13 | Claude Code (Sonnet 5.5) | Prompt 4A, NEW-79 | Gym-wide ledger reads 500 (be `800ecc7`, PR #97); found while measuring list routes | task complete (agent did not push; owner pushed and merged) | yes |
+| 74 | 2026-10-13 | Claude Code (Sonnet 5.5) | Prompt 4A, B1 | PERF-07 tenant pool cap and idle-only LRU eviction (be `46930d9`, PR #98) | task complete | yes |
+| 75 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, NEW-80 | Expiry cron iterates ACTIVE tenants from the platform DB (be `1fb5d83`, PR #99) | task complete | yes |
+| 76 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B2 | PERF-06 / API-04 discovery snapshot with immediate invalidation (be `3dbe022`, PR #100) | task complete | yes |
+| 77 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B3 | API-06 content ETag, 304, private cache policy (be `bd7eae4`, `4fb51e4`, PR #101) | task complete | yes |
+| 78 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B4 | API-07 / API-08 slim list rows, parallel reads (be `374fc57`, PR #102) | task complete | yes |
+| 79 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B5 | Per-request tenant memo in `tenantContext` (be `2263a2b`, PR #103) | task complete | yes |
+| 80 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B6 | API-03 `GET /me/bootstrap` (be `6d295bb`, PR #104) | task complete | yes |
+| 81 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, C1 (`Amirhaiderkhan/gyms_era`) | PERF-01 mobile startup (app `7f90bb6`, PR #8); not tested on a device | task complete | yes |
+| 82 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B7 | API-04 / PERF-08 admin tenants list (be `d985529`, PR #105); runs 1 and 2 green locally (161 suites, 1503/1503 each), run 3 interrupted by a deleted scratch worktree (306 ENOENT, no test failure), CI 4/4 (PR #105) | task complete (3x not completed: run 3 interrupted by a deleted scratch worktree; see the suite note in the same row) | yes |
+| 83 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A close-out (docs only) | Spec §13 rows with before / after numbers, "Prompt 4A close-out notes", NEW-81 and NEW-82 recorded, held-back prompts listed; handoff moved to Prompt 5A | task complete (not pushed) | yes |
