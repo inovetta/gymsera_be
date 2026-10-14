@@ -192,6 +192,10 @@ AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user', constraints: false 
 Tenant.hasMany(AuditLog, { foreignKey: 'tenantId', as: 'auditLogs', constraints: false });
 AuditLog.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
 
+// Discovery snapshot (PERF-06): a write to any platform model the public listing
+// reads (listing status/featured, tenant status, ratings, cities/areas) drops it.
+require('../../services/discovery-cache.service').watchModels([GymListing, Tenant, GymReview, City, Area]);
+
 module.exports = {
   sequelize,
   User,

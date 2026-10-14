@@ -142,6 +142,10 @@ const registerTenantModels = (sequelize) => {
   Expense.hasMany(Expense, { foreignKey: 'recurringTemplateId', as: 'generatedInstances' });
   Expense.belongsTo(Expense, { foreignKey: 'recurringTemplateId', as: 'template' });
 
+  // Discovery snapshot (PERF-06): any write to what the public listing is built
+  // from drops the cached snapshot immediately.
+  require('../../services/discovery-cache.service').watchModels([Gym, Branch, MembershipPlan]);
+
   return {
     Gym,
     Branch,
