@@ -25,6 +25,41 @@ const { getRoleLevel } = require('../constants/roles');
 const CACHE_TTL_SECONDS = 3600; // 1 hour
 
 /**
+ * Per-request memo (PERF API overhead, spec §4.4).
+ *
+ * One tenantContext run used to read the same ACTIVE tenant row up to four times
+ * (header check, resolveTenantId, connection string, legacy role shim) and ran
+ * the whole membership check twice for the same user + tenant. The memo is a
+ * plain object created inside each tenantContext call and passed down by hand:
+ * it is never stored on `req`, a module, or Redis, so it cannot outlive the
+ * request and never carries a decision from one request to the next. Every
+ * request therefore still reads the tenant's current status from the database
+ * (NEW-26: a suspended tenant is refused on the very next request).
+ */
+const newRequestMemo = () => ({ activeTenants: new Map(), belongs: new Map() });
+
+/**
+ * The tenant row, but only while it is ACTIVE (null otherwise), read once per
+ * request. Carries everything the middleware needs from the platform tenants
+ * table: owner, connection string, status.
+ */
+const loadActiveTenant = (memo, tenantId) => {
+  const { Tenant } = require('../models/platform');
+  const query = () =>
+    Tenant.findOne({
+      where: { id: tenantId, status: 'ACTIVE' },
+      attributes: ['id', 'ownerUserId', 'connectionStringEncrypted', 'status'],
+    });
+  if (!memo) return query();
+  if (!memo.activeTenants.has(tenantId)) {
+    const p = query();
+    memo.activeTenants.set(tenantId, p);
+    p.catch(() => memo.activeTenants.delete(tenantId));
+  }
+  return memo.activeTenants.get(tenantId);
+};
+
+/**
  * Compatibility shim for routes still guarded by `authorize(...roles)`.
  *
  * Derives a legacy `req.user.role` from the caller's role assignments so the ~40
@@ -38,7 +73,7 @@ const CACHE_TTL_SECONDS = 3600; // 1 hour
  *
  * Delete this function once every route uses `can()`.
  */
-const applyLegacyRoleShim = async (req, tenantDb, tenantId) => {
+const applyLegacyRoleShim = async (req, tenantDb, tenantId, memo = null) => {
   const user = req.user;
   if (!user) return;
 
@@ -48,8 +83,11 @@ const applyLegacyRoleShim = async (req, tenantDb, tenantId) => {
   // Platform admins and the account's own elevated role are left alone.
   if (user.role === 'PLATFORM_ADMIN') return;
 
+  // The tenant is ACTIVE here (tenantContext just resolved it), so the memoized
+  // row answers; anything else keeps the original unconditional lookup.
   const { Tenant } = require('../models/platform');
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId'] });
+  const tenant = (await loadActiveTenant(memo, tenantId))
+    || (await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId'] }));
 
   if (tenant && tenant.ownerUserId === userId) {
     user.role = 'GYM_HOST';
@@ -89,16 +127,20 @@ const applyLegacyRoleShim = async (req, tenantDb, tenantId) => {
  * @param {string} tenantId
  * @returns {Promise<boolean>}
  */
-const userBelongsToTenant = async (userId, tenantId) => {
-  if (!userId || !tenantId) return false;
+const userBelongsToTenant = (userId, tenantId, memo = null) => {
+  if (!userId || !tenantId) return Promise.resolve(false);
+  if (!memo) return _userBelongsToTenant(userId, tenantId, null);
+  const key = `${userId}:${tenantId}`;
+  if (!memo.belongs.has(key)) memo.belongs.set(key, _userBelongsToTenant(userId, tenantId, memo));
+  return memo.belongs.get(key);
+};
+
+const _userBelongsToTenant = async (userId, tenantId, memo) => {
   const { UserOrgIndex, Tenant, UserGymMembership } = require('../models/platform');
 
-  // 1. Direct tenant ownership
-  const owned = await Tenant.findOne({
-    where: { id: tenantId, ownerUserId: userId, status: 'ACTIVE' },
-    attributes: ['id'],
-  });
-  if (owned) return true;
+  // 1. Direct tenant ownership (an ACTIVE tenant whose owner is this user)
+  const ownedTenant = await loadActiveTenant(memo, tenantId);
+  if (ownedTenant && ownedTenant.ownerUserId === userId) return true;
 
   // 2. Active membership in UserOrgIndex (staff / team)
   const inIndex = await UserOrgIndex.findOne({
@@ -116,10 +158,7 @@ const userBelongsToTenant = async (userId, tenantId) => {
 
   // 3. Fallback: check RoleAssignment directly in tenant DB (e.g. before index sync)
   try {
-    const tenant = await Tenant.findOne({
-      where: { id: tenantId, status: 'ACTIVE' },
-      attributes: ['id', 'connectionStringEncrypted'],
-    });
+    const tenant = ownedTenant;
     if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
       return false;
     }
@@ -147,7 +186,7 @@ const userBelongsToTenant = async (userId, tenantId) => {
  * Never from client body input.
  * @returns {Promise<string|null>}
  */
-const resolveTenantId = async (req) => {
+const resolveTenantId = async (req, memo = null) => {
   const user = req.user;
   const userId = user?.id || user?.sub;
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
@@ -157,21 +196,17 @@ const resolveTenantId = async (req) => {
   const headerTenantId = req.headers['x-tenant-id'];
   if (headerTenantId) {
     if (isPlatformAdmin) {
-      const { Tenant } = require('../models/platform');
-      const exists = await Tenant.findOne({
-        where: { id: headerTenantId, status: 'ACTIVE' },
-        attributes: ['id'],
-      });
+      const exists = await loadActiveTenant(memo, headerTenantId);
       return exists ? headerTenantId : null;
     }
-    const belongs = await userBelongsToTenant(userId, headerTenantId);
+    const belongs = await userBelongsToTenant(userId, headerTenantId, memo);
     return belongs ? headerTenantId : null;
   }
 
   // 2. Token-scoped tenantId (if present in JWT)
   if (user?.tenantId) {
     if (isPlatformAdmin) return user.tenantId;
-    const belongs = await userBelongsToTenant(userId, user.tenantId);
+    const belongs = await userBelongsToTenant(userId, user.tenantId, memo);
     if (belongs) return user.tenantId;
   }
 
@@ -181,7 +216,7 @@ const resolveTenantId = async (req) => {
     const fromBranch = await membershipService.resolveTenantForBranch(branchId);
     if (fromBranch) {
       if (isPlatformAdmin) return fromBranch;
-      const belongs = await userBelongsToTenant(userId, fromBranch);
+      const belongs = await userBelongsToTenant(userId, fromBranch, memo);
       if (belongs) return fromBranch;
     }
   }
@@ -197,6 +232,7 @@ const resolveTenantId = async (req) => {
 
 const tenantContext = async (req, res, next) => {
   try {
+    const memo = newRequestMemo(); // this request only; see newRequestMemo
     const user = req.user;
     const userId = user?.id || user?.sub;
     const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
@@ -217,7 +253,7 @@ const tenantContext = async (req, res, next) => {
       delete req.body.tenantId;
 
       if (!isPlatformAdmin) {
-        const belongs = await userBelongsToTenant(userId, bodyTenantId);
+        const belongs = await userBelongsToTenant(userId, bodyTenantId, memo);
         if (!belongs) {
           return rejectTenantNotFound(res);
         }
@@ -229,23 +265,19 @@ const tenantContext = async (req, res, next) => {
     const headerTenantId = req.headers['x-tenant-id'];
     if (headerTenantId) {
       if (isPlatformAdmin) {
-        const { Tenant } = require('../models/platform');
-        const exists = await Tenant.findOne({
-          where: { id: headerTenantId, status: 'ACTIVE' },
-          attributes: ['id'],
-        });
+        const exists = await loadActiveTenant(memo, headerTenantId);
         if (!exists) {
           return rejectTenantNotFound(res);
         }
       } else {
-        const belongs = await userBelongsToTenant(userId, headerTenantId);
+        const belongs = await userBelongsToTenant(userId, headerTenantId, memo);
         if (!belongs) {
           return rejectTenantNotFound(res);
         }
       }
     }
 
-    const tenantId = await resolveTenantId(req);
+    const tenantId = await resolveTenantId(req, memo);
 
     if (!tenantId) {
       return sendError(
@@ -261,11 +293,7 @@ const tenantContext = async (req, res, next) => {
     let encryptedConnStr = await safeRedisGet(cacheKey);
 
     if (!encryptedConnStr) {
-      const { Tenant } = require('../models/platform');
-      const tenant = await Tenant.findOne({
-        where: { id: tenantId, status: 'ACTIVE' },
-        attributes: ['id', 'connectionStringEncrypted', 'status'],
-      });
+      const tenant = await loadActiveTenant(memo, tenantId);
 
       if (!tenant) {
         return rejectTenantNotFound(res);
@@ -295,7 +323,7 @@ const tenantContext = async (req, res, next) => {
       console.warn('[tenantContext] invite claim failed:', err.message);
     });
 
-    await applyLegacyRoleShim(req, req.tenantDb, tenantId).catch((err) => {
+    await applyLegacyRoleShim(req, req.tenantDb, tenantId, memo).catch((err) => {
       console.warn('[tenantContext] legacy role shim failed:', err.message);
     });
 
