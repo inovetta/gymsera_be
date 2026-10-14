@@ -375,7 +375,7 @@ the tip of `origin/main` when the 4A close-out branch was cut (it includes the 3
   - **tenantContext memo.** Request-scoped only (`newRequestMemo`, passed by hand). Never move it onto `req`, a module or Redis. The NEW-26 source guard needs `where: { ... status: 'ACTIVE' ... }` to stay in `tenantContext.js`.
   - **Bootstrap.** `buildContext` in `context.controller.js` is shared by `/me/context` and `/me/bootstrap`; keep both responses' shapes. `X-Tenant-Id` on bootstrap is verified with `userBelongsToTenant` and answers 404 for a tenant the caller does not belong to.
   - **Mobile.** `startupReadyProvider` is set by the shells in a post-frame callback and reset in `resetIdentityScopedCache`. New first-frame reads belong behind it. `MeRepository.getBootstrap` returns null on any failure by design.
-  - **Environment.** The sandbox may be offline (no `git fetch`); a scratch worktree deleted under a running suite invalidates that run: keep the branch, re-create the worktree and repeat the runs (B7's 3x re-run was not repeated; see §13).
+  - **Environment.** The sandbox may be offline (no `git fetch`); a scratch worktree deleted under a running suite invalidates that run (`ENOENT` on files inside it): keep the branch, re-create the worktree and repeat. B7's 3x ended with runs 1 and 2 green and run 3 interrupted this way (see spec §13).
   - **Exact measurement numbers** are in spec §13 (rows for PERF-07 through API-04 / PERF-08); the throwaway harness is not committed.
 
 ---
@@ -468,5 +468,5 @@ the tip of `origin/main` when the 4A close-out branch was cut (it includes the 3
 | 79 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B5 | Per-request tenant memo in `tenantContext` (be `2263a2b`, PR #103) | task complete | yes |
 | 80 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B6 | API-03 `GET /me/bootstrap` (be `6d295bb`, PR #104) | task complete | yes |
 | 81 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, C1 (`Amirhaiderkhan/gyms_era`) | PERF-01 mobile startup (app `7f90bb6`, PR #8); not tested on a device | task complete | yes |
-| 82 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B7 | API-04 / PERF-08 admin tenants list (be `d985529`, PR #105); run 1 green locally (161 suites, 1503/1503 tests) plus CI green (4/4 checks, PR #105); 3x re-run interrupted by deleted scratch worktree, not repeated | task complete (3x re-run interrupted by a deleted scratch worktree, not repeated; run 1 green plus CI green) | yes |
+| 82 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B7 | API-04 / PERF-08 admin tenants list (be `d985529`, PR #105); runs 1 and 2 green locally (161 suites, 1503/1503 each), run 3 interrupted by a deleted scratch worktree (306 ENOENT, no test failure), CI 4/4 (PR #105) | task complete (3x not completed: run 3 interrupted by a deleted scratch worktree; see the suite note in the same row) | yes |
 | 83 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A close-out (docs only) | Spec §13 rows with before / after numbers, "Prompt 4A close-out notes", NEW-81 and NEW-82 recorded, held-back prompts listed; handoff moved to Prompt 5A | task complete (not pushed) | yes |
