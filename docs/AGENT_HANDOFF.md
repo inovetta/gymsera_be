@@ -17,28 +17,34 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-12 |
+| Last updated | 2026-10-13 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 3D: listing editor, signup unification, website cleanup (close-out)** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Prompt 3E: screen-state and design-system pass (close-out)** |
+| Prompt status | `DONE` except **UX-09 string conversion, which is NOT STARTED** (infrastructure PRs, CI check and the 3A-3D screen conversion are still pending) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 3D is DONE and merged in all four repos (checked against `origin` on 2026-10-12).
+Prompt 3E is merged in all four repos (checked against `origin` on 2026-10-13). The backend row is the
+tip of `origin/main` when the 3E close-out branch was cut; this docs PR will sit on top of it.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `main` | 7d2508e Merge pull request #94 from inovetta/test/ux-24-tenant-signup-contract | no |
-| gymsera_web | `main` | d26be34 Merge pull request #15 from inovetta/phase-3/prompt-3d-web-terms-cleanup | no |
-| gymsera_cms | `main` | 3de2a9d Merge pull request #24 from inovetta/phase-3/prompt-3d-cms-listing-editor | no |
-| gyms_era | `master` | 2ac8680 Merge pull request #5 from Amirhaiderkhan/phase-3/prompt-3d-mobile-boost | no |
+| gymsera_be | `main` | 1dab952 Merge pull request #95 from inovetta/docs/prompt-3d-close-out | no |
+| gymsera_web | `main` | 92ad8b5 Merge pull request #16 from inovetta/phase-3/prompt-3e-states | no |
+| gymsera_cms | `main` | c0460d5 Merge pull request #27 from inovetta/phase-3/prompt-3e-ux17 | no |
+| gyms_era | `master` | e7baebd Merge pull request #7 from Amirhaiderkhan/phase-3/prompt-3e-states | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 3D is DONE (spec §13 has the rows). Next action: work through the **End-of-project checklist** below, then start the next prompt in `docs/GYMSERA_AGENT_PLAYBOOK.md`.
-> Open issues found in 3D: NEW-69, NEW-70, NEW-71, NEW-72 (code) and NEW-73 (ops, no code); see spec §13.
+> Prompt 3E is DONE except **UX-09** (spec §13 has the rows; owner decisions R-29, R-30, R-31 in §14).
+> Next action: build the UX-09 string work as scoped in R-31 (English only): (1) string infrastructure per client
+> (next-intl in `gymsera_cms` and `gymsera_web`, ARB / `flutter_localizations` in `gyms_era`), (2) a CI check that fails on
+> hard-coded user-facing strings, (3) convert the Phase 3A-3D screens. The CMS and web `docs/changes/PROMPT-3E.md` already
+> list this as "PR 6" (unticked). Then work through the **End-of-project checklist** below and start the next prompt in
+> `docs/GYMSERA_AGENT_PLAYBOOK.md`.
+> Open issues from 3D: NEW-69 to NEW-72 (code), NEW-73 (ops). Open issues from 3E: NEW-74 to NEW-78; see spec §13.
 
 ### Work in progress that is NOT committed
 
@@ -48,7 +54,7 @@ Prompt 3D is DONE and merged in all four repos (checked against `origin` on 2026
 
 - **Owner decisions waiting:**
   - ~~NEW-54: delete the six live-server smoke tests~~ DONE (be PR #90).
-  - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) and NEW-69 to NEW-72 (from Prompt 3D).
+  - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) NEW-69 to NEW-72 (from Prompt 3D) and NEW-74 to NEW-78 (from Prompt 3E; mobile and CMS/web client work, NEW-78 is a test fix under R-19).
   - ~~Dependabot criticals~~ cleared: bcrypt 6, multer 2, `npm audit fix` (PR #91); nodemailer 10.1.0 (PR #92).
 - **Deploy order (critical):** platform migrations **p004–p006 must be applied before this backend code goes live.**
   The model reads `currency` and `pending_change`; without them every `tenant_subscriptions` query fails
@@ -81,7 +87,7 @@ Prompt 3D is DONE and merged in all four repos (checked against `origin` on 2026
 - [ ] Set `BANK_TRANSFER_*` on the API server (UX-15; without them the endpoint returns nulls)
 - [ ] SPF, DKIM and DMARC for the sending domain
 - [ ] Set `NEXT_PUBLIC_CMS_URL` on the web server (UX-02 redirect target)
-- [ ] Mobile release before 2026-12-05; it must include the Boost "Coming soon" change (app `909f3cb`) and NEW-38 re-auth, which is not yet on `gyms_era` master
+- [ ] Mobile release before 2026-12-05; it must include the Boost "Coming soon" change (app `909f3cb`), NEW-38 re-auth (both now on `gyms_era` master: PR #5 and PR #6) and the 3E state widgets and `primary` button colour (PR #7)
 - [ ] Add `timeout-minutes` to CI jobs if runs get cancelled
 - [ ] Branch protection on `main` in all repos (a direct push to `main` happened once on `gymsera_web`, `86ec525`)
 - [ ] Schedule the `audit_logs` and KYC retention jobs
@@ -97,6 +103,18 @@ Prompt 3D is DONE and merged in all four repos (checked against `origin` on 2026
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 3E: screen-state and design-system pass (cms, web, gyms_era; docs in be):**
+- [x] CMS foundation: design tokens (`design/design-tokens.json` → `src/styles/tokens.css`), shared `ErrorState` / `OfflineBanner` / `SkeletonList`, `SkipLink`, axe harness (UX-08, UX-10, cms `198119b`, PR #25)
+- [x] CMS state sweep: a failed load shows `ErrorState` instead of an empty list or blank page (UX-08, cms `cc03e1a`, PR #26)
+- [x] CMS admin tenant detail split into seven lazy tab components, 1,505 → 403 lines (UX-17, PERF-10, cms `3199089`, PR #27)
+- [x] Web: tokens, shared states, skip link, axe harness, error states on data screens (UX-08, UX-10, web `f4a7afd`, PR #16)
+- [x] Mobile: tokens (`AppTokens`), `ErrorStateView` / `EmptyStateView`, `ServerException.requestId`, 161 icon-button tooltips, `primary` button colour (UX-08, UX-10, app `3dab631`, PR #7)
+- [x] Canonical `docs/design-tokens.json` added to this folder; spec §2.4, §3.3, §13 and §14 (R-29 to R-31) updated (this close-out)
+- [ ] **UX-09 string conversion: NOT STARTED.** String infrastructure PRs, the CI hard-coded-string check and the 3A-3D screen conversion are pending (scope: R-31)
+- Not done, recorded: NEW-74, NEW-75, NEW-76, NEW-77, NEW-78
+
+---
 
 **Prompt 3D: listing editor, signup unification, website cleanup (be, web, cms, gyms_era):**
 - [x] Backend: `GET /billing/bank-instructions` from `BANK_TRANSFER_*` env (UX-15, be `5bfd0d0`, PR #93)
@@ -316,6 +334,15 @@ Prompt 3D is DONE and merged in all four repos (checked against `origin` on 2026
     - Spec §13 has no rows for Prompt 2B groups 2–4 (they are recorded under `docs/changes/*.md` instead), and this file's §2 checklist
       stops at group 1. Git is right; the files were not back-filled in 3A.
 
+- **Prompt 3E (2026-10-13) — design tokens and shared states:**
+  - Token source of truth is `docs/design-tokens.json` in this folder. Clients hold a verbatim copy at `design/design-tokens.json`; edit here first, copy, regenerate (`npm run tokens` in cms and web, `dart run tool/generate_tokens.dart` in `gyms_era`), run the drift test. Do not run `dart format` on `app_tokens.g.dart`.
+  - Use `primary` (`#C2410C`) for buttons and text, `brand` (`#FF5C00`) only for logo, icons and large text (R-29). `AppColors.brand` and raw Tailwind palette colours are still used directly in many screens (NEW-76, NEW-77).
+  - Shared states: CMS and web `ErrorState` / `OfflineBanner` / `SkeletonList` / `SkipLink`; mobile `lib/core/widgets/state_views.dart`. Use them for any new data screen; a failed load must never render as an empty list.
+  - axe tests: `tests/helpers/axe.ts` in cms and web. jsdom has no layout, so colour contrast is covered by the token test, not by axe.
+  - Admin tenant detail: add a new tab as a component in `cms/src/components/features/admin-tenant/` that fetches only while open; do not add queries back to `page.tsx`.
+  - Mobile still has about 40 error handlers on `SizedBox.shrink()`, one-off `Text` or dummy data (NEW-74), no offline banner (NEW-75, R-10), and an old test that reaches the real staging API (NEW-78, R-19).
+  - Per-repo detail: `docs/changes/PROMPT-3E.md` in `gymsera_cms`, `gymsera_web` and `gyms_era`. Test-suite run counts for 3E are not recorded in those notes; re-run the suites before relying on them.
+
 ## 4. Session log (append-only, newest at the bottom)
 
 | # | Date | Agent (tool + model) | Prompt | Issues finished | Ended because | Handoff clean? |
@@ -389,3 +416,9 @@ Prompt 3D is DONE and merged in all four repos (checked against `origin` on 2026
 | 64 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, mobile PR 5 (PR #5, `Amirhaiderkhan/gyms_era`) | BILL-18 / R-15 Boost "Coming soon" (app `909f3cb`) | task complete | yes |
 | 65 | 2026-10-12 | (not recorded; backfilled in the 3D close-out) | Prompt 3D, contract tests PR E (PR #94) | M3 `/tenants/*` signup contract tests (be `230c978`) | task complete | yes |
 | 66 | 2026-10-12 | Claude Code (Sonnet 5.5) | Prompt 3D close-out (docs only) | Spec §13 and §3.3 updated, UX-24 audit row corrected, NEW-69 to NEW-73 recorded, end-of-project checklist added | task complete | yes |
+| 67 | 2026-10-12 | Claude Code (Sonnet 5.5, from the commit trailer; session not otherwise recorded) | Prompt 3E, CMS PR 1 foundation (PR #25) | tokens, shared states, skip link, axe harness (UX-08, UX-10; cms `198119b`) | task complete | yes |
+| 68 | 2026-10-12 | Claude Code (Sonnet 5.5, from the commit trailer) | Prompt 3E, CMS PR 2 state sweep (PR #26) | failed loads show `ErrorState` (UX-08; cms `cc03e1a`) | task complete | yes |
+| 69 | 2026-10-12 | Claude Code (Sonnet 5.5, from the commit trailer) | Prompt 3E, CMS PR 3 admin tenant split (PR #27) | UX-17, PERF-10 (cms `3199089`) | task complete | yes |
+| 70 | 2026-10-13 | Claude Code (Sonnet 5.5, from the commit trailer) | Prompt 3E, web PR 4 (PR #16) | tokens, states, skip link, axe, state sweep (UX-08, UX-10; web `f4a7afd`) | task complete | yes |
+| 71 | 2026-10-13 | Claude Code (Sonnet 5.5, from the commit trailer) | Prompt 3E, mobile PR 5 (PR #7, `Amirhaiderkhan/gyms_era`) | tokens, `ErrorStateView` / `EmptyStateView`, request id, tooltips (UX-08, UX-10; app `3dab631`) | task complete | yes |
+| 72 | 2026-10-13 | Claude Code (Sonnet 5.5) | Prompt 3E close-out (docs only) | Spec §2.4, §3.3, §13, §14 (R-29 to R-31) updated; `docs/design-tokens.json` added; NEW-74 to NEW-78 recorded; UX-09 recorded as not started | task complete | yes |
