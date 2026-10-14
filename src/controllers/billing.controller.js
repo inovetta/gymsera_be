@@ -19,13 +19,20 @@ const billingConfig = require('../config/billing.config');
  */
 const getPlans = async (req, res, next) => {
   try {
+    const { BillingPlanPrice } = require('../models/platform');
+    const { priceForCurrency } = require('../services/billing-plan-catalog.service');
     const plans = await BillingPlan.findAll({
       where: { isActive: true },
+      include: [{ model: BillingPlanPrice, as: 'prices' }],
       order: [['sortOrder', 'ASC']],
     });
 
     const platform = (req.query.platform || '').toLowerCase();
+    // BILL-11: ?currency=USD returns that currency's catalog price where the tier has one; a tier without it keeps
+    // its default-currency price, and the `currency` field on each plan says which one it is.
+    const wanted = req.query.currency ? String(req.query.currency) : null;
     const shaped = plans.map((p) => {
+      const chosen = (wanted && priceForCurrency(p, wanted)) || priceForCurrency(p, null);
       const base = {
         // Needed by the website's checkout flow (POST /billing/stripe/checkout-session
         // takes billingPlanId) — iOS/Android purchase via their own product
@@ -33,9 +40,9 @@ const getPlans = async (req, res, next) => {
         // every platform rather than special-casing web alone.
         id: p.id,
         branchCount: p.branchCount,
-        monthlyPrice: parseFloat(p.monthlyPrice),
-        annualPrice: parseFloat(p.annualPrice),
-        currency: p.currency,
+        monthlyPrice: chosen.monthlyPrice,
+        annualPrice: chosen.annualPrice,
+        currency: chosen.currency,
       };
       if (platform === 'ios') {
         return { ...base, monthlyProductId: p.iosMonthlyProductId, annualProductId: p.iosAnnualProductId };
@@ -49,12 +56,16 @@ const getPlans = async (req, res, next) => {
         };
       }
       if (platform === 'web') {
-        return { ...base, monthlyPriceId: p.stripeMonthlyPriceId, annualPriceId: p.stripeAnnualPriceId };
+        return { ...base, monthlyPriceId: chosen.stripeMonthlyPriceId, annualPriceId: chosen.stripeAnnualPriceId };
       }
       return base;
     });
 
-    return sendSuccess(res, { plans: shaped }, 'Billing plans retrieved');
+    return sendSuccess(
+      res,
+      { plans: shaped, webCardPaymentsEnabled: require('../config/billing.config').webCardPaymentsEnabled() },
+      'Billing plans retrieved'
+    );
   } catch (err) {
     next(err);
   }
@@ -210,7 +221,7 @@ const googleRtdnWebhook = async (req, res) => {
  */
 const createStripeCheckoutSession = async (req, res, next) => {
   try {
-    const { billingPlanId, billingCycle, successUrl, cancelUrl } = req.body;
+    const { billingPlanId, billingCycle, successUrl, cancelUrl, currency } = req.body;
     if (!billingPlanId || !billingCycle) throw createError('billingPlanId and billingCycle are required', 400);
     if (!successUrl || !cancelUrl) throw createError('successUrl and cancelUrl are required', 400);
 
@@ -220,6 +231,7 @@ const createStripeCheckoutSession = async (req, res, next) => {
     const session = await stripeBilling.createCheckoutSession(tenantId, billingPlanId, billingCycle, {
       successUrl,
       cancelUrl,
+      currency,
     });
     return sendSuccess(res, session, 'Checkout session created');
   } catch (err) {

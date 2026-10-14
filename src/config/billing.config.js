@@ -14,6 +14,13 @@ const payLaterGraceDays = () => {
   return days;
 };
 
+/**
+ * Whether new card payments are accepted on the web (R-7: OFF until the legal entity can use Stripe or a
+ * merchant of record, BILL-17). Off unless WEB_CARD_PAYMENTS_ENABLED is exactly "true". Existing subscribers
+ * keep the billing portal and webhooks regardless.
+ */
+const webCardPaymentsEnabled = () => String(process.env.WEB_CARD_PAYMENTS_ENABLED || '').toLowerCase() === 'true';
+
 /** Days of grace before locking over-quota branches (R-3, default 7). */
 const overquotaGraceDays = () => {
   const raw = process.env.OVERQUOTA_GRACE_DAYS;
@@ -54,6 +61,7 @@ const getBankTransferInstructions = (requestedCurrency) => {
 };
 
 module.exports = {
+  webCardPaymentsEnabled,
   payLaterGraceDays,
   overquotaGraceDays,
   memberCheckinGraceDays,

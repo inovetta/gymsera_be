@@ -30,6 +30,20 @@ const billingPlansValidators = {
     body('androidAnnualBasePlanId').optional({ nullable: true }).isString(),
   ],
 
+  priceParams: [
+    param('id').isUUID(4).withMessage('Invalid billing plan ID'),
+    param('currency').isString().isLength({ min: 3, max: 3 }).withMessage('currency must be a 3-letter code'),
+  ],
+
+  upsertPrice: [
+    param('id').isUUID(4).withMessage('Invalid billing plan ID'),
+    param('currency').isString().isLength({ min: 3, max: 3 }).withMessage('currency must be a 3-letter code'),
+    body('monthlyPrice').notEmpty().isDecimal({ decimal_digits: '0,2' }).withMessage('monthlyPrice must be a valid decimal'),
+    body('annualPrice').notEmpty().isDecimal({ decimal_digits: '0,2' }).withMessage('annualPrice must be a valid decimal'),
+    body('stripeMonthlyPriceId').optional({ nullable: true }).isString(),
+    body('stripeAnnualPriceId').optional({ nullable: true }).isString(),
+  ],
+
   markSynced: [
     param('id').isUUID(4).withMessage('Invalid billing plan ID'),
     body('provider').isIn(['ios', 'android']).withMessage('provider must be "ios" or "android"'),

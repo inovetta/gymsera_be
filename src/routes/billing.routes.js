@@ -4,7 +4,19 @@ const authorize = require('../middleware/authorize');
 const controller = require('../controllers/billing.controller');
 const googlePlayBilling = require('../services/google-play-billing.service');
 
+const { webCardPaymentsEnabled } = require('../config/billing.config');
+const { createError } = require('../utils/response.utils');
+
 const router = Router();
+
+// BILL-17 / R-7: no new web card payments while the owner's switch is off. Read on every request so flipping the
+// environment variable needs no deploy of code. Webhooks, the return-page status and the billing portal stay open.
+const requireWebCardPayments = (req, res, next) => {
+  if (webCardPaymentsEnabled()) return next();
+  const err = createError('Card payments on the web are not available yet. Choose bank transfer or pay later.', 403);
+  err.code = 'web_card_payments_disabled';
+  return next(err);
+};
 
 /**
  * @swagger
@@ -224,7 +236,7 @@ router.post('/webhooks/google', verifyRtdnPush, controller.googleRtdnWebhook);
  *     responses:
  *       200: { description: Checkout session created }
  */
-router.post('/stripe/checkout-session', authenticate, controller.createStripeCheckoutSession);
+router.post('/stripe/checkout-session', authenticate, requireWebCardPayments, controller.createStripeCheckoutSession);
 
 /**
  * @swagger
@@ -271,7 +283,7 @@ router.get('/stripe/session/:id', authenticate, controller.getStripeCheckoutSess
  *     responses:
  *       200: { description: Plan change requested }
  */
-router.post('/stripe/change-plan', authenticate, controller.changeStripePlan);
+router.post('/stripe/change-plan', authenticate, requireWebCardPayments, controller.changeStripePlan);
 
 /**
  * @swagger

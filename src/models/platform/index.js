@@ -29,6 +29,7 @@ const Message = require('./Message.model')(sequelize);
 const DeviceToken = require('./DeviceToken.model')(sequelize);
 const UserOrgIndex = require('./UserOrgIndex.model')(sequelize);
 const BillingPlan = require('./BillingPlan.model')(sequelize);
+const BillingPlanPrice = require('./BillingPlanPrice.model')(sequelize);
 const BillingOffer = require('./BillingOffer.model')(sequelize);
 const CapacityEvent = require('./CapacityEvent.model')(sequelize);
 const BillingEvent = require('./BillingEvent.model')(sequelize);
@@ -120,6 +121,10 @@ CapacityEvent.belongsTo(GymListing, { foreignKey: 'listingId', as: 'listing', co
 // PlatformPackage ↔ TenantSubscription (legacy manual/Enterprise path only)
 PlatformPackage.hasMany(TenantSubscription, { foreignKey: 'platformPackageId', as: 'tenantSubscriptions' });
 TenantSubscription.belongsTo(PlatformPackage, { foreignKey: 'platformPackageId', as: 'package' });
+
+// BillingPlan ↔ BillingPlanPrice (extra currencies, BILL-11)
+BillingPlan.hasMany(BillingPlanPrice, { foreignKey: 'billingPlanId', as: 'prices' });
+BillingPlanPrice.belongsTo(BillingPlan, { foreignKey: 'billingPlanId', as: 'plan' });
 
 // BillingPlan ↔ TenantSubscription (real store-verified purchases)
 BillingPlan.hasMany(TenantSubscription, { foreignKey: 'billingPlanId', as: 'tenantSubscriptions' });
@@ -219,6 +224,7 @@ module.exports = {
   DeviceToken,
   UserOrgIndex,
   BillingPlan,
+  BillingPlanPrice,
   BillingOffer,
   CapacityEvent,
   BillingEvent,
