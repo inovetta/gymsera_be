@@ -7,18 +7,7 @@ const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
 const subscriptionQuotaService = require('./subscription-quota.service');
 const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 
-const _calcEndDate = (startDate, durationType, durationValue) => {
-  const d = new Date(startDate);
-  switch (durationType) {
-    case 'DAILY': d.setDate(d.getDate() + durationValue); break;
-    case 'WEEKLY': d.setDate(d.getDate() + durationValue * 7); break;
-    case 'MONTHLY': d.setMonth(d.getMonth() + durationValue); break;
-    case 'QUARTERLY': d.setMonth(d.getMonth() + durationValue * 3); break;
-    case 'YEARLY': d.setFullYear(d.getFullYear() + durationValue); break;
-    default: d.setMonth(d.getMonth() + 1);
-  }
-  return d.toISOString().split('T')[0];
-};
+const { addPlanDuration: _calcEndDate } = require('../utils/business-date.utils');
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -1652,7 +1641,9 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found or inactive', 404);
 
-  const today = new Date().toISOString().split('T')[0];
+  // GLB-01: "today" is the branch's today, not the server's.
+  const { computeBusinessDate } = require('./ledger.service');
+  const today = computeBusinessDate(new Date(), branch.timezone);
   const existing = await MemberSubscription.findOne({
     where: { userId: user.id, branchId, status: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN, SubscriptionStatus.PENDING] },
     order: [['createdAt', 'DESC']],
@@ -1670,7 +1661,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     }
   }
 
-  const start = startDate || new Date().toISOString().split('T')[0];
+  const start = startDate || today;
   const end = _calcEndDate(start, plan.durationType, plan.durationValue);
   // A pre-collected payment isn't verified yet — the member and its
   // subscription can't be more "active" than the payment behind them, no
@@ -1798,7 +1789,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     discountAmount: 0,
     taxAmount: 0,
     totalAmount,
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: today,
     paidAt: autoComplete ? new Date() : null,
     status: autoComplete ? InvoiceStatus.PAID : InvoiceStatus.ISSUED,
     createdBy: recordCreatedBy,

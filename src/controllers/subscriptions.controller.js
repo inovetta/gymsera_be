@@ -131,7 +131,7 @@ const getForStaff = async (req, res, next) => {
 // ── POST /subscriptions/preview — dry-run calculation ─────────────────────────
 const preview = async (req, res, next) => {
   try {
-    const result = await subscriptionService.previewSubscription(req.tenantDb, req.body);
+    const result = await subscriptionService.previewSubscription(req.tenantDb, { branchId: req.branchId, ...req.body });
     return sendSuccess(res, result, 'Preview calculated');
   } catch (err) {
     next(err);

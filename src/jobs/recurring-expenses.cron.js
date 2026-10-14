@@ -1,6 +1,7 @@
-const { Op } = require('sequelize');
 const TenantDbManager = require('../database/TenantDbManager');
 const { Tenant } = require('../models/platform');
+const { computeBusinessDate } = require('../services/ledger.service');
+const { addPlanDuration, DEFAULT_TIMEZONE } = require('../utils/business-date.utils');
 
 /**
  * Process recurring expenses for a single tenant.
@@ -9,22 +10,20 @@ const processTenantRecurringExpenses = async (tenantId, tenantDb) => {
   const { Expense } = tenantDb.models;
   if (!Expense) return;
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const today = new Date(todayStr);
+  // GLB-01: each template runs on its own branch's business date, not the server's UTC date.
+  const { Branch } = tenantDb.models;
+  const branches = Branch ? await Branch.findAll({ attributes: ['id', 'timezone'] }) : [];
+  const tzByBranch = new Map(branches.map((b) => [b.id, b.timezone || DEFAULT_TIMEZONE]));
 
   // Find all active recurring expense templates
   const templates = await Expense.findAll({
-    where: {
-      isRecurring: true,
-      status: 'approved',
-      [Op.or]: [
-        { recurrenceEndDate: null },
-        { recurrenceEndDate: { [Op.gte]: todayStr } },
-      ],
-    },
+    where: { isRecurring: true, status: 'approved' },
   });
 
   for (const template of templates) {
+    const todayStr = computeBusinessDate(new Date(), tzByBranch.get(template.branchId));
+    if (template.recurrenceEndDate && template.recurrenceEndDate < todayStr) continue;
+
     // Find the latest generated instance for this template (or fallback to template itself)
     const latestInstance = await Expense.findOne({
       where: { recurringTemplateId: template.id },
@@ -34,21 +33,10 @@ const processTenantRecurringExpenses = async (tenantId, tenantDb) => {
     const lastDateStr = latestInstance
       ? latestInstance.expenseDate
       : template.expenseDate;
-    const lastDate = new Date(lastDateStr);
-
-    let nextDueDate = new Date(lastDate);
     const freq = (template.recurrenceFrequency || 'monthly').toLowerCase();
-
-    if (freq === 'weekly') {
-      nextDueDate.setDate(nextDueDate.getDate() + 7);
-    } else if (freq === 'yearly') {
-      nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);
-    } else {
-      // Monthly default
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-    }
-
-    const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
+    const nextDueDateStr = freq === 'weekly'
+      ? addPlanDuration(lastDateStr, 'WEEKLY', 1)
+      : addPlanDuration(lastDateStr, freq === 'yearly' ? 'YEARLY' : 'MONTHLY', 1);
 
     // If today is on or past the next due date, generate the new expense instance
     if (todayStr >= nextDueDateStr) {
