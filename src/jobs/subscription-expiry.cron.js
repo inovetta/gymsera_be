@@ -449,41 +449,23 @@ const runExpiryCheck = async () => {
     // ── Capacity invariant safety net ────────────────────────────────────────
     await _reconcileCapacityForAllTenants();
 
-    const entries = TenantDbManager.getAllEntries();
+    // ── Per-tenant pass (NEW-80) ─────────────────────────────────────────────
+    // Iterate every ACTIVE tenant from the platform DB, one at a time. This used
+    // to walk whichever pools were open in TenantDbManager, so a tenant with no
+    // open (or an evicted, PERF-07) pool was silently skipped. getConnection
+    // reuses an open pool or opens one; the manager bounds how many stay open.
+    const tenants = await Tenant.findAll({
+      where: { status: 'ACTIVE' },
+      attributes: ['id', 'connectionStringEncrypted'],
+    });
 
-    if (entries.length === 0) {
-      // Load all ACTIVE tenants so we can iterate their DBs
-      const tenants = await Tenant.findAll({
-        where: { status: 'ACTIVE' },
-        attributes: ['id', 'connectionStringEncrypted'],
-      });
-
-      for (const tenant of tenants) {
-        if (!tenant.connectionStringEncrypted) continue;
-        try {
-          const tenantDb = await TenantDbManager.getConnection(
-            tenant.id,
-            tenant.connectionStringEncrypted
-          );
-          await _processTenant(tenant.id, tenantDb);
-        } catch (err) {
-          console.error(`[Cron] Failed to process tenant ${tenant.id}:`, err.message);
-        }
-      }
-    } else {
-      const activeTenants = await Tenant.findAll({
-        where: { status: 'ACTIVE' },
-        attributes: ['id'],
-      });
-      const activeTenantIds = new Set(activeTenants.map((t) => t.id));
-
-      for (const [tenantId, tenantDb] of entries) {
-        if (!activeTenantIds.has(tenantId)) continue;
-        try {
-          await _processTenant(tenantId, tenantDb);
-        } catch (err) {
-          console.error(`[Cron] Failed to process tenant ${tenantId}:`, err.message);
-        }
+    for (const tenant of tenants) {
+      if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
+      try {
+        const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+        await _processTenant(tenant.id, tenantDb);
+      } catch (err) {
+        console.error(`[Cron] Failed to process tenant ${tenant.id}:`, err.message);
       }
     }
 
