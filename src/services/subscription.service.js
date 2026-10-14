@@ -682,22 +682,28 @@ const listForStaff = async (tenantDb, { status, branchId, branchIds, userId, pag
   });
 
   const { enrichAuditDetails } = require('../utils/audit.utils');
-  const enrichedSubs = await enrichAuditDetails(tenantDb, rows);
 
-  // Fetch latest payment per subscription
+  // API-08: the row enrichment and the latest-payment lookup do not depend on
+  // each other (reads only), so they run together.
   const subIds = rows.map((r) => r.id);
-  const payments = subIds.length
-    ? await Payment.findAll({
-      where: { referenceEntityId: subIds, paymentFor: 'MEMBERSHIP' },
-      attributes: ['id', 'referenceEntityId', 'status', 'method', 'amount', 'proofUrl', 'createdBy', 'createdByRole', 'verifiedBy', 'verifiedAt', 'createdAt'],
-      order: [['createdAt', 'DESC']],
-    })
-    : [];
-  const enrichedPayments = await enrichAuditDetails(tenantDb, payments);
+  const [enrichedSubs, payments] = await Promise.all([
+    enrichAuditDetails(tenantDb, rows),
+    subIds.length
+      ? Payment.findAll({
+        where: { referenceEntityId: subIds, paymentFor: 'MEMBERSHIP' },
+        // API-07: clients read id / status / amount / method (and proofUrl) of
+        // the embedded payment; creator / verifier detail comes from the
+        // subscription detail route. No audit enrichment for it.
+        attributes: ['id', 'referenceEntityId', 'status', 'method', 'amount', 'proofUrl', 'verifiedAt', 'createdAt'],
+        order: [['createdAt', 'DESC']],
+        raw: true,
+      })
+      : [],
+  ]);
 
   // Keep only the latest payment per subscription
   const paymentMap = {};
-  for (const p of enrichedPayments) {
+  for (const p of payments) {
     if (!paymentMap[p.referenceEntityId]) paymentMap[p.referenceEntityId] = p;
   }
 

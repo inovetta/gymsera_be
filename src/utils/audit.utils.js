@@ -166,6 +166,9 @@ const enrichAuditDetails = async (tenantDb, items) => {
   }
 
   const idList = [...userIdsToFetch].filter(Boolean);
+  // API-08: role display names only need the id list, so they load while the
+  // users are being fetched (resolveRoleDisplayNames never throws).
+  const roleDisplayNamesPromise = resolveRoleDisplayNames(tenantDb, idList);
   let userMap = {};
   if (idList.length > 0) {
     try {
@@ -181,7 +184,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
 
   // Real Team & Access role names for everyone we're about to show — see
   // resolveRoleDisplayNames above.
-  const roleDisplayNameMap = await resolveRoleDisplayNames(tenantDb, idList);
+  const roleDisplayNameMap = await roleDisplayNamesPromise;
 
   // Fetch GymStaff designations for creator user IDs and emails
   let staffMap = {};

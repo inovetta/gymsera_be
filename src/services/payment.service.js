@@ -330,6 +330,10 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
 };
 
 // ── GET /payments ──────────────────────────────────────────────────────────────
+// Read by no client (CMS, web, mobile): idempotency key is request-side only,
+// print markers and the pending-change blob have no screen, updatedAt is unused.
+const LIST_EXCLUDED_PAYMENT_COLUMNS = ['idempotencyKey', 'printedAt', 'printedBy', 'pendingChangeJson', 'expiresAt', 'updatedAt'];
+
 const listPayments = async (tenantDb, { userId, branchId, status, method, from, to, page, limit, offset }) => {
   const { Payment, Branch } = tenantDb.models;
   const where = {};
@@ -359,6 +363,9 @@ const listPayments = async (tenantDb, { userId, branchId, status, method, from, 
 
   const { count, rows } = await Payment.findAndCountAll({
     where,
+    // API-07: list rows leave out the columns no client reads. GET /payments/:id
+    // (getPayment below) still returns the full record.
+    attributes: { exclude: LIST_EXCLUDED_PAYMENT_COLUMNS },
     order: [['createdAt', 'DESC']],
     limit,
     offset,
