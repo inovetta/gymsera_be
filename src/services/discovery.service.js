@@ -590,9 +590,15 @@ const topRatedGyms = async ({ cityId, limit = 12 } = {}) => {
 
 // ── listOrganizations ─────────────────────────────────────────────────────────
 const listOrganizations = ({ featured, page = 1, limit = 12 }) =>
-  discoveryCache.memo(`orgs:${featured ? 1 : 0}:${page}:${limit}`, () => _listOrganizations({ featured, page, limit }));
+  discoveryCache.memo(
+    `orgs:${featured ? 1 : 0}:${page}:${limit}`,
+    () => _listOrganizations({ featured, page, limit }),
+    { reportsCompleteness: true }
+  );
 
+// Resolves { value, complete }: complete is false when a tenant had to be skipped.
 const _listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
+  let complete = true;
   const tenants = await Tenant.findAll({
     where: { status: 'ACTIVE' },
     attributes: ['id', 'connectionStringEncrypted'],
@@ -664,6 +670,7 @@ const _listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
         });
       }
     } catch (err) {
+      complete = false;
       console.error(`[listOrganizations] Error processing tenant ${tenant.id}:`, err);
     }
   }
@@ -673,8 +680,11 @@ const _listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
   const paginated = orgs.slice(offset, offset + parseInt(limit));
 
   return {
-    organizations: paginated,
-    pagination: buildPagination(orgs.length, page, limit),
+    value: {
+      organizations: paginated,
+      pagination: buildPagination(orgs.length, page, limit),
+    },
+    complete,
   };
 };
 
