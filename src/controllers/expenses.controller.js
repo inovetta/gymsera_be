@@ -4,7 +4,8 @@ const { ensureDefaultCategories } = require('../services/expense-category.servic
 const notificationsService = require('../services/notifications.service');
 const accessService = require('../services/access.service');
 const { Tenant, User } = require('../models/platform');
-const { computeBusinessDate } = require('../services/ledger.service');
+const { computeBusinessDate, branchCurrency: ledgerBranchCurrency } = require('../services/ledger.service');
+const { moneyText } = require('../utils/currency.utils');
 const { monthStartOf, monthEndOf, startOfBusinessDay, addDays } = require('../utils/business-date.utils');
 
 /**
@@ -372,7 +373,7 @@ const createExpense = async (req, res, next) => {
           role: 'host',
           type: 'staff_action_requested',
           title: 'Pending Staff Expense Approval',
-          message: `${req.user.fullName || 'Staff'} submitted an expense: ${title.trim()} — Rs ${parseFloat(amount)} — needs your approval.`,
+          message: `${req.user.fullName || 'Staff'} submitted an expense: ${title.trim()} — ${moneyText(parseFloat(amount), await ledgerBranchCurrency(req.tenantDb, branchId))} — needs your approval.`,
           priority: 'normal',
           deepLink: `/host/gyms/${branchId}/staff-requests`,
           metadataJson: {

@@ -135,7 +135,7 @@ router.post('/branches/:branchId/action-requests', async (req, res, next) => {
       if (actionType === 'submit_expense') {
         const title = payload.title || 'Expense';
         const amount = payload.amount || 0;
-        notifMessage = `${req.user.fullName} submitted an expense: ${title} — Rs ${amount} — needs your approval.`;
+        notifMessage = `${req.user.fullName} submitted an expense: ${title} — ${require('../utils/currency.utils').moneyText(amount, await require('../services/ledger.service').branchCurrency(req.tenantDb, req.params.branchId || req.branchId))} — needs your approval.`;
       } else {
         let memberName = 'Member';
         if (actionType === 'add_member') {

@@ -3,6 +3,7 @@
  */
 const { register } = require('./index');
 const { createError } = require('../../utils/response.utils');
+const { moneyText } = require('../../utils/currency.utils');
 
 /**
  * expenses.create.
@@ -16,7 +17,7 @@ register({
   actionKey: 'expenses.create',
 
   summarize: (p) => {
-    const amount = p.amount != null ? `Rs ${Number(p.amount).toLocaleString('en-PK')}` : '';
+    const amount = p.amount != null ? moneyText(Number(p.amount).toLocaleString('en-US'), p.currency) : '';
     return [p.title || 'Expense', amount].filter(Boolean).join(' — ');
   },
 

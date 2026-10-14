@@ -247,7 +247,7 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
           ? `TEST-${Date.now()}`
           : (data.gatewayTransactionId || null),
         amount: data.amount,
-        currency: data.currency || 'PKR',
+        currency: data.currency || await require('./ledger.service').branchCurrency(tenantDb, data.branchId),
         status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
         paidAt,
         collectedAt,

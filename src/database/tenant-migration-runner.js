@@ -704,6 +704,36 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // GLB-02: currency per branch. Every existing branch keeps PKR (what every payment already says).
+    version: 19,
+    name: '019_add_branch_currency',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [branchesExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'branches\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (!branchesExists) return null;
+
+      const [col] = await sequelize.query(
+        'SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'branches\' AND COLUMN_NAME = \'currency\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (col) {
+        const ok = ['varchar', 'char'].includes(String(col.DATA_TYPE).toLowerCase()) && Number(col.CHARACTER_MAXIMUM_LENGTH) >= 3;
+        if (ok) return null;
+        console.warn(
+          `[TenantMigration] SKIPPING 019: branches.currency already exists as ${col.DATA_TYPE}. Resolve it by hand, then re-run.`
+        );
+        return { skipped: true, reason: 'column_exists_with_other_type', table: 'branches', column: 'currency', type: col.DATA_TYPE };
+      }
+
+      await sequelize.query("ALTER TABLE `branches` ADD COLUMN `currency` VARCHAR(3) NOT NULL DEFAULT 'PKR'");
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

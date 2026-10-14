@@ -332,7 +332,7 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
       branchId: subscription.branchId,
       method,
       amount: fromMinorUnits(totalAmountMinor),
-      currency: 'PKR',
+      currency: await require('./ledger.service').branchCurrency({ models }, subscription.branchId),
       status: 'PENDING',
       notes: notes || null,
       businessDate,

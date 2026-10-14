@@ -165,7 +165,7 @@ describe('PAY-07: Member Payment Refunds (spec §6.3, §12)', () => {
     // 3. Verify Payment row
     await payment.reload();
     expect(payment.status).toBe(PaymentStatus.REFUNDED);
-    expect(payment.notes).toMatch(/Refunded Rs 5000\.00/);
+    expect(payment.notes).toMatch(/Refunded PKR 5000\.00/);
 
     // 4. Verify reversing LedgerAdjustment
     const adjustment = await LedgerAdjustment.findOne({

@@ -56,6 +56,9 @@ const gymsValidators = {
       .withMessage('Branch name is required')
       .isLength({ max: 200 }),
 
+    // GLB-01 / GLB-02: format only here; the service checks the IANA zone and the supported-currency list.
+    body('timezone').optional().isString().isLength({ min: 1, max: 64 }),
+    body('currency').optional().isString().isLength({ min: 3, max: 3 }).withMessage('currency must be a 3-letter code'),
     body('address').optional().isString(),
 
     body('cityId')
@@ -146,6 +149,9 @@ const gymsValidators = {
     // capacity as part of the transition — see gym.service.js#updateBranch,
     // which rejects a status change here outright. A no-op (sending the
     // branch's current status back, as the CMS edit form does) still passes.
+    // GLB-01 / GLB-02: format only here; the service checks the IANA zone and the supported-currency list.
+    body('timezone').optional().isString().isLength({ min: 1, max: 64 }),
+    body('currency').optional().isString().isLength({ min: 3, max: 3 }).withMessage('currency must be a 3-letter code'),
     body('address').optional().isString(),
     body('cityId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
     body('areaId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
