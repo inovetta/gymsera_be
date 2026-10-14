@@ -18,6 +18,8 @@ const accessService = require('../services/access.service');
 const approvalService = require('../services/approval.service');
 const { sendSuccess } = require('../utils/response.utils');
 const { ROLE_META } = require('../constants/roles');
+const notificationsService = require('../services/notifications.service');
+const branchQuotaService = require('../services/branch-quota.service');
 
 /**
  * Branches a user can act in within one tenant, each with its resolved permissions.
@@ -66,111 +68,206 @@ const branchesForUser = async (tenantDb, tenantId, userId, isOwner) => {
   );
 };
 
-const getContext = async (req, res, next) => {
-  try {
-    const userId = req.user.id || req.user.sub;
-    const { User, Tenant } = require('../models/platform');
+/**
+ * The caller's own contexts, built from their verified memberships only.
+ * Shared by GET /me/context and GET /me/bootstrap (one implementation).
+ * `tenantsById` carries each listed tenant's status for the bootstrap summary
+ * and is not part of the /me/context response.
+ */
+const buildContext = async (userId) => {
+  const { User, Tenant } = require('../models/platform');
 
-    const user = await User.findByPk(userId, {
-      attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl', 'role', 'isHost', 'permissionVersion'],
-    });
+  const user = await User.findByPk(userId, {
+    attributes: ['id', 'fullName', 'email', 'phone', 'profileImageUrl', 'role', 'isHost', 'permissionVersion'],
+  });
 
-    // Every tenant the user belongs to — one indexed read, no tenant scan.
-    const memberships = await membershipService.listUserTenants(userId, { activeOnly: true });
+  // Every tenant the user belongs to — one indexed read, no tenant scan.
+  const memberships = await membershipService.listUserTenants(userId, { activeOnly: true });
 
-    // Plus any organization they own outright. Ownership is not an assignment, so
-    // it does not appear in the index.
-    const ownedTenants = await membershipService.listOwnedTenants(userId, {
-      statuses: ['ACTIVE', 'SUSPENDED'],
-      attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status'],
-    });
+  // Plus any organization they own outright. Ownership is not an assignment, so
+  // it does not appear in the index.
+  const ownedTenants = await membershipService.listOwnedTenants(userId, {
+    statuses: ['ACTIVE', 'SUSPENDED'],
+    attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status'],
+  });
 
-    const tenantIds = [
-      ...new Set([...ownedTenants.map((t) => t.id), ...memberships.map((m) => m.tenantId)]),
-    ];
+  const tenantIds = [
+    ...new Set([...ownedTenants.map((t) => t.id), ...memberships.map((m) => m.tenantId)]),
+  ];
 
-    const organizations = [];
-    let pendingApprovals = 0;
+  const organizations = [];
+  const tenantsById = {};
+  let pendingApprovals = 0;
 
-    for (const tenantId of tenantIds) {
-      const tenant =
-        ownedTenants.find((t) => t.id === tenantId) ||
-        (await Tenant.findByPk(tenantId, {
-          attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status', 'ownerUserId'],
-        }));
+  for (const tenantId of tenantIds) {
+    const tenant =
+      ownedTenants.find((t) => t.id === tenantId) ||
+      (await Tenant.findByPk(tenantId, {
+        attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status', 'ownerUserId'],
+      }));
 
-      if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
-        continue;
-      }
-
-      let tenantDb;
-      try {
-        tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-      } catch (err) {
-        // One unreachable tenant must not break the whole app shell.
-        console.warn(`[context] tenant ${tenantId} unreachable:`, err.message);
-        continue;
-      }
-
-      const isOwner = tenant.ownerUserId === userId || ownedTenants.some((t) => t.id === tenantId);
-      const membership = memberships.find((m) => m.tenantId === tenantId);
-      const roleKey = isOwner ? 'OWNER' : membership ? membership.roleKey : null;
-      if (!roleKey) continue;
-
-      const orgGrants = await accessService.resolve(tenantDb, tenantId, userId, null);
-      const branches = await branchesForUser(tenantDb, tenantId, userId, isOwner);
-
-      const decidableBranchIds =
-        isOwner || orgGrants.isOwner || (membership && membership.scopeType === 'ORG')
-          ? null
-          : branches.map((b) => b.id);
-      const pending = await approvalService
-        .pendingCountFor(tenantDb, orgGrants, decidableBranchIds)
-        .catch(() => 0);
-      pendingApprovals += pending;
-
-      organizations.push({
-        tenantId,
-        name: tenant.gymName || tenant.businessName,
-        isOwner,
-        role: {
-          key: roleKey,
-          name: ROLE_META[roleKey]?.name || roleKey,
-          displayName: ROLE_META[roleKey]?.displayName || roleKey,
-          level: ROLE_META[roleKey]?.level || 0,
-        },
-        scopeType: isOwner ? 'ORG' : membership?.scopeType || 'BRANCH',
-        orgPermissions: orgGrants.isOwner ? ['*'] : orgGrants.keys(),
-        branches,
-        pendingApprovals: pending,
-      });
+    if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
+      continue;
     }
 
+    let tenantDb;
+    try {
+      tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    } catch (err) {
+      // One unreachable tenant must not break the whole app shell.
+      console.warn(`[context] tenant ${tenantId} unreachable:`, err.message);
+      continue;
+    }
+
+    const isOwner = tenant.ownerUserId === userId || ownedTenants.some((t) => t.id === tenantId);
+    const membership = memberships.find((m) => m.tenantId === tenantId);
+    const roleKey = isOwner ? 'OWNER' : membership ? membership.roleKey : null;
+    if (!roleKey) continue;
+
+    const orgGrants = await accessService.resolve(tenantDb, tenantId, userId, null);
+    const branches = await branchesForUser(tenantDb, tenantId, userId, isOwner);
+
+    const decidableBranchIds =
+      isOwner || orgGrants.isOwner || (membership && membership.scopeType === 'ORG')
+        ? null
+        : branches.map((b) => b.id);
+    const pending = await approvalService
+      .pendingCountFor(tenantDb, orgGrants, decidableBranchIds)
+      .catch(() => 0);
+    pendingApprovals += pending;
+
+    tenantsById[tenantId] = { status: tenant.status, name: tenant.gymName || tenant.businessName };
+
+    organizations.push({
+      tenantId,
+      name: tenant.gymName || tenant.businessName,
+      isOwner,
+      role: {
+        key: roleKey,
+        name: ROLE_META[roleKey]?.name || roleKey,
+        displayName: ROLE_META[roleKey]?.displayName || roleKey,
+        level: ROLE_META[roleKey]?.level || 0,
+      },
+      scopeType: isOwner ? 'ORG' : membership?.scopeType || 'BRANCH',
+      orgPermissions: orgGrants.isOwner ? ['*'] : orgGrants.keys(),
+      branches,
+      pendingApprovals: pending,
+    });
+  }
+
+  return {
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      profileImageUrl: user.profileImageUrl,
+      isHost: user.isHost,
+      // The platform account type. Says nothing about gym access — that lives
+      // entirely in `organizations` below.
+      platformRole: user.role,
+    },
+    organizations,
+    pendingApprovals,
+    // Lets the client decide whether to show the organization switcher at all.
+    needsContextSwitcher: organizations.length > 1,
+    permissionVersion: user.permissionVersion,
+    tenantsById,
+  };
+};
+
+const getContext = async (req, res, next) => {
+  try {
+    const { tenantsById, ...context } = await buildContext(req.user.id || req.user.sub);
+    return sendSuccess(res, context, 'Context retrieved');
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
+ * GET /me/bootstrap — everything the app shell needs after sign-in, in one
+ * request (API-03, spec §10.2).
+ *
+ * SEC-02: the tenant is never taken from input. `organizations` comes from the
+ * caller's own verified memberships (buildContext); X-Tenant-Id may only
+ * SELECT one of those. A header naming any other tenant is answered 404, the
+ * same as tenantContext, without saying whether that tenant exists.
+ *
+ * Returns only what this caller may see: their own grants, quota only when they
+ * own the active tenant (GET /host/branch-quota is owner-only), their own unread
+ * counts. Not behind tenantContext, like /me/context.
+ */
+const getBootstrap = async (req, res, next) => {
+  try {
+    const userId = req.user.id || req.user.sub;
+    const { userBelongsToTenant } = require('../middleware/tenantContext');
+    const notFound = () =>
+      res.status(404).json({ success: false, message: 'Tenant not found or not active', code: 'tenant_not_found' });
+
+    // Verify any selector against the caller's memberships BEFORE building
+    // anything: the same check tenantContext uses (owner, membership index, or
+    // a live role assignment — which also repairs a lagging index).
+    const header = req.headers['x-tenant-id'];
+    if (header && !(await userBelongsToTenant(userId, header))) return notFound();
+    const claimedTenantId = !header && req.user.tenantId ? req.user.tenantId : null;
+    const claimValid = claimedTenantId ? await userBelongsToTenant(userId, claimedTenantId) : false;
+
+    const { tenantsById, ...context } = await buildContext(userId);
+    const orgIds = context.organizations.map((o) => o.tenantId);
+
+    let activeTenantId;
+    if (header) {
+      // A verified member of a tenant that is not listed (not provisioned yet,
+      // unreachable) has no usable context in it.
+      if (!orgIds.includes(header)) return notFound();
+      activeTenantId = header;
+    } else if (claimValid && orgIds.includes(claimedTenantId)) {
+      activeTenantId = claimedTenantId;
+    } else {
+      activeTenantId = orgIds[0] || null;
+    }
+
+    const org = activeTenantId ? context.organizations.find((o) => o.tenantId === activeTenantId) : null;
+    const tenantStatus = org ? tenantsById[activeTenantId]?.status : null;
+
+    const [unread, quota] = await Promise.all([
+      notificationsService.getUnreadCount(userId, req.user.role),
+      org && org.isOwner && tenantStatus === 'ACTIVE'
+        ? branchQuotaService.getBranchQuota(activeTenantId).catch(() => null)
+        : null,
+    ]);
+
+    res.vary('X-Tenant-Id');
     return sendSuccess(
       res,
       {
-        user: {
-          id: user.id,
-          fullName: user.fullName,
-          email: user.email,
-          phone: user.phone,
-          profileImageUrl: user.profileImageUrl,
-          isHost: user.isHost,
-          // The platform account type. Says nothing about gym access — that lives
-          // entirely in `organizations` below.
-          platformRole: user.role,
+        user: context.user,
+        organizations: context.organizations,
+        needsContextSwitcher: context.needsContextSwitcher,
+        permissionVersion: context.permissionVersion,
+        activeTenant: org
+          ? {
+            tenantId: org.tenantId,
+            name: org.name,
+            status: tenantStatus,
+            isOwner: org.isOwner,
+            role: org.role,
+            scopeType: org.scopeType,
+            branchCount: org.branches.length,
+          }
+          : null,
+        quota,
+        unread: {
+          notifications: unread.unreadCount,
+          pendingApprovals: context.pendingApprovals,
         },
-        organizations,
-        pendingApprovals,
-        // Lets the client decide whether to show the organization switcher at all.
-        needsContextSwitcher: organizations.length > 1,
-        permissionVersion: user.permissionVersion,
       },
-      'Context retrieved'
+      'Bootstrap retrieved'
     );
   } catch (err) {
     return next(err);
   }
 };
 
-module.exports = { getContext, branchesForUser };
+module.exports = { getContext, getBootstrap, buildContext, branchesForUser };
