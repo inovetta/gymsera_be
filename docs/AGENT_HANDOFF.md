@@ -42,6 +42,7 @@ cut from `origin/main` 22c7d2c). The full backend suite is the gate before pushi
 > Then **5A-2 realtime/notifications: RT-01 to RT-09** (spec §9, §12.8), then **5A-3 observability: OBS-01 to OBS-09**
 > (§12.12), then **5A-4 security: SEC-04, SEC-05, SEC-08, SEC-14 to SEC-18 and BILL-15**. GLB-03 to GLB-09 (localization,
 > phone numbers, RTL, names/addresses, slow networks, privacy export) are not started; GLB-03 stays English-only per R-31.
+> **NEW-83 comes right after 5A-1 merges** (its own PR, not part of 5A-1), then 5A-2.
 > Decisions already made in this session: web card stays OFF (flag only, R-7); 3-decimal currencies are refused until
 > money columns are widened.
 > 5A-1 leftovers for clients (not done): mobile/CMS/web show times in the branch timezone with a label when it differs
@@ -56,6 +57,7 @@ cut from `origin/main` 22c7d2c). The full backend suite is the gate before pushi
 - **Owner decisions waiting:**
   - **NEW-81 (4A):** where the app-level feature flags, minimum app version and error-copy version live, and whether the mobile app sends its version (no app-version header today). Needed for the bootstrap contract and the §16 force-update check.
   - **NEW-82 (4A):** make the CMS admin tenants search work on the backend, or remove the search box.
+  - **NEW-83 (5A-1, P2):** `billing-refund-revoke` and `subscription-current-no-free-plan` fail with `DISABLE_REDIS=true` (pre-existing on 22c7d2c, breaks §0.1 rule 10). Owner decided: own small PR, failing test first, started only after 5A-1 merges.
   - **Before adding a second API instance (4A):** the discovery snapshot invalidation is in process; add a platform-DB version read first (decided single instance on 2026-10-14).
   - ~~NEW-54: delete the six live-server smoke tests~~ DONE (be PR #90).
   - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) NEW-69 to NEW-72 (from Prompt 3D) and NEW-74 to NEW-78 (from Prompt 3E; mobile and CMS/web client work, NEW-78 is a test fix under R-19).
