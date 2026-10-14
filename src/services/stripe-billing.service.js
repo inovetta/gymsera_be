@@ -36,6 +36,7 @@ const Stripe = require('stripe');
 const { BillingPlan, Tenant } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionMigrationService = require('./subscription-migration.service');
+const { minorDigits } = require('../utils/currency.utils');
 
 let _stripe = null;
 const _client = () => {
@@ -240,9 +241,6 @@ const findPlanForPriceId = async (priceId) => {
  * is handled before this — it grants nothing and writes no row. An unknown
  * status is never guessed as ACTIVE.
  */
-// Currencies Stripe counts in whole units, not cents.
-const STRIPE_ZERO_DECIMAL = ['bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf'];
-
 const _statusFromStripeStatus = (stripeStatus) => {
   if (['active', 'trialing'].includes(stripeStatus)) return 'ACTIVE';
   if (stripeStatus === 'past_due') return 'GRACE';
@@ -310,7 +308,7 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
     chargedAmount:
       item.price?.unit_amount != null
         ? (item.price.unit_amount * (item.quantity || 1)) /
-          (STRIPE_ZERO_DECIMAL.includes(String(item.price.currency).toLowerCase()) ? 1 : 100)
+          10 ** minorDigits(item.price.currency)
         : null,
     chargedCurrency: item.price?.unit_amount != null ? item.price.currency || null : null,
     status,
