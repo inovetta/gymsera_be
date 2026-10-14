@@ -74,6 +74,28 @@ describe('PERF-06: discovery snapshot cache', () => {
     expect(queryCount).toBeGreaterThan(0);
   });
 
+  test('an organizations list built while a tenant was unreachable is kept only 10 s', async () => {
+    const { factories } = require('../harness');
+    const broken = await factories.createTenant({ gymName: 'Broken DB', connectionStringEncrypted: 'not-decryptable' });
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval', 'clearTimeout'], now: Date.now() });
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const first = await request(server).get('/api/v1/discovery/organizations?limit=11');
+      expect(first.status).toBe(200);
+      queryCount = 0;
+      await request(server).get('/api/v1/discovery/organizations?limit=11');
+      expect(queryCount).toBe(0); // within 10 s: served from the memo
+      jest.setSystemTime(Date.now() + 11000);
+      queryCount = 0;
+      await request(server).get('/api/v1/discovery/organizations?limit=11');
+      expect(queryCount).toBeGreaterThan(0); // after 10 s: rebuilt, not held for 60 s
+    } finally {
+      errSpy.mockRestore();
+      jest.useRealTimers();
+      await Tenant.destroy({ where: { id: broken.id } });
+    }
+  });
+
   test('concurrent first requests share a single build', async () => {
     await Promise.all(Array.from({ length: 6 }, () => request(server).get('/api/v1/discovery/cities')));
     expect(cache.getStats().builds).toBe(1);

@@ -89,9 +89,15 @@ const memos = new Map();
  * its parameters (organizations list, one organization's branches). The key
  * set is bounded: public input must not grow memory without limit.
  */
-const memo = async (key, build, { fresh = false } = {}) => {
+const memo = async (key, build, { fresh = false, reportsCompleteness = false } = {}) => {
+  // With reportsCompleteness, build() resolves { value, complete }; an incomplete
+  // value (a tenant was skipped) is kept only INCOMPLETE_TTL_MS, like the snapshot.
+  const unwrap = async () => {
+    const r = await build();
+    return reportsCompleteness ? r : { value: r, complete: true };
+  };
   const ttl = ttlMs();
-  if (ttl <= 0 || fresh) return build();
+  if (ttl <= 0 || fresh) return (await unwrap()).value;
   const now = Date.now();
   const hit = memos.get(key);
   if (hit && hit.value !== undefined && now < hit.expiresAt) {
@@ -104,10 +110,10 @@ const memo = async (key, build, { fresh = false } = {}) => {
   const generation = state.generation;
   state.builds += 1;
   const entry = { value: undefined, expiresAt: 0, building: null };
-  entry.building = build().then((value) => {
+  entry.building = unwrap().then(({ value, complete }) => {
     if (generation === state.generation) {
       entry.value = value;
-      entry.expiresAt = Date.now() + ttl;
+      entry.expiresAt = Date.now() + (complete ? ttl : Math.min(ttl, INCOMPLETE_TTL_MS));
       entry.building = null;
       memos.set(key, entry);
     }
