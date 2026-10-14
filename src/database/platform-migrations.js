@@ -747,6 +747,59 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 19,
+    name: 'p019_create_billing_plan_prices',
+    description: 'Per-currency catalog prices and Stripe Price IDs for each BillingPlan tier (BILL-11)',
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+
+      const [plansExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['billing_plans'], type: QueryTypes.SELECT }
+      );
+      if (!plansExists) return null;
+
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['billing_plan_prices'], type: QueryTypes.SELECT }
+      );
+      if (tableExists) {
+        const [col] = await sequelize.query(
+          "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_plan_prices' AND COLUMN_NAME = 'monthly_minor'",
+          { type: QueryTypes.SELECT }
+        );
+        if (!col || String(col.DATA_TYPE).toLowerCase() !== 'bigint') {
+          console.warn(
+            '[PlatformMigration] SKIPPING p019: billing_plan_prices exists with another shape. Resolve it by hand, then re-run.'
+          );
+          return { skipped: true, reason: 'table_exists_with_other_schema', table: 'billing_plan_prices' };
+        }
+        return null;
+      }
+
+      // billing_plans.id may carry a different collation on old databases, so no FOREIGN KEY here
+      // (a failing constraint would block the whole migration); the service layer validates the plan.
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS \`billing_plan_prices\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`billing_plan_id\` CHAR(36) NOT NULL,
+          \`currency\` VARCHAR(3) NOT NULL,
+          \`monthly_minor\` BIGINT NOT NULL,
+          \`annual_minor\` BIGINT NOT NULL,
+          \`stripe_monthly_price_id\` VARCHAR(150) NULL,
+          \`stripe_annual_price_id\` VARCHAR(150) NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`billing_plan_prices_plan_currency\` (\`billing_plan_id\`, \`currency\`),
+          KEY \`billing_plan_prices_stripe_monthly\` (\`stripe_monthly_price_id\`),
+          KEY \`billing_plan_prices_stripe_annual\` (\`stripe_annual_price_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

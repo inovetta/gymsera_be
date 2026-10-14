@@ -3,6 +3,7 @@
  */
 const { register } = require('./index');
 const { createError } = require('../../utils/response.utils');
+const { moneyText } = require('../../utils/currency.utils');
 
 /**
  * plans.create.
@@ -15,7 +16,7 @@ register({
   actionKey: 'plans.create',
 
   summarize: (payload) => {
-    const price = payload.price != null ? `Rs ${payload.price}` : '';
+    const price = payload.price != null ? moneyText(payload.price, payload.currency) : '';
     return [payload.name || 'Plan', price].filter(Boolean).join(' — ');
   },
 

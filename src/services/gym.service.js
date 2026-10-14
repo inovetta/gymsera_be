@@ -6,19 +6,24 @@ const { SubscriptionStatus } = require('../constants/subscription-status');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
 const subscriptionQuotaService = require('./subscription-quota.service');
 const { getNextInvoiceNumber } = require('./invoice-sequence.service');
+const { normalizeCurrency, isSupportedCurrency } = require('../utils/currency.utils');
 
-const _calcEndDate = (startDate, durationType, durationValue) => {
-  const d = new Date(startDate);
-  switch (durationType) {
-    case 'DAILY': d.setDate(d.getDate() + durationValue); break;
-    case 'WEEKLY': d.setDate(d.getDate() + durationValue * 7); break;
-    case 'MONTHLY': d.setMonth(d.getMonth() + durationValue); break;
-    case 'QUARTERLY': d.setMonth(d.getMonth() + durationValue * 3); break;
-    case 'YEARLY': d.setFullYear(d.getFullYear() + durationValue); break;
-    default: d.setMonth(d.getMonth() + 1);
+/** A valid IANA timezone, or a 400. Intl throws on an unknown zone, which would break every date in the branch. */
+const _assertTimezone = (timezone) => {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: timezone });
+  } catch (e) {
+    throw createError(`Unknown timezone "${timezone}". Use an IANA name such as Asia/Karachi.`, 400);
   }
-  return d.toISOString().split('T')[0];
 };
+
+const _assertCurrency = (currency) => {
+  if (!isSupportedCurrency(currency)) {
+    throw createError(`Currency "${currency}" is not supported for a branch.`, 400);
+  }
+};
+
+const { addPlanDuration: _calcEndDate } = require('../utils/business-date.utils');
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -332,9 +337,24 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { trans
     }
   }
 
+  // GLB-01 / GLB-02: timezone and currency per branch. A new branch inherits its organization's first branch,
+  // so a host who set USD / America/New_York once is not asked again for every branch.
+  const sibling = await Branch.findOne({
+    where: targetListingId ? { gymListingId: targetListingId } : {},
+    order: [['createdAt', 'ASC']],
+    attributes: ['timezone', 'currency'],
+    // No `transaction`: the one passed in is the caller's PLATFORM-DB transaction, not a tenant-DB one.
+  });
+  const currency = normalizeCurrency(data.currency) || (sibling && sibling.currency) || 'PKR';
+  const timezone = data.timezone || (sibling && sibling.timezone) || 'Asia/Karachi';
+  _assertCurrency(currency);
+  _assertTimezone(timezone);
+
   const branch = await Branch.create({
     gymId: gym.id,
     gymListingId: targetListingId || null,
+    currency,
+    timezone,
     branchName: data.branchName,
     address: data.address || data.addressLine1 || null,
     cityId: data.cityId || null,
@@ -850,6 +870,26 @@ const updateBranch = async (tenantDb, branchId, data) => {
     if (activePublicPlansCount === 0) {
       throw createError('Cannot publish or activate a branch without at least 1 active public membership plan', 400);
     }
+  }
+
+  // GLB-01 / GLB-02: timezone and currency are validated here, not trusted from the client.
+  if (data.timezone !== undefined && data.timezone !== branch.timezone) {
+    _assertTimezone(data.timezone);
+    branch.timezone = data.timezone;
+  }
+  if (data.currency !== undefined && normalizeCurrency(data.currency) !== branch.currency) {
+    const next = normalizeCurrency(data.currency);
+    _assertCurrency(next);
+    // Existing payments, invoices and payouts keep the old code (completed payments are immutable), so a branch
+    // that already moved money cannot change currency: its ledger would mix two currencies.
+    const { Payment, Payout } = tenantDb.models;
+    const used = (await Payment.count({ where: { branchId } })) + (Payout ? await Payout.count({ where: { branchId } }) : 0);
+    if (used > 0) {
+      const err = createError('This branch already has payments, so its currency can no longer be changed.', 409);
+      err.code = 'branch_currency_locked';
+      throw err;
+    }
+    branch.currency = next;
   }
 
   // Deliberately no 'status' — see the guard above.
@@ -1652,7 +1692,9 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found or inactive', 404);
 
-  const today = new Date().toISOString().split('T')[0];
+  // GLB-01: "today" is the branch's today, not the server's.
+  const { computeBusinessDate } = require('./ledger.service');
+  const today = computeBusinessDate(new Date(), branch.timezone);
   const existing = await MemberSubscription.findOne({
     where: { userId: user.id, branchId, status: [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN, SubscriptionStatus.PENDING] },
     order: [['createdAt', 'DESC']],
@@ -1670,7 +1712,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     }
   }
 
-  const start = startDate || new Date().toISOString().split('T')[0];
+  const start = startDate || today;
   const end = _calcEndDate(start, plan.durationType, plan.durationValue);
   // A pre-collected payment isn't verified yet — the member and its
   // subscription can't be more "active" than the payment behind them, no
@@ -1774,7 +1816,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     branchId,
     method: (preCollected && collection.collectionMethod) || paymentMethod || 'CASH',
     amount: totalAmount,
-    currency: 'PKR',
+    currency: branch.currency || 'PKR',
     status: paymentStatus,
     paidAt: autoComplete ? new Date() : null,
     // Pre-collected: the real collector, not the approver. Otherwise unchanged.
@@ -1798,7 +1840,7 @@ const enrollMember = async (tenantDb, tenantId, { email, fullName, phone, planId
     discountAmount: 0,
     taxAmount: 0,
     totalAmount,
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: today,
     paidAt: autoComplete ? new Date() : null,
     status: autoComplete ? InvoiceStatus.PAID : InvoiceStatus.ISSUED,
     createdBy: recordCreatedBy,

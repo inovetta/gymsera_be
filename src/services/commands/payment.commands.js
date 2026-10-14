@@ -7,12 +7,13 @@ const { PaymentStatus } = require('../../constants/payment-status');
 const { toMinorUnits, fromMinorUnits, toMajorUnitsNumber, sumMinor } = require('../../utils/money.utils');
 const { UserGymMembership } = require('../../models/platform');
 const ledgerService = require('../ledger.service');
+const { moneyText } = require('../../utils/currency.utils');
 
 register({
   actionKey: 'payments.refund',
 
   summarize: (p) => {
-    const amountStr = p.amount != null ? `Rs ${fromMinorUnits(toMinorUnits(p.amount))}` : 'full';
+    const amountStr = p.amount != null ? moneyText(fromMinorUnits(toMinorUnits(p.amount)), p.currency) : 'full';
     return `Refund payment ${p.paymentId || ''}: ${amountStr}${p.reason ? ` — ${p.reason}` : ''}`;
   },
 
@@ -63,7 +64,7 @@ register({
       }
       if (requestedRefundMinor > remainingRefundableMinor) {
         const err = createError(
-          `Refund amount (Rs ${fromMinorUnits(requestedRefundMinor)}) exceeds remaining refundable balance (Rs ${fromMinorUnits(remainingRefundableMinor)})`,
+          `Refund amount (${moneyText(fromMinorUnits(requestedRefundMinor), payment.currency)}) exceeds remaining refundable balance (${moneyText(fromMinorUnits(remainingRefundableMinor), payment.currency)})`,
           422
         );
         err.code = 'refund_exceeds_refundable';
@@ -120,7 +121,7 @@ register({
       }
       if (refundMinor > remainingRefundableMinor) {
         const err = createError(
-          `Refund amount exceeds remaining refundable balance of Rs ${fromMinorUnits(remainingRefundableMinor)}`,
+          `Refund amount exceeds remaining refundable balance of ${moneyText(fromMinorUnits(remainingRefundableMinor), payment.currency)}`,
           422
         );
         err.code = 'refund_exceeds_refundable';
@@ -146,7 +147,7 @@ register({
       );
 
       // 2. Update payment status if full refund, and append audit note
-      const refundNote = `Refunded Rs ${fromMinorUnits(refundMinor)}: ${payload.reason || 'Member refund'}`;
+      const refundNote = `Refunded ${moneyText(fromMinorUnits(refundMinor), payment.currency)}: ${payload.reason || 'Member refund'}`;
       const newNotes = payment.notes ? `${payment.notes}\n${refundNote}` : refundNote;
 
       const updateData = { notes: newNotes };

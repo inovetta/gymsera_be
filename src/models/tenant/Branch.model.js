@@ -63,6 +63,12 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'Asia/Karachi',
       },
+      // ISO 4217 code. Payments, invoices and payouts created in this branch carry it (GLB-02).
+      currency: {
+        type: DataTypes.STRING(3),
+        allowNull: false,
+        defaultValue: 'PKR',
+      },
       facilitiesJson: {
         type: DataTypes.JSON,
         allowNull: true,

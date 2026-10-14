@@ -36,6 +36,7 @@ const Stripe = require('stripe');
 const { BillingPlan, Tenant } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionMigrationService = require('./subscription-migration.service');
+const { minorDigits } = require('../utils/currency.utils');
 
 let _stripe = null;
 const _client = () => {
@@ -110,15 +111,18 @@ const _resolveCustomerId = async (tenantId, tenant) => {
  * is already active would leave two Stripe subscriptions both billing the
  * same customer instead of replacing one with the other.
  */
-const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { successUrl, cancelUrl }) => {
+const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { successUrl, cancelUrl, currency = null }) => {
   const currentActive = await require('./subscription-quota.service').getActiveSubscription(tenantId);
   if (currentActive?.platform === 'STRIPE') {
     throw createError('This account already has an active Stripe subscription — change its plan instead of starting a new checkout.', 409);
   }
 
-  const plan = await BillingPlan.findByPk(billingPlanId);
+  const plan = await _planWithPrices(billingPlanId);
   if (!plan) throw createError('Billing plan not found', 404);
-  const priceId = billingCycle === 'YEARLY' ? plan.stripeAnnualPriceId : plan.stripeMonthlyPriceId;
+  // BILL-11: the price ID of the requested currency; no currency = the plan's default currency (as before).
+  const chosen = require('./billing-plan-catalog.service').priceForCurrency(plan, currency);
+  if (!chosen) throw createError(`This plan has no ${String(currency).toUpperCase()} price`, 400);
+  const priceId = billingCycle === 'YEARLY' ? chosen.stripeAnnualPriceId : chosen.stripeMonthlyPriceId;
   if (!priceId) throw createError(`This plan is not yet configured for Stripe (${billingCycle})`, 400);
 
   const tenant = await Tenant.findByPk(tenantId);
@@ -159,9 +163,14 @@ const changeSubscriptionPlan = async (tenantId, billingPlanId, billingCycle) => 
     throw createError('This account does not have an active Stripe subscription to change.', 409);
   }
 
-  const plan = await BillingPlan.findByPk(billingPlanId);
+  const plan = await _planWithPrices(billingPlanId);
   if (!plan) throw createError('Billing plan not found', 404);
-  const newPriceId = billingCycle === 'YEARLY' ? plan.stripeAnnualPriceId : plan.stripeMonthlyPriceId;
+  // BILL-11: a Stripe subscription cannot change currency, so the new price is in the subscription's own currency.
+  const chosen = require('./billing-plan-catalog.service').priceForCurrency(plan, currentActive.currency);
+  if (!chosen) {
+    throw createError(`This plan has no ${String(currentActive.currency).toUpperCase()} price, so it cannot replace this subscription.`, 409);
+  }
+  const newPriceId = billingCycle === 'YEARLY' ? chosen.stripeAnnualPriceId : chosen.stripeMonthlyPriceId;
   if (!newPriceId) throw createError(`This plan is not yet configured for Stripe (${billingCycle})`, 400);
 
   const stripe = _client();
@@ -192,15 +201,35 @@ const createBillingPortalSession = async (tenantId, returnUrl) => {
   return { url: session.url };
 };
 
+const _planWithPrices = (id) => {
+  const { BillingPlanPrice } = require('../models/platform');
+  return BillingPlan.findByPk(id, { include: [{ model: BillingPlanPrice, as: 'prices' }] });
+};
+
+/** Whether `priceId` is the plan's yearly price in its default currency or in any extra currency (BILL-11). */
+const _isAnnualPriceId = async (plan, priceId) => {
+  if (priceId === plan.stripeAnnualPriceId) return true;
+  const { BillingPlanPrice } = require('../models/platform');
+  return !!(await BillingPlanPrice.findOne({ where: { billingPlanId: plan.id, stripeAnnualPriceId: priceId } }));
+};
+
 /**
  * A verified purchase's Stripe Price ID back to the BillingPlan row it
  * belongs to — mirrors the other two providers' findPlanForProductId.
  */
 const findPlanForPriceId = async (priceId) => {
   const { Op } = require('sequelize');
-  const plan = await BillingPlan.findOne({
+  let plan = await BillingPlan.findOne({
     where: { [Op.or]: [{ stripeMonthlyPriceId: priceId }, { stripeAnnualPriceId: priceId }] },
   });
+  if (!plan) {
+    // BILL-11: a price of one of the tier's extra currencies.
+    const { BillingPlanPrice } = require('../models/platform');
+    const row = await BillingPlanPrice.findOne({
+      where: { [Op.or]: [{ stripeMonthlyPriceId: priceId }, { stripeAnnualPriceId: priceId }] },
+    });
+    if (row) plan = await BillingPlan.findByPk(row.billingPlanId);
+  }
   if (!plan) throw createError(`No BillingPlan is configured for Stripe price "${priceId}"`, 404);
   return plan;
 };
@@ -212,9 +241,6 @@ const findPlanForPriceId = async (priceId) => {
  * is handled before this — it grants nothing and writes no row. An unknown
  * status is never guessed as ACTIVE.
  */
-// Currencies Stripe counts in whole units, not cents.
-const STRIPE_ZERO_DECIMAL = ['bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf'];
-
 const _statusFromStripeStatus = (stripeStatus) => {
   if (['active', 'trialing'].includes(stripeStatus)) return 'ACTIVE';
   if (stripeStatus === 'past_due') return 'GRACE';
@@ -250,7 +276,7 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
   const priceId = item?.price?.id;
   if (!priceId) throw createError('Stripe subscription has no price item', 400);
   const plan = await findPlanForPriceId(priceId);
-  const isAnnual = priceId === plan.stripeAnnualPriceId;
+  const isAnnual = await _isAnnualPriceId(plan, priceId);
 
   // `revoked`: the latest payment was fully refunded or disputed — Stripe
   // keeps the subscription itself "active", so the caller says so (BILL-02).
@@ -282,7 +308,7 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
     chargedAmount:
       item.price?.unit_amount != null
         ? (item.price.unit_amount * (item.quantity || 1)) /
-          (STRIPE_ZERO_DECIMAL.includes(String(item.price.currency).toLowerCase()) ? 1 : 100)
+          10 ** minorDigits(item.price.currency)
         : null,
     chargedCurrency: item.price?.unit_amount != null ? item.price.currency || null : null,
     status,

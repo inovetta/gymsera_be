@@ -12,6 +12,7 @@ const { Op } = require('sequelize');
 const { toMinorUnits, fromMinorUnits } = require('../utils/money.utils');
 const { createError } = require('../utils/response.utils');
 const { Tenant, User } = require('../models/platform');
+const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
 
 const COOLING_PERIOD_HOURS = 24;
 const COOLING_PERIOD_MS = COOLING_PERIOD_HOURS * 60 * 60 * 1000;
@@ -25,8 +26,23 @@ const COOLING_PERIOD_MS = COOLING_PERIOD_HOURS * 60 * 60 * 1000;
  * @param {import('sequelize').Transaction} [options.transaction]
  */
 const getPayoutBalance = async (tenantDb, branchId = null, options = {}) => {
-  const { Payment, LedgerAdjustment, LedgerDay, Expense, Payout } = tenantDb.models;
+  const { Payment, LedgerAdjustment, LedgerDay, Expense, Payout, Branch } = tenantDb.models;
   const tx = options.transaction || null;
+
+  // GLB-02: a balance is in ONE currency. Org-wide, that only holds when every branch uses the same one;
+  // otherwise the caller must pick a branch (summing PKR and USD would be a wrong number, not a total).
+  const branchRows = await Branch.findAll({
+    where: branchId ? { id: branchId } : {},
+    attributes: ['id', 'currency'],
+    transaction: tx,
+  });
+  const currencies = [...new Set(branchRows.map((b) => b.currency || DEFAULT_CURRENCY))];
+  if (currencies.length > 1) {
+    const err = createError('This organization has branches in different currencies. Choose a branch to see its balance.', 409);
+    err.code = 'multiple_currencies';
+    throw err;
+  }
+  const currency = currencies[0] || DEFAULT_CURRENCY;
 
   // 1. Total completed payments
   const payments = await Payment.findAll({
@@ -97,7 +113,7 @@ const getPayoutBalance = async (tenantDb, branchId = null, options = {}) => {
     totalExpenses: fromMinorUnits(expensesMinor),
     totalPayouts: fromMinorUnits(payoutsMinor),
     availableBalance: fromMinorUnits(availableBalanceMinor),
-    currency: 'PKR',
+    currency,
   };
 };
 

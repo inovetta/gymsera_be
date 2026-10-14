@@ -6,12 +6,13 @@ const { createError } = require('../../utils/response.utils');
 const { toMinorUnits, fromMinorUnits } = require('../../utils/money.utils');
 const { getPayoutBalance, checkCoolingPeriod } = require('../payout.service');
 const { Tenant } = require('../../models/platform');
+const { moneyText, DEFAULT_CURRENCY } = require('../../utils/currency.utils');
 
 register({
   actionKey: 'payouts.request',
 
   summarize: (p) => {
-    const amountStr = p.amount != null ? `Rs ${fromMinorUnits(toMinorUnits(p.amount))}` : '0.00';
+    const amountStr = p.amount != null ? moneyText(fromMinorUnits(toMinorUnits(p.amount)), p.currency) : '0.00';
     return `Request payout: ${amountStr}${p.notes ? ` — ${p.notes}` : ''}`;
   },
 
@@ -57,7 +58,7 @@ register({
     const availableMinor = toMinorUnits(balance.availableBalance);
     if (requestedMinor > availableMinor) {
       const err = createError(
-        `Requested payout (Rs ${fromMinorUnits(requestedMinor)}) exceeds available ledger balance (Rs ${balance.availableBalance})`,
+        `Requested payout (${moneyText(fromMinorUnits(requestedMinor), balance.currency)}) exceeds available ledger balance (${moneyText(balance.availableBalance, balance.currency)})`,
         422
       );
       err.code = 'insufficient_balance';
@@ -86,7 +87,7 @@ register({
       const availableMinor = toMinorUnits(balance.availableBalance);
       if (requestedMinor > availableMinor) {
         const err = createError(
-          `Requested payout exceeds available ledger balance of Rs ${balance.availableBalance}`,
+          `Requested payout exceeds available ledger balance of ${moneyText(balance.availableBalance, balance.currency)}`,
           422
         );
         err.code = 'insufficient_balance';
@@ -103,7 +104,7 @@ register({
         {
           branchId: payload.branchId || null,
           amount: fromMinorUnits(requestedMinor),
-          currency: payload.currency || 'PKR',
+          currency: balance.currency || DEFAULT_CURRENCY,
           status: 'PENDING',
           destinationJson: destination,
           notes: payload.notes || null,

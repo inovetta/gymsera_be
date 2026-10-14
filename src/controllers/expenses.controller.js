@@ -4,6 +4,9 @@ const { ensureDefaultCategories } = require('../services/expense-category.servic
 const notificationsService = require('../services/notifications.service');
 const accessService = require('../services/access.service');
 const { Tenant, User } = require('../models/platform');
+const { computeBusinessDate, branchCurrency: ledgerBranchCurrency } = require('../services/ledger.service');
+const { moneyText } = require('../utils/currency.utils');
+const { monthStartOf, monthEndOf, startOfBusinessDay, addDays } = require('../utils/business-date.utils');
 
 /**
  * GET /host/expense-categories
@@ -370,7 +373,7 @@ const createExpense = async (req, res, next) => {
           role: 'host',
           type: 'staff_action_requested',
           title: 'Pending Staff Expense Approval',
-          message: `${req.user.fullName || 'Staff'} submitted an expense: ${title.trim()} — Rs ${parseFloat(amount)} — needs your approval.`,
+          message: `${req.user.fullName || 'Staff'} submitted an expense: ${title.trim()} — ${moneyText(parseFloat(amount), await ledgerBranchCurrency(req.tenantDb, branchId))} — needs your approval.`,
           priority: 'normal',
           deepLink: `/host/gyms/${branchId}/staff-requests`,
           metadataJson: {
@@ -586,18 +589,16 @@ const getExpenseSummary = async (req, res, next) => {
     const { from, to, period = 'month' } = req.query;
     const { Expense, ExpenseCategory, Payment } = req.tenantDb.models;
 
-    let startDate, endDate;
-    if (from && to) {
-      startDate = new Date(from);
-      endDate = new Date(to);
-    } else {
-      const now = new Date();
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    }
-
-    const fromDateStr = startDate.toISOString().split('T')[0];
-    const toDateStr = endDate.toISOString().split('T')[0];
+    // GLB-01: the period is a range of the branch's business dates; the revenue window is the same days cut at
+    // the branch's local midnight, so a payment at 23:30 local time lands on its own day.
+    const { Branch } = req.tenantDb.models;
+    const branchRow = await Branch.findByPk(branchId, { attributes: ['id', 'timezone'] });
+    const timezone = branchRow ? branchRow.timezone : undefined;
+    const todayStr = computeBusinessDate(new Date(), timezone);
+    const fromDateStr = from && to ? String(from).slice(0, 10) : monthStartOf(todayStr);
+    const toDateStr = from && to ? String(to).slice(0, 10) : monthEndOf(todayStr);
+    const startDate = startOfBusinessDay(fromDateStr, timezone);
+    const endDate = startOfBusinessDay(addDays(toDateStr, 1), timezone);
 
     // Approved Total Expenses
     const expenseSum = await Expense.sum('amount', {
@@ -614,7 +615,7 @@ const getExpenseSummary = async (req, res, next) => {
       where: {
         branchId,
         status: 'COMPLETED',
-        paidAt: { [Op.between]: [startDate, endDate] },
+        paidAt: { [Op.gte]: startDate, [Op.lt]: endDate },
       },
     });
     const grossRevenue = parseFloat(revenueSum || 0);

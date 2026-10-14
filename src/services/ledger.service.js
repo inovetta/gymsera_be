@@ -15,6 +15,7 @@
  * own IANA timezone (see computeBusinessDate) — every read here just filters on
  * that stamped column. Nothing in this file recomputes a timezone conversion.
  */
+const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
 const { Op, fn, col, literal } = require('sequelize');
 const { createError } = require('../utils/response.utils');
 const { PaymentStatus } = require('../constants/payment-status');
@@ -104,6 +105,19 @@ const todayBusinessDate = async (tenantDb, branchId) => {
   const branch = await Branch.findByPk(branchId, { attributes: ['id', 'timezone'] });
   if (!branch) throw createError('Branch not found', 404);
   return computeBusinessDate(new Date(), branch.timezone);
+};
+
+/**
+ * The currency (ISO 4217) of a branch, from the DB (GLB-02). `tenantDb` is anything with `.models`.
+ * Falls back to the default currency for a missing branch id, so a caller never writes a null currency.
+ */
+const branchCurrency = async (tenantDb, branchId, options = {}) => {
+  if (!branchId) return DEFAULT_CURRENCY;
+  const branch = await tenantDb.models.Branch.findByPk(branchId, {
+    attributes: ['id', 'currency'],
+    transaction: options.transaction,
+  });
+  return (branch && branch.currency) || DEFAULT_CURRENCY;
 };
 
 /**
@@ -643,6 +657,7 @@ const notifyLedgerUpdated = (tenantId, branchId, businessDate) => {
 
 module.exports = {
   computeBusinessDate,
+  branchCurrency,
   getPaymentCollectionTime,
   todayBusinessDate,
   stampBusinessDate,

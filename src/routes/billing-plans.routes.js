@@ -43,4 +43,12 @@ router.post(
   controller.markSynced
 );
 
+/**
+ * BILL-11: one extra currency per tier. PUT sets the catalog price (major units in the body, stored as integer
+ * minor units); sync-stripe creates that currency's Stripe Prices; DELETE removes it.
+ */
+router.put('/:id/prices/:currency', authenticate, authorize('PLATFORM_ADMIN'), validate(validators.upsertPrice), controller.upsertPrice);
+router.delete('/:id/prices/:currency', authenticate, authorize('PLATFORM_ADMIN'), validate(validators.priceParams), controller.deletePrice);
+router.post('/:id/prices/:currency/sync-stripe', authenticate, authorize('PLATFORM_ADMIN'), validate(validators.priceParams), controller.syncStripeCurrencyPrice);
+
 module.exports = router;

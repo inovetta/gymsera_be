@@ -28,6 +28,10 @@ const _createInvoice = async (
   const joiningMinor = Math.max(0, remainingMinor - securityMinor);
 
   const effectiveBranchId = branchId || subscription?.branchId || payment?.branchId || null;
+  // GLB-01: the invoice's due date is the branch-local business date, not the server's UTC date.
+  const dueDate = payment?.businessDate
+    || await require('./ledger.service').stampBusinessDate({ models }, effectiveBranchId, new Date(), { transaction })
+    || new Date().toISOString().split('T')[0];
   const invoiceNo = await getNextInvoiceNumber(models.Invoice.sequelize, effectiveBranchId, transaction);
 
   return Invoice.create(
@@ -41,7 +45,7 @@ const _createInvoice = async (
       discountAmount: '0.00',
       taxAmount: '0.00',
       totalAmount: fromMinorUnits(totalAmountMinor),
-      dueDate: new Date().toISOString().split('T')[0],
+      dueDate,
       paidAt: payment.status === PaymentStatus.COMPLETED ? new Date() : null,
       status: payment.status === PaymentStatus.COMPLETED
         ? InvoiceStatus.PAID
@@ -243,7 +247,7 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
           ? `TEST-${Date.now()}`
           : (data.gatewayTransactionId || null),
         amount: data.amount,
-        currency: data.currency || 'PKR',
+        currency: data.currency || await require('./ledger.service').branchCurrency(tenantDb, data.branchId),
         status: autoComplete ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
         paidAt,
         collectedAt,

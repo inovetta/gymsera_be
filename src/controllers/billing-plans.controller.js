@@ -48,6 +48,36 @@ const updatePlan = async (req, res, next) => {
   }
 };
 
+// ── PUT /admin/billing-plans/:id/prices/:currency — set one extra currency (BILL-11) ──
+const upsertPrice = async (req, res, next) => {
+  try {
+    const price = await catalogService.upsertPrice(req.params.id, { ...req.body, currency: req.params.currency });
+    return sendSuccess(res, price, 'Billing plan price saved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /admin/billing-plans/:id/prices/:currency ──────────────────────────
+const deletePrice = async (req, res, next) => {
+  try {
+    await catalogService.deletePrice(req.params.id, req.params.currency);
+    return sendSuccess(res, null, 'Billing plan price removed');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /admin/billing-plans/:id/prices/:currency/sync-stripe ────────────────
+const syncStripeCurrencyPrice = async (req, res, next) => {
+  try {
+    const price = await catalogService.syncStripePriceForCurrency(req.params.id, req.params.currency);
+    return sendSuccess(res, price, 'Stripe prices synced');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── POST /admin/billing-plans/:id/sync-stripe — real API push to Stripe ──────
 const syncStripe = async (req, res, next) => {
   try {
@@ -75,4 +105,7 @@ const markSynced = async (req, res, next) => {
   }
 };
 
-module.exports = { listPlans, getPlan, createPlan, updatePlan, syncStripe, markSynced };
+module.exports = {
+  listPlans, getPlan, createPlan, updatePlan, syncStripe, markSynced,
+  upsertPrice, deletePrice, syncStripeCurrencyPrice,
+};

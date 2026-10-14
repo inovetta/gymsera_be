@@ -13,6 +13,27 @@ const storageService = require('../services/storage.service');
 const authService = require('../services/auth.service');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const { hasBranchAccess } = require('../utils/branchAccess.utils');
+const { computeBusinessDate } = require('../services/ledger.service');
+const { businessDayRange, startOfBusinessDay, monthStartOf, addDays } = require('../utils/business-date.utils');
+
+/**
+ * Check-ins per day for the 7 business days ending at `todayStr`, days cut at the branch's local midnight
+ * (GLB-01). `where` is the branch filter. The label is the weekday of the business date itself.
+ */
+const _weeklyCheckins = async (AttendanceLog, where, todayStr, timezone) => {
+  const out = [];
+  for (let i = 6; i >= 0; i--) {
+    const dateStr = addDays(todayStr, -i);
+    const { start, end } = businessDayRange(dateStr, timezone);
+    const count = await AttendanceLog.count({
+      where: { ...where, checkInAt: { [Op.gte]: start, [Op.lt]: end }, attendanceType: 'CHECK_IN' },
+    });
+    const day = new Date(`${dateStr}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }).toUpperCase();
+    out.push({ day, count });
+  }
+  return out;
+};
+
 
 const getTodaySummary = async (req, res, next) => {
   try {
@@ -58,7 +79,7 @@ const getTodaySummary = async (req, res, next) => {
 
     const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = tenantDb.models;
 
-    const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+    const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id', 'timezone'] });
     const activeBranchIds = activeBranches.map((b) => b.id);
     if (activeBranchIds.length === 0) {
       return sendSuccess(res, {
@@ -88,21 +109,24 @@ const getTodaySummary = async (req, res, next) => {
 
     // State C: Approved & active with at least 1 branch
     const branchFilter = { branchId: { [Op.in]: activeBranchIds } };
-    const todayStr = new Date().toISOString().split('T')[0];
-    const startOfDay = new Date(`${todayStr}T00:00:00.000Z`);
-    const endOfDay = new Date(`${todayStr}T23:59:59.999Z`);
-
-    // 1. Todays check-ins count
-    const todaysCheckins = await AttendanceLog.count({
-      where: {
-        ...branchFilter,
-        checkInAt: { [Op.between]: [startOfDay, endOfDay] },
-        attendanceType: 'CHECK_IN'
-      }
-    });
+    // GLB-01: "today" and "this month" are the branch's, not the server's. The aggregate view counts each
+    // branch's own day; revenue and expenses use the first branch's month start (an org normally sits in one zone).
+    let todaysCheckins = 0;
+    for (const b of activeBranches) {
+      const { start, end } = businessDayRange(computeBusinessDate(new Date(), b.timezone), b.timezone);
+      todaysCheckins += await AttendanceLog.count({
+        where: {
+          branchId: b.id,
+          checkInAt: { [Op.gte]: start, [Op.lt]: end },
+          attendanceType: 'CHECK_IN'
+        }
+      });
+    }
+    const primaryTz = activeBranches[0].timezone;
+    const startOfMonthStr = monthStartOf(computeBusinessDate(new Date(), primaryTz));
+    const startOfMonth = startOfBusinessDay(startOfMonthStr, primaryTz);
 
     // 2. This Month Revenue & Expenses
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const revenueSum = await Payment.sum('amount', {
       where: {
         ...branchFilter,
@@ -115,7 +139,6 @@ const getTodaySummary = async (req, res, next) => {
 
     let totalExpenses = 0;
     if (Expense) {
-      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
       const expenseSum = await Expense.sum('amount', {
         where: {
           ...branchFilter,
@@ -148,22 +171,9 @@ const getTodaySummary = async (req, res, next) => {
     });
 
     // 5. Weekly Performance chart (last 7 days, per-day aggregate)
-    const weeklyPerformance = [];
-    for (let i = 6; i >= 0; i--) {
-      const dayStart = new Date(todayStr);
-      dayStart.setDate(dayStart.getDate() - i);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setHours(23, 59, 59, 999);
-      const dayName = dayStart.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-      const dayCheckins = await AttendanceLog.count({
-        where: {
-          ...branchFilter,
-          checkInAt: { [Op.between]: [dayStart, dayEnd] },
-          attendanceType: 'CHECK_IN'
-        }
-      });
-      weeklyPerformance.push({ day: dayName, count: dayCheckins });
-    }
+    const weeklyPerformance = await _weeklyCheckins(
+      AttendanceLog, branchFilter, computeBusinessDate(new Date(), primaryTz), primaryTz
+    );
 
     // 6. Membership inquiries unanswered: query platform database
     let pendingInquiries = 0;
@@ -947,19 +957,20 @@ const getBranchDashboard = async (req, res, next) => {
       throw createError('Branch not found or has been deleted', 404);
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const startOfDay = new Date(`${todayStr}T00:00:00.000Z`);
-    const endOfDay = new Date(`${todayStr}T23:59:59.999Z`);
+    // GLB-01: the branch's own day and month.
+    const todayStr = computeBusinessDate(new Date(), branch.timezone);
+    const { start: startOfDay, end: endOfDay } = businessDayRange(todayStr, branch.timezone);
 
     const todaysCheckins = await AttendanceLog.count({
       where: {
         branchId,
-        checkInAt: { [Op.between]: [startOfDay, endOfDay] },
+        checkInAt: { [Op.gte]: startOfDay, [Op.lt]: endOfDay },
         attendanceType: 'CHECK_IN'
       }
     });
 
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const startOfMonthStr = monthStartOf(todayStr);
+    const startOfMonth = startOfBusinessDay(startOfMonthStr, branch.timezone);
     const revenueSum = await Payment.sum('amount', {
       where: {
         branchId,
@@ -972,7 +983,6 @@ const getBranchDashboard = async (req, res, next) => {
 
     let totalExpenses = 0;
     if (Expense) {
-      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
       const expenseSum = await Expense.sum('amount', {
         where: {
           branchId,
@@ -999,22 +1009,7 @@ const getBranchDashboard = async (req, res, next) => {
       }
     });
 
-    const weeklyPerformance = [];
-    for (let i = 6; i >= 0; i--) {
-      const dayStart = new Date(todayStr);
-      dayStart.setDate(dayStart.getDate() - i);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setHours(23, 59, 59, 999);
-      const dayName = dayStart.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-      const dayCheckins = await AttendanceLog.count({
-        where: {
-          branchId,
-          checkInAt: { [Op.between]: [dayStart, dayEnd] },
-          attendanceType: 'CHECK_IN'
-        }
-      });
-      weeklyPerformance.push({ day: dayName, count: dayCheckins });
-    }
+    const weeklyPerformance = await _weeklyCheckins(AttendanceLog, { branchId }, todayStr, branch.timezone);
 
     const logs = await AttendanceLog.findAll({
       where: { branchId, attendanceType: 'CHECK_IN' },
@@ -1397,7 +1392,8 @@ const lookupBranchMember = async (req, res, next) => {
       include: [{ model: MembershipPlan, as: 'plan', attributes: ['name'] }],
       order: [['endDate', 'ASC']],
     });
-    const today = new Date().toISOString().split('T')[0];
+    const lookupBranch = await req.tenantDb.models.Branch.findByPk(branchId, { attributes: ['id', 'timezone'] });
+    const today = computeBusinessDate(new Date(), lookupBranch ? lookupBranch.timezone : undefined);
     const subscriptions = activeSubs
       .filter((s) => attendanceService.isCheckinValid(s, today))
       .map((s) => ({

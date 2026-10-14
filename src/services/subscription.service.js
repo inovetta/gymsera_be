@@ -21,18 +21,8 @@ const emailService = require('./email.service');
  * Calculate the subscription end date from a start date and plan duration.
  * Returns an ISO date string (YYYY-MM-DD).
  */
-const _calcEndDate = (startDate, durationType, durationValue) => {
-  const d = new Date(startDate);
-  switch (durationType) {
-    case 'DAILY': d.setDate(d.getDate() + durationValue); break;
-    case 'WEEKLY': d.setDate(d.getDate() + durationValue * 7); break;
-    case 'MONTHLY': d.setMonth(d.getMonth() + durationValue); break;
-    case 'QUARTERLY': d.setMonth(d.getMonth() + durationValue * 3); break;
-    case 'YEARLY': d.setFullYear(d.getFullYear() + durationValue); break;
-    default: d.setMonth(d.getMonth() + 1);
-  }
-  return d.toISOString().split('T')[0];
-};
+const { addPlanDuration } = require('../utils/business-date.utils');
+const _calcEndDate = addPlanDuration;
 
 const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 
@@ -190,7 +180,8 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   });
   if (existing) throw createError('You already have an active or pending subscription at this branch', 409);
 
-  const startDate = new Date().toISOString().split('T')[0];
+  // GLB-01: the member's start date is today in the branch's timezone, not the server's.
+  const startDate = require('./ledger.service').computeBusinessDate(new Date(), branch.timezone);
   const endDate = _calcEndDate(startDate, plan.durationType, plan.durationValue);
   const qrCode = null;
 
@@ -240,7 +231,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
     branchId: branchIdToUse,
     method: 'BANK_TRANSFER',
     amount: totalAmount,
-    currency: 'PKR',
+    currency: branch.currency || 'PKR',
     status: PaymentStatus.PENDING,
     businessDate,
     expiresAt: require('./payment.service').memberPaymentExpiresAt(),
@@ -583,7 +574,7 @@ const renew = async (userId, subscriptionId, targetPlanId = null, customStartDat
     branchId: sub.branchId,
     method: 'BANK_TRANSFER',
     amount,
-    currency: 'PKR',
+    currency: await require('./ledger.service').branchCurrency({ models }, sub.branchId),
     status: PaymentStatus.PENDING,
     notes: `Renewal: ${plan.name}`,
     businessDate,
@@ -750,13 +741,16 @@ const getForStaff = async (tenantDb, subscriptionId) => {
 };
 
 // ── Preview: dry-run date + price calculation without DB commit ───────────────
-const previewSubscription = async (tenantDb, { planId, startDate, autoRenew }) => {
-  const { MembershipPlan } = tenantDb.models;
+const previewSubscription = async (tenantDb, { planId, startDate, autoRenew, branchId }) => {
+  const { MembershipPlan, Branch } = tenantDb.models;
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found or inactive', 404);
 
-  const start = startDate || new Date().toISOString().split('T')[0];
+  // GLB-01: "today" is the branch's today (the branch is optional on a preview; fall back to the default zone).
+  const branch = branchId ? await Branch.findByPk(branchId, { attributes: ['id', 'timezone'] }) : null;
+  const start = startDate
+    || require('./ledger.service').computeBusinessDate(new Date(), branch ? branch.timezone : undefined);
   const endDate = _calcEndDate(start, plan.durationType, plan.durationValue);
 
   const priceMinor = toMinorUnits(plan.price);
@@ -1037,7 +1031,7 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId, { approved
     branchId: sub.branchId,
     method: 'CASH',
     amount: amountToPay,
-    currency: 'PKR',
+    currency: await require('./ledger.service').branchCurrency({ models }, sub.branchId),
     status: PaymentStatus.PENDING,
     notes: `Upgrade to ${newPlan.name}`,
     businessDate,
@@ -1053,7 +1047,7 @@ const upgradeSubscription = async (userId, subscriptionId, newPlanId, { approved
       role: 'traveler',
       type: 'subscription_upgrade_pending',
       title: 'Upgrade Pending',
-      message: `Upgrade request submitted — Rs ${amountToPay} due, pending verification.`,
+      message: `Upgrade request submitted — ${require('../utils/currency.utils').moneyText(amountToPay, payment.currency)} due, pending verification.`,
       deepLink: '/traveler/subscriptions',
       metadataJson: { subscriptionId: sub.id },
     });

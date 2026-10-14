@@ -19,31 +19,34 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-14 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 4A: Speed (close-out)** |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> (not measured: device cold start, Lighthouse, production p95; see spec §13 "Prompt 4A close-out notes") |
-| Issue in progress | (none) |
+| Current prompt | **Prompt 5A: Global readiness, realtime and observability** (owner chose to run it as four sub-prompts, in order) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none: 5A-1 committed, 5A-2 not started) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Prompt 4A is merged (be PRs #97 to #105, mobile PR #8; checked against `origin` on 2026-10-14). The backend row is
-the tip of `origin/main` when the 4A close-out branch was cut (it includes the 3E docs, PR #96); this docs PR sits on top.
+5A-1 (GLB-01, GLB-02, BILL-11, BILL-17) is committed on `phase-5/prompt-5a1-timezone-currency` (backend only, not pushed,
+cut from `origin/main` 22c7d2c). The full backend suite is the gate before pushing; its result is in the session log row.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `main` | 0f50358 Merge pull request #96 from inovetta/docs/prompt-3e-close-out | no |
-| gymsera_web | `main` | 92ad8b5 Merge pull request #16 from inovetta/phase-3/prompt-3e-states | no |
-| gymsera_cms | `main` | c0460d5 Merge pull request #27 from inovetta/phase-3/prompt-3e-ux17 | no |
-| gyms_era | `master` | 092c8aa Merge pull request #8 from Amirhaiderkhan/perf/phase-4a-mobile | no |
+| gymsera_be | `phase-5/prompt-5a1-timezone-currency` | see `git log` (GLB-01 a77b9d1, GLB-02 ebec891, BILL-11/17 after it) | no |
+| gymsera_web | `main` | 92ad8b5 | no |
+| gymsera_cms | `main` | c0460d5 | no |
+| gyms_era | `master` | 092c8aa | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> Prompt 4A is DONE (spec §13 has the rows and the "Prompt 4A close-out notes"). Next action: **Prompt 5A** (global
-> readiness, realtime and observability, per `docs/GYMSERA_AGENT_PLAYBOOK.md`), then **Prompt 6A** (gap check), then work
-> through the **End-of-project checklist** below.
-> Still open and unscheduled: UX-09 string conversion (3E, scope R-31), NEW-81 and NEW-82 (from 4A), NEW-61 to NEW-67,
-> NEW-69 to NEW-72, NEW-74 to NEW-78. Held back from 4A as separate prompts: API-05 cursor pagination, PERF-03 images,
-> PERF-05 web ISR, PERF-09 reports, PERF-02 / PERF-11 Flutter rebuilds and leaks.
+> **5A-1 is committed; push and PR it after the full backend suite is green** (see Session log row 84).
+> Then **5A-2 realtime/notifications: RT-01 to RT-09** (spec §9, §12.8), then **5A-3 observability: OBS-01 to OBS-09**
+> (§12.12), then **5A-4 security: SEC-04, SEC-05, SEC-08, SEC-14 to SEC-18 and BILL-15**. GLB-03 to GLB-09 (localization,
+> phone numbers, RTL, names/addresses, slow networks, privacy export) are not started; GLB-03 stays English-only per R-31.
+> **NEW-83 comes right after 5A-1 merges** (its own PR, not part of 5A-1), then 5A-2.
+> Decisions already made in this session: web card stays OFF (flag only, R-7); 3-decimal currencies are refused until
+> money columns are widened.
+> 5A-1 leftovers for clients (not done): mobile/CMS/web show times in the branch timezone with a label when it differs
+> from the device, format money with ICU instead of "Rs" strings, and read `webCardPaymentsEnabled` from `GET /billing/plans`.
 
 ### Work in progress that is NOT committed
 
@@ -54,6 +57,7 @@ the tip of `origin/main` when the 4A close-out branch was cut (it includes the 3
 - **Owner decisions waiting:**
   - **NEW-81 (4A):** where the app-level feature flags, minimum app version and error-copy version live, and whether the mobile app sends its version (no app-version header today). Needed for the bootstrap contract and the §16 force-update check.
   - **NEW-82 (4A):** make the CMS admin tenants search work on the backend, or remove the search box.
+  - **NEW-83 (5A-1, P2):** `billing-refund-revoke` and `subscription-current-no-free-plan` fail with `DISABLE_REDIS=true` (pre-existing on 22c7d2c, breaks §0.1 rule 10). Owner decided: own small PR, failing test first, started only after 5A-1 merges.
   - **Before adding a second API instance (4A):** the discovery snapshot invalidation is in process; add a platform-DB version read first (decided single instance on 2026-10-14).
   - ~~NEW-54: delete the six live-server smoke tests~~ DONE (be PR #90).
   - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) NEW-69 to NEW-72 (from Prompt 3D) and NEW-74 to NEW-78 (from Prompt 3E; mobile and CMS/web client work, NEW-78 is a test fix under R-19).
@@ -470,3 +474,4 @@ the tip of `origin/main` when the 4A close-out branch was cut (it includes the 3
 | 81 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, C1 (`Amirhaiderkhan/gyms_era`) | PERF-01 mobile startup (app `7f90bb6`, PR #8); not tested on a device | task complete | yes |
 | 82 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B7 | API-04 / PERF-08 admin tenants list (be `d985529`, PR #105); runs 1 and 2 green locally (161 suites, 1503/1503 each), run 3 interrupted by a deleted scratch worktree (306 ENOENT, no test failure), CI 4/4 (PR #105) | task complete (3x not completed: run 3 interrupted by a deleted scratch worktree; see the suite note in the same row) | yes |
 | 83 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A close-out (docs only) | Spec §13 rows with before / after numbers, "Prompt 4A close-out notes", NEW-81 and NEW-82 recorded, held-back prompts listed; handoff moved to Prompt 5A | task complete (not pushed) | yes |
+| 84 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 5A, sub-prompt 5A-1 | GLB-01 (be `a77b9d1`), GLB-02 (be `ebec891`), BILL-11 + BILL-17 (be, next commit on the branch); full backend suite 168 suites / 1539 tests green; not pushed | stopped by plan: owner chose four sub-prompts; 5A-2 to 5A-4 not started | yes |
