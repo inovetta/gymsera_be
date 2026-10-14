@@ -146,15 +146,22 @@ const listTenants = async ({ status, page, limit, offset }) => {
     tenantWhere.status = status;
   }
 
-  // 1. Fetch Tenants
-  const tenants = await Tenant.findAll({
-    where: tenantWhere,
-    include: [
-      { model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] },
-      { model: City, as: 'city', attributes: ['id', 'name'] },
-    ],
-    order: [['createdAt', 'DESC']],
-  });
+  // 1. Fetch the page of Tenants in the database (PERF-08). Rows of the two
+  // sources (tenants, additional organizations) interleave by createdAt, so the
+  // newest `offset + limit` tenants are enough to cut any page out of the merge;
+  // the total comes from COUNT, not from loading every row.
+  const [tenantCount, tenants] = await Promise.all([
+    Tenant.count({ where: tenantWhere }),
+    Tenant.findAll({
+      where: tenantWhere,
+      include: [
+        { model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] },
+        { model: City, as: 'city', attributes: ['id', 'name'] },
+      ],
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+      limit: offset + limit,
+    }),
+  ]);
 
   // 2. Additional organizations awaiting a decision — PENDING/REJECTED only.
   // Never ACTIVE; see the function doc above for why.
@@ -183,15 +190,25 @@ const listTenants = async ({ status, page, limit, offset }) => {
 
     // Exclude a tenant's own first/primary listing — that one already is
     // the tenant row, approved or rejected through the tenant itself.
+    // One batched read for every tenant involved (was one findOne per listing).
     const additionalListings = [];
+    const ownerTenantIds = [...new Set(gymListings.filter((l) => l.tenant).map((l) => l.tenantId))];
+    const firstListingByTenant = new Map();
+    if (ownerTenantIds.length > 0) {
+      const siblings = await GymListing.findAll({
+        where: { tenantId: { [Op.in]: ownerTenantIds } },
+        attributes: ['id', 'tenantId'],
+        order: [['createdAt', 'ASC'], ['id', 'ASC']],
+        raw: true,
+      });
+      for (const s of siblings) {
+        if (!firstListingByTenant.has(s.tenantId)) firstListingByTenant.set(s.tenantId, s.id);
+      }
+    }
     for (const listing of gymListings) {
       if (!listing.tenant) continue;
-      const firstListing = await GymListing.findOne({
-        where: { tenantId: listing.tenantId },
-        order: [['createdAt', 'ASC']],
-        attributes: ['id'],
-      });
-      if (firstListing && firstListing.id !== listing.id) {
+      const firstId = firstListingByTenant.get(listing.tenantId);
+      if (firstId && firstId !== listing.id) {
         additionalListings.push(listing);
       }
     }
@@ -231,12 +248,14 @@ const listTenants = async ({ status, page, limit, offset }) => {
     });
   }
 
-  // 3. Combine and sort by createdAt DESC
+  // 3. Combine and sort by createdAt DESC (id breaks ties so pages never
+  // repeat or skip a row)
   const combined = [...tenants.map((t) => t.toJSON()), ...synthesized];
-  combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  combined.sort((a, b) => (new Date(b.createdAt) - new Date(a.createdAt)) || String(b.id).localeCompare(String(a.id)));
 
-  // 4. Paginate
-  const count = combined.length;
+  // 4. Cut the requested page out of the merge; the total is every tenant row
+  // plus every additional organization awaiting a decision.
+  const count = tenantCount + synthesized.length;
   const paginated = combined.slice(offset, offset + limit);
 
   return { tenants: paginated, pagination: buildPagination(count, page, limit) };
