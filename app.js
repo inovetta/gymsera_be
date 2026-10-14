@@ -108,6 +108,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+// ── ETag over response content, not the envelope's meta (API-06) ─────────────
+app.set('etag fn', require('./src/utils/etag.utils').contentEtag);
+
 // ── Static Files (Uploads) ───────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
@@ -216,6 +219,7 @@ app.get(['/api/docs', '/api/docs/'], (_req, res) => {
 app.use('/iclock', require('./src/routes/iclock.routes'));
 
 // ── API routes ────────────────────────────────────────────────────────────────
+app.use('/api', require('./src/middleware/cachePolicy'));
 app.use('/api/v1', auditLog);
 app.use('/api/v1', routes);
 
