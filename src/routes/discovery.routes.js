@@ -3,6 +3,7 @@ const controller  = require('../controllers/discovery.controller');
 const validators  = require('../validators/discovery.validator');
 const validate    = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
+const publicCache = require('../middleware/publicCache');
 const authorize    = require('../middleware/authorize');
 
 const router = Router();
@@ -47,7 +48,7 @@ const router = Router();
  *                               name:     { type: string }
  *                               gymCount: { type: integer }
  */
-router.get('/cities', controller.listCities);
+router.get('/cities', publicCache, controller.listCities);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Special gym list endpoints — must come BEFORE /gyms/:id to avoid path clash
@@ -68,10 +69,10 @@ router.get('/cities', controller.listCities);
  *       200:
  *         description: Featured gym listings
  */
-router.get('/organizations', controller.listOrganizations);
-router.get('/organizations/:gymId/branches', controller.listOrganizationBranches);
-router.get('/top-hosts', controller.getTopHosts);
-router.get('/gyms/featured', controller.featuredGyms);
+router.get('/organizations', publicCache, controller.listOrganizations);
+router.get('/organizations/:gymId/branches', publicCache, controller.listOrganizationBranches);
+router.get('/top-hosts', publicCache, controller.getTopHosts);
+router.get('/gyms/featured', publicCache, controller.featuredGyms);
 /**
  * @swagger
  * /discovery/gyms/top-rated:
@@ -91,7 +92,7 @@ router.get('/gyms/featured', controller.featuredGyms);
  *       200:
  *         description: Top-rated gym listings
  */
-router.get('/gyms/top-rated', controller.topRatedGyms);
+router.get('/gyms/top-rated', publicCache, controller.topRatedGyms);
 
 /**
  * @swagger
@@ -141,7 +142,7 @@ router.get('/gyms/top-rated', controller.topRatedGyms);
  *                             properties:
  *                               distanceKm: { type: number }
  */
-router.get('/gyms/nearby', validate(validators.nearbyGyms), controller.nearbyGyms);
+router.get('/gyms/nearby', publicCache, validate(validators.nearbyGyms), controller.nearbyGyms);
 
 /**
  * @swagger
@@ -180,7 +181,7 @@ router.get('/gyms/nearby', validate(validators.nearbyGyms), controller.nearbyGym
  *                               averageRating: { type: number }
  *                               logoUrl:       { type: string }
  */
-router.get('/gyms/map', validate(validators.mapGyms), controller.mapGyms);
+router.get('/gyms/map', publicCache, validate(validators.mapGyms), controller.mapGyms);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // General gym directory
@@ -220,7 +221,7 @@ router.get('/gyms/map', validate(validators.mapGyms), controller.mapGyms);
  *       200:
  *         description: Paginated gym listings
  */
-router.get('/gyms', validate(validators.listGyms), controller.listGyms);
+router.get('/gyms', publicCache, validate(validators.listGyms), controller.listGyms);
 
 /**
  * @swagger
@@ -240,7 +241,7 @@ router.get('/gyms', validate(validators.listGyms), controller.listGyms);
  *       404:
  *         description: Gym not found
  */
-router.get('/gyms/:id', validate(validators.getGym), controller.getGym);
+router.get('/gyms/:id', publicCache, validate(validators.getGym), controller.getGym);
 router.get('/gyms/:id/payment-details', authenticate, controller.getPaymentDetails);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -386,7 +387,7 @@ module.exports = router;
  *                         limit: { type: integer }
  *                         totalPages: { type: integer }
  */
-router.get('/gyms', validate(validators.listGyms), controller.listGyms);
+router.get('/gyms', publicCache, validate(validators.listGyms), controller.listGyms);
 
 /**
  * @swagger
@@ -421,7 +422,7 @@ router.get('/gyms', validate(validators.listGyms), controller.listGyms);
  *       404:
  *         description: Gym not found or inactive
  */
-router.get('/gyms/:id', validate(validators.getGym), controller.getGym);
+router.get('/gyms/:id', publicCache, validate(validators.getGym), controller.getGym);
 
 router.post(
   '/branches/:branchId/inquiries',

@@ -1,6 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { GymListing, City, Area, Tenant, GymReview, User, UserGymMembership } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
+const discoveryCache = require('./discovery-cache.service');
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 
 const _normalizeFacilities = (listing) => {
@@ -51,7 +52,14 @@ const _getTravelerVisibleListingIds = async () => {
   return [...new Set(listingIds)];
 };
 
-const _getAllActiveBranches = async () => {
+// Shared, TTL-cached snapshot of every visible branch (see discovery-cache.service).
+// The array and its objects are frozen: copy before sorting or annotating.
+// `fresh: true` bypasses the cache for reads that authorize a write.
+const _getAllActiveBranches = ({ fresh = false } = {}) =>
+  discoveryCache.getSnapshot(_buildAllActiveBranches, { fresh });
+
+const _buildAllActiveBranches = async () => {
+  let complete = true;
   const [tenants, listings, cities, areas] = await Promise.all([
     Tenant.findAll({
       where: { status: 'ACTIVE' },
@@ -166,12 +174,14 @@ const _getAllActiveBranches = async () => {
           branchesList.push(mappedBranch);
         }
       } catch (err) {
-        // Ignore errors for individual tenants
+        // One unreachable tenant must not break the list, but a snapshot that
+        // skipped it is never cached.
+        complete = false;
       }
     })
   );
 
-  return branchesList;
+  return { branches: branchesList, complete };
 };
 
 const filterBranches = (branches, {
@@ -290,6 +300,22 @@ const listGyms = async ({
   return { gyms: paginated, branches: paginated, pagination: buildPagination(sorted.length, page, limit) };
 };
 
+/**
+ * Detail lookups by branch id walked every tenant in turn. The snapshot already
+ * knows which tenant owns a visible branch, so try that tenant first; the full
+ * walk stays as the fallback (hidden branches are not in the snapshot).
+ */
+const _tenantsBranchOwnerFirst = async (tenants, branchId) => {
+  try {
+    const snapshot = await _getAllActiveBranches();
+    const hit = snapshot.find((b) => b.id === branchId || b.branchId === branchId);
+    if (!hit) return tenants;
+    return [...tenants.filter((t) => t.id === hit.tenantId), ...tenants.filter((t) => t.id !== hit.tenantId)];
+  } catch (_) {
+    return tenants;
+  }
+};
+
 // ── getGym ────────────────────────────────────────────────────────────────────
 const getGym = async (id) => {
   let listing = await GymListing.findByPk(id, {
@@ -319,7 +345,7 @@ const getGym = async (id) => {
       attributes: ['id', 'connectionStringEncrypted'],
     });
 
-    for (const tenant of tenants) {
+    for (const tenant of await _tenantsBranchOwnerFirst(tenants, id)) {
       try {
         if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
         const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
@@ -522,8 +548,7 @@ const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1 }) => 
     if (b.latitude == null || b.longitude == null) continue;
     const dist = haversineKm(uLat, uLng, b.latitude, b.longitude);
     if (dist <= radiusKm) {
-      b.distanceKm = Math.round(dist * 10) / 10;
-      inRange.push(b);
+      inRange.push({ ...b, distanceKm: Math.round(dist * 10) / 10 });
     }
   }
 
@@ -555,7 +580,7 @@ const featuredGyms = async ({ limit = 12 } = {}) => {
 // ── topRatedGyms ──────────────────────────────────────────────────────────────
 const topRatedGyms = async ({ cityId, limit = 12 } = {}) => {
   const branches = await _getAllActiveBranches();
-  let filtered = branches;
+  let filtered = [...branches];
   if (cityId) {
     filtered = filtered.filter(b => b.cityId === parseInt(cityId));
   }
@@ -564,7 +589,10 @@ const topRatedGyms = async ({ cityId, limit = 12 } = {}) => {
 };
 
 // ── listOrganizations ─────────────────────────────────────────────────────────
-const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
+const listOrganizations = ({ featured, page = 1, limit = 12 }) =>
+  discoveryCache.memo(`orgs:${featured ? 1 : 0}:${page}:${limit}`, () => _listOrganizations({ featured, page, limit }));
+
+const _listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
   const tenants = await Tenant.findAll({
     where: { status: 'ACTIVE' },
     attributes: ['id', 'connectionStringEncrypted'],
@@ -651,7 +679,10 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
 };
 
 // ── listOrganizationBranches ──────────────────────────────────────────────────
-const listOrganizationBranches = async (gymId) => {
+const listOrganizationBranches = (gymId) =>
+  discoveryCache.memo(`org-branches:${gymId}`, () => _listOrganizationBranches(gymId));
+
+const _listOrganizationBranches = async (gymId) => {
   const tenants = await Tenant.findAll({
     where: { status: 'ACTIVE' },
     attributes: ['id', 'connectionStringEncrypted', 'cityId', 'areaId'],
@@ -892,8 +923,8 @@ const getReviewsSummary = async (gymListingId, branchId) => {
 const submitReview = async (userId, gymListingId, branchId, { rating, title, body }) => {
   if (!branchId) throw createError('branchId is required to submit a review', 400);
 
-  // Find the tenantId of this branch
-  const branches = await _getAllActiveBranches();
+  // Find the tenantId of this branch (fresh: this read authorizes a write)
+  const branches = await _getAllActiveBranches({ fresh: true });
   const matched = branches.find(b => b.id === branchId || b.branchId === branchId);
   if (!matched) throw createError('Branch not found', 404);
 
@@ -1130,7 +1161,7 @@ const _resolveTenantId = async (id) => {
     attributes: ['id', 'connectionStringEncrypted'],
   });
 
-  for (const tenant of tenants) {
+  for (const tenant of await _tenantsBranchOwnerFirst(tenants, id)) {
     try {
       if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
