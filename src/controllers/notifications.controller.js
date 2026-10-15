@@ -32,7 +32,7 @@ const getUnreadCount = async (req, res, next) => {
 
 const markAsRead = async (req, res, next) => {
   try {
-    const result = await notificationsService.markAsRead(req.params.id, req.user.id);
+    const result = await notificationsService.markAsRead(req.params.id, req.user.id, req.user.role);
     return sendSuccess(res, result, 'Notification marked as read');
   } catch (err) {
     next(err);
