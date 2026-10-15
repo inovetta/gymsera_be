@@ -18,6 +18,7 @@ try {
 }
 
 const jwt = require('jsonwebtoken');
+const { branchRoom, orgRoom, syncBranchRooms } = require('./branch-rooms');
 
 let _io = null;
 
@@ -116,6 +117,16 @@ const init = (httpServer) => {
 
     // Auto-join user-specific room
     socket.join(`user:${userId}`);
+    // Readable from RemoteSocket too, so grants.changed can re-sync rooms.
+    socket.data.tenantId = user.tenantId || null;
+
+    // Branch rooms (NEW-84): only the branches this user holds a live
+    // assignment on. Re-synced on grants.changed (refreshBranchRooms).
+    if (user.tenantId) {
+      syncBranchRooms(socket, userId, user.tenantId).catch((err) =>
+        console.warn('[Socket] Branch room sync failed:', err.message)
+      );
+    }
 
     // Tenant room for team broadcasts: only while the user still belongs to
     // the token's tenant (a token outlives a revoked role).
@@ -291,6 +302,46 @@ const emitToUser = (userId, event, data) => {
 };
 
 /**
+ * Emit to the staff of one branch (NEW-84): sockets in that branch's room, in
+ * the tenant's org-wide room, and the tenant owner via their user room (owners
+ * hold no branch rooms). One emit, so a socket in two of these gets it once.
+ * Without a branchId there is nothing to scope by: falls back to the tenant.
+ */
+const emitToBranch = async (tenantId, branchId, event, data) => {
+  if (!_io || !tenantId) return;
+  if (!branchId) return emitToTenant(tenantId, event, data);
+
+  let target = _io.to(branchRoom(tenantId, branchId)).to(orgRoom(tenantId));
+  try {
+    const { Tenant } = require('../models/platform');
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['ownerUserId'] });
+    if (tenant && tenant.ownerUserId) target = target.to(`user:${tenant.ownerUserId}`);
+  } catch (_) {
+    // Owner lookup failed: branch and org rooms still get the event.
+  }
+  target.emit(event, data);
+};
+
+/**
+ * Re-sync the branch rooms of every live socket of a user (their grants just
+ * changed). Each socket is synced for the tenant its token names.
+ */
+const refreshBranchRooms = async (userId) => {
+  if (!_io || !userId) return;
+  const sockets = await _io.in(`user:${userId}`).fetchSockets();
+  await Promise.all(
+    sockets.map((s) => {
+      const tenantId = s.data?.tenantId;
+      return tenantId
+        ? syncBranchRooms(s, userId, tenantId).catch((err) =>
+            console.warn('[Socket] Branch room refresh failed:', err.message)
+          )
+        : null;
+    })
+  );
+};
+
+/**
  * Emit event to all sockets in an active conversation room.
  */
 const emitToConversation = (conversationId, event, data) => {
@@ -365,5 +416,7 @@ module.exports = {
   emitToUser,
   emitToConversation,
   emitToTenant,
+  emitToBranch,
+  refreshBranchRooms,
   emitConversationUpdated,
 };
