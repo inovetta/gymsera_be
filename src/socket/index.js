@@ -157,6 +157,7 @@ const init = (httpServer) => {
     socket.on('send_message', async (payload, callback) => {
       try {
         const { conversationId, text, tempId } = payload || {};
+        const clientMessageId = payload?.clientMessageId ?? payload?.client_message_id;
         if (!conversationId || !text || !text.trim()) {
           if (typeof callback === 'function') {
             return callback({ success: false, error: 'conversationId and text required' });
@@ -183,7 +184,7 @@ const init = (httpServer) => {
             userId,
             text.trim(),
             access.conversation.tenantId,
-            { tempId }
+            { tempId, clientMessageId }
           );
         } else {
           // Reply as user/traveler
@@ -191,7 +192,7 @@ const init = (httpServer) => {
             conversationId,
             userId,
             text.trim(),
-            { tempId }
+            { tempId, clientMessageId }
           );
         }
 
@@ -204,6 +205,7 @@ const init = (httpServer) => {
           isRead: messageRecord.isRead,
           createdAt: messageRecord.createdAt,
           tempId: tempId || null,
+          clientMessageId: messageRecord.clientMessageId || null,
         };
 
         // Note: inboxService already broadcasts new_message and conversation_updated.

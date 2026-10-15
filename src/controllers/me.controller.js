@@ -270,7 +270,8 @@ const replyToMyConversation = async (req, res, next) => {
     const message = await inboxService.replyAsUser(
       req.params.conversationId,
       req.user.sub,
-      req.body.text
+      req.body.text,
+      { clientMessageId: req.body.clientMessageId ?? req.body.client_message_id }
     );
     return sendSuccess(res, { message }, 'Message sent', 201);
   } catch (err) {

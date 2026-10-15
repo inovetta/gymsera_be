@@ -1,6 +1,44 @@
 const { Conversation, Message, User, GymListing } = require('../models/platform');
 const { Op } = require('sequelize');
 
+/**
+ * RT-05: parse the client's idempotency key. Absent -> null (legacy clients keep working).
+ */
+const parseClientMessageId = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || value.trim().length === 0 || value.trim().length > 64) {
+    const err = new Error('clientMessageId must be a string of 1-64 characters');
+    err.statusCode = 400;
+    throw err;
+  }
+  return value.trim();
+};
+
+/**
+ * Creates the message, or returns the one this sender already stored under the same key
+ * (resend, retry, double tap, concurrent duplicates). `created` tells the caller whether to
+ * run side effects (unread counters, notifications, socket broadcast).
+ */
+const createMessageOnce = async (attrs, rawClientMessageId) => {
+  const clientMessageId = parseClientMessageId(rawClientMessageId);
+  if (!clientMessageId) return { message: await Message.create(attrs), created: true };
+
+  const lookup = () =>
+    Message.findOne({
+      where: { conversationId: attrs.conversationId, senderId: attrs.senderId, clientMessageId },
+    });
+  const existing = await lookup();
+  if (existing) return { message: existing, created: false };
+  try {
+    return { message: await Message.create({ ...attrs, clientMessageId }), created: true };
+  } catch (err) {
+    if (err.name !== 'SequelizeUniqueConstraintError') throw err;
+    const winner = await lookup();
+    if (!winner) throw err;
+    return { message: winner, created: false };
+  }
+};
+
 const listInquiries = async (tenantId) => {
   return Conversation.findAll({
     where: { tenantId },
@@ -63,13 +101,11 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
     throw err;
   }
 
-  const message = await Message.create({
-    conversationId,
-    senderId,
-    senderType: 'HOST',
-    text,
-    isRead: false,
-  });
+  const { message, created } = await createMessageOnce(
+    { conversationId, senderId, senderType: 'HOST', text, isRead: false },
+    options?.clientMessageId
+  );
+  if (!created) return message;
 
   await conversation.update({
     lastMessageText: text,
@@ -190,6 +226,19 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
     }
   });
 
+  // Create message (idempotent on options.clientMessageId)
+  const { message, created: messageCreated } = await createMessageOnce(
+    {
+      conversationId: conversation.id,
+      senderId: userId,
+      senderType: 'USER',
+      text,
+      isRead: false,
+    },
+    options?.clientMessageId
+  );
+  if (!messageCreated) return { conversation, message };
+
   if (!created) {
     // If conversation already exists, update it
     await conversation.update({
@@ -198,15 +247,6 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
       unreadCountHost: conversation.unreadCountHost + 1,
     });
   }
-
-  // Create message
-  const message = await Message.create({
-    conversationId: conversation.id,
-    senderId: userId,
-    senderType: 'USER',
-    text,
-    isRead: false,
-  });
 
   // Real-time socket broadcast
   try {
@@ -310,13 +350,11 @@ const replyAsUser = async (conversationId, userId, text, options = {}) => {
     throw err;
   }
 
-  const message = await Message.create({
-    conversationId,
-    senderId: userId,
-    senderType: 'USER',
-    text,
-    isRead: false,
-  });
+  const { message, created } = await createMessageOnce(
+    { conversationId, senderId: userId, senderType: 'USER', text, isRead: false },
+    options?.clientMessageId
+  );
+  if (!created) return message;
 
   await conversation.update({
     lastMessageText: text,

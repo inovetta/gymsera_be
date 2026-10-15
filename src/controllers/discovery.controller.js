@@ -182,7 +182,8 @@ const submitInquiry = async (req, res, next) => {
     const result = await inboxService.createTravelerInquiry(
       req.user.sub,
       req.params.branchId,
-      req.body.message
+      req.body.message,
+      { clientMessageId: req.body.clientMessageId ?? req.body.client_message_id }
     );
     return sendSuccess(res, result, 'Inquiry submitted successfully', 201);
   } catch (err) {
