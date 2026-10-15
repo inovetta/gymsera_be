@@ -800,6 +800,34 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 20,
+    name: 'p020_add_device_token_context',
+    description: 'device_tokens.app_version, locale, timezone (RT-01). Nullable, no backfill; safe to re-run.',
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['device_tokens'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
+      const columns = [
+        ['app_version', 'VARCHAR(40) NULL'],
+        ['locale', 'VARCHAR(35) NULL'],
+        ['timezone', 'VARCHAR(64) NULL'],
+      ];
+      for (const [name, ddl] of columns) {
+        const [has] = await sequelize.query(
+          "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens' AND COLUMN_NAME = ?",
+          { replacements: [name], type: QueryTypes.SELECT }
+        );
+        if (!has) await sequelize.query(`ALTER TABLE \`device_tokens\` ADD COLUMN \`${name}\` ${ddl}`);
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

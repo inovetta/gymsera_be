@@ -84,7 +84,16 @@ const markAllAsRead = async (userId, backendRole) => {
 /**
  * Register or update an FCM device token for a user.
  */
-const registerDeviceToken = async ({ userId, token, platform = 'android', deviceId = null, deviceName = null }) => {
+const registerDeviceToken = async ({
+  userId,
+  token,
+  platform = 'android',
+  deviceId = null,
+  deviceName = null,
+  appVersion = null,
+  locale = null,
+  timezone = null,
+}) => {
   if (!token) {
     const err = new Error('Token is required');
     err.statusCode = 400;
@@ -102,6 +111,9 @@ const registerDeviceToken = async ({ userId, token, platform = 'android', device
         platform: normalizedPlatform,
         deviceId,
         deviceName,
+        appVersion,
+        locale,
+        timezone,
         lastActiveAt: new Date(),
       },
     });
@@ -111,6 +123,9 @@ const registerDeviceToken = async ({ userId, token, platform = 'android', device
       deviceToken.platform = normalizedPlatform;
       if (deviceId) deviceToken.deviceId = deviceId;
       if (deviceName) deviceToken.deviceName = deviceName;
+      if (appVersion) deviceToken.appVersion = appVersion;
+      if (locale) deviceToken.locale = locale;
+      if (timezone) deviceToken.timezone = timezone;
       deviceToken.lastActiveAt = new Date();
       await deviceToken.save();
     }
@@ -137,9 +152,12 @@ const registerDeviceToken = async ({ userId, token, platform = 'android', device
  * Remove an FCM device token for a user (e.g. on logout).
  */
 const deleteDeviceToken = async ({ userId, token }) => {
-  if (!token) {
-    await DeviceToken.destroy({ where: { userId } });
-    return { success: true, clearedAll: true };
+  // RT-01: a logout names its own device. The old "no token = every device of
+  // the user" branch silenced the user's other phones.
+  if (!token || typeof token !== 'string') {
+    const err = new Error('Token is required');
+    err.statusCode = 400;
+    throw err;
   }
 
   await DeviceToken.destroy({ where: { userId, token } });

@@ -40,6 +40,20 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'device_name',
       },
+      // RT-01 (spec §9.4): lets pushes be localized and old builds be found.
+      appVersion: {
+        type: DataTypes.STRING(40),
+        allowNull: true,
+        field: 'app_version',
+      },
+      locale: {
+        type: DataTypes.STRING(35),
+        allowNull: true,
+      },
+      timezone: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+      },
     },
     {
       tableName: 'device_tokens',

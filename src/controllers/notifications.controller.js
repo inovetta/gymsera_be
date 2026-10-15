@@ -50,13 +50,16 @@ const markAllAsRead = async (req, res, next) => {
 
 const registerDeviceToken = async (req, res, next) => {
   try {
-    const { token, platform, deviceId, deviceName } = req.body;
+    const { token, platform, deviceId, deviceName, appVersion, locale, timezone } = req.body;
     const result = await notificationsService.registerDeviceToken({
       userId: req.user.id,
       token,
       platform,
       deviceId,
       deviceName,
+      appVersion: typeof appVersion === 'string' ? appVersion.slice(0, 40) : null,
+      locale: typeof locale === 'string' ? locale.slice(0, 35) : null,
+      timezone: typeof timezone === 'string' ? timezone.slice(0, 64) : null,
     });
     return sendSuccess(res, result, 'Device token registered successfully');
   } catch (err) {
