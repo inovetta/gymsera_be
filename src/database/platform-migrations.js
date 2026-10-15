@@ -828,6 +828,62 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 21,
+    name: 'p021_add_message_client_message_id',
+    description:
+      'messages.client_message_id (nullable, no backfill) + UNIQUE (conversation_id, sender_id, client_message_id) so a resent message is idempotent (RT-05). Safe to re-run.',
+    // BACKUP before applying live:  mysqldump <platform_db> messages > messages_pre_p021.sql
+    // ROLLBACK (deploy the previous app build FIRST: the model selects this column):
+    //   ALTER TABLE `messages` DROP INDEX `messages_conversation_sender_client_msg`, DROP COLUMN `client_message_id`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 21;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['messages'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
+      const [col] = await sequelize.query(
+        "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'messages' AND COLUMN_NAME = 'client_message_id'",
+        { type: QueryTypes.SELECT }
+      );
+      if (col && String(col.DATA_TYPE).toLowerCase() !== 'varchar') {
+        console.warn(
+          '[PlatformMigration] SKIPPING p021: messages.client_message_id exists with another type. Resolve it by hand, then re-run.'
+        );
+        return { skipped: true, reason: 'column_exists_with_other_type', table: 'messages' };
+      }
+      if (!col) {
+        await sequelize.query('ALTER TABLE `messages` ADD COLUMN `client_message_id` VARCHAR(64) NULL');
+      }
+
+      const [hasIndex] = await sequelize.query(
+        "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'messages' AND INDEX_NAME = 'messages_conversation_sender_client_msg' LIMIT 1",
+        { type: QueryTypes.SELECT }
+      );
+      if (hasIndex) return null;
+
+      // A pre-existing column could already hold repeated keys; never delete rows to make the
+      // constraint fit. NULLs (every old row) never collide.
+      const [dup] = await sequelize.query(
+        'SELECT conversation_id FROM `messages` WHERE client_message_id IS NOT NULL GROUP BY conversation_id, sender_id, client_message_id HAVING COUNT(*) > 1 LIMIT 1',
+        { type: QueryTypes.SELECT }
+      );
+      if (dup) {
+        console.warn(
+          '[PlatformMigration] SKIPPING p021 unique key: duplicate (conversation_id, sender_id, client_message_id) rows exist. Resolve them by hand, then re-run.'
+        );
+        return { skipped: true, reason: 'duplicate_client_message_ids', table: 'messages' };
+      }
+      await sequelize.query(
+        'ALTER TABLE `messages` ADD UNIQUE KEY `messages_conversation_sender_client_msg` (`conversation_id`, `sender_id`, `client_message_id`)'
+      );
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

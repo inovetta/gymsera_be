@@ -1513,7 +1513,9 @@ const replyToInquiry = async (req, res, next) => {
     if (!text || !text.trim()) {
       throw createError('Message text is required', 400);
     }
-    const message = await inboxService.replyToInquiry(inquiryId, req.user.id, text.trim(), tenantId);
+    const message = await inboxService.replyToInquiry(inquiryId, req.user.id, text.trim(), tenantId, {
+      clientMessageId: req.body.clientMessageId ?? req.body.client_message_id,
+    });
     return sendSuccess(res, message, 'Reply sent successfully', 201);
   } catch (err) {
     next(err);
