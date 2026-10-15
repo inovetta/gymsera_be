@@ -304,6 +304,9 @@ const can = async (tenantDb, tenantId, userId, permissionKey, branchId = null) =
  * Bumps `users.permission_version`, which changes the cache key prefix for every
  * entry belonging to this user. No scanning, no key list, no TTL wait. Call this
  * after any write that changes what someone may do.
+ *
+ * Also emits `grants.changed` to `user:{id}` (RT-08) so connected clients refetch
+ * their grants. A nudge only: no grants travel in the payload.
  */
 const bumpUserPermissionVersion = async (userId) => {
   if (!userId) return;
@@ -313,6 +316,11 @@ const bumpUserPermissionVersion = async (userId) => {
   await User.increment('permissionVersion', { where: { id: userId } }).catch(() => {});
   clearUserAuthCache(userId);
   await safeRedisDel(`user:${userId}:auth`).catch(() => {});
+  try {
+    require('../socket').emitToUser(userId, 'grants.changed', { userId });
+  } catch (_) {
+    // Realtime is best-effort; the version bump above is what enforces.
+  }
 };
 
 /**
