@@ -57,8 +57,10 @@ const getUnreadCount = async (userId, backendRole) => {
 /**
  * Mark a single notification as read.
  */
-const markAsRead = async (id, userId) => {
-  const notification = await Notification.findOne({ where: { id, userId } });
+const markAsRead = async (id, userId, backendRole) => {
+  // RT-03: scoped to the caller's notification role, like the list.
+  const role = mapRole(backendRole);
+  const notification = await Notification.findOne({ where: { id, userId, role } });
   if (!notification) {
     const err = new Error('Notification not found');
     err.statusCode = 404;
@@ -66,7 +68,8 @@ const markAsRead = async (id, userId) => {
   }
   notification.isRead = true;
   await notification.save();
-  return { success: true };
+  const { unreadCount } = await getUnreadCount(userId, backendRole);
+  return { success: true, unreadCount };
 };
 
 /**
@@ -78,7 +81,8 @@ const markAllAsRead = async (userId, backendRole) => {
     { isRead: true },
     { where: { userId, role, isRead: false } }
   );
-  return { success: true };
+  const { unreadCount } = await getUnreadCount(userId, backendRole);
+  return { success: true, unreadCount };
 };
 
 /**
@@ -200,6 +204,7 @@ const createNotification = async ({
     const socketGateway = require('../socket');
     const socketPayload = {
       id: notification.id,
+      notificationId: String(notification.id),
       title: notification.title,
       message: notification.message,
       body: notification.message,
