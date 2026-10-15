@@ -140,11 +140,11 @@ const entitledModules = async (_tenantId) => null;
  * assignment was made. A BRANCH-scoped assignment covers only its linked branches.
  * Passing a null branchId asks for org-wide grants and matches ORG scope only.
  */
-const loadActiveAssignments = async (tenantDb, userId, branchId) => {
+const findLiveAssignments = async (tenantDb, userId) => {
   const { RoleAssignment, RoleAssignmentBranch, AssignmentOverride } = tenantDb.models;
   const now = new Date();
 
-  const assignments = await RoleAssignment.findAll({
+  return RoleAssignment.findAll({
     where: {
       userId,
       status: 'ACTIVE',
@@ -158,12 +158,31 @@ const loadActiveAssignments = async (tenantDb, userId, branchId) => {
       { model: AssignmentOverride, as: 'overrides', required: false },
     ],
   });
+};
+
+const loadActiveAssignments = async (tenantDb, userId, branchId) => {
+  const assignments = await findLiveAssignments(tenantDb, userId);
 
   return assignments.filter((a) => {
     if (a.scopeType === 'ORG') return true;
     if (!branchId) return false;
     return (a.branchLinks || []).some((l) => l.branchId === branchId);
   });
+};
+
+/**
+ * Which branches a user holds a live assignment on (NEW-84, socket rooms).
+ * `orgWide` is true when any live assignment is ORG-scoped: it covers every
+ * branch, including ones created later, so no per-branch list is needed.
+ * Uses the same "live" rule as resolve().
+ */
+const branchCoverage = async (tenantDb, userId) => {
+  const assignments = await findLiveAssignments(tenantDb, userId);
+  const orgWide = assignments.some((a) => a.scopeType === 'ORG');
+  const branchIds = orgWide
+    ? []
+    : [...new Set(assignments.flatMap((a) => (a.branchLinks || []).map((l) => l.branchId)))];
+  return { orgWide, branchIds };
 };
 
 /**
@@ -317,7 +336,11 @@ const bumpUserPermissionVersion = async (userId) => {
   clearUserAuthCache(userId);
   await safeRedisDel(`user:${userId}:auth`).catch(() => {});
   try {
-    require('../socket').emitToUser(userId, 'grants.changed', { userId });
+    const socketGateway = require('../socket');
+    // Re-sync branch rooms first, so a client that refetches on the event is
+    // already in the right rooms (NEW-84).
+    await socketGateway.refreshBranchRooms(userId);
+    socketGateway.emitToUser(userId, 'grants.changed', { userId });
   } catch (_) {
     // Realtime is best-effort; the version bump above is what enforces.
   }
@@ -436,6 +459,7 @@ module.exports = {
   ownerGrants,
   emptyGrants,
   bumpUserPermissionVersion,
+  branchCoverage,
   bumpTenantPermissionVersion,
   assertCanAssignRole,
   assertCanGrantOverrides,

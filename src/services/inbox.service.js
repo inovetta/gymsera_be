@@ -260,7 +260,8 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
       conversationId: conversation.id,
     });
     if (listing && listing.tenantId) {
-      socketGateway.emitToTenant(listing.tenantId, 'new_message', {
+      // Only the staff of this conversation's branch (NEW-84).
+      socketGateway.emitToBranch(listing.tenantId, conversation.branchId, 'new_message', {
         message: messagePayload,
         conversationId: conversation.id,
       });
