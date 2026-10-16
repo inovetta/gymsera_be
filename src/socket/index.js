@@ -302,24 +302,31 @@ const emitToUser = (userId, event, data) => {
 };
 
 /**
- * Emit to the staff of one branch (NEW-84): sockets in that branch's room, in
- * the tenant's org-wide room, and the tenant owner via their user room (owners
- * hold no branch rooms). One emit, so a socket in two of these gets it once.
- * Without a branchId there is nothing to scope by: falls back to the tenant.
+ * The rooms that make up one branch's staff audience (NEW-84): that branch's
+ * room, the tenant's org-wide room, and the tenant owner via their user room
+ * (owners hold no branch rooms). Without a branchId there is nothing to scope
+ * by, so it is the whole tenant room.
  */
-const emitToBranch = async (tenantId, branchId, event, data) => {
-  if (!_io || !tenantId) return;
-  if (!branchId) return emitToTenant(tenantId, event, data);
-
-  let target = _io.to(branchRoom(tenantId, branchId)).to(orgRoom(tenantId));
+const branchAudienceRooms = async (tenantId, branchId) => {
+  if (!branchId) return [`tenant:${tenantId}`]; // nothing to scope by
+  const rooms = [branchRoom(tenantId, branchId), orgRoom(tenantId)];
   try {
     const { Tenant } = require('../models/platform');
     const tenant = await Tenant.findByPk(tenantId, { attributes: ['ownerUserId'] });
-    if (tenant && tenant.ownerUserId) target = target.to(`user:${tenant.ownerUserId}`);
+    if (tenant && tenant.ownerUserId) rooms.push(`user:${tenant.ownerUserId}`);
   } catch (_) {
     // Owner lookup failed: branch and org rooms still get the event.
   }
-  target.emit(event, data);
+  return rooms;
+};
+
+/**
+ * Emit to the staff of one branch. One emit, so a socket in two of the
+ * audience rooms gets the event once.
+ */
+const emitToBranch = async (tenantId, branchId, event, data) => {
+  if (!_io || !tenantId) return;
+  _io.to(await branchAudienceRooms(tenantId, branchId)).emit(event, data);
 };
 
 /**
@@ -363,7 +370,7 @@ const emitToTenant = (tenantId, event, data) => {
 const emitConversationUpdated = async (conversationId, extraData = {}) => {
   if (!_io || !conversationId) return;
   try {
-    const { Conversation, Tenant } = require('../models/platform');
+    const { Conversation } = require('../models/platform');
     const conv = await Conversation.findByPk(conversationId);
     if (!conv) return;
 
@@ -377,22 +384,13 @@ const emitConversationUpdated = async (conversationId, extraData = {}) => {
       ...extraData,
     };
 
-    // 1. Emit to conversation room
-    _io.to(`conversation:${conversationId}`).emit('conversation_updated', payload);
-    // 2. Emit to traveler's personal room
-    if (conv.userId) {
-      _io.to(`user:${conv.userId}`).emit('conversation_updated', payload);
-    }
-    // 3. Emit to tenant room for hosts & staff
-    if (conv.tenantId) {
-      _io.to(`tenant:${conv.tenantId}`).emit('conversation_updated', payload);
-      try {
-        const tenant = await Tenant.findByPk(conv.tenantId, { attributes: ['ownerUserId'] });
-        if (tenant && tenant.ownerUserId) {
-          _io.to(`user:${tenant.ownerUserId}`).emit('conversation_updated', payload);
-        }
-      } catch (_) {}
-    }
+    // One emit to: the conversation room, the traveler, and the staff of the
+    // conversation's branch (branch room, org-wide room, owner; NEW-84b). A
+    // socket in several of these gets the event once.
+    const rooms = [`conversation:${conversationId}`];
+    if (conv.userId) rooms.push(`user:${conv.userId}`);
+    if (conv.tenantId) rooms.push(...(await branchAudienceRooms(conv.tenantId, conv.branchId)));
+    _io.to(rooms).emit('conversation_updated', payload);
   } catch (err) {
     console.warn('[Socket emitConversationUpdated warning]:', err.message);
   }
