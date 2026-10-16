@@ -300,6 +300,13 @@ const _reconcileCapacityForAllTenants = async () => {
 
   let reconciled = 0;
   let audited = 0;
+  // OBS-06: what the nightly audit found, kept as ids and counts so ONE alert per
+  // code is raised after the loop (not one per tenant).
+  const found = {
+    driftTenantIds: [], driftedListingCount: 0, overQuotaMismatchCount: 0, invariantBrokenCount: 0,
+    emptyOrgTenantIds: [], emptyOrgCount: 0,
+    auditFailedTenantIds: [],
+  };
   for (const sub of activeSubs) {
     const tenant = await Tenant.findByPk(sub.tenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
     if (!tenant || tenant.status !== 'ACTIVE' || !tenant.connectionStringEncrypted) continue;
@@ -355,6 +362,16 @@ const _reconcileCapacityForAllTenants = async () => {
         const audit = await subscriptionQuotaService.auditCapacity(sub.tenantId, tenantDb);
         if (!audit.ok) {
           audited++;
+          if (audit.driftedListings.length || audit.overQuotaMismatch || audit.invariantHolds === false) {
+            found.driftTenantIds.push(sub.tenantId);
+            found.driftedListingCount += audit.driftedListings.length;
+            if (audit.overQuotaMismatch) found.overQuotaMismatchCount += 1;
+            if (audit.invariantHolds === false) found.invariantBrokenCount += 1;
+          }
+          if (audit.emptyActiveOrgs && audit.emptyActiveOrgs.length) {
+            found.emptyOrgTenantIds.push(sub.tenantId);
+            found.emptyOrgCount += audit.emptyActiveOrgs.length;
+          }
           console.warn(
             `[Cron] CAPACITY AUDIT FAILED tenant ${sub.tenantId} (${audit.businessName}): ` +
               `${audit.activeBranches} active + ${audit.usedCapacity - audit.activeBranches} reserved ` +
@@ -372,11 +389,43 @@ const _reconcileCapacityForAllTenants = async () => {
           }
         }
       } catch (auditErr) {
+        found.auditFailedTenantIds.push(sub.tenantId);
         console.error(`[Cron] Capacity audit failed for tenant ${sub.tenantId}:`, auditErr.message);
       }
     } catch (err) {
+      // The audit never ran for this tenant: that is an unchecked tenant, not a clean one.
+      found.auditFailedTenantIds.push(sub.tenantId);
       console.error(`[Cron] Capacity reconciliation failed for tenant ${sub.tenantId}:`, err.message);
     }
+  }
+
+  // OBS-06: alert (admin notification + Sentry, at most one per code per hour). Never fails the job.
+  try {
+    const alertService = require('../services/alert.service');
+    if (found.driftTenantIds.length) {
+      await alertService.raise('CAPACITY_DRIFT', {
+        tenantCount: found.driftTenantIds.length,
+        tenantIds: found.driftTenantIds,
+        driftedListingCount: found.driftedListingCount,
+        overQuotaMismatchCount: found.overQuotaMismatchCount,
+        invariantBrokenCount: found.invariantBrokenCount,
+      });
+    }
+    if (found.emptyOrgTenantIds.length) {
+      await alertService.raise('CAPACITY_EMPTY_ACTIVE_ORG', {
+        tenantCount: found.emptyOrgTenantIds.length,
+        tenantIds: found.emptyOrgTenantIds,
+        emptyOrgCount: found.emptyOrgCount,
+      });
+    }
+    if (found.auditFailedTenantIds.length) {
+      await alertService.raise('CAPACITY_AUDIT_FAILED', {
+        tenantCount: found.auditFailedTenantIds.length,
+        tenantIds: found.auditFailedTenantIds,
+      });
+    }
+  } catch (alertErr) {
+    console.error('[Cron] Capacity alerts could not be raised:', alertErr.message);
   }
 
   if (reconciled > 0) {
@@ -478,4 +527,4 @@ const runExpiryCheck = async () => {
   }
 };
 
-module.exports = { runExpiryCheck, EXPIRY_CRON };
+module.exports = { runExpiryCheck, EXPIRY_CRON, reconcileCapacityForAllTenants: _reconcileCapacityForAllTenants };
