@@ -18,7 +18,7 @@ try {
 }
 
 const jwt = require('jsonwebtoken');
-const { branchRoom, orgRoom, syncBranchRooms } = require('./branch-rooms');
+const { branchRoom, orgRoom, syncTenantRooms } = require('./branch-rooms');
 
 let _io = null;
 
@@ -118,27 +118,17 @@ const init = (httpServer) => {
     // Auto-join user-specific room
     socket.join(`user:${userId}`);
     // Readable from RemoteSocket too, so grants.changed can re-sync rooms.
-    socket.data.tenantId = user.tenantId || null;
+    // An optional handshake `tenantId` only narrows the orgs (NEW-86).
+    const selector = socket.handshake.auth?.tenantId;
+    socket.data.tenantSelector = typeof selector === 'string' && selector ? selector : null;
 
-    // Branch rooms (NEW-84): only the branches this user holds a live
-    // assignment on. Re-synced on grants.changed (refreshBranchRooms).
-    if (user.tenantId) {
-      syncBranchRooms(socket, userId, user.tenantId).catch((err) =>
-        console.warn('[Socket] Branch room sync failed:', err.message)
-      );
-    }
-
-    // Tenant room for team broadcasts: only while the user is still staff of
-    // the token's tenant (a token outlives a revoked role, and a paying member
-    // is not staff; NEW-85).
-    if (user.tenantId) {
-      const { userIsTenantStaff } = require('../middleware/tenantContext');
-      userIsTenantStaff(userId, user.tenantId)
-        .then((belongs) => {
-          if (belongs && socket.connected) socket.join(`tenant:${user.tenantId}`);
-        })
-        .catch((err) => console.warn('[Socket] Tenant room check failed:', err.message));
-    }
+    // Staff rooms (NEW-86): derived on the server from the user's verified
+    // relationships, not from the token's tenantId claim (team tokens carry
+    // none). Tenant room per org they are staff of, plus branch / org rooms
+    // from live assignments (NEW-84). Re-synced on grants.changed.
+    syncTenantRooms(socket, userId, socket.data.tenantSelector).catch((err) =>
+      console.warn('[Socket] Room sync failed:', err.message)
+    );
 
     // Join a conversation room: only one this user is part of (RT-04).
     socket.on('join_conversation', async (payload, callback) => {
@@ -332,20 +322,17 @@ const emitToBranch = async (tenantId, branchId, event, data) => {
 
 /**
  * Re-sync the branch rooms of every live socket of a user (their grants just
- * changed). Each socket is synced for the tenant its token names.
+ * changed). Each socket is re-derived from the user's verified orgs (NEW-86).
  */
 const refreshBranchRooms = async (userId) => {
   if (!_io || !userId) return;
   const sockets = await _io.in(`user:${userId}`).fetchSockets();
   await Promise.all(
-    sockets.map((s) => {
-      const tenantId = s.data?.tenantId;
-      return tenantId
-        ? syncBranchRooms(s, userId, tenantId).catch((err) =>
-            console.warn('[Socket] Branch room refresh failed:', err.message)
-          )
-        : null;
-    })
+    sockets.map((s) =>
+      syncTenantRooms(s, userId, s.data?.tenantSelector || null).catch((err) =>
+        console.warn('[Socket] Room refresh failed:', err.message)
+      )
+    )
   );
 };
 
