@@ -17,36 +17,40 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-14 |
+| Last updated | 2026-10-16 |
 | Updated by | Claude Code (Sonnet 5.5) |
 | Current prompt | **Prompt 5A: Global readiness, realtime and observability** (owner chose to run it as four sub-prompts, in order) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none: 5A-1 committed, 5A-2 not started) |
+| Issue in progress | (none: 5A-1 and 5A-2 done, 5A-3 not started) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-5A-1 (GLB-01, GLB-02, BILL-11, BILL-17) is committed on `phase-5/prompt-5a1-timezone-currency` (backend only, not pushed,
-cut from `origin/main` 22c7d2c). The full backend suite is the gate before pushing; its result is in the session log row.
+5A-1 (GLB-01, GLB-02, BILL-11, BILL-17) and 5A-2 (RT-01 to RT-09, NEW-84, NEW-84b, NEW-85) are done. Backend PRs through #114
+and mobile PRs #9 to #15 are merged. **NEW-84b (`167505b`, branch `phase-5/prompt-5a2-new84b-conversation-updated`) and
+NEW-85 (`5435ae1`, branch `phase-5/prompt-5a2-new85-tenant-room-members`) are committed but not merged**, and this docs
+branch (`phase-5/prompt-5a2-docs`) is not pushed. Details: spec §13 (rows `RT-01 (Prompt 5A-2)` onward) and
+"Prompt 5A-2 close-out notes".
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `phase-5/prompt-5a1-timezone-currency` | see `git log` (GLB-01 a77b9d1, GLB-02 ebec891, BILL-11/17 after it) | no |
+| gymsera_be | `phase-5/prompt-5a2-docs` (from `origin/main` b2ca02f) | see `git log` (docs only) | no |
 | gymsera_web | `main` | 92ad8b5 | no |
 | gymsera_cms | `main` | c0460d5 | no |
-| gyms_era | `master` | 092c8aa | no |
+| gyms_era | `master` | 982857f (PR #15) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **5A-1 is committed; push and PR it after the full backend suite is green** (see Session log row 84).
-> Then **5A-2 realtime/notifications: RT-01 to RT-09** (spec §9, §12.8), then **5A-3 observability: OBS-01 to OBS-09**
-> (§12.12), then **5A-4 security: SEC-04, SEC-05, SEC-08, SEC-14 to SEC-18 and BILL-15**. GLB-03 to GLB-09 (localization,
-> phone numbers, RTL, names/addresses, slow networks, privacy export) are not started; GLB-03 stays English-only per R-31.
-> **NEW-83 comes right after 5A-1 merges** (its own PR, not part of 5A-1), then 5A-2.
-> Decisions already made in this session: web card stays OFF (flag only, R-7); 3-decimal currencies are refused until
-> money columns are widened.
-> 5A-1 leftovers for clients (not done): mobile/CMS/web show times in the branch timezone with a label when it differs
-> from the device, format money with ICU instead of "Rs" strings, and read `webCardPaymentsEnabled` from `GET /billing/plans`.
+> **Push and merge, in this order: NEW-84b, NEW-85, then this docs branch.** Apply p020 and p021 if any environment is
+> missing them (see the 5A-2 deploy notes in spec §13: p020 was missed once). Then **5A-3 observability: OBS-01 to OBS-09**
+> (spec §12.12), then **5A-4 security: SEC-04, SEC-05, SEC-08, SEC-14 to SEC-18 and BILL-15**. GLB-03 to GLB-09 are not
+> started; GLB-03 stays English-only per R-31.
+> **Owner decision waiting: NEW-86** (staff sockets get no tenant or branch rooms because staff tokens carry no `tenantId`).
+> NEW-83 stays open (not reproduced on `22c7d2c` / `1d96ea6`, cause never found).
+> 5A-1 leftovers for clients (not done): show times in the branch timezone, format money with ICU, read
+> `webCardPaymentsEnabled` from `GET /billing/plans`.
+> 5A-2 P3 follow-ups (not scheduled): drop a notification for a different device user; refresh the router on
+> `grants.changed`; traveler inbox spinner flash on reconnect; stop retrying on an expired token.
 
 ### Work in progress that is NOT committed
 
@@ -57,11 +61,13 @@ cut from `origin/main` 22c7d2c). The full backend suite is the gate before pushi
 - **Owner decisions waiting:**
   - **NEW-81 (4A):** where the app-level feature flags, minimum app version and error-copy version live, and whether the mobile app sends its version (no app-version header today). Needed for the bootstrap contract and the §16 force-update check.
   - **NEW-82 (4A):** make the CMS admin tenants search work on the backend, or remove the search box.
-  - **NEW-83 (5A-1, P2):** `billing-refund-revoke` and `subscription-current-no-free-plan` fail with `DISABLE_REDIS=true` (pre-existing on 22c7d2c, breaks §0.1 rule 10). Owner decided: own small PR, failing test first, started only after 5A-1 merges.
+  - **NEW-83 (5A-1, P2):** kept OPEN. It did not reproduce on `22c7d2c` or `1d96ea6`, and every 5A-2 `DISABLE_REDIS=true` run was green, but the cause was never found (spec §13 row).
+  - **NEW-86 (5A-2, P2, proposed):** staff tokens carry `role: MEMBER` and `tenantId: null`, so staff sockets join no tenant or branch rooms. Decide whether sockets should derive tenants from membership (spec §13).
   - **Before adding a second API instance (4A):** the discovery snapshot invalidation is in process; add a platform-DB version read first (decided single instance on 2026-10-14).
   - ~~NEW-54: delete the six live-server smoke tests~~ DONE (be PR #90).
   - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) NEW-69 to NEW-72 (from Prompt 3D) and NEW-74 to NEW-78 (from Prompt 3E; mobile and CMS/web client work, NEW-78 is a test fix under R-19).
   - ~~Dependabot criticals~~ cleared: bcrypt 6, multer 2, `npm audit fix` (PR #91); nodemailer 10.1.0 (PR #92).
+- **Prompt 5A-2 deploy notes:** two platform migrations, **p020** (`device_tokens` app_version, locale, timezone; RT-01; was missed once) and **p021** (`messages.client_message_id` + unique key; RT-05; without it every message read fails). Apply both before the backend build goes live; full steps, backup and rollback in spec §13 "Prompt 5A-2 close-out notes".
 - **Prompt 4A deploy notes:** no migration. Size MySQL `max_connections` for the tenant pool ceiling (200 pools x 3 connections per API process, soft cap; env `TENANT_POOL_*`). Discovery GETs send `public, s-maxage=60` (`DISCOVERY_CDN_MAX_AGE_S`, 0 = `no-store`); snapshot TTL `DISCOVERY_SNAPSHOT_TTL_MS` (default 60000, 0 = off). The mobile build with `/me/bootstrap` (app `7f90bb6`) falls back to the old calls on a 404, so backend first is safe in either order.
 - **Deploy order (critical):** platform migrations **p004–p006 must be applied before this backend code goes live.**
   The model reads `currency` and `pending_change`; without them every `tenant_subscriptions` query fails
@@ -475,3 +481,6 @@ cut from `origin/main` 22c7d2c). The full backend suite is the gate before pushi
 | 82 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A, B7 | API-04 / PERF-08 admin tenants list (be `d985529`, PR #105); runs 1 and 2 green locally (161 suites, 1503/1503 each), run 3 interrupted by a deleted scratch worktree (306 ENOENT, no test failure), CI 4/4 (PR #105) | task complete (3x not completed: run 3 interrupted by a deleted scratch worktree; see the suite note in the same row) | yes |
 | 83 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 4A close-out (docs only) | Spec §13 rows with before / after numbers, "Prompt 4A close-out notes", NEW-81 and NEW-82 recorded, held-back prompts listed; handoff moved to Prompt 5A | task complete (not pushed) | yes |
 | 84 | 2026-10-14 | Claude Code (Sonnet 5.5) | Prompt 5A, sub-prompt 5A-1 | GLB-01 (be `a77b9d1`), GLB-02 (be `ebec891`), BILL-11 + BILL-17 (be, next commit on the branch); full backend suite 168 suites / 1539 tests green; not pushed | stopped by plan: owner chose four sub-prompts; 5A-2 to 5A-4 not started | yes |
+| 85 | 2026-10-15 to 2026-10-16 | Claude Code (Sonnet 5.5) | Prompt 5A-2, backend | RT-01 (be `ef43bb1`), RT-02/03 (`b20a4c9`), RT-05 (`de88c47`), RT-08 (`739b559`), NEW-84 (`1282c89`), NEW-84b (`167505b`), NEW-85 (`5435ae1`); full suite green x3 plus one `DISABLE_REDIS=true` run per PR (last counts 176 suites / 1576 tests); two NEW-85 runs discarded because the laptop slept (logs kept). Agent name for RT-01 to RT-05 taken from the commit trailers | task complete (NEW-84b and NEW-85 not merged; nothing pushed by the agent) | yes |
+| 86 | 2026-10-15 to 2026-10-16 | Claude Code (Sonnet 5.5) | Prompt 5A-2, mobile (`Amirhaiderkhan/gyms_era`) | RT-01 (`3e556ac`), RT-05 (`730f89f`), RT-02 (`3b73ef0`), RT-03 (`3953a51`), RT-06 (`c41948b`), RT-08 (`6706df4`), RT-07 + RT-09 (`956cc6d`); `flutter test` x3 per PR, analyze with no new findings | task complete (all merged, PRs #9 to #15) | yes |
+| 87 | 2026-10-16 | Claude Code (Sonnet 5.5) | Prompt 5A-2 close-out (docs only) | Spec §13 rows RT-01 to RT-09, NEW-84, NEW-84b, NEW-85, NEW-86; NEW-83 re-test; "Prompt 5A-2 close-out notes" (deploy notes p020/p021, P3 follow-ups); handoff moved to 5A-3 | task complete (not pushed) | yes |
