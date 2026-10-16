@@ -13,46 +13,95 @@
 const branchRoom = (tenantId, branchId) => `tenant:${tenantId}:branch:${branchId}`;
 const orgRoom = (tenantId) => `tenant:${tenantId}:org`;
 
-const isScopedRoom = (room, tenantId) =>
-  room === orgRoom(tenantId) || room.startsWith(`tenant:${tenantId}:branch:`);
+const tenantRoom = (tenantId) => `tenant:${tenantId}`;
 
-/** The set of scoped rooms this user should be in right now. */
-const desiredRooms = async (userId, tenantId) => {
-  const { Tenant } = require('../models/platform');
+/**
+ * Every room this module manages is `tenant:{id}` or `tenant:{id}:...`. Other
+ * rooms (`user:`, `conversation:`) are never touched here.
+ */
+const isTenantRoom = (room) => typeof room === 'string' && room.startsWith('tenant:');
+
+/**
+ * The tenants whose staff rooms this user may be in (NEW-86). Derived from
+ * verified relationships, never from a token claim: a team member's token has
+ * `tenantId: null`, and a claim can name a tenant the user left.
+ *
+ *  - candidates: tenants they own, plus their ACTIVE org-index rows (as
+ *    /me/context lists them);
+ *  - each is confirmed with userIsTenantStaff (owner, org index or a live role
+ *    assignment; never a gym-member row, NEW-85);
+ *  - a handshake `tenantId` only narrows: a tenant they are not staff of is
+ *    dropped, no error.
+ */
+const staffTenantIds = async (userId, selector = null) => {
   const { userIsTenantStaff } = require('../middleware/tenantContext');
+  const membershipService = require('../services/membership.service');
+  if (!userId) return [];
+
+  if (selector) {
+    return typeof selector === 'string' && (await userIsTenantStaff(userId, selector)) ? [selector] : [];
+  }
+
+  const [owned, memberships] = await Promise.all([
+    membershipService.listOwnedTenants(userId),
+    membershipService.listUserTenants(userId, { activeOnly: true }),
+  ]);
+  const candidates = [...new Set([...owned.map((t) => t.id), ...memberships.map((m) => m.tenantId)])];
+  const checks = await Promise.all(candidates.map((id) => userIsTenantStaff(userId, id)));
+  return candidates.filter((_, i) => checks[i]);
+};
+
+/** Scoped (branch / org) rooms for one tenant the user is verified staff of. */
+const scopedRooms = async (userId, tenantId) => {
+  const { Tenant } = require('../models/platform');
   const TenantDbManager = require('../database/TenantDbManager');
   const accessService = require('../services/access.service');
-
-  // A token outlives a revoked role, and a paying member is not staff
-  // (NEW-85): no staff relationship, no rooms.
-  if (!(await userIsTenantStaff(userId, tenantId))) return new Set();
 
   const tenant = await Tenant.findByPk(tenantId, {
     attributes: ['id', 'ownerUserId', 'connectionStringEncrypted'],
   });
-  if (!tenant || tenant.ownerUserId === userId) return new Set();
+  if (!tenant || tenant.ownerUserId === userId) return [];
   if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
-    return new Set();
+    return [];
   }
 
   const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
   const { orgWide, branchIds } = await accessService.branchCoverage(tenantDb, userId);
-  return new Set(orgWide ? [orgRoom(tenantId)] : branchIds.map((b) => branchRoom(tenantId, b)));
+  return orgWide ? [orgRoom(tenantId)] : branchIds.map((b) => branchRoom(tenantId, b));
 };
 
 /**
- * Make `socket` (a local Socket or a RemoteSocket) hold exactly the scoped
+ * Every `tenant:*` room this user should be in right now: the tenant room of
+ * each org they are staff of, plus their branch / org rooms there.
+ */
+const desiredRooms = async (userId, selector = null) => {
+  const desired = new Set();
+  for (const tenantId of await staffTenantIds(userId, selector)) {
+    desired.add(tenantRoom(tenantId));
+    try {
+      for (const room of await scopedRooms(userId, tenantId)) desired.add(room);
+    } catch (err) {
+      // One unreachable tenant must not cost the user the others.
+      console.warn(`[Socket] Branch rooms for tenant ${tenantId} unavailable:`, err.message);
+    }
+  }
+  return desired;
+};
+
+/**
+ * Make `socket` (a local Socket or a RemoteSocket) hold exactly the tenant
  * rooms it should. Safe to call repeatedly.
  */
-const syncBranchRooms = async (socket, userId, tenantId) => {
-  if (!userId || !tenantId) return;
-  const desired = await desiredRooms(userId, tenantId);
+const syncTenantRooms = async (socket, userId, selector = null) => {
+  if (!userId) return;
+  const desired = await desiredRooms(userId, selector);
+  if (socket.connected === false) return; // dropped while we were reading
   for (const room of socket.rooms) {
-    if (isScopedRoom(room, tenantId) && !desired.has(room)) await socket.leave(room);
+    if (isTenantRoom(room) && !desired.has(room)) await socket.leave(room);
   }
   for (const room of desired) {
     if (!socket.rooms.has(room)) await socket.join(room);
   }
 };
 
-module.exports = { branchRoom, orgRoom, syncBranchRooms };
+module.exports = { branchRoom, orgRoom, tenantRoom, staffTenantIds, syncTenantRooms };
