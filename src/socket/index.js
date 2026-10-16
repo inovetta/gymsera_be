@@ -128,11 +128,12 @@ const init = (httpServer) => {
       );
     }
 
-    // Tenant room for team broadcasts: only while the user still belongs to
-    // the token's tenant (a token outlives a revoked role).
+    // Tenant room for team broadcasts: only while the user is still staff of
+    // the token's tenant (a token outlives a revoked role, and a paying member
+    // is not staff; NEW-85).
     if (user.tenantId) {
-      const { userBelongsToTenant } = require('../middleware/tenantContext');
-      userBelongsToTenant(userId, user.tenantId)
+      const { userIsTenantStaff } = require('../middleware/tenantContext');
+      userIsTenantStaff(userId, user.tenantId)
         .then((belongs) => {
           if (belongs && socket.connected) socket.join(`tenant:${user.tenantId}`);
         })

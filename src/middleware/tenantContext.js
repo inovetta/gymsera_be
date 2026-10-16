@@ -135,7 +135,17 @@ const userBelongsToTenant = (userId, tenantId, memo = null) => {
   return memo.belongs.get(key);
 };
 
-const _userBelongsToTenant = async (userId, tenantId, memo) => {
+/**
+ * Is this user part of the tenant's *staff*: its owner, or someone with a live
+ * team role there? A paying gym member (UserGymMembership) is not. Realtime
+ * staff rooms use this, never userBelongsToTenant (NEW-85).
+ */
+const userIsTenantStaff = (userId, tenantId) => {
+  if (!userId || !tenantId) return Promise.resolve(false);
+  return _userBelongsToTenant(userId, tenantId, null, { staffOnly: true });
+};
+
+const _userBelongsToTenant = async (userId, tenantId, memo, { staffOnly = false } = {}) => {
   const { UserOrgIndex, Tenant, UserGymMembership } = require('../models/platform');
 
   // 1. Direct tenant ownership (an ACTIVE tenant whose owner is this user)
@@ -149,12 +159,14 @@ const _userBelongsToTenant = async (userId, tenantId, memo) => {
   });
   if (inIndex) return true;
 
-  // 3. Gym member in UserGymMembership
-  const inMemberIndex = await UserGymMembership.findOne({
-    where: { userId, tenantId },
-    attributes: ['id'],
-  });
-  if (inMemberIndex) return true;
+  // 3. Gym member in UserGymMembership (never counts as staff)
+  if (!staffOnly) {
+    const inMemberIndex = await UserGymMembership.findOne({
+      where: { userId, tenantId },
+      attributes: ['id'],
+    });
+    if (inMemberIndex) return true;
+  }
 
   // 3. Fallback: check RoleAssignment directly in tenant DB (e.g. before index sync)
   try {
@@ -337,4 +349,5 @@ module.exports = tenantContext;
 module.exports.resolveTenant = tenantContext;
 module.exports.resolveTenantId = resolveTenantId;
 module.exports.userBelongsToTenant = userBelongsToTenant;
+module.exports.userIsTenantStaff = userIsTenantStaff;
 module.exports.applyLegacyRoleShim = applyLegacyRoleShim;
