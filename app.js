@@ -9,7 +9,6 @@ const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
-const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 let swaggerSpec = {};
 try {
@@ -21,6 +20,8 @@ const routes = require('./src/routes');
 const errorHandler = require('./src/middleware/errorHandler');
 const auditLog = require('./src/middleware/auditLog');
 const requestId = require('./src/middleware/requestId');
+const openRequestContext = require('./src/middleware/requestContext');
+const accessLog = require('./src/middleware/accessLog');
 const { requestTimeout } = require('./src/middleware/timeout');
 const { sendError } = require('./src/utils/response.utils');
 const appConfig = require('./src/config/app.config');
@@ -29,6 +30,10 @@ const app = express();
 
 // ── Request ID tracing (spec §4.1) ──────────────────────────────────────────
 app.use(requestId);
+// Early, so latency covers the whole request and rejected requests are logged too.
+if (appConfig.nodeEnv !== 'test' || process.env.LOG_ACCESS === 'true') {
+  app.use(accessLog);
+}
 
 // ── Request timeout: 15s (spec §4.1 / API-02) ───────────────────────────────
 app.use(requestTimeout(15000));
@@ -123,11 +128,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
-// ── Request logging ───────────────────────────────────────────────────────────
-logRedaction.installMorganRedaction(morgan);
-if (appConfig.nodeEnv !== 'test') {
-  app.use(morgan(appConfig.nodeEnv === 'development' ? 'dev' : 'combined'));
-}
+// ── Request log context (OBS-01) ────────────────────────────────
+// After the body parsers: see middleware/requestContext.js.
+app.use(openRequestContext);
 
 // ── Rate limiting (applies to all /api routes) ────────────────────────────────
 const isDevOrTest =

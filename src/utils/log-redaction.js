@@ -15,6 +15,7 @@
  * error the argument is replaced by a placeholder.
  */
 const crypto = require('crypto');
+const { jsonEnabled, writeConsole } = require('./logger');
 
 const REDACTED = '[REDACTED]';
 const MAX_DEPTH = 6;
@@ -139,7 +140,11 @@ const INSTALLED = Symbol.for('gymsera.logRedaction.installed');
  * exactly what would have been printed.
  */
 const sink = {
-  write: (target, method, original, args) => original.apply(target, args),
+  write: (target, method, original, args) => {
+    // OBS-01: as one JSON line with the request context.
+    if (target === console && jsonEnabled()) return writeConsole(method, args);
+    return original.apply(target, args);
+  },
 };
 
 /** Wraps console.* so every argument is redacted before it is printed. Idempotent. */
