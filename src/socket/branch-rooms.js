@@ -19,12 +19,13 @@ const isScopedRoom = (room, tenantId) =>
 /** The set of scoped rooms this user should be in right now. */
 const desiredRooms = async (userId, tenantId) => {
   const { Tenant } = require('../models/platform');
-  const { userBelongsToTenant } = require('../middleware/tenantContext');
+  const { userIsTenantStaff } = require('../middleware/tenantContext');
   const TenantDbManager = require('../database/TenantDbManager');
   const accessService = require('../services/access.service');
 
-  // A token outlives a revoked role: no membership, no rooms.
-  if (!(await userBelongsToTenant(userId, tenantId))) return new Set();
+  // A token outlives a revoked role, and a paying member is not staff
+  // (NEW-85): no staff relationship, no rooms.
+  if (!(await userIsTenantStaff(userId, tenantId))) return new Set();
 
   const tenant = await Tenant.findByPk(tenantId, {
     attributes: ['id', 'ownerUserId', 'connectionStringEncrypted'],
