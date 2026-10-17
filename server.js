@@ -7,6 +7,7 @@ const { getRedisClient } = require('./src/config/redis.config');
 const TenantDbManager = require('./src/database/TenantDbManager');
 const { runExpiryCheck, EXPIRY_CRON } = require('./src/jobs/subscription-expiry.cron');
 const cron = require('node-cron');
+const errorTracker = require('./src/utils/error-tracker');
 
 const PORT = process.env.PORT || 3000;
 let server = null;
@@ -60,6 +61,9 @@ async function shutdown(signal, exitCode = 0) {
       console.warn('[Shutdown] Redis quit error:', redisErr.message);
     }
 
+    // 6. Send queued error reports (OBS-02): waits at most 2 s, never fails the shutdown
+    await errorTracker.flush(2000);
+
     clearTimeout(forceTimer);
     console.log('[Shutdown] Graceful shutdown complete');
     process.exit(exitCode);
@@ -72,11 +76,16 @@ async function shutdown(signal, exitCode = 0) {
 // REL-05: Do not swallow uncaught exceptions; log unhandled rejections without terminating server
 process.on('uncaughtException', (err) => {
   console.error('[Process FATAL] Uncaught Exception:', err);
-  shutdown('uncaughtException', 1);
+  errorTracker.captureException(err, { tags: { source: 'uncaughtException' } });
+  // Give the report up to 2 s to leave before the process goes down; flush never rejects.
+  errorTracker.flush(2000).then(() => shutdown('uncaughtException', 1));
 });
 
 process.on('unhandledRejection', (reason) => {
   console.error('[Process ERROR] Unhandled Rejection:', reason);
+  errorTracker.captureException(reason instanceof Error ? reason : new Error(String(reason)), {
+    tags: { source: 'unhandledRejection' },
+  });
 });
 
 process.on('SIGTERM', () => shutdown('SIGTERM', 0));

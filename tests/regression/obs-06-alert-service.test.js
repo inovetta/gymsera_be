@@ -10,17 +10,27 @@ const path = require('path');
 const { setupTestDatabases, teardownTestDatabases, resetTestDatabases, factories } = require('../harness');
 const { Notification } = require('../../src/models/platform');
 
-// Virtual: @sentry/node is installed by the OBS-02 PR. The factory counts loads so the
-// "does nothing without a DSN" test can prove the SDK is never even required.
+// A plain (not virtual) mock: @sentry/node is installed, and a virtual mock of an installed package can
+// resolve differently for other files depending on what the module registry has seen, letting the real
+// SDK through. The factory counts loads so the "does nothing without a DSN" test can prove the SDK is
+// never even required.
 const mockSentryLoads = { count: 0 };
-const mockSentry = { init: jest.fn(), captureMessage: jest.fn() };
+// The real init also builds integrations, so the fake offers the same builders (as no-ops).
+const noIntegration = () => ({});
+const mockSentry = {
+  init: jest.fn(),
+  captureMessage: jest.fn(),
+  dedupeIntegration: noIntegration,
+  inboundFiltersIntegration: noIntegration,
+  linkedErrorsIntegration: noIntegration,
+  functionToStringIntegration: noIntegration,
+};
 jest.mock(
   '@sentry/node',
   () => {
     mockSentryLoads.count += 1;
     return mockSentry;
-  },
-  { virtual: true }
+  }
 );
 
 const alertService = require('../../src/services/alert.service');
