@@ -87,7 +87,7 @@ const describeFields = (fields) =>
 
 /** True when a stored alert of this code is younger than an hour. */
 const alertedWithinHour = async (code, nowMs) => {
-  const codeOfRow = Sequelize.literal("JSON_UNQUOTE(JSON_EXTRACT(metadata_json, '$.alertCode'))");
+  const codeOfRow = Sequelize.literal('JSON_UNQUOTE(JSON_EXTRACT(metadata_json, \'$.alertCode\'))');
   const row = await Notification.findOne({
     where: {
       type: NOTIFICATION_TYPE,
