@@ -260,6 +260,20 @@ router.get(
   adminController.getBranchVisibilityHistory
 );
 
+// ── Billing events (OBS-05): the webhook/RTDN inbox, per tenant and status ─────
+router.get(
+  '/billing-events',
+  validate([
+    query('status').optional().isIn(['RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED']).withMessage('Invalid status'),
+    query('provider').optional().isIn(['APPLE', 'GOOGLE', 'STRIPE']).withMessage('Invalid provider'),
+    query('tenantId')
+      .optional()
+      .custom((v) => v === 'none' || /^[0-9a-fA-F-]{36}$/.test(String(v)))
+      .withMessage('tenantId must be a tenant id or "none"'),
+  ]),
+  adminController.listBillingEvents
+);
+
 // ── Tenant subscriptions ───────────────────────────────────────────────────────
 router.get('/tenants/:id/subscriptions', adminController.getTenantSubscriptions);
 

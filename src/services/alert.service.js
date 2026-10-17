@@ -43,6 +43,18 @@ const ALERTS = Object.freeze({
     title: 'Capacity audit could not run for some tenants',
     runbook: 'docs/runbooks/capacity-audit.md#capacity_audit_failed',
   },
+  BILLING_EVENT_UNPROCESSED: {
+    title: 'Billing events waiting for more than 10 minutes',
+    runbook: 'docs/runbooks/billing-events.md#billing_event_unprocessed',
+  },
+  BILLING_EVENT_FAILED: {
+    title: 'Billing events keep failing',
+    runbook: 'docs/runbooks/billing-events.md#billing_event_failed',
+  },
+  BILLING_DUPLICATE_BILLING: {
+    title: 'A superseded subscription is still billing a tenant',
+    runbook: 'docs/runbooks/billing-events.md#billing_duplicate_billing',
+  },
 });
 
 // code -> epoch ms of the last alert (or reservation) in this process
