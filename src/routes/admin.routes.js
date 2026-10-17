@@ -274,6 +274,24 @@ router.get(
   adminController.listBillingEvents
 );
 
+// ── Platform audit trails (OBS-07): admin actions, or the HTTP mutation trail with ?source=requests ──
+const ID36 = /^[0-9a-fA-F-]{36}$/;
+router.get(
+  '/audit-logs',
+  validate([
+    query('source').optional().isIn(['actions', 'requests']).withMessage('source must be actions or requests'),
+    query('userId').optional().matches(ID36).withMessage('userId must be a user id'),
+    query('tenantId').optional().matches(ID36).withMessage('tenantId must be a tenant id'),
+    query('action').optional().isString().isLength({ max: 100 }).withMessage('action is too long'),
+    query('targetType').optional().isString().isLength({ max: 50 }).withMessage('targetType is too long'),
+    query('targetId').optional().isString().isLength({ max: 100 }).withMessage('targetId is too long'),
+    query('method').optional().isIn(['POST', 'PUT', 'PATCH', 'DELETE']).withMessage('Invalid method'),
+    query('from').optional().isISO8601().withMessage('from must be an ISO date'),
+    query('to').optional().isISO8601().withMessage('to must be an ISO date'),
+  ]),
+  adminController.listAuditLogs
+);
+
 // ── Tenant subscriptions ───────────────────────────────────────────────────────
 router.get('/tenants/:id/subscriptions', adminController.getTenantSubscriptions);
 

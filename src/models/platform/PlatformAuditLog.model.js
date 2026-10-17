@@ -1,9 +1,10 @@
 'use strict';
 
 const { DataTypes } = require('sequelize');
+const makeAppendOnly = require('../append-only');
 
 module.exports = (sequelize) => {
-  return sequelize.define(
+  return makeAppendOnly(sequelize.define(
     'PlatformAuditLog',
     {
       id: {
@@ -49,5 +50,5 @@ module.exports = (sequelize) => {
         { fields: ['action'] },
       ],
     }
-  );
+  ), 'PlatformAuditLog');
 };

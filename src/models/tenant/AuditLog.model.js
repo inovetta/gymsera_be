@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const makeAppendOnly = require('../append-only');
 
 /**
  * AuditLog — append-only record of every consequential mutation.
@@ -11,7 +12,7 @@ const { DataTypes } = require('sequelize');
  * DELETE from application code.
  */
 module.exports = (sequelize) => {
-  return sequelize.define(
+  return makeAppendOnly(sequelize.define(
     'AuditLog',
     {
       id: {
@@ -76,5 +77,5 @@ module.exports = (sequelize) => {
         { fields: ['created_at'] },
       ],
     }
-  );
+  ), 'AuditLog');
 };
