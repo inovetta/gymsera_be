@@ -1,6 +1,7 @@
 'use strict';
 
 const { DataTypes } = require('sequelize');
+const makeAppendOnly = require('../append-only');
 
 /**
  * Platform AuditLog Model (SEC-12).
@@ -9,7 +10,7 @@ const { DataTypes } = require('sequelize');
  * Maps to table `audit_logs` in the platform database.
  */
 module.exports = (sequelize) => {
-  return sequelize.define(
+  return makeAppendOnly(sequelize.define(
     'AuditLog',
     {
       id: {
@@ -71,5 +72,5 @@ module.exports = (sequelize) => {
         { fields: ['created_at'] },
       ],
     }
-  );
+  ), 'AuditLog');
 };
