@@ -201,6 +201,20 @@ class TenantDbManager {
    * Used by the subscription expiry cron to iterate live connections.
    * @returns {Array<[string, { sequelize, models }]>}
    */
+  /**
+   * The busiest open pools (OBS-03): borrowed connections, then waiting, then size. Ids and counts
+   * only; bounded by `limit` so a metrics label set can never grow with the number of tenants.
+   */
+  getTopMetrics(limit = 10) {
+    const rows = [];
+    for (const e of this.pool.values()) {
+      const p = e.sequelize.connectionManager && e.sequelize.connectionManager.pool;
+      rows.push({ tenantId: e.tenantId, connections: (p && p.size) || 0, inUse: (p && p.using) || 0, waiting: (p && p.waiting) || 0 });
+    }
+    rows.sort((a, b) => b.inUse - a.inUse || b.waiting - a.waiting || b.connections - a.connections || String(a.tenantId).localeCompare(String(b.tenantId)));
+    return rows.slice(0, limit);
+  }
+
   getAllEntries() {
     return [...this.pool.entries()];
   }

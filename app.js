@@ -22,6 +22,7 @@ const auditLog = require('./src/middleware/auditLog');
 const requestId = require('./src/middleware/requestId');
 const openRequestContext = require('./src/middleware/requestContext');
 const accessLog = require('./src/middleware/accessLog');
+const metrics = require('./src/observability/metrics');
 const { requestTimeout } = require('./src/middleware/timeout');
 const { sendError } = require('./src/utils/response.utils');
 const appConfig = require('./src/config/app.config');
@@ -34,6 +35,10 @@ app.use(requestId);
 if (appConfig.nodeEnv !== 'test' || process.env.LOG_ACCESS === 'true') {
   app.use(accessLog);
 }
+// OBS-03: request counts and latency by route pattern. A no-op unless METRICS_KEY is set (see
+// src/observability/metrics.js); recording starts here at boot, not at the first scrape.
+metrics.init();
+app.use(metrics.httpMiddleware);
 
 // ── Request timeout: 15s (spec §4.1 / API-02) ───────────────────────────────
 app.use(requestTimeout(15000));
@@ -131,6 +136,9 @@ app.use(express.urlencoded({ extended: true }));
 // ── Request log context (OBS-01) ────────────────────────────────
 // After the body parsers: see middleware/requestContext.js.
 app.use(openRequestContext);
+
+// ── Metrics (OBS-03): key-protected, disabled (404) unless METRICS_KEY is set ──
+app.get('/metrics', metrics.createMetricsLimiter(parseInt(process.env.METRICS_RATE_LIMIT_MAX, 10) || 60), metrics.handler);
 
 // ── Rate limiting (applies to all /api routes) ────────────────────────────────
 const isDevOrTest =

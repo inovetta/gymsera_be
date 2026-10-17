@@ -131,6 +131,22 @@ const sweepTenantOutbox = async (tenantId, tenantDb) => {
   return { processedCount };
 };
 
+/**
+ * What is still unprocessed in one tenant's outbox, dead-lettered rows included (attempts >= 10 are never
+ * retried, so they only age): how many, and when the oldest was created. Read-only (OBS-03).
+ */
+const getOutboxStats = async (tenantDb) => {
+  const { CapacityOutbox, Outbox } = tenantDb.models;
+  const Model = CapacityOutbox || Outbox;
+  if (!Model) return { unprocessed: 0, oldestCreatedAt: null };
+  const where = { status: { [Op.in]: ['PENDING', 'FAILED'] } };
+  const [unprocessed, oldest] = await Promise.all([
+    Model.count({ where }),
+    Model.findOne({ where, order: [['createdAt', 'ASC']], attributes: ['createdAt'] }),
+  ]);
+  return { unprocessed, oldestCreatedAt: oldest ? oldest.createdAt : null };
+};
+
 const sweepAllTenantsOutbox = async () => {
   const tenants = await Tenant.findAll({
     where: { status: 'ACTIVE' },
@@ -138,16 +154,26 @@ const sweepAllTenantsOutbox = async () => {
   });
 
   let totalProcessed = 0;
+  let unprocessed = 0;
+  let oldest = null;
   for (const tenant of tenants) {
     if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
     try {
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
       const { processedCount } = await sweepTenantOutbox(tenant.id, tenantDb);
       totalProcessed += processedCount;
+      // OBS-03: what is still unprocessed after this tenant's pass.
+      const stats = await getOutboxStats(tenantDb);
+      unprocessed += stats.unprocessed;
+      if (stats.oldestCreatedAt && (!oldest || new Date(stats.oldestCreatedAt) < oldest)) oldest = new Date(stats.oldestCreatedAt);
     } catch (err) {
       console.error(`[CapacityOutbox] Sweep error for tenant ${tenant.id}:`, err.message);
     }
   }
+  require('../observability/metrics').recordOutboxSweep({
+    unprocessed,
+    oldestAgeSeconds: oldest ? Math.max(0, (Date.now() - oldest.getTime()) / 1000) : 0,
+  });
 
   if (totalProcessed > 0) {
     console.log(`[CapacityOutbox] Sweep complete: processed ${totalProcessed} pending outbox event(s)`);
@@ -160,4 +186,5 @@ module.exports = {
   processOutboxEntry,
   sweepTenantOutbox,
   sweepAllTenantsOutbox,
+  getOutboxStats,
 };
