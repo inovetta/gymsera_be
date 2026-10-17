@@ -31,6 +31,9 @@ const ALLOWED_NON_LOGIN_OPERATIONAL_ROUTES = [
   { method: 'GET', path: '/api/v1/auth/tenant-invitations/verify', reason: 'Public tenant invitation token verification: validates invitation token before registration' },
   { method: 'POST', path: '/api/v1/auth/tenant-invitations/accept', reason: 'Public tenant invitation accept: creates tenant and owner account via validated invitation token' },
 
+  // Metrics scrape (key checked; disabled with a 404 unless METRICS_KEY is set)
+  { method: 'GET', path: '/metrics', reason: 'Prometheus scrape endpoint (OBS-03): requires Authorization: Bearer METRICS_KEY (24+ chars, from the environment); answers 404 when no key is configured; rate limited' },
+
   // Cron route (secret checked)
   { method: 'GET', path: '/api/v1/cron/subscription-expiry', reason: 'Cron trigger: sweeps expired subscriptions; protected by CRON_SECRET header/bearer' },
 

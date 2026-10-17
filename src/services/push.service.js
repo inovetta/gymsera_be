@@ -13,6 +13,7 @@ try {
 }
 const fs = require('fs');
 const path = require('path');
+const metrics = require('../observability/metrics');
 
 let _firebaseApp = null;
 let _initAttempted = false;
@@ -208,8 +209,10 @@ const send = async (fcmToken, title, body, data = {}) => {
 
     const response = await admin.messaging(app).send(message);
     console.log(`[Push] Successfully sent FCM message to ${fcmToken.slice(0, 16)}... (ID: ${response})`);
+    metrics.recordFcm({ successCount: 1 });
     return { success: true, messageId: response };
   } catch (err) {
+    metrics.recordFcm({ failureCount: 1 });
     console.warn(`[Push] Error sending FCM message to ${fcmToken.slice(0, 16)}...:`, err.message);
     // If token is dead, attempt to remove it from DB
     if (
@@ -248,6 +251,7 @@ const sendMulticast = async (fcmTokens, title, body, data = {}) => {
     });
 
     console.log(`[Push] Multicast result: ${response.successCount} succeeded, ${response.failureCount} failed`);
+    metrics.recordFcm({ successCount: response.successCount, failureCount: response.failureCount });
 
     // Prune expired/unregistered tokens
     if (response.failureCount > 0) {
@@ -276,6 +280,7 @@ const sendMulticast = async (fcmTokens, title, body, data = {}) => {
     };
   } catch (err) {
     console.warn('[Push] Multicast batch failed:', err.message);
+    metrics.recordFcmBatchError();
     return { success: false, error: err.message };
   }
 };
