@@ -5,6 +5,9 @@ require('dotenv').config();
 const logRedaction = require('./src/utils/log-redaction');
 logRedaction.installConsoleRedaction();
 
+// OBS-02: error tracking. A no-op unless SENTRY_DSN is set (src/utils/error-tracker.js).
+require('./src/utils/error-tracker').init();
+
 const path = require('path');
 const express = require('express');
 const helmet = require('helmet');

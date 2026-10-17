@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1058.0",
+    "@sentry/node": "10.76.0",
     "bcrypt": "^6.0.0",
     "bull": "^4.16.0",
     "cors": "^2.8.5",
