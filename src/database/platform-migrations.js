@@ -884,6 +884,48 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 22,
+    name: 'p022_billing_events_tenant_id',
+    description:
+      'billing_events.tenant_id (nullable, no backfill) + index (tenant_id, status, received_at) so an admin can list a tenant\'s billing events (OBS-05). Safe to re-run.',
+    // BACKUP before applying live:  mysqldump <platform_db> billing_events > billing_events_pre_p022.sql
+    // ROLLBACK (deploy the previous app build FIRST: the model selects this column):
+    //   ALTER TABLE `billing_events` DROP INDEX `billing_events_tenant_status`, DROP COLUMN `tenant_id`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 22;
+    // Old rows keep tenant_id NULL (no backfill): their tenant is not recorded anywhere reliable,
+    // and guessing it from the payload would attach events to the wrong tenant.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+
+      const [tableExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['billing_events'], type: QueryTypes.SELECT }
+      );
+      if (!tableExists) return null;
+
+      // Same type and collation as tenants.id / tenant_subscriptions.tenant_id (CHAR(36) utf8mb4_bin).
+      const added = await _addNullableColumn(sequelize, {
+        table: 'billing_events',
+        column: 'tenant_id',
+        type: 'CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin',
+        expectedType: 'char(36)',
+        migrationName: 'p022',
+      });
+      if (added?.skipped) return added;
+
+      const [hasIndex] = await sequelize.query(
+        "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_events' AND INDEX_NAME = 'billing_events_tenant_status' LIMIT 1",
+        { type: QueryTypes.SELECT }
+      );
+      if (!hasIndex) {
+        await sequelize.query(
+          'ALTER TABLE `billing_events` ADD INDEX `billing_events_tenant_status` (`tenant_id`, `status`, `received_at`)'
+        );
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

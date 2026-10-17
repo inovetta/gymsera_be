@@ -56,6 +56,11 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(500),
         allowNull: true,
       },
+      tenantId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        comment: 'OBS-05: the tenant that owns the subscription this event is about, when known. Null when no tenant owns it yet, and on rows from before p022 (not backfilled).',
+      },
       receivedAt: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -73,6 +78,7 @@ module.exports = (sequelize) => {
       indexes: [
         { unique: true, fields: ['provider', 'provider_event_id'], name: 'billing_events_provider_event' },
         { fields: ['status'] },
+        { fields: ['tenant_id', 'status', 'received_at'], name: 'billing_events_tenant_status' },
       ],
     }
   );

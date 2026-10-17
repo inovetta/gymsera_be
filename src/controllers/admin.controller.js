@@ -92,6 +92,20 @@ const getTenantBranches = async (req, res, next) => {
   }
 };
 
+// ── GET /admin/billing-events (OBS-05) ───────────────────────────────────────
+const listBillingEvents = async (req, res, next) => {
+  try {
+    const { page, limit, offset } = parsePagination(req.query, 20, 100);
+    const { tenantId, status, provider } = req.query;
+    const { items, total } = await require('../services/billing-event.service').listEvents({
+      tenantId, status, provider, limit, offset,
+    });
+    return sendSuccess(res, items, 'OK', 200, { total, page, limit, totalPages: Math.ceil(total / limit) });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /admin/tenants/:id/capacity-audit ────────────────────────────────────
 const getTenantCapacityAudit = async (req, res, next) => {
   try {
@@ -465,7 +479,7 @@ const getBranchVisibilityHistory = async (req, res, next) => {
 
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
-  reactivateTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus,
+  reactivateTenant, getTenantBranches, getTenantCapacityAudit, listBillingEvents, updateTenantBranchStatus,
   suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
   getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,

@@ -112,11 +112,12 @@ async function bootstrap() {
     });
 
     // 4b. Retry billing webhook events that failed to process (BILL-12, REL-03: runs with distributed lock)
-    const { processPendingEvents } = require('./src/services/billing-event.service');
+    const { processPendingEvents, sweepBillingAlerts } = require('./src/services/billing-event.service');
     cron.schedule('* * * * *', () => {
-      processPendingEvents().catch((err) =>
-        console.error('[Cron] billing-events sweep error:', err.message)
-      );
+      processPendingEvents()
+        .catch((err) => console.error('[Cron] billing-events sweep error:', err.message))
+        // OBS-05: alert on stuck / failing events and duplicate billing (never throws; one alert per code per hour)
+        .then(() => sweepBillingAlerts());
     });
 
     // 5. Start HTTP server

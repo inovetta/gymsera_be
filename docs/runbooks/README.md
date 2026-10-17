@@ -10,6 +10,9 @@ missing **What it means**, **First checks** or **Rollback**.
 | `CAPACITY_DRIFT` | [capacity-audit.md](capacity-audit.md#capacity_drift) |
 | `CAPACITY_EMPTY_ACTIVE_ORG` | [capacity-audit.md](capacity-audit.md#capacity_empty_active_org) |
 | `CAPACITY_AUDIT_FAILED` | [capacity-audit.md](capacity-audit.md#capacity_audit_failed) |
+| `BILLING_EVENT_UNPROCESSED` | [billing-events.md](billing-events.md#billing_event_unprocessed) |
+| `BILLING_EVENT_FAILED` | [billing-events.md](billing-events.md#billing_event_failed) |
+| `BILLING_DUPLICATE_BILLING` | [billing-events.md](billing-events.md#billing_duplicate_billing) |
 
 ## How alerts arrive
 

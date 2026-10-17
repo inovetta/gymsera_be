@@ -453,6 +453,7 @@ const runExpiryCheck = async () => {
         console.warn('[Cron] Google voided-purchases sweep skipped:', err.message)
       );
       const recon = await billingEvents.reconcileStoreSubscriptions();
+      await billingEvents.sweepBillingAlerts(); // OBS-05: after reconciliation, so fresh duplicate-billing flags count; covers serverless hosting
       if (recon.failed > 0) console.warn(`[Cron] Store reconciliation: ${recon.failed}/${recon.checked} subscription(s) failed to refresh`);
     } catch (err) {
       console.error('[Cron] Billing reconciliation failed:', err.message);
