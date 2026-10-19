@@ -110,6 +110,53 @@ describe('OBS-02: release and environment come from the environment', () => {
   });
 });
 
+describe('OBS-02: the release is never guessed from the CI or hosting environment', () => {
+  // The SDK would otherwise fall back to these (a git SHA from CI, a Heroku/Vercel/Railway commit ...).
+  const AUTO_DETECT = [
+    'GITHUB_SHA', 'CI_COMMIT_SHA', 'CI_BUILD_REF', 'CI_MERGE_REQUEST_SOURCE_BRANCH_SHA', 'BITBUCKET_COMMIT',
+    'CIRCLE_SHA1', 'TRAVIS_COMMIT', 'BUILDKITE_COMMIT', 'VERCEL_GIT_COMMIT_SHA', 'HEROKU_SLUG_COMMIT',
+    'HEROKU_TEST_RUN_COMMIT_VERSION', 'RAILWAY_GIT_COMMIT_SHA', 'SOURCE_VERSION', 'COMMIT_REF',
+  ];
+  const savedCi = {};
+  beforeEach(() => {
+    for (const k of AUTO_DETECT) savedCi[k] = process.env[k];
+  });
+  afterEach(() => {
+    for (const k of AUTO_DETECT) {
+      if (savedCi[k] === undefined) delete process.env[k];
+      else process.env[k] = savedCi[k];
+    }
+  });
+
+  test('with SENTRY_RELEASE unset, no CI / hosting commit variable becomes the release', async () => {
+    const t = fakeTransport();
+    for (const k of AUTO_DETECT) process.env[k] = `sha-from-${k.toLowerCase()}-0123456789abcdef`;
+    await startWith(t);
+    errorTracker.captureException(new Error('boom'));
+    await settle();
+    expect(t.events()[0].release).toBeUndefined();
+    expect(JSON.stringify(t.events())).not.toContain('sha-from-');
+  });
+
+  test('with SENTRY_RELEASE set, it wins over every CI / hosting variable', async () => {
+    const t = fakeTransport();
+    process.env.GITHUB_SHA = 'b559b3e0123456789abcdef0123456789abcdef0';
+    await startWith(t, { SENTRY_RELEASE: 'gymsera-api@2.0.0' });
+    errorTracker.captureException(new Error('boom'));
+    await settle();
+    expect(t.events()[0].release).toBe('gymsera-api@2.0.0');
+  });
+
+  test('an empty SENTRY_RELEASE counts as not set', async () => {
+    const t = fakeTransport();
+    process.env.GITHUB_SHA = 'b559b3e0123456789abcdef0123456789abcdef0';
+    await startWith(t, { SENTRY_RELEASE: '' });
+    errorTracker.captureException(new Error('boom'));
+    await settle();
+    expect(t.events()[0].release).toBeUndefined();
+  });
+});
+
 describe('OBS-02: what leaves the process', () => {
   const req = () => ({
     id: 'req-77',

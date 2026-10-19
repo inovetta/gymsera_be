@@ -8,7 +8,8 @@
  *  - No default integrations and no OpenTelemetry: nothing in `http`, `express` or the database
  *    drivers is patched, no process handlers are added, no breadcrumbs or performance data are
  *    collected. Errors are reported explicitly (errorHandler 5xx, server.js process handlers, alerts).
- *  - `release` (SENTRY_RELEASE) and `environment` (SENTRY_ENVIRONMENT, else NODE_ENV) come from the env.
+ *  - `release` is SENTRY_RELEASE and nothing else (never guessed from CI or hosting variables);
+ *    `environment` is SENTRY_ENVIRONMENT, else NODE_ENV.
  *  - The user id is the only user field. The request id, tenant id and route PATTERN are tags.
  *    Request bodies, headers, cookies, query strings, IP addresses and host names never leave.
  *  - Every event passes `scrubEvent` (the SEC-07 redaction, whitelist style). If scrubbing fails the
@@ -84,6 +85,8 @@ const scrubEvent = (event) => {
       };
     }
 
+    if (!out.release) delete out.release; // an empty release is no release
+
     // The user id and nothing else.
     const userId = out.user && out.user.id !== undefined && out.user.id !== null ? String(out.user.id) : null;
     out.user = userId ? { id: userId } : undefined;
@@ -125,7 +128,9 @@ const init = (overrides = {}) => {
     loaded.init({
       dsn,
       environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
-      ...(process.env.SENTRY_RELEASE && { release: process.env.SENTRY_RELEASE }),
+      // Always passed, even when empty: the SDK guesses a release (GITHUB_SHA, CI_COMMIT_SHA, HEROKU_*, ...)
+      // whenever this option is undefined. The release is exactly SENTRY_RELEASE, or none.
+      release: process.env.SENTRY_RELEASE || '',
       defaultIntegrations: false,
       skipOpenTelemetrySetup: true,
       integrations: [
