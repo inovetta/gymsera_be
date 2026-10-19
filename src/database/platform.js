@@ -4,13 +4,19 @@ const { Sequelize } = require('sequelize');
 require('mysql2');
 const dbConfig = require('../config/database.config');
 
+const slowQuery = require('./slow-query');
+
 const { host, port, database, username, password } = dbConfig.platform;
+
+const devLogging = process.env.NODE_ENV === 'development' ? (sql) => console.log('[Platform DB]', sql) : false;
 
 const sequelize = new Sequelize(database, username, password, {
   host,
   port,
   dialect: 'mysql',
-  logging: process.env.NODE_ENV === 'development' ? (sql) => console.log('[Platform DB]', sql) : false,
+  logging: devLogging,
+  // OBS-04: in-app slow query log; {} (no change at all) unless SLOW_QUERY_MS is set
+  ...slowQuery.slowQueryOptions({ db: 'platform', existingLogging: devLogging || undefined }),
   pool: {
     max: 10,
     min: 0,

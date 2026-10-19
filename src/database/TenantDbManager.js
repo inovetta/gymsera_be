@@ -1,6 +1,7 @@
 const { Sequelize } = require('sequelize');
 const { decrypt } = require('../utils/crypto.utils');
 const registerTenantModels = require('../models/tenant');
+const slowQuery = require('./slow-query');
 
 /**
  * TenantDbManager
@@ -74,6 +75,8 @@ class TenantDbManager {
     const sequelize = new Sequelize(connUrl, {
       dialect: 'mysql',
       logging: false,
+      // OBS-04: in-app slow query log; {} (no change at all) unless SLOW_QUERY_MS is set
+      ...slowQuery.slowQueryOptions({ db: 'tenant' }),
       pool: { max: maxConnections, min: 0, acquire: 20000, idle: idleMs },
       dialectOptions: {
         connectTimeout: 20000,

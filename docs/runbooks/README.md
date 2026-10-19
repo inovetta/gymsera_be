@@ -14,6 +14,12 @@ missing **What it means**, **First checks** or **Rollback**.
 | `BILLING_EVENT_FAILED` | [billing-events.md](billing-events.md#billing_event_failed) |
 | `BILLING_DUPLICATE_BILLING` | [billing-events.md](billing-events.md#billing_duplicate_billing) |
 
+## Procedures (not tied to an alert code)
+
+| Procedure | Runbook |
+|---|---|
+| Slow query log and the weekly index review (OBS-04) | [slow-queries.md](slow-queries.md) |
+
 ## How alerts arrive
 
 - An in-app notification (type `PLATFORM_ALERT`, high priority) to every ACTIVE platform admin.
