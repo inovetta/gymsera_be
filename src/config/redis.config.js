@@ -55,6 +55,29 @@ const getRedisClient = () => {
 };
 
 /**
+ * Quits the singleton client and forgets it, so its socket (and everything the client's callbacks
+ * reference) can be released. Used by the test harness after every test file: Redis is on in CI, and a
+ * client per file that never quit kept each file's whole module graph in memory. Never throws.
+ * @returns {Promise<boolean>} true when there was a client to close
+ */
+const closeRedisClient = async () => {
+  const current = client;
+  client = undefined;
+  if (!current) return false;
+  try {
+    if (current.status === 'ready') await current.quit();
+    else current.disconnect();
+  } catch (_) {
+    try {
+      current.disconnect();
+    } catch (__) {
+      /* already closed */
+    }
+  }
+  return true;
+};
+
+/**
  * Safely ensures the Redis client is connected and ready to accept commands.
  * Awaits connection establishment if currently handshaking.
  * Returns null if Redis is disabled, offline, or failed to connect.
@@ -128,4 +151,4 @@ const safeRedisDel = async (key) => {
   }
 };
 
-module.exports = { getRedisClient, ensureRedisReady, safeRedisGet, safeRedisSetex, safeRedisDel };
+module.exports = { getRedisClient, closeRedisClient, ensureRedisReady, safeRedisGet, safeRedisSetex, safeRedisDel };
