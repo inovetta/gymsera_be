@@ -5,11 +5,15 @@ require('dotenv').config();
 const logRedaction = require('./src/utils/log-redaction');
 logRedaction.installConsoleRedaction();
 
+// OBS-02: error tracking. A no-op unless SENTRY_DSN is set (src/utils/error-tracker.js).
+require('./src/utils/error-tracker').init();
+
 const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const rateLimitStores = require('./src/utils/rate-limit-stores');
 let swaggerSpec = {};
 try {
   swaggerSpec = require('./src/config/swagger-config');
@@ -152,6 +156,7 @@ const apiLimitMax = process.env.API_RATE_LIMIT_MAX
   : (isDevOrTest ? 100000 : 10000);
 
 const apiLimiter = rateLimit({
+  store: rateLimitStores.createMemoryStore(),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: apiLimitMax,
   standardHeaders: true,
@@ -176,6 +181,7 @@ const authLimitMax = process.env.AUTH_RATE_LIMIT_MAX
   : (isDevOrTest ? 10000 : 1000);
 
 const authLimiter = rateLimit({
+  store: rateLimitStores.createMemoryStore(),
   windowMs: 15 * 60 * 1000,
   max: authLimitMax,
   standardHeaders: true,

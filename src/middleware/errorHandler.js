@@ -6,6 +6,7 @@ const {
 } = require('sequelize');
 
 const { sendError } = require('../utils/response.utils');
+const errorTracker = require('../utils/error-tracker');
 
 /**
  * Global error handler middleware (spec §4.1).
@@ -39,6 +40,7 @@ const errorHandler = (err, req, res, _next) => {
   // ── Sequelize: generic DB error ───────────────────────────────────────────────
   if (err instanceof DatabaseError) {
     console.error('[DB Error]', err.message, err.original?.sqlMessage || err.original?.message || err.original);
+    errorTracker.captureException(err, { req }); // OBS-02: never throws, inert without SENTRY_DSN
     const detail = process.env.NODE_ENV !== 'production'
       ? (err.original?.sqlMessage || err.original?.message || err.message)
       : null;
@@ -65,6 +67,7 @@ const errorHandler = (err, req, res, _next) => {
 
   if (statusCode >= 500) {
     console.error(`[${new Date().toISOString()}] Unhandled error:`, err);
+    errorTracker.captureException(err, { req }); // OBS-02
   }
 
   const isV2 = req.headers['x-api-version'] === '2' || req.headers['accept-version'] === '2';

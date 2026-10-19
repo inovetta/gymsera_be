@@ -39,6 +39,7 @@ const keyMatches = (provided, expected) => {
 /** Wrong-key attempts (and scrapes) are rate limited per IP. */
 const createMetricsLimiter = (max = 60) =>
   rateLimit({
+    store: require('../utils/rate-limit-stores').createMemoryStore(),
     windowMs: 60 * 1000,
     max,
     standardHeaders: true,
