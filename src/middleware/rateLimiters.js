@@ -35,6 +35,7 @@ const DEFAULTS = {
   PWRESET_ID: [60 * 60, 10],
   SEARCH_IP: [60, 120],
   MUTATION_USER: [60, 120],
+  REVEAL_USER: [60 * 60, 300],
 };
 
 const intFromEnv = (name) => {
@@ -119,6 +120,11 @@ const createLimiters = () => ({
   passwordResetIp: build('PWRESET_IP', TOO_MANY, byIp('pwreset')),
   passwordResetAccount: build('PWRESET_ID', TOO_MANY, byIpAndAccount('pwreset')),
   search: build('SEARCH_IP', 'Too many searches. Please slow down.', byIp('search')),
+  // SEC-17: bulk-scraping contact details through the audited reveal route is slowed down per admin.
+  reveal: build('REVEAL_USER', 'Too many contact reveals. Please wait before revealing more.', (req) => {
+    const user = verifiedUserId(req);
+    return user ? `reveal:u:${user}` : null;
+  }),
   mutation: build('MUTATION_USER', 'Too many changes in a short time. Please slow down.', (req) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return null;
     const url = (req.originalUrl || req.url || '').toLowerCase();
@@ -156,6 +162,7 @@ const mount = (app, prefix = '/api/v1') => {
   app.use(prefix, when('POST', exact('/auth/password-reset/request', '/auth/password-reset/confirm'),
     [l.passwordResetIp, l.passwordResetAccount]));
   app.use(prefix, when('GET', (p) => p === '/discovery' || p.startsWith('/discovery/'), [l.search]));
+  app.use(prefix, when('POST', (p) => /^\/admin\/tenants\/[^/]+\/members\/[^/]+\/reveal$/.test(p), [l.reveal]));
   app.use(prefix, l.mutation);
   return l;
 };

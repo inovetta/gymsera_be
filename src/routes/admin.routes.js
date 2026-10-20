@@ -225,6 +225,8 @@ router.delete(
 );
 
 router.get('/tenants/:id/members', adminController.getTenantMembers);
+// SEC-17: the only way to see a member's full e-mail and phone; every call is audited.
+router.post('/tenants/:id/members/:userId/reveal', adminController.revealTenantMemberContact);
 
 router.get('/tenants/:id/membership-plans', adminController.getTenantMembershipPlans);
 
