@@ -201,6 +201,20 @@ const getTenantMembers = async (req, res, next) => {
   }
 };
 
+// ── POST /admin/tenants/:id/members/:userId/reveal (SEC-17) ──────────────────
+const revealTenantMemberContact = async (req, res, next) => {
+  try {
+    const result = await adminService.revealTenantMemberContact(req.params.id, req.params.userId, {
+      adminUserId: req.user.id,
+      reason: req.body?.reason,
+    });
+    res.set('Cache-Control', 'no-store');
+    return sendSuccess(res, result, 'OK');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /admin/tenants/:id/membership-plans ───────────────────────────────────
 const getTenantMembershipPlans = async (req, res, next) => {
   try {
@@ -490,7 +504,7 @@ const getBranchVisibilityHistory = async (req, res, next) => {
 
 module.exports = {
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
-  reactivateTenant, getTenantBranches, getTenantCapacityAudit, listBillingEvents, listAuditLogs, updateTenantBranchStatus,
+  reactivateTenant, revealTenantMemberContact, getTenantBranches, getTenantCapacityAudit, listBillingEvents, listAuditLogs, updateTenantBranchStatus,
   suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
   getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,

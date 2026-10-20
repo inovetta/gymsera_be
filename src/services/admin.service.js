@@ -17,6 +17,7 @@ const { createError, parsePagination, buildPagination } = require('../utils/resp
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
 const { processTenantProvisioning, provisioningSummary, PROVISIONING_REQUESTED } = require('./tenant-provisioning.service');
+const { maskEmail, maskPhone } = require('../utils/pii-mask');
 const emailService = require('./email.service');
 const TenantDbManager = require('../database/TenantDbManager');
 const { safeRedisDel } = require('../config/redis.config');
@@ -909,12 +910,57 @@ const getTenantMembers = async (tenantId, { page = 1, limit = 20 } = {}) => {
     : [];
   const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
 
-  const members = subscriptions.map((s) => ({
-    ...s.toJSON(),
-    user: userMap[s.userId] || null,
-  }));
+  // SEC-17: e-mail and phone are masked by default; the full values come from revealTenantMemberContact,
+  // which writes an audit row.
+  const members = subscriptions.map((s) => {
+    const u = userMap[s.userId];
+    return {
+      ...s.toJSON(),
+      user: u
+        ? { ...u.toJSON(), email: maskEmail(u.email), phone: maskPhone(u.phone), contactMasked: true }
+        : null,
+    };
+  });
 
   return { members, pagination: buildPagination(count, page, limit) };
+};
+
+// ── revealTenantMemberContact (admin, audited) ────────────────────────────────
+/**
+ * The full e-mail and phone of one member of a tenant, for a platform admin who needs them.
+ * The audit row is written BEFORE anything is returned: if it cannot be written, nothing is revealed.
+ * The row holds ids, the field names and the admin's reason, never the values.
+ */
+const revealTenantMemberContact = async (tenantId, memberUserId, { adminUserId, reason } = {}) => {
+  const actualTenantId = tenantId.includes(':') ? tenantId.split(':')[0] : tenantId;
+  if (!/^[0-9a-f-]{36}$/i.test(String(memberUserId))) throw createError('Member not found in this tenant', 404);
+  const { models } = await _getTenantDb(tenantId);
+
+  // Only people who belong to this tenant: the route is not a way to look up any user.
+  const membership = await models.MemberSubscription.findOne({ where: { userId: memberUserId }, attributes: ['id'] });
+  const user = membership
+    ? await User.findByPk(memberUserId, { attributes: ['id', 'email', 'phone'] })
+    : null;
+  if (!user) throw createError('Member not found in this tenant', 404);
+
+  const cleanReason = typeof reason === 'string'
+    ? [...reason].map((c) => (c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? ' ' : c)).join('').trim().slice(0, 200)
+    : '';
+  try {
+    await PlatformAuditLog.create({
+      actorUserId: adminUserId || null,
+      action: 'admin.member_contact_revealed',
+      targetType: 'user',
+      targetId: user.id,
+      details: { tenantId: actualTenantId, fields: ['email', 'phone'], ...(cleanReason && { reason: cleanReason }) },
+      createdAt: new Date(),
+    });
+  } catch (err) {
+    console.error('[Admin:Audit] Could not record member contact reveal:', err.message);
+    throw createError('Could not record the audit entry, so the contact details were not revealed', 500);
+  }
+
+  return { userId: user.id, email: user.email, phone: user.phone };
 };
 
 // ── getTenantMembershipPlans (admin) ──────────────────────────────────────────
@@ -1675,6 +1721,7 @@ const getBranchVisibilityHistory = async (branchId) => {
 };
 
 module.exports = {
+  revealTenantMemberContact,
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
   reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus,
   suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
