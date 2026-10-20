@@ -101,7 +101,11 @@ const _assertIdentifierRateLimit = async (email) => {
     },
   });
   if (count >= 10) {
-    throw createError('Too many verification codes requested for this email. Please try again later.', 429);
+    // The cap lifts when the oldest code in the window is an hour old.
+    const oldest = await Otp.findOne({ where: { email, createdAt: { [Op.gt]: oneHourAgo } }, order: [['createdAt', 'ASC']] });
+    const err = createError('Too many verification codes requested for this email. Please try again later.', 429);
+    err.retryAfter = oldest ? Math.max(1, Math.ceil((oldest.createdAt.getTime() + 60 * 60 * 1000 - Date.now()) / 1000)) : 3600;
+    throw err;
   }
 };
 

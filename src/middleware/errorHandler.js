@@ -70,6 +70,11 @@ const errorHandler = (err, req, res, _next) => {
     errorTracker.captureException(err, { req }); // OBS-02
   }
 
+  // A 429 raised in a service (OTP cooldown, per-email OTP cap) says when to retry (SEC-04).
+  if (statusCode === 429 && Number.isFinite(err.retryAfter) && !res.headersSent) {
+    res.setHeader('Retry-After', String(Math.max(1, Math.ceil(err.retryAfter))));
+  }
+
   const isV2 = req.headers['x-api-version'] === '2' || req.headers['accept-version'] === '2';
   if (!isV2 && !err.code) {
     return res.status(statusCode).json({
