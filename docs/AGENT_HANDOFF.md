@@ -17,36 +17,38 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-16 |
+| Last updated | 2026-10-20 |
 | Updated by | Claude Code (Sonnet 5.5) |
 | Current prompt | **Prompt 5A: Global readiness, realtime and observability** (owner chose to run it as four sub-prompts, in order) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none: 5A-1 and 5A-2 done, 5A-3 not started) |
+| Issue in progress | (none: 5A-1, 5A-2 and 5A-3 done; 5A-4 not started) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-5A-1 (GLB-01, GLB-02, BILL-11, BILL-17) and 5A-2 (RT-01 to RT-09, NEW-84, NEW-84b, NEW-85) are done. Backend PRs through #114
-and mobile PRs #9 to #15 are merged. **NEW-84b (`167505b`, branch `phase-5/prompt-5a2-new84b-conversation-updated`) and
-NEW-85 (`5435ae1`, branch `phase-5/prompt-5a2-new85-tenant-room-members`) are committed but not merged**, and this docs
-branch (`phase-5/prompt-5a2-docs`) is not pushed. Details: spec §13 (rows `RT-01 (Prompt 5A-2)` onward) and
-"Prompt 5A-2 close-out notes".
+5A-1 (GLB-01, GLB-02, BILL-11, BILL-17), 5A-2 (RT-01 to RT-09, NEW-84, NEW-84b, NEW-85) and **5A-3 (OBS-01 to OBS-07, OBS-09, NEW-86)**
+are done and merged, except two items that wait on the owner: **OBS-02 on CMS, web and mobile (PR9, needs a Sentry DSN)** and
+**OBS-08 client performance (PR12, same DSN)**. Backend PRs through #126; CMS PRs #28, #29; web PR #17; mobile PR #16.
+Details: spec §13 (rows `OBS-01 (Prompt 5A-3)` onward) and "Prompt 5A-3 close-out notes". The 5A-3 docs branch
+(`phase-5/prompt-5a3-docs`, from `origin/main` cf67ec4) is committed, **not pushed**.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `phase-5/prompt-5a2-docs` (from `origin/main` b2ca02f) | see `git log` (docs only) | no |
-| gymsera_web | `main` | 92ad8b5 | no |
-| gymsera_cms | `main` | c0460d5 | no |
-| gyms_era | `master` | 982857f (PR #15) | no |
+| gymsera_be | `phase-5/prompt-5a3-docs` (from `origin/main` cf67ec4) | see `git log` (docs only) | no |
+| gymsera_web | `main` | ab62be1 (PR #17) | no |
+| gymsera_cms | `main` | 8b82678 (PR #29) | no |
+| gyms_era | `master` | 922cd2d (PR #16) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Push and merge, in this order: NEW-84b, NEW-85, then this docs branch.** Apply p020 and p021 if any environment is
-> missing them (see the 5A-2 deploy notes in spec §13: p020 was missed once). Then **5A-3 observability: OBS-01 to OBS-09**
-> (spec §12.12), then **5A-4 security: SEC-04, SEC-05, SEC-08, SEC-14 to SEC-18 and BILL-15**. GLB-03 to GLB-09 are not
-> started; GLB-03 stays English-only per R-31.
-> **Owner decision waiting: NEW-86** (staff sockets get no tenant or branch rooms because staff tokens carry no `tenantId`).
-> NEW-83 stays open (not reproduced on `22c7d2c` / `1d96ea6`, cause never found).
+> **Push and merge the 5A-3 docs branch.** Then, before deploying the 5A-3 backend: apply **p022** (OBS-05) and read the
+> "Prompt 5A-3 deploy notes" in spec §13 (new optional env vars `METRICS_KEY`, `SENTRY_*`, `SLOW_QUERY_MS`; logs are JSON in
+> production; the MySQL slow log is an owner action). Then start **5A-4 security: SEC-04, SEC-05, SEC-08, SEC-14 to SEC-18 and
+> BILL-15**. GLB-03 to GLB-09 are not started; GLB-03 stays English-only per R-31.
+> **Not done in 5A-3, waiting on the owner:** PR9 (client Sentry for CMS, web and mobile) and PR12 (OBS-08 client performance)
+> both need the Sentry DSN (R-32). Also not done: dashboards and a metrics scraper, the on-call rota.
+> **Open from 5A-3:** NEW-87 (P2: staff sockets still cannot use chat), NEW-88 to NEW-94 (P3). NEW-86 is DONE (`9c6f710`).
+> NEW-83 stays open (not reproduced on `22c7d2c` / `1d96ea6`; 5A-3 recorded a laptop-sleep hypothesis, see the close-out notes).
 > 5A-1 leftovers for clients (not done): show times in the branch timezone, format money with ICU, read
 > `webCardPaymentsEnabled` from `GET /billing/plans`.
 > 5A-2 P3 follow-ups (not scheduled): drop a notification for a different device user; refresh the router on
@@ -62,11 +64,12 @@ branch (`phase-5/prompt-5a2-docs`) is not pushed. Details: spec §13 (rows `RT-0
   - **NEW-81 (4A):** where the app-level feature flags, minimum app version and error-copy version live, and whether the mobile app sends its version (no app-version header today). Needed for the bootstrap contract and the §16 force-update check.
   - **NEW-82 (4A):** make the CMS admin tenants search work on the backend, or remove the search box.
   - **NEW-83 (5A-1, P2):** kept OPEN. It did not reproduce on `22c7d2c` or `1d96ea6`, and every 5A-2 `DISABLE_REDIS=true` run was green, but the cause was never found (spec §13 row).
-  - **NEW-86 (5A-2, P2, proposed):** staff tokens carry `role: MEMBER` and `tenantId: null`, so staff sockets join no tenant or branch rooms. Decide whether sockets should derive tenants from membership (spec §13).
+  - ~~NEW-86~~ DONE in 5A-3 (`9c6f710`); the follow-on NEW-87 (staff chat over sockets) is open, no owner decision needed to schedule it.
   - **Before adding a second API instance (4A):** the discovery snapshot invalidation is in process; add a platform-DB version read first (decided single instance on 2026-10-14).
   - ~~NEW-54: delete the six live-server smoke tests~~ DONE (be PR #90).
   - **Proposed backend issues to schedule:** NEW-61 to NEW-67 (from Prompt 3C audit; see spec §13 and `cms/docs/changes/PROMPT-3C.md`) NEW-69 to NEW-72 (from Prompt 3D) and NEW-74 to NEW-78 (from Prompt 3E; mobile and CMS/web client work, NEW-78 is a test fix under R-19).
   - ~~Dependabot criticals~~ cleared: bcrypt 6, multer 2, `npm audit fix` (PR #91); nodemailer 10.1.0 (PR #92).
+- **Prompt 5A-3 deploy notes:** migration **p022** (`billing_events.tenant_id`; without it every billing-events read fails); optional env `METRICS_KEY`, `METRICS_RATE_LIMIT_MAX`, `SENTRY_DSN`, `SENTRY_RELEASE`, `SENTRY_ENVIRONMENT`, `SLOW_QUERY_MS`, `LOG_FORMAT`, `LOG_LEVEL`; JSON logs in production; at least one ACTIVE platform admin to receive alerts; owner action: MySQL slow log (`docs/runbooks/slow-queries.md`). Full text in spec §13 "Prompt 5A-3 close-out notes".
 - **Prompt 5A-2 deploy notes:** two platform migrations, **p020** (`device_tokens` app_version, locale, timezone; RT-01; was missed once) and **p021** (`messages.client_message_id` + unique key; RT-05; without it every message read fails). Apply both before the backend build goes live; full steps, backup and rollback in spec §13 "Prompt 5A-2 close-out notes".
 - **Prompt 4A deploy notes:** no migration. Size MySQL `max_connections` for the tenant pool ceiling (200 pools x 3 connections per API process, soft cap; env `TENANT_POOL_*`). Discovery GETs send `public, s-maxage=60` (`DISCOVERY_CDN_MAX_AGE_S`, 0 = `no-store`); snapshot TTL `DISCOVERY_SNAPSHOT_TTL_MS` (default 60000, 0 = off). The mobile build with `/me/bootstrap` (app `7f90bb6`) falls back to the old calls on a 404, so backend first is safe in either order.
 - **Deploy order (critical):** platform migrations **p004–p006 must be applied before this backend code goes live.**
@@ -119,6 +122,19 @@ branch (`phase-5/prompt-5a2-docs`) is not pushed. Details: spec §13 (rows `RT-0
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 5A-3: Observability (gymsera_be PRs #119 to #126, gymsera_cms PRs #28 and #29, gymsera_web PR #17, gyms_era PR #16; docs in be):**
+- [x] OBS-01: JSON logs, request context, capped inbound id (be `db790e0`); clients send `X-Request-Id` (app `3324c3f`, cms `21723b1`, web `731dba5`)
+- [x] OBS-06: alert helper and nightly capacity alerts (be `e4ef191`, lint fix `467e5dd`)
+- [x] OBS-05: billing events per tenant and alerts (be `1e67547`, p022; cms `4d6d729`)
+- [x] OBS-07: append-only audit trails, `GET /admin/audit-logs` (be `fe6aa4c`)
+- [x] OBS-03: key-protected `/metrics` (be `8ce1c72`)
+- [x] OBS-02 backend: Sentry behind the error-tracker seam (be `43f6e0b`, `1ec1141`); CI heap and timeout fixes (be `e8a71b3`, `181d54a`)
+- [x] OBS-04: slow query runbook and in-app fallback (be `bd7cf04`); MySQL settings are an owner action
+- [x] OBS-09: runbooks for six alert codes (PR11 folded into the above)
+- [x] NEW-86 (be `9c6f710`); NEW-87 to NEW-94 recorded; R-32 to R-34 recorded in §14
+- [ ] PR9 client Sentry (CMS, web, mobile): needs the DSN. PR12 OBS-08 client performance: needs the DSN
+- [ ] Not measured: real Sentry project, real Prometheus scrape, MySQL slow log on a server, anything on staging
 
 **Prompt 4A: Speed (gymsera_be PRs #97 to #105, gyms_era PR #8; docs in be):**
 - [x] NEW-79: gym-wide ledger reads no longer 500 (be `800ecc7`, PR #97)
@@ -484,3 +500,5 @@ branch (`phase-5/prompt-5a2-docs`) is not pushed. Details: spec §13 (rows `RT-0
 | 85 | 2026-10-15 to 2026-10-16 | Claude Code (Sonnet 5.5) | Prompt 5A-2, backend | RT-01 (be `ef43bb1`), RT-02/03 (`b20a4c9`), RT-05 (`de88c47`), RT-08 (`739b559`), NEW-84 (`1282c89`), NEW-84b (`167505b`), NEW-85 (`5435ae1`); full suite green x3 plus one `DISABLE_REDIS=true` run per PR (last counts 176 suites / 1576 tests); two NEW-85 runs discarded because the laptop slept (logs kept). Agent name for RT-01 to RT-05 taken from the commit trailers | task complete (NEW-84b and NEW-85 not merged; nothing pushed by the agent) | yes |
 | 86 | 2026-10-15 to 2026-10-16 | Claude Code (Sonnet 5.5) | Prompt 5A-2, mobile (`Amirhaiderkhan/gyms_era`) | RT-01 (`3e556ac`), RT-05 (`730f89f`), RT-02 (`3b73ef0`), RT-03 (`3953a51`), RT-06 (`c41948b`), RT-08 (`6706df4`), RT-07 + RT-09 (`956cc6d`); `flutter test` x3 per PR, analyze with no new findings | task complete (all merged, PRs #9 to #15) | yes |
 | 87 | 2026-10-16 | Claude Code (Sonnet 5.5) | Prompt 5A-2 close-out (docs only) | Spec §13 rows RT-01 to RT-09, NEW-84, NEW-84b, NEW-85, NEW-86; NEW-83 re-test; "Prompt 5A-2 close-out notes" (deploy notes p020/p021, P3 follow-ups); handoff moved to 5A-3 | task complete (not pushed) | yes |
+| 88 | 2026-10-16 to 2026-10-19 | Claude Code (Sonnet 5.5) | Prompt 5A-3, implementation (be, cms, web, `Amirhaiderkhan/gyms_era`) | OBS-01 (be `db790e0`; app `3324c3f`, cms `21723b1`, web `731dba5`), OBS-06 (`e4ef191`), OBS-05 (`1e67547`; cms `4d6d729`), OBS-07 (`fe6aa4c`), OBS-03 (`8ce1c72`), OBS-02 backend (`43f6e0b`, `1ec1141`, `e8a71b3`, `181d54a`), OBS-04 (`bd7cf04`), OBS-09, NEW-86 (`9c6f710`); owner pushed and merged | task complete; PR9 and PR12 left for the DSN | yes |
+| 89 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-3 close-out (docs only) | Spec §13 rows and "Prompt 5A-3 close-out notes", corrected OBS-01 and OBS-06 audit rows, R-32 to R-34, NEW-87 to NEW-94, §16 checklist notes; handoff moved to 5A-4 | task complete (not pushed) | yes |
