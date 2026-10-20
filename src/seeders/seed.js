@@ -22,6 +22,7 @@ require('dotenv').config();
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const { connect } = require('../database/platform');
+const { assertSeedingAllowed, platformAdminPassword } = require('./seed-guard');
 const {
   City, Area, PlatformPackage,
   User, Tenant, GymListing, TenantSubscription,
@@ -306,7 +307,7 @@ const SEED_USERS = [
     _key: 'superadmin',
     fullName: 'GymsEra Super Admin',
     email: 'superadmin@gymsera.com',
-    password: 'SuperAdmin@GymsEra1',
+    password: null, // platform admin: see seed-guard.js,
     role: 'PLATFORM_ADMIN',
     status: 'ACTIVE',
     isVerified: true,
@@ -317,7 +318,7 @@ const SEED_USERS = [
     _key: 'admin',
     fullName: 'GymsEra Platform Admin',
     email: 'admin@gymsera.com',
-    password: 'Admin@GymsEra1',
+    password: null, // platform admin: see seed-guard.js,
     role: 'PLATFORM_ADMIN',
     status: 'ACTIVE',
     isVerified: true,
@@ -327,7 +328,7 @@ const SEED_USERS = [
     _key: 'opsadmin',
     fullName: 'GymsEra Operations',
     email: 'ops@gymsera.com',
-    password: 'Ops@GymsEra1',
+    password: null, // platform admin: see seed-guard.js,
     role: 'PLATFORM_ADMIN',
     status: 'ACTIVE',
     isVerified: true,
@@ -337,7 +338,7 @@ const SEED_USERS = [
     _key: 'supportadmin',
     fullName: 'GymsEra Support',
     email: 'support@gymsera.com',
-    password: 'Support@GymsEra1',
+    password: null, // platform admin: see seed-guard.js,
     role: 'PLATFORM_ADMIN',
     status: 'ACTIVE',
     isVerified: true,
@@ -590,6 +591,8 @@ async function seedPackages() {
 async function seedUsers() {
   const userMap = {};
   let created = 0;
+  const adminSecret = platformAdminPassword();
+  let adminPasswordUsed = false;
 
   for (const u of SEED_USERS) {
     const existing = await User.findOne({ where: { email: u.email } });
@@ -597,7 +600,9 @@ async function seedUsers() {
       userMap[u._key] = existing;
       continue;
     }
-    const passwordHash = await bcrypt.hash(u.password, 12);
+    const isPlatformAdmin = u.role === 'PLATFORM_ADMIN';
+    if (isPlatformAdmin) adminPasswordUsed = true;
+    const passwordHash = await bcrypt.hash(isPlatformAdmin ? adminSecret.password : u.password, 12);
     const user = await User.create({
       fullName: u.fullName,
       email:    u.email,
@@ -612,6 +617,11 @@ async function seedUsers() {
   }
 
   console.log(`  Users: ${created} new  (${SEED_USERS.length} total processed)`);
+  if (adminPasswordUsed) {
+    console.log(adminSecret.generated
+      ? `  Platform admin password for this run (shown once, not stored): ${adminSecret.password}`
+      : '  Platform admin accounts use SEED_ADMIN_PASSWORD.');
+  }
   return userMap;
 }
 
@@ -1131,6 +1141,7 @@ async function seedReviews(userMap, tenantMap, listingMap) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
+  assertSeedingAllowed();
   console.log('🌱  GymsEra Full Platform Seeder\n');
 
   try {
@@ -1160,11 +1171,11 @@ async function main() {
     console.log('╔══════════════════════════════════════════════════════════════════╗');
     console.log('║                  TEST CREDENTIALS — STAGING                     ║');
     console.log('╠══════════════════════════════════════════════════════════════════╣');
-    console.log('║  ADMIN ACCOUNTS                                                  ║');
-    console.log('║  Super Admin      superadmin@gymsera.com  SuperAdmin@GymsEra1   ║');
-    console.log('║  Platform Admin   admin@gymsera.com       Admin@GymsEra1        ║');
-    console.log('║  Ops Admin        ops@gymsera.com         Ops@GymsEra1          ║');
-    console.log('║  Support Admin    support@gymsera.com     Support@GymsEra1      ║');
+    console.log('║  ADMIN ACCOUNTS (password: SEED_ADMIN_PASSWORD or printed above) ║');
+    console.log('║  Super Admin      superadmin@gymsera.com                  ║');
+    console.log('║  Platform Admin   admin@gymsera.com                       ║');
+    console.log('║  Ops Admin        ops@gymsera.com                         ║');
+    console.log('║  Support Admin    support@gymsera.com                     ║');
     console.log('╠══════════════════════════════════════════════════════════════════╣');
     console.log('║  GYM HOSTS (all password: GymHost@1234)                         ║');
     console.log('║  Iron Peak        ahmed@ironpeak.com                            ║');
