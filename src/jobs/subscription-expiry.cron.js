@@ -14,6 +14,7 @@
  *   3. Find expiring-soon member subscriptions → queue SUBSCRIPTION_EXPIRING_SOON email
  */
 const { Op } = require('sequelize');
+const { likeStartsWith } = require('../utils/sql-like');
 const TenantDbManager       = require('../database/TenantDbManager');
 const { sequelize: platformSequelize } = require('../database/platform');
 const { UserGymMembership, User, Tenant, TenantSubscription, GymListing, PlatformPackage } = require('../models/platform');
@@ -228,7 +229,7 @@ const _processPlatformSubscriptions = async () => {
     where: {
       [Op.or]: [
         { status: 'ACTIVE' },
-        { status: 'GRACE', platform: 'MANUAL', externalOriginalTransactionId: { [Op.like]: `${PAY_LATER_ID_PREFIX}%` } },
+        { status: 'GRACE', platform: 'MANUAL', externalOriginalTransactionId: { [Op.like]: likeStartsWith(PAY_LATER_ID_PREFIX) } },
       ],
       endDate: { [Op.lt]: todayStr },
     },

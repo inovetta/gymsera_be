@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { GymListing, Tenant, User, UserGymMembership, sequelize } = require('../models/platform');
 const { Op } = require('sequelize');
 const { createError, buildPagination } = require('../utils/response.utils');
+const { likeContains } = require('../utils/sql-like');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const { PaymentStatus, InvoiceStatus } = require('../constants/payment-status');
 const subscriptionQuotaService = require('./subscription-quota.service');
@@ -1625,9 +1626,9 @@ const listMembers = async (tenantDb, tenantId, { q, status, branchId, branchIds,
   if (status) where.status = status;
   if (q) {
     where[Op.or] = [
-      { fullName: { [Op.like]: `%${q}%` } },
-      { email: { [Op.like]: `%${q}%` } },
-      { phone: { [Op.like]: `%${q}%` } },
+      { fullName: { [Op.like]: likeContains(q) } },
+      { email: { [Op.like]: likeContains(q) } },
+      { phone: { [Op.like]: likeContains(q) } },
     ];
   }
 

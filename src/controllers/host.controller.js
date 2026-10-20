@@ -1,6 +1,7 @@
 const TenantDbManager = require('../database/TenantDbManager');
 const { Tenant, TenantSubscription, PlatformPackage, GymListing, User } = require('../models/platform');
 const { sendSuccess, createError, buildPagination } = require('../utils/response.utils');
+const { likeContains } = require('../utils/sql-like');
 const { Op } = require('sequelize');
 const gymService = require('../services/gym.service');
 const attendanceService = require('../services/attendance.service');
@@ -1104,9 +1105,9 @@ const getBranchMembers = async (req, res, next) => {
         where: {
           role: 'MEMBER',
           [Op.or]: [
-            { fullName: { [Op.like]: `%${q}%` } },
-            { email: { [Op.like]: `%${q}%` } },
-            { phone: { [Op.like]: `%${q}%` } }
+            { fullName: { [Op.like]: likeContains(q) } },
+            { email: { [Op.like]: likeContains(q) } },
+            { phone: { [Op.like]: likeContains(q) } }
           ]
         },
         attributes: ['id']
