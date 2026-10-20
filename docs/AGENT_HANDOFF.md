@@ -19,36 +19,43 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-20 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 5A: Global readiness, realtime and observability** (owner chose to run it as four sub-prompts, in order) |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none: 5A-1, 5A-2 and 5A-3 done; 5A-4 not started) |
+| Current prompt | **Prompt 5A: Global readiness, realtime and observability** (four sub-prompts, 5A-1 to 5A-4, all done) |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-5A-1 (GLB-01, GLB-02, BILL-11, BILL-17), 5A-2 (RT-01 to RT-09, NEW-84, NEW-84b, NEW-85) and **5A-3 (OBS-01 to OBS-07, OBS-09, NEW-86)**
-are done and merged, except two items that wait on the owner: **OBS-02 on CMS, web and mobile (PR9, needs a Sentry DSN)** and
-**OBS-08 client performance (PR12, same DSN)**. Backend PRs through #126; CMS PRs #28, #29; web PR #17; mobile PR #16.
-Details: spec §13 (rows `OBS-01 (Prompt 5A-3)` onward) and "Prompt 5A-3 close-out notes". The 5A-3 docs branch
-(`phase-5/prompt-5a3-docs`, from `origin/main` cf67ec4) is committed, **not pushed**.
+5A-1, 5A-2, 5A-3 and **5A-4 (SEC-04, SEC-05, SEC-08, SEC-14, SEC-16, SEC-17, SEC-18, BILL-15; SEC-15 recorded as an open risk)** are done.
+Backend PRs through #133, web #18, CMS #30 and #31. Two items wait on the owner from 5A-3 (client Sentry, client performance:
+the Sentry DSN) and the CMS BILL-15 badge commit `88778bb` was **not seen merged**. Details: spec §13 (rows `SEC-05 (Prompt 5A-4, PR 1)`
+onward) and "Prompt 5A-4 close-out notes". The 5A-4 docs branch (`phase-5/prompt-5a4-docs`, from `origin/main` e48ad7c) is
+committed, **not pushed**.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `phase-5/prompt-5a3-docs` (from `origin/main` cf67ec4) | see `git log` (docs only) | no |
-| gymsera_web | `main` | ab62be1 (PR #17) | no |
-| gymsera_cms | `main` | 8b82678 (PR #29) | no |
+| gymsera_be | `phase-5/prompt-5a4-docs` (from `origin/main` e48ad7c) | see `git log` (docs only) | no |
+| gymsera_web | `main` | 21a87b0 (PR #18) | no |
+| gymsera_cms | `main` | 80344a7 (PR #31); BILL-15 badge `88778bb` on branch `phase-5/prompt-5a4-bill15-price-verifier` | no |
 | gyms_era | `master` | 922cd2d (PR #16) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Push and merge the 5A-3 docs branch.** Then, before deploying the 5A-3 backend: apply **p022** (OBS-05) and read the
-> "Prompt 5A-3 deploy notes" in spec §13 (new optional env vars `METRICS_KEY`, `SENTRY_*`, `SLOW_QUERY_MS`; logs are JSON in
-> production; the MySQL slow log is an owner action). Then start **5A-4 security: SEC-04, SEC-05, SEC-08, SEC-14 to SEC-18 and
-> BILL-15**. GLB-03 to GLB-09 are not started; GLB-03 stays English-only per R-31.
-> **Not done in 5A-3, waiting on the owner:** PR9 (client Sentry for CMS, web and mobile) and PR12 (OBS-08 client performance)
-> both need the Sentry DSN (R-32). Also not done: dashboards and a metrics scraper, the on-call rota.
-> **Open from 5A-3:** NEW-87 (P2: staff sockets still cannot use chat), NEW-88 to NEW-94 (P3). NEW-86 is DONE (`9c6f710`).
-> NEW-83 stays open (not reproduced on `22c7d2c` / `1d96ea6`; 5A-3 recorded a laptop-sleep hypothesis, see the close-out notes).
+> **Push and merge the 5A-4 docs branch, and the CMS BILL-15 commit `88778bb` if it is still open.** Then, **before deploying 5A-4**,
+> read the "Prompt 5A-4 close-out notes" deploy list in spec §13: apply **p023**; set all five **R2_*** variables in production
+> (without them every image upload answers 503); check **Node >= 20.9** and the `sharp` log line on the Windows host; check
+> `trust proxy` / the client IP behind IIS and Cloudflare before relying on per-IP rate limits; set `GOOGLE_PLAY_*` if the
+> price check should run.
+> **Next prompt: Prompt 6A, the gap check** (`docs/GYMSERA_AGENT_PLAYBOOK.md`, no code changes): list every §12 / §12.13 issue not DONE
+> or NOT REPRODUCED, check the §15 testing matrix, go through the §17 criteria. Inputs it will find: GLB-03 to GLB-09 (not started;
+> GLB-03 English-only per R-31), NEW-81 to NEW-96 and the older proposed issues, SEC-15 (open P1 risk), OBS-02 / OBS-08 on the
+> clients (need the Sentry DSN, R-32), the 5A-1 / 5A-2 / 5A-3 leftovers below.
+> **Owner actions waiting:** Sentry DSN; MySQL slow log (OBS-04); secret manager / KMS and any live key rotation (SEC-05);
+> an App Store Connect API key for the Apple price check (BILL-15); the on-call rota; confirm the CSP report log is read and
+> then switch the CSP to enforcing (web, CMS).
+> **Later work, not scheduled:** cookie sessions + CSRF (SEC-15); presigned uploads and virus scanning (SEC-08); a Redis store for
+> the rate limits when a second API instance exists; the CMS `object-src 'none'` enforcement after a PDF preview check.
+> **Open from 5A-3 and earlier:** NEW-87 (P2, staff sockets cannot use chat), NEW-88 to NEW-96 (P3), NEW-83 stays open.
 > 5A-1 leftovers for clients (not done): show times in the branch timezone, format money with ICU, read
 > `webCardPaymentsEnabled` from `GET /billing/plans`.
 > 5A-2 P3 follow-ups (not scheduled): drop a notification for a different device user; refresh the router on
@@ -122,6 +129,18 @@ Details: spec §13 (rows `OBS-01 (Prompt 5A-3)` onward) and "Prompt 5A-3 close-o
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Prompt 5A-4: Security (gymsera_be PRs #128 to #133, gymsera_web #18, gymsera_cms #30 and #31; docs in be):**
+- [x] SEC-05: `/system` routes deleted, committed secrets removed, seeders refuse production, gitleaks, key rotation script (be `accd58c`, PR #128)
+- [x] SEC-18 + SEC-14: security headers and a nonce-based Report-Only CSP (web `6ae234f`, cms `6190fe7`)
+- [x] SEC-04: per-route rate limits with `Retry-After` (be `25d9a54`, PR #129)
+- [x] SEC-08: signature check, `sharp` re-encode, fail closed in production (be `ea29ba2`, PR #130)
+- [x] SEC-17: masked member contact details, audited reveal (be `d43ba9a`, PR #131; cms `72f9c52`)
+- [x] SEC-16: LIKE escaping and a SQL guard test (be `f9c226a`, PR #132)
+- [x] BILL-15: Play Console price read-back, p023 (be `0722f15`, PR #133; cms `88778bb`)
+- [x] Full-protocol run once after PR 7; spec §13 rows, R-35 to R-38, deploy notes, "Prompt 5A-4 close-out notes"
+- [ ] SEC-15 stays open (tokens in localStorage; CSP is Report-Only). Presigned uploads, virus scan, Redis rate-limit store, Apple price check: later work
+- [ ] Not measured: staging, load test of the limits, real Play API, `sharp` on Windows, the IIS / Cloudflare layer
 
 **Prompt 5A-3: Observability (gymsera_be PRs #119 to #126, gymsera_cms PRs #28 and #29, gymsera_web PR #17, gyms_era PR #16; docs in be):**
 - [x] OBS-01: JSON logs, request context, capped inbound id (be `db790e0`); clients send `X-Request-Id` (app `3324c3f`, cms `21723b1`, web `731dba5`)
@@ -502,3 +521,6 @@ Details: spec §13 (rows `OBS-01 (Prompt 5A-3)` onward) and "Prompt 5A-3 close-o
 | 87 | 2026-10-16 | Claude Code (Sonnet 5.5) | Prompt 5A-2 close-out (docs only) | Spec §13 rows RT-01 to RT-09, NEW-84, NEW-84b, NEW-85, NEW-86; NEW-83 re-test; "Prompt 5A-2 close-out notes" (deploy notes p020/p021, P3 follow-ups); handoff moved to 5A-3 | task complete (not pushed) | yes |
 | 88 | 2026-10-16 to 2026-10-19 | Claude Code (Sonnet 5.5) | Prompt 5A-3, implementation (be, cms, web, `Amirhaiderkhan/gyms_era`) | OBS-01 (be `db790e0`; app `3324c3f`, cms `21723b1`, web `731dba5`), OBS-06 (`e4ef191`), OBS-05 (`1e67547`; cms `4d6d729`), OBS-07 (`fe6aa4c`), OBS-03 (`8ce1c72`), OBS-02 backend (`43f6e0b`, `1ec1141`, `e8a71b3`, `181d54a`), OBS-04 (`bd7cf04`), OBS-09, NEW-86 (`9c6f710`); owner pushed and merged | task complete; PR9 and PR12 left for the DSN | yes |
 | 89 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-3 close-out (docs only) | Spec §13 rows and "Prompt 5A-3 close-out notes", corrected OBS-01 and OBS-06 audit rows, R-32 to R-34, NEW-87 to NEW-94, §16 checklist notes; handoff moved to 5A-4 | task complete (not pushed) | yes |
+| 90 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4, implementation (be, web, cms) | SEC-05 (be `accd58c`), SEC-18 + SEC-14 (web `6ae234f`, cms `6190fe7`), SEC-04 (`25d9a54`), SEC-08 (`ea29ba2`), SEC-17 (`d43ba9a`; cms `72f9c52`), SEC-16 (`f9c226a`), BILL-15 (`0722f15`; cms `88778bb`); SEC-15 recorded as an open risk; owner pushed and merged all but the CMS BILL-15 commit | task complete | yes |
+| 91 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4, full-protocol verification | Full protocol after PR 7: backend 200 suites / 1888 tests x3 green plus one `DISABLE_REDIS=true` run green (be `0722f15`, Mac on AC power, lid open, no sleep event in the window); web Vitest 95, build, lint, Playwright 15 + 3; CMS Vitest 439, build, lint, Playwright 9 + 26 | task complete | yes |
+| 92 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4 close-out (docs only) | Spec §13 rows SEC-14 / SEC-15 / SEC-18 / NEW-95 / NEW-96, real hashes in the SEC-04 / 05 / 08 / 16 / 17 and BILL-15 rows, "Prompt 5A-4 close-out notes" (deploy, later work), §16 notes; handoff moved to Prompt 6A | task complete (not pushed) | yes |
