@@ -68,6 +68,8 @@ const snapshot = (instance, fields = null) => {
   }, {});
 };
 
+const { likeStartsWith } = require('../utils/sql-like');
+
 /**
  * Paginated audit trail for the tenant.
  */
@@ -77,7 +79,7 @@ const list = async (tenantDb, { actor, action, branchId, from, to, limit = 50, o
 
   const where = {};
   if (actor) where.actorUserId = actor;
-  if (action) where.action = { [Op.like]: `${action}%` };
+  if (action) where.action = { [Op.like]: likeStartsWith(action) };
   if (branchId) where.branchId = branchId;
   if (from || to) {
     where.createdAt = {};

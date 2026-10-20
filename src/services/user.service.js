@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
 const { Op } = require('sequelize');
+const { likeContains } = require('../utils/sql-like');
 
 const { User, RefreshToken } = require('../models/platform');
 const { createError, buildPagination } = require('../utils/response.utils');
@@ -66,9 +67,9 @@ const searchUsers = async ({ q, role, status, page, limit, offset }, tenantDb = 
 
   if (q) {
     where[Op.or] = [
-      { fullName: { [Op.like]: `%${q}%` } },
-      { email: { [Op.like]: `%${q}%` } },
-      { phone: { [Op.like]: `%${q}%` } },
+      { fullName: { [Op.like]: likeContains(q) } },
+      { email: { [Op.like]: likeContains(q) } },
+      { phone: { [Op.like]: likeContains(q) } },
     ];
   }
 
