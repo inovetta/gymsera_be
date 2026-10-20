@@ -118,6 +118,12 @@ describe('AUTH-04: OTP Security Hardening', () => {
 
     expect([429, 400]).toContain(resendRes.status);
     expect(resendRes.body.message.toLowerCase()).toContain('wait');
+    // SEC-04: a 429 says when to retry
+    if (resendRes.status === 429) {
+      const retry = Number(resendRes.headers['retry-after']);
+      expect(retry).toBeGreaterThan(0);
+      expect(retry).toBeLessThanOrEqual(60);
+    }
   });
 
   test('Source code audit: raw OTP is never printed to logs', () => {

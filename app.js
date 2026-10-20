@@ -196,6 +196,10 @@ const authLimiter = rateLimit({
 });
 app.use('/api/v1/auth', authLimiter);
 
+// ── Per-route limiters (SEC-04): login / register / OTP / password reset by IP and by account, public
+// search, and writes per user. Env overrides and the numbers: src/middleware/rateLimiters.js.
+require('./src/middleware/rateLimiters').mount(app);
+
 // ── Swagger docs ──────────────────────────────────────────────────────────────
 // Custom CDN-based handler — avoids swagger-ui-express's express.static which
 // returns text/html on Vercel (all routes go through the serverless function).
