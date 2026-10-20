@@ -19,48 +19,39 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-20 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 5A: Global readiness, realtime and observability** (four sub-prompts, 5A-1 to 5A-4, all done) |
+| Current prompt | **Prompt 6A: Gap check** (docs only, no code changed) |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-5A-1, 5A-2, 5A-3 and **5A-4 (SEC-04, SEC-05, SEC-08, SEC-14, SEC-16, SEC-17, SEC-18, BILL-15; SEC-15 recorded as an open risk)** are done.
-Backend PRs through #133, web #18, CMS #30 and #31. Two items wait on the owner from 5A-3 (client Sentry, client performance:
-the Sentry DSN) and the CMS BILL-15 badge commit `88778bb` was **not seen merged**. Details: spec §13 (rows `SEC-05 (Prompt 5A-4, PR 1)`
-onward) and "Prompt 5A-4 close-out notes". The 5A-4 docs branch (`phase-5/prompt-5a4-docs`, from `origin/main` e48ad7c) is
-committed, **not pushed**.
+6A is done: the three lists (open issues, §15 matrix, §17 criteria), the owner-action list and the deferred-work list are in spec §13, section
+"Prompt 6A gap check (2026-10-20)". **Result: not production-ready.** Two P0 issues are open (NEW-06, SEC-06), all 12 §17 criteria are NOT MET,
+and a new dependency finding (NEW-97, `next` 14.2.21 critical advisory in CMS and web) was recorded. The 6A docs branch
+(`phase-6/prompt-6a-gap-check`, from `origin/main` c1a9cbc) is committed, **not pushed**.
 
 | Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `phase-5/prompt-5a4-docs` (from `origin/main` e48ad7c) | see `git log` (docs only) | no |
+| gymsera_be | `phase-6/prompt-6a-gap-check` (from `origin/main` c1a9cbc) | see `git log` (docs only) | no |
 | gymsera_web | `main` | 21a87b0 (PR #18) | no |
-| gymsera_cms | `main` | 80344a7 (PR #31); BILL-15 badge `88778bb` on branch `phase-5/prompt-5a4-bill15-price-verifier` | no |
+| gymsera_cms | `main` | 80344a7 (PR #31). The BILL-15 badge `88778bb` is **not merged and not pushed** (only on the local branch `phase-5/prompt-5a4-bill15-price-verifier`) | no |
 | gyms_era | `master` | 922cd2d (PR #16) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Push and merge the 5A-4 docs branch, and the CMS BILL-15 commit `88778bb` if it is still open.** Then, **before deploying 5A-4**,
-> read the "Prompt 5A-4 close-out notes" deploy list in spec §13: apply **p023**; set all five **R2_*** variables in production
-> (without them every image upload answers 503); check **Node >= 20.9** and the `sharp` log line on the Windows host; check
-> `trust proxy` / the client IP behind IIS and Cloudflare before relying on per-IP rate limits; set `GOOGLE_PLAY_*` if the
-> price check should run.
-> **Next prompt: Prompt 6A, the gap check** (`docs/GYMSERA_AGENT_PLAYBOOK.md`, no code changes): list every §12 / §12.13 issue not DONE
-> or NOT REPRODUCED, check the §15 testing matrix, go through the §17 criteria. Inputs it will find: GLB-03 to GLB-09 (not started;
-> GLB-03 English-only per R-31), NEW-81 to NEW-96 and the older proposed issues, SEC-15 (open P1 risk), OBS-02 / OBS-08 on the
-> clients (need the Sentry DSN, R-32), the 5A-1 / 5A-2 / 5A-3 leftovers below.
-> **Owner actions waiting:** Sentry DSN; MySQL slow log (OBS-04); secret manager / KMS and any live key rotation (SEC-05);
-> an App Store Connect API key for the Apple price check (BILL-15); the on-call rota; confirm the CSP report log is read and
-> then switch the CSP to enforcing (web, CMS).
-> **Later work, not scheduled:** cookie sessions + CSRF (SEC-15); presigned uploads and virus scanning (SEC-08); a Redis store for
-> the rate limits when a second API instance exists; the CMS `object-src 'none'` enforcement after a PDF preview check.
-> **Open from 5A-3 and earlier:** NEW-87 (P2, staff sockets cannot use chat), NEW-88 to NEW-96 (P3), NEW-83 stays open.
-> 5A-1 leftovers for clients (not done): show times in the branch timezone, format money with ICU, read
-> `webCardPaymentsEnabled` from `GET /billing/plans`.
-> 5A-2 P3 follow-ups (not scheduled): drop a notification for a different device user; refresh the router on
-> `grants.changed`; traveler inbox spinner flash on reconnect; stop retrying on an expired token.
-
+> **Push and merge the 6A docs branch.** Then fix the gaps with focused prompts, one issue per commit, backend first. Suggested order:
+> 1. **NEW-06 (P0, no fix, no test):** `POST /host/subscription/upgrade` (`src/controllers/host.controller.js:873-936`) gives any host a PAID plan with no payment. Write the failing test, then remove or gate the route (same path as BILL-10). Check what the CMS "Request a Manual Plan" button should do instead.
+> 2. **SEC-06 (P0, partial):** reject unknown fields on the P0 write paths first (auth, payments, billing, team), then the rest.
+> 3. **NEW-97 (P2 by rule, security-critical in practice):** upgrade `next` 14.2.21 in `gymsera_cms` and `gymsera_web` (critical advisory plus 10 high in the build toolchain); rebuild, run Vitest and Playwright. Add an `npm audit --omit=dev` step to CI.
+> 4. **Back-fill §13** with the rows listed under "Bookkeeping defect" in the 6A section (FLOW-05 to FLOW-13, PAY-05, PAY-06, PAY-08, PAY-12, NEW-39, NEW-40, NEW-43 to NEW-45, UX-14, UX-19, and the rows closed by other rows).
+> 5. **Before the mobile release (deadline 2026-12-05):** NEW-09 / NEW-33 (fake payout screens), NEW-16 (purchase listener at startup).
+> 6. Merge the CMS BILL-15 badge `88778bb`, or redo it; fix NEW-41 (CMS Trainers calls `/gyms/trainers`).
+> 7. Give API-05, PERF-03, PERF-04, PERF-05, GLB-04, GLB-09, RBAC-06, FLOW-04, UX-22 an owner and a date in §14 (§17.2), then schedule GLB-03 to GLB-09, PR9 / PR12 (after the Sentry DSN), SEC-15 (cookies + CSRF) and presigned uploads.
+> 8. Then the §16 deployment checklist on staging **together with a human** (real-device sandbox purchases, fault injection, `auditCapacity`, reconciliation, load and Lighthouse runs, restore drill).
+> Owner actions are listed in the 6A section ("Owner-action list"); the first ones to unblock work are the Sentry DSN, R2 variables, `GOOGLE_PLAY_*` and the email fix.
+> **Still true from earlier prompts:** 5A-1 / 5A-2 client leftovers and P3 follow-ups; NEW-83 stays open; NEW-81 and NEW-82 wait for an owner decision.
+> **How the 6A test numbers were produced:** backend 200 suites / 1888 tests green with Redis and with Redis off; CMS Vitest 436 and Playwright 26; web Vitest 95 and Playwright 3; Flutter 110 tests. Commands are in the 6A section.
 ### Work in progress that is NOT committed
 
 - (none)
@@ -524,3 +515,4 @@ committed, **not pushed**.
 | 90 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4, implementation (be, web, cms) | SEC-05 (be `accd58c`), SEC-18 + SEC-14 (web `6ae234f`, cms `6190fe7`), SEC-04 (`25d9a54`), SEC-08 (`ea29ba2`), SEC-17 (`d43ba9a`; cms `72f9c52`), SEC-16 (`f9c226a`), BILL-15 (`0722f15`; cms `88778bb`); SEC-15 recorded as an open risk; owner pushed and merged all but the CMS BILL-15 commit | task complete | yes |
 | 91 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4, full-protocol verification | Full protocol after PR 7: backend 200 suites / 1888 tests x3 green plus one `DISABLE_REDIS=true` run green (be `0722f15`, Mac on AC power, lid open, no sleep event in the window); web Vitest 95, build, lint, Playwright 15 + 3; CMS Vitest 439, build, lint, Playwright 9 + 26 | task complete | yes |
 | 92 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4 close-out (docs only) | Spec §13 rows SEC-14 / SEC-15 / SEC-18 / NEW-95 / NEW-96, real hashes in the SEC-04 / 05 / 08 / 16 / 17 and BILL-15 rows, "Prompt 5A-4 close-out notes" (deploy, later work), §16 notes; handoff moved to Prompt 6A | task complete (not pushed) | yes |
+| 93 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 6A, gap check (docs only) | Spec §13 "Prompt 6A gap check": open-issue list by severity, §15 matrix row by row, §17 criteria (all 12 NOT MET), owner-action and deferred lists, NEW-97 recorded, §13 back-fill list; test runs: backend 200 suites / 1888 tests green with Redis on and off, CMS Vitest 436 + Playwright 26, web Vitest 95 + Playwright 3, Flutter 110; no code changed | task complete (not pushed) | yes |
