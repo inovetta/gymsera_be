@@ -55,6 +55,14 @@ const ALERTS = Object.freeze({
     title: 'A superseded subscription is still billing a tenant',
     runbook: 'docs/runbooks/billing-events.md#billing_duplicate_billing',
   },
+  BILLING_PRICE_MISMATCH: {
+    title: 'Play Console prices differ from the billing plan catalog',
+    runbook: 'docs/runbooks/billing-prices.md#billing_price_mismatch',
+  },
+  BILLING_PRICE_CHECK_FAILED: {
+    title: 'The Play Console price check could not read some plans',
+    runbook: 'docs/runbooks/billing-prices.md#billing_price_check_failed',
+  },
 });
 
 // code -> epoch ms of the last alert (or reservation) in this process
