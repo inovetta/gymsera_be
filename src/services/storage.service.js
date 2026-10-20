@@ -2,6 +2,7 @@ const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/cl
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const { createError } = require('../utils/response.utils');
 
 const {
   R2_ACCOUNT_ID,
@@ -41,6 +42,14 @@ const saveLocalFallback = (buffer, key) => {
 };
 
 /**
+ * SEC-08: in production a file is either stored in R2 or the upload fails. The local-disk fallback is
+ * public (`/uploads`), so it is for development and tests only; falling back silently would publish
+ * files nobody meant to publish, under a localhost URL.
+ */
+const isProduction = () => process.env.NODE_ENV === 'production';
+const storageUnavailable = () => createError('File storage is not available right now. Please try again later.', 503);
+
+/**
  * Upload a file buffer to Cloudflare R2.
  * @param {Buffer} buffer      File buffer from multer memoryStorage
  * @param {string} mimetype    e.g. 'image/jpeg'
@@ -56,6 +65,10 @@ const uploadImage = async (buffer, mimetype, folder, filename) => {
   const key = `${folder}/${name}`;
 
   if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET) {
+    if (isProduction()) {
+      console.error('[Storage Service] R2 env vars missing; refusing to write to public local disk in production');
+      throw storageUnavailable();
+    }
     console.warn('[Storage Service] R2 env vars missing, writing to local disk fallback');
     saveLocalFallback(buffer, key);
     return `http://localhost:3000/uploads/${key}`;
@@ -73,6 +86,10 @@ const uploadImage = async (buffer, mimetype, folder, filename) => {
 
     return `${R2_PUBLIC_URL || 'http://localhost:3000/uploads'}/${key}`;
   } catch (err) {
+    if (isProduction()) {
+      console.error('[Storage Service Error] Failed to upload to R2; not falling back to public local disk in production:', err.message);
+      throw storageUnavailable();
+    }
     console.error('[Storage Service Error] Failed to upload to R2, writing to local disk fallback:', err.message);
     saveLocalFallback(buffer, key);
     return `http://localhost:3000/uploads/${key}`;

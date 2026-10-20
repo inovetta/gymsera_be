@@ -1,6 +1,7 @@
 'use strict';
 
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { matchesDeclared } = require('../utils/file-signature');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -51,33 +52,7 @@ const ALLOWED_MIME_TYPES = new Set([
  * Prevents disguised files (e.g. HTML/JS/EXE renamed to .jpg or .pdf).
  */
 function validateMagicBytes(buffer, mimetype) {
-  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length < 4) return false;
-
-  // PDF: %PDF (0x25 0x50 0x44 0x46)
-  if (mimetype === 'application/pdf') {
-    return buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46;
-  }
-
-  // JPEG / JPG: 0xFF 0xD8 0xFF
-  if (mimetype === 'image/jpeg' || mimetype === 'image/jpg') {
-    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  }
-
-  // PNG: 0x89 0x50 0x4E 0x47
-  if (mimetype === 'image/png') {
-    return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  }
-
-  // WEBP: 'RIFF' at 0..3 and 'WEBP' at 8..11
-  if (mimetype === 'image/webp') {
-    if (buffer.length < 12) return false;
-    return (
-      buffer.toString('ascii', 0, 4) === 'RIFF' &&
-      buffer.toString('ascii', 8, 12) === 'WEBP'
-    );
-  }
-
-  return false;
+  return matchesDeclared(buffer, mimetype);
 }
 
 /**
