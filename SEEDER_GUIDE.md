@@ -34,16 +34,16 @@ Each tenant DB contains: gym profile, branches (real addresses + GPS coordinates
 
 ## Staging Credentials
 
-> **Keep this file out of public repos.** Rotate passwords before production launch.
+> **Keep this file out of public repos.** The seeders refuse to run when `NODE_ENV=production`. Platform admin passwords are never in the repo: set `SEED_ADMIN_PASSWORD`, or copy the one the seeder prints.
 
 ### Admin Accounts
 
 | Role | Email | Password |
 |---|---|---|
-| **Super Admin** | superadmin@gymsera.com | `SuperAdmin@GymsEra1` |
-| **Platform Admin** | admin@gymsera.com | `Admin@GymsEra1` |
-| **Ops Admin** | ops@gymsera.com | `Ops@GymsEra1` |
-| **Support Admin** | support@gymsera.com | `Support@GymsEra1` |
+| **Super Admin** | superadmin@gymsera.com | set by `SEED_ADMIN_PASSWORD`, or printed once by the seeder |
+| **Platform Admin** | admin@gymsera.com | set by `SEED_ADMIN_PASSWORD`, or printed once by the seeder |
+| **Ops Admin** | ops@gymsera.com | set by `SEED_ADMIN_PASSWORD`, or printed once by the seeder |
+| **Support Admin** | support@gymsera.com | set by `SEED_ADMIN_PASSWORD`, or printed once by the seeder |
 
 ### Gym Host Accounts
 

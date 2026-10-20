@@ -668,6 +668,7 @@ const SEED_USERS_EMAIL_MAP = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
+  require('./seed-guard').assertSeedingAllowed();
   const targetCode = process.argv[2]?.toUpperCase() || null;
 
   console.log('🏋️   GymsEra Tenant DB Seeder\n');

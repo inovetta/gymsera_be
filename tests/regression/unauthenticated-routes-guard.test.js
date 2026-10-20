@@ -39,12 +39,6 @@ const ALLOWED_NON_LOGIN_OPERATIONAL_ROUTES = [
 
   // Device-notify route (device key)
   { method: 'POST', path: '/api/v1/attendance/device-notify', reason: 'Biometric device attendance: records scan event; protected by x-device-api-key header' },
-
-  // The four /system maintenance routes from Part 2 (pending owner decision)
-  { method: 'GET', path: '/api/v1/system/run-install', reason: 'Maintenance endpoint: installs socket.io behind URL key until owner decides' },
-  { method: 'GET', path: '/api/v1/system/run-pull', reason: 'Maintenance endpoint: pulls main branch git commits behind URL key until owner decides' },
-  { method: 'POST', path: '/api/v1/system/configure-fcm', reason: 'Maintenance endpoint: configures Firebase service account behind URL key until owner decides' },
-  { method: 'POST', path: '/api/v1/system/fcm-test', reason: 'Maintenance endpoint: pushes test FCM notification behind URL key until owner decides' },
 ];
 
 // Public read-only catalog, search, and documentation routes:

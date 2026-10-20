@@ -19,6 +19,7 @@ missing **What it means**, **First checks** or **Rollback**.
 | Procedure | Runbook |
 |---|---|
 | Slow query log and the weekly index review (OBS-04) | [slow-queries.md](slow-queries.md) |
+| Burned secrets and rotating `TENANT_CONN_ENCRYPTION_KEY` (SEC-05) | [secrets-rotation.md](secrets-rotation.md) |
 
 ## How alerts arrive
 
