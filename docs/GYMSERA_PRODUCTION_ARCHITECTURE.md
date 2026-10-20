@@ -2590,6 +2590,195 @@ Goal (§8.3.7): the CMS `/gym/team` page is the mobile Team & Access screen on a
 8. **Tests.** Vitest component tests for the sheet (preset labels read-only, diff shows only changed rows, 409 reload) and the chips (counts, empty roles hidden). A Playwright flow: invite → edit a permission → revoke. The §8.3.7 acceptance check as an API-level test: for one person, `GET /team/:id` gives the same effective tiers the app shows.
 9. **Size and order.** About 1 prompt of CMS work (Phase 3, with RBAC-01/02/04/05/06/08/09). Backend changes are limited to the step 7 retirement. Screen states (loading / empty / error / forbidden) follow §2.5.
 
+#### Prompt 6A gap check (2026-10-20, Claude Code Sonnet 5.5; docs only, no code changed)
+
+**Verdict: GymsEra is NOT production-ready under §17.** Two P0 issues are open, all 12 §17 criteria are NOT MET (parts of 7 of them are met by passing tests, listed per criterion), and none of the staging or real-device evidence exists yet. Nothing below was marked DONE without a test or a file reference.
+
+**Code the check ran on.** `gymsera_be` `origin/main` c1a9cbc, `gymsera_cms` `origin/main` 80344a7, `gymsera_web` `origin/main` 21a87b0, `gyms_era` `origin/master` 922cd2d. CMS and web were tested in detached worktrees of `origin/main`, so their working branches were not touched. Status comes from §13 rows, `docs/changes/*.md`, `git log` of all four repos and reading the code. A missing §13 row is not treated as "not done": where git shows a fix and a test, the issue is listed as DONE with the evidence.
+
+**Bookkeeping defect found first.** §13 was never back-filled for Prompt 2B groups 2 to 4 and Prompt 3B (the 3A handoff note says so). These issues are fixed in git, with tests, but have no §13 row: FLOW-05 (investigated, no fix), FLOW-06 (`034c9a3`), FLOW-08 (`7a50823`), FLOW-09 (`0b90ca4`, `340ab2e`, `454c223`; this is also SEC-11), FLOW-10 (`f499c71`), FLOW-12 (`fbaf514`), FLOW-13 (NOT REPRODUCED, `bce9f52`), PAY-05 (`12fa125`), PAY-06 (`980d18a`), PAY-08 non-gateway part (`901320c`), PAY-12 (`5b5ec89`), NEW-39 (`f377ece`), NEW-40 (`da4786a`; this also closes NEW-07), NEW-43 to NEW-45, NEW-36 (`b6bc62f`), UX-14 and UX-19 (cms `b7cda2e`, `b794477`, `b5a1fea`), RBAC-01 (cms 3A, UX-12 row), UX-17 and PERF-10 (3E row). Also closed by other rows without an own row: AUTH-06 (NEW-02), AUTH-05 (NEW-03), AUTH-10 (AUTH-04 hashes the reset code; the plain-text claim no longer holds), SEC-11 (FLOW-09), NEW-01 (NEW-31), NEW-08 (SEC-01), NEW-11 (PAY-08a), NEW-12 (REL-04: billing jobs never change tenant status), NEW-14 (BILL-13), API-08 (4A row). **Action: copy these into §13 (one docs commit).** Not done in 6A because the rule here is to change only this section and the handoff.
+
+**Test runs for this check (all on the code above; Docker MySQL 5.7 on port 3308, local Redis).**
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend, Redis on | `npx jest --runInBand --forceExit` with the CI env, MySQL 5.7 on 127.0.0.1:3308, local Redis, one fixed `TENANT_CONN_ENCRYPTION_KEY`, with `--coverage` over the billing, payment, capacity, approval and ledger services | **200 suites / 1888 tests passed, 0 failed** (24.5 min) |
+| Backend, `DISABLE_REDIS=true` | same, Redis off | **200 suites / 1888 tests passed, 0 failed** (28.9 min) |
+| CMS Vitest (detached worktree of `origin/main` 80344a7) | `npx vitest run` | **436 passed, 0 failed** (59 files) |
+| CMS Playwright (dev server, API mocked) | `npx playwright test` | **26 passed, 0 failed** |
+| Web Vitest (`origin/main` 21a87b0) | `npx vitest run` | **95 passed, 0 failed** (20 files) |
+| Web Playwright (dev server) | `npx playwright test` | **3 passed, 0 failed** |
+| Flutter (`origin/master` 922cd2d) | `flutter test` | **110 passed, 0 failed** (25 files) |
+| Dependency audit | `npm audit --omit=dev` in each Node repo | backend 11 moderate; CMS 1 critical, 10 high, 2 moderate; web the same (see §17.9) |
+
+Not run: `next build`, `next lint`, `flutter analyze` (the 5A-4 protocol ran build and lint on these commits), the `secret-scan` workflow, anything on staging, any real device or store.
+
+### List 1: every §12 / §12.13 issue that is not DONE or NOT REPRODUCED
+
+#### P0 (2 open)
+
+| ID | State | Evidence (file:line) | What closes it |
+|---|---|---|---|
+| NEW-06 | **OPEN, no §13 row, no test.** Any host can give their gym any `PlatformPackage` for free: `POST /host/subscription/upgrade` cancels the ACTIVE rows and creates a new `ACTIVE` / `PAID` one with no payment. The only guard is "an IAP row with `branchCount` exists" | `src/controllers/host.controller.js:873-936` (creates the row at `:915-925`), route `src/routes/host.routes.js:54`; `git grep "subscription/upgrade" tests` finds nothing. The CMS "Request a Manual Plan" button calls it (§3.3) | Remove or gate the route (admin-only, or `PENDING` until an admin verifies payment); regression test. Same code path as BILL-10 |
+| SEC-06 | **OPEN (PARTIAL)**, §13 row. Unknown request fields are accepted; only about 24 of 176 write routes use `validate()` | `src/middleware/validate.js:10-22`; probe in the §13 row (extra `role`, `status`, `tenantId` ignored, no hole found on the paths checked) | Reject unknown keys on the P0 write paths first (auth, payments, billing, team), then the rest |
+
+#### P1 (not DONE)
+
+| ID | State | Evidence / reason | Next step |
+|---|---|---|---|
+| BILL-10 | OPEN. Three legacy `PlatformPackage` sales paths still live | `host.controller.js:873-936`, `admin.service.js:675-782`, `tenant-provisioning.service.js:510-545`; R-6 says migrate at next renewal | Retire the host path with NEW-06; keep admin assign and approval grace on purpose, or replace |
+| NEW-16 | OPEN | The purchase-stream listener is created only when `billingProvider` is first read, and only `my_subscription_screen.dart` reads it (`git grep billingProvider lib` outside the provider: that file only) | Read the provider at startup (the 4A bootstrap is the place) |
+| NEW-19, NEW-20, NEW-21, NEW-32 | OPEN, client work never built | `paymentIssue` appears in no CMS, web or app file; no "keep these branches" screen; no admin "Verify payment" button for pay-later; no lock countdown UI | One client prompt (mobile, CMS, web) |
+| NEW-25 | OPEN, blocked by R-7 | Stripe downgrade timing and saving the card at signup; web card is OFF | Revisit when a web provider exists |
+| NEW-09 / NEW-33 | OPEN. Mobile payout screens are fixtures | `gyms_era/lib/features/host/presentation/screens/request_payout_screen.dart:32,61` ("Rs42,300 submitted"), `analytics_provider.dart:38-70` (`last4: 4291`), `payouts_screen.dart:122` | Wire to `GET /host/payouts*` (PAY-10 is DONE on the backend and in the CMS) |
+| NEW-41 | OPEN | CMS Trainers calls `/gyms/trainers` (`cms/src/lib/api/trainers.ts:36-51`); the backend serves `/trainers` only (`src/routes/index.js:169`) | Point the CMS at `/trainers` or add the routes |
+| FLOW-04 | OPEN. A rejected applicant cannot edit or re-apply | `src/services/tenant.service.js:71` allows only DRAFT / PENDING_REVIEW / UNDER_REVIEW; `:38-39` blocks a second tenant | Decide the re-application path (product), then build |
+| FLOW-05 | NOT REPRODUCED in normal use; reproduced with a tenant-less host token. **Fix proposed, not applied** (`docs/changes/FLOW-05.md`). Needs an owner call | diagnostic `f6dd99b`, test `flow-05-listings-after-create.test.js` | Apply or reject the proposal |
+| PAY-08 (gateway part), FLOW-08 (gateway part) | OPEN by design | No member payment gateway exists; webhook as source of truth cannot be built yet (`docs/changes/PAY-08.md`) | When a member gateway is chosen |
+| RBAC-06 | OPEN. No admin sub-roles | `src/routes/admin.routes.js` guards with `authorize('PLATFORM_ADMIN')` only; SEC-12 audit exists | Define Support / Finance / Super roles (needs an owner decision on the roles) |
+| SEC-05 | PARTIAL. Code done; **KMS / secret manager and rotating live keys are owner actions** | §13 row, `docs/runbooks/secrets-rotation.md` | Owner |
+| SEC-08 | PARTIAL. Magic bytes, `sharp` re-encode, fail closed done. **Presigned upload and virus scan deferred (R-36)** | §13 row | Later prompt |
+| SEC-14 | PARTIAL. CSP ships **Report-Only** | §13 row; `middleware.ts` in cms and web | Read the `[csp-report]` log, then enforce |
+| SEC-15 | **OPEN RISK, accepted by R-37.** Web tokens stay in `localStorage` | §13 row | Own prompt: httpOnly cookies + CSRF |
+| UX-08 | PARTIAL. CMS and web done; mobile has the widgets but about 40 handlers still show nothing (NEW-74) | §13 row | Mobile sweep |
+| UX-09 | **NOT STARTED.** No ARB, no next-intl, no string check | `pubspec.yaml` has `intl` only; `package.json` of cms and web has no i18n library | R-31 scope, English only |
+| UX-10 | PARTIAL. Text-scale audit of old mobile screens not done | §13 row | Mobile pass |
+| UX-22 | OPEN. No CMS staff-requests page, no web invite-accept page | 3A note: "Not ported in 3A" | CMS prompt |
+| GLB-03 | NOT STARTED (localization; English only per R-31) | as UX-09 | Own prompt |
+| GLB-04 | NOT STARTED. No libphonenumber on any platform | `git grep -i libphonenumber` in all four repos: nothing | Own prompt |
+| GLB-09 | NOT STARTED. No user or tenant data export, no consent flow, no cookie banner. Deletion exists (AUTH-07) | `git grep -i "export" src/routes/me.routes.js`: no data-export route | Own prompt (legal input) |
+| GLB-07, BILL-17 | Switch DONE. **Owner decision still open (R-7):** which entity / merchant of record sells on the web | §13 row | Owner |
+| GLB-01, GLB-02 (client part) | Backend DONE. Clients still show device-time and print "Rs" | §13 rows | Client prompt |
+| OBS-02 | PARTIAL. Backend done; **CMS, web, mobile (PR9) need the Sentry DSN** | R-32 | Owner supplies the DSN |
+| OBS-04 | PARTIAL. Runbook and in-app fallback done; **MySQL slow log is an owner action** | `docs/runbooks/slow-queries.md` | Owner |
+| PERF-01 | PARTIAL. Code done; **no device measurement** | §13 row | Device run |
+| PERF-03, PERF-04, PERF-05, API-05 | DEFERRED to "a separate prompt", **no owner or date in §14** (§17.2 needs both) | §13 4A rows | Schedule and record in §14 |
+| BILL-03, BILL-05, BILL-08 (real stores) | Code DONE; the four real-store sandbox checks in §16 are **not run** | §16 "Before launch" | Owner, on devices |
+
+#### P2 (open)
+
+| ID | State |
+|---|---|
+| FLOW-01 | OPEN. No DRAFT purge (R-16: 30 days) and no step idempotency keys. `git grep DRAFT src/jobs` finds nothing; the KYC retention sweep exists (SEC-10) |
+| FLOW-07 | OPEN. Enrolment dedupes by e-mail only (`gym.service.js` enrol path) |
+| FLOW-11 | Decision R-5 (manual review stays); nothing to build |
+| PAY-09 | OPEN. No "DUPLICATE" reprint mark, no raster Urdu / Arabic receipts (`printer_service.dart`) |
+| PAY-11 | OPEN. Reports bucket by `paidAt` in server time, not the branch business date (`reports.service.js:83,197,253,309,403,436`) |
+| RBAC-02 | OPEN. No shared role-label table; clients show `role.name` |
+| BILL-15 | PARTIAL by design. Android check DONE; iOS stays admin-attested (R-38). **The CMS badge commit `88778bb` is not on `origin/main` or any remote branch** (it exists only on the local branch `phase-5/prompt-5a4-bill15-price-verifier`). The §13 row says DONE for the CMS; it is not merged |
+| BILL-16 | Decision R-1 (keep IAP) |
+| NEW-18, NEW-22, NEW-23, NEW-24, NEW-27 | OPEN, no §13 row: silent plan-creation failure at approval (partly fixed in 1B), misleading 409 on admin assign, lost Google "completed" notice for a pending purchase, plans end a day late east of UTC, mobile restore retry loop on 409 |
+| NEW-61 to NEW-64 | OPEN (proposed): `paymentDetailsUpdatedAt`, org-wide bank-details check, float sums in gym-wide ledger merge (`ledger.service.js:517-519`, a PAY-02 regression), notifications filtered by role not tenant |
+| NEW-69, NEW-70 | OPEN: listing-content routes without `can()`, no `paymentMethod` validator on `POST /tenants/:id/finalize` |
+| NEW-73 | OPEN, ops: outgoing mail from `info@inovetta.com` is blocked by Zoho |
+| NEW-74, NEW-78 | OPEN: about 40 mobile error handlers; an old mobile test that calls the real staging API (R-19) |
+| NEW-81, NEW-83, NEW-87 | OPEN: app-level flags and `minAppVersion` have no source (owner decision), two suites failed once with `DISABLE_REDIS=true` and the cause was never found, staff sockets cannot use chat |
+| NEW-97 (new, this check) | **OPEN. `next` 14.2.21 in CMS and web carries a critical advisory** (see §17.9). Upgrade within 14.2.x or to the fixed line, then rebuild and run both suites |
+| GLB-05, GLB-06, GLB-08 | NOT STARTED (RTL, name and address model, slow-network E2E) |
+| OBS-08 | NOT STARTED (client performance; needs the DSN) |
+| PERF-02, PERF-09, PERF-11 | DEFERRED, no owner or date |
+| UX-04, UX-06, UX-11 | OPEN or unchecked: CMS "Subscriptions" wording, visibility toggle label (needs a device check), separate Notifications and Inbox routes |
+| UX-03, UX-05, UX-16, UX-25 | DEFERRED by decision (R-13, R-14) |
+
+#### P3 (open)
+
+NEW-65, NEW-66, NEW-67, NEW-71, NEW-72, NEW-75 (blocked by R-10), NEW-76, NEW-77, NEW-82 (owner choice), NEW-88 to NEW-96. All have text in their own §13 or §12.13 rows.
+
+### List 2: the §15 testing matrix, row by row
+
+Passing means the run in "Test runs" above. "Gap" means the row's own "Must cover" or "Gate" is not met.
+
+| Row | Test exists? | Passes? | Gap against the row |
+|---|---|---|---|
+| Unit (backend); gate ≥ 90% line coverage on billing, capacity, payments, `approval.service.js` | Yes (state machines, money, tiers: `pay-02`, `rbac-05`, `cap-*`, `billing-*`). The folders `services/billing`, `capacity`, `payments` do not exist; the code is flat in `src/services/` | Yes (200 suites / 1888 tests) | **Gate not met.** Lines, measured over the 14 billing / payment / capacity / approval / ledger service files: `approval` 82.0%, `payment` 79.9%, `apple-billing` 77.6%, `google-play-billing` 85.8%, `stripe-billing` 66.3%, `billing-plan-catalog` 55.3%, `invoice-sequence` 67.3%, `branch-quota` 77.1%, `capacity-outbox` 88.8%, `ledger` 88.5%, `branch-billing-lock` 85.1%; only `billing-event` 98.7% and `subscription-quota` 91.1% reach 90%. Total 81.5% lines, 61.7% branches. CI does not measure or enforce coverage |
+| Integration (real MySQL); every P0 has ≥ 1 test | Yes: harness builds the platform DB and two tenant DBs on Docker MySQL 5.7 (not Testcontainers) | Yes | Every P0 marked DONE has a test. **NEW-06 and SEC-06 are P0 with no fix, so no test** |
+| API contract; 100% of routes (envelope, validation, unknown fields rejected, pagination, ETag) | Partly: `api-01-response-envelope`, `api-06-etag-and-cache-control`, `api-07-08-slim-lists`, `ux-24-tenant-signup-contract`, and `unauthenticated-routes-guard` (walks the router stack, auth only) | Yes | **Not generated from the route list.** 356 routes; no per-route envelope / validation / pagination check; unknown fields are not rejected (SEC-06) |
+| Cross-client parity; every ✅ row in §3.3 has one parity test | No dedicated suite. Related: `ux-24` contract tests, CMS team fixtures, mobile `startup_bootstrap_test` | n/a | **Gap.** No test drives the same flow from app and CMS and compares requests |
+| Permission matrix; 100% of mutating routes × personas; fails on any unexpected 2xx | Partly: `rbac-03-permission-matrix` (26 tests; the approvable-action door and selected routes), `sec-01-no-idor-matrix` (15), `unauthenticated-routes-guard` | Yes | **Gap.** 204 mutating route declarations; the persona matrix is hand-written for a subset, not generated. NEW-06 shows a route a host can call successfully that should not grant a plan |
+| Database; migrations up / down, on a prod-like snapshot, runner resume, index presence | Yes: 20 migration-related integration files, `tenant-migration-runner`, `platform-migration-runner`, dry-run safety | Yes | No down migrations tested, no prod-like snapshot run, no index-presence test; NEW-90 lists 9 redundant test-schema indexes |
+| Concurrency; 20× `createBranch`, delete + restore, donor slot, 50× invoices, double refund, double approve, double webhook | Mostly: `cap-08` (20 parallel create, delete + restore, donor slot), `pay-05` (50 invoices), `rbac-04` (double approval), `billing-webhook-inbox` (replayed event) | Yes | **Double refund is tested sequentially only** (`pay-07` "partial refunds … prevent over-refund"); no parallel refund test |
+| Idempotency; same key, different body 422, in flight 409, restart with a persisted key | Yes: `rel-01-idempotency-middleware`, `pay-01`, `rel-timeout-upload-and-idempotency` | Yes | App-restart-with-persisted-key is not tested on the mobile side |
+| Billing; fixtures for every notification type, sandbox runs | Yes: 11 `billing-*` integration files, `bill-07-09`, `bill-15`, `sec-03`, `renewal-resurrection`, mobile `billing_pending_purchase`, `purchase_stream_matching`, `store_purchase_binding`, `android_plan_change_mode` | Yes | **Sandbox checklist (manual, per release) not run** (§16 "Before launch"). Pause and out-of-order events are only partly covered by name |
+| Capacity property test; 1,000 random sequences per CI run; ledger replay equals stored slots | Partly: `cap-07-organization-never-empty` (random create / delete / move / restore / lock / unlock) | Yes | **Runs 25 random steps once, not 1,000 sequences** (`cap-07…test.js:155`). No ledger-replay-equals-slots assertion (`git grep replay tests/regression/cap-*`: none) |
+| Flutter unit / widget; §2.5 states for each screen, PermissionGate per persona, provider invalidation matrix | Partly: 25 files / 110 tests (billing, RT, startup, state views, dialogs, tokens) | Yes (110 / 110) | **Not "every screen with data"**: about 40 mobile error handlers have no state (NEW-74); no PermissionGate persona tests; no §5.3 invalidation test |
+| Flutter golden | **None** (`matchesGoldenFile` appears in no test) | n/a | Gap: light / dark, 200% text, `ar` RTL, 320 px |
+| Flutter integration | **None** (no `integration_test/` folder) | n/a | Gap: login → bootstrap → create branch → 403 → upsell → replay; nightly |
+| Web component (CMS / web) | Yes: CMS 436 tests (59 files), web 95 tests (20 files) | Yes (436 / 436, 95 / 95) | None found. `PermissionGate` and org-switcher covered in CMS |
+| E2E (Playwright); host registration (bank / later / card), admin approve with provisioning-failure injection, host CMS enrol + payment + close day, member portal own data | Partly: CMS 14 specs (ledger, payments, payouts, team, org switcher, listing editor, notifications, billing events), web 2 specs (smoke, security headers) | Yes (CMS 26 / 26, web 3 / 3, dev server) | **Gap:** no registration flow E2E (bank, later, card), no admin-approve E2E with provisioning-failure injection, no member-portal check. API calls are mocked with `page.route`, so no E2E touches the real backend |
+| Realtime; auth on connect, room authorization, token refresh, reconnect replay, no duplicates, listener cleanup | Yes: `rt-04`, `rt-05`, `rt-08`, `new-84`; mobile `rt_02`, `rt_03`, `rt_05`, `rt_06`, `rt_08`, `rt_09` | Yes | Reconnect is refetch, not replay (RT-06 by design). Staff chat over sockets not covered (NEW-87) |
+| Notifications; register, refresh, logout removal, tap routing with context switch, foreground banner; device tests | Yes for the logic: `rt-01-device-tokens`, mobile `rt_01`, `rt_07` | Yes | **No real-device run** (FCM is not configured; the logs show a `private_key` error) |
+| Failure recovery; each path in §11.3 | Partly: `flow-02-resumable-provisioning` (crash after each step), `cap-02-capacity-outbox` (failure after tenant commit), webhook inbox retry, `new-80` | Yes | No list mapping each §11.3 scenario to a fault-injection test; "client timeout mid-payment" and "webhook processor crash" have no test |
+| Performance; k6, Lighthouse CI, Flutter traces, 1,000-tenant soak, discovery 200 RPS | **None** (`perf-06`, `perf-07` are unit-level) | n/a | Gap. §13 4A rows say "200 RPS NOT run", "soak NOT run"; no Lighthouse CI; budgets do not fail CI |
+| Security; SAST, dependency audit, secret scan, DAST, manual IDOR review | Partly: gitleaks workflow `secret-scan.yml` (new in 5A-4, first GitHub run not seen), `sec-*` tests, `unauthenticated-routes-guard` | Yes (the tests) | **No SAST, no DAST (ZAP), no `npm audit` step in CI.** My `npm audit --omit=dev` shows 1 critical + 10 high in CMS and in web (Next.js 14.2.21 and its toolchain) and 11 moderate in the backend |
+| Accessibility; axe (web), Flutter semantics, manual screen reader | Partly: axe harness in CMS and web (`state-components`, `billing-events-page`); 161 mobile tooltips | Yes | jsdom has no layout, so colour contrast is not tested by axe (token test covers it). **No Flutter semantics tests, no TalkBack / VoiceOver pass** |
+| Redis independence; full suite with `DISABLE_REDIS=true` | Yes (run by hand; not in CI) | Yes (run by hand: 200 / 200 suites, 1888 / 1888 tests with Redis off) | CI runs only with Redis. Add a second CI job so the rule cannot rot |
+
+### List 3: §17 criteria
+
+| # | Criterion | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Zero open P0 | **NOT MET** | NEW-06 and SEC-06 are open P0 (List 1). Every other P0 has a DONE row or git commit with a test |
+| 2 | All P1 DONE or DEFERRED with owner and date in §14 | **NOT MET** | About 35 P1 rows are open (List 1). Only a few have a §14 decision (R-31 for UX-09 / GLB-03 scope, R-36 for SEC-08, R-37 for SEC-15, R-7 for BILL-17). API-05, PERF-03, PERF-04, PERF-05, GLB-04, GLB-09, RBAC-06, FLOW-04, UX-22, NEW-16, NEW-19 to NEW-21, NEW-32, NEW-33, NEW-41 have neither a fix nor an owner and date |
+| 3 | Permission matrix green; no 2xx for a persona that should not have access; no cross-tenant access | **NOT MET** | Met so far: `rbac-03-permission-matrix` (26) and `sec-01-no-idor-matrix` (15) pass in the backend run (200 suites / 1888 tests green), `unauthenticated-routes-guard` passes. Not met: the matrix is not generated from the 204 mutating routes, and NEW-06 is a live 2xx for a host that should not get a paid plan |
+| 4 | Billing sandbox checklist passed on real iOS and Android devices and in Stripe test mode, within 14 days before release | **NOT MET** | No sandbox run is recorded anywhere: every §13 "Verified in staging?" cell is `pending` / `no`; the four §16 real-store checks are unticked. Stripe test mode: web card is OFF (R-7) |
+| 5 | Capacity: property test green; `auditCapacity` on all staging tenants shows zero drift and zero empty ACTIVE orgs; concurrency tests green | **NOT MET** | Met so far: `cap-07` (property test, 25 steps) and `cap-08` (concurrency) pass. Not met: no `auditCapacity` run on staging (the nightly audit and the `CAPACITY_DRIFT` alert exist, OBS-06, but nothing has run against a real tenant set); the property test is weaker than the row asks (List 2) |
+| 6 | Money: idempotency, ledger immutability, daily close, refund, invoice-sequence tests green; staging reconciliation exact | **NOT MET** | Met so far: `pay-01`, `pay-03`, `pay-04`, `pay-05`, `pay-07`, `pay-10`, `rel-01` pass. Not met: no staging reconciliation (sum of payments = sum of ledger per day per branch); NEW-63 (float sums in the gym-wide ledger merge, `ledger.service.js:517-519`) is a PAY-02 regression in a read path |
+| 7 | Recovery: every §11.3 scenario fault-injected in staging | **NOT MET** | No staging run. Local tests cover provisioning resume (`flow-02`), the outbox (`cap-02`) and webhook retry |
+| 8 | Performance budgets (§10.1) met on the reference device and in load tests | **NOT MET** | Not measured: §13 4A rows ("200 RPS NOT run", "soak NOT run", device cold start not measured), no Lighthouse run |
+| 9 | Security: no high / critical from SAST, dependency audit, secret scan, DAST; webhook signature tests green; log redaction verified | **NOT MET** | Met so far: `sec-03-webhook-authenticity` and `sec-07-log-redaction` pass; gitleaks workflow exists. Not met: `npm audit --omit=dev` on 2026-10-20 reports **1 critical + 10 high in `gymsera_cms` and in `gymsera_web`** (`next` 14.2.21 critical; high: axios, braces, browserslist, chokidar, fast-glob, form-data, micromatch, postcss, source-map-js, tailwindcss) and 11 moderate, 0 high in the backend; no SAST; no DAST; redaction not checked on production-like traffic; the gitleaks workflow has not been seen to pass on GitHub |
+| 10 | Global: works in at least one RTL locale and one non-PKR currency end to end; timezone tests pass across a DST boundary | **NOT MET** | Met so far: `glb-01-business-dates` (23 h and 25 h days in `America/New_York`) and `glb-01-branch-timezone` pass. Not met: no localization or RTL (GLB-03, GLB-05 not started); clients print "Rs" (GLB-02 client part) |
+| 11 | Accessibility: no critical axe violations; a screen-reader pass on login → Today → check-in → record payment | **NOT MET** | Met so far: axe component tests pass in CMS and web (no contrast, jsdom). Not met: no screen-reader pass, no Flutter semantics tests |
+| 12 | Operations: dashboards and alerts live; restore drill done; runbooks for billing, capacity drift, provisioning failure, webhook backlog | **NOT MET** | Met so far: runbooks for billing events (covers the webhook backlog), capacity drift and price mismatch (`docs/runbooks/`); in-app alerts for 8 codes. Not met: no scraper or dashboard for `/metrics`; **no provisioning-failure runbook**; no restore drill; no on-call rota; alerts reach only active platform admins in the app |
+
+### Owner-action list (nothing here can be done by an agent)
+
+Each item needs the owner (credentials, a vendor account, a server, or a decision). Source: handoff end-of-project checklist, §13 deploy notes (5A-3, 5A-4), §16.
+
+| # | Action | Needed for | Detail |
+|---|---|---|---|
+| 1 | **Sentry DSNs**, one project per app (API, CMS, web, Flutter); CI secret `SENTRY_AUTH_TOKEN` for source maps and symbols | OBS-02 on the clients (PR9), OBS-08 (PR12), §16 "error tracking from all 4 apps" | R-32. Backend is inert without `SENTRY_DSN` |
+| 2 | `METRICS_KEY`, plus a Prometheus-compatible scraper and dashboards | OBS-03, §17.12 | `/metrics` is disabled while the key is unset |
+| 3 | **MySQL slow log** on the servers | OBS-04 | `docs/runbooks/slow-queries.md` |
+| 4 | **R2 variables** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` (and `R2_KYC_BUCKET`) in production | SEC-08 fail-closed, SEC-10 | Without them every image upload answers 503. Check `sharp` loads on the Windows host (Node >= 20.9) |
+| 5 | **`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PACKAGE_NAME`**; run `node src/scripts/run-price-verification.js` once | BILL-15 | Also Play RTDN push subscription with OIDC auth on (R-26) |
+| 6 | **App Store Connect API key** | BILL-15 on iOS (R-38) | The App Store Server API cannot read prices; until then iOS stays admin-attested |
+| 7 | **Email deliverability**: unblock `info@inovetta.com` at Zoho (`554 5.1.8`), move to ZeptoMail or SES by changing `SMTP_*`, set SPF, DKIM, DMARC, rotate the `noreply@gymsera.com` password | NEW-73; every OTP, reset, approval and expiry mail | |
+| 8 | **`BANK_TRANSFER_*`** on the API server | UX-15 | Without them `GET /billing/bank-instructions` returns nulls |
+| 9 | **`NEXT_PUBLIC_CMS_URL`** on the web server | UX-02 redirect | |
+| 10 | **Firebase push**: fix the `private_key` error, upload the APNs key to FCM, define Android channels | RT-01 on devices, §16 | |
+| 11 | **Redis**: install it, or set `DISABLE_REDIS=true` on purpose | rate limits, locks, Socket.IO adapter | Both modes pass the suite (below) |
+| 12 | **Branch protection on `main`** in all four repos | a direct push to `main` happened once (`gymsera_web` `86ec525`) | Also add `timeout-minutes` and a `DISABLE_REDIS` job to CI |
+| 13 | **Schedule the retention jobs**: `audit_logs` retention and the KYC sweep (`run-kyc-retention-sweep.js`); the deletion sweep already runs in the daily job (NEW-36) | R-16, SEC-10 | |
+| 14 | **Mobile release before 2026-12-05**, including Boost "Coming soon" (`909f3cb`), NEW-38 re-auth, the 3E state widgets, 4A bootstrap, 5A RT changes and OBS-01 | store-review and API compatibility | Two items that should ride along if possible: NEW-09 / NEW-33 (fake payouts) and NEW-16 (purchase listener) |
+| 15 | Secret manager / KMS, and rotation of any live key that ever used the old committed keys or the demo `TENANT_CONN_ENCRYPTION_KEY` | SEC-05 | `docs/runbooks/secrets-rotation.md` |
+| 16 | Confirm `trust proxy` / client IP behind IIS and Cloudflare; check duplicate security headers; read the `[csp-report]` log, then enforce the CSP in CMS and web | SEC-04, SEC-14, SEC-18 | |
+| 17 | The 5A-4 migration **p023**, and earlier p020 to p022, applied in production | BILL-15, RT-01, RT-05, OBS-05 | `run-platform-migrations.js --dry-run` first |
+| 18 | On-call rota; restore drill; staging environment; real-device sandbox purchases (Apple, Google); DAST run; Lighthouse and load runs | §16, §17.4 to §17.8, §17.12 | |
+| 19 | Decisions: BILL-17 merchant of record, NEW-81 (app version / flags), NEW-82 (search), the existing pay-later tenants, the four P1 items without an owner (List 1) | | |
+| 20 | **Merge the CMS BILL-15 badge** (`88778bb`, local branch only) | BILL-15 CMS | |
+| 21 | Before real data: delete or re-password seeded platform admins; the planned database wipe | §16 "Before adding real data" | |
+
+### Deferred work (decided or recorded, not scheduled)
+
+| Item | Decision / source | What it needs |
+|---|---|---|
+| **Cookie sessions + CSRF** (SEC-15) | R-37. Stays an open P1 risk, compensated by CSP and headers | Own prompt: API, CMS, web, realtime and CORS all change |
+| **Presigned direct-to-R2 uploads** and **virus scan** (SEC-08) | R-36 | Own prompt; KYC already uses private storage |
+| **GLB-03 to GLB-09** (localization, phone numbers, RTL, names and addresses, tax, slow networks, privacy export) | Not started. GLB-03 English only (R-31); GLB-07 is the BILL-17 decision | Own prompts; GLB-09 needs legal input |
+| **PR9** (client Sentry: CMS, web, mobile) and **PR12** (OBS-08 client performance) | R-32. Needs the DSN | Owner action 1 |
+| Enforcing the CSP; CMS `object-src 'none'` | SEC-14 | Read the report log first |
+| Redis store for rate limits | When a second API instance exists | Also the discovery snapshot version read |
+| Apple price read-back | R-38 | App Store Connect key |
+| Web card payments, Stripe downgrade timing, card at signup (NEW-25, R-4) | R-7 | A web provider |
+| Boost (NEW-BOOST) | R-15: "Coming soon" until built | New feature |
+| API-05, PERF-02, PERF-03, PERF-05, PERF-09, PERF-11 | 4A: "separate prompt" | Schedule and record in §14 |
+| UX-03, UX-05, UX-16, UX-25 | R-13, R-14 | Nothing |
+| Offline check-in queue; CMS Inbox | R-10, R-18 | Nothing |
+| 5A leftovers: client times in the branch timezone, ICU money formatting, read `webCardPaymentsEnabled`; 5A-2 P3 follow-ups | Handoff | Client prompt |
+| Dashboards, on-call rota | 5A-3 | Owner actions 2, 18 |
+| `/system/*` routes | Decided R-35: deleted | Done |
+| Mobile admin approve path for FLOW-02 | 1G note | Check; not scheduled |
+
 ---
 
 ## 14. Remaining risks and open decisions
