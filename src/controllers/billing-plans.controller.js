@@ -1,11 +1,12 @@
 const catalogService = require('../services/billing-plan-catalog.service');
+const priceVerification = require('../services/price-verification.service');
 const { sendSuccess } = require('../utils/response.utils');
 
 // ── GET /admin/billing-plans — list every tier, all provider IDs + sync statuses ──
 const listPlans = async (req, res, next) => {
   try {
     const plans = await catalogService.listPlans();
-    return sendSuccess(res, plans);
+    return sendSuccess(res, await priceVerification.listPlansWithVerification(plans));
   } catch (err) {
     next(err);
   }
@@ -15,7 +16,8 @@ const listPlans = async (req, res, next) => {
 const getPlan = async (req, res, next) => {
   try {
     const plan = await catalogService.getPlan(req.params.id);
-    return sendSuccess(res, plan);
+    const [withVerification] = await priceVerification.listPlansWithVerification([plan]);
+    return sendSuccess(res, withVerification);
   } catch (err) {
     next(err);
   }

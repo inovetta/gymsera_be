@@ -926,6 +926,32 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 23,
+    name: 'p023_billing_plan_price_checks',
+    description:
+      'billing_plan_price_checks: the result of the read-only store price check per plan and provider (BILL-15). New table only; nothing existing changes. Safe to re-run.',
+    // BACKUP: not needed (new table).
+    // ROLLBACK (deploy the previous app build first; it does not read this table):
+    //   DROP TABLE `billing_plan_price_checks`;  DELETE FROM `schema_migrations` WHERE `version` = 23;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`billing_plan_price_checks\` (
+          \`id\` CHAR(36) BINARY NOT NULL,
+          \`billing_plan_id\` CHAR(36) BINARY NOT NULL,
+          \`provider\` VARCHAR(10) NOT NULL,
+          \`status\` ENUM('VERIFIED','MISMATCH','UNVERIFIABLE') NOT NULL,
+          \`mismatch_count\` INT NOT NULL DEFAULT 0,
+          \`details_json\` JSON NULL,
+          \`checked_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`billing_plan_price_checks_billing_plan_id_provider\` (\`billing_plan_id\`, \`provider\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

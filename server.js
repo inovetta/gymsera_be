@@ -129,6 +129,14 @@ async function bootstrap() {
         .then(() => sweepBillingAlerts());
     });
 
+    // 4c. Daily read-only check of Play Console prices against the plan catalog (BILL-15).
+    // Inert without GOOGLE_PLAY_SERVICE_ACCOUNT_JSON; runs under the distributed lock; never changes a plan.
+    const { withDistributedLock } = require('./src/utils/distributed-lock');
+    cron.schedule(process.env.PRICE_VERIFICATION_CRON || '40 3 * * *', () => {
+      withDistributedLock('cron:price-verification', 600000, () => require('./src/services/price-verification.service').runPriceVerification())
+        .catch((err) => console.error('[Cron] price-verification error:', err.message));
+    });
+
     // 5. Start HTTP server
     server = app.listen(PORT, () => {
       console.log(`\n🚀 GymsEra API running on port ${PORT}`);

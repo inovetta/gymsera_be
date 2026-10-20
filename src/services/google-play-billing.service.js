@@ -247,7 +247,22 @@ const listVoidedPurchases = async (startTimeMillis) => {
   return voided;
 };
 
-const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoidedPurchases };
+/**
+ * Read one subscription product's configuration (base plans and their regional prices) from Play Console.
+ * Read-only: used by the price verifier (BILL-15); nothing here writes to Google.
+ * @returns {Promise<object>} the Subscription resource ({ productId, basePlans: [...] })
+ */
+const getSubscriptionProduct = async (productId) => {
+  const auth = _playDeveloperApiAuth();
+  const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${_packageName()}/subscriptions/${encodeURIComponent(productId)}`;
+  const response = await auth.request({ url, method: 'GET' });
+  return response.data;
+};
+
+/** True when the Google credentials the verifier needs are present. */
+const isConfigured = () => Boolean(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON && process.env.GOOGLE_PLAY_PACKAGE_NAME);
+
+const playApi = { getSubscriptionPurchase, acknowledgePurchaseIfNeeded, listVoidedPurchases, getSubscriptionProduct };
 
 // ── RTDN push authentication (SEC-03, decision R-26) ─────────────────────────
 
@@ -388,6 +403,7 @@ const _acknowledgeVerifiedPurchase = async (purchase, purchaseToken, { throwOnAc
 
 module.exports = {
   playApi,
+  isConfigured,
   rtdnAuth,
   verifyRtdnPush,
   getSubscriptionPurchase,

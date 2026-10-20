@@ -13,6 +13,8 @@ missing **What it means**, **First checks** or **Rollback**.
 | `BILLING_EVENT_UNPROCESSED` | [billing-events.md](billing-events.md#billing_event_unprocessed) |
 | `BILLING_EVENT_FAILED` | [billing-events.md](billing-events.md#billing_event_failed) |
 | `BILLING_DUPLICATE_BILLING` | [billing-events.md](billing-events.md#billing_duplicate_billing) |
+| `BILLING_PRICE_MISMATCH` | [billing-prices.md](billing-prices.md#billing_price_mismatch) |
+| `BILLING_PRICE_CHECK_FAILED` | [billing-prices.md](billing-prices.md#billing_price_check_failed) |
 
 ## Procedures (not tied to an alert code)
 
