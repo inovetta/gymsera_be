@@ -52,6 +52,7 @@ const ALLOWED_PUBLIC_READ_ROUTES = [
   { method: 'GET', pattern: /^\/api\/v1\/billing\/plans$/, reason: 'Public plan pricing for mobile/CMS tier selector' },
   { method: 'GET', pattern: /^\/api\/v1\/billing\/bank-instructions$/, reason: 'Public bank transfer instructions for platform subscriptions (UX-15)' },
   { method: 'GET', pattern: /^\/api\/v1\/meta\/error-copy$/, reason: 'Public localized error copy catalog (API-02)' },
+  { method: 'GET', pattern: /^\/api\/v1\/meta\/app-config$/, reason: 'Public minimum app version and store links, read before sign-in (NEW-81)' },
   { method: 'GET', pattern: /^\/api\/v1\/discovery\//, reason: 'Public consumer gym search, discovery, and reviews' },
   { method: 'GET', pattern: /^\/api\/v1\/membership-plans/, reason: 'Public gym branch membership plans catalog' },
   { method: 'GET', pattern: /^\/iclock\//, reason: 'ZKTeco ADMS protocol: device polling validated by serial number' },
