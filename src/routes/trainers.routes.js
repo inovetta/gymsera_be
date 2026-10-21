@@ -79,7 +79,7 @@ router.get('/', can.atAnyBranch('team.view'), validate(validators.listTrainers),
 router.post(
   '/',
   can('schedule.trainer.assign'),
-  validate(validators.createTrainer),
+  validate.strict(validators.createTrainer, { stage: 2 }),
   controller.createTrainer
 );
 
@@ -132,7 +132,7 @@ router.post(
   '/:id/assign',
   canManageTrainer('schedule.trainer.assign'),
   can('schedule.trainer.assign'),
-  validate(validators.assignTrainer),
+  validate.strict(validators.assignTrainer, { stage: 2 }),
   controller.assignTrainer
 );
 

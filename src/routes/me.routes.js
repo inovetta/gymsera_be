@@ -59,9 +59,9 @@ router.get('/profile', meController.getProfile);
  *       200:
  *         description: Updated profile
  */
-router.put('/profile', validate(meValidators.updateProfile), meController.updateProfile);
+router.put('/profile', validate.strict(meValidators.updateProfile, { stage: 2 }), meController.updateProfile);
 // Alias: PATCH /me/profile (web portal sends PATCH)
-router.patch('/profile', validate(meValidators.updateProfile), meController.updateProfile);
+router.patch('/profile', validate.strict(meValidators.updateProfile, { stage: 2 }), meController.updateProfile);
 
 /**
  * @swagger
@@ -87,9 +87,9 @@ router.patch('/profile', validate(meValidators.updateProfile), meController.upda
  *       401:
  *         description: Current password incorrect
  */
-router.post('/password', validate(meValidators.changePassword), meController.changePassword);
+router.post('/password', validate.strict(meValidators.changePassword, { stage: 2 }), meController.changePassword);
 // Alias: POST /me/change-password (web portal uses this path)
-router.post('/change-password', validate(meValidators.changePassword), meController.changePassword);
+router.post('/change-password', validate.strict(meValidators.changePassword, { stage: 2 }), meController.changePassword);
 
 /**
  * @swagger
@@ -217,7 +217,7 @@ router.get('/payment-requests', meController.getPaymentRequests);
  *       201:
  *         description: Payment request submitted
  */
-router.post('/payment-request', validate(meValidators.submitPaymentRequest), meController.submitPaymentRequest);
+router.post('/payment-request', validate.strict(meValidators.submitPaymentRequest, { stage: 2 }), meController.submitPaymentRequest);
 
 /**
  * @swagger
@@ -254,7 +254,7 @@ router.post(
 
 // ── Aliases for web portal (uses /payments instead of /payment-requests) ──────
 router.get('/payments', meController.getPaymentRequests);
-router.post('/payments', validate(meValidators.submitPaymentRequest), meController.submitPaymentRequest);
+router.post('/payments', validate.strict(meValidators.submitPaymentRequest, { stage: 2 }), meController.submitPaymentRequest);
 router.post(
   '/payments/:id/proof',
   validate(meValidators.proofId),

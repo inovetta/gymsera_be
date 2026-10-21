@@ -160,7 +160,7 @@ router.put(
 router.post(
   '/:id/status',
   authorize(UserRole.GYM_HOST, UserRole.PLATFORM_ADMIN),
-  validate(userValidators.setStatus),
+  validate.strict(userValidators.setStatus, { stage: 2 }),
   usersController.setStatus
 );
 
@@ -176,7 +176,7 @@ router.post(
 router.post(
   '/:id/password',
   authorize(UserRole.GYM_HOST, UserRole.PLATFORM_ADMIN),
-  validate(userValidators.adminResetPassword),
+  validate.strict(userValidators.adminResetPassword, { stage: 2 }),
   usersController.adminResetPassword
 );
 

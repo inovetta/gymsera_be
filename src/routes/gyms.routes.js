@@ -280,7 +280,7 @@ router.get('/branches/:branchId/staff', gymsController.listStaff);
 router.post(
   '/branches/:branchId/staff',
   authorize('GYM_HOST'),
-  validate(gymsValidators.assignStaff),
+  validate.strict(gymsValidators.assignStaff, { stage: 2 }),
   gymsController.assignStaff
 );
 
@@ -308,7 +308,7 @@ router.post(
 router.delete(
   '/branches/:branchId/staff/:staffId',
   authorize('GYM_HOST'),
-  validate(gymsValidators.removeStaff),
+  validate.strict(gymsValidators.removeStaff, { stage: 2 }),
   gymsController.removeStaff
 );
 
