@@ -3,14 +3,14 @@ const controller = require('../controllers/trainers.controller');
 const validators = require('../validators/trainers.validator');
 const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
-const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
 const can = require('../middleware/can');
+const { canManageTrainer } = require('../middleware/trainerAccess');
 
 const router = Router();
 
-// All trainer management routes require auth + GYM_HOST/BRANCH_MANAGER + tenant context
-router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'));
+// All trainer routes require auth + tenant context; each route checks a permission with can() (NEW-100).
+router.use(authenticate, tenantContext);
 
 /**
  * @swagger
@@ -78,7 +78,7 @@ router.get('/', can.atAnyBranch('team.view'), validate(validators.listTrainers),
  */
 router.post(
   '/',
-  authorize('GYM_HOST'),
+  can('schedule.trainer.assign'),
   validate(validators.createTrainer),
   controller.createTrainer
 );
@@ -100,7 +100,7 @@ router.post(
  *       200:
  *         description: Trainer updated
  */
-router.patch('/:id', validate(validators.updateTrainer), controller.updateTrainer);
+router.patch('/:id', canManageTrainer('schedule.trainer.assign'), validate(validators.updateTrainer), controller.updateTrainer);
 
 /**
  * @swagger
@@ -130,7 +130,8 @@ router.patch('/:id', validate(validators.updateTrainer), controller.updateTraine
  */
 router.post(
   '/:id/assign',
-  authorize('GYM_HOST'),
+  canManageTrainer('schedule.trainer.assign'),
+  can('schedule.trainer.assign'),
   validate(validators.assignTrainer),
   controller.assignTrainer
 );
