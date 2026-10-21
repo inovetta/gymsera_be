@@ -6,6 +6,7 @@ const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const tenantContext = require('../middleware/tenantContext');
 const can = require('../middleware/can');
+const { canManageTrainer } = require('../middleware/trainerAccess');
 
 const router = Router();
 
@@ -100,7 +101,7 @@ router.post(
  *       200:
  *         description: Trainer updated
  */
-router.patch('/:id', validate(validators.updateTrainer), controller.updateTrainer);
+router.patch('/:id', canManageTrainer('schedule.trainer.assign'), validate(validators.updateTrainer), controller.updateTrainer);
 
 /**
  * @swagger
