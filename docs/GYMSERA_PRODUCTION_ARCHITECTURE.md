@@ -2814,6 +2814,78 @@ Each item needs the owner (credentials, a vendor account, a server, or a decisio
 | `/system/*` routes | Decided R-35: deleted | Done |
 | Mobile admin approve path for FLOW-02 | 1G note | Check; not scheduled |
 
+#### Prompt 6A re-run (2026-10-21, Claude Code Sonnet 5.5; docs only, no code changed)
+
+**Verdict: still NOT production-ready, but closer.** All 12 §17 criteria are still NOT MET. One P0 is still open (SEC-06, 70 of 214 mutating routes are
+strict; 129 have no validator). The things that changed since the first 6A check are listed per criterion. Nothing here is MET without evidence.
+
+**Code checked.** `gymsera_be` `origin/main` 934f120, `gymsera_cms` 5c6f8f1, `gymsera_web` adb0b5f, `gyms_era` `origin/master` b7ce9ae (detached worktrees,
+the working branches were not touched).
+
+**Test runs for this check.**
+
+| Suite | Result |
+|---|---|
+| Backend, Redis on (CI env, MySQL 5.7 on 127.0.0.1:3308, local Redis) | **207 suites / 2002 tests passed, 0 failed** |
+| CMS Vitest / Playwright (dev server, API mocked) | **458 passed / 26 passed** |
+| Web Vitest / Playwright | **98 passed / 3 passed** |
+| Flutter () | **182 passed, 0 failed** |
+| `npm audit --omit=dev` | backend 11 moderate, 0 high, 0 critical; CMS and web 3 moderate, **6 high**, 0 critical each (Tailwind 3 and PostCSS build tooling, NEW-101) |
+| Route census (running router, 214 mutating routes) | 70 strict (42 reject, 28 log), 15 validated but not strict, **129 with no validator** |
+
+Not run in this pass: the `DISABLE_REDIS=true` backend run (last green on 2026-10-20 at 1888 tests), the production-build Playwright and security-header specs,
+`next build`, `flutter analyze`, the GitHub Actions workflows (no CI access from here, so the `secret-scan` workflow is still unseen), anything on staging or a device.
+
+**Spot-check of the back-filled §13 rows against the code (10 rows, all hold).**
+
+| Row | What was checked | Result |
+|---|---|---|
+| FLOW-09 | `attendance.service.js:45-62` refuses a UUID or `GE-` code unless `ATTENDANCE_LEGACY_QR_UNTIL` is set and in the future; `qr.utils.js:17,38` sign and verify with `QR_EXPIRED` / `QR_ALREADY_USED` | holds |
+| PAY-05 | `getNextInvoiceNumber` is called from `payment.service.js:35`, `gym.service.js:1833`, `subscription.service.js:241`; no `Math.random().toString(16)` invoice generator is left in `src` | holds |
+| NEW-39 | `payment.service.js:432` defines `finalAmount = fromMinorUnits(finalAmountMinor)` and `:435,479,570` use it | holds |
+| FLOW-12 | `staff-invites.routes.js:81-90,118` `_assertInviteValid` (pending, expiry, binding) and the token-hash lookups at `:31,38` | holds |
+| PAY-12 | `ledger.controller.js:92-94` calls `approvalService.perform(…, 'ledger.verify', …)`; the command is registered at `commands/ledger.commands.js:54` | holds |
+| NEW-43 | `membership.service.js:133` `hasPortalAccess`, used by `auth.service.js:650` | holds |
+| NEW-40 | `subscription.service.js:581` stores `{type: 'RENEW', planId}` on the pending payment; `:945-947` reads it back when the payment is verified | holds |
+| PAY-08 | `payment.service.js:93,106` `isMemberPaymentExpiryEnabled` / `expireStalePendingPayments`, called from `subscription-expiry.cron.js:45` | holds |
+| FLOW-06 | `subscription.service.js:367` `unfreeze`, `:184` branch-timezone date; `subscription-expiry.cron.js:39,67` per-branch `computeBusinessDate` | holds |
+| FLOW-10 | `discovery.controller.js:3-7` passes the right arguments; `discovery.service.js:986,999` create reviews as `PENDING` | holds |
+| Tenant migrations 014 to 018 | `tenant-migration-runner.js:423,484,540,609,645` exist under the names the rows give | holds |
+
+One wording fix: the FLOW-09 row says the legacy grace is "off unless set"; that is right, and it also needs the date to be in the future.
+
+### §17 criteria, current verdict
+
+| # | Criterion | Verdict | Evidence now, and what moved since the first check |
+|---|---|---|---|
+| 1 | Zero open P0 | **NOT MET** | **One P0 is open: SEC-06** (unknown fields; 70 of 214 mutating routes strict, 129 have no validator). NEW-06 is DONE (`new-06-host-upgrade-no-free-plan.test.js`, in the green run). No other P0 is open in §12 or §12.13 |
+| 2 | All P1 DONE or DEFERRED with owner and date in §14 | **NOT MET** | About 24 P1 rows are open (list in `docs/P1_OWNER_DATE.md`). On `origin/main` the Owner, Date and Decision columns are still empty and §14 has no R-39+; the filled table has not reached the repo. Closed since the first check: NEW-09/33, NEW-16, NEW-19, NEW-21/32 (mobile), NEW-41, NEW-81, NEW-98 to NEW-100, SEC-06 stage 1 |
+| 3 | Permission matrix green, no unexpected 2xx, no cross-tenant access | **NOT MET** | `rbac-03-permission-matrix` (26) and `sec-01-no-idor-matrix` (15) pass in the 2002-test run. Still not generated from the route list: about 100 of 214 mutating route declarations are guarded only by the role check (`authorize`, which the tenant-context shim satisfies for any team member) with no `can()` in the declaration; some check inside the handler, which no test enumerates. NEW-98 showed what that hides (a Cleaner could edit any trainer) |
+| 4 | Billing sandbox checklist on real iOS/Android and Stripe test mode within 14 days of release | **NOT MET** | No sandbox run is recorded; §16's four real-store checks are unticked. Web card is OFF (R-7) |
+| 5 | Capacity: property test, zero drift on staging, concurrency tests | **NOT MET** | `cap-07` (property test, 25 random steps, unchanged) and `cap-08` (concurrency) pass. No `auditCapacity` run on staging |
+| 6 | Money tests green, staging reconciliation exact | **NOT MET** | `pay-01`, `pay-03`, `pay-04`, `pay-05`, `pay-07`, `pay-10`, `rel-01` pass. NEW-63 (float sums in the gym-wide ledger merge) is still open; no staging reconciliation. PAY-05, PAY-06, PAY-08, PAY-12 now have §13 rows and tests |
+| 7 | Recovery: every §11.3 scenario fault-injected in staging | **NOT MET** | Local tests only (`flow-02` resume, `cap-02` outbox, webhook retry). No staging fault injection |
+| 8 | Performance budgets met on the reference device and in load tests | **NOT MET** | Not measured: no device cold start, no 200 RPS run, no Lighthouse, no 1,000-tenant soak |
+| 9 | Security: no high/critical from SAST, dependency audit, secret scan, DAST; webhook tests green; log redaction verified | **NOT MET** | `sec-03` (webhooks) and `sec-07` (redaction) pass. Dependency audit: backend 0 high; **CMS and web 0 critical but 6 high each** (build tooling, NEW-101; the critical Next.js advisories are fixed by NEW-97). No SAST, no DAST. The `secret-scan` workflow has not been seen to run. Redaction not checked on production-like traffic |
+| 10 | Global: one RTL locale and one non-PKR currency end to end; DST test | **NOT MET** | `glb-01-business-dates` and `glb-01-branch-timezone` (DST) pass. No localization or RTL (GLB-03, GLB-05 not started). Mobile payouts and analytics now format with the server's currency (`formatMoney`); other screens still print "Rs" |
+| 11 | Accessibility: no critical axe violations, screen-reader pass on the host core flow | **NOT MET** | axe component tests pass in CMS and web (no contrast checks in jsdom). No Flutter semantics tests, no TalkBack / VoiceOver pass |
+| 12 | Operations: dashboards and alerts live, restore drill, runbooks for billing, capacity drift, provisioning failure, webhook backlog | **NOT MET** | Runbooks exist for billing events (covers the webhook backlog), capacity drift, price mismatch, slow queries, secret rotation; **still no provisioning-failure runbook**. In-app alerts for 8 codes. No scraper or dashboard for `/metrics`, no restore drill, no on-call rota |
+
+### What remains before release
+
+**Code (agent work, in this order)**
+1. **SEC-06, the last P0:** (a) after one release cycle with no `[unknown-fields]` log lines, set `UNKNOWN_FIELDS_STAGE2_MODE=reject`; (b) fix the 12 validators whose clients send undeclared fields (list in `docs/changes/SEC-06.md`), then make them strict; (c) write validators for the 129 routes with none, starting with auth, payments, billing, team and approvals; (d) generate the persona x route matrix from the route list so a new route cannot ship unchecked.
+2. Move the roughly 100 role-only route declarations to `can()` (the NEW-98 to NEW-100 pattern), router by router.
+3. Tests the §15 matrix asks for and does not have: the capacity property test at 1,000 sequences with the ledger-replay check, a parallel double-refund test, registration and admin-approve E2E, a permission matrix that fails CI on an unexpected 2xx, `DISABLE_REDIS` and `npm audit` jobs in CI.
+4. NEW-63 (float sums in the gym-wide ledger), the provisioning-failure runbook, NEW-20 (CMS "Verify payment" for pay-later tenants), NEW-87, NEW-102.
+5. Mobile before **2026-12-05**: everything merged so far (NEW-09/33, NEW-16, NEW-19, NEW-21/32, NEW-27, NEW-81, Apple body) must be in the store build; UX-08/UX-10 sweep if time allows.
+
+**Decisions (you)**: the filled P1 table recorded as R-39+ (currently missing from the repo), the minimum-version policy for the release (NEW-81), the existing pay-later tenants.
+
+**Owner actions**: Sentry DSNs and `SENTRY_AUTH_TOKEN`; `METRICS_KEY` and a scraper; the MySQL slow log; the R2 variables; `GOOGLE_PLAY_*`; the App Store Connect key; e-mail deliverability (Zoho block, SPF, DKIM, DMARC); `BANK_TRANSFER_*`; `NEXT_PUBLIC_CMS_URL`; Firebase push; Redis on or off on purpose; branch protection on `main` in all repos; the retention jobs; secret manager and key rotation; `trust proxy` check behind IIS and Cloudflare; read the `[csp-report]` log then enforce the CSP; migrations p020 to p023 applied; `MIN_APP_VERSION_*` when a release must be forced.
+
+**Staging and devices (together with a human, §16)**: real-store sandbox purchases, `auditCapacity` and payment-to-ledger reconciliation, fault injection for every §11.3 scenario, the 200 RPS discovery run, Lighthouse CI, the 1,000-tenant pool soak, the device cold-start measurement, DAST (ZAP), SAST, the restore drill, a screen-reader pass of login to Today to check-in to record payment, dashboards and the on-call rota, the first GitHub run of `secret-scan`.
+
 ---
 
 ## 14. Remaining risks and open decisions

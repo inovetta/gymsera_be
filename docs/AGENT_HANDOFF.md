@@ -17,41 +17,35 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-20 |
+| Last updated | 2026-10-21 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 6A: Gap check** (docs only, no code changed) |
+| Current prompt | **Prompt 6A re-run (gap check)**, docs only |
 | Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-6A is done: the three lists (open issues, §15 matrix, §17 criteria), the owner-action list and the deferred-work list are in spec §13, section
-"Prompt 6A gap check (2026-10-20)". **Result: not production-ready.** Two P0 issues are open (NEW-06, SEC-06), all 12 §17 criteria are NOT MET,
-and a new dependency finding (NEW-97, `next` 14.2.21 critical advisory in CMS and web) was recorded. The 6A docs branch
-(`phase-6/prompt-6a-gap-check`, from `origin/main` c1a9cbc) is committed, **not pushed**.
+The re-run is in spec §13, section "Prompt 6A re-run (2026-10-21)": test runs, a spot-check of ten back-filled rows (all hold), and the updated
+§17 list. **Result: all 12 criteria still NOT MET; one P0 open (SEC-06: 70 of 214 mutating routes strict, 129 without a validator).**
+Docs branch `docs/6a-rerun` (from `origin/main` 934f120) is committed, **not pushed**. All code branches from the earlier prompts are merged.
 
-| Repo | Branch | Last commit (hash + subject) | Uncommitted changes? |
+| Repo | Branch | Last commit | Uncommitted changes? |
 |---|---|---|---|
-| gymsera_be | `phase-6/prompt-6a-gap-check` (from `origin/main` c1a9cbc) | see `git log` (docs only) | no |
-| gymsera_web | `main` | 21a87b0 (PR #18) | no |
-| gymsera_cms | `main` | 80344a7 (PR #31). The BILL-15 badge `88778bb` is **not merged and not pushed** (only on the local branch `phase-5/prompt-5a4-bill15-price-verifier`) | no |
-| gyms_era | `master` | 922cd2d (PR #16) | no |
+| gymsera_be | `docs/6a-rerun` | docs only | no |
+| gymsera_web | `main` | adb0b5f (PR #20) | no |
+| gymsera_cms | `main` | 5c6f8f1 (PR #36, BILL-15 badge) | no |
+| gyms_era | `master` | b7ce9ae (PR #24, force update) | no |
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Push and merge the 6A docs branch.** Then fix the gaps with focused prompts, one issue per commit, backend first. Suggested order:
-> 1. **NEW-06 (P0, no fix, no test):** `POST /host/subscription/upgrade` (`src/controllers/host.controller.js:873-936`) gives any host a PAID plan with no payment. Write the failing test, then remove or gate the route (same path as BILL-10). Check what the CMS "Request a Manual Plan" button should do instead.
-> 2. **SEC-06 (P0, partial):** reject unknown fields on the P0 write paths first (auth, payments, billing, team), then the rest.
-> 3. **NEW-97 (P2 by rule, security-critical in practice):** upgrade `next` 14.2.21 in `gymsera_cms` and `gymsera_web` (critical advisory plus 10 high in the build toolchain); rebuild, run Vitest and Playwright. Add an `npm audit --omit=dev` step to CI.
-> 4. **Back-fill §13** with the rows listed under "Bookkeeping defect" in the 6A section (FLOW-05 to FLOW-13, PAY-05, PAY-06, PAY-08, PAY-12, NEW-39, NEW-40, NEW-43 to NEW-45, UX-14, UX-19, and the rows closed by other rows).
-> 5. **Before the mobile release (deadline 2026-12-05):** NEW-09 / NEW-33 (fake payout screens), NEW-16 (purchase listener at startup).
-> 6. Merge the CMS BILL-15 badge `88778bb`, or redo it; fix NEW-41 (CMS Trainers calls `/gyms/trainers`).
-> 7. Give API-05, PERF-03, PERF-04, PERF-05, GLB-04, GLB-09, RBAC-06, FLOW-04, UX-22 an owner and a date in §14 (§17.2), then schedule GLB-03 to GLB-09, PR9 / PR12 (after the Sentry DSN), SEC-15 (cookies + CSRF) and presigned uploads.
-> 8. Then the §16 deployment checklist on staging **together with a human** (real-device sandbox purchases, fault injection, `auditCapacity`, reconciliation, load and Lighthouse runs, restore drill).
-> Owner actions are listed in the 6A section ("Owner-action list"); the first ones to unblock work are the Sentry DSN, R2 variables, `GOOGLE_PLAY_*` and the email fix.
-> **Still true from earlier prompts:** 5A-1 / 5A-2 client leftovers and P3 follow-ups; NEW-83 stays open; NEW-81 and NEW-82 wait for an owner decision.
-> **How the 6A test numbers were produced:** backend 200 suites / 1888 tests green with Redis and with Redis off; CMS Vitest 436 and Playwright 26; web Vitest 95 and Playwright 3; Flutter 110 tests. Commands are in the 6A section.
+> **Waiting on the owner:** the filled `docs/P1_OWNER_DATE.md` did not reach the repo (all Owner, Date and Decision cells are empty on `origin/main`). When it
+> does, record each row as R-39 onward in spec §14. Until then criterion 17.2 stays NOT MET.
+> **Then, in this order:** (1) SEC-06: flip stage 2 to reject after a log review, fix the 12 validators with undeclared fields, validators for the 129 routes
+> without one (auth, payments, billing, team, approvals first), a generated persona x route matrix; (2) move the roughly 100 role-only routes to `can()`;
+> (3) the missing §15 tests (capacity property test at 1,000 sequences, parallel double refund, registration and admin-approve E2E, CI jobs for `DISABLE_REDIS`
+> and `npm audit`); (4) NEW-63, the provisioning-failure runbook, NEW-20. The owner action list and the staging gates are in the re-run section.
+
 ### Work in progress that is NOT committed
 
 - (none)
@@ -516,3 +510,4 @@ and a new dependency finding (NEW-97, `next` 14.2.21 critical advisory in CMS an
 | 91 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4, full-protocol verification | Full protocol after PR 7: backend 200 suites / 1888 tests x3 green plus one `DISABLE_REDIS=true` run green (be `0722f15`, Mac on AC power, lid open, no sleep event in the window); web Vitest 95, build, lint, Playwright 15 + 3; CMS Vitest 439, build, lint, Playwright 9 + 26 | task complete | yes |
 | 92 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4 close-out (docs only) | Spec §13 rows SEC-14 / SEC-15 / SEC-18 / NEW-95 / NEW-96, real hashes in the SEC-04 / 05 / 08 / 16 / 17 and BILL-15 rows, "Prompt 5A-4 close-out notes" (deploy, later work), §16 notes; handoff moved to Prompt 6A | task complete (not pushed) | yes |
 | 93 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 6A, gap check (docs only) | Spec §13 "Prompt 6A gap check": open-issue list by severity, §15 matrix row by row, §17 criteria (all 12 NOT MET), owner-action and deferred lists, NEW-97 recorded, §13 back-fill list; test runs: backend 200 suites / 1888 tests green with Redis on and off, CMS Vitest 436 + Playwright 26, web Vitest 95 + Playwright 3, Flutter 110; no code changed | task complete (not pushed) | yes |
+| 94 | 2026-10-21 | Claude Code (Sonnet 5.5) | Prompt 6A re-run (docs only) | Spec §13 "Prompt 6A re-run": test runs (backend 207 suites / 2002 tests, CMS 458 + 26, web 98 + 3, Flutter 182), ten back-filled rows spot-checked against the code, §17 verdict (all 12 NOT MET, one P0 open), what remains; R-39+ not recorded because the filled P1 table was not in the repo | task complete (not pushed) | yes |
