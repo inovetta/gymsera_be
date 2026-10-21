@@ -32,6 +32,13 @@ Stage 2 = a validator exists; clients send a field it does not declare (or the c
 - **Mobile Apple sign-in** sends `userIdentifier`, `email`, `fullName` that the server validator does not declare (NEW-02 made the server ignore them): stage 2 must declare them or the app must stop sending them.
 - Unreadable client bodies (variables or multipart): mobile `updates`, `fields`, `expenseData`, `FormData` uploads, CMS `formData`.
 
+## Stage 2, first route: `POST /auth/social/apple`
+
+`fullName` is now declared (Apple sends the name only on first sign-in, and the service reads it). The route is strict with
+`allow: ['userIdentifier', 'email']`: older app builds still send those two, the server ignores them (NEW-02), and the current app
+no longer sends them (app `2c6296b`). Remove the `allow` list once the minimum app version is past the fix. Test:
+`tests/regression/sec-06-apple-login-body.test.js`.
+
 ## Mismatch fixes (2026-10-21, one branch per repo, each with a failing-first test)
 
 | Mismatch | Fixed in | Branch / commit |

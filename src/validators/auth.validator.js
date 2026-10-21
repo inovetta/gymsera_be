@@ -88,6 +88,8 @@ const authValidators = {
   appleLogin: [
     body('identityToken').notEmpty().withMessage('Apple identity token is required'),
     body('authorizationCode').optional().isString().isLength({ max: 2000 }),
+    // Apple sends the name only on the first sign-in, so the app passes it along.
+    body('fullName').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
   ],
 
   refreshToken: [
