@@ -298,7 +298,8 @@ router.post('/social/google/staff', validate.strict(authValidators.googleLogin),
  *       401:
  *         description: Invalid or expired Apple identity token
  */
-router.post('/social/apple', validate(authValidators.appleLogin), authController.appleLogin);
+// SEC-06: userIdentifier and email are ignored (NEW-02) but app builds released before the fix still send them.
+router.post('/social/apple', validate.strict(authValidators.appleLogin, { allow: ['userIdentifier', 'email'] }), authController.appleLogin);
 
 // ── POST /auth/refresh ────────────────────────────────────────────────────────
 /**
