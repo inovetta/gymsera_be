@@ -62,7 +62,7 @@ router.use(authenticate);
  *       409:
  *         description: Active subscription already exists at this branch
  */
-router.post('/', validate(validators.subscribe), controller.subscribe);
+router.post('/', validate.strict(validators.subscribe), controller.subscribe);
 
 /**
  * @swagger
@@ -100,7 +100,7 @@ router.post('/', validate(validators.subscribe), controller.subscribe);
  *       409:
  *         description: Subscription not in ACTIVE state
  */
-router.post('/:id/freeze', validate(validators.freeze), controller.freeze);
+router.post('/:id/freeze', validate.strict(validators.freeze), controller.freeze);
 
 /**
  * @swagger
@@ -121,7 +121,7 @@ router.post('/:id/freeze', validate(validators.freeze), controller.freeze);
  *       409:
  *         description: Already cancelled or expired
  */
-router.post('/:id/cancel', validate(validators.cancel), controller.cancel);
+router.post('/:id/cancel', validate.strict(validators.cancel), controller.cancel);
 
 /**
  * @swagger
@@ -142,8 +142,8 @@ router.post('/:id/cancel', validate(validators.cancel), controller.cancel);
  *       409:
  *         description: Subscription is cancelled or plan no longer available
  */
-router.post('/:id/renew', validate(validators.renew), controller.renew);
-router.post('/:id/change-plan', validate(validators.changePlan), controller.changePlan);
+router.post('/:id/renew', validate.strict(validators.renew), controller.renew);
+router.post('/:id/change-plan', validate.strict(validators.changePlan), controller.changePlan);
 
 // ── Member: subscription detail with invoice + payment ────────────────────────
 router.get('/:id/detail', controller.getMySubscriptionDetail);

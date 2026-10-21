@@ -29,7 +29,7 @@ adminRouter.get('/', ctrl.listDevices);
 // Register a new device
 adminRouter.post(
   '/',
-  validate([
+  validate.strict([
     body('tenantId').isUUID().withMessage('Valid tenantId UUID required'),
     body('branchId').isUUID().withMessage('Valid branchId UUID required'),
     body('serialNumber').notEmpty().withMessage('serialNumber is required'),
@@ -50,7 +50,7 @@ adminRouter.get(
 // Update device
 adminRouter.put(
   '/:id',
-  validate([
+  validate.strict([
     param('id').isUUID(),
     body('name').optional().notEmpty(),
     body('status').optional().isIn(['ACTIVE', 'INACTIVE']),
@@ -62,7 +62,7 @@ adminRouter.put(
 // Delete device (also deletes all PIN mappings)
 adminRouter.delete(
   '/:id',
-  validate([param('id').isUUID()]),
+  validate.strict([param('id').isUUID()]),
   ctrl.deleteDevice
 );
 
@@ -74,7 +74,7 @@ adminRouter.get('/:id/members', validate([param('id').isUUID()]), ctrl.listDevic
 // Add a PIN mapping: assign zkPin to a platform userId
 adminRouter.post(
   '/:id/members',
-  validate([
+  validate.strict([
     param('id').isUUID(),
     body('userId').isUUID().withMessage('Valid userId UUID required'),
     body('zkPin').isInt({ min: 1, max: 9999999 }).withMessage('zkPin must be an integer 1–9999999'),
@@ -86,7 +86,7 @@ adminRouter.post(
 // Remove a PIN mapping
 adminRouter.delete(
   '/:id/members/:memberId',
-  validate([param('id').isUUID(), param('memberId').isUUID()]),
+  validate.strict([param('id').isUUID(), param('memberId').isUUID()]),
   ctrl.removeDeviceMember
 );
 
@@ -104,7 +104,7 @@ hostRouter.get('/', ctrl.myDevices);
 // Register a device for own tenant
 hostRouter.post(
   '/',
-  validate([
+  validate.strict([
     body('branchId').isUUID().withMessage('Valid branchId UUID required'),
     body('serialNumber').notEmpty().withMessage('serialNumber is required'),
     body('name').notEmpty().withMessage('Device name is required'),
@@ -117,7 +117,7 @@ hostRouter.post(
 // Update own device
 hostRouter.put(
   '/:id',
-  validate([
+  validate.strict([
     param('id').isUUID(),
     body('name').optional().notEmpty(),
     body('status').optional().isIn(['ACTIVE', 'INACTIVE']),
@@ -127,14 +127,14 @@ hostRouter.put(
 );
 
 // Delete own device
-hostRouter.delete('/:id', validate([param('id').isUUID()]), ctrl.hostDeleteDevice);
+hostRouter.delete('/:id', validate.strict([param('id').isUUID()]), ctrl.hostDeleteDevice);
 
 // ── PIN mappings (host) ───────────────────────────────────────────────────────
 hostRouter.get('/:id/members', validate([param('id').isUUID()]), ctrl.hostListDeviceMembers);
 
 hostRouter.post(
   '/:id/members',
-  validate([
+  validate.strict([
     param('id').isUUID(),
     body('userId').isUUID().withMessage('Valid userId UUID required'),
     body('zkPin').isInt({ min: 1, max: 9999999 }).withMessage('zkPin must be an integer 1–9999999'),
@@ -145,7 +145,7 @@ hostRouter.post(
 
 hostRouter.delete(
   '/:id/members/:memberId',
-  validate([param('id').isUUID(), param('memberId').isUUID()]),
+  validate.strict([param('id').isUUID(), param('memberId').isUUID()]),
   ctrl.hostRemoveDeviceMember
 );
 

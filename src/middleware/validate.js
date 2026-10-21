@@ -8,16 +8,57 @@ const { sendError } = require('../utils/response.utils');
  * Usage in routes:
  *   router.post('/register', validate(authValidators.register), authController.register);
  */
-const validate = (validations) => async (req, res, next) => {
+const build = (validations, allowedFields) => async (req, res, next) => {
   await Promise.all(validations.map((v) => v.run(req)));
 
   const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    const errorDetails = errors.array().map((e) => ({ field: e.path, message: e.msg }));
+  const errorDetails = errors.isEmpty() ? [] : errors.array().map((e) => ({ field: e.path, message: e.msg }));
+
+  if (allowedFields) {
+    const mode = unknownFieldsMode();
+    const sent = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? Object.keys(req.body) : [];
+    const unknown = mode === 'off' ? [] : sent.filter((k) => !allowedFields.includes(k));
+    if (unknown.length && mode === 'log') {
+      console.warn(`[unknown-fields] ${req.method} ${req.originalUrl.split('?')[0]} would be rejected: ${unknown.join(', ')}`);
+    } else if (unknown.length) {
+      for (const field of unknown) errorDetails.push({ field, message: 'Unknown field', code: 'unknown_field' });
+    }
+  }
+
+  if (errorDetails.length) {
     return sendError(res, 422, 'Validation failed', 'validation_error', { errors: errorDetails });
   }
 
   next();
+};
+
+const validate = (validations) => build(validations, null);
+
+/**
+ * SEC-06: UNKNOWN_FIELDS_MODE = reject (default: 422), log (accept and log the field names, for a
+ * rollout watched in the logs), off (no check).
+ */
+const unknownFieldsMode = () => {
+  const m = String(process.env.UNKNOWN_FIELDS_MODE || 'reject').toLowerCase();
+  return m === 'log' || m === 'off' ? m : 'reject';
+};
+
+/**
+ * validate.strict(validations, { allow }) — validate(), plus every top-level key of req.body must be
+ * a field some chain names (the root of a nested path such as items.*.id counts) or be listed in
+ * `allow`. A body that is missing or not a plain object is left alone (the chains judge it).
+ */
+validate.strict = (validations, { allow = [] } = {}) => {
+  const allowed = new Set(allow);
+  for (const v of validations) {
+    const b = v.builder && typeof v.builder.build === 'function' ? v.builder.build() : null;
+    if (!b || !b.locations.includes('body')) continue;
+    for (const f of b.fields) allowed.add(String(f).split(/[.[]/)[0]);
+  }
+  const list = [...allowed];
+  const mw = build(validations, list);
+  mw.__strictAllowed = list;
+  return mw;
 };
 
 module.exports = validate;

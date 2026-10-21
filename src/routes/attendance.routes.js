@@ -51,7 +51,7 @@ router.post(
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
   can('checkins.qr.scan'),
-  validate(validators.qrScan),
+  validate.strict(validators.qrScan),
   controller.qrScan
 );
 
@@ -88,7 +88,7 @@ router.post(
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
   can('checkins.manual.create'),
-  validate(validators.manual),
+  validate.strict(validators.manual),
   controller.manual
 );
 
@@ -363,7 +363,7 @@ router.post(
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
   can('checkins.manual.create'),
-  validate(validators.manual),
+  validate.strict(validators.manual),
   controller.manual
 );
 

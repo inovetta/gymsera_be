@@ -79,7 +79,7 @@ router.post(
   '/',
   authenticate,
   authorize('PLATFORM_ADMIN'),
-  validate(citiesValidators.createCity),
+  validate.strict(citiesValidators.createCity),
   citiesController.createCity
 );
 
@@ -116,7 +116,7 @@ router.patch(
   '/:id',
   authenticate,
   authorize('PLATFORM_ADMIN'),
-  validate(citiesValidators.updateCity),
+  validate.strict(citiesValidators.updateCity),
   citiesController.updateCity
 );
 
@@ -151,7 +151,7 @@ router.post(
   '/:id/areas',
   authenticate,
   authorize('PLATFORM_ADMIN'),
-  validate(citiesValidators.createArea),
+  validate.strict(citiesValidators.createArea),
   citiesController.createArea
 );
 
@@ -188,7 +188,7 @@ router.patch(
   '/:id/areas/:areaId',
   authenticate,
   authorize('PLATFORM_ADMIN'),
-  validate(citiesValidators.updateArea),
+  validate.strict(citiesValidators.updateArea),
   citiesController.updateArea
 );
 

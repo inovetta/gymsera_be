@@ -315,7 +315,7 @@ router.get('/gyms/:id/reviews', validate(validators.getGym), controller.listRevi
 router.post(
   '/gyms/:id/reviews',
   authenticate,
-  validate(validators.submitReview),
+  validate.strict(validators.submitReview),
   controller.submitReview
 );
 
@@ -427,7 +427,7 @@ router.get('/gyms/:id', publicCache, validate(validators.getGym), controller.get
 router.post(
   '/branches/:branchId/inquiries',
   authenticate,
-  validate(validators.submitInquiry),
+  validate.strict(validators.submitInquiry),
   controller.submitInquiry
 );
 
@@ -446,7 +446,7 @@ router.get(
 router.post(
   '/branches/:branchId/reviews',
   authenticate,
-  validate(validators.submitBranchReview),
+  validate.strict(validators.submitBranchReview),
   controller.submitBranchReview
 );
 
