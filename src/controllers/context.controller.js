@@ -12,6 +12,7 @@
  * The client uses this to decide what to *render*. The server still decides what
  * is *allowed*, on every call. A hidden button is not access control.
  */
+const { appConfig } = require('../config/app-version.config');
 const TenantDbManager = require('../database/TenantDbManager');
 const membershipService = require('../services/membership.service');
 const accessService = require('../services/access.service');
@@ -246,6 +247,8 @@ const getBootstrap = async (req, res, next) => {
         organizations: context.organizations,
         needsContextSwitcher: context.needsContextSwitcher,
         permissionVersion: context.permissionVersion,
+        // NEW-81: the same values as GET /meta/app-config, for the app that is already signed in.
+        app: appConfig(),
         activeTenant: org
           ? {
             tenantId: org.tenantId,
