@@ -27,10 +27,34 @@ Stage 2 = a validator exists; clients send a field it does not declare (or the c
 ## Problems the inventory found (not fixed here)
 
 - **Clients send fields the server validator does not declare** (strict would break them; today the server ignores or reads them unvalidated): `POST /tenants/register` `areaId` (web, app); `POST /tenants/:id/gym-profile` `latitude`, `longitude`; `POST /platform-packages` `featureFlags` (the validator has `featureFlagsJson`); `PATCH /gyms/profile` `address, category, email, establishedYear, imagesJson, latitude, longitude, phone, tagline`; `POST /gyms/branches` `facilities` (validator: `facilitiesJson`); `PATCH /gyms/branches/:branchId` `facilities`, `status`; `POST /host/branches` `country`, `gymListingId`; `POST /payments` `branchId`, `shift`; `PATCH /trainers/:id` `branchId`; `POST /users` `role`; `POST /admin/tenants/:id/invoices` `description, notes, tenantSubscriptionId`; `PATCH /admin/tenants/:id/invoices/:invoiceId` `notes, paidAt`.
-- **Client and server disagree on names today (a real bug, independent of SEC-06):** web `PATCH /me/profile` sends `height`, `weight`, `allergies`, `foodPreferences` but the validator knows `heightCm`, `weightKg`; mobile `POST /users/:id/password` sends `password`, the validator wants `newPassword`; the web password-reset confirm sends `{ email, otp, newPassword }` but `POST /auth/password-reset/confirm` wants `{ email, code, password }`; the CMS reset-confirm sends `{ token, newPassword }`.
+- **Client and server disagree on names today (a real bug, independent of SEC-06; the web reset, mobile admin reset and web profile ones are fixed below):** web `PATCH /me/profile` sends `height`, `weight`, `allergies`, `foodPreferences` but the validator knows `heightCm`, `weightKg`; mobile `POST /users/:id/password` sends `password`, the validator wants `newPassword`; the web password-reset confirm sends `{ email, otp, newPassword }` but `POST /auth/password-reset/confirm` wants `{ email, code, password }`; the CMS reset-confirm sends `{ token, newPassword }`.
 - **Client calls with no server route** (they 404 today): CMS `POST /auth/forgot-password` and `POST /auth/reset-password`; CMS `/gyms/trainers*` (NEW-41); CMS `PATCH /users/:id`, `PATCH /users/:id/status`, `POST /users/:id/reset-password` (the server has `PUT /users/:id` and `POST /users/:id/status`); CMS `PATCH /membership-plans/:id/toggle-status` (the server has `POST /membership-plans/:id/status`).
 - **Mobile Apple sign-in** sends `userIdentifier`, `email`, `fullName` that the server validator does not declare (NEW-02 made the server ignore them): stage 2 must declare them or the app must stop sending them.
 - Unreadable client bodies (variables or multipart): mobile `updates`, `fields`, `expenseData`, `FormData` uploads, CMS `formData`.
+
+## Mismatch fixes (2026-10-21, one branch per repo, each with a failing-first test)
+
+| Mismatch | Fixed in | Branch / commit |
+|---|---|---|
+| Web password-reset confirm sent `{ email, otp, newPassword }`; API wants `{ email, code, password }` (a web reset could never finish) | web | `fix/web-password-reset-confirm-fields` `09b0223` |
+| Mobile `adminResetPassword` sent `{ password }`; API wants `{ newPassword }` (no screen calls it yet) | app | `fix/app-user-password-field` `ac3519e` |
+| Web fitness profile sent `height` / `weight`, API wants `heightCm` / `weightKg`; it also read the fields from the top level, but the API nests them under `profile`; `allergies` and `foodPreferences` have no column (removed from the form) | web | `fix/web-profile-height-weight` `894c1fa` |
+
+Product question left open: allergies and food preferences. The web form offered them but they were never saved. They were removed rather than kept as a promise the API does not keep; if wanted, they need columns on the member profile first.
+
+## CMS calls to routes the server does not have
+
+| CMS call | Used by | Server has | Recommendation |
+|---|---|---|---|
+| `POST /auth/forgot-password` (`requestPasswordReset`) | live: `(auth)/forgot-password` page, so CMS password reset 404s today | `POST /auth/password-reset/request` and `/confirm` (same OTP flow as web and mobile) | **Remove the CMS call, point it at the existing route.** Do not build a second reset flow. The CMS page has only the request step, so it also needs the confirm step (code + new password) |
+| `POST /auth/reset-password` (`confirmPasswordReset`) | nothing calls it | `POST /auth/password-reset/confirm` `{ email, code, password }` | **Delete the dead call**; add it again, correctly named, with the confirm step above |
+| `GET/POST/PATCH /gyms/trainers*`, `PATCH /gyms/trainers/:id/toggle-status` | live: the whole `/gym/trainers` page (NEW-41); in the sidebar | `/trainers`: `GET /`, `POST /`, `PATCH /:id`, `POST /:id/assign`. **No toggle-status** (status is a field on `PATCH /:id`) | **Point the CMS at `/trainers`** (do not build `/gyms/trainers`). Toggle becomes `PATCH /trainers/:id { status }`. Check the `/trainers` permission gates match the CMS sidebar rule (`schedule.trainer.assign`): the router uses `authorize('GYM_HOST')` on writes, so branch managers would still be refused |
+| `PATCH /membership-plans/:id/toggle-status` | live: `/gym/plans` page (activate / deactivate) | `POST /membership-plans/:id/status` | **Change the CMS call** to the existing route |
+| `PATCH /users/:id/status` | live: `/gym/members/[id]` (suspend / activate a member) | `POST /users/:id/status` | **Change the CMS call** to POST |
+| `PATCH /users/:id` (`updateUser`) | nothing calls it | `PUT /users/:id` | **Delete the dead call** (or switch to PUT when a screen needs it) |
+| `POST /users/:id/reset-password` (`resetUserPassword`) | nothing calls it | `POST /users/:id/password` `{ newPassword }` | **Delete the dead call**; if an admin reset screen is wanted, call the existing route |
+
+None of these needs a new server route. Each is a CMS change, to be done as its own failing-first commit; the four that are live today (forgot-password, trainers, plan toggle, member status) are broken for users now.
 
 ## Every mutating route
 
