@@ -74,7 +74,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/register', validate(authValidators.register), authController.register);
+router.post('/register', validate.strict(authValidators.register), authController.register);
 
 // ── POST /auth/otp/verify ─────────────────────────────────────────────────────
 /**
@@ -120,7 +120,7 @@ router.post('/register', validate(authValidators.register), authController.regis
  *       400:
  *         description: Invalid or expired OTP
  */
-router.post('/otp/verify', validate(authValidators.verifyOtp), authController.verifyOtp);
+router.post('/otp/verify', validate.strict(authValidators.verifyOtp), authController.verifyOtp);
 
 // ── POST /auth/otp/resend ─────────────────────────────────────────────────────
 /**
@@ -145,7 +145,7 @@ router.post('/otp/verify', validate(authValidators.verifyOtp), authController.ve
  *       200:
  *         description: OTP resent (same message whether email exists or not)
  */
-router.post('/otp/resend', validate(authValidators.resendOtp), authController.resendOtp);
+router.post('/otp/resend', validate.strict(authValidators.resendOtp), authController.resendOtp);
 
 // ── POST /auth/login ──────────────────────────────────────────────────────────
 /**
@@ -195,7 +195,7 @@ router.post('/otp/resend', validate(authValidators.resendOtp), authController.re
  *       403:
  *         description: Account not verified or suspended
  */
-router.post('/login', validate(authValidators.login), authController.login);
+router.post('/login', validate.strict(authValidators.login), authController.login);
 
 // ── POST /auth/social/google ──────────────────────────────────────────────────
 /**
@@ -223,7 +223,7 @@ router.post('/login', validate(authValidators.login), authController.login);
  *       401:
  *         description: Invalid Google ID token
  */
-router.post('/social/google', validate(authValidators.googleLogin), authController.googleLogin);
+router.post('/social/google', validate.strict(authValidators.googleLogin), authController.googleLogin);
 
 // ── POST /auth/social/google/staff ────────────────────────────────────────────
 /**
@@ -259,7 +259,7 @@ router.post('/social/google', validate(authValidators.googleLogin), authControll
  *       403:
  *         description: No linked staff account, or the linked account isn't a staff role
  */
-router.post('/social/google/staff', validate(authValidators.googleLogin), authController.googleLoginStaff);
+router.post('/social/google/staff', validate.strict(authValidators.googleLogin), authController.googleLoginStaff);
 
 // ── POST /auth/social/apple ───────────────────────────────────────────────────
 /**
@@ -324,7 +324,7 @@ router.post('/social/apple', validate(authValidators.appleLogin), authController
  *       401:
  *         description: Invalid, expired, or revoked refresh token
  */
-router.post('/refresh', validate(authValidators.refreshToken), authController.refreshToken);
+router.post('/refresh', validate.strict(authValidators.refreshToken), authController.refreshToken);
 
 // ── POST /auth/password-reset/request ────────────────────────────────────────
 /**

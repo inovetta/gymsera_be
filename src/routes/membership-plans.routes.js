@@ -134,7 +134,7 @@ router.post(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
-  validate(validators.createPlan),
+  validate.strict(validators.createPlan),
   controller.createPlan
 );
 
@@ -160,7 +160,7 @@ router.patch(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
-  validate(validators.updatePlan),
+  validate.strict(validators.updatePlan),
   controller.updatePlan
 );
 
@@ -186,7 +186,7 @@ router.delete(
   authenticate,
   tenantContext,
   authorize('GYM_HOST'),
-  validate(validators.deletePlan),
+  validate.strict(validators.deletePlan),
   controller.deletePlan
 );
 

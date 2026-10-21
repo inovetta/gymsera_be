@@ -1,0 +1,333 @@
+{
+ "comment": "SEC-06 stage 1. Keys the CMS, web and mobile code send to each route (extracted from the client sources on 2026-10-21; see docs/changes/SEC-06.md). The route must accept all of them.",
+ "routes": [
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/billing-plans",
+   "clientKeys": [
+    "androidAnnualBasePlanId",
+    "androidMonthlyBasePlanId",
+    "androidProductId",
+    "annualPrice",
+    "branchCount",
+    "currency",
+    "iosAnnualProductId",
+    "iosMonthlyProductId",
+    "isActive",
+    "monthlyPrice",
+    "sortOrder"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/billing-plans/:p",
+   "clientKeys": [
+    "androidAnnualBasePlanId",
+    "androidMonthlyBasePlanId",
+    "androidProductId",
+    "annualPrice",
+    "branchCount",
+    "currency",
+    "iosAnnualProductId",
+    "iosMonthlyProductId",
+    "isActive",
+    "monthlyPrice",
+    "sortOrder"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/billing-plans/:p/mark-synced",
+   "clientKeys": [
+    "provider"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/billing-plans/:p/prices/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/billing-plans/:p/prices/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/billing-plans/:p/prices/:p/sync-stripe",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/devices",
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/devices/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/admin/devices/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/devices/:p/members",
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/devices/:p/members/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/attendance/check-in",
+   "clientKeys": [
+    "branchId",
+    "notes",
+    "subscriptionId",
+    "userId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/attendance/manual",
+   "clientKeys": [
+    "branchId",
+    "notes",
+    "subscriptionId",
+    "userId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/attendance/qr-scan",
+   "clientKeys": [
+    "branchId",
+    "deviceId",
+    "qrCode"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/login",
+   "clientKeys": [
+    "email",
+    "password"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/otp/resend",
+   "clientKeys": [
+    "email"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/otp/verify",
+   "clientKeys": [
+    "code",
+    "email"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/refresh",
+   "clientKeys": [
+    "refreshToken"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/register",
+   "clientKeys": [
+    "email",
+    "fullName",
+    "password",
+    "phone"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/social/google",
+   "clientKeys": [
+    "idToken"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/social/google/staff",
+   "clientKeys": [
+    "idToken"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cities",
+   "clientKeys": [
+    "imageUrl",
+    "isActive",
+    "name"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/cities/:p",
+   "clientKeys": [
+    "imageUrl",
+    "isActive",
+    "name"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cities/:p/areas",
+   "clientKeys": [
+    "imageUrl",
+    "name"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/cities/:p/areas/:p",
+   "clientKeys": [
+    "imageUrl",
+    "name"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/devices",
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/devices/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/devices/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/devices/:p/members",
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/devices/:p/members/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/discovery/branches/:p/inquiries",
+   "clientKeys": [
+    "message"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/discovery/branches/:p/reviews",
+   "clientKeys": [
+    "rating",
+    "text",
+    "title"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/discovery/gyms/:p/reviews",
+   "clientKeys": [
+    "body",
+    "rating",
+    "title"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/membership-plans",
+   "clientKeys": [
+    "branchId",
+    "description",
+    "durationType",
+    "durationValue",
+    "freezeLimitDays",
+    "isPublic",
+    "isTrial",
+    "joiningFee",
+    "name",
+    "price",
+    "securityFee",
+    "visitLimit"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/membership-plans/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/membership-plans/:p",
+   "clientKeys": [
+    "description",
+    "durationType",
+    "durationValue",
+    "freezeLimitDays",
+    "isPublic",
+    "isTrial",
+    "joiningFee",
+    "name",
+    "price",
+    "securityFee",
+    "status",
+    "visitLimit"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions",
+   "clientKeys": [
+    "autoRenew",
+    "branchId",
+    "gymListingId",
+    "planId",
+    "sourceChannel"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/:p/cancel",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/:p/change-plan",
+   "clientKeys": [
+    "planId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/:p/freeze",
+   "clientKeys": [
+    "freezeFrom",
+    "freezeTo"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/:p/renew",
+   "clientKeys": [
+    "planId",
+    "startDate"
+   ]
+  }
+ ]
+}
