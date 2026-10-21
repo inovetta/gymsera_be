@@ -353,7 +353,7 @@ router.post('/refresh', validate.strict(authValidators.refreshToken), authContro
  */
 router.post(
   '/password-reset/request',
-  validate(authValidators.passwordResetRequest),
+  validate.strict(authValidators.passwordResetRequest, { stage: 2 }),
   authController.passwordResetRequest
 );
 
@@ -391,7 +391,7 @@ router.post(
  */
 router.post(
   '/password-reset/confirm',
-  validate(authValidators.passwordResetConfirm),
+  validate.strict(authValidators.passwordResetConfirm, { stage: 2 }),
   authController.passwordResetConfirm
 );
 

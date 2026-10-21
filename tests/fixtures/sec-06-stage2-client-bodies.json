@@ -1,0 +1,250 @@
+{
+ "comment": "SEC-06 stage 2. Keys the CMS, web and mobile code send to each route, extracted from the client sources on 2026-10-21 after the mismatch fixes. These routes run strict in LOG mode first (UNKNOWN_FIELDS_STAGE2_MODE).",
+ "routes": [
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/branches/:p/traveler-visibility",
+   "clientKeys": [
+    "reason",
+    "status"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/reviews/:p/moderate",
+   "clientKeys": [
+    "action"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/reviews/:p/moderate",
+   "clientKeys": [
+    "action",
+    "adminNote"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants",
+   "clientKeys": [
+    "businessName",
+    "cityId",
+    "email",
+    "ownerEmail",
+    "ownerFullName",
+    "ownerPhone",
+    "packageId",
+    "phone"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tenants/:p/branches/:p/status",
+   "clientKeys": [
+    "status"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/branches/:p/suspend",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/reject",
+   "clientKeys": [
+    "reason"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/subscriptions",
+   "clientKeys": [
+    "amount",
+    "autoRenew",
+    "billingCycle",
+    "createInvoice",
+    "packageId",
+    "startDate"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/subscriptions/:p/verify-payment",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/suspend",
+   "clientKeys": [
+    "reason"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/password-reset/confirm",
+   "clientKeys": [
+    "code",
+    "email",
+    "password"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/password-reset/request",
+   "clientKeys": [
+    "email"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/branches/:p/staff",
+   "clientKeys": [
+    "designation",
+    "userId"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/gyms/branches/:p/staff/:p",
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/change-password",
+   "clientKeys": [
+    "currentPassword",
+    "newPassword"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/password",
+   "clientKeys": [
+    "currentPassword",
+    "newPassword"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/payment-request",
+   "clientKeys": [
+    "amount",
+    "method",
+    "notes",
+    "subscriptionId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/payments",
+   "clientKeys": [
+    "amount",
+    "method",
+    "notes",
+    "subscriptionId"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/me/profile",
+   "clientKeys": [
+    "dateOfBirth",
+    "fitnessGoal",
+    "fullName",
+    "gender",
+    "heightCm",
+    "phone",
+    "weightKg"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/me/profile",
+   "clientKeys": [
+    "dateOfBirth",
+    "fitnessGoal",
+    "fullName",
+    "gender",
+    "heightCm",
+    "phone",
+    "weightKg"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/payments/:p/verify",
+   "clientKeys": [
+    "notes"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/platform-packages/:p",
+   "clientKeys": [
+    "billingCycle",
+    "description",
+    "featureFlagsJson",
+    "maxBranches",
+    "maxMembers",
+    "maxTrainers",
+    "name",
+    "price",
+    "status"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/tenants/:p/select-package",
+   "clientKeys": [
+    "packageId"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/tenants/me",
+   "clientKeys": [
+    "businessName",
+    "cityId",
+    "email",
+    "phone"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/trainers",
+   "clientKeys": [
+    "availabilityJson",
+    "bio",
+    "branchId",
+    "certificationsJson",
+    "specialization",
+    "userId",
+    "yearsExperience"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/trainers/:p/assign",
+   "clientKeys": [
+    "branchId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:p/password",
+   "clientKeys": [
+    "newPassword"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:p/status",
+   "clientKeys": [
+    "reason",
+    "status"
+   ]
+  }
+ ]
+}

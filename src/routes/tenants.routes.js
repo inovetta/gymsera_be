@@ -70,7 +70,7 @@ router.patch(
   '/me',
   authenticate,
   authorize('GYM_HOST'),
-  validate(tenantsValidators.updateMyTenant),
+  validate.strict(tenantsValidators.updateMyTenant, { stage: 2 }),
   tenantsController.updateMyTenant
 );
 
@@ -207,7 +207,7 @@ router.post(
   '/:id/select-package',
   authenticate,
   authorize('GYM_HOST'),
-  validate(tenantsValidators.selectPackage),
+  validate.strict(tenantsValidators.selectPackage, { stage: 2 }),
   tenantsController.selectPackage
 );
 

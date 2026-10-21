@@ -48,7 +48,7 @@ router.use(authenticate, authorize('PLATFORM_ADMIN'));
  */
 router.post(
   '/tenants',
-  validate([
+  validate.strict([
     body('ownerEmail').trim().toLowerCase().notEmpty().isEmail().withMessage('Valid owner email is required'),
     body('ownerFullName').trim().notEmpty().withMessage('Owner full name is required'),
     body('ownerPhone').optional({ nullable: true }).trim(),
@@ -57,7 +57,7 @@ router.post(
     body('phone').optional({ nullable: true }).trim(),
     body('cityId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('Invalid city ID'),
     body('packageId').optional({ nullable: true }).isUUID().withMessage('Invalid package ID'),
-  ]),
+  ], { stage: 2 }),
   adminController.createTenant
 );
 
@@ -153,7 +153,7 @@ router.post('/tenants/:id/approve', idempotency(), adminController.approveTenant
  */
 router.post(
   '/tenants/:id/reject',
-  validate([body('reason').trim().notEmpty().withMessage('Rejection reason is required')]),
+  validate.strict([body('reason').trim().notEmpty().withMessage('Rejection reason is required')], { stage: 2 }),
   adminController.rejectTenant
 );
 
@@ -191,7 +191,7 @@ router.post(
  */
 router.post(
   '/tenants/:id/suspend',
-  validate([body('reason').trim().notEmpty().withMessage('Suspension reason is required')]),
+  validate.strict([body('reason').trim().notEmpty().withMessage('Suspension reason is required')], { stage: 2 }),
   adminController.suspendTenant
 );
 
@@ -201,16 +201,16 @@ router.get('/tenants/:id/branches', adminController.getTenantBranches);
 
 router.patch(
   '/tenants/:id/branches/:branchId/status',
-  validate([
+  validate.strict([
     body('status').isIn(['ACTIVE', 'INACTIVE', 'SUSPENDED']).withMessage('status must be ACTIVE, INACTIVE, or SUSPENDED'),
     body('reason').optional({ nullable: true }).trim(),
-  ]),
+  ], { stage: 2 }),
   adminController.updateTenantBranchStatus
 );
 
 router.post(
   '/tenants/:id/branches/:branchId/suspend',
-  validate([body('reason').trim().notEmpty().withMessage('Suspension reason is required')]),
+  validate.strict([body('reason').trim().notEmpty().withMessage('Suspension reason is required')], { stage: 2 }),
   adminController.suspendTenantBranch
 );
 
@@ -250,10 +250,10 @@ router.post('/tenants/:id/branches/:branchId/images', upload.images('images', 10
 router.delete('/tenants/:id/branches/:branchId/images', adminController.deleteAdminBranchImage);
 router.patch(
   '/branches/:branchId/traveler-visibility',
-  validate([
+  validate.strict([
     body('status').isIn(['active', 'deactivated']).withMessage('status must be active or deactivated'),
     body('reason').optional({ nullable: true }).trim(),
-  ]),
+  ], { stage: 2 }),
   adminController.updateBranchTravelerVisibility
 );
 
@@ -303,21 +303,21 @@ router.get('/tenants/:id/subscriptions', adminController.getTenantSubscriptions)
 router.get('/tenants/:id/capacity-audit', adminController.getTenantCapacityAudit);
 router.post(
   '/tenants/:id/subscriptions',
-  validate([
+  validate.strict([
     body('packageId').isUUID().withMessage('Valid package ID is required'),
     body('startDate').optional().isISO8601().withMessage('Invalid start date'),
     body('billingCycle').optional().isIn(['MONTHLY', 'QUARTERLY', 'YEARLY']),
     body('amount').optional().isFloat({ min: 0 }),
     body('autoRenew').optional().isBoolean(),
     body('createInvoice').optional().isBoolean(),
-  ]),
+  ], { stage: 2 }),
   adminController.assignTenantSubscription
 );
 router.patch('/tenants/:id/subscriptions/:subId/revoke', adminController.revokeTenantSubscription);
 // Pay later (BILL-13): confirm the bank transfer → the GRACE plan becomes ACTIVE (audited).
 router.post(
   '/tenants/:id/subscriptions/:subId/verify-payment',
-  validate([body('bankTransferRef').optional({ nullable: true }).isString().isLength({ max: 100 })]),
+  validate.strict([body('bankTransferRef').optional({ nullable: true }).isString().isLength({ max: 100 })], { stage: 2 }),
   adminController.verifyPayLaterPayment
 );
 
@@ -449,13 +449,13 @@ router.get('/reviews', discoveryController.adminListReviews);
  */
 router.post(
   '/reviews/:id/moderate',
-  validate(discoveryValidators.moderateReview),
+  validate.strict(discoveryValidators.moderateReview, { stage: 2 }),
   discoveryController.moderateReview
 );
 // Alias: PATCH /admin/reviews/:id/moderate (CMS uses PATCH)
 router.patch(
   '/reviews/:id/moderate',
-  validate(discoveryValidators.moderateReview),
+  validate.strict(discoveryValidators.moderateReview, { stage: 2 }),
   discoveryController.moderateReview
 );
 

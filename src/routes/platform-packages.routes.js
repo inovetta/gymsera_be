@@ -142,7 +142,7 @@ router.patch(
   '/:id',
   authenticate,
   authorize('PLATFORM_ADMIN'),
-  validate(packagesValidators.updatePackage),
+  validate.strict(packagesValidators.updatePackage, { stage: 2 }),
   packagesController.updatePackage
 );
 

@@ -189,7 +189,7 @@ router.get('/:id', controller.getPaymentById);
  *       409:
  *         description: Payment is not in a verifiable state
  */
-router.post('/:id/verify', validate(validators.verifyPayment), controller.verifyPayment);
+router.post('/:id/verify', validate.strict(validators.verifyPayment, { stage: 2 }), controller.verifyPayment);
 
 /**
  * @swagger
