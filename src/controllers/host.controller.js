@@ -1,5 +1,5 @@
 const TenantDbManager = require('../database/TenantDbManager');
-const { Tenant, TenantSubscription, PlatformPackage, GymListing, User } = require('../models/platform');
+const { Tenant, TenantSubscription, GymListing, User } = require('../models/platform');
 const { sendSuccess, createError, buildPagination } = require('../utils/response.utils');
 const { likeContains } = require('../utils/sql-like');
 const { Op } = require('sequelize');
@@ -870,79 +870,19 @@ const getCurrentSubscription = async (req, res, next) => {
   }
 };
 
+// NEW-06 (P0): this route used to cancel the tenant's ACTIVE plan and create an ACTIVE / PAID
+// PlatformPackage row with no payment, so any host could give itself any plan. Entitlement now
+// comes only from a verified store purchase (the /billing sync routes and webhooks) or from a
+// platform admin who has seen the money (admin assign, pay-later verify). The route stays so old
+// clients get a clear answer; it reads nothing and writes nothing.
 const upgradeSubscription = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
-
-    const { planId } = req.body;
-    if (!planId) throw createError('planId is required', 400);
-
-    const pkg = await PlatformPackage.findByPk(planId);
-    if (!pkg) throw createError('Subscription plan package not found', 404);
-
-    const tenant = await Tenant.findByPk(tenantId);
-    if (!tenant) throw createError('Tenant not found', 404);
-
-    // INTENTIONAL PRODUCT RULE: this is the legacy manual/PlatformPackage
-    // path (bank transfer / pay-later, from before store-verified IAP
-    // billing existed). It has no concept of reservedSlots or
-    // overQuotaCount and never calls reconcileCapacity — it is NOT unified
-    // with the IAP reconciliation workflow, only kept from colliding with
-    // it. A host already on a store-verified plan (branchCount set) who
-    // reached this endpoint would have their IAP subscription cancelled and
-    // replaced by a legacy one with a completely different, unreconciled
-    // branch limit — silently orphaning any reservedSlots and leaving a
-    // real over-capacity state with no overQuotaCount ever set to reflect
-    // it. Blocked outright rather than taught to reconcile a transition the
-    // product doesn't otherwise support self-serve. If a genuine IAP <->
-    // manual transition is ever needed, it should be a deliberate,
-    // explicitly-reconciled admin operation of its own — not something this
-    // endpoint (or assignTenantSubscription's matching guard) attempts.
-    const existingActiveSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
-    if (existingActiveSub && existingActiveSub.branchCount != null) {
-      const err = createError(
-        'Your plan is managed through the app\'s in-app purchase — upgrade or change your branch count from there instead.',
-        409
-      );
-      err.code = 'iap_subscription_active';
-      throw err;
-    }
-
-    // Cancel existing subscriptions
-    await TenantSubscription.update(
-      { status: 'CANCELLED' },
-      { where: { tenantId, status: 'ACTIVE' } }
+    const err = createError(
+      'Plans can no longer be requested here. Buy a plan in the GymsEra app, or contact support to pay by bank transfer.',
+      410
     );
-
-    // Create new active subscription
-    const start = new Date();
-    const end = new Date(start);
-    const cycle = pkg.billingCycle || 'MONTHLY';
-    if (cycle === 'MONTHLY') end.setMonth(end.getMonth() + 1);
-    else if (cycle === 'QUARTERLY') end.setMonth(end.getMonth() + 3);
-    else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
-
-    const newSub = await TenantSubscription.create({
-      tenantId,
-      platformPackageId: pkg.id,
-      startDate: start.toISOString().split('T')[0],
-      endDate: end.toISOString().split('T')[0],
-      amount: pkg.price,
-      billingCycle: cycle,
-      status: 'ACTIVE',
-      autoRenew: true,
-      paymentStatus: 'PAID'
-    });
-
-    // Also update tenant package selection
-    await tenant.update({ selectedPackageId: pkg.id });
-
-    const subscription = await TenantSubscription.findByPk(newSub.id, {
-      include: [{ model: PlatformPackage, as: 'package' }]
-    });
-
-    return sendSuccess(res, subscription, 'Subscription upgraded successfully');
+    err.code = 'manual_plan_removed';
+    throw err;
   } catch (err) {
     next(err);
   }
