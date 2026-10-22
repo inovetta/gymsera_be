@@ -74,8 +74,8 @@ const planReset = async (conn, { keepAdmins }) => {
   const names = tables.map((t) => t.name || t.NAME || t.TABLE_NAME);
 
   const [admins] = await conn.query(
-    `SELECT id, LOWER(email) AS email, role FROM \`${USERS_TABLE}\` WHERE LOWER(email) IN (?)`,
-    [emails]
+    'SELECT id, LOWER(email) AS email, role FROM ?? WHERE LOWER(email) IN (?)',
+    [USERS_TABLE, emails]
   );
   const found = new Set(admins.map((a) => a.email));
   const missing = emails.filter((e) => !found.has(e));
@@ -86,7 +86,7 @@ const planReset = async (conn, { keepAdmins }) => {
 
   const plan = { tables: [], users: null, tenants: [], keepIds };
   for (const name of names) {
-    const [[{ n }]] = await conn.query(`SELECT COUNT(*) AS n FROM \`${name}\``);
+    const [[{ n }]] = await conn.query('SELECT COUNT(*) AS n FROM ??', [name]);
     if (name === USERS_TABLE) {
       plan.users = { total: Number(n), keep: keepIds.length, remove: Number(n) - keepIds.length };
       plan.tables.push({ name, rows: Number(n), action: 'KEEP_ADMINS_ONLY' });
@@ -162,12 +162,12 @@ const runReset = async ({
     await conn.beginTransaction();
     for (const t of plan.tables) {
       if (t.action === 'EMPTY') {
-        await conn.query(`DELETE FROM \`${t.name}\``);
+        await conn.query('DELETE FROM ??', [t.name]);
         result.removed.push({ table: t.name, rows: t.rows });
         log.write({ event: 'emptied', table: t.name, rows: t.rows });
       }
     }
-    const [res] = await conn.query(`DELETE FROM \`${USERS_TABLE}\` WHERE id NOT IN (?)`, [plan.keepIds]);
+    const [res] = await conn.query('DELETE FROM ?? WHERE id NOT IN (?)', [USERS_TABLE, plan.keepIds]);
     result.removed.push({ table: USERS_TABLE, rows: res.affectedRows });
     log.write({ event: 'users_removed', rows: res.affectedRows, kept: plan.keepIds.length });
     await conn.commit();
@@ -192,7 +192,7 @@ const runReset = async ({
       continue;
     }
     try {
-      await adminConn.query(`DROP DATABASE IF EXISTS \`${t.dbName}\``);
+      await adminConn.query('DROP DATABASE IF EXISTS ??', [t.dbName]);
       result.droppedDatabases.push(t.dbName);
       log.write({ event: 'tenant_database_dropped', tenantId: t.id, dbName: t.dbName });
     } catch (err) {

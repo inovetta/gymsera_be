@@ -244,6 +244,24 @@ describe('NEW-34: reject during provisioning, and orphan databases', () => {
       }
     };
     walk(path.join(root, 'src'));
-    expect(hits.sort()).toEqual(['src/services/orphan-database.service.js']);
+    // The launch-wipe service is the one other DROP: a manual CLI step (docs/runbooks/launch-wipe.md), see the next test.
+    expect(hits.sort()).toEqual(['src/services/orphan-database.service.js', 'src/services/platform-reset.service.js']);
+  });
+
+  test('the launch-wipe service is reachable only from its CLI script: never imported by the app, cron, routes or any other file', () => {
+    const root = path.resolve(__dirname, '../..');
+    const importers = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.js') && /platform-reset/.test(fs.readFileSync(full, 'utf8'))) importers.push(path.relative(root, full));
+      }
+    };
+    walk(path.join(root, 'src'));
+    expect([...new Set(importers)].sort()).toEqual(['src/scripts/reset-platform-data.js']);
+    const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+    expect(app).not.toMatch(/platform-reset|reset-platform-data/);
   });
 });
