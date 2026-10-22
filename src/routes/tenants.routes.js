@@ -281,6 +281,15 @@ router.put(
   tenantsController.replaceOnboardingImages
 );
 
+// FLOW-04: a rejected host reopens the same application (REJECTED → DRAFT), edits it and submits again.
+router.post(
+  '/:id/reapply',
+  authenticate,
+  authorize('GYM_HOST'),
+  validate.allowBody([]),
+  tenantsController.reapplyTenant
+);
+
 router.post(
   '/:id/finalize',
   authenticate,
