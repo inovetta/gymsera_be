@@ -1,0 +1,758 @@
+{
+ "comment": "SEC-06 stage 2c (tier 2: host, me, tenants, subscriptions, gyms, member, membership-plans). allowed = the declared body fields at the time of writing; clientKeys = what CMS, web and mobile send, extracted 2026-10-22. Log mode first.",
+ "routes": [
+  {
+   "method": "PATCH",
+   "path": "/api/v1/tenants/me",
+   "allowed": [
+    "businessName",
+    "cityId",
+    "email",
+    "phone"
+   ],
+   "clientKeys": [
+    "businessName",
+    "cityId",
+    "email",
+    "phone"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/tenants/:p/select-package",
+   "allowed": [
+    "packageId"
+   ],
+   "clientKeys": [
+    "packageId"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/tenants/:p/onboarding-images",
+   "allowed": [
+    "imagesJson"
+   ],
+   "clientKeys": [
+    "imagesJson"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/tenants/:p/finalize",
+   "allowed": [
+    "bankTransferRef",
+    "paymentMethod"
+   ],
+   "clientKeys": [
+    "bankTransferRef",
+    "paymentMethod"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/tenants/:p/kyc-documents/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/gyms/profile/images",
+   "allowed": [
+    "imageUrl"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/gyms/branches/:p",
+   "allowed": [
+    "confirmOrganizationDeletion",
+    "idToken",
+    "password",
+    "provider",
+    "reauthIdToken",
+    "reauthProvider"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/gyms/branches/:p/images",
+   "allowed": [
+    "imageUrl"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/branches/:p/staff",
+   "allowed": [
+    "designation",
+    "userId"
+   ],
+   "clientKeys": [
+    "designation",
+    "userId"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/gyms/branches/:p/staff/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/members/enroll",
+   "allowed": [
+    "branchId",
+    "email",
+    "fullName",
+    "idempotencyKey",
+    "notes",
+    "paymentMethod",
+    "phone",
+    "planId",
+    "startDate"
+   ],
+   "clientKeys": [
+    "branchId",
+    "email",
+    "fullName",
+    "notes",
+    "paymentMethod",
+    "phone",
+    "planId",
+    "startDate"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/staff",
+   "allowed": [
+    "assignToAllBranches",
+    "branchIds",
+    "designation",
+    "email",
+    "fullName",
+    "password",
+    "phone"
+   ],
+   "clientKeys": [
+    "assignToAllBranches",
+    "branchIds",
+    "designation",
+    "email",
+    "fullName",
+    "password",
+    "phone"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/gyms/staff/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/payouts",
+   "allowed": [
+    "amount",
+    "branchId",
+    "destinationJson",
+    "idempotencyKey",
+    "notes"
+   ],
+   "clientKeys": [
+    "amount",
+    "branchId",
+    "notes"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/expense-categories",
+   "allowed": [
+    "name"
+   ],
+   "clientKeys": [
+    "name"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/branches/:p/expenses",
+   "allowed": [
+    "amount",
+    "categoryId",
+    "expenseDate",
+    "isRecurring",
+    "notes",
+    "paymentMethod",
+    "receiptUrl",
+    "recurrenceEndDate",
+    "recurrenceFrequency",
+    "title",
+    "vendorName"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/host/branches/:p/expenses/:p",
+   "allowed": [
+    "amount",
+    "categoryId",
+    "expenseDate",
+    "isRecurring",
+    "notes",
+    "paymentMethod",
+    "receiptUrl",
+    "recurrenceEndDate",
+    "recurrenceFrequency",
+    "title",
+    "vendorName"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/host/branches/:p/expenses/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/listings",
+   "allowed": [
+    "address",
+    "areaId",
+    "branchSource",
+    "cityId",
+    "contactPhone",
+    "coverImageUrl",
+    "genderType",
+    "gymDescription",
+    "gymName",
+    "images",
+    "latitude",
+    "logoUrl",
+    "longitude",
+    "packages"
+   ],
+   "clientKeys": [
+    "address",
+    "areaId",
+    "branchSource",
+    "cityId",
+    "contactPhone",
+    "coverImageUrl",
+    "genderType",
+    "gymDescription",
+    "gymName",
+    "images",
+    "latitude",
+    "logoUrl",
+    "longitude",
+    "packages"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/host/listings/:p",
+   "allowed": [
+    "areaId",
+    "cityId",
+    "contactPhone",
+    "coverImageUrl",
+    "genderType",
+    "gymDescription",
+    "gymName",
+    "latitude",
+    "logoUrl",
+    "longitude"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/host/listings/:p",
+   "allowed": [
+    "areaId",
+    "cityId",
+    "contactPhone",
+    "coverImageUrl",
+    "genderType",
+    "gymDescription",
+    "gymName",
+    "latitude",
+    "logoUrl",
+    "longitude"
+   ],
+   "clientKeys": [
+    "areaId",
+    "cityId",
+    "contactPhone",
+    "coverImageUrl",
+    "genderType",
+    "gymDescription",
+    "gymName",
+    "latitude",
+    "logoUrl",
+    "longitude"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/host/listings/:p",
+   "allowed": [
+    "cascade",
+    "cascadeDelete",
+    "idToken",
+    "password",
+    "provider",
+    "reauthIdToken",
+    "reauthProvider",
+    "strategy",
+    "targetListingId"
+   ],
+   "clientKeys": [
+    "idToken",
+    "password",
+    "provider",
+    "strategy",
+    "targetListingId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/listings/:p/reserved-slots/transfer",
+   "allowed": [
+    "count",
+    "toListingId"
+   ],
+   "clientKeys": [
+    "count",
+    "toListingId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/branches/:p/move",
+   "allowed": [
+    "confirmOrganizationDeletion",
+    "targetListingId"
+   ],
+   "clientKeys": [
+    "confirmOrganizationDeletion",
+    "targetListingId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/branches/:p/restore",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/subscription/upgrade",
+   "allowed": [
+    "newPlanId",
+    "planId"
+   ],
+   "clientKeys": [
+    "planId"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/host/branches/:p/listing-content",
+   "allowed": [
+    "address",
+    "addressLine1",
+    "addressLine2",
+    "areaId",
+    "branchName",
+    "category",
+    "cityId",
+    "closingTime",
+    "country",
+    "description",
+    "establishedYear",
+    "facilitiesJson",
+    "floorArea",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "phone",
+    "postalCode",
+    "tagline",
+    "tagsJson"
+   ],
+   "clientKeys": [
+    "address",
+    "addressLine1",
+    "addressLine2",
+    "areaId",
+    "branchName",
+    "category",
+    "cityId",
+    "closingTime",
+    "country",
+    "description",
+    "establishedYear",
+    "facilitiesJson",
+    "floorArea",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "phone",
+    "postalCode",
+    "tagline",
+    "tagsJson"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/host/branches/:p",
+   "allowed": [
+    "confirmOrganizationDeletion",
+    "idToken",
+    "password",
+    "provider",
+    "reauthIdToken",
+    "reauthProvider"
+   ],
+   "clientKeys": [
+    "confirmOrganizationDeletion",
+    "idToken",
+    "password",
+    "provider"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/branches/:p/members",
+   "allowed": [
+    "email",
+    "fullName",
+    "notes",
+    "paymentMethod",
+    "phone",
+    "planId",
+    "startDate"
+   ],
+   "clientKeys": [
+    "email",
+    "fullName",
+    "notes",
+    "paymentMethod",
+    "phone",
+    "planId",
+    "startDate"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/branches/:p/announcements",
+   "allowed": [
+    "message",
+    "status",
+    "tag",
+    "title"
+   ],
+   "clientKeys": [
+    "message",
+    "status",
+    "tag",
+    "title"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/host/branches/:p/announcements/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/branches/:p/schedule",
+   "allowed": [
+    "day",
+    "instructor",
+    "maxCapacity",
+    "name",
+    "time"
+   ],
+   "clientKeys": [
+    "day",
+    "instructor",
+    "maxCapacity",
+    "name",
+    "time"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/host/branches/:p/resubmit-visibility",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/inbox/conversations",
+   "allowed": [
+    "branchId",
+    "initialMessage",
+    "userId"
+   ],
+   "clientKeys": [
+    "branchId",
+    "initialMessage",
+    "userId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/inbox/inquiries/:p/reply",
+   "allowed": [
+    "clientMessageId",
+    "client_message_id",
+    "text"
+   ],
+   "clientKeys": [
+    "clientMessageId",
+    "text"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/host/inbox/inquiries/:p/read",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/membership-plans/:p/status",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/membership-plans/:p/public",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/membership-plans/:p/featured",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/preview",
+   "allowed": [
+    "autoRenew",
+    "branchId",
+    "planId",
+    "startDate"
+   ],
+   "clientKeys": [
+    "autoRenew",
+    "planId",
+    "startDate"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/staff/:p/activate",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/staff",
+   "allowed": [
+    "branchId",
+    "notes",
+    "paymentMethod",
+    "planId",
+    "startDate",
+    "userId"
+   ],
+   "clientKeys": [
+    "branchId",
+    "planId",
+    "startDate",
+    "userId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/member/subscriptions/:p/upgrade",
+   "allowed": [
+    "newPlanId"
+   ],
+   "clientKeys": [
+    "newPlanId"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/me/profile",
+   "allowed": [
+    "dateOfBirth",
+    "fitnessGoal",
+    "fullName",
+    "gender",
+    "heightCm",
+    "phone",
+    "weightKg"
+   ],
+   "clientKeys": [
+    "dateOfBirth",
+    "fitnessGoal",
+    "fullName",
+    "gender",
+    "heightCm",
+    "phone",
+    "weightKg"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/me/profile",
+   "allowed": [
+    "dateOfBirth",
+    "fitnessGoal",
+    "fullName",
+    "gender",
+    "heightCm",
+    "phone",
+    "weightKg"
+   ],
+   "clientKeys": [
+    "dateOfBirth",
+    "fitnessGoal",
+    "fullName",
+    "gender",
+    "heightCm",
+    "phone",
+    "weightKg"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/password",
+   "allowed": [
+    "currentPassword",
+    "newPassword"
+   ],
+   "clientKeys": [
+    "currentPassword",
+    "newPassword"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/change-password",
+   "allowed": [
+    "currentPassword",
+    "newPassword"
+   ],
+   "clientKeys": [
+    "currentPassword",
+    "newPassword"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/payment-request",
+   "allowed": [
+    "amount",
+    "method",
+    "notes",
+    "subscriptionId"
+   ],
+   "clientKeys": [
+    "amount",
+    "method",
+    "notes",
+    "subscriptionId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/payments",
+   "allowed": [
+    "amount",
+    "method",
+    "notes",
+    "subscriptionId"
+   ],
+   "clientKeys": [
+    "amount",
+    "method",
+    "notes",
+    "subscriptionId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/saved-gyms/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/me/saved-gyms/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/request-deletion",
+   "allowed": [
+    "idToken",
+    "password",
+    "provider"
+   ],
+   "clientKeys": [
+    "idToken",
+    "password",
+    "provider"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/cancel-deletion",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/inbox/:p/reply",
+   "allowed": [
+    "clientMessageId",
+    "client_message_id",
+    "text"
+   ],
+   "clientKeys": [
+    "clientMessageId",
+    "text"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/me/inbox/:p/read",
+   "allowed": [],
+   "clientKeys": []
+  }
+ ]
+}
