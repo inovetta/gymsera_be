@@ -325,20 +325,27 @@ router.post(
 router.get('/tenants/:id/invoices', adminController.getTenantInvoices);
 router.post(
   '/tenants/:id/invoices',
-  validate([
+  validate.strict([
     body('subtotal').isFloat({ min: 0 }).withMessage('Subtotal must be a positive number'),
     body('dueDate').optional().isISO8601().withMessage('Invalid due date'),
     body('taxAmount').optional().isFloat({ min: 0 }),
     body('status').optional().isIn(['DRAFT', 'ISSUED', 'PAID', 'OVERDUE', 'CANCELLED']),
-  ]),
+    // SEC-06: read by admin.service#createTenantInvoice
+    body('tenantSubscriptionId').optional({ nullable: true }).isUUID(4),
+    body('description').optional({ nullable: true }).isString().isLength({ max: 500 }),
+    body('notes').optional({ nullable: true }).isString().isLength({ max: 2000 }),
+  ], { stage: 2 }),
   adminController.createTenantInvoice
 );
 router.patch(
   '/tenants/:id/invoices/:invoiceId',
-  validate([
+  validate.strict([
     body('status').optional().isIn(['DRAFT', 'ISSUED', 'PAID', 'OVERDUE', 'CANCELLED']),
     body('dueDate').optional().isISO8601(),
-  ]),
+    // SEC-06: read by admin.service#updateTenantInvoice
+    body('notes').optional({ nullable: true }).isString().isLength({ max: 2000 }),
+    body('paidAt').optional({ nullable: true }).isISO8601(),
+  ], { stage: 2 }),
   adminController.updateTenantInvoice
 );
 router.post('/tenants/:id/invoices/:invoiceId/send-reminder', adminController.sendInvoiceReminder);

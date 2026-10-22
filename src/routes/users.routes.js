@@ -89,7 +89,8 @@ router.get(
 router.post(
   '/',
   authorize(...managerRoles),
-  validate(userValidators.createMember),
+  // SEC-06: role is ignored (createMember always makes a MEMBER) but the clients still send it
+  validate.strict(userValidators.createMember, { stage: 2, allow: ['role'] }),
   usersController.create
 );
 

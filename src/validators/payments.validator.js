@@ -8,6 +8,10 @@ const PAYMENT_FOR     = ['MEMBERSHIP', 'TRAINER', 'PRODUCT', 'OTHER'];
 
 // ── POST /payments ─────────────────────────────────────────────────────────────
 const recordPayment = [
+  // SEC-06: read by payments.controller#recordPayment and payment.service#recordPayment
+  body('branchId').optional({ nullable: true }).isUUID(4).withMessage('branchId must be a valid UUID'),
+  body('shift').optional({ nullable: true }).isString().isLength({ max: 20 }),
+  body('idempotencyKey').optional({ nullable: true }).isString().isLength({ max: 128 }),
   body('userId')
     .notEmpty().withMessage('userId is required')
     .isUUID(4).withMessage('userId must be a valid UUID'),

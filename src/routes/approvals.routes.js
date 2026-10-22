@@ -1,3 +1,4 @@
+const validate = require('../middleware/validate');
 /**
  * Approvals routes — the inbox and the policies behind it.
  */
@@ -50,7 +51,7 @@ router.get('/policies', can('approvals.view', { orgWide: true }), controller.lis
  *     summary: Set the approval policy for an action
  *     tags: [Approvals]
  */
-router.put('/policies/:actionKey', can('roles.manage', { orgWide: true }), controller.upsertPolicy);
+router.put('/policies/:actionKey', can('roles.manage', { orgWide: true }), validate.allowBody(['branchId', 'approverPermission', 'minApproverLevel', 'slaHours', 'escalateToLevel', 'autoExpireHours']), controller.upsertPolicy);
 
 /**
  * @swagger
@@ -66,7 +67,7 @@ router.put('/policies/:actionKey', can('roles.manage', { orgWide: true }), contr
  *       200: { description: Approved and executed }
  *       409: { description: Already decided by someone else }
  */
-router.post('/:id/approve', can('approvals.decide', { orgWide: true }), controller.approve);
+router.post('/:id/approve', can('approvals.decide', { orgWide: true }), validate.allowBody(['reason']), controller.approve);
 
 /**
  * @swagger
@@ -75,7 +76,7 @@ router.post('/:id/approve', can('approvals.decide', { orgWide: true }), controll
  *     summary: Reject a request, with a reason
  *     tags: [Approvals]
  */
-router.post('/:id/reject', can('approvals.decide', { orgWide: true }), controller.reject);
+router.post('/:id/reject', can('approvals.decide', { orgWide: true }), validate.allowBody(['reason']), controller.reject);
 
 /**
  * @swagger
@@ -101,7 +102,7 @@ router.post('/:id/reject', can('approvals.decide', { orgWide: true }), controlle
  *       200: { description: Marked as collected }
  *       409: { description: Already collected, or already decided }
  */
-router.post('/:id/collect', attachGrants({ orgWide: true }), controller.collect);
+router.post('/:id/collect', attachGrants({ orgWide: true }), validate.allowBody(['method', 'notes']), controller.collect);
 
 /**
  * @swagger
@@ -110,6 +111,6 @@ router.post('/:id/collect', attachGrants({ orgWide: true }), controller.collect)
  *     summary: Withdraw your own pending request
  *     tags: [Approvals]
  */
-router.post('/:id/cancel', attachGrants({ orgWide: true }), controller.cancel);
+router.post('/:id/cancel', attachGrants({ orgWide: true }), validate.allowBody([]), controller.cancel);
 
 module.exports = router;

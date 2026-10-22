@@ -89,7 +89,7 @@ router.post(
   '/',
   authenticate,
   authorize('PLATFORM_ADMIN'),
-  validate(packagesValidators.createPackage),
+  validate.strict(packagesValidators.createPackage, { stage: 2, allow: ['featureFlags'] }),
   packagesController.createPackage
 );
 

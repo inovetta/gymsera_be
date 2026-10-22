@@ -1,3 +1,4 @@
+const validate = require('../middleware/validate');
 /**
  * Collection ledger routes.
  *
@@ -123,6 +124,7 @@ router.get('/monthly', can('ledger.monthly.view', { branch: 'query.branchId' }),
 router.post(
   '/:ledgerDayId/adjustments',
   can('ledger.verify', { branch: 'body.branchId' }),
+  validate.allowBody(['type', 'relatedPaymentId', 'amount', 'reason', 'branchId', 'idempotencyKey']),
   controller.createAdjustment
 );
 

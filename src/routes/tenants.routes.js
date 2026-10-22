@@ -113,7 +113,7 @@ router.patch(
 router.post(
   '/register',
   authenticate,
-  validate(tenantsValidators.register),
+  validate.strict(tenantsValidators.register, { stage: 2, allow: ['areaId'] }),
   tenantsController.register
 );
 
@@ -169,7 +169,7 @@ router.post(
   '/:id/gym-profile',
   authenticate,
   authorize('GYM_HOST'),
-  validate(tenantsValidators.submitGymProfile),
+  validate.strict(tenantsValidators.submitGymProfile, { stage: 2 }),
   tenantsController.submitGymProfile
 );
 

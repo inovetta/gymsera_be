@@ -117,7 +117,7 @@ router.post(
     }
     next();
   },
-  validate(validators.recordPayment),
+  validate.strict(validators.recordPayment, { stage: 2 }),
   controller.recordPayment
 );
 
@@ -227,7 +227,7 @@ router.post('/:id/verify', validate.strict(validators.verifyPayment, { stage: 2 
  *       403:
  *         description: Only gym host can verify payments
  */
-router.post('/:id/action', controller.verifyOrReject);
+router.post('/:id/action', validate.allowBody(['action', 'notes', 'rejectedReason', 'waiveJoiningFee', 'shift']), controller.verifyOrReject);
 
 /**
  * @swagger
@@ -264,7 +264,7 @@ router.post('/:id/proof', upload.image('image'), upload.handleMulterError, contr
  *     responses:
  *       200: { description: Recorded }
  */
-router.post('/:id/printed', controller.markPrinted);
+router.post('/:id/printed', validate.allowBody([]), controller.markPrinted);
 
 /**
  * @swagger
@@ -289,11 +289,12 @@ router.post('/:id/printed', controller.markPrinted);
  *       200:
  *         description: Payments marked as collected
  */
-router.post('/collection-action', controller.collectionAction);
+router.post('/collection-action', validate.allowBody(['paymentIds']), controller.collectionAction);
 
 router.post(
   '/:id/refund',
   idempotency({ required: true }),
+  validate.allowBody(['amount', 'reason', 'idempotencyKey']),
   controller.refundPayment
 );
 

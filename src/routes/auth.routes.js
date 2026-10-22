@@ -443,14 +443,15 @@ router.post(
     }
     next();
   },
+  validate.allowBody(['refreshToken']),
   authController.logout
 );
 router.get('/sessions', authenticate, authController.getSessions);
-router.delete('/sessions/:id', authenticate, authController.revokeSession);
-router.delete('/sessions', authenticate, authController.revokeAllSessions);
+router.delete('/sessions/:id', authenticate, validate.allowBody([]), authController.revokeSession);
+router.delete('/sessions', authenticate, validate.allowBody([]), authController.revokeAllSessions);
 
 // ── Tenant Invitations (AUTH-09) ──────────────────────────────────────────────
 router.get('/tenant-invitations/verify', authController.verifyTenantInvitation);
-router.post('/tenant-invitations/accept', authController.acceptTenantInvitation);
+router.post('/tenant-invitations/accept', validate.allowBody(['token', 'password', 'fullName', 'phone']), authController.acceptTenantInvitation);
 
 module.exports = router;

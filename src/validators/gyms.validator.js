@@ -2,6 +2,11 @@ const { body, param, query } = require('express-validator');
 
 const gymsValidators = {
   updateProfile: [
+    // SEC-06: listing fields gym.service#updateProfile writes
+    body('imagesJson').optional({ nullable: true }).isArray().withMessage('imagesJson must be an array'),
+    body('tagline').optional({ nullable: true }).isString().isLength({ max: 200 }),
+    body('category').optional({ nullable: true }).isString().isLength({ max: 100 }),
+    body('establishedYear').optional({ nullable: true }).isInt({ min: 1800, max: 2100 }),
     body('name')
       .optional()
       .trim()
@@ -50,6 +55,8 @@ const gymsValidators = {
   ],
 
   createBranch: [
+    // SEC-06: the organization the branch is built in (gym.service#createBranch reads data.gymListingId)
+    body('gymListingId').optional({ nullable: true }).isUUID(4).withMessage('gymListingId must be a valid UUID'),
     body('branchName')
       .trim()
       .notEmpty()
@@ -135,6 +142,8 @@ const gymsValidators = {
   ],
 
   updateBranch: [
+    // SEC-06: clients send the current status back; the service refuses a change (branch_status_immutable_here)
+    body('status').optional().isString(),
     param('branchId').isUUID(4).withMessage('Invalid branch ID'),
 
     body('branchName')

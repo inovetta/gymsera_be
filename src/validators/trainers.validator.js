@@ -44,6 +44,8 @@ const listTrainers = [
 // ── PATCH /trainers/:id ────────────────────────────────────────────────────────
 const updateTrainer = [
   param('id').isUUID(4).withMessage('id must be a valid UUID'),
+  // SEC-06: trainer.service#updateTrainer applies it; the route also checks the permission at THIS branch.
+  body('branchId').optional({ nullable: true }).isUUID(4).withMessage('branchId must be a valid UUID'),
   body('specialization')
     .optional({ nullable: true })
     .isString().isLength({ max: 200 }),

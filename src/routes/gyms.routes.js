@@ -82,7 +82,7 @@ router.delete('/profile/images', can('listing.manage', { orgWide: true }), gymsC
  *       200:
  *         description: Profile updated
  */
-router.patch('/profile', can('listing.manage', { orgWide: true }), validate(gymsValidators.updateProfile), gymsController.updateProfile);
+router.patch('/profile', can('listing.manage', { orgWide: true }), validate.strict(gymsValidators.updateProfile, { stage: 2, allow: ['address', 'email', 'latitude', 'longitude', 'phone'] }), gymsController.updateProfile);
 
 // ── Branches ──────────────────────────────────────────────────────────────────
 /**
@@ -151,7 +151,7 @@ router.get('/branches', gymsController.listBranches);
 router.post(
   '/branches',
   authorize('GYM_HOST'),
-  validate(gymsValidators.createBranch),
+  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities'] }),
   gymsController.createBranch
 );
 
@@ -195,7 +195,7 @@ router.get('/branches/:branchId', gymsController.getBranch);
  */
 router.patch(
   '/branches/:branchId',
-  validate(gymsValidators.updateBranch),
+  validate.strict(gymsValidators.updateBranch, { stage: 2, allow: ['facilities'] }),
   gymsController.updateBranch
 );
 
