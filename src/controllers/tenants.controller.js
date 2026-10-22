@@ -69,6 +69,16 @@ const replaceOnboardingImages = async (req, res, next) => {
   }
 };
 
+// ── POST /tenants/:id/reapply (FLOW-04) ──────────────────────────────────────
+const reapplyTenant = async (req, res, next) => {
+  try {
+    const result = await tenantService.reapplyTenant(req.params.id, req.user.sub);
+    return sendSuccess(res, result, 'Application reopened. Update it and submit again.');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── POST /tenants/:id/finalize ────────────────────────────────────────────────
 const finalizeApplication = async (req, res, next) => {
   try {
@@ -195,6 +205,7 @@ module.exports = {
   uploadOnboardingImages,
   replaceOnboardingImages,
   finalizeApplication,
+  reapplyTenant,
   getMyTenant,
   updateMyTenant,
   uploadKycDocuments,
