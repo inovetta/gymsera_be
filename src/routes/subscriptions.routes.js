@@ -179,7 +179,7 @@ const staffRoles = [UserRole.GYM_HOST, UserRole.BRANCH_MANAGER, UserRole.PLATFOR
  *       200:
  *         description: Calculated subscription preview
  */
-router.post('/preview', tenantContext, authorize(...staffRoles), controller.preview);
+router.post('/preview', tenantContext, authorize(...staffRoles), validate.allowBody(['planId', 'startDate', 'autoRenew', 'branchId']), controller.preview);
 
 /**
  * @swagger
@@ -252,7 +252,7 @@ router.get('/staff/:id', tenantContext, authorize(...staffRoles), controller.get
  *       409:
  *         description: Already active or cancelled
  */
-router.post('/staff/:id/activate', tenantContext, authorize(...staffRoles), controller.activateSubscription);
-router.post('/staff', tenantContext, authorize(...staffRoles), controller.createStaffSubscription);
+router.post('/staff/:id/activate', tenantContext, authorize(...staffRoles), validate.allowBody([]), controller.activateSubscription);
+router.post('/staff', tenantContext, authorize(...staffRoles), validate.allowBody(['branchId', 'notes', 'paymentMethod', 'planId', 'startDate', 'userId']), controller.createStaffSubscription);
 
 module.exports = router;

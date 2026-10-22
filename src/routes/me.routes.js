@@ -272,19 +272,19 @@ router.get('/attendance', meController.getMyAttendance);
 
 // ── Wishlist / Saved Gyms ────────────────────────────────────────────────────
 router.get('/saved-gyms', meController.getSavedGyms);
-router.post('/saved-gyms/:gymId', meController.saveGym);
-router.delete('/saved-gyms/:gymId', meController.unsaveGym);
+router.post('/saved-gyms/:gymId', validate.allowBody([]), meController.saveGym);
+router.delete('/saved-gyms/:gymId', validate.allowBody([]), meController.unsaveGym);
 
 // ── Account deletion (AUTH-07): preflight → re-authenticated request → 30-day undo ──
 router.get('/deletion-preflight', meController.deletionPreflight);
-router.post('/request-deletion', meController.requestDeletion);
-router.post('/cancel-deletion', meController.cancelDeletion);
+router.post('/request-deletion', validate.allowBody(['idToken', 'password', 'provider']), meController.requestDeletion);
+router.post('/cancel-deletion', validate.allowBody([]), meController.cancelDeletion);
 
 // ── Traveler Inbox ────────────────────────────────────────────────────────────
 router.get('/inbox', meController.listMyInbox);
 router.get('/inbox/:conversationId', meController.getMyConversation);
-router.post('/inbox/:conversationId/reply', meController.replyToMyConversation);
-router.patch('/inbox/:conversationId/read', meController.markMyConversationRead);
+router.post('/inbox/:conversationId/reply', validate.allowBody(['clientMessageId', 'client_message_id', 'text']), meController.replyToMyConversation);
+router.patch('/inbox/:conversationId/read', validate.allowBody([]), meController.markMyConversationRead);
 
 router.get('/staff-status', meController.getStaffStatus);
 

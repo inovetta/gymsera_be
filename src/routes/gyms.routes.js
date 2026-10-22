@@ -39,7 +39,7 @@ router.get('/profile', gymsController.getProfile);
 router.post('/profile/logo', can('listing.manage', { orgWide: true }), upload.image('logo'), upload.handleMulterError, gymsController.uploadLogo);
 router.post('/profile/cover', can('listing.manage', { orgWide: true }), upload.image('cover'), upload.handleMulterError, gymsController.uploadCover);
 router.post('/profile/images', can('listing.manage', { orgWide: true }), upload.images('images', 10), upload.handleMulterError, gymsController.uploadGymImages);
-router.delete('/profile/images', can('listing.manage', { orgWide: true }), gymsController.deleteGymImage);
+router.delete('/profile/images', can('listing.manage', { orgWide: true }), validate.allowBody(['imageUrl']), gymsController.deleteGymImage);
 
 /**
  * @swagger
@@ -216,12 +216,12 @@ router.patch(
  *       200:
  *         description: Branch deactivated
  */
-router.delete('/branches/:branchId', authorize('GYM_HOST'), gymsController.deleteBranch);
+router.delete('/branches/:branchId', authorize('GYM_HOST'), validate.allowBody(['confirmOrganizationDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), gymsController.deleteBranch);
 
 // ── Branch images ──────────────────────────────────────────────────────────────
 // NEW-45: a branch's photos need branch.settings at that branch.
 router.post('/branches/:branchId/images', can('branch.settings'), upload.images('images', 10), upload.handleMulterError, gymsController.uploadBranchImages);
-router.delete('/branches/:branchId/images', can('branch.settings'), gymsController.deleteBranchImage);
+router.delete('/branches/:branchId/images', can('branch.settings'), validate.allowBody(['imageUrl']), gymsController.deleteBranchImage);
 
 // ── Branch staff ──────────────────────────────────────────────────────────────
 /**
@@ -316,7 +316,7 @@ router.delete(
 // /members/search must be defined before /members to avoid :id conflicts
 // NEW-45: looking someone up is part of adding them, so it needs members.create (at one branch or more).
 router.get('/members/search', can.atAnyBranch('members.create'), gymsController.searchMember);
-router.post('/members/enroll', gymsController.enrollMember);
+router.post('/members/enroll', validate.allowBody(['email', 'fullName', 'phone', 'planId', 'startDate', 'notes', 'paymentMethod', 'branchId', 'idempotencyKey']), gymsController.enrollMember);
 // NEW-48: listing members requires members.view at one or more branches.
 router.get('/members', can.atAnyBranch('members.view'), gymsController.listMembers);
 
@@ -369,7 +369,7 @@ router.get('/staff', authorize('GYM_HOST'), gymsController.listAllStaff);
  *       409:
  *         description: Email already registered
  */
-router.post('/staff', authorize('GYM_HOST'), gymsController.createStaffUser);
+router.post('/staff', authorize('GYM_HOST'), validate.allowBody(['fullName', 'email', 'phone', 'password', 'designation', 'branchIds', 'assignToAllBranches']), gymsController.createStaffUser);
 
 /**
  * @swagger
@@ -388,6 +388,6 @@ router.post('/staff', authorize('GYM_HOST'), gymsController.createStaffUser);
  *       200:
  *         description: Staff removed from all branches
  */
-router.delete('/staff/:userId', authorize('GYM_HOST'), gymsController.removeStaffUser);
+router.delete('/staff/:userId', authorize('GYM_HOST'), validate.allowBody([]), gymsController.removeStaffUser);
 
 module.exports = router;
