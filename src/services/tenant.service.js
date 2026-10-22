@@ -200,6 +200,48 @@ const updateMyTenant = async (userId, updates) => {
   return { tenant };
 };
 
+// ── reapplyTenant (FLOW-04) ───────────────────────────────────────────────────
+/**
+ * A rejected host opens the SAME application again to fix it and resubmit (no second tenant: registerTenant refuses
+ * one per owner). REJECTED → DRAFT; every field the host entered stays. The rejection reason and date stay on the
+ * record so the screens can keep showing what to fix until the next review replaces them. KYC files are kept unless
+ * the 90-day retention sweep (R-16) already removed them, in which case the host uploads them again.
+ * Only the owner, only from REJECTED; the next step is the ordinary gym-profile → finalize path.
+ */
+const reapplyTenant = async (tenantId, userId) => {
+  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+  if (!tenant) throw createError('Tenant not found or access denied', 404);
+  if (tenant.status !== TenantStatus.REJECTED) {
+    const err = createError('Only a rejected application can be reopened.', 409);
+    err.code = 'not_rejected';
+    throw err;
+  }
+
+  const hasDocuments = kycStorageService.normalizeKycDocuments(tenant.kycDocumentsJson).length > 0;
+
+  await tenant.update({
+    status: TenantStatus.DRAFT,
+    // PENDING (not REJECTED) so the retention sweep, which looks for REJECTED, leaves a reopened application alone.
+    kycStatus: hasDocuments ? KycStatus.PENDING : KycStatus.NOT_SUBMITTED,
+    onboardingStep: Math.min(Math.max(tenant.onboardingStep || 1, 2), 4),
+  });
+
+  try {
+    await PlatformAuditLog.create({
+      actorUserId: userId,
+      action: 'tenant.reapplied',
+      targetType: 'tenant',
+      targetId: tenant.id,
+      details: { previousRejectedAt: tenant.rejectedAt, kycDocumentsKept: hasDocuments },
+      createdAt: new Date(),
+    });
+  } catch (auditErr) {
+    console.warn('[Tenant:Audit] Failed to record re-application:', auditErr.message);
+  }
+
+  return { tenant };
+};
+
 // ── finalizeApplication ───────────────────────────────────────────────────────
 /**
  * Called when the gym owner completes the payment step during onboarding.
@@ -469,6 +511,7 @@ const deleteKycDocument = async ({ tenantId, documentId, userId, userRole }) => 
 };
 
 module.exports = {
+  reapplyTenant,
   registerTenant,
   submitGymProfile,
   selectPackage,

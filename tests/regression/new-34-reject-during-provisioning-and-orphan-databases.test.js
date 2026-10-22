@@ -260,8 +260,11 @@ describe('NEW-34: reject during provisioning, and orphan databases', () => {
       }
     };
     walk(path.join(root, 'src'));
+    // app.js and server.js sit outside src/; so does every other root-level script.
+    expect(fs.existsSync(path.join(root, 'app.js')) && fs.existsSync(path.join(root, 'server.js'))).toBe(true);
+    for (const entry of fs.readdirSync(root).filter((n) => n.endsWith('.js'))) {
+      if (/platform-reset|reset-platform-data/.test(fs.readFileSync(path.join(root, entry), 'utf8'))) importers.push(entry);
+    }
     expect([...new Set(importers)].sort()).toEqual(['src/scripts/reset-platform-data.js']);
-    const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-    expect(app).not.toMatch(/platform-reset|reset-platform-data/);
   });
 });

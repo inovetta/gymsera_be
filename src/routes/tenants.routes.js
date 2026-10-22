@@ -277,13 +277,24 @@ router.put(
   '/:id/onboarding-images',
   authenticate,
   authorize('GYM_HOST'),
+  validate.allowBody(['imagesJson']),
   tenantsController.replaceOnboardingImages
+);
+
+// FLOW-04: a rejected host reopens the same application (REJECTED → DRAFT), edits it and submits again.
+router.post(
+  '/:id/reapply',
+  authenticate,
+  authorize('GYM_HOST'),
+  validate.allowBody([]),
+  tenantsController.reapplyTenant
 );
 
 router.post(
   '/:id/finalize',
   authenticate,
   authorize('GYM_HOST'),
+  validate.allowBody(['paymentMethod', 'bankTransferRef']),
   tenantsController.finalizeApplication
 );
 
@@ -311,6 +322,7 @@ router.get(
 router.delete(
   '/:id/kyc-documents/:documentId',
   authenticate,
+  validate.allowBody([]),
   tenantsController.deleteKycDocument
 );
 

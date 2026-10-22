@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
 const tenantContext = require('../middleware/tenantContext');
+const validate = require('../middleware/validate');
 const controller = require('../controllers/subscriptions.controller');
 
 const router = Router();
@@ -10,6 +11,6 @@ router.use(authenticate, tenantContext);
 
 router.get('/branches/:branchId/subscription-status', controller.getMemberBranchSubscriptionStatus);
 router.get('/subscriptions/:id/upgrade-options', controller.getUpgradeOptions);
-router.post('/subscriptions/:id/upgrade', controller.upgradeSubscription);
+router.post('/subscriptions/:id/upgrade', validate.allowBody(['newPlanId']), controller.upgradeSubscription);
 
 module.exports = router;
