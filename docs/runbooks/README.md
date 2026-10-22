@@ -7,6 +7,7 @@ missing **What it means**, **First checks** or **Rollback**.
 
 | Alert code | Runbook |
 |---|---|
+| (launch day, not an alert) | [launch-wipe.md](launch-wipe.md) |
 | `CAPACITY_DRIFT` | [capacity-audit.md](capacity-audit.md#capacity_drift) |
 | `CAPACITY_EMPTY_ACTIVE_ORG` | [capacity-audit.md](capacity-audit.md#capacity_empty_active_org) |
 | `CAPACITY_AUDIT_FAILED` | [capacity-audit.md](capacity-audit.md#capacity_audit_failed) |
