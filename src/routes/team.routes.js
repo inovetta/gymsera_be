@@ -1,3 +1,4 @@
+const validate = require('../middleware/validate');
 /**
  * Team & Access routes.
  *
@@ -100,7 +101,7 @@ router.get('/audit', can('audit.view', { orgWide: true }), controller.listAudit)
  *       403: { description: Role is at or above your own level }
  *       409: { description: Already on the team }
  */
-router.post('/invites', can('team.invite', { orgWide: true }), controller.invite);
+router.post('/invites', can('team.invite', { orgWide: true }), validate.allowBody(['email', 'fullName', 'phone', 'roleKey', 'scopeType', 'branchIds', 'assignToAllBranches', 'overrides', 'jobTitle', 'validFrom', 'validUntil']), controller.invite);
 
 /**
  * @swagger
@@ -118,7 +119,7 @@ router.get('/:assignmentId', can('team.view', { orgWide: true }), controller.get
  *     summary: Change role, branch scope, status or validity
  *     tags: [Team & Access]
  */
-router.patch('/:assignmentId', can('team.role.assign', { orgWide: true }), controller.update);
+router.patch('/:assignmentId', can('team.role.assign', { orgWide: true }), validate.allowBody(['roleKey', 'scopeType', 'branchIds', 'assignToAllBranches', 'jobTitle', 'status', 'validFrom', 'validUntil', 'expectedVersion']), controller.update);
 
 /**
  * @swagger
@@ -130,7 +131,7 @@ router.patch('/:assignmentId', can('team.role.assign', { orgWide: true }), contr
  *       the same person silently undo each other's changes.
  *     tags: [Team & Access]
  */
-router.put('/:assignmentId/permissions', can('team.permission.override', { orgWide: true }), controller.setPermissions);
+router.put('/:assignmentId/permissions', can('team.permission.override', { orgWide: true }), validate.allowBody(['overrides', 'expectedVersion']), controller.setPermissions);
 
 /**
  * @swagger
@@ -139,6 +140,6 @@ router.put('/:assignmentId/permissions', can('team.permission.override', { orgWi
  *     summary: Revoke access (never a hard delete)
  *     tags: [Team & Access]
  */
-router.delete('/:assignmentId', can('team.role.assign', { orgWide: true }), controller.revoke);
+router.delete('/:assignmentId', can('team.role.assign', { orgWide: true }), validate.allowBody([]), controller.revoke);
 
 module.exports = router;

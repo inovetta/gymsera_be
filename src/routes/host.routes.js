@@ -60,7 +60,8 @@ router.post(
   authenticate,
   authorize('GYM_HOST'),
   tenantContext,
-  validate(gymsValidators.createBranch),
+  // SEC-06: facilities is the key the CMS sends (the service reads facilitiesJson); country is ignored
+  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities', 'country'] }),
   gymsController.createBranch
 );
 

@@ -1,0 +1,682 @@
+{
+ "comment": "SEC-06 stage 2b (tier 1 and the routes with undeclared client fields). allowed = the declared body fields at the time of writing; clientKeys = what CMS, web and mobile send, extracted 2026-10-22. Log mode first.",
+ "routes": [
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/invoices",
+   "allowed": [
+    "description",
+    "dueDate",
+    "notes",
+    "status",
+    "subtotal",
+    "taxAmount",
+    "tenantSubscriptionId"
+   ],
+   "clientKeys": [
+    "description",
+    "dueDate",
+    "notes",
+    "status",
+    "subtotal",
+    "taxAmount",
+    "tenantSubscriptionId"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tenants/:p/invoices/:p",
+   "allowed": [
+    "dueDate",
+    "notes",
+    "paidAt",
+    "status"
+   ],
+   "clientKeys": [
+    "dueDate",
+    "notes",
+    "paidAt",
+    "status"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/approvals/:p/approve",
+   "allowed": [
+    "reason"
+   ],
+   "clientKeys": [
+    "reason"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/approvals/:p/cancel",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/approvals/:p/collect",
+   "allowed": [
+    "method",
+    "notes"
+   ],
+   "clientKeys": [
+    "method",
+    "notes"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/approvals/:p/reject",
+   "allowed": [
+    "reason"
+   ],
+   "clientKeys": [
+    "reason"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/approvals/policies/:p",
+   "allowed": [
+    "approverPermission",
+    "autoExpireHours",
+    "branchId",
+    "escalateToLevel",
+    "minApproverLevel",
+    "slaHours"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/logout",
+   "allowed": [
+    "refreshToken"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/auth/sessions",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/auth/sessions/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/auth/tenant-invitations/accept",
+   "allowed": [
+    "fullName",
+    "password",
+    "phone",
+    "token"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/billing/android/sync",
+   "allowed": [
+    "organizationId",
+    "productId",
+    "purchaseToken"
+   ],
+   "clientKeys": [
+    "productId",
+    "purchaseToken"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/billing/downgrade-choice",
+   "allowed": [
+    "billingPlanId",
+    "keepBranchIds"
+   ],
+   "clientKeys": [
+    "billingPlanId",
+    "keepBranchIds"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/billing/ios/sync",
+   "allowed": [
+    "organizationId",
+    "transactionId"
+   ],
+   "clientKeys": [
+    "transactionId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/billing/purchase-intent",
+   "allowed": [
+    "planId",
+    "platform",
+    "targetPlanId",
+    "targetPlatform"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/billing/stripe/change-plan",
+   "allowed": [
+    "billingCycle",
+    "billingPlanId"
+   ],
+   "clientKeys": [
+    "billingCycle",
+    "billingPlanId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/billing/stripe/checkout-session",
+   "allowed": [
+    "billingCycle",
+    "billingPlanId",
+    "cancelUrl",
+    "currency",
+    "successUrl"
+   ],
+   "clientKeys": [
+    "billingCycle",
+    "billingPlanId",
+    "cancelUrl",
+    "successUrl"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/billing/stripe/portal-session",
+   "allowed": [
+    "returnUrl"
+   ],
+   "clientKeys": [
+    "returnUrl"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/branches",
+   "allowed": [
+    "address",
+    "addressLine1",
+    "addressLine2",
+    "areaId",
+    "branchName",
+    "category",
+    "cityId",
+    "closingTime",
+    "currency",
+    "description",
+    "establishedYear",
+    "facilities",
+    "facilitiesJson",
+    "floorArea",
+    "gymListingId",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "packages",
+    "phone",
+    "postalCode",
+    "tagline",
+    "timezone"
+   ],
+   "clientKeys": [
+    "address",
+    "areaId",
+    "branchName",
+    "cityId",
+    "closingTime",
+    "facilities",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "packages",
+    "phone"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/gyms/branches/:p",
+   "allowed": [
+    "address",
+    "areaId",
+    "branchName",
+    "cityId",
+    "closingTime",
+    "currency",
+    "facilities",
+    "facilitiesJson",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "phone",
+    "status",
+    "timezone"
+   ],
+   "clientKeys": [
+    "address",
+    "areaId",
+    "branchName",
+    "cityId",
+    "closingTime",
+    "facilities",
+    "facilitiesJson",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "phone",
+    "status"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/gyms/profile",
+   "allowed": [
+    "address",
+    "category",
+    "contactEmail",
+    "contactPhone",
+    "coverImageUrl",
+    "description",
+    "email",
+    "establishedYear",
+    "genderType",
+    "idToken",
+    "imagesJson",
+    "latitude",
+    "logoUrl",
+    "longitude",
+    "name",
+    "password",
+    "paymentDetailsJson",
+    "phone",
+    "provider",
+    "socialLinksJson",
+    "tagline",
+    "website"
+   ],
+   "clientKeys": [
+    "address",
+    "category",
+    "contactEmail",
+    "contactPhone",
+    "coverImageUrl",
+    "description",
+    "email",
+    "establishedYear",
+    "genderType",
+    "idToken",
+    "imagesJson",
+    "latitude",
+    "logoUrl",
+    "longitude",
+    "name",
+    "password",
+    "paymentDetailsJson",
+    "phone",
+    "provider",
+    "socialLinksJson",
+    "tagline",
+    "website"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/branches",
+   "allowed": [
+    "address",
+    "addressLine1",
+    "addressLine2",
+    "areaId",
+    "branchName",
+    "category",
+    "cityId",
+    "closingTime",
+    "country",
+    "currency",
+    "description",
+    "establishedYear",
+    "facilities",
+    "facilitiesJson",
+    "floorArea",
+    "gymListingId",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "packages",
+    "phone",
+    "postalCode",
+    "tagline",
+    "timezone"
+   ],
+   "clientKeys": [
+    "address",
+    "addressLine1",
+    "addressLine2",
+    "areaId",
+    "branchName",
+    "category",
+    "cityId",
+    "closingTime",
+    "country",
+    "description",
+    "establishedYear",
+    "facilitiesJson",
+    "floorArea",
+    "gymListingId",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "packages",
+    "phone",
+    "postalCode",
+    "tagline"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/ledger/:p/adjustments",
+   "allowed": [
+    "amount",
+    "branchId",
+    "idempotencyKey",
+    "reason",
+    "relatedPaymentId",
+    "type"
+   ],
+   "clientKeys": [
+    "amount",
+    "branchId",
+    "reason",
+    "relatedPaymentId",
+    "type"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/payments",
+   "allowed": [
+    "amount",
+    "branchId",
+    "currency",
+    "gatewayName",
+    "gatewayTransactionId",
+    "idempotencyKey",
+    "method",
+    "notes",
+    "paymentFor",
+    "referenceEntityId",
+    "shift",
+    "userId"
+   ],
+   "clientKeys": [
+    "amount",
+    "branchId",
+    "currency",
+    "gatewayName",
+    "gatewayTransactionId",
+    "method",
+    "notes",
+    "paymentFor",
+    "referenceEntityId",
+    "shift",
+    "userId"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/payments/:p/action",
+   "allowed": [
+    "action",
+    "notes",
+    "rejectedReason",
+    "shift",
+    "waiveJoiningFee"
+   ],
+   "clientKeys": [
+    "action",
+    "notes",
+    "rejectedReason",
+    "shift",
+    "waiveJoiningFee"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/payments/:p/printed",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/payments/:p/refund",
+   "allowed": [
+    "amount",
+    "idempotencyKey",
+    "reason"
+   ],
+   "clientKeys": [
+    "amount",
+    "reason"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/payments/collection-action",
+   "allowed": [
+    "paymentIds"
+   ],
+   "clientKeys": [
+    "paymentIds"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/platform-packages",
+   "allowed": [
+    "billingCycle",
+    "description",
+    "featureFlags",
+    "featureFlagsJson",
+    "maxBranches",
+    "maxMembers",
+    "maxOrganizations",
+    "maxTrainers",
+    "name",
+    "price"
+   ],
+   "clientKeys": [
+    "billingCycle",
+    "description",
+    "featureFlags",
+    "featureFlagsJson",
+    "maxBranches",
+    "maxMembers",
+    "maxOrganizations",
+    "maxTrainers",
+    "name",
+    "price"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/team/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/team/:p",
+   "allowed": [
+    "assignToAllBranches",
+    "branchIds",
+    "expectedVersion",
+    "jobTitle",
+    "roleKey",
+    "scopeType",
+    "status",
+    "validFrom",
+    "validUntil"
+   ],
+   "clientKeys": [
+    "assignToAllBranches",
+    "branchIds",
+    "expectedVersion",
+    "jobTitle",
+    "roleKey",
+    "status",
+    "validUntil"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/team/:p/permissions",
+   "allowed": [
+    "expectedVersion",
+    "overrides"
+   ],
+   "clientKeys": [
+    "expectedVersion",
+    "overrides"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/team/invites",
+   "allowed": [
+    "assignToAllBranches",
+    "branchIds",
+    "email",
+    "fullName",
+    "jobTitle",
+    "overrides",
+    "phone",
+    "roleKey",
+    "scopeType",
+    "validFrom",
+    "validUntil"
+   ],
+   "clientKeys": [
+    "assignToAllBranches",
+    "branchIds",
+    "email",
+    "fullName",
+    "jobTitle",
+    "overrides",
+    "phone",
+    "roleKey",
+    "validUntil"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/tenants/:p/gym-profile",
+   "allowed": [
+    "address",
+    "coverImageUrl",
+    "genderType",
+    "gymDescription",
+    "gymName",
+    "kycDocumentsJson",
+    "latitude",
+    "logoUrl",
+    "longitude",
+    "mainBranchData"
+   ],
+   "clientKeys": [
+    "address",
+    "coverImageUrl",
+    "genderType",
+    "gymDescription",
+    "gymName",
+    "kycDocumentsJson",
+    "latitude",
+    "logoUrl",
+    "longitude",
+    "mainBranchData"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/tenants/register",
+   "allowed": [
+    "areaId",
+    "businessName",
+    "cityId",
+    "email",
+    "phone"
+   ],
+   "clientKeys": [
+    "areaId",
+    "businessName",
+    "cityId",
+    "email",
+    "phone"
+   ]
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/trainers/:p",
+   "allowed": [
+    "availabilityJson",
+    "bio",
+    "branchId",
+    "certificationsJson",
+    "specialization",
+    "status",
+    "yearsExperience"
+   ],
+   "clientKeys": [
+    "availabilityJson",
+    "bio",
+    "branchId",
+    "certificationsJson",
+    "specialization",
+    "status",
+    "yearsExperience"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users",
+   "allowed": [
+    "dateOfBirth",
+    "email",
+    "fullName",
+    "gender",
+    "password",
+    "phone",
+    "role"
+   ],
+   "clientKeys": [
+    "dateOfBirth",
+    "email",
+    "fullName",
+    "gender",
+    "password",
+    "phone",
+    "role"
+   ]
+  }
+ ]
+}

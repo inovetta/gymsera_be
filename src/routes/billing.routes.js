@@ -1,3 +1,4 @@
+const validate = require('../middleware/validate');
 const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
@@ -75,7 +76,7 @@ router.get('/bank-instructions', controller.getBankInstructions);
  *     responses:
  *       200: { description: Purchase intent evaluated }
  */
-router.post('/purchase-intent', authenticate, controller.purchaseIntent);
+router.post('/purchase-intent', authenticate, validate.allowBody(['planId', 'targetPlanId', 'platform', 'targetPlatform']), controller.purchaseIntent);
 
 /**
  * @swagger
@@ -101,7 +102,7 @@ router.post('/purchase-intent', authenticate, controller.purchaseIntent);
  *     responses:
  *       200: { description: Subscription synced }
  */
-router.post('/ios/sync', authenticate, controller.syncIosPurchase);
+router.post('/ios/sync', authenticate, validate.allowBody(['transactionId', 'organizationId']), controller.syncIosPurchase);
 
 /**
  * @swagger
@@ -147,7 +148,7 @@ router.get('/downgrade-preview', authenticate, authorize('GYM_HOST'), controller
  *       400: { description: Invalid choice }
  *       409: { description: A different change is scheduled at the store }
  */
-router.put('/downgrade-choice', authenticate, authorize('GYM_HOST'), controller.putDowngradeChoice);
+router.put('/downgrade-choice', authenticate, authorize('GYM_HOST'), validate.allowBody(['billingPlanId', 'keepBranchIds']), controller.putDowngradeChoice);
 
 /**
  * @swagger
@@ -187,7 +188,7 @@ router.post('/webhooks/apple', controller.appleWebhook);
  *     responses:
  *       200: { description: Subscription synced }
  */
-router.post('/android/sync', authenticate, controller.syncAndroidPurchase);
+router.post('/android/sync', authenticate, validate.allowBody(['purchaseToken', 'productId', 'organizationId']), controller.syncAndroidPurchase);
 
 /**
  * @swagger
@@ -236,7 +237,7 @@ router.post('/webhooks/google', verifyRtdnPush, controller.googleRtdnWebhook);
  *     responses:
  *       200: { description: Checkout session created }
  */
-router.post('/stripe/checkout-session', authenticate, requireWebCardPayments, controller.createStripeCheckoutSession);
+router.post('/stripe/checkout-session', authenticate, requireWebCardPayments, validate.allowBody(['billingPlanId', 'billingCycle', 'successUrl', 'cancelUrl', 'currency']), controller.createStripeCheckoutSession);
 
 /**
  * @swagger
@@ -283,7 +284,7 @@ router.get('/stripe/session/:id', authenticate, controller.getStripeCheckoutSess
  *     responses:
  *       200: { description: Plan change requested }
  */
-router.post('/stripe/change-plan', authenticate, requireWebCardPayments, controller.changeStripePlan);
+router.post('/stripe/change-plan', authenticate, requireWebCardPayments, validate.allowBody(['billingPlanId', 'billingCycle']), controller.changeStripePlan);
 
 /**
  * @swagger
@@ -309,7 +310,7 @@ router.post('/stripe/change-plan', authenticate, requireWebCardPayments, control
  *     responses:
  *       200: { description: Billing portal session created }
  */
-router.post('/stripe/portal-session', authenticate, controller.createStripePortalSession);
+router.post('/stripe/portal-session', authenticate, validate.allowBody(['returnUrl']), controller.createStripePortalSession);
 
 /**
  * @swagger

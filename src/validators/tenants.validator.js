@@ -40,6 +40,10 @@ const tenantsValidators = {
 
     body('gymDescription').optional().isString(),
 
+    // SEC-06: read by tenant.service#submitGymProfile
+    body('latitude').optional({ nullable: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
+    body('longitude').optional({ nullable: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be between -180 and 180'),
+
     body('genderType')
       .optional()
       .isIn(['MIXED', 'MALE_ONLY', 'FEMALE_ONLY'])

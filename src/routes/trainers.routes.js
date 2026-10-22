@@ -100,7 +100,17 @@ router.post(
  *       200:
  *         description: Trainer updated
  */
-router.patch('/:id', canManageTrainer('schedule.trainer.assign'), validate(validators.updateTrainer), controller.updateTrainer);
+// Moving a trainer with PATCH needs the permission at the target branch too (assign does the same).
+const canAtTargetBranch = (req, res, next) =>
+  req.body && req.body.branchId ? can('schedule.trainer.assign')(req, res, next) : next();
+
+router.patch(
+  '/:id',
+  canManageTrainer('schedule.trainer.assign'),
+  canAtTargetBranch,
+  validate.strict(validators.updateTrainer, { stage: 2 }),
+  controller.updateTrainer
+);
 
 /**
  * @swagger

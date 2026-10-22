@@ -392,7 +392,8 @@ const purchaseIntent = async (req, res, next) => {
     const { TenantSubscription, Tenant, BillingPlan } = require('../models/platform');
     const { Op } = require('sequelize');
 
-    let tenantId = req.body.tenantId || req.user.tenantId;
+    // NEW-103 / SEC-02: the tenant comes from the login, never from the body.
+    let tenantId = req.user.tenantId;
     if (!tenantId) {
       const owned = await Tenant.findOne({
         where: { ownerUserId: req.user.id || req.user.sub },

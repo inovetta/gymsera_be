@@ -69,4 +69,10 @@ validate.strict = (validations, { allow = [], stage = 1 } = {}) => {
   return mw;
 };
 
+/**
+ * validate.allowBody(keys, { stage }) — for a route that has no validator yet (SEC-06): the declared body fields are
+ * exactly `keys`; anything else is logged (stage 2, the default here) or refused (stage 1). It adds no type rules.
+ */
+validate.allowBody = (keys, { stage = 2 } = {}) => validate.strict([], { allow: keys, stage });
+
 module.exports = validate;
