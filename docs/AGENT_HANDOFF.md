@@ -39,12 +39,12 @@ Docs branch `docs/6a-rerun` (from `origin/main` 934f120) is committed, **not pus
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Waiting on the owner:** the filled `docs/P1_OWNER_DATE.md` did not reach the repo (all Owner, Date and Decision cells are empty on `origin/main`). When it
-> does, record each row as R-39 onward in spec §14. Until then criterion 17.2 stays NOT MET.
-> **Then, in this order:** (1) SEC-06: flip stage 2 to reject after a log review, fix the 12 validators with undeclared fields, validators for the 129 routes
-> without one (auth, payments, billing, team, approvals first), a generated persona x route matrix; (2) move the roughly 100 role-only routes to `can()`;
-> (3) the missing §15 tests (capacity property test at 1,000 sequences, parallel double refund, registration and admin-approve E2E, CI jobs for `DISABLE_REDIS`
-> and `npm audit`); (4) NEW-63, the provisioning-failure runbook, NEW-20. The owner action list and the staging gates are in the re-run section.
+> **Owner decisions are recorded:** spec §14 R-39 to R-69 (P1 owners and dates, and the §17 criteria accepted as launch gaps). Launch blockers left:
+> §17.1 (SEC-06 P0), §17.2 (five BUILD items: FLOW-04 and NEW-20/21/32 by 2026-11-20, UX-08 by 11-30, GLB-09 export by 12-01, UX-22 by 12-15),
+> §17.4 (sandbox purchases, owner, 11-25), §17.6 (staging reconciliation, NEW-63), §17.9 (6 high build-tool advisories, no SAST/DAST).
+> **Build order by date:** FLOW-04 and the CMS "Verify payment" button (NEW-20) first, then UX-08, GLB-09 export, UX-22 on gymsera_web (invite links must point to
+> the web app, R-48). In parallel SEC-06: validators for the 129 routes without one (auth, payments, billing, team, approvals first). Owner actions and their
+> dates are R-53 to R-62.
 
 ### Work in progress that is NOT committed
 
