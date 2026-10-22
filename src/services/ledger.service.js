@@ -522,6 +522,11 @@ const closeDay = async (ctx, { ledgerDayId }) => {
  * `branchName` attached by the caller before it reaches here.
  */
 const mergeBranchLedgers = (perBranch, extra = {}) => {
+  // NEW-63: every amount is added in integer minor units and converted back once, so the result is the exact
+  // decimal sum (PAY-02). Adding the JS floats first drifted (0.1 + 0.2 + 0.3 = 0.6000000000000001).
+  const m = (v) => toMinorUnits(v || 0);
+  const out = (minor) => toMajorUnitsNumber(minor);
+
   const totals = { expected: 0, collected: 0, verified: 0, pending: 0, variance: 0 };
   const byMethod = {};
   const byCollector = {};
@@ -535,13 +540,13 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
         businessDate: d.businessDate, status: 'CLOSED', expected: 0, collected: 0, verified: 0,
       });
       if (d.status !== 'CLOSED') t.status = 'OPEN';
-      t.expected = round2(t.expected + (d.expected || 0));
-      t.collected = round2(t.collected + (d.collected || 0));
-      t.verified = round2(t.verified + (d.verified || 0));
+      t.expected += m(d.expected);
+      t.collected += m(d.collected);
+      t.verified += m(d.verified);
     }
-    for (const k of Object.keys(totals)) totals[k] += b.totals[k] || 0;
+    for (const k of Object.keys(totals)) totals[k] += m(b.totals[k]);
     for (const [method, amount] of Object.entries(b.byMethod)) {
-      byMethod[method] = (byMethod[method] || 0) + amount;
+      byMethod[method] = (byMethod[method] || 0) + m(amount);
     }
     for (const c of b.byCollector) {
       if (!byCollector[c.collectorId]) {
@@ -555,25 +560,20 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
           shifts: {},
         };
       }
-      byCollector[c.collectorId].total += c.total || 0;
-      byCollector[c.collectorId].cashCollected = (byCollector[c.collectorId].cashCollected || 0) + (c.cashCollected || 0);
-      byCollector[c.collectorId].cashExpected = (byCollector[c.collectorId].cashExpected || 0) + (c.cashExpected || 0);
-      byCollector[c.collectorId].count += c.count || 0;
+      const col = byCollector[c.collectorId];
+      col.total += m(c.total);
+      col.cashCollected += m(c.cashCollected);
+      col.cashExpected += m(c.cashExpected);
+      col.count += c.count || 0;
       if (c.shifts) {
         for (const [sName, sData] of Object.entries(c.shifts)) {
-          if (!byCollector[c.collectorId].shifts[sName]) {
-            byCollector[c.collectorId].shifts[sName] = {
-              shift: sName,
-              total: 0,
-              cashCollected: 0,
-              cashExpected: 0,
-              count: 0,
-            };
+          if (!col.shifts[sName]) {
+            col.shifts[sName] = { shift: sName, total: 0, cashCollected: 0, cashExpected: 0, count: 0 };
           }
-          const tgt = byCollector[c.collectorId].shifts[sName];
-          tgt.total += sData.total || 0;
-          tgt.cashCollected += sData.cashCollected || 0;
-          tgt.cashExpected += sData.cashExpected || 0;
+          const tgt = col.shifts[sName];
+          tgt.total += m(sData.total);
+          tgt.cashCollected += m(sData.cashCollected);
+          tgt.cashExpected += m(sData.cashExpected);
           tgt.count += sData.count || 0;
         }
       }
@@ -595,11 +595,26 @@ const mergeBranchLedgers = (perBranch, extra = {}) => {
       isMissed: b.isMissed,
       totals: b.totals,
     })),
-    totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round2(v)])),
-    byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, round2(v)])),
-    byCollector: Object.values(byCollector).map((c) => ({ ...c, total: round2(c.total) })),
+    totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, out(v)])),
+    byMethod: Object.fromEntries(Object.entries(byMethod).map(([k, v]) => [k, out(v)])),
+    byCollector: Object.values(byCollector).map((c) => ({
+      ...c,
+      total: out(c.total),
+      cashCollected: out(c.cashCollected),
+      cashExpected: out(c.cashExpected),
+      shifts: Object.fromEntries(
+        Object.entries(c.shifts).map(([name, s]) => [
+          name,
+          { ...s, total: out(s.total), cashCollected: out(s.cashCollected), cashExpected: out(s.cashExpected) },
+        ])
+      ),
+    })),
     ...(Object.keys(perDayByDate).length > 0
-      ? { perDay: Object.values(perDayByDate).sort((a, c) => (a.businessDate < c.businessDate ? -1 : 1)) }
+      ? {
+        perDay: Object.values(perDayByDate)
+          .map((d) => ({ ...d, expected: out(d.expected), collected: out(d.collected), verified: out(d.verified) }))
+          .sort((a, c) => (a.businessDate < c.businessDate ? -1 : 1)),
+      }
       : {}),
     payments: payments.slice(0, 300),
   };
@@ -674,4 +689,5 @@ module.exports = {
   addAdjustment,
   closeDay,
   notifyLedgerUpdated,
+  mergeBranchLedgers,
 };
