@@ -277,6 +277,7 @@ router.put(
   '/:id/onboarding-images',
   authenticate,
   authorize('GYM_HOST'),
+  validate.allowBody(['imagesJson']),
   tenantsController.replaceOnboardingImages
 );
 
@@ -293,6 +294,7 @@ router.post(
   '/:id/finalize',
   authenticate,
   authorize('GYM_HOST'),
+  validate.allowBody(['paymentMethod', 'bankTransferRef']),
   tenantsController.finalizeApplication
 );
 
@@ -320,6 +322,7 @@ router.get(
 router.delete(
   '/:id/kyc-documents/:documentId',
   authenticate,
+  validate.allowBody([]),
   tenantsController.deleteKycDocument
 );
 

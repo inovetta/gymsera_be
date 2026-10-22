@@ -212,6 +212,7 @@ router.post(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  validate.allowBody([]),
   controller.toggleStatus
 );
 
@@ -237,6 +238,7 @@ router.post(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  validate.allowBody([]),
   controller.togglePublic
 );
 
@@ -262,6 +264,7 @@ router.post(
   authenticate,
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
+  validate.allowBody([]),
   controller.setFeatured
 );
 
