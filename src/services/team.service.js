@@ -335,9 +335,21 @@ const inviteMember = async (ctx, input) => {
     after: { email: emailClean, roleKey, scopeType: effectiveScope, branchIds: targetBranchIds },
   });
 
-  await notifyInvitee(ctx, user, assignment, targetBranchIds).catch(() => {});
+  const { gymName, roleName, scopeText } = await notifyInvitee(ctx, user, assignment, targetBranchIds).catch(() => ({}));
 
-  return { assignment, user, tempPassword };
+  // UX-22 (option B): access is immediate; the person is told by e-mail where to sign in. The host is shown the
+  // temporary password only when that e-mail could not be sent (mail down or not configured).
+  const accountCreated = Boolean(tempPassword);
+  const emailSent = await require('./email.service').sendTeamWelcomeEmail({
+    to: emailClean,
+    fullName: user.fullName,
+    gymName: gymName || 'your gym',
+    roleName: roleName || ROLE_META[assignment.roleKey]?.name || assignment.roleKey,
+    scopeText: scopeText || 'your gym',
+    newAccount: accountCreated,
+  });
+
+  return { assignment, user, tempPassword: emailSent ? null : tempPassword, emailSent, accountCreated };
 };
 
 /**
@@ -741,6 +753,8 @@ const notifyInvitee = async (ctx, user, assignment, branchIds) => {
     message: `You have been given ${meta.name || assignment.roleKey} access to ${scopeText}.`,
     data: { assignmentId: assignment.id, tenantId: ctx.tenantId, roleKey: assignment.roleKey },
   });
+
+  return { gymName, roleName: meta.name || assignment.roleKey, scopeText };
 };
 
 module.exports = {

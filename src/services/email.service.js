@@ -421,8 +421,51 @@ const sendTenantInvitationEmail = async (to, fullName, businessName, inviteUrl) 
   });
 };
 
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' };
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+
+/**
+ * UX-22 (option B): tells someone they now have access to a gym and where to sign in.
+ * A new account gets a link to choose a password (the e-mail never carries a password); an existing
+ * account gets a sign-in link. Resolves true only when the message was really handed to the mail server:
+ * false when SMTP is not configured or sending failed, so the caller can fall back to telling the host.
+ * Never throws: the invite itself must not fail because mail did.
+ */
+const sendTeamWelcomeEmail = async ({ to, fullName, gymName, roleName, scopeText, newAccount }) => {
+  const webUrl = (process.env.APP_URL || process.env.FRONTEND_URL || 'https://gymsera.com').replace(/\/+$/, '');
+  const link = newAccount ? `${webUrl}/auth/forgot-password` : `${webUrl}/auth/login`;
+  const action = newAccount ? 'Set your password' : 'Sign in';
+  const steps = newAccount
+    ? 'Open the link, enter this e-mail address and choose "Forgot password" to set your own password, then sign in.'
+    : 'Sign in with the e-mail address and password you already use on GymsEra.';
+  try {
+    const info = await sendMail({
+      to,
+      subject: `Welcome to ${gymName} on GymsEra: your access is ready`,
+      text: `Hi ${fullName},\n\nYou now have ${roleName} access at ${gymName} (${scopeText}) on GymsEra.\n\n${steps}\n${action}: ${link}\n\nYou can also use the GymsEra mobile app.\n\nIf you did not expect this, ignore this e-mail or contact ${gymName}.`,
+      html: `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px">
+        <h2 style="color:#1a1a2e">Your access is ready</h2>
+        <p>Hi <strong>${esc(fullName)}</strong>,</p>
+        <p>You now have <strong>${esc(roleName)}</strong> access at <strong>${esc(gymName)}</strong> (${esc(scopeText)}) on GymsEra.</p>
+        <p>${esc(steps)}</p>
+        <div style="margin:28px 0;text-align:center">
+          <a href="${link}" style="background:#e94560;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:6px;font-weight:bold;display:inline-block">${action}</a>
+        </div>
+        <p style="color:#666;font-size:14px">Or copy this link: <a href="${link}" style="color:#e94560">${link}</a></p>
+        <p style="color:#999;font-size:12px;margin-top:24px">You can also use the GymsEra mobile app. If you did not expect this e-mail, ignore it or contact ${esc(gymName)}.</p>
+      </div>`,
+    });
+    return Boolean(info);
+  } catch (err) {
+    console.error(`[Email] Team welcome to ${to} not sent:`, err.message);
+    return false;
+  }
+};
+
 module.exports = {
   mailTransport,
+  sendTeamWelcomeEmail,
   sendOtpEmail,
   sendPasswordResetEmail,
   sendTenantApprovedEmail,

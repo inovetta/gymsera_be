@@ -2002,7 +2002,7 @@ const createStaffUser = async (
     jobTitle: designation || null,
   });
 
-  const { assignment, user, tempPassword } = inviteResult;
+  const { assignment, user, tempPassword, emailSent } = inviteResult;
 
   // Also sync GymStaff HR records for backwards-compatible HR listing
   if (GymStaff) {
@@ -2040,6 +2040,7 @@ const createStaffUser = async (
       status: user.status,
     },
     tempPassword,
+    emailSent,
     assignedBranches: targetBranchIds.length,
     assignmentId: assignment.id,
   };
