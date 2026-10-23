@@ -1554,8 +1554,11 @@ const updateAdminTenantBranch = async (tenantId, branchId, data, adminUserId) =>
   // route to the exact same bypass fixed in updateTenantBranchStatus (no
   // capacity check, no reservedSlots credit/consumption, no cascade, no
   // audit row). Routed through the same gymService functions instead.
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'phone', 'openingTime', 'closingTime', 'facilitiesJson'];
+  // NEW-103: latitude / longitude (null clears them) and `facilities` (the array the CMS form sends) were dropped here;
+  // same handling as the host-side gym.service#updateBranch.
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'phone', 'openingTime', 'closingTime', 'facilitiesJson'];
   fields.forEach((f) => { if (data[f] !== undefined) branch[f] = data[f]; });
+  if (Array.isArray(data.facilities)) branch.facilitiesJson = data.facilities;
   await branch.save();
 
   if (data.status !== undefined && data.status !== branch.status) {
