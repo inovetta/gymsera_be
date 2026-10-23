@@ -132,7 +132,7 @@ router.get(
 router.put(
   '/:id',
   authorize(...managerRoles),
-  validate(userValidators.update),
+  validate.strict(userValidators.update, { stage: 2 }),
   usersController.update
 );
 
@@ -205,7 +205,7 @@ router.post(
   authorize(...managerRoles),
   upload.image('image'),
   upload.handleMulterError,
-  usersController.uploadProfileImage
+  validate.allowBody([]), usersController.uploadProfileImage
 );
 
 /**

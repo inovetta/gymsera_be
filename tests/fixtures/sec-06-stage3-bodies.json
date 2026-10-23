@@ -1,0 +1,503 @@
+{
+ "comment": "SEC-06 stage 3 (tier 3: admin, notifications, cities, staff, staff-invites, attendance, users, payments proof, and the multipart upload routes). allowed = the declared body fields at the time of writing; clientKeys = what the CMS and mobile code send for that route, checked 2026-10-23 (empty = the route takes no JSON body or no client was found sending one). Log mode first.",
+ "routes": [
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/billing-plans/:p/sync-stripe",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/subscriptions/sync",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/approve",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/tenants/:p/branches/:p/images",
+   "allowed": [
+    "imageUrl"
+   ],
+   "clientKeys": [
+    "imageUrl"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/branches/:p/images",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/branches/:p/unsuspend",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/tenants/:p/branches/:p",
+   "allowed": [
+    "confirmOrganizationDeletion"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tenants/:p/branches/:p",
+   "allowed": [
+    "address",
+    "areaId",
+    "branchName",
+    "cityId",
+    "closingTime",
+    "facilities",
+    "facilitiesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "phone",
+    "status"
+   ],
+   "clientKeys": [
+    "address",
+    "areaId",
+    "branchName",
+    "cityId",
+    "closingTime",
+    "facilities",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "phone",
+    "status"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/branches",
+   "allowed": [
+    "address",
+    "addressLine1",
+    "addressLine2",
+    "areaId",
+    "branchName",
+    "category",
+    "cityId",
+    "closingTime",
+    "currency",
+    "description",
+    "establishedYear",
+    "facilities",
+    "facilitiesJson",
+    "floorArea",
+    "gymListingId",
+    "imagesJson",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "packages",
+    "phone",
+    "postalCode",
+    "tagline",
+    "timezone"
+   ],
+   "clientKeys": [
+    "address",
+    "areaId",
+    "branchName",
+    "cityId",
+    "closingTime",
+    "facilities",
+    "latitude",
+    "longitude",
+    "openingTime",
+    "phone"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/cover",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/gym-listing/cover",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/tenants/:p/gym-listing/images",
+   "allowed": [
+    "imageUrl"
+   ],
+   "clientKeys": [
+    "imageUrl"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/gym-listing/images",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/gym-listing/logo",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tenants/:p/gym-listing",
+   "allowed": [
+    "areaId",
+    "cityId",
+    "contactPhone",
+    "facilitiesJson",
+    "genderType",
+    "isFeatured",
+    "latitude",
+    "longitude",
+    "shortDescription",
+    "status",
+    "title",
+    "website"
+   ],
+   "clientKeys": [
+    "areaId",
+    "cityId",
+    "contactPhone",
+    "facilitiesJson",
+    "genderType",
+    "isFeatured",
+    "latitude",
+    "longitude",
+    "shortDescription",
+    "status",
+    "title",
+    "website"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/gym-listing",
+   "allowed": [
+    "areaId",
+    "cityId",
+    "contactPhone",
+    "facilitiesJson",
+    "genderType",
+    "latitude",
+    "longitude",
+    "shortDescription",
+    "title",
+    "website"
+   ],
+   "clientKeys": [
+    "areaId",
+    "cityId",
+    "contactPhone",
+    "genderType",
+    "latitude",
+    "longitude",
+    "shortDescription",
+    "title",
+    "website"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/invoices/:p/send-confirmation",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/invoices/:p/send-reminder",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/logo",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/members/:p/reveal",
+   "allowed": [
+    "reason"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/admin/tenants/:p/reactivate",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/admin/tenants/:p/subscriptions/:p/revoke",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/admin/tenants/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/attendance/:p/check-out",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cities/:p/areas/:p/image",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/cities/:p/areas/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/cities/:p/image",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/cities/:p",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/branches/:p/images",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/profile/cover",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/profile/images",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/gyms/profile/logo",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/host/listings/staging-images",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/payment-requests/:p/proof",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/payments/:p/proof",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/profile-image",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/me/profile/image",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/membership-plans/:p/poster",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/notifications/:p/read",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v1/notifications/read-all",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/notifications/read-all",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/notifications/test-push",
+   "allowed": [
+    "body",
+    "title"
+   ],
+   "clientKeys": [
+    "body",
+    "title"
+   ]
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v1/notifications/token",
+   "allowed": [
+    "token"
+   ],
+   "clientKeys": [
+    "token"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/notifications/token",
+   "allowed": [
+    "appVersion",
+    "deviceId",
+    "deviceName",
+    "locale",
+    "platform",
+    "timezone",
+    "token"
+   ],
+   "clientKeys": [
+    "appVersion",
+    "deviceId",
+    "deviceName",
+    "locale",
+    "platform",
+    "token"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/payments/:p/proof",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/staff-invites/:p/accept",
+   "allowed": [
+    "tenantId"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/staff-invites/:p/decline",
+   "allowed": [
+    "tenantId"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/staff/branches/:p/action-requests",
+   "allowed": [
+    "actionType",
+    "payload"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/staff/host/action-requests/:p/approve",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/staff/host/action-requests/:p/reject",
+   "allowed": [
+    "rejectionReason"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/subscriptions/:p/proof",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/tenants/:p/kyc-documents",
+   "allowed": [
+    "documentType"
+   ],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/tenants/:p/onboarding-images",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "POST",
+   "path": "/api/v1/users/:p/profile-image",
+   "allowed": [],
+   "clientKeys": []
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v1/users/:p",
+   "allowed": [
+    "dateOfBirth",
+    "email",
+    "emergencyContactName",
+    "emergencyContactPhone",
+    "fitnessGoal",
+    "fullName",
+    "gender",
+    "heightCm",
+    "medicalNotes",
+    "phone",
+    "weightKg"
+   ],
+   "clientKeys": []
+  }
+ ]
+}

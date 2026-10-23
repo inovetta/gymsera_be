@@ -111,9 +111,9 @@ router.post('/change-password', validate.strict(meValidators.changePassword, { s
  *       200:
  *         description: Profile image updated
  */
-router.post('/profile-image', upload.image('image'), upload.handleMulterError, meController.uploadProfileImage);
+router.post('/profile-image', upload.image('image'), upload.handleMulterError, validate.allowBody([]), meController.uploadProfileImage);
 // Alias: POST /me/profile/image (web portal uses this path)
-router.post('/profile/image', upload.image('image'), upload.handleMulterError, meController.uploadProfileImage);
+router.post('/profile/image', upload.image('image'), upload.handleMulterError, validate.allowBody([]), meController.uploadProfileImage);
 
 /**
  * @swagger
@@ -249,7 +249,7 @@ router.post(
   validate(meValidators.proofId),
   upload.image('image'),
   upload.handleMulterError,
-  meController.uploadPaymentProof
+  validate.allowBody([]), meController.uploadPaymentProof
 );
 
 // ── Aliases for web portal (uses /payments instead of /payment-requests) ──────
@@ -260,7 +260,7 @@ router.post(
   validate(meValidators.proofId),
   upload.image('image'),
   upload.handleMulterError,
-  meController.uploadPaymentProof
+  validate.allowBody([]), meController.uploadPaymentProof
 );
 
 // ── Subscription detail (member self-serve, no tenant context needed) ─────────

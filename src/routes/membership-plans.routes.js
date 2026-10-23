@@ -301,7 +301,7 @@ router.post(
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
   upload.image('image'),
   upload.handleMulterError,
-  controller.uploadPoster
+  validate.allowBody([]), controller.uploadPoster
 );
 
 module.exports = router;

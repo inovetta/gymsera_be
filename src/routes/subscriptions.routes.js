@@ -150,7 +150,7 @@ router.get('/:id/detail', controller.getMySubscriptionDetail);
 router.get('/:id/qr-token', controller.getSubscriptionQrToken);
 
 // ── Member: upload payment proof for a pending subscription ───────────────────
-router.post('/:id/proof', upload.image('image'), upload.handleMulterError, controller.uploadSubscriptionProof);
+router.post('/:id/proof', upload.image('image'), upload.handleMulterError, validate.allowBody([]), controller.uploadSubscriptionProof);
 
 // ── Staff-facing routes (GYM_HOST | BRANCH_MANAGER) ──────────────────────────
 

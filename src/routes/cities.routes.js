@@ -193,10 +193,10 @@ router.patch(
 );
 
 // ── DELETE /cities/:id — delete city (Admin only) ────────────────────────────
-router.delete('/:id', authenticate, authorize('PLATFORM_ADMIN'), citiesController.deleteCity);
+router.delete('/:id', authenticate, authorize('PLATFORM_ADMIN'), validate.allowBody([]), citiesController.deleteCity);
 
 // ── DELETE /cities/:id/areas/:areaId — delete area (Admin only) ──────────────
-router.delete('/:id/areas/:areaId', authenticate, authorize('PLATFORM_ADMIN'), citiesController.deleteArea);
+router.delete('/:id/areas/:areaId', authenticate, authorize('PLATFORM_ADMIN'), validate.allowBody([]), citiesController.deleteArea);
 
 // ── POST /cities/:id/image — upload city image (Admin only) ──────────────────
 router.post(
@@ -205,7 +205,7 @@ router.post(
   authorize('PLATFORM_ADMIN'),
   upload.image('image'),
   upload.handleMulterError,
-  citiesController.uploadCityImage
+  validate.allowBody([]), citiesController.uploadCityImage
 );
 
 // ── POST /cities/:id/areas/:areaId/image — upload area image (Admin only) ────
@@ -215,7 +215,7 @@ router.post(
   authorize('PLATFORM_ADMIN'),
   upload.image('image'),
   upload.handleMulterError,
-  citiesController.uploadAreaImage
+  validate.allowBody([]), citiesController.uploadAreaImage
 );
 
 module.exports = router;

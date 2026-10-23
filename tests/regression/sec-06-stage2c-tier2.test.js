@@ -1,7 +1,7 @@
 /**
  * SEC-06 stage 2c: tier 2 (host, me, tenants, subscriptions, gyms, member, membership-plans). Routes that had no
  * validator now declare their body fields with validate.allowBody and run strict in LOG mode (R-61: reject on 2026-12-20).
- * Multipart upload routes are not covered here (the body is parsed by multer, SEC-06 stage 3).
+ * Multipart upload routes were covered later, in stage 3 (sec-06-stage3-tier3.test.js).
  *  - tests/fixtures/sec-06-stage2c-bodies.json pins, per route, the declared fields (changing one is a conscious edit)
  *    and the keys the clients send (which must stay accepted).
  */
@@ -37,27 +37,13 @@ describe('declared fields per route (fixture)', () => {
     }
   });
 
-  test('every tier-2 route that takes a JSON body is covered (only the multipart uploads are left out: their body is read by multer)', () => {
+  test('every tier-2 route that takes a body is covered (the multipart uploads were left to stage 3, which now declares them)', () => {
     const T2 = /^\/api\/v1\/(host|me|tenants|subscriptions|gyms|member|membership-plans)\//;
     const missing = routes
       .filter((x) => T2.test(x.key.split(' ')[1]) && /^(POST|PUT|PATCH|DELETE) /.test(x.key) && x.stage === null)
       .map((x) => x.key)
       .sort();
-    expect(missing).toEqual([
-      'POST /api/v1/gyms/branches/:p/images',
-      'POST /api/v1/gyms/profile/cover',
-      'POST /api/v1/gyms/profile/images',
-      'POST /api/v1/gyms/profile/logo',
-      'POST /api/v1/host/listings/staging-images',
-      'POST /api/v1/membership-plans/:p/poster',
-      'POST /api/v1/me/payment-requests/:p/proof',
-      'POST /api/v1/me/payments/:p/proof',
-      'POST /api/v1/me/profile-image',
-      'POST /api/v1/me/profile/image',
-      'POST /api/v1/subscriptions/:p/proof',
-      'POST /api/v1/tenants/:p/kyc-documents',
-      'POST /api/v1/tenants/:p/onboarding-images',
-    ].sort());
+    expect(missing).toEqual([]);
   });
 });
 

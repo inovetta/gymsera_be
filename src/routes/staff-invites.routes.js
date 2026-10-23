@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { Router } = require('express');
 const authenticate = require('../middleware/authenticate');
+const validate = require('../middleware/validate');
 const { Tenant, User } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError, sendSuccess } = require('../utils/response.utils');
@@ -148,7 +149,7 @@ router.get('/:staffId', async (req, res, next) => {
 });
 
 // POST /staff-invites/:staffId/accept
-router.post('/:staffId/accept', async (req, res, next) => {
+router.post('/:staffId/accept', validate.allowBody(['tenantId']), async (req, res, next) => {
   try {
     const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.tenantId || req.query.tenantId);
     
@@ -220,7 +221,7 @@ router.post('/:staffId/accept', async (req, res, next) => {
 });
 
 // POST /staff-invites/:staffId/decline
-router.post('/:staffId/decline', async (req, res, next) => {
+router.post('/:staffId/decline', validate.allowBody(['tenantId']), async (req, res, next) => {
   try {
     const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.tenantId || req.query.tenantId);
 

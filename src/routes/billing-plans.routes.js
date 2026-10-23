@@ -29,7 +29,7 @@ router.patch('/:id', authenticate, authorize('PLATFORM_ADMIN'), validate.strict(
  * plan at it. Existing Stripe subscribers keep referencing their original
  * Price automatically.
  */
-router.post('/:id/sync-stripe', authenticate, authorize('PLATFORM_ADMIN'), controller.syncStripe);
+router.post('/:id/sync-stripe', authenticate, authorize('PLATFORM_ADMIN'), validate.allowBody([]), controller.syncStripe);
 
 /**
  * POST /admin/billing-plans/:id/mark-synced { provider: 'ios' | 'android' }

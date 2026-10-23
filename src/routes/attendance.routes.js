@@ -375,7 +375,7 @@ router.patch(
   tenantContext,
   authorize('GYM_HOST', 'BRANCH_MANAGER'),
   can.atAnyBranch('checkins.qr.scan'),
-  controller.checkOut
+  validate.allowBody([]), controller.checkOut
 );
 
 module.exports = router;

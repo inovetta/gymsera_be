@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { Op } = require('sequelize');
 const authenticate = require('../middleware/authenticate');
+const validate = require('../middleware/validate');
 const { Tenant, User, Notification } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError, sendSuccess } = require('../utils/response.utils');
@@ -98,7 +99,7 @@ const _getActionText = (type) => {
 };
 
 // ── STAFF: POST /staff/branches/:branchId/action-requests ─────────────────────
-router.post('/branches/:branchId/action-requests', async (req, res, next) => {
+router.post('/branches/:branchId/action-requests', validate.allowBody(['actionType', 'payload']), async (req, res, next) => {
   try {
     const { branchId } = req.params;
     const { actionType, payload } = req.body;
@@ -242,7 +243,7 @@ router.get('/host/branches/:branchId/action-requests', async (req, res, next) =>
 });
 
 // ── HOST: POST /host/action-requests/:requestId/approve ─────────────────────────
-router.post('/host/action-requests/:requestId/approve', async (req, res, next) => {
+router.post('/host/action-requests/:requestId/approve', validate.allowBody([]), async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const { tenantDb, tenant, request } = await _resolveRequestById(requestId);
@@ -356,7 +357,7 @@ router.post('/host/action-requests/:requestId/approve', async (req, res, next) =
 });
 
 // ── HOST: POST /host/action-requests/:requestId/reject ─────────────────────────
-router.post('/host/action-requests/:requestId/reject', async (req, res, next) => {
+router.post('/host/action-requests/:requestId/reject', validate.allowBody(['rejectionReason']), async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const { rejectionReason } = req.body || {};
