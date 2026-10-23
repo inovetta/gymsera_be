@@ -69,7 +69,7 @@ const getMember = async (req, res, next) => {
 const invite = async (req, res, next) => {
   try {
     const ctx = buildCtx(req);
-    const { assignment, user, tempPassword } = await teamService.inviteMember(ctx, req.body);
+    const { assignment, user, tempPassword, emailSent, accountCreated } = await teamService.inviteMember(ctx, req.body);
 
     return sendSuccess(
       res,
@@ -85,13 +85,16 @@ const invite = async (req, res, next) => {
         },
         scopeType: assignment.scopeType,
         status: assignment.status,
-        // Only present when the account was created just now. An existing user
-        // signs in with the password they already have.
+        // UX-22: whether the welcome e-mail went out. Only when it did not, and the account was created just now,
+        // `tempPassword` is present so the host can hand it over; an existing user signs in with their own password.
+        emailSent,
         tempPassword: tempPassword || null,
       },
       tempPassword
-        ? 'Team member created. Share the temporary password with them.'
-        : 'Existing GymsEra user added to your team.',
+        ? 'Team member created, but the welcome e-mail could not be sent. Share the temporary password with them.'
+        : accountCreated
+          ? 'Team member created. We e-mailed them a link to set their password.'
+          : 'Existing GymsEra user added to your team. We e-mailed them a sign-in link.',
       201
     );
   } catch (err) {
