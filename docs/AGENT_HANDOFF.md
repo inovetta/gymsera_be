@@ -17,34 +17,39 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-21 |
+| Last updated | 2026-10-23 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Prompt 6A re-run (gap check)**, docs only |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Owner batch of 2026-10-22/23** (UX-08, GLB-09, SEC-06 tier 3, UX-22, nodemon, consolidated docs) |
+| Prompt status | `DONE` except UX-22 (`BLOCKED ON OWNER`, NEW-105) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-The re-run is in spec §13, section "Prompt 6A re-run (2026-10-21)": test runs, a spot-check of ten back-filled rows (all hold), and the updated
-§17 list. **Result: all 12 criteria still NOT MET; one P0 open (SEC-06: 70 of 214 mutating routes strict, 129 without a validator).**
-Docs branch `docs/6a-rerun` (from `origin/main` 934f120) is committed, **not pushed**. All code branches from the earlier prompts are merged.
+Already merged by the owner before this batch: NEW-20 (cms PR #37), FLOW-04 (be PR #155, app PR #27), staging script (be PR #156), follow-redirects (be PR #157), import guard (be PR #154), SEC-06 tier 2 (be PR #153).
+Everything below is **committed locally, not pushed** (branches are independent; each is based on `origin/main` / `origin/master`):
 
-| Repo | Branch | Last commit | Uncommitted changes? |
+| Repo | Branch | Last commit | What |
 |---|---|---|---|
-| gymsera_be | `docs/6a-rerun` | docs only | no |
-| gymsera_web | `main` | adb0b5f (PR #20) | no |
-| gymsera_cms | `main` | 5c6f8f1 (PR #36, BILL-15 badge) | no |
-| gyms_era | `master` | b7ce9ae (PR #24, force update) | no |
+| gyms_era | `feat/ux-08-error-states` | `e76df1d` | UX-08 / NEW-74: every screen error handler shows `ErrorStateView` with Try again |
+| gyms_era | `feat/glb-09-data-export-app` | `7a31906` | GLB-09: Settings > Download my data (adds `share_plus`, `path_provider`) |
+| gymsera_be | `feat/glb-09-data-export` | `7d56349` | GLB-09: `GET /me/data-export` |
+| gymsera_web | `feat/glb-09-web-export` | `d502290` | GLB-09: Profile > Your data, link on the privacy page |
+| gymsera_be | `feat/sec-06-tier3` | `935c38a` | SEC-06 stage 3: 55 routes declared, log mode |
+| gymsera_be | `chore/replace-nodemon` | `6011e58` | `node --watch` instead of nodemon: 0 high advisories |
+| gymsera_be | `fix/staging-script-test-port` | `5d0096e` | staging-script test used the wrong MySQL port locally |
+| gymsera_be | `docs/batch-2026-10-23` | this PR | spec §13 rows, this file |
+
+Suggested merge order: be `fix/staging-script-test-port`, `chore/replace-nodemon`, `feat/glb-09-data-export`, `feat/sec-06-tier3` (then GLB-09 clients), app `feat/ux-08-error-states` before the 2026-11-30 freeze, then docs. Backend GLB-09 before the app / web builds that call it. Pushes are the owner's.
+
+Test results (local, Docker MySQL 5.7 on 3308, `DISABLE_REDIS=true`, under `caffeinate`): backend `main` 214 of 215 suites / 2154 of 2157 tests (3 = staging-script port, now fixed); GLB-09 branch 215 of 216 / 2162 of 2165; tier-3 branch 215 of 216 / 2214 of 2217 (same 3). CMS `main`: Vitest 464 green, tsc clean. Flutter: UX-08 206 tests x3 green, `flutter analyze` 170 findings (180 before, none new); GLB-09 app 205 x3, no new findings. Web GLB-09: Vitest 103, tsc, lint green.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> **Owner decisions are recorded:** spec §14 R-39 to R-69 (P1 owners and dates, and the §17 criteria accepted as launch gaps). Launch blockers left:
-> §17.1 (SEC-06 P0), §17.2 (five BUILD items: FLOW-04 and NEW-20/21/32 by 2026-11-20, UX-08 by 11-30, GLB-09 export by 12-01, UX-22 by 12-15),
-> §17.4 (sandbox purchases, owner, 11-25), §17.6 (staging reconciliation, NEW-63), §17.9 (6 high build-tool advisories, no SAST/DAST).
-> **Build order by date:** FLOW-04 and the CMS "Verify payment" button (NEW-20) first, then UX-08, GLB-09 export, UX-22 on gymsera_web (invite links must point to
-> the web app, R-48). In parallel SEC-06: validators for the 129 routes without one (auth, payments, billing, team, approvals first). Owner actions and their
-> dates are R-53 to R-62.
+> 1. **Owner:** push and merge the branches above (order in "Branches"). Then apply nothing on the server: no migration in this batch.
+> 2. **Owner decision needed (NEW-105, blocks UX-22 by 2026-12-15):** team invites are instant (no accept step, no e-mail), so the planned accept-invite page has nothing to accept. Choose (A) pending invites + e-mailed link to gymsera.com/accept-invite, (B) keep instant access and e-mail a welcome / sign-in link, or (C) drop UX-22. Record it in spec §14 (R-48 supersedes). Then build.
+> 3. **SEC-06:** tier 4 = `POST /actions/:actionKey` (per-command payloads) and the webhooks' remaining shape checks; reject flip on 2026-12-20 (R-61) after the logs show no real client sends an unknown field. Watch `[unknown-fields]` in the API logs for tiers 2 and 3.
+> 4. **Open launch blockers:** §17.4 sandbox purchases (owner, 11-25), §17.6 staging reconciliation (NEW-63), §17.9 (highs now 0 on the backend after the nodemon PR; no SAST/DAST yet), GLB-09 consent and cookie banner (after legal scope), NEW-103 / NEW-104 (P2).
 
 ### Work in progress that is NOT committed
 
@@ -53,6 +58,7 @@ Docs branch `docs/6a-rerun` (from `origin/main` 934f120) is committed, **not pus
 ### Blocked / waiting on the owner
 
 - **Owner decisions waiting:**
+  - **NEW-105 (UX-22):** invites are instant today, so an accept-invite page has nothing to accept. Options A / B / C in "Next action". Needed before UX-22 can start.
   - **NEW-81 (4A):** where the app-level feature flags, minimum app version and error-copy version live, and whether the mobile app sends its version (no app-version header today). Needed for the bootstrap contract and the §16 force-update check.
   - **NEW-82 (4A):** make the CMS admin tenants search work on the backend, or remove the search box.
   - **NEW-83 (5A-1, P2):** kept OPEN. It did not reproduce on `22c7d2c` or `1d96ea6`, and every 5A-2 `DISABLE_REDIS=true` run was green, but the cause was never found (spec §13 row).
@@ -106,6 +112,10 @@ Docs branch `docs/6a-rerun` (from `origin/main` 934f120) is committed, **not pus
 - [ ] Confirm whether the Cloudflare zone caches API paths (`cf-cache-status` on `/api/v1/discovery/*`) given `s-maxage=60`
 
 ### Notes for running the suite locally
+
+- **Use `caffeinate -i npm test`.** A Mac that sleeps mid-run makes hook timeouts (one file took 3566 s) that look like real failures. Env: `MYSQL_HOST`, `PLATFORM_DB_HOST`, `TENANT_DB_HOST` = `127.0.0.1`, `TEST_MYSQL_PORT=3308`, `DISABLE_REDIS=true` (no local Redis). A full run takes about 25 minutes on this machine.
+- The installed `express-rate-limit` prints `keyGeneratorIpFallback is not recognized` warnings: `node_modules` is older than `package-lock.json`. Run `npm ci` once; it does not fail tests.
+
 
 - Use the CI env (root, empty password, Docker MySQL on 127.0.0.1:3308). Use **one** `TENANT_CONN_ENCRYPTION_KEY` for every run that shares a Redis: the tenant connection string is cached in Redis for 1 h, encrypted with that key, and a run with another key gets 500s on every tenant route.
 
@@ -511,3 +521,4 @@ Docs branch `docs/6a-rerun` (from `origin/main` 934f120) is committed, **not pus
 | 92 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 5A-4 close-out (docs only) | Spec §13 rows SEC-14 / SEC-15 / SEC-18 / NEW-95 / NEW-96, real hashes in the SEC-04 / 05 / 08 / 16 / 17 and BILL-15 rows, "Prompt 5A-4 close-out notes" (deploy, later work), §16 notes; handoff moved to Prompt 6A | task complete (not pushed) | yes |
 | 93 | 2026-10-20 | Claude Code (Sonnet 5.5) | Prompt 6A, gap check (docs only) | Spec §13 "Prompt 6A gap check": open-issue list by severity, §15 matrix row by row, §17 criteria (all 12 NOT MET), owner-action and deferred lists, NEW-97 recorded, §13 back-fill list; test runs: backend 200 suites / 1888 tests green with Redis on and off, CMS Vitest 436 + Playwright 26, web Vitest 95 + Playwright 3, Flutter 110; no code changed | task complete (not pushed) | yes |
 | 94 | 2026-10-21 | Claude Code (Sonnet 5.5) | Prompt 6A re-run (docs only) | Spec §13 "Prompt 6A re-run": test runs (backend 207 suites / 2002 tests, CMS 458 + 26, web 98 + 3, Flutter 182), ten back-filled rows spot-checked against the code, §17 verdict (all 12 NOT MET, one P0 open), what remains; R-39+ not recorded because the filled P1 table was not in the repo | task complete (not pushed) | yes |
+| 95 | 2026-10-22/23 | Claude Code (Sonnet 5.5) | Owner batch: status report, UX-08, GLB-09, SEC-06 tier 3, UX-22 analysis, nodemon, consolidated docs | UX-08 (app `e76df1d`), GLB-09 (be `7d56349`, app `7a31906`, web `d502290`), SEC-06 tier 3 (be `935c38a`), nodemon (be `6011e58`), staging-script test port (be `5d0096e`); UX-22 stopped for an owner decision (NEW-105); NEW-103, NEW-104 recorded; tests in "Branches and last commits" | task complete except UX-22 (blocked) (not pushed) | no |
