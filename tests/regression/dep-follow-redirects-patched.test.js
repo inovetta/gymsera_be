@@ -1,8 +1,10 @@
 /**
  * Dependabot (high): follow-redirects 1.16.0 leaks credential headers on cross-origin redirects
  * (GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c). It reaches the API through axios; 1.16.1 is the fixed version.
- * The lockfile and the installed copy must both be at or above it, and the dev-only tools (nodemon -> chokidar -> braces,
- * which has no patched release) must stay out of `dependencies` so they never ship in the production image.
+ * The lockfile and the installed copy must both be at or above it.
+ *
+ * Dependabot (high): braces (every version; stack exhaustion on deeply nested patterns) reached the repo only through
+ * nodemon -> chokidar. There is no patched braces release, so nodemon is gone: `npm run dev` uses `node --watch`.
  */
 const fs = require('fs');
 const path = require('path');
@@ -29,10 +31,12 @@ describe('Dependabot: follow-redirects', () => {
     expect(atLeast(version, '1.16.1')).toBe(true);
   });
 
-  test('nodemon (the only path to the unpatched braces advisory) is a dev dependency only', () => {
+  test('nodemon is gone, so braces and chokidar are no longer in the tree; `npm run dev` uses node --watch', () => {
     const pkg = require('../../package.json');
     expect(pkg.dependencies.nodemon).toBeUndefined();
-    expect(pkg.dependencies.chokidar).toBeUndefined();
-    expect(pkg.devDependencies.nodemon).toBeDefined();
+    expect(pkg.devDependencies.nodemon).toBeUndefined();
+    expect(pkg.scripts.dev).toBe('node --watch server.js');
+    const locked = Object.keys(lock.packages);
+    expect(locked.filter((k) => /node_modules\/(nodemon|braces|chokidar)$/.test(k))).toEqual([]);
   });
 });
