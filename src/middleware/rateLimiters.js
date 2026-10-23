@@ -36,6 +36,7 @@ const DEFAULTS = {
   SEARCH_IP: [60, 120],
   MUTATION_USER: [60, 120],
   REVEAL_USER: [60 * 60, 300],
+  DATA_EXPORT_USER: [60 * 60, 5],
 };
 
 const intFromEnv = (name) => {
@@ -125,6 +126,11 @@ const createLimiters = () => ({
     const user = verifiedUserId(req);
     return user ? `reveal:u:${user}` : null;
   }),
+  // GLB-09: the export reads every gym database the person belongs to, so a few an hour is plenty.
+  dataExport: build('DATA_EXPORT_USER', 'You have requested your data several times. Please try again later.', (req) => {
+    const user = verifiedUserId(req);
+    return user ? `dataexport:u:${user}` : null;
+  }),
   mutation: build('MUTATION_USER', 'Too many changes in a short time. Please slow down.', (req) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return null;
     const url = (req.originalUrl || req.url || '').toLowerCase();
@@ -163,6 +169,7 @@ const mount = (app, prefix = '/api/v1') => {
     [l.passwordResetIp, l.passwordResetAccount]));
   app.use(prefix, when('GET', (p) => p === '/discovery' || p.startsWith('/discovery/'), [l.search]));
   app.use(prefix, when('POST', (p) => /^\/admin\/tenants\/[^/]+\/members\/[^/]+\/reveal$/.test(p), [l.reveal]));
+  app.use(prefix, when('GET', exact('/me/data-export'), [l.dataExport]));
   app.use(prefix, l.mutation);
   return l;
 };
