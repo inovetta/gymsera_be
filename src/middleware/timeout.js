@@ -15,7 +15,9 @@ function isUploadRoute(url) {
     path.includes('logo') ||
     path.includes('cover') ||
     path.includes('document') ||
-    path.includes('upload')
+    path.includes('upload') ||
+    // GLB-09: the personal-data export reads every gym database the person belongs to.
+    path.endsWith('/me/data-export')
   );
 }
 

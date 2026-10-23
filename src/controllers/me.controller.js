@@ -1,5 +1,6 @@
 const meService = require('../services/me.service');
 const accountDeletionService = require('../services/account-deletion.service');
+const dataExportService = require('../services/data-export.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
 const inboxService = require('../services/inbox.service');
@@ -241,6 +242,19 @@ const cancelDeletion = async (req, res, next) => {
   }
 };
 
+// ── GET /me/data-export ─────────────────────────────────────────────────────────
+// GLB-09: everything held about the signed-in person. A download, never cached.
+const dataExport = async (req, res, next) => {
+  try {
+    const data = await dataExportService.buildUserDataExport(req.user.sub);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="gymsera-my-data-${new Date().toISOString().slice(0, 10)}.json"`);
+    return sendSuccess(res, data, 'Your data export', 200);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /me/inbox ──────────────────────────────────────────────────────────────
 const listMyInbox = async (req, res, next) => {
   try {
@@ -389,6 +403,7 @@ module.exports = {
   requestDeletion,
   cancelDeletion,
   deletionPreflight,
+  dataExport,
   listMyInbox,
   getMyConversation,
   replyToMyConversation,

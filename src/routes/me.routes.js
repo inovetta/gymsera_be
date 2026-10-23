@@ -275,6 +275,20 @@ router.get('/saved-gyms', meController.getSavedGyms);
 router.post('/saved-gyms/:gymId', validate.allowBody([]), meController.saveGym);
 router.delete('/saved-gyms/:gymId', validate.allowBody([]), meController.unsaveGym);
 
+/**
+ * @swagger
+ * /me/data-export:
+ *   get:
+ *     summary: Download everything GymsEra holds about the signed-in person (JSON, GLB-09)
+ *     tags: [Me]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: The export document under `data`; `complete` is false and `unavailable` lists any gym that could not be read
+ */
+router.get('/data-export', meController.dataExport);
+
 // ── Account deletion (AUTH-07): preflight → re-authenticated request → 30-day undo ──
 router.get('/deletion-preflight', meController.deletionPreflight);
 router.post('/request-deletion', validate.allowBody(['idToken', 'password', 'provider']), meController.requestDeletion);
