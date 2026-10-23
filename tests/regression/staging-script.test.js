@@ -2,6 +2,9 @@
  * Staging test script (scripts/staging): refuses unless told it is staging, never drops anything but its own
  * restore_drill_* database, and its checks report real findings. Database parts run on the local Docker MySQL (R-19).
  */
+// The test harness resolves the local test MySQL (port 3308 locally, 3306 in CI) and sets the DB env; load it first so the
+// restore-drill block reads the same server as every other database test instead of whatever .env points at (R-19).
+require('../harness/test-db');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const mysql = require('mysql2/promise');
