@@ -41,7 +41,7 @@ router.post(
   authorize('GYM_HOST'),
   upload.images('images', 10),
   upload.handleMulterError,
-  hostController.uploadListingStagingImages
+  validate.allowBody([]), hostController.uploadListingStagingImages
 );
 router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody(['address', 'areaId', 'branchSource', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'images', 'latitude', 'logoUrl', 'longitude', 'packages']), hostController.createListing);
 router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody(['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude']), hostController.updateListing);

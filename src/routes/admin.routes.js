@@ -115,7 +115,7 @@ router.get('/tenants/:id', adminController.getTenant);
  *       502:
  *         description: A provisioning step failed; the tenant stays APPROVED and can be resumed
  */
-router.post('/tenants/:id/approve', idempotency(), adminController.approveTenant);
+router.post('/tenants/:id/approve', idempotency(), validate.allowBody([]), adminController.approveTenant);
 
 /**
  * @swagger
@@ -195,7 +195,7 @@ router.post(
   adminController.suspendTenant
 );
 
-router.post('/tenants/:id/reactivate', adminController.reactivateTenant);
+router.post('/tenants/:id/reactivate', validate.allowBody([]), adminController.reactivateTenant);
 
 router.get('/tenants/:id/branches', adminController.getTenantBranches);
 
@@ -216,38 +216,38 @@ router.post(
 
 router.post(
   '/tenants/:id/branches/:branchId/unsuspend',
-  adminController.unsuspendTenantBranch
+  validate.allowBody([]), adminController.unsuspendTenantBranch
 );
 
 router.delete(
   '/tenants/:id/branches/:branchId',
-  adminController.deleteTenantBranch
+  validate.allowBody(['confirmOrganizationDeletion']), adminController.deleteTenantBranch
 );
 
 router.get('/tenants/:id/members', adminController.getTenantMembers);
 // SEC-17: the only way to see a member's full e-mail and phone; every call is audited.
-router.post('/tenants/:id/members/:userId/reveal', adminController.revealTenantMemberContact);
+router.post('/tenants/:id/members/:userId/reveal', validate.allowBody(['reason']), adminController.revealTenantMemberContact);
 
 router.get('/tenants/:id/membership-plans', adminController.getTenantMembershipPlans);
 
 // ── Tenant image uploads ───────────────────────────────────────────────────────
-router.post('/tenants/:id/logo', upload.image('logo'), upload.handleMulterError, adminController.uploadTenantLogo);
-router.post('/tenants/:id/cover', upload.image('cover'), upload.handleMulterError, adminController.uploadTenantCover);
+router.post('/tenants/:id/logo', upload.image('logo'), upload.handleMulterError, validate.allowBody([]), adminController.uploadTenantLogo);
+router.post('/tenants/:id/cover', upload.image('cover'), upload.handleMulterError, validate.allowBody([]), adminController.uploadTenantCover);
 
 // ── Gym listing management ─────────────────────────────────────────────────────
 router.get('/tenants/:id/gym-listing', adminController.getGymListing);
-router.post('/tenants/:id/gym-listing', adminController.createGymListing);
-router.patch('/tenants/:id/gym-listing', adminController.updateGymListing);
-router.post('/tenants/:id/gym-listing/logo', upload.image('logo'), upload.handleMulterError, adminController.uploadGymListingLogo);
-router.post('/tenants/:id/gym-listing/cover', upload.image('cover'), upload.handleMulterError, adminController.uploadGymListingCover);
-router.post('/tenants/:id/gym-listing/images', upload.images('images', 10), upload.handleMulterError, adminController.uploadGymListingImages);
-router.delete('/tenants/:id/gym-listing/images', adminController.deleteGymListingImage);
+router.post('/tenants/:id/gym-listing', validate.allowBody(['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson']), adminController.createGymListing);
+router.patch('/tenants/:id/gym-listing', validate.allowBody(['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status']), adminController.updateGymListing);
+router.post('/tenants/:id/gym-listing/logo', upload.image('logo'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingLogo);
+router.post('/tenants/:id/gym-listing/cover', upload.image('cover'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingCover);
+router.post('/tenants/:id/gym-listing/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingImages);
+router.delete('/tenants/:id/gym-listing/images', validate.allowBody(['imageUrl']), adminController.deleteGymListingImage);
 
 // ── Admin branch management ────────────────────────────────────────────────────
-router.post('/tenants/:id/branches', adminController.createAdminTenantBranch);
-router.patch('/tenants/:id/branches/:branchId', adminController.updateAdminTenantBranch);
-router.post('/tenants/:id/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, adminController.uploadAdminBranchImages);
-router.delete('/tenants/:id/branches/:branchId/images', adminController.deleteAdminBranchImage);
+router.post('/tenants/:id/branches', validate.allowBody(['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages']), adminController.createAdminTenantBranch);
+router.patch('/tenants/:id/branches/:branchId', validate.allowBody(['branchName', 'address', 'cityId', 'areaId', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'status', 'facilities', 'latitude', 'longitude']), adminController.updateAdminTenantBranch);
+router.post('/tenants/:id/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadAdminBranchImages);
+router.delete('/tenants/:id/branches/:branchId/images', validate.allowBody(['imageUrl']), adminController.deleteAdminBranchImage);
 router.patch(
   '/branches/:branchId/traveler-visibility',
   validate.strict([
@@ -313,7 +313,7 @@ router.post(
   ], { stage: 2 }),
   adminController.assignTenantSubscription
 );
-router.patch('/tenants/:id/subscriptions/:subId/revoke', adminController.revokeTenantSubscription);
+router.patch('/tenants/:id/subscriptions/:subId/revoke', validate.allowBody([]), adminController.revokeTenantSubscription);
 // Pay later (BILL-13): confirm the bank transfer → the GRACE plan becomes ACTIVE (audited).
 router.post(
   '/tenants/:id/subscriptions/:subId/verify-payment',
@@ -348,8 +348,8 @@ router.patch(
   ], { stage: 2 }),
   adminController.updateTenantInvoice
 );
-router.post('/tenants/:id/invoices/:invoiceId/send-reminder', adminController.sendInvoiceReminder);
-router.post('/tenants/:id/invoices/:invoiceId/send-confirmation', adminController.sendInvoiceConfirmation);
+router.post('/tenants/:id/invoices/:invoiceId/send-reminder', validate.allowBody([]), adminController.sendInvoiceReminder);
+router.post('/tenants/:id/invoices/:invoiceId/send-confirmation', validate.allowBody([]), adminController.sendInvoiceConfirmation);
 
 /**
  * @swagger
@@ -378,10 +378,10 @@ router.post('/tenants/:id/invoices/:invoiceId/send-confirmation', adminControlle
 router.get('/reports/platform', reportsController.platformSummary);
 
 // ── Delete tenant ─────────────────────────────────────────────────────────────
-router.delete('/tenants/:id', adminController.deleteTenant);
+router.delete('/tenants/:id', validate.allowBody([]), adminController.deleteTenant);
 
 // ── Manual subscription sync ──────────────────────────────────────────────────
-router.post('/subscriptions/sync', adminController.syncSubscriptions);
+router.post('/subscriptions/sync', validate.allowBody([]), adminController.syncSubscriptions);
 
 // ── Platform stats & analytics ────────────────────────────────────────────────
 router.get('/stats', adminController.getPlatformStats);

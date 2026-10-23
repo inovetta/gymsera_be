@@ -249,7 +249,7 @@ router.post('/:id/action', validate.allowBody(['action', 'notes', 'rejectedReaso
  *       200:
  *         description: Proof uploaded
  */
-router.post('/:id/proof', upload.image('image'), upload.handleMulterError, controller.uploadProof);
+router.post('/:id/proof', upload.image('image'), upload.handleMulterError, validate.allowBody([]), controller.uploadProof);
 
 /**
  * @swagger

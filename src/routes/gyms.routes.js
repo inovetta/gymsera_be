@@ -36,9 +36,9 @@ router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'))
 router.get('/profile', gymsController.getProfile);
 
 // NEW-45: the gym's public profile and photos need listing.manage (organization-wide).
-router.post('/profile/logo', can('listing.manage', { orgWide: true }), upload.image('logo'), upload.handleMulterError, gymsController.uploadLogo);
-router.post('/profile/cover', can('listing.manage', { orgWide: true }), upload.image('cover'), upload.handleMulterError, gymsController.uploadCover);
-router.post('/profile/images', can('listing.manage', { orgWide: true }), upload.images('images', 10), upload.handleMulterError, gymsController.uploadGymImages);
+router.post('/profile/logo', can('listing.manage', { orgWide: true }), upload.image('logo'), upload.handleMulterError, validate.allowBody([]), gymsController.uploadLogo);
+router.post('/profile/cover', can('listing.manage', { orgWide: true }), upload.image('cover'), upload.handleMulterError, validate.allowBody([]), gymsController.uploadCover);
+router.post('/profile/images', can('listing.manage', { orgWide: true }), upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), gymsController.uploadGymImages);
 router.delete('/profile/images', can('listing.manage', { orgWide: true }), validate.allowBody(['imageUrl']), gymsController.deleteGymImage);
 
 /**
@@ -220,7 +220,7 @@ router.delete('/branches/:branchId', authorize('GYM_HOST'), validate.allowBody([
 
 // ── Branch images ──────────────────────────────────────────────────────────────
 // NEW-45: a branch's photos need branch.settings at that branch.
-router.post('/branches/:branchId/images', can('branch.settings'), upload.images('images', 10), upload.handleMulterError, gymsController.uploadBranchImages);
+router.post('/branches/:branchId/images', can('branch.settings'), upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), gymsController.uploadBranchImages);
 router.delete('/branches/:branchId/images', can('branch.settings'), validate.allowBody(['imageUrl']), gymsController.deleteBranchImage);
 
 // ── Branch staff ──────────────────────────────────────────────────────────────

@@ -271,7 +271,7 @@ router.post(
   authorize('GYM_HOST'),
   upload.images('images', 10),
   upload.handleMulterError,
-  tenantsController.uploadOnboardingImages
+  validate.allowBody([]), tenantsController.uploadOnboardingImages
 );
 router.put(
   '/:id/onboarding-images',
@@ -304,7 +304,7 @@ router.post(
   authenticate,
   upload.documents('documents', 5),
   upload.handleMulterError,
-  tenantsController.uploadKycDocuments
+  validate.allowBody(['documentType']), tenantsController.uploadKycDocuments
 );
 
 router.get(
