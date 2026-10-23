@@ -19,32 +19,31 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-23 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Owner batch 2** (NEW-103/106, NEW-104, UX-22 option B, 6A gap check re-run 2) |
+| Current prompt | **Owner batch 3** (R-70 / R-71 recorded; NEW-21 / NEW-32 CMS and web banners) |
 | Prompt status | `DONE` (all committed, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Merged by the owner before this batch: UX-08, GLB-09 (be, app, web), SEC-06 tier 3, nodemon replacement, staging-script test port fix, docs batch (be PR #158 to #162).
-Committed locally, **not pushed**, each independent and based on `origin/main` / `origin/master`:
+Merged by the owner before this batch: NEW-103/106 (admin branch fields), NEW-104 (wishlist), UX-22 option B (welcome e-mail), docs for the 6A re-run 2 (be PR #165 and the PRs before it; app PR #30).
+Committed locally, **not pushed**, independent, based on `origin/main`:
 
 | Repo | Branch | Last commit | What |
 |---|---|---|---|
-| gymsera_be | `fix/new-103-admin-branch-edit` | `cdb9ff6` | admin branch edit saves latitude, longitude, facilities (numbered NEW-103 in the commit and test name; the docs call it NEW-106 because NEW-103 was already used) |
-| gyms_era | `fix/new-104-wishlist-no-mock` | `74ff500` | wishlist never shows invented gyms |
-| gymsera_be | `feat/ux-22-team-welcome-email` | `7e7d7ef` | UX-22 option B: welcome e-mail to new team members; host sees the temporary password only if the e-mail fails |
-| gymsera_be | `docs/gap-check-2026-10-23` | this PR | spec §13 rows, R-48a, "Prompt 6A re-run 2", this file |
+| gymsera_cms | `feat/new-21-32-billing-notices` | `88b7cc5` | NEW-21 / NEW-32: payment due, failed renewal, over-capacity countdown, double billing, on dashboard, branches page and billing settings |
+| gymsera_web | `feat/new-21-32-billing-notices` | `0a64f67` | same notices on the web billing page (the only host billing page the web keeps) |
+| gymsera_be | `docs/decisions-notices-2026-10-23` | this PR | R-70, R-71, §13 row, 6A update note, this file |
 
-Test results (local, Docker MySQL 5.7 on 3308, `DISABLE_REDIS=true`, under `caffeinate`): backend main + UX-22 **218 suites / 2230 tests green**; CMS Vitest 464 and tsc clean; web Vitest 103, tsc and lint clean; Flutter 212 x3 green, analyze 170 (no new). Details in spec §13 "Prompt 6A re-run 2".
+Test results (local): CMS Vitest 475 green, tsc and lint clean; web Vitest 111 green, tsc and lint clean. No backend or Flutter change in this batch.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> 1. **Owner:** push and merge the three code branches above, then the docs branch. No migration, no new env variable. **UX-22 depends on outgoing mail (NEW-73):** until it is deliverable the CMS and app still show the temporary password to the host, which is the designed fallback.
-> 2. **Agent, next by date:** NEW-21 / NEW-32 banners in the CMS and web (R-51, due 2026-11-20); mobile NEW-104 must be in the store build before 2026-12-05.
-> 3. **Decisions needed from the owner:** a date for the GLB-09 consent and cookie banner (R-44 has none); Tailwind 4 upgrade in CMS and web to clear the 6 high build-tool advisories (criterion 9, a launch blocker), or an accepted exception with a date.
-> 4. **SEC-06:** tier 4 = `POST /actions/:actionKey` payloads; reject flip on 2026-12-20 (R-61) after `[unknown-fields]` is silent.
-> 5. **Launch blockers (spec §17, 2026-10-23):** criteria 1, 2, 4, 6, 9. Owner actions: sandbox purchases (11-25), the staging run of `scripts/staging/staging-check.js`, mail deliverability, Sentry, metrics scraper.
+> 1. **Owner:** push and merge the CMS and web branches (no backend, no migration, no env variable), then the docs branch. R-51's date for the banners is 2026-11-20.
+> 2. **Decisions recorded today:** R-70 (GLB-09 consent and cookie banner deferred to 2027-01-31) and R-71 (six CMS / web build-tool highs accepted until 2027-01-31, scope only those six). Both need a new date or a fix by 2027-01-31.
+> 3. **Mobile before 2026-12-05:** everything merged is in `master` (UX-08, GLB-09, NEW-104). Cut the store build from `master` after the owner's device checks.
+> 4. **Agent, next:** SEC-06 tier 4 (`POST /actions/:actionKey`) and the generated persona x route matrix (criterion 3); NEW-87; NEW-102.
+> 5. **Launch blockers (spec §17, 2026-10-23):** criteria 1, 2 (until the open branches are merged), 4, 6, 9 (SAST, DAST, `secret-scan` evidence). Owner actions: sandbox purchases (11-25), staging run of `scripts/staging/staging-check.js`, mail deliverability (NEW-73; also needed for team welcome e-mails), Sentry, metrics scraper, the SEC-06 reject flip on 12-20.
 
 ### Work in progress that is NOT committed
 
@@ -518,3 +517,4 @@ Test results (local, Docker MySQL 5.7 on 3308, `DISABLE_REDIS=true`, under `caff
 | 94 | 2026-10-21 | Claude Code (Sonnet 5.5) | Prompt 6A re-run (docs only) | Spec §13 "Prompt 6A re-run": test runs (backend 207 suites / 2002 tests, CMS 458 + 26, web 98 + 3, Flutter 182), ten back-filled rows spot-checked against the code, §17 verdict (all 12 NOT MET, one P0 open), what remains; R-39+ not recorded because the filled P1 table was not in the repo | task complete (not pushed) | yes |
 | 95 | 2026-10-22/23 | Claude Code (Sonnet 5.5) | Owner batch: status report, UX-08, GLB-09, SEC-06 tier 3, UX-22 analysis, nodemon, consolidated docs | UX-08 (app `e76df1d`), GLB-09 (be `7d56349`, app `7a31906`, web `d502290`), SEC-06 tier 3 (be `935c38a`), nodemon (be `6011e58`), staging-script test port (be `5d0096e`); UX-22 stopped for an owner decision (NEW-105); NEW-103, NEW-104 recorded; tests in "Branches and last commits" | task complete except UX-22 (blocked) (not pushed) | no |
 | 96 | 2026-10-23 | Claude Code (Sonnet 5.5) | Owner batch 2: NEW-103/106, NEW-104, UX-22 option B, 6A gap check re-run 2 | be `cdb9ff6`, app `74ff500`, be `7e7d7ef`, docs branch `docs/gap-check-2026-10-23`; backend full suite 218 / 2230 green; all 12 §17 criteria still NOT MET, launch blockers 1, 2, 4, 6, 9 | task complete (not pushed) | no |
+| 97 | 2026-10-23 | Claude Code (Sonnet 5.5) | Owner batch 3: R-70 / R-71, NEW-21 / NEW-32 CMS and web banners | cms `88b7cc5`, web `0a64f67`, docs branch `docs/decisions-notices-2026-10-23`; CMS 475 and web 111 tests green | task complete (not pushed) | no |
