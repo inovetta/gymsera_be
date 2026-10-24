@@ -2997,6 +2997,15 @@ Not run: the GitHub Actions workflows (no CI access from here), Playwright, `nex
 
 **What remains**: as re-run 2 "What remains before release", minus items 1 and 2 of its Code list (merged). Owner: merge REL-ENV; deploy backend for NEW-107; make sure every store-upload script passes `--dart-define=APP_ENV=production`.
 
+### Phase 7, P0 intake and verification (2026-10-24, docs only)
+
+Full ledger: `docs/changes/PHASE7_BUG_LEDGER.md` (BUG-01 to BUG-38 from `docs/GYMSERA_PRODUCTION_FIX_PROMPTS.md` §4). Code trace only; no test, device, staging or database run.
+
+- Result: 31 VERIFIED; 2 VERIFIED with a different cause (BUG-10: two store prices from two regions; BUG-16: server privilege escalation); 4 VERIFIED in part (03, 11, 21, 22); BUG-23 needs the API log line; BUG-28 needs listing data; BUG-30 NOT REPRODUCED in code (likely a screenshot uploaded as a gym photo); BUG-36 is a feature with no code yet; none already fixed.
+- Severity changes: BUG-34 raised to P0 (the app adds a 5% fee that the server never records, so the transfer amount shown is wrong).
+- New: **NEW-108 (P0)** any account with role `GYM_HOST` gets owner grants in another gym where it is only a traveller member (`branchAccess.utils.js:55-58` + `tenantContext.js:163-168` + `membership.service.js:148-165`); NEW-109 (P1) Google Maps key committed in the app's Android manifest and iOS AppDelegate; NEW-110 (P1) logout leaves the previous user's onboarding draft, listing, Today summary and billing state; NEW-111 (P1) location step saves mock Peshawar coordinates; NEW-112 (P1) CMS-created plans are hidden from travellers (`isPublic` default false, no CMS control); NEW-113 (P2) unknown city falls back to city id 1; NEW-114 (P2) branch list / quota errors shown as empty / zero; NEW-115 (P2) traveller bank details and host payout bank details are two stores; NEW-116 (P3) unexplained uncommitted build-number change in local `gyms_era`.
+- Next: P1 (BUG-16 / NEW-108 first, failing persona test before any fix).
+
 ---
 
 ## 14. Remaining risks and open decisions
