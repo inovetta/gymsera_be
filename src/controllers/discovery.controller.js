@@ -131,7 +131,13 @@ const getPaymentDetails = async (req, res, next) => {
 const listReviews = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 10, 50);
-    const result = await discoveryService.listReviews(req.params.id, { page, limit, offset });
+    const { id } = req.params;
+    const listing = await discoveryService.getGymListingByIdentifier(id);
+    if (!listing) return res.status(404).json({ success: false, message: 'Gym not found' });
+
+    // :id may be a listing id or a branch id; scope to the branch only in the latter case.
+    const branchId = listing.id === id ? undefined : id;
+    const result = await discoveryService.listReviews(listing.id, branchId, { page, limit, offset });
     return sendSuccess(res, { reviews: result.reviews }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
