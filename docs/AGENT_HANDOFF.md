@@ -17,29 +17,28 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-23 |
+| Last updated | 2026-10-24 |
 | Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **Owner batch 3** (R-70 / R-71 recorded; NEW-21 / NEW-32 CMS and web banners) |
-| Prompt status | `DONE` (all committed, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **6A gap check re-run 3** (light, docs only; follows owner batch 3) |
+| Prompt status | `DONE` (committed on `docs/gap-check-2026-10-24`, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 ### Branches and last commits
 
-Merged by the owner before this batch: NEW-103/106 (admin branch fields), NEW-104 (wishlist), UX-22 option B (welcome e-mail), docs for the 6A re-run 2 (be PR #165 and the PRs before it; app PR #30).
-Committed locally, **not pushed**, independent, based on `origin/main`:
+Merged on origin (checked 2026-10-24): UX-08, GLB-09, SEC-06 tier 3, NEW-106 (be #163), UX-22 option B (be #164), gap check 2 docs (#165, #166), NEW-107 reviews 500 (be #167), NEW-104 (app #30), NEW-21 / NEW-32 banners (CMS #38, web #23).
+Committed locally, **not pushed**:
 
 | Repo | Branch | Last commit | What |
 |---|---|---|---|
-| gymsera_cms | `feat/new-21-32-billing-notices` | `88b7cc5` | NEW-21 / NEW-32: payment due, failed renewal, over-capacity countdown, double billing, on dashboard, branches page and billing settings |
-| gymsera_web | `feat/new-21-32-billing-notices` | `0a64f67` | same notices on the web billing page (the only host billing page the web keeps) |
-| gymsera_be | `docs/decisions-notices-2026-10-23` | this PR | R-70, R-71, §13 row, 6A update note, this file |
+| gyms_era | `feat/release-app-env-guard` | `5672417` | REL-ENV: release builds fail without `--dart-define=APP_ENV` |
+| gymsera_be | `docs/gap-check-2026-10-24` | this PR | spec REL-ENV row, "Prompt 6A re-run 3", build command note, this file |
 
-Test results (local): CMS Vitest 475 green, tsc and lint clean; web Vitest 111 green, tsc and lint clean. No backend or Flutter change in this batch.
+Test results (owner batch 3, local; not re-run in re-run 3): CMS Vitest 475 green, tsc and lint clean; web Vitest 111 green, tsc and lint clean. No backend or Flutter change in this batch.
 
 ### Next action (exact, so another agent can do it without guessing)
 
-> 1. **Owner:** push and merge the CMS and web branches (no backend, no migration, no env variable), then the docs branch. R-51's date for the banners is 2026-11-20.
+> 1. **Owner:** merge app `feat/release-app-env-guard` (`5672417`), then this docs branch. Deploy the backend for NEW-107 (no migration, no env variable). Check every store-upload script passes `--dart-define=APP_ENV=production`.
 > 2. **Decisions recorded today:** R-70 (GLB-09 consent and cookie banner deferred to 2027-01-31) and R-71 (six CMS / web build-tool highs accepted until 2027-01-31, scope only those six). Both need a new date or a fix by 2027-01-31.
 > 3. **Mobile before 2026-12-05:** everything merged is in `master` (UX-08, GLB-09, NEW-104). Cut the store build from `master` after the owner's device checks.
 > 4. **Agent, next:** SEC-06 tier 4 (`POST /actions/:actionKey`) and the generated persona x route matrix (criterion 3); NEW-87; NEW-102.
@@ -522,3 +521,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 95 | 2026-10-22/23 | Claude Code (Sonnet 5.5) | Owner batch: status report, UX-08, GLB-09, SEC-06 tier 3, UX-22 analysis, nodemon, consolidated docs | UX-08 (app `e76df1d`), GLB-09 (be `7d56349`, app `7a31906`, web `d502290`), SEC-06 tier 3 (be `935c38a`), nodemon (be `6011e58`), staging-script test port (be `5d0096e`); UX-22 stopped for an owner decision (NEW-105); NEW-103, NEW-104 recorded; tests in "Branches and last commits" | task complete except UX-22 (blocked) (not pushed) | no |
 | 96 | 2026-10-23 | Claude Code (Sonnet 5.5) | Owner batch 2: NEW-103/106, NEW-104, UX-22 option B, 6A gap check re-run 2 | be `cdb9ff6`, app `74ff500`, be `7e7d7ef`, docs branch `docs/gap-check-2026-10-23`; backend full suite 218 / 2230 green; all 12 §17 criteria still NOT MET, launch blockers 1, 2, 4, 6, 9 | task complete (not pushed) | no |
 | 97 | 2026-10-23 | Claude Code (Sonnet 5.5) | Owner batch 3: R-70 / R-71, NEW-21 / NEW-32 CMS and web banners | cms `88b7cc5`, web `0a64f67`, docs branch `docs/decisions-notices-2026-10-23`; CMS 475 and web 111 tests green | task complete (not pushed) | no |
+| 98 | 2026-10-24 | Claude Code (Sonnet 5.5) | 6A gap check re-run 3 (light, docs only) | Spec §13 REL-ENV row and "Prompt 6A re-run 3" (merge state: NEW-21/32 CMS + web, NEW-107, UX-22, NEW-104/106 merged; REL-ENV app `5672417` still unmerged), this file | task complete | yes |
