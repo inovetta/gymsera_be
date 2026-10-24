@@ -3151,6 +3151,8 @@ device, and the result recorded in §13:
 - [ ] Web: ISR revalidation tags wired; Lighthouse CI budgets green; CSP enforced (report-only first, then enforce).
 - [ ] Store listings: privacy nutrition labels / Data Safety form match the actual data use; account-deletion path is discoverable (AUTH-07).
 
+- [ ] **Mobile build env guard (app `5672417`, branch `feat/release-app-env-guard`):** release/profile builds fail to compile unless `APP_ENV` is passed. Production build commands: `flutter build ipa --release --dart-define=APP_ENV=production` (iOS / TestFlight / App Store) and `flutter build appbundle --release --dart-define=APP_ENV=production` (Android). Staging builds: same with `APP_ENV=staging`. After installing a build, confirm it talks to `api.gymsera.com` (production) or `apistaging.gymsera.com`; Xcode Cloud / CI / Codemagic scripts must pass the define too.
+
 ### Observability and operations
 - [ ] Dashboards: API, DB, pools, billing, capacity, realtime, FCM. *(5A-3: the data is there at `GET /metrics` behind `METRICS_KEY`; no scraper or dashboard exists yet.)*
 - [ ] Alerts with runbooks (OBS-09); on-call rota defined. *(5A-3: six alert codes with runbooks in `docs/runbooks/`, in-app and Sentry delivery; the on-call rota is still to be defined.)*

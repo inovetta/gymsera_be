@@ -105,6 +105,10 @@ Test results (local): CMS Vitest 475 green, tsc and lint clean; web Vitest 111 g
 - [ ] Measure the 4A backend changes on staging: discovery p95 (200 RPS), pool count against `max_connections`, `/me/bootstrap` on a real session
 - [ ] Confirm whether the Cloudflare zone caches API paths (`cf-cache-status` on `/api/v1/discovery/*`) given `s-maxage=60`
 
+### Mobile release builds: APP_ENV is mandatory (app `5672417`, branch `feat/release-app-env-guard`, not pushed)
+
+Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_ENV=staging|production` is passed (debug still defaults to staging). **Production:** `flutter build ipa --release --dart-define=APP_ENV=production` / `flutter build appbundle --release --dart-define=APP_ENV=production`. Check any CI or store-upload script passes it. Test: `test/regression/release_env_guard_test.dart`. Also pending: be branch `fix/discovery-reviews-500` (`eec0f03`, NEW-107: reviews route was 500 for every gym id; deploy needed).
+
 ### Notes for running the suite locally
 
 - **Use `caffeinate -i npm test`.** A Mac that sleeps mid-run makes hook timeouts (one file took 3566 s) that look like real failures. Env: `MYSQL_HOST`, `PLATFORM_DB_HOST`, `TENANT_DB_HOST` = `127.0.0.1`, `TEST_MYSQL_PORT=3308`, `DISABLE_REDIS=true` (no local Redis). A full run takes about 25 minutes on this machine.
