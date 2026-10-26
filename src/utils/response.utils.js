@@ -41,6 +41,8 @@ const sendError = (res, statusCode = 500, message = 'Internal server error', cod
   const req = res.req;
   const requestId = req?.id || (typeof res.getHeader === 'function' ? res.getHeader('X-Request-Id') : null);
 
+  if (res.locals) res.locals.errorCode = code; // NEW-123: the error journal's `code`
+
   const errorObj = {
     code,
     message,

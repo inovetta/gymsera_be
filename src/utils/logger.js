@@ -18,7 +18,15 @@ const jsonEnabled = () => (process.env.LOG_FORMAT || (isTextByDefault ? 'text' :
 
 // Synchronous: on serverless hosts a line written after the response may never be flushed.
 // `out.write` is the one place a line leaves the process; tests replace it to read the lines.
-const out = { write: (line) => fs.writeSync(1, line) };
+// NEW-123: iisnode does not read descriptor 1; it replaces process.stdout with its own log
+// file stream. When stdout is not descriptor 1, write through it, or no line reaches a file.
+const out = {
+  write: (line) => {
+    const stdout = process.stdout;
+    if (stdout && stdout.fd !== 1 && typeof stdout.write === 'function') return stdout.write(line);
+    return fs.writeSync(1, line);
+  },
+};
 
 const logger = pino(
   {
