@@ -17,14 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-24 |
+| Last updated | 2026-10-26 |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 P0 — intake and verification** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5) |
-| Prompt status | `DONE` (committed on be `docs/phase7-p0-bug-ledger`, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Phase 7 P1 — data isolation and raw errors** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5) |
+| Prompt status | `DONE` (committed on 4 local branches, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
-**Phase 7 next action:** Prompt P1 from `GYMSERA_PRODUCTION_FIX_PROMPTS.md`. Start with **NEW-108 / BUG-16 (P0)**: write the persona test first (host A with a DRAFT tenant and a PENDING booking at gym B calls `GET /team` with and without `X-Tenant-Id: B`; it must not get B's rows), prove it red, then fix `hasAllBranches` (`be/src/utils/branchAccess.utils.js:55-58`), the member path in `_userBelongsToTenant` (`be/src/middleware/tenantContext.js:163-168`) and the default-tenant fallback (`be/src/services/membership.service.js:148-165`). Ledger with every file:line: `docs/changes/PHASE7_BUG_LEDGER.md`. Owner inputs still needed: see that file's NEEDS rows (API log for request `c5d4dd12-43e5-4105-8eb7-90c925c99d4d`, listing data for BUG-21/28/30) and decisions D1–D7.
+**Phase 7 next action:** Owner: push and merge the four P1 branches (be `fix/new-108-cross-tenant-owner` first, then app `fix/p1-new-110-111-session-and-mock-data`, cms `fix/p1-bug-14-15-tenant-error-copy`, web `fix/p1-new-110-clear-cache-on-logout`; any order is safe, no migration, no env variable), deploy the API. Agent: **Prompt P2** (one source of truth for host status and plan; D4 = R-75). BUG-23 still needs the API log line for request `c5d4dd12-43e5-4105-8eb7-90c925c99d4d`. In P3 the Maps key is only moved to build config, not rotated or replaced (R-76). Detail: `docs/changes/PHASE7_BUG_LEDGER.md` "P1 status", spec §13 "Phase 7, P1".
 
 ### Branches and last commits
 
@@ -525,3 +525,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 97 | 2026-10-23 | Claude Code (Sonnet 5.5) | Owner batch 3: R-70 / R-71, NEW-21 / NEW-32 CMS and web banners | cms `88b7cc5`, web `0a64f67`, docs branch `docs/decisions-notices-2026-10-23`; CMS 475 and web 111 tests green | task complete (not pushed) | no |
 | 98 | 2026-10-24 | Claude Code (Sonnet 5.5) | 6A gap check re-run 3 (light, docs only) | Spec §13 REL-ENV row and "Prompt 6A re-run 3" (merge state: NEW-21/32 CMS + web, NEW-107, UX-22, NEW-104/106 merged; REL-ENV app `5672417` still unmerged), this file | task complete | yes |
 | 99 | 2026-10-24 | Claude Code (Opus 5.5) | Phase 7 P0 (intake, docs only) | `docs/changes/PHASE7_BUG_LEDGER.md`: BUG-01..38 traced; NEW-108 (P0) to NEW-116 recorded; spec §13 "Phase 7, P0"; no code changed (be branch `docs/phase7-p0-bug-ledger`, not pushed) | task complete | yes |
+| 100 | 2026-10-26 | Claude Code (Opus 5.5) | Phase 7 P1 + D1–D7 | NEW-108/BUG-16 (+NEW-117), BUG-14/15, NEW-110 (+NEW-118 web), NEW-111, BUG-38 host profile; D1–D7 = R-72..R-78; BUG-23 needs log; new NEW-119, NEW-120 | task complete (not pushed) | yes |
