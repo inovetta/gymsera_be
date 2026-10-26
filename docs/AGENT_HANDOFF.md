@@ -19,24 +19,26 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-26 |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 P1 — data isolation and raw errors** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5) |
+| Current prompt | **Phase 7 P2 — one source of truth for host status and plan** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5), with NEW-113, NEW-114, NEW-115 folded in |
 | Prompt status | `DONE` (committed on 4 local branches, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
-**Phase 7 next action:** Owner: push and merge the four P1 branches (be `fix/new-108-cross-tenant-owner` first, then app `fix/p1-new-110-111-session-and-mock-data`, cms `fix/p1-bug-14-15-tenant-error-copy`, web `fix/p1-new-110-clear-cache-on-logout`; any order is safe, no migration, no env variable), deploy the API. Agent: **Prompt P2** (one source of truth for host status and plan; D4 = R-75). BUG-23 still needs the API log line for request `c5d4dd12-43e5-4105-8eb7-90c925c99d4d`. In P3 the Maps key is only moved to build config, not rotated or replaced (R-76). Detail: `docs/changes/PHASE7_BUG_LEDGER.md` "P1 status", spec §13 "Phase 7, P1".
+**Phase 7 next action:** Owner: (1) push and merge be `fix/p2-host-status-and-plan` first and deploy the API (no migration, no env variable); then app `fix/p2-host-status-and-plan`, cms and web `fix/p2-error-copy-new-codes` (any order). (2) Run `docs/sql/phase7-open-data-checks.sql` once against the platform DB (read-only) and send the result grids: they decide BUG-05 (P4), BUG-21 (P5), BUG-28 and BUG-30 (P6). (3) Test the hosting price with a Pakistan-region App Store sandbox tester (R-75). Agent: **Prompt P3** (Google Maps / Places; R-76: only move the Maps key to build config). BUG-23 still needs the API log line for request `c5d4dd12-43e5-4105-8eb7-90c925c99d4d`. Detail: `docs/changes/PHASE7_BUG_LEDGER.md` "P2 status", spec §13 "Phase 7, P2".
 
 ### Branches and last commits
 
-Merged on origin (checked 2026-10-24): UX-08, GLB-09, SEC-06 tier 3, NEW-106 (be #163), UX-22 option B (be #164), gap check 2 docs (#165, #166), NEW-107 reviews 500 (be #167), NEW-104 (app #30), NEW-21 / NEW-32 banners (CMS #38, web #23).
-Committed locally, **not pushed**:
+Merged on origin (checked 2026-10-26): everything up to Phase 7 P1 (be #171, app #33, cms #39, web #24; REL-ENV app #31 too).
+Committed locally, **not pushed** (Phase 7 P2):
 
 | Repo | Branch | Last commit | What |
 |---|---|---|---|
-| gyms_era | `feat/release-app-env-guard` | `5672417` | REL-ENV: release builds fail without `--dart-define=APP_ENV` |
-| gymsera_be | `docs/gap-check-2026-10-24` | this PR | spec REL-ENV row, "Prompt 6A re-run 3", build command note, this file |
+| gymsera_be | `fix/p2-host-status-and-plan` | (docs commit on top of `576bbe5`) | host status (`GET /host/status`, bootstrap, today-summary), plan tiers, NEW-113, NEW-114, NEW-115 test, BUG-24 `tierName`, P2 docs, `docs/sql/phase7-open-data-checks.sql` |
+| gyms_era | `fix/p2-host-status-and-plan` | `7761c13` | host status in every tab, store-only price (R-75), NEW-114 client, NEW-121, error copy, picker tier names |
+| gymsera_cms | `fix/p2-error-copy-new-codes` | `c6ae363` | `tenant_unavailable`, `city_required` copy |
+| gymsera_web | `fix/p2-error-copy-new-codes` | `dd19bce` | same |
 
-Test results (owner batch 3, local; not re-run in re-run 3): CMS Vitest 475 green, tsc and lint clean; web Vitest 111 green, tsc and lint clean. No backend or Flutter change in this batch.
+Test results: backend full suite 226 / 226 suites, 2309 / 2309 tests green (local Docker MySQL 5.7, DISABLE_REDIS=true, clean run). A first full run made while another jest run and the Flutter / CMS builds shared the machine had 5 suites time out in hooks (30 s); all 5 passed alone and in the clean run. App `flutter test` 244 / 244 green 3 runs; `flutter analyze` 170 findings, identical to origin/master. CMS Vitest 482 / 482, web 119 / 119 (both green twice; one earlier run under the same machine load had 8 CMS / 4 web failures that were not reproduced), tsc clean, lint clean (CMS keeps its existing `<img>` warning), `npm run build` OK. `docs/sql/phase7-open-data-checks.sql`: all 29 statements executed against the seeded local test databases. Not run: Playwright (no page changed), staging, devices, store sandbox.
 
 ### Next action (exact, so another agent can do it without guessing)
 
@@ -526,3 +528,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 98 | 2026-10-24 | Claude Code (Sonnet 5.5) | 6A gap check re-run 3 (light, docs only) | Spec §13 REL-ENV row and "Prompt 6A re-run 3" (merge state: NEW-21/32 CMS + web, NEW-107, UX-22, NEW-104/106 merged; REL-ENV app `5672417` still unmerged), this file | task complete | yes |
 | 99 | 2026-10-24 | Claude Code (Opus 5.5) | Phase 7 P0 (intake, docs only) | `docs/changes/PHASE7_BUG_LEDGER.md`: BUG-01..38 traced; NEW-108 (P0) to NEW-116 recorded; spec §13 "Phase 7, P0"; no code changed (be branch `docs/phase7-p0-bug-ledger`, not pushed) | task complete | yes |
 | 100 | 2026-10-26 | Claude Code (Opus 5.5) | Phase 7 P1 + D1–D7 | NEW-108/BUG-16 (+NEW-117), BUG-14/15, NEW-110 (+NEW-118 web), NEW-111, BUG-38 host profile; D1–D7 = R-72..R-78; BUG-23 needs log; new NEW-119, NEW-120 | task complete (not pushed) | yes |
+| 101 | 2026-10-26 | Claude Code (Opus 5.5) | Phase 7 P2 (+NEW-113/114/115) | BUG-10, 11, 12, 13, 18, 24 fixed (be host status + plan tiers, app status panel, store-only price); NEW-113, NEW-114 fixed; NEW-115 NOT REPRODUCED; NEW-121 found and fixed, NEW-122 noted; `docs/sql/phase7-open-data-checks.sql` | task complete (not pushed) | yes |

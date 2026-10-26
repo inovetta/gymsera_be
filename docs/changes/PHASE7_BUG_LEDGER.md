@@ -187,3 +187,28 @@ New findings in P1 (not fixed unless noted):
 | NEW-118 | P1 | Web logout (`router.push('/')`) kept the React Query cache for the next person on the tab. | FIXED with NEW-110 (web) |
 | NEW-119 | P2 | `verificationDocsProvider` (`app/lib/features/host/presentation/providers/host_profile_provider.dart`) shows invented KYC document statuses ("CNIC uploaded", "business registration pending") on the Verification documents screen instead of the tenant's real `kycDocumentsJson`. | open, P8 sweep |
 | NEW-120 | P3 | The `/member/subscriptions/:id/upgrade*` routes run `tenantContext` only as a gate (the service ignores `req.tenantDb`), and the app sends no `X-Tenant-Id`, so the tenant is guessed. Works, but the gate adds nothing; consider removing it or sending the subscription's tenant. | open |
+
+## P2 status (2026-10-26, Claude Code Opus 5.5)
+
+P1 merged and deployed (be #171, app #33, cms #39, web #24). Branches (local, not pushed): be `fix/p2-host-status-and-plan`, app `fix/p2-host-status-and-plan`, cms and web `fix/p2-error-copy-new-codes`. Owner decision R-75 (D4) applied. Each fix has a test run red on the old code and green on the new.
+
+| ID | P2 result | Fix | Test |
+|---|---|---|---|
+| BUG-10 | **FIXED** (R-75) | The app shows only the store's localized price: `displayPrice` no longer falls back to the catalog "PKR 2000"; the picker says the price is loading / not available and keeps Continue disabled; My Subscription prints the stored currency (the store's charged amount) instead of "Rs". CMS / web keep the catalog price. Needs a Pakistan-region sandbox tester to see "Rs" from the store. | app `bug_10_store_price_only_test.dart` |
+| BUG-11 | **FIXED** (server and client causes from P0) | `/host/today-summary` resolves the owned tenant (not the token's `tenantId`); an unreachable tenant DB is 503 `tenant_unavailable`, not an empty "APPROVED" dashboard; Today shows a skeleton until the host status is known, then the status panel or the dashboard; the summary refetches when the status changes; the status is re-read on `tenant_*` / `listing_*` notifications, register, submit, purchase. | be `p2-host-status.test.js`; app `p2_host_status_test.dart` (slow status; tenant record fails) |
+| BUG-12 | **FIXED** | One server status (`GET /host/status`); AWAITING_PAYMENT = "Finish your subscription to submit your gym" + Choose Your Plan on Gyms, Today and every screen that used `HostUnderReviewView` (Staff, Admins, Add staff / admin, Invoices). "Under review" only for PENDING_REVIEW. | same |
+| BUG-13 | **FIXED** | "Verified ✓" only when the API says `verification.verified` (KYC approved). | app `p2_host_status_test.dart` |
+| BUG-18 | **FIXED** | Listings quota header ("Gym Companies 1 / 1 · Limit reached") only once the plan is paid. | app `p2_host_status_test.dart` |
+| BUG-24 | **FIXED** | One tier table on the API (`src/constants/plan-tiers.js`: 1 = Starter, 2–4 Professional, 5–7 Growth, 8+ Scale); Host Profile shows "<Tier> Plan" from `hostStatus.plan` only once paid; `GET /billing/plans` sends `tierName` per plan and the app's plan picker shows it (its own `_friendlyName` table removed). CMS / web adopt the API names in P9. | be `p2-host-status.test.js`, `bug-24-plan-tier-names.test.js`; app `p2_host_status_test.dart`, `bug_24_picker_tier_from_api_test.dart` |
+| NEW-113 | **FIXED** | No city id 1 default: discovery leaves an unknown city null; approval uses the tenant city, else the onboarding main-branch city, else 422 `city_required` before any change. | be `new-113-no-default-city.test.js` |
+| NEW-114 | **FIXED** (server and client) | `branch-quota.service.js` and `hostBranchesProvider` no longer turn failures into zeros / an empty list. | be `new-114-branch-quota-errors.test.js`; app `new_114_branches_error_test.dart` |
+| NEW-115 | **NOT REPRODUCED** | Host Payout & Banking and the traveller's bank details read and write the same `tenants.payment_details_json` with the same keys. The traveller "Loading host bank details…" forever is BUG-35 (null treated as loading), still P7a. | be `new-115-one-bank-details-store.test.js` (locks the single store) |
+
+New in P2:
+
+| ID | Sev | Finding | Status |
+|---|---|---|---|
+| NEW-121 | P2 | Gyms & Operations read two badge counts with `.value`; a failed unread-count or pending-requests call threw during build and took the tab down. | FIXED (app `4b1ac32`, `new_121_gyms_badge_failure_test.dart`) |
+| NEW-122 | P3 | `docs/sql` checks need `tenants.db_name` on the same MySQL server as the platform DB (true today). If tenant databases move to another server, `phase7-open-data-checks.sql` 21c / 28b / 30b / 05 must run per server. | open, note only |
+
+Open data checks: `docs/sql/phase7-open-data-checks.sql` (read-only, one run against the platform DB): BUG-21 (savayora branches, listings, reserved slots), BUG-28 (Inovetta fitness / savesto image fields), BUG-30 (every live image URL), BUG-05 (branches with no traveller-visible plan, and onboarding plans of not-yet-approved applications).
