@@ -212,3 +212,12 @@ New in P2:
 | NEW-122 | P3 | `docs/sql` checks need `tenants.db_name` on the same MySQL server as the platform DB (true today). If tenant databases move to another server, `phase7-open-data-checks.sql` 21c / 28b / 30b / 05 must run per server. | open, note only |
 
 Open data checks: `docs/sql/phase7-open-data-checks.sql` (read-only, one run against the platform DB): BUG-21 (savayora branches, listings, reserved slots), BUG-28 (Inovetta fitness / savesto image fields), BUG-30 (every live image URL), BUG-05 (branches with no traveller-visible plan, and onboarding plans of not-yet-approved applications).
+
+## Incident 2026-10-26 (after the P2 deploy, Claude Code Opus 5.5)
+
+| ID | Sev | Finding | Status |
+|---|---|---|---|
+| NEW-124 | P0 until confirmed | Approved host's Gyms tab "A database error occurred": production tenant databases below tenant schema v19, `branches.currency` missing; `GET /host/branches` and the branch dashboard fail, counts do not. Same cause as BUG-21's "no branch" before P2 (the app hid the error as `[]`). | be `ff3e385` (test only); fix = run tenant migrations; owner check `docs/sql/new-124-tenant-schema-check.sql` |
+| NEW-123 | P1 | No API log file since 2026-10-16: the OBS-01 logger writes to descriptor 1, which iisnode does not read. | FIXED be `f457114`: logger writes through iisnode's stdout; 5xx error journal `logs/errors-YYYY-MM-DD.jsonl` |
+| NEW-125 | P1 | `web.config` serves the iisnode log folder over HTTP. | open, owner check |
+| NEW-126 | P2 | July `branches` columns with no tenant migration; no deploy step fails on a tenant below target schema. | open, grid 2 of the check decides |
