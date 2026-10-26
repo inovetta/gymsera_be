@@ -49,18 +49,21 @@ const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
 
 /**
  * Callers who are not limited to particular branches: platform admins and the
- * organization's host/owner. Reuses membershipService.listOwnedTenants when the
- * account's platform role is MEMBER (NEW-47).
+ * owner of *this* tenant. Ownership is checked against the tenant the request
+ * resolved to (membershipService.listOwnedTenants, NEW-47): the account role
+ * GYM_HOST / isHost only says the user owns some gym, not this one (NEW-108).
+ * `isOwner` is set only by checks made for this request's tenant (tenantContext's
+ * role shim, authorize, and this function).
  */
 const hasAllBranches = async (req) => {
-  if (req?.user?.role === 'PLATFORM_ADMIN' || req?.user?.role === 'GYM_HOST' || req?.user?.isHost === true) {
+  if (req?.user?.role === 'PLATFORM_ADMIN') {
     return true;
   }
   if (req?.user?.isOwner === true) {
     return true;
   }
   const userId = req?.user?.id || req?.user?.sub;
-  const tenantId = req?.user?.tenantId || req?.tenantDb?.tenantId || req?.tenantId;
+  const tenantId = req?.tenantDb?.tenantId || req?.tenantId || req?.user?.tenantId;
   if (!userId || !tenantId) return false;
 
   try {

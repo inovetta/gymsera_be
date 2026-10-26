@@ -78,7 +78,9 @@ describe('POST /payments/:id/verify — permission-aware, not role-string-only',
   });
 
   it('the owner always passes, without resolving grants', async () => {
-    const req = baseReq({ id: 'owner-1', tenantId: 'tenant-1', role: 'GYM_HOST', isHost: true });
+    // What tenantContext leaves on an owner's request: the role shim sets isOwner after checking
+    // tenants.owner_user_id. The account role alone no longer proves ownership (NEW-108).
+    const req = baseReq({ id: 'owner-1', tenantId: 'tenant-1', role: 'GYM_HOST', isHost: true, isOwner: true });
     const res = fakeRes();
     const next = jest.fn();
 
