@@ -139,7 +139,7 @@ const _buildAllActiveBranches = async () => {
             minPrice = Math.min(...branchPlans.map(p => parseFloat(p.price)));
           }
 
-          const finalCityId = b.cityId || (listing ? listing.cityId : null) || tenant.cityId || 1;
+          const finalCityId = resolveBranchCityId(b, listing, tenant);
           const finalAreaId = b.areaId || (listing ? listing.areaId : null) || tenant.areaId || null;
 
           // Map to unified branch object
@@ -780,7 +780,7 @@ const _listOrganizationBranches = async (gymId) => {
           minPrice = Math.min(...branchPlans.map(p => parseFloat(p.price)));
         }
 
-        const finalCityId = b.cityId || (listing ? listing.cityId : null) || tenant.cityId || 1;
+        const finalCityId = resolveBranchCityId(b, listing, tenant);
         const finalAreaId = b.areaId || (listing ? listing.areaId : null) || tenant.areaId || null;
 
         return {
@@ -1187,6 +1187,14 @@ const _resolveTenantId = async (id) => {
   return null;
 };
 
+/**
+ * The city a branch is listed under: its own, else its organization's, else the
+ * tenant's. Null when none is known (NEW-113): it used to fall back to city id 1, so a
+ * branch with no city showed up under whichever city happened to be first.
+ */
+const resolveBranchCityId = (branch, listing, tenant) =>
+  branch.cityId || (listing ? listing.cityId : null) || (tenant ? tenant.cityId : null) || null;
+
 const getPaymentDetails = async (gymListingId) => {
   const tenantId = await _resolveTenantId(gymListingId);
   if (!tenantId) throw createError('Gym not found', 404);
@@ -1267,6 +1275,7 @@ const listTopHosts = async () => {
 };
 
 module.exports = {
+  resolveBranchCityId,
   listGyms,
   getGym,
   getPaymentDetails,
