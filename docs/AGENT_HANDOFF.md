@@ -18,11 +18,13 @@ next agent won't know it.
 | Field | Value |
 |---|---|
 | Last updated | 2026-10-24 |
-| Updated by | Claude Code (Sonnet 5.5) |
-| Current prompt | **6A gap check re-run 3** (light, docs only; follows owner batch 3) |
-| Prompt status | `DONE` (committed on `docs/gap-check-2026-10-24`, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Updated by | Claude Code (Opus 5.5) |
+| Current prompt | **Phase 7 P0 — intake and verification** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5) |
+| Prompt status | `DONE` (committed on be `docs/phase7-p0-bug-ledger`, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
+
+**Phase 7 next action:** Prompt P1 from `GYMSERA_PRODUCTION_FIX_PROMPTS.md`. Start with **NEW-108 / BUG-16 (P0)**: write the persona test first (host A with a DRAFT tenant and a PENDING booking at gym B calls `GET /team` with and without `X-Tenant-Id: B`; it must not get B's rows), prove it red, then fix `hasAllBranches` (`be/src/utils/branchAccess.utils.js:55-58`), the member path in `_userBelongsToTenant` (`be/src/middleware/tenantContext.js:163-168`) and the default-tenant fallback (`be/src/services/membership.service.js:148-165`). Ledger with every file:line: `docs/changes/PHASE7_BUG_LEDGER.md`. Owner inputs still needed: see that file's NEEDS rows (API log for request `c5d4dd12-43e5-4105-8eb7-90c925c99d4d`, listing data for BUG-21/28/30) and decisions D1–D7.
 
 ### Branches and last commits
 
@@ -522,3 +524,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 96 | 2026-10-23 | Claude Code (Sonnet 5.5) | Owner batch 2: NEW-103/106, NEW-104, UX-22 option B, 6A gap check re-run 2 | be `cdb9ff6`, app `74ff500`, be `7e7d7ef`, docs branch `docs/gap-check-2026-10-23`; backend full suite 218 / 2230 green; all 12 §17 criteria still NOT MET, launch blockers 1, 2, 4, 6, 9 | task complete (not pushed) | no |
 | 97 | 2026-10-23 | Claude Code (Sonnet 5.5) | Owner batch 3: R-70 / R-71, NEW-21 / NEW-32 CMS and web banners | cms `88b7cc5`, web `0a64f67`, docs branch `docs/decisions-notices-2026-10-23`; CMS 475 and web 111 tests green | task complete (not pushed) | no |
 | 98 | 2026-10-24 | Claude Code (Sonnet 5.5) | 6A gap check re-run 3 (light, docs only) | Spec §13 REL-ENV row and "Prompt 6A re-run 3" (merge state: NEW-21/32 CMS + web, NEW-107, UX-22, NEW-104/106 merged; REL-ENV app `5672417` still unmerged), this file | task complete | yes |
+| 99 | 2026-10-24 | Claude Code (Opus 5.5) | Phase 7 P0 (intake, docs only) | `docs/changes/PHASE7_BUG_LEDGER.md`: BUG-01..38 traced; NEW-108 (P0) to NEW-116 recorded; spec §13 "Phase 7, P0"; no code changed (be branch `docs/phase7-p0-bug-ledger`, not pushed) | task complete | yes |
