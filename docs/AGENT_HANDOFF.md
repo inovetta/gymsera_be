@@ -19,12 +19,12 @@ next agent won't know it.
 |---|---|
 | Last updated | 2026-10-26 |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 P2 — one source of truth for host status and plan** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5), with NEW-113, NEW-114, NEW-115 folded in |
-| Prompt status | `DONE` (committed on 4 local branches, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Phase 7 production incident 2026-10-26**: approved host's Gyms tab "A database error occurred" (NEW-124) and no API log files since 2026-10-16 (NEW-123) |
+| Prompt status | `BLOCKED ON OWNER` (code committed on be `fix/g-gyms-tab-tenant-schema`, **not pushed**) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
-**Phase 7 next action:** Owner: (1) push and merge be `fix/p2-host-status-and-plan` first and deploy the API (no migration, no env variable); then app `fix/p2-host-status-and-plan`, cms and web `fix/p2-error-copy-new-codes` (any order). (2) Run `docs/sql/phase7-open-data-checks.sql` once against the platform DB (read-only) and send the result grids: they decide BUG-05 (P4), BUG-21 (P5), BUG-28 and BUG-30 (P6). (3) Test the hosting price with a Pakistan-region App Store sandbox tester (R-75). Agent: **Prompt P3** (Google Maps / Places; R-76: only move the Maps key to build config). BUG-23 still needs the API log line for request `c5d4dd12-43e5-4105-8eb7-90c925c99d4d`. Detail: `docs/changes/PHASE7_BUG_LEDGER.md` "P2 status", spec §13 "Phase 7, P2".
+**Next action:** Owner: (1) run `docs/sql/new-124-tenant-schema-check.sql` (read-only) against the production platform DB and send both grids. (2) If grid 1 shows `has_branches_currency = 0`: on the API server, `node src/scripts/run-tenant-migrations.js --dry-run`, check every tenant says `WOULD RUN ... 019_add_branch_currency` (and nothing it should not), then `node src/scripts/run-tenant-migrations.js`; every tenant must end `to v19`. No restart needed. Re-open the Gyms tab. (3) If grid 2 lists any column other than `currency`, stop: an agent writes tenant migration 020 first (NEW-126). (4) Push and merge be `fix/g-gyms-tab-tenant-schema` and deploy (NEW-123; no migration; optional env `ERROR_LOG_DIR`; the IIS app pool identity needs write access to `logs/` in the app folder; `web.config` changed, so iisnode restarts). Check after deploy: a new `iisnode/*-stdout-*.txt` file appears, and any 5xx shows up in `logs/errors-YYYY-MM-DD.jsonl` with its reference id. (5) NEW-125: check whether `https://<api host>/iisnode/index.html` answers. Agent, after that: Prompt P3 (unchanged). Detail: spec §13 "Phase 7 incident 2026-10-26".
 
 ### Branches and last commits
 
@@ -529,3 +529,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 99 | 2026-10-24 | Claude Code (Opus 5.5) | Phase 7 P0 (intake, docs only) | `docs/changes/PHASE7_BUG_LEDGER.md`: BUG-01..38 traced; NEW-108 (P0) to NEW-116 recorded; spec §13 "Phase 7, P0"; no code changed (be branch `docs/phase7-p0-bug-ledger`, not pushed) | task complete | yes |
 | 100 | 2026-10-26 | Claude Code (Opus 5.5) | Phase 7 P1 + D1–D7 | NEW-108/BUG-16 (+NEW-117), BUG-14/15, NEW-110 (+NEW-118 web), NEW-111, BUG-38 host profile; D1–D7 = R-72..R-78; BUG-23 needs log; new NEW-119, NEW-120 | task complete (not pushed) | yes |
 | 101 | 2026-10-26 | Claude Code (Opus 5.5) | Phase 7 P2 (+NEW-113/114/115) | BUG-10, 11, 12, 13, 18, 24 fixed (be host status + plan tiers, app status panel, store-only price); NEW-113, NEW-114 fixed; NEW-115 NOT REPRODUCED; NEW-121 found and fixed, NEW-122 noted; `docs/sql/phase7-open-data-checks.sql` | task complete (not pushed) | yes |
+| 102 | 2026-10-26 | Claude Code (Opus 5.5) | Incident: Gyms tab database error (NEW-124), API logs missing (NEW-123) | NEW-124 reproduced (be `ff3e385`, fix = tenant migration 019 in production, owner check SQL); NEW-123 fixed (be `f457114`); NEW-125, NEW-126 noted; full suite 228 / 2316 green | blocked on owner check (not pushed) | yes |

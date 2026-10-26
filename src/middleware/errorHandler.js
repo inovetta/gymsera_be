@@ -20,6 +20,9 @@ const errorTracker = require('../utils/error-tracker');
  */
 // eslint-disable-next-line no-unused-vars
 const errorHandler = (err, req, res, _next) => {
+  // NEW-123: the error journal (written when a 5xx answer finishes) records what failed.
+  res.locals.journalError = err;
+
   // ── Sequelize: duplicate entry ───────────────────────────────────────────────
   if (err instanceof UniqueConstraintError) {
     const field = err.errors[0]?.path || 'field';
