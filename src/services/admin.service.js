@@ -16,7 +16,7 @@ const {
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
-const { processTenantProvisioning, provisioningSummary, PROVISIONING_REQUESTED } = require('./tenant-provisioning.service');
+const { processTenantProvisioning, provisioningSummary, PROVISIONING_REQUESTED, resolveTenantCityId } = require('./tenant-provisioning.service');
 const { maskEmail, maskPhone } = require('../utils/pii-mask');
 const emailService = require('./email.service');
 const TenantDbManager = require('../database/TenantDbManager');
@@ -398,6 +398,14 @@ const approveTenant = async (tenantId, adminUserId) => {
   const approvableStatuses = [TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW, TenantStatus.REJECTED, TenantStatus.APPROVED];
   if (!approvableStatuses.includes(tenant.status)) {
     throw createError('Tenant is not in a reviewable state', 400);
+  }
+
+  // NEW-113: the first listing needs a real city (it used to default to city id 1).
+  // Checked before anything changes, so a refused approval leaves the tenant as it was.
+  if (!(await GymListing.count({ where: { tenantId: tenant.id } })) && !(await resolveTenantCityId(tenant))) {
+    const err = createError('This gym has no known city. Set its city before approving.', 422);
+    err.code = 'city_required';
+    throw err;
   }
 
   // Re-approving an APPROVED tenant is Resume (FLOW-02): the first approval's

@@ -124,6 +124,20 @@ const ERROR_COPY = {
     ar: 'اختر نادياً رياضياً للمتابعة.',
     action: 'none',
   },
+  // Phase 7 P2 (BUG-11): the gym's own database could not be reached; was an empty dashboard.
+  tenant_unavailable: {
+    en: 'We could not load your gym right now. Please try again.',
+    ur: 'ہم اس وقت آپ کا جم لوڈ نہیں کر سکے۔ براہ کرم دوبارہ کوشش کریں۔',
+    ar: 'تعذّر تحميل ناديك الرياضي الآن. يرجى المحاولة مرة أخرى.',
+    action: 'retry',
+  },
+  // Phase 7 P2 (NEW-113): approval needs a real city; it used to default to city id 1.
+  city_required: {
+    en: 'This gym has no city yet. Set its city, then approve it.',
+    ur: 'اس جم کا شہر ابھی درج نہیں ہے۔ پہلے شہر درج کریں، پھر منظور کریں۔',
+    ar: 'لم تُحدَّد مدينة لهذا النادي بعد. حدّد المدينة ثم وافق عليه.',
+    action: 'none',
+  },
   tenant_not_found: {
     en: 'Tenant not found or not active.',
     ur: 'ادارہ نہیں ملا یا غیر فعال ہے۔',

@@ -9,6 +9,7 @@ const inboxService = require('../services/inbox.service');
 const accessService = require('../services/access.service');
 const subscriptionQuotaService = require('../services/subscription-quota.service');
 const branchQuotaService = require('../services/branch-quota.service');
+const hostStatusService = require('../services/host-status.service');
 const subscriptionMigrationService = require('../services/subscription-migration.service');
 const storageService = require('../services/storage.service');
 const authService = require('../services/auth.service');
@@ -36,15 +37,34 @@ const _weeklyCheckins = async (AttendanceLog, where, todayStr, timezone) => {
 };
 
 
+/**
+ * GET /host/status — where the caller stands as a host (Phase 7 P2). Only
+ * `authenticate`: the answer is about the gym the caller owns, found by ownership,
+ * so a token issued before they became a host (role MEMBER, no tenantId) still gets
+ * the right answer (BUG-11). A non-host gets NONE.
+ */
+const getHostStatus = async (req, res, next) => {
+  try {
+    return sendSuccess(res, await hostStatusService.getHostStatus(req.user.id || req.user.sub));
+  } catch (err) {
+    next(err);
+  }
+};
+
 const getTodaySummary = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    // P2 / BUG-11: the host's own tenant by ownership, not the token's tenantId, which
+    // is null in a token issued before the tenant existed and then answered "DRAFT"
+    // for a host already under review.
+    const hostStatus = await hostStatusService.getHostStatus(req.user.id || req.user.sub);
+    const tenantId = hostStatus.tenantId;
 
     if (!tenantId) {
       return sendSuccess(res, {
         state: 'A',
         applicationStatus: 'DRAFT',
-        hasActiveBranch: false
+        hasActiveBranch: false,
+        hostStatus,
       });
     }
 
@@ -53,7 +73,8 @@ const getTodaySummary = async (req, res, next) => {
       return sendSuccess(res, {
         state: 'A',
         applicationStatus: 'DRAFT',
-        hasActiveBranch: false
+        hasActiveBranch: false,
+        hostStatus,
       });
     }
 
@@ -61,21 +82,22 @@ const getTodaySummary = async (req, res, next) => {
       return sendSuccess(res, {
         state: 'B',
         applicationStatus: tenant.status,
-        hasActiveBranch: false
+        hasActiveBranch: false,
+        hostStatus,
       });
     }
 
-    // ACTIVE status: connect to tenant DB
+    // ACTIVE status: connect to tenant DB. A failure is an error the app shows with
+    // Try again; it used to answer "APPROVED" with no data, drawn as an empty dashboard
+    // until the app was reloaded (BUG-11).
     let tenantDb;
     try {
       tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
     } catch (err) {
-      // If db connection fails, e.g. not fully provisioned yet, treat as State B
-      return sendSuccess(res, {
-        state: 'B',
-        applicationStatus: 'APPROVED',
-        hasActiveBranch: false
-      });
+      console.warn(`[today-summary] tenant ${tenantId} database unavailable: ${err.message}`);
+      const unavailable = createError('We could not load your gym right now. Please try again.', 503);
+      unavailable.code = 'tenant_unavailable';
+      throw unavailable;
     }
 
     const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = tenantDb.models;
@@ -87,6 +109,7 @@ const getTodaySummary = async (req, res, next) => {
         state: 'C',
         applicationStatus: 'APPROVED',
         hasActiveBranch: false,
+        hostStatus,
         activeBranchesCount: 0,
         todaysCheckins: 0,
         monthlyRevenue: 0,
@@ -188,6 +211,7 @@ const getTodaySummary = async (req, res, next) => {
       state: 'C',
       applicationStatus: 'APPROVED',
       hasActiveBranch: true,
+      hostStatus,
       activeBranchesCount: activeBranches.length,
       todaysCheckins,
       monthlyRevenue,
@@ -1497,6 +1521,7 @@ const findOrCreateConversation = async (req, res, next) => {
 };
 
 module.exports = {
+  getHostStatus,
   getTodaySummary,
   getBranchQuota,
   getOrganizationQuota,

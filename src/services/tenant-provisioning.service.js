@@ -346,19 +346,39 @@ const stepSyncModels = async (ctx) => {
   console.log(`[Provisioning] Tenant schema synced to '${ctx.dbName}'`);
 };
 
+/**
+ * The city a new gym's listing goes under (NEW-113): the tenant's city if it exists,
+ * else the city the host picked for the main branch during onboarding, else null.
+ * It used to fall back to city id 1, which filed the gym under an unrelated city.
+ */
+const resolveTenantCityId = async (tenant) => {
+  let mainBranch = tenant.mainBranchDataJson;
+  if (typeof mainBranch === 'string') {
+    try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = null; }
+  }
+  for (const candidate of [tenant.cityId, mainBranch && mainBranch.cityId]) {
+    const id = Number(candidate);
+    if (candidate != null && Number.isInteger(id) && id > 0 && (await City.findByPk(id, { attributes: ['id'] }))) return id;
+  }
+  return null;
+};
+
 // ── Step 3: GymListing on the platform DB (found by tenantId, else created) ──
 const stepCreateListing = async (ctx) => {
   const { tenant } = ctx;
   let existingListing = await firstListing(tenant.id);
 
   if (!existingListing && tenant.gymName) {
-    let safeCityId = tenant.cityId || 1;
+    // NEW-113: never city id 1 by default. approveTenant refuses a gym with no known
+    // city before provisioning starts; this re-check covers a resumed run.
+    const safeCityId = await resolveTenantCityId(tenant);
+    if (!safeCityId) {
+      const err = new Error('The gym has no known city. Set its city, then approve again.');
+      err.code = 'city_required';
+      throw err;
+    }
     let safeAreaId = tenant.areaId || null;
 
-    if (safeCityId) {
-      const cityObj = await City.findByPk(safeCityId).catch(() => null);
-      if (!cityObj) safeCityId = 1;
-    }
     if (safeAreaId) {
       const areaObj = await Area.findByPk(safeAreaId).catch(() => null);
       if (!areaObj) safeAreaId = null;
@@ -855,6 +875,7 @@ const resumeStalledProvisioning = async ({ limit = 5 } = {}) => {
 
 module.exports = {
   processTenantProvisioning,
+  resolveTenantCityId,
   resumeStalledProvisioning,
   provisioningSummary,
   provisioningHooks,

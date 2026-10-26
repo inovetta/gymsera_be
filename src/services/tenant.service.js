@@ -244,6 +244,21 @@ const reapplyTenant = async (tenantId, userId) => {
   return { tenant };
 };
 
+/**
+ * The membership plans the host entered for the main branch during onboarding
+ * (`mainBranchDataJson.plans`, older drafts `.packages`), or null. Submitting needs at
+ * least one; host-status.service.js uses the same rule for "listing complete".
+ */
+const mainBranchPlans = (tenant) => {
+  let mainBranch = tenant.mainBranchDataJson;
+  if (typeof mainBranch === 'string') {
+    try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = {}; }
+  }
+  if (mainBranch && Array.isArray(mainBranch.plans)) return mainBranch.plans;
+  if (mainBranch && Array.isArray(mainBranch.packages)) return mainBranch.packages;
+  return null;
+};
+
 // ── finalizeApplication ───────────────────────────────────────────────────────
 /**
  * Called when the gym owner completes the payment step during onboarding.
@@ -254,13 +269,7 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   // Validate that the main branch has at least 1 membership plan configured
-  let mainBranch = tenant.mainBranchDataJson;
-  if (typeof mainBranch === 'string') {
-    try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = {}; }
-  }
-  const plans = (mainBranch && Array.isArray(mainBranch.plans))
-    ? mainBranch.plans
-    : (mainBranch && Array.isArray(mainBranch.packages) ? mainBranch.packages : null);
+  const plans = mainBranchPlans(tenant);
 
   if (!plans || plans.length === 0) {
     throw createError('At least 1 membership plan is required before completing listing and submitting for review.', 400);
@@ -520,6 +529,7 @@ module.exports = {
   updateOnboardingImages,
   addOnboardingImages,
   finalizeApplication,
+  mainBranchPlans,
   getMyTenant,
   updateMyTenant,
   uploadKycDocuments,

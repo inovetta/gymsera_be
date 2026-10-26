@@ -30,24 +30,23 @@ const getBranchQuota = async (tenantId, { organizationId = null } = {}) => {
   let organizationBranches = 0;
   let organizationReservedSlots = 0;
 
+  // NEW-114: a failed read is an error, never zeros. "0 of N used" from a database
+  // that could not be reached reads as real capacity (UX-08). GET /me/bootstrap
+  // already turns a failure into `quota: null`; the host routes answer the error.
   if (tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted) {
-    try {
-      const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-      usedBranches = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
-      activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
+    const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    usedBranches = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
 
-      if (organizationId) {
-        organizationBranches = await tenantDb.models.Branch.count({
-          where: { status: 'ACTIVE', gymListingId: organizationId },
-        });
-        const orgListing = await GymListing.findOne({
-          where: { id: organizationId, tenantId },
-          attributes: ['reservedSlots'],
-        });
-        organizationReservedSlots = orgListing ? orgListing.reservedSlots : 0;
-      }
-    } catch (err) {
-      // ignore
+    if (organizationId) {
+      organizationBranches = await tenantDb.models.Branch.count({
+        where: { status: 'ACTIVE', gymListingId: organizationId },
+      });
+      const orgListing = await GymListing.findOne({
+        where: { id: organizationId, tenantId },
+        attributes: ['reservedSlots'],
+      });
+      organizationReservedSlots = orgListing ? orgListing.reservedSlots : 0;
     }
   }
 

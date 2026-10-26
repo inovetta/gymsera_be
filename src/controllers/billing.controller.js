@@ -6,6 +6,7 @@ const subscriptionMigration = require('../services/subscription-migration.servic
 const { BillingPlan } = require('../models/platform');
 const { sendSuccess, createError } = require('../utils/response.utils');
 const billingConfig = require('../config/billing.config');
+const { tierForBranchCount } = require('../constants/plan-tiers');
 
 /**
  * GET /billing/plans
@@ -40,6 +41,8 @@ const getPlans = async (req, res, next) => {
         // every platform rather than special-casing web alone.
         id: p.id,
         branchCount: p.branchCount,
+        // BUG-24: the tier label from the one table (constants/plan-tiers.js), so no client keeps its own.
+        tierName: tierForBranchCount(p.branchCount)?.name || null,
         monthlyPrice: chosen.monthlyPrice,
         annualPrice: chosen.annualPrice,
         currency: chosen.currency,
