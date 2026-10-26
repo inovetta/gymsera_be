@@ -36,6 +36,8 @@ router.get('/branches/:branchId/expenses/:expenseId', authenticate, tenantContex
 router.patch('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), validate.allowBody(['amount', 'categoryId', 'expenseDate', 'isRecurring', 'notes', 'paymentMethod', 'receiptUrl', 'recurrenceEndDate', 'recurrenceFrequency', 'title', 'vendorName']), expensesController.updateExpense);
 router.delete('/branches/:branchId/expenses/:expenseId', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), validate.allowBody([]), expensesController.deleteExpense);
 
+// Phase 7 P2: no authorize — the answer is the caller's own host status (NONE for a non-host).
+router.get('/status', authenticate, hostController.getHostStatus);
 router.get('/today-summary', authenticate, authorize('GYM_HOST'), hostController.getTodaySummary);
 router.get('/branch-quota', authenticate, authorize('GYM_HOST'), hostController.getBranchQuota);
 router.get('/organization-quota', authenticate, authorize('GYM_HOST'), hostController.getOrganizationQuota);

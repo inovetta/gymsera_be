@@ -21,6 +21,7 @@ const { sendSuccess } = require('../utils/response.utils');
 const { ROLE_META } = require('../constants/roles');
 const notificationsService = require('../services/notifications.service');
 const branchQuotaService = require('../services/branch-quota.service');
+const hostStatusService = require('../services/host-status.service');
 
 /**
  * Branches a user can act in within one tenant, each with its resolved permissions.
@@ -232,11 +233,12 @@ const getBootstrap = async (req, res, next) => {
     const org = activeTenantId ? context.organizations.find((o) => o.tenantId === activeTenantId) : null;
     const tenantStatus = org ? tenantsById[activeTenantId]?.status : null;
 
-    const [unread, quota] = await Promise.all([
+    const [unread, quota, hostStatus] = await Promise.all([
       notificationsService.getUnreadCount(userId, req.user.role),
       org && org.isOwner && tenantStatus === 'ACTIVE'
         ? branchQuotaService.getBranchQuota(activeTenantId).catch(() => null)
         : null,
+      hostStatusService.getHostStatus(userId),
     ]);
 
     res.vary('X-Tenant-Id');
@@ -261,6 +263,9 @@ const getBootstrap = async (req, res, next) => {
           }
           : null,
         quota,
+        // Phase 7 P2: where the caller stands as a host (the gym they own, any status;
+        // `organizations` lists only live ones). Same object as GET /host/status.
+        hostStatus,
         unread: {
           notifications: unread.unreadCount,
           pendingApprovals: context.pendingApprovals,

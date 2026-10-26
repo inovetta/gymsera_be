@@ -124,6 +124,13 @@ const ERROR_COPY = {
     ar: 'اختر نادياً رياضياً للمتابعة.',
     action: 'none',
   },
+  // Phase 7 P2 (BUG-11): the gym's own database could not be reached; was an empty dashboard.
+  tenant_unavailable: {
+    en: 'We could not load your gym right now. Please try again.',
+    ur: 'ہم اس وقت آپ کا جم لوڈ نہیں کر سکے۔ براہ کرم دوبارہ کوشش کریں۔',
+    ar: 'تعذّر تحميل ناديك الرياضي الآن. يرجى المحاولة مرة أخرى.',
+    action: 'retry',
+  },
   tenant_not_found: {
     en: 'Tenant not found or not active.',
     ur: 'ادارہ نہیں ملا یا غیر فعال ہے۔',

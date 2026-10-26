@@ -137,6 +137,8 @@ describe('GET /me/bootstrap', () => {
       await asPersona('owner').get('/auth/me');
       await asPersona('owner').get('/me/context');
       await asPersona('owner').get('/host/branch-quota');
+      // Phase 7 P2: bootstrap also answers the host status the app would otherwise fetch at start.
+      await asPersona('owner').get('/host/status');
       await asPersona('owner').get('/notifications/unread-count');
     });
     const single = await count(() => boot('owner'));
