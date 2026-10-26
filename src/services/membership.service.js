@@ -145,7 +145,7 @@ const hasPortalAccess = async (userId) => {
  * roles in several orgs the client is expected to send X-Tenant-Id — the context
  * switcher in the app exists precisely for this.
  */
-const resolveDefaultTenantForUser = async (userId) => {
+const resolveDefaultTenantForUser = async (userId, { memberRoute = false } = {}) => {
   const memberships = await listUserTenants(userId, { activeOnly: true });
   if (memberships.length > 0) return memberships[0].tenantId;
 
@@ -156,12 +156,33 @@ const resolveDefaultTenantForUser = async (userId) => {
   });
   if (owned) return owned.id;
 
+  // NEW-108: on staff / host routes a host whose own gym is not live yet must not be
+  // placed in a gym they only booked as a traveller; tenantContext answers
+  // tenant_not_active instead. Member routes (memberRoute) still fall back to the
+  // member gym, where the caller only ever acts as a member.
+  if (!memberRoute && (await ownsInactiveTenant(userId))) return null;
+
   const memberGym = await UserGymMembership.findOne({
     where: { userId },
     order: [['createdAt', 'DESC']],
     attributes: ['tenantId'],
   });
   return memberGym ? memberGym.tenantId : null;
+};
+
+/**
+ * Does this user own a tenant that is not ACTIVE (DRAFT, in review, rejected,
+ * suspended…)? Used to tell "your gym is not live yet" apart from "no gym".
+ */
+const ownsInactiveTenant = async (userId) => {
+  if (!userId) return false;
+  const { Op } = require('sequelize');
+  const { Tenant } = require('../models/platform');
+  const tenant = await Tenant.findOne({
+    where: { ownerUserId: userId, status: { [Op.ne]: 'ACTIVE' } },
+    attributes: ['id'],
+  });
+  return !!tenant;
 };
 
 /**
@@ -263,6 +284,7 @@ module.exports = {
   listOwnedTenants,
   hasPortalAccess,
   resolveDefaultTenantForUser,
+  ownsInactiveTenant,
   resolveTenantForBranch,
   claimInvitesForUser,
   rebuildIndexForTenant,

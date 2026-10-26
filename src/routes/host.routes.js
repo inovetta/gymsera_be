@@ -14,6 +14,11 @@ const upload = require('../middleware/upload');
 
 const router = Router();
 
+// NEW-108: authorize('GYM_HOST') before tenantContext checks the account role (the
+// user owns *a* gym). After tenantContext, GYM_HOST means the owner of the tenant
+// this request resolved to, so routes that act on req.user.tenantId check again.
+const ownerHere = authorize('GYM_HOST');
+
 // Payouts (PAY-10, SEC-13)
 router.get('/payouts/balance', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
 router.get('/payouts', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
@@ -43,31 +48,32 @@ router.post(
   upload.handleMulterError,
   validate.allowBody([]), hostController.uploadListingStagingImages
 );
-router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody(['address', 'areaId', 'branchSource', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'images', 'latitude', 'logoUrl', 'longitude', 'packages']), hostController.createListing);
-router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody(['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude']), hostController.updateListing);
-router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody(['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude']), hostController.updateListing);
-router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'targetListingId', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
+router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['address', 'areaId', 'branchSource', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'images', 'latitude', 'logoUrl', 'longitude', 'packages']), hostController.createListing);
+router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude']), hostController.updateListing);
+router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude']), hostController.updateListing);
+router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'targetListingId', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
 router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toListingId']), hostController.transferReservedSlots);
-router.post('/branches/:branchId/move', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody(['confirmOrganizationDeletion', 'targetListingId']), hostController.moveBranchToOrganization);
-router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), tenantContext, validate.allowBody([]), hostController.restoreBranch);
+router.post('/branches/:branchId/move', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['confirmOrganizationDeletion', 'targetListingId']), hostController.moveBranchToOrganization);
+router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody([]), hostController.restoreBranch);
 router.get('/subscription/current', authenticate, authorize('GYM_HOST'), hostController.getCurrentSubscription);
 router.post('/subscription/upgrade', authenticate, authorize('GYM_HOST'), validate.allowBody(['newPlanId', 'planId']), hostController.upgradeSubscription);
 
 // Branches routes mapped to gymsController but under /host prefix
-router.get('/branches', authenticate, authorize('GYM_HOST'), tenantContext, gymsController.listBranches);
+router.get('/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
 router.post(
   '/branches',
   authenticate,
   authorize('GYM_HOST'),
   tenantContext,
+  ownerHere,
   // SEC-06: facilities is the key the CMS sends (the service reads facilitiesJson); country is ignored
   validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities', 'country'] }),
   gymsController.createBranch
 );
 
 // GET /host/listings/:listingId/branches — branches scoped to an org listing
-router.get('/listings/:listingId/branches', authenticate, authorize('GYM_HOST'), tenantContext, gymsController.listBranches);
-router.get('/gyms/:gymId/branches', authenticate, authorize('GYM_HOST'), tenantContext, gymsController.listBranches);
+router.get('/listings/:listingId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
+router.get('/gyms/:gymId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
 
 // GET /host/branches/:branchId/listing-content — get all storefront fields
 router.get(
@@ -75,6 +81,7 @@ router.get(
   authenticate,
   authorize('GYM_HOST'),
   tenantContext,
+  ownerHere,
   gymsController.getBranchListingContent
 );
 
@@ -84,6 +91,7 @@ router.patch(
   authenticate,
   authorize('GYM_HOST'),
   tenantContext,
+  ownerHere,
   validate.allowBody(['address', 'addressLine1', 'addressLine2', 'areaId', 'branchName', 'category', 'cityId', 'closingTime', 'country', 'description', 'establishedYear', 'facilitiesJson', 'floorArea', 'imagesJson', 'latitude', 'longitude', 'openingTime', 'phone', 'postalCode', 'tagline', 'tagsJson']),
   gymsController.updateBranchListingContent
 );
@@ -94,6 +102,7 @@ router.delete(
   authenticate,
   authorize('GYM_HOST'),
   tenantContext,
+  ownerHere,
   validate.allowBody(['confirmOrganizationDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']),
   gymsController.deleteBranch
 );

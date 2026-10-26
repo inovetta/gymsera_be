@@ -112,6 +112,18 @@ const ERROR_COPY = {
     ar: 'بعض المعلومات المدخلة غير صحيحة. يرجى المراجعة والتصحيح.',
     action: 'retry',
   },
+  tenant_not_active: {
+    en: 'Your gym is not live yet. Finish setting it up to use this.',
+    ur: 'آپ کا جم ابھی فعال نہیں ہوا۔ اسے استعمال کرنے کے لیے سیٹ اپ مکمل کریں۔',
+    ar: 'ناديك الرياضي غير مفعّل بعد. أكمل إعداده لاستخدام هذه الميزة.',
+    action: 'none',
+  },
+  missing_tenant_context: {
+    en: 'Choose a gym to continue.',
+    ur: 'جاری رکھنے کے لیے ایک جم منتخب کریں۔',
+    ar: 'اختر نادياً رياضياً للمتابعة.',
+    action: 'none',
+  },
   tenant_not_found: {
     en: 'Tenant not found or not active.',
     ur: 'ادارہ نہیں ملا یا غیر فعال ہے۔',

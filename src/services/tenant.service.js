@@ -54,7 +54,9 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
     onboardingStep: 1,
   });
 
-  // Upgrade user role to GYM_HOST and set isHost to true
+  // Upgrade user role to GYM_HOST and set isHost to true. This is an account flag
+  // (the host area, onboarding routes). It grants nothing inside any tenant:
+  // tenantContext honours it only in the tenant this user owns (NEW-108).
   await User.update({ role: UserRole.GYM_HOST, isHost: true }, { where: { id: userId } });
 
   return { tenant };
