@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { getBuildInfo, STARTED_AT } = require('../utils/build-info');
 
 const router = Router();
 
@@ -25,6 +26,13 @@ const router = Router();
  *                   example: GymsEra API is running
  *                 data:
  *                   type: object
+ *                   properties:
+ *                     build:
+ *                       type: object
+ *                       description: "commit, builtAt (build or commit time) and source (env, build-info.json, git or none)"
+ *                     startedAt:
+ *                       type: string
+ *                       format: date-time
  */
 router.get('/health', (_req, res) => {
   res.json({
@@ -34,6 +42,9 @@ router.get('/health', (_req, res) => {
       version: '1.1.0',
       environment: process.env.NODE_ENV || 'development',
       timestamp: new Date().toISOString(),
+      // NEW-130: the build this process loaded and when it started (a stale process shows here).
+      build: getBuildInfo(),
+      startedAt: STARTED_AT,
     },
   });
 });
