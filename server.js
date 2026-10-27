@@ -9,6 +9,10 @@ const { runExpiryCheck, EXPIRY_CRON } = require('./src/jobs/subscription-expiry.
 const cron = require('node-cron');
 const errorTracker = require('./src/utils/error-tracker');
 
+// NEW-123: one boot line in the error journal and on the console (iisnode stdout file),
+// before anything that can fail, so a deploy is checkable without waiting for a 5xx.
+require('./src/utils/error-journal').boot();
+
 const PORT = process.env.PORT || 3000;
 let server = null;
 let socketGateway = null;

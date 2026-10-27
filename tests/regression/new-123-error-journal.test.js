@@ -2,13 +2,18 @@
  * NEW-123 — no API log file since 2026-10-16, so a 5xx reference id could not be found.
  *
  * Cause: OBS-01 (`db790e0`, 2026-10-16) writes every log line with `fs.writeSync(1)`.
- * iisnode does not read file descriptor 1: it replaces `process.stdout` / `process.stderr`
- * with its own file streams (created on the first write), so since that commit nothing
- * reached its log folder.
+ * iisnode does not read file descriptor 1: its interceptor assigns its own `write` onto
+ * `process.stdout` / `process.stderr` (the same objects; `fd` stays 1) that appends to
+ * iisnode/<host>-<pid>-stdout-<ts>.txt, so since that commit nothing reached its log folder.
+ * The first fix (`f457114`) tested `process.stdout.fd !== 1`, which is never true under the
+ * real interceptor, and the journal swallowed its own write errors: production on `d023bc3`
+ * (2026-10-26) still wrote no file at all.
  *
- * Fix: (1) the logger writes through `process.stdout` when something replaced it;
+ * Fix: (1) the logger writes through `process.stdout.write` when a host (iisnode) installed its own;
  * (2) every 5xx answer is also appended, with its reference id, to a daily JSON-lines file
- * in ERROR_LOG_DIR (default `logs/` in production outside Vercel), independent of iisnode.
+ * in ERROR_LOG_DIR (default `logs/` in production outside Vercel), independent of iisnode;
+ * (3) an unwritable journal folder falls back to the temp folder and is printed once;
+ * (4) server.js writes a boot line to the journal and the console at startup.
  */
 const fs = require('fs');
 const os = require('os');
@@ -109,20 +114,71 @@ describe('NEW-123: every 5xx is kept with its reference id', () => {
 });
 
 describe('NEW-123: the logger writes where iisnode reads', () => {
-  test('when process.stdout was replaced (iisnode), lines go to it, not to descriptor 1', () => {
+  // iisnode src/scripts/interceptor.js does `stream.write = stream.end = function (data) {...}`
+  // on the real process.stdout object before it requires server.js; process.stdout.fd stays 1.
+  test('when iisnode assigned its own write onto process.stdout (fd still 1), lines go to it, not to descriptor 1', () => {
     const got = [];
-    const fake = { fd: null, write: (chunk) => got.push(String(chunk)) };
-    const desc = Object.getOwnPropertyDescriptor(process, 'stdout');
-    Object.defineProperty(process, 'stdout', { configurable: true, get: () => fake });
+    const stdout = process.stdout;
+    const hadOwn = Object.prototype.hasOwnProperty.call(stdout, 'write');
+    const previous = stdout.write;
+    stdout.write = (chunk) => got.push(String(chunk));
     const spy = jest.spyOn(fs, 'writeSync');
     try {
+      expect(stdout.fd).toBe(1);
       out.write('{"msg":"hello"}\n');
     } finally {
-      Object.defineProperty(process, 'stdout', desc);
+      if (hadOwn) stdout.write = previous;
+      else delete stdout.write;
     }
     const toFd1 = spy.mock.calls.filter((c) => c[0] === 1);
     spy.mockRestore();
     expect(got).toEqual(['{"msg":"hello"}\n']);
     expect(toFd1).toHaveLength(0);
+  });
+});
+
+describe('NEW-123: a journal folder that cannot be written is never silent', () => {
+  const errorJournal = require('../../src/utils/error-journal');
+  const today = () => `errors-${new Date().toISOString().slice(0, 10)}.jsonl`;
+
+  test('boot() writes a boot line to the journal and prints where it went', () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const written = errorJournal.boot();
+      expect(written).toBe(path.join(dir, today()));
+      const lines = journal().filter((l) => l.event === 'boot');
+      expect(lines.length).toBeGreaterThanOrEqual(1);
+      expect(lines[lines.length - 1]).toMatchObject({ event: 'boot', pid: process.pid });
+      expect(logSpy.mock.calls.map((c) => c.join(' ')).join('\n')).toContain(`[ErrorJournal] boot pid=${process.pid}`);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  test('an unwritable folder: the line goes to the temp folder and the failure is printed once', () => {
+    const prev = process.env.ERROR_LOG_DIR;
+    const blocker = path.join(dir, 'blocker-file');
+    fs.writeFileSync(blocker, 'x');
+    const fallback = path.join(dir, 'fallback');
+    const tmpSpy = jest.spyOn(os, 'tmpdir').mockReturnValue(fallback);
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    process.env.ERROR_LOG_DIR = path.join(blocker, 'sub');
+    const res = { statusCode: 500, locals: { errorCode: 'database_error' }, getHeader: () => null };
+    try {
+      errorJournal.record({ method: 'GET', originalUrl: '/api/v1/x', id: 'ref-a' }, res, Date.now());
+      errorJournal.record({ method: 'GET', originalUrl: '/api/v1/x', id: 'ref-b' }, res, Date.now());
+    } finally {
+      process.env.ERROR_LOG_DIR = prev;
+      tmpSpy.mockRestore();
+    }
+    const printed = errSpy.mock.calls.map((c) => c.join(' '));
+    errSpy.mockRestore();
+
+    const file = path.join(fallback, 'gymsera-logs', today());
+    const ids = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l).requestId);
+    expect(ids).toEqual(['ref-a', 'ref-b']);
+    const reports = printed.filter((m) => m.includes('[ErrorJournal] cannot write to'));
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toContain(path.join(fallback, 'gymsera-logs'));
   });
 });
