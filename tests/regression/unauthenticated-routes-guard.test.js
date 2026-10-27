@@ -46,6 +46,7 @@ const ALLOWED_PUBLIC_READ_ROUTES = [
   { method: 'OPTIONS', pattern: /^\/\*/, reason: 'CORS preflight options handler' },
   { method: 'GET', pattern: /^\/api\/docs/, reason: 'Swagger API documentation and spec endpoints' },
   { method: 'GET', pattern: /^\/api\/v1\/health$/, reason: 'Public service health check' },
+  { method: 'GET', pattern: /^\/api\/v1\/health\/tenant-schema$/, reason: 'NEW-126 tenant schema health for the uptime monitor: status and counts only, no tenant codes or names' },
   { method: 'GET', pattern: /^\/api\/v1\/system\/(socket-status|fcm-status)$/, reason: 'Public read-only system diagnostic status' },
   { method: 'GET', pattern: /^\/api\/v1\/cities/, reason: 'Public city and area catalog for mobile/web dropdowns' },
   { method: 'GET', pattern: /^\/api\/v1\/platform-packages/, reason: 'Public platform package pricing catalog' },
