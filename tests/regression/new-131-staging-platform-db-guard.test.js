@@ -6,7 +6,8 @@
  * database approves gyms into production with staging's code (a NEW-127 lead).
  *
  * Staging = NODE_ENV=staging, GYMSERA_ENV=staging, or an APP_URL host containing "staging".
- * The production platform database = PRODUCTION_PLATFORM_DB_NAME, default `gymsera_platform`.
+ * The production platform database = PRODUCTION_PLATFORM_DB_NAME, default `gymsera` (what production
+ * really connects to; NEW-134 corrected the first default, `gymsera_platform`).
  * Staging on that database refuses to start (server.js and the Vercel entry), before any
  * database connection. `node src/scripts/check-environment.js` gives the same verdict without
  * starting, so each site's .env can be checked before a deploy.
@@ -19,10 +20,9 @@ const ROOT = path.join(__dirname, '..', '..');
 
 describe('checkEnvironment', () => {
   test.each([
-    ['NODE_ENV=staging on the production name', { NODE_ENV: 'staging', PLATFORM_DB_NAME: 'gymsera_platform' }],
-    ['GYMSERA_ENV=staging on the production name', { NODE_ENV: 'production', GYMSERA_ENV: 'staging', PLATFORM_DB_NAME: 'gymsera_platform' }],
-    ['APP_URL apistaging on the production name', { NODE_ENV: 'production', APP_URL: 'https://apistaging.gymsera.com', PLATFORM_DB_NAME: 'gymsera_platform' }],
-    ['APP_URL apistaging with PLATFORM_DB_NAME unset (falls back to the production name)', { NODE_ENV: 'development', APP_URL: 'https://apistaging.gymsera.com' }],
+    ['NODE_ENV=staging on the production name', { NODE_ENV: 'staging', PLATFORM_DB_NAME: 'gymsera' }],
+    ['GYMSERA_ENV=staging on the production name', { NODE_ENV: 'production', GYMSERA_ENV: 'staging', PLATFORM_DB_NAME: 'gymsera' }],
+    ['APP_URL apistaging on the production name', { NODE_ENV: 'production', APP_URL: 'https://apistaging.gymsera.com', PLATFORM_DB_NAME: 'gymsera' }],
     ['staging on a production name set by PRODUCTION_PLATFORM_DB_NAME', { NODE_ENV: 'staging', PLATFORM_DB_NAME: 'gymsera_live', PRODUCTION_PLATFORM_DB_NAME: 'gymsera_live' }],
   ])('refused: %s', (_label, env) => {
     const result = checkEnvironment(env);
@@ -32,9 +32,10 @@ describe('checkEnvironment', () => {
   });
 
   test.each([
-    ['production on the production name', { NODE_ENV: 'production', APP_URL: 'https://api.gymsera.com', PLATFORM_DB_NAME: 'gymsera_platform' }],
+    ['production on the production name', { NODE_ENV: 'production', APP_URL: 'https://api.gymsera.com', PLATFORM_DB_NAME: 'gymsera' }],
+    ['staging with PLATFORM_DB_NAME unset (the code fallback gymsera_platform is not production, NEW-134)', { NODE_ENV: 'development', APP_URL: 'https://apistaging.gymsera.com' }],
     ['staging on its own database', { NODE_ENV: 'staging', APP_URL: 'https://apistaging.gymsera.com', PLATFORM_DB_NAME: 'gymsera_staging_platform' }],
-    ['staging on gymsera_platform when production uses another name', { NODE_ENV: 'staging', PLATFORM_DB_NAME: 'gymsera_platform', PRODUCTION_PLATFORM_DB_NAME: 'gymsera_live' }],
+    ['staging on gymsera when production uses another name', { NODE_ENV: 'staging', PLATFORM_DB_NAME: 'gymsera', PRODUCTION_PLATFORM_DB_NAME: 'gymsera_live' }],
     ['local development', { NODE_ENV: 'development', APP_URL: 'http://localhost:3000', PLATFORM_DB_NAME: 'gymsera_platform' }],
     ['tests', { NODE_ENV: 'test', PLATFORM_DB_NAME: 'gymsera_test_platform' }],
   ])('allowed: %s', (_label, env) => {
@@ -51,7 +52,7 @@ describe('checkEnvironment', () => {
 const STAGING_ON_PRODUCTION = {
   NODE_ENV: 'production',
   APP_URL: 'https://apistaging.gymsera.com',
-  PLATFORM_DB_NAME: 'gymsera_platform',
+  PLATFORM_DB_NAME: 'gymsera',
   PRODUCTION_PLATFORM_DB_NAME: '',
   GYMSERA_ENV: '',
   // Unreachable on purpose: the guard must stop the server before it tries.
@@ -77,7 +78,7 @@ test('server.js on staging with the production platform database refuses to star
 
   // NODE_ENV=production: the logger writes JSON lines to stdout (OBS-01), so read both streams.
   expect(exitCode).toBe(1);
-  expect(`${stdout}${stderr}`).toMatch(/Refusing to start: staging \(APP_URL host apistaging\.gymsera\.com\) is configured with the production platform database 'gymsera_platform'/);
+  expect(`${stdout}${stderr}`).toMatch(/Refusing to start: staging \(APP_URL host apistaging\.gymsera\.com\) is configured with the production platform database 'gymsera' \(PLATFORM_DB_NAME from the process environment/);
   expect(stdout).not.toMatch(/GymsEra API running/);
   expect(`${stdout}${stderr}`).not.toMatch(/\[Platform DB\]/); // stopped before touching the database
 }, 30000);
@@ -101,7 +102,7 @@ test('check-environment.js gives the verdict without starting: exit 2 and the re
   });
   const refused = run(STAGING_ON_PRODUCTION);
   expect(refused.status).toBe(2);
-  expect(refused.stdout).toMatch(/platform database: gymsera_platform/);
+  expect(refused.stdout).toMatch(/platform database: gymsera \(PLATFORM_DB_NAME from the process environment/);
   expect(refused.stdout).toMatch(/REFUSED: staging \(APP_URL host apistaging\.gymsera\.com\)/);
 
   const allowed = run({ ...STAGING_ON_PRODUCTION, PLATFORM_DB_NAME: 'gymsera_staging_platform' });
