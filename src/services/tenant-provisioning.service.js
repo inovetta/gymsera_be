@@ -713,8 +713,17 @@ const stepLinkSubscription = async (ctx) => {
 const stepActivate = async (ctx, token) => {
   const { tenant, dbName } = ctx;
   const seq = await ctx.tenantDb();
-  const { runTenantMigrations } = require('../database/tenant-migration-runner');
+  const { runTenantMigrations, missingTenantMigrations, MIGRATIONS } = require('../database/tenant-migration-runner');
   await runTenantMigrations(seq, { tenantId: tenant.id, gymName: tenant.gymName });
+  // NEW-127: a skipped migration ("resolve it by hand") is not recorded; the tenant must not go
+  // live below target. It stays APPROVED at SUBSCRIPTION_LINKED and the admin's Resume retries.
+  const missing = await missingTenantMigrations(seq);
+  if (missing.length > 0) {
+    const names = MIGRATIONS.filter((m) => missing.includes(m.version)).map((m) => m.name);
+    const err = new Error(`tenant migrations not applied: ${names.join(', ')}`);
+    err.code = 'tenant_schema_incomplete';
+    throw err;
+  }
   console.log(`[Provisioning] Tenant migrations applied to latest version for '${dbName}'`);
   await runHook('ACTIVE', 'after');
 

@@ -738,6 +738,41 @@ const MIGRATIONS = [
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
+// NEW-127: every tenant whose database can be live again without a provisioning run. A SUSPENDED
+// tenant goes back to ACTIVE through assignTenantSubscription, a PENDING_DELETION one when the owner
+// cancels; neither path migrates, so a deploy run that skipped them left them behind.
+const MIGRATABLE_TENANT_STATUSES = Object.freeze(['ACTIVE', 'SUSPENDED', 'PENDING_DELETION']);
+
+const hasTable = async (sequelize, table) => {
+  const rows = await sequelize.query(
+    'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+    { replacements: [table], type: QueryTypes.SELECT }
+  );
+  return rows.length > 0;
+};
+
+/**
+ * Versions of `migrations` not recorded in `schema_migrations` (all of them when the table is missing).
+ * Read-only.
+ */
+async function missingTenantMigrations(sequelize, migrations = MIGRATIONS) {
+  if (!(await hasTable(sequelize, 'schema_migrations'))) return migrations.map((m) => m.version);
+  const rows = await sequelize.query('SELECT version FROM schema_migrations', { type: QueryTypes.SELECT });
+  const recorded = new Set(rows.map((r) => Number(r.version)));
+  return migrations.map((m) => m.version).filter((v) => !recorded.has(v));
+}
+
+/**
+ * NEW-127: a database that already has tenant tables but no `schema_migrations` was made before the
+ * runner existed. Replaying every migration from 001 on it (backfills, collation conversion) is not
+ * safe; it must be baselined first (src/scripts/repair-tenant-schema.js).
+ */
+async function isUnbaselinedTenantDb(sequelize) {
+  return !(await hasTable(sequelize, 'schema_migrations')) && (await hasTable(sequelize, 'branches'));
+}
+
+const repairCommand = (tenantCode) => `node src/scripts/repair-tenant-schema.js --tenant ${tenantCode}`;
+
 /**
  * Ensures the `schema_migrations` tracking table exists on a tenant database.
  */
@@ -876,7 +911,7 @@ async function runAllTenantMigrations(options = {}) {
   const { Tenant } = require('../models/platform');
   const tenants = await Tenant.findAll({
     where: {
-      status: 'ACTIVE',
+      status: { [Sequelize.Op.in]: MIGRATABLE_TENANT_STATUSES },
       connectionStringEncrypted: { [Sequelize.Op.ne]: null },
     },
   });
@@ -885,7 +920,7 @@ async function runAllTenantMigrations(options = {}) {
     (t) => t.connectionStringEncrypted && t.connectionStringEncrypted !== 'PENDING_PROVISIONING'
   );
 
-  console.log(`[TenantMigration] Found ${activeTenants.length} active tenant(s) to ${options.dryRun ? 'preview (dry-run)' : 'migrate'}.`);
+  console.log(`[TenantMigration] Found ${activeTenants.length} tenant(s) (${MIGRATABLE_TENANT_STATUSES.join(', ')}) to ${options.dryRun ? 'preview (dry-run)' : 'migrate'}.`);
 
   const reports = [];
   let successCount = 0;
@@ -903,6 +938,12 @@ async function runAllTenantMigrations(options = {}) {
       });
 
       await tenantSeq.authenticate();
+
+      if (await isUnbaselinedTenantDb(tenantSeq)) {
+        throw new Error(
+          `no schema_migrations table but tenant tables exist (made before the migration runner). Not touched. Run '${repairCommand(tenant.tenantCode)}' (dry run), then add --apply --confirm ${tenant.tenantCode}`
+        );
+      }
 
       const result = await runTenantMigrations(tenantSeq, {
         tenantId: tenant.id,
@@ -953,89 +994,78 @@ async function runAllTenantMigrations(options = {}) {
 }
 
 /**
- * Read-only startup check: checks every active tenant database to verify
- * if its schemaVersion is behind TARGET_SCHEMA_VERSION.
+ * Read-only check of every tenant database the deploy runner covers (MIGRATABLE_TENANT_STATUSES):
+ * is any of them behind TARGET_SCHEMA_VERSION, or could it not be read? 0 writes, never throws.
+ * Reporting (error lines, alert, /health) is tenant-schema-health.service.js (NEW-126).
  *
- * Logs a clear warning for any tenant that is behind.
- * Performs 0 writes and does NOT crash.
- *
- * @returns {Promise<{ checked: number, behind: Array<{ tenantId: string, gymName: string, currentVersion: number, targetVersion: number }> }>}
+ * @returns {Promise<{ checked: number, targetVersion: number,
+ *   behind: Array<{ tenantId: string, tenantCode: string, status: string, currentVersion: number, targetVersion: number, hasMigrationTable: boolean }>,
+ *   failed: Array<{ tenantId: string|null, tenantCode: string|null, error: string }> }>}
  */
 async function checkTenantSchemaVersions() {
   const behind = [];
+  const failed = [];
+  let tenants;
   try {
     const { Tenant } = require('../models/platform');
-    const tenants = await Tenant.findAll({
+    tenants = (await Tenant.findAll({
       where: {
-        status: 'ACTIVE',
+        status: { [Sequelize.Op.in]: MIGRATABLE_TENANT_STATUSES },
         connectionStringEncrypted: { [Sequelize.Op.ne]: null },
       },
-    }).catch(() => []);
-
-    const activeTenants = tenants.filter(
-      (t) => t.connectionStringEncrypted && t.connectionStringEncrypted !== 'PENDING_PROVISIONING'
-    );
-
-    for (const tenant of activeTenants) {
-      let tenantSeq = null;
-      try {
-        const connUrl = decrypt(tenant.connectionStringEncrypted);
-        tenantSeq = new Sequelize(connUrl, {
-          dialect: 'mysql',
-          logging: false,
-          pool: { max: 1, min: 0, acquire: 10000, idle: 5000 },
-          dialectOptions: { connectTimeout: 10000 },
-        });
-
-        await tenantSeq.authenticate();
-
-        const tables = await tenantSeq.query(
-          "SHOW TABLES LIKE 'schema_migrations'",
-          { type: QueryTypes.SELECT }
-        ).catch(() => []);
-
-        let currentVersion = 0;
-        if (tables.length > 0) {
-          const rows = await tenantSeq.query(
-            'SELECT MAX(version) AS max_version FROM schema_migrations',
-            { type: QueryTypes.SELECT }
-          ).catch(() => []);
-          currentVersion = rows[0]?.max_version || 0;
-        }
-
-        if (currentVersion < TARGET_SCHEMA_VERSION) {
-          console.warn(
-            `[Deploy Warning] Tenant '${tenant.gymName || tenant.tenantCode}' (${tenant.id}) schema version (${currentVersion}) is behind target (${TARGET_SCHEMA_VERSION}). Run 'node src/scripts/run-tenant-migrations.js' to apply pending migrations.`
-          );
-          behind.push({
-            tenantId: tenant.id,
-            gymName: tenant.gymName,
-            currentVersion,
-            targetVersion: TARGET_SCHEMA_VERSION,
-          });
-        }
-      } catch (err) {
-        console.warn(
-          `[Deploy Warning] Could not check schema version for tenant '${tenant.gymName || tenant.tenantCode}' (${tenant.id}): ${err.message}`
-        );
-      } finally {
-        if (tenantSeq) {
-          await tenantSeq.close().catch(() => {});
-        }
-      }
-    }
-
-    return { checked: activeTenants.length, behind };
+    })).filter((t) => t.connectionStringEncrypted !== 'PENDING_PROVISIONING');
   } catch (err) {
-    console.warn(`[Deploy Warning] Failed to inspect tenant schema versions on startup: ${err.message}`);
-    return { checked: 0, behind: [] };
+    failed.push({ tenantId: null, tenantCode: null, error: `could not list tenants: ${err.message}` });
+    return { checked: 0, targetVersion: TARGET_SCHEMA_VERSION, behind, failed };
   }
+
+  for (const tenant of tenants) {
+    let tenantSeq = null;
+    try {
+      tenantSeq = new Sequelize(decrypt(tenant.connectionStringEncrypted), {
+        dialect: 'mysql',
+        logging: false,
+        pool: { max: 1, min: 0, acquire: 10000, idle: 5000 },
+        dialectOptions: { connectTimeout: 10000 },
+      });
+      await tenantSeq.authenticate();
+
+      const hasMigrationTable = await hasTable(tenantSeq, 'schema_migrations');
+      const missing = await missingTenantMigrations(tenantSeq);
+      if (missing.length > 0) {
+        let currentVersion = 0;
+        if (hasMigrationTable) {
+          const rows = await tenantSeq.query('SELECT MAX(version) AS max_version FROM schema_migrations', { type: QueryTypes.SELECT });
+          currentVersion = Number(rows[0]?.max_version || 0);
+        }
+        behind.push({
+          tenantId: tenant.id,
+          tenantCode: tenant.tenantCode,
+          status: tenant.status,
+          currentVersion,
+          targetVersion: TARGET_SCHEMA_VERSION,
+          hasMigrationTable,
+          missingVersions: missing,
+        });
+      }
+    } catch (err) {
+      failed.push({ tenantId: tenant.id, tenantCode: tenant.tenantCode, error: err.message });
+    } finally {
+      if (tenantSeq) await tenantSeq.close().catch(() => {});
+    }
+  }
+
+  return { checked: tenants.length, targetVersion: TARGET_SCHEMA_VERSION, behind, failed };
 }
 
 module.exports = {
   MIGRATIONS,
   TARGET_SCHEMA_VERSION,
+  MIGRATABLE_TENANT_STATUSES,
   ensureMigrationTable,
+  missingTenantMigrations,
+  isUnbaselinedTenantDb,
+  repairCommand,
   runTenantMigrations,
   runAllTenantMigrations,
   checkTenantSchemaVersions,
