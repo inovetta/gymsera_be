@@ -39,6 +39,25 @@ router.get('/health', (_req, res) => {
 });
 
 /**
+ * NEW-126: 503 while any tenant database is behind the tenant schema target or could not be
+ * read (last startup / scheduled check). Counts only; the tenant codes are in the error log and
+ * the TENANT_SCHEMA_BEHIND alert. /health stays a liveness check.
+ */
+router.get('/health/tenant-schema', (_req, res) => {
+  const tenantSchema = require('../services/tenant-schema-health.service').tenantSchemaHealth();
+  const ok = tenantSchema.status === 'ok';
+  res.status(ok ? 200 : 503).json({
+    success: ok,
+    message: {
+      ok: 'Every tenant database is at the schema target',
+      behind: 'One or more tenant databases are behind the schema target or could not be checked',
+      unchecked: 'The tenant schema check has not finished yet',
+    }[tenantSchema.status],
+    data: { tenantSchema },
+  });
+});
+
+/**
  * Diagnostic endpoint to check WebSocket / Socket.IO runtime status
  */
 router.get('/system/socket-status', (_req, res) => {

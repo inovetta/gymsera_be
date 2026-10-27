@@ -105,13 +105,11 @@ async function bootstrap() {
     // 1. Connect to Platform MySQL
     await connectPlatformDb();
 
-    // 1b. Read-only startup check: warn if any active tenant schema is behind latest (spec §6.5)
-    try {
-      const { checkTenantSchemaVersions } = require('./src/database/tenant-migration-runner');
-      await checkTenantSchemaVersions();
-    } catch (checkErr) {
-      console.warn('[Server Startup] Tenant schema check warning:', checkErr?.message || checkErr);
-    }
+    // 1b. Read-only tenant schema check (spec §6.5, NEW-126): a tenant behind the target or
+    //     unreadable gets an error line, the TENANT_SCHEMA_BEHIND alert and a 503 on
+    //     /api/v1/health/tenant-schema. Re-checked on a schedule (step 4d). Never throws.
+    const { runTenantSchemaCheck } = require('./src/services/tenant-schema-health.service');
+    await runTenantSchemaCheck();
     await require('./src/database/platform-migrations').checkPlatformSchemaVersion(platformSequelize);
 
     // 2. Warm up Redis connection
@@ -139,6 +137,12 @@ async function bootstrap() {
     cron.schedule(process.env.PRICE_VERIFICATION_CRON || '40 3 * * *', () => {
       withDistributedLock('cron:price-verification', 600000, () => require('./src/services/price-verification.service').runPriceVerification())
         .catch((err) => console.error('[Cron] price-verification error:', err.message));
+    });
+
+    // 4d. Tenant schema re-check (NEW-126), so a migration run or a new tenant behind the target
+    //     shows on the health route without a restart. Read-only.
+    cron.schedule(process.env.TENANT_SCHEMA_CHECK_CRON || '*/15 * * * *', () => {
+      runTenantSchemaCheck();
     });
 
     // 5. Start HTTP server
