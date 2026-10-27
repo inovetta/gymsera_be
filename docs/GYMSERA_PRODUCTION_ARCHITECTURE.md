@@ -3087,6 +3087,18 @@ Tests: backend full suite 228 / 228 suites, 2318 / 2318 tests green (local Docke
 
 Deploy (owner): push and merge `fix/new-123-iisnode-real`, deploy; `server.js` is in `watchedFiles`, so iisnode restarts. No migration. Then on the server: (a) a new `iisnode\<host>-<pid>-stdout-<ts>.txt` must exist with `[ErrorJournal] boot pid=<pid>`; (b) that line names the journal file; open it and find `"event":"boot"` with the same pid. If it says `NOT WRITTEN` or `journal=off`, or the stdout file has `cannot write to ...\logs: EPERM`, grant the app pool identity (`IIS AppPool\<pool name>`) Modify on `wwwroot\logs`, or set `ERROR_LOG_DIR` to a writable folder, then recycle. If `journal=off`, `NODE_ENV` is not `production` in that process. If no stdout file appears at all, send the `iisnode` element of the live `web.config` and the iisnode version.
 
+### NEW-124 check runner 2026-10-27: run the read-only check without a mysql client (Claude Code Opus 5.5)
+
+The production API server has no mysql client and its `.env` has no generic `DB_*` variables, so the owner could not run `docs/sql/new-124-tenant-schema-check.sql`. Branch `fix/new-124-sql-check-runner` (from origin/main `9143305`, which includes NEW-123 PR #174), not pushed.
+
+| Issue | Root cause | Pattern reused | Fix | Regression test | Result |
+|---|---|---|---|---|---|
+| **NEW-124** (tooling) | No way to run a read-only SQL file on the API server. No existing SQL-file runner (`src/scripts/check-*.js` hard-code their queries; SEC-16 `sql-like` is LIKE escaping, a different concern) | `src/config/database.config.js` platform settings (`PLATFORM_DB_*`, `missingDatabaseSettings`), SEC-07 `redactString`, `src/scripts/` read-only check pattern | `src/scripts/run-sql-check.js <file.sql>`: (1) splits the file (strings, backticks, `--`, `#`, `/* */` aware) and checks every statement before connecting: SELECT (no `INTO`, no locking reads, no SLEEP / BENCHMARK / GET_LOCK / LOAD_FILE ...), SET of `@user` variables or an allow-listed SESSION variable (never `transaction_read_only`, `autocommit`, GLOBAL, PASSWORD, NAMES), PREPARE of a SELECT (literal checked statically; `FROM @var` value read and checked just before PREPARE), EXECUTE of a name prepared earlier, DEALLOCATE PREPARE; refuses anything else, a second statement inside one, and `/*! */` comments; one refusal = nothing runs (exit 2); (2) one mysql2 connection in `START TRANSACTION READ ONLY`, rolled back; (3) each grid as a plain table; columns named like personal data (name, e-mail, phone, address, ...) print `[hidden]` (grid 1 `gym_name`), all values pass `redactString`, no password or DB user printed; missing `PLATFORM_DB_PASS` names the variables (no values) and does not connect (exit 3) | be `tests/regression/new-124-run-sql-check.test.js` (54): splitter, 11 allowed and 33 refused statements, whole-file refusal before connecting (CLI), both grids against the test databases with one tenant without `branches.currency` (grid 1 `0` for it, `1` for the other; grid 2 `branches currency`), no gym name / password / e-mail in output, `PREPARE FROM @var` with a DELETE refused at runtime and row count unchanged, the session refuses an UPDATE (READ ONLY), missing-config message | red: module missing (suite failed to run); green 54 / 54; NEW-123 / NEW-124 suites 62 / 62; SEC-16 19 / 19; lint clean |
+
+Not tested: Windows / the production server. Note: the SQL header said "No personal data is selected" but grid 1 selects `gym_name`; the runner hides it.
+
+Run on the server (PowerShell, in the app folder that holds `server.js` and `.env`): `node src\scripts\run-sql-check.js docs\sql\new-124-tenant-schema-check.sql`. Deploy: none beyond copying the branch's files (no migration, no env variable, no restart needed; `server.js` is unchanged).
+
 ---
 
 ## 14. Remaining risks and open decisions
@@ -3217,6 +3229,7 @@ Deploy (owner): push and merge `fix/new-123-iisnode-real`, deploy; `server.js` i
 ---
 
 ## 16. Production deployment checklist
+
 
 ### Infrastructure
 - [ ] Separate staging and production: databases, buckets, keys, store apps (Apple/Google test tracks), Stripe accounts.

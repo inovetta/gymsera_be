@@ -7,6 +7,10 @@
 -- SELECTs only, over information_schema and `tenants`. No INSERT, UPDATE, DELETE, CREATE, ALTER,
 -- DROP, no prepared statements. No personal data is selected.
 --
+-- Without a mysql client (the API server), from the app folder that holds server.js and .env:
+--   node src/scripts/run-sql-check.js docs/sql/new-124-tenant-schema-check.sql
+-- It uses the API's PLATFORM_DB_* settings, runs read-only, and prints gym_name as [hidden].
+--
 -- Send the agent both result grids.
 
 -- ─────────────────────────────────────────────────────────────────────────────
