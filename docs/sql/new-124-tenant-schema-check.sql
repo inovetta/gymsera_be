@@ -23,18 +23,24 @@ SELECT
   t.gym_name,
   t.db_name,
   t.updated_at AS tenant_updated_at,
+  t.status,
   (SELECT COUNT(*) FROM information_schema.TABLES x
      WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = 'schema_migrations') AS has_schema_migrations,
   (SELECT COUNT(*) FROM information_schema.COLUMNS c
      WHERE c.TABLE_SCHEMA = t.db_name AND c.TABLE_NAME = 'branches' AND c.COLUMN_NAME = 'currency') AS has_branches_currency
 FROM tenants t
-WHERE t.status = 'ACTIVE'
+WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
 ORDER BY t.updated_at DESC;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. Every column the code selects from `branches` and `gyms` (generated from
 --    src/models/tenant/Branch.model.js and Gym.model.js on 2026-10-26) that a live tenant
---    database does NOT have. No row = that tenant is fine for the Gyms tab.
+--    database does NOT have, plus one row `schema_migrations | (table)` for a tenant database
+--    with no migration table at all (NEW-127/128: such a database needs
+--    `node src/scripts/repair-tenant-schema.js --tenant <code>`, not the normal runner).
+--    No row = that tenant is fine for the Gyms tab.
+--    SUSPENDED and PENDING_DELETION tenants are included: both can go live again without a
+--    migration step (NEW-127).
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
   t.tenant_code,
@@ -97,10 +103,20 @@ JOIN (
   UNION ALL SELECT 'gyms' AS table_name, 'created_at' AS column_name
   UNION ALL SELECT 'gyms' AS table_name, 'updated_at' AS column_name
 ) e
-WHERE t.status = 'ACTIVE'
+WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
   AND EXISTS (SELECT 1 FROM information_schema.TABLES x
                 WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = e.table_name)
   AND NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS c
                     WHERE c.TABLE_SCHEMA = t.db_name AND c.TABLE_NAME = e.table_name
                       AND c.COLUMN_NAME = e.column_name)
-ORDER BY t.tenant_code, e.table_name, e.column_name;
+UNION ALL
+SELECT
+  t.tenant_code,
+  t.db_name,
+  'schema_migrations' AS table_name,
+  '(table)' AS missing_column
+FROM tenants t
+WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
+  AND NOT EXISTS (SELECT 1 FROM information_schema.TABLES x
+                    WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = 'schema_migrations')
+ORDER BY tenant_code, table_name, missing_column;

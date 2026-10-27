@@ -352,8 +352,10 @@ const safeError = (err) => redactString(`${err.code || err.name || 'Error'}: ${e
 
 /**
  * Checks and runs one .sql file. `write` receives the output. Returns the exit code.
+ * `progress` is filled while it runs (statement, line, finished) so the CLI can say where a run
+ * that ended without finishing stopped (NEW-128).
  */
-const run = async ({ sqlPath, write = (s) => process.stdout.write(s) } = {}) => {
+const run = async ({ sqlPath, write = (s) => process.stdout.write(s), progress = {} } = {}) => {
   if (!sqlPath || !fs.existsSync(sqlPath)) {
     write(`Usage: node src/scripts/run-sql-check.js <file.sql>\n${sqlPath ? `File not found: ${sqlPath}\n` : ''}`);
     return 3;
@@ -388,8 +390,10 @@ const run = async ({ sqlPath, write = (s) => process.stdout.write(s) } = {}) => 
   let conn;
   let grid = 0;
   try {
+    progress.stage = 'connecting';
     conn = await openReadOnlyConnection();
-    for (const st of statements) {
+    for (const [index, st] of statements.entries()) {
+      Object.assign(progress, { stage: 'statement', index: index + 1, total: statements.length, line: st.line });
       if (st.kind === 'prepare' && st.source === 'variable') {
         const [[row]] = await conn.query(`SELECT @${st.variable} AS q`);
         const value = row && row.q !== null && row.q !== undefined ? String(row.q) : '';
@@ -402,6 +406,7 @@ const run = async ({ sqlPath, write = (s) => process.stdout.write(s) } = {}) => 
       }
       let result;
       let fields;
+      const startedAt = Date.now();
       try {
         [result, fields] = await conn.query(st.text);
       } catch (err) {
@@ -411,11 +416,13 @@ const run = async ({ sqlPath, write = (s) => process.stdout.write(s) } = {}) => 
       if ((st.kind === 'select' || st.kind === 'execute') && Array.isArray(result)) {
         grid += 1;
         const columns = result.length ? Object.keys(result[0]) : (fields || []).map((f) => f.name);
-        write(`Grid ${grid} (line ${st.line}): ${result.length} row${result.length === 1 ? '' : 's'}\n`);
+        const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+        write(`Grid ${grid} (line ${st.line}): ${result.length} row${result.length === 1 ? '' : 's'} in ${seconds} s\n`);
         write(formatTable(columns, result));
         write('\n');
       }
     }
+    progress.stage = 'done';
     write(`Done: ${grid} grid${grid === 1 ? '' : 's'}. Nothing was changed (read-only session, rolled back).\n`);
     return 0;
   } catch (err) {
@@ -433,12 +440,43 @@ const run = async ({ sqlPath, write = (s) => process.stdout.write(s) } = {}) => 
   }
 };
 
+/**
+ * NEW-128: what to print when the process is ending but `run` never returned. A MySQL link that
+ * disappears without an 'error' event leaves the query promise pending and nothing else alive,
+ * so Node simply exits (code 0, no output) — grid 1, then silence, on production.
+ */
+const unfinishedMessage = (progress, cause) => {
+  const where = progress.stage === 'statement'
+    ? `while running line ${progress.line} (statement ${progress.index} of ${progress.total})`
+    : `while ${progress.stage || 'starting'}`;
+  const why = cause ? safeError(cause) : 'the database connection ended without an error';
+  return `ERROR: the run ended before it finished, ${where}: ${why}.\n` +
+    'Nothing was changed (read-only session). Run it again; if it stops at the same line, send this whole output.\n';
+};
+
 if (require.main === module) {
   require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
   const file = process.argv[2] ? path.resolve(process.argv[2]) : null;
-  run({ sqlPath: file }).then((code) => {
-    process.exitCode = code;
-  });
+  const progress = {};
+  let returned = false;
+  let reported = false;
+  const fail = (cause) => {
+    if (returned || reported) return;
+    reported = true;
+    // Synchronous: the process is about to end.
+    fs.writeSync(1, unfinishedMessage(progress, cause));
+    process.exitCode = 1;
+  };
+  process.on('beforeExit', () => fail(null));
+  process.on('uncaughtException', (err) => { fail(err); process.exit(1); });
+  process.on('unhandledRejection', (err) => { fail(err); process.exit(1); });
+  run({ sqlPath: file, progress }).then(
+    (code) => {
+      returned = true;
+      process.exitCode = code;
+    },
+    (err) => fail(err)
+  );
 }
 
-module.exports = { splitStatements, checkStatement, checkFile, formatTable, isHiddenColumn, openReadOnlyConnection, run };
+module.exports = { splitStatements, checkStatement, checkFile, formatTable, isHiddenColumn, openReadOnlyConnection, run, unfinishedMessage };
