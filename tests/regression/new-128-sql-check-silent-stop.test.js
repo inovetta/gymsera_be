@@ -65,6 +65,14 @@ test('grid 2 reports the tenant that has no schema_migrations table, and its mis
   expect(grid2).not.toContain(h.tenant2.database);
 });
 
+test('the NEW-127 history check passes the guard and runs to Done (four grids; grid 4 lists the tenant without schema_migrations)', () => {
+  const { status, out } = cli([path.join(__dirname, '..', '..', 'docs', 'sql', 'new-127-tenant-history.sql')]);
+  expect(out).toMatch(/^Done: 4 grids\./m);
+  expect(status).toBe(0);
+  const grid4 = out.slice(out.indexOf('Grid 4'));
+  expect(grid4).toMatch(new RegExp(`\\|\\s*${tenant.tenant_code}\\s*\\|`));
+});
+
 test('the link vanishing during grid 2 (no error event; the process would just end) prints an ERROR naming the statement and exits non-zero', () => {
   const r = spawnSync(process.execPath, ['-r', PRELOAD, SCRIPT, CHECK_SQL], {
     env: { ...process.env, SQL_CHECK_VANISH_ON: 'missing_column' },
