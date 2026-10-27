@@ -66,6 +66,8 @@ describe('SMTP settings have no built-in fallback', () => {
         SMTP_PASS: '',
         PORT: '0',
         NODE_ENV: 'test',
+        // Not staging (a local .env may say apistaging): only SMTP may stop it here (NEW-131).
+        APP_URL: 'http://localhost:3000',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -87,12 +89,16 @@ describe('SMTP settings have no built-in fallback', () => {
 
   test('the Vercel entry point refuses to load without SMTP_PASS', () => {
     const saved = process.env.SMTP_PASS;
+    const savedAppUrl = process.env.APP_URL;
     process.env.SMTP_PASS = '';
+    process.env.APP_URL = 'http://localhost:3000'; // not staging, see above (NEW-131)
     try {
       expect(() => jest.isolateModules(() => require('../../api/index'))).toThrow(/SMTP is not configured/);
     } finally {
       if (saved === undefined) delete process.env.SMTP_PASS;
       else process.env.SMTP_PASS = saved;
+      if (savedAppUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = savedAppUrl;
     }
   });
 });

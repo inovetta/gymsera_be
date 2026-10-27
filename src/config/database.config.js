@@ -8,6 +8,9 @@
  */
 const REQUIRED_DATABASE_SETTINGS = ['PLATFORM_DB_PASS', 'TENANT_DB_ADMIN_PASS', 'TENANT_DB_PASS'];
 
+/** The platform database name when PLATFORM_DB_NAME is unset (also the production name by default, NEW-131). */
+const DEFAULT_PLATFORM_DB_NAME = 'gymsera_platform';
+
 /** The required database password variables that are not set at all in `env`. */
 const missingDatabaseSettings = (env = process.env) => REQUIRED_DATABASE_SETTINGS.filter((key) => env[key] === undefined);
 
@@ -32,7 +35,7 @@ module.exports = {
   platform: {
     host: process.env.PLATFORM_DB_HOST || 'localhost',
     port: parseInt(process.env.PLATFORM_DB_PORT || '3306'),
-    database: process.env.PLATFORM_DB_NAME || 'gymsera_platform',
+    database: process.env.PLATFORM_DB_NAME || DEFAULT_PLATFORM_DB_NAME,
     username: process.env.PLATFORM_DB_USER || 'gymsera',
     password: process.env.PLATFORM_DB_PASS,
   },
@@ -48,6 +51,7 @@ module.exports = {
     pass: process.env.TENANT_DB_PASS,
   },
   REQUIRED_DATABASE_SETTINGS,
+  DEFAULT_PLATFORM_DB_NAME,
   missingDatabaseSettings,
   assertDatabaseConfigured,
 };
