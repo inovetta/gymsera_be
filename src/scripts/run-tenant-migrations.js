@@ -2,16 +2,44 @@
  * CLI runner for tenant database migrations.
  *
  * Usage:
- *   node src/scripts/run-tenant-migrations.js
+ *   node src/scripts/run-tenant-migrations.js            apply
+ *   node src/scripts/run-tenant-migrations.js --dry-run  preview
+ *   node src/scripts/run-tenant-migrations.js --check    read-only; exit 1 if any tenant is behind
+ *                                                        or unreadable (deploy gate, NEW-126)
  *
  * Runs all pending migrations across all active tenant databases,
  * tracking schema_migrations per tenant and reporting results.
  */
 require('dotenv').config();
 const { connect: connectPlatform } = require('../database/platform');
-const { runAllTenantMigrations, TARGET_SCHEMA_VERSION } = require('../database/tenant-migration-runner');
+const {
+  runAllTenantMigrations, checkTenantSchemaVersions, repairCommand, TARGET_SCHEMA_VERSION,
+} = require('../database/tenant-migration-runner');
+
+/** NEW-126: read-only gate. Returns the exit code. */
+async function check(write = (s) => process.stdout.write(s)) {
+  const result = await checkTenantSchemaVersions();
+  write(`Tenant schema check (target v${TARGET_SCHEMA_VERSION}): ${result.checked} tenant database(s) checked\n`);
+  for (const t of result.behind) {
+    const fix = t.hasMigrationTable ? 'node src/scripts/run-tenant-migrations.js --dry-run' : repairCommand(t.tenantCode);
+    write(`BEHIND     ${t.tenantCode} (${t.status}) at v${t.currentVersion}${t.hasMigrationTable ? '' : ', NO schema_migrations table'}; missing ${t.missingVersions.join(', ')}. Fix: ${fix}\n`);
+  }
+  for (const f of result.failed) write(`UNCHECKED  ${f.tenantCode || '(tenant list)'}: ${f.error}\n`);
+  if (result.behind.length || result.failed.length) {
+    write(`FAILED: ${result.behind.length} behind, ${result.failed.length} unchecked.\n`);
+    return 1;
+  }
+  write('OK: every tenant database is at the target.\n');
+  return 0;
+}
 
 async function main() {
+  if (process.argv.includes('--check')) {
+    await connectPlatform();
+    process.exitCode = await check();
+    await require('../database/platform').sequelize.close().catch(() => {});
+    return;
+  }
   const isDryRun = process.argv.includes('--dry-run');
 
   console.log(`🚀 Starting tenant database migrations (target version: v${TARGET_SCHEMA_VERSION}, mode: ${isDryRun ? 'DRY-RUN' : 'LIVE'})...\n`);
@@ -66,7 +94,11 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error('Fatal migration error:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Fatal migration error:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { check };

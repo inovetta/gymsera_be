@@ -16,6 +16,7 @@ missing **What it means**, **First checks** or **Rollback**.
 | `BILLING_DUPLICATE_BILLING` | [billing-events.md](billing-events.md#billing_duplicate_billing) |
 | `BILLING_PRICE_MISMATCH` | [billing-prices.md](billing-prices.md#billing_price_mismatch) |
 | `BILLING_PRICE_CHECK_FAILED` | [billing-prices.md](billing-prices.md#billing_price_check_failed) |
+| `TENANT_SCHEMA_BEHIND` | [tenant-schema.md](tenant-schema.md#tenant_schema_behind) |
 
 ## Procedures (not tied to an alert code)
 

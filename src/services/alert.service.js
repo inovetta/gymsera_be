@@ -63,6 +63,10 @@ const ALERTS = Object.freeze({
     title: 'The Play Console price check could not read some plans',
     runbook: 'docs/runbooks/billing-prices.md#billing_price_check_failed',
   },
+  TENANT_SCHEMA_BEHIND: {
+    title: 'Tenant databases behind the schema target',
+    runbook: 'docs/runbooks/tenant-schema.md#tenant_schema_behind',
+  },
 });
 
 // code -> epoch ms of the last alert (or reservation) in this process
