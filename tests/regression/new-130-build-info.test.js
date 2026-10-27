@@ -62,9 +62,11 @@ describe('readBuildInfo', () => {
 describe('/health and the boot line', () => {
   const saved = {};
   beforeAll(() => {
-    for (const k of ['GYMSERA_BUILD_COMMIT', 'GYMSERA_BUILD_TIME']) saved[k] = process.env[k];
+    for (const k of ['GYMSERA_BUILD_COMMIT', 'GYMSERA_BUILD_TIME', 'PLATFORM_DB_NAME']) saved[k] = process.env[k];
     process.env.GYMSERA_BUILD_COMMIT = '0123456789abcdef0123456789abcdef01234567';
     process.env.GYMSERA_BUILD_TIME = '2026-10-27T11:00:00Z';
+    // Set here, not inherited: CI has no PLATFORM_DB_NAME (the app then uses its built-in name).
+    process.env.PLATFORM_DB_NAME = 'gymsera_test_n130_platform';
   });
   afterAll(async () => {
     await require('../harness/test-server').stopTestServer();
@@ -95,7 +97,7 @@ describe('/health and the boot line', () => {
       expect(line).toMatch(/ commit=0123456789ab /);
       expect(line).toMatch(/ built=2026-10-27T11:00:00Z /);
       expect(line).toMatch(/ started=\d{4}-\d\d-\d\dT/);
-      expect(line).toMatch(new RegExp(` platformDb=${process.env.PLATFORM_DB_NAME} `));
+      expect(line).toMatch(/ platformDb=gymsera_test_n130_platform /);
     } finally {
       log.mockRestore();
     }
