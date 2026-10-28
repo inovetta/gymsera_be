@@ -279,6 +279,7 @@ Report per Prompt G.
 
 ```text
 1. BUG-26: the city picker and Home city chips show only cities with at least one live branch (D6: tenant ACTIVE, subscription entitled, branch approved and visible, at least one traveller-visible plan). Backend endpoint returns these with counts; cached with the existing discovery snapshot and invalidated by the existing hooks. Default city = nearest live city to the user, else the first live city.
+   (Checked 2026-10-28, spec §13 "Phase 7 P3 device follow-ups": `/discovery/cities` lists every active city, 21 of 30 with no live gym; the snapshot does not check subscription entitlement yet. The website's owner registration form reads the same endpoint for its city list (`web/src/components/features/gym-owner-register.tsx:244-247`): move it to `/cities` or the Places search in the same change, or a first host in a new city cannot register on the web.)
 2. BUG-27: ratings and review counts come only from approved reviews. No review = "New" (no stars, no count). Remove every invented count.
 3. BUG-28: cards use the branch/listing cover photo, then the first gallery photo, then a neutral placeholder. Find why uploaded photos are not reaching discovery responses.
 4. BUG-29: display name rule: if branch name equals organization name, show it once; otherwise "Organization · Branch". Same rule on web and CMS.
