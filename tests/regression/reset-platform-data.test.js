@@ -46,7 +46,9 @@ async function seed() {
   await conn.query('CREATE TABLE notifications (id INT PRIMARY KEY)');
   await conn.query('CREATE TABLE refresh_tokens (id INT PRIMARY KEY, user_id INT)');
   await conn.query('CREATE TABLE users (id INT PRIMARY KEY, email VARCHAR(100), role VARCHAR(30))');
-  await conn.query('CREATE TABLE tenants (id INT PRIMARY KEY, status VARCHAR(20), dbName VARCHAR(100))');
+  // The real column names (Tenant model, underscored: true). NEW-136: this table used `dbName`, so the test passed
+  // while the service could not read the real `tenants.db_name`.
+  await conn.query('CREATE TABLE tenants (id INT PRIMARY KEY, tenant_code VARCHAR(50), status VARCHAR(20), db_name VARCHAR(100))');
   for (const t of ['schema_migrations']) await conn.query(`INSERT INTO ${t} VALUES ('001'),('002')`);
   for (const t of ['billing_plans', 'billing_plan_prices', 'platform_packages', 'cities', 'areas']) {
     await conn.query(`INSERT INTO ${t} VALUES (1),(2),(3)`);
@@ -57,7 +59,10 @@ async function seed() {
     'INSERT INTO users VALUES (1,?,?),(2,?,?),(3,\'member@gymsera.test\',\'MEMBER\'),(4,\'host@gymsera.test\',\'GYM_HOST\')',
     [ADMIN, 'PLATFORM_ADMIN', OTHER_ADMIN, 'PLATFORM_ADMIN']
   );
-  await conn.query('INSERT INTO tenants VALUES (1,\'ACTIVE\',?),(2,\'PROVISIONING_FAILED\',?)', [TENANT_A, TENANT_B]);
+  await conn.query(
+    'INSERT INTO tenants VALUES (1,\'GYM-RESETA\',\'ACTIVE\',?),(2,\'GYM-RESETB\',\'PROVISIONING_FAILED\',?)',
+    [TENANT_A, TENANT_B]
+  );
   for (const d of [TENANT_A, TENANT_B, BYSTANDER]) await admin.query(`CREATE TABLE \`${d}\`.members (id INT)`);
 }
 
@@ -134,9 +139,25 @@ describe('reset-platform-data', () => {
     expect(await dbExists(PLATFORM)).toBe(true);
   });
 
+  test('the plan lists each tenant_code with the db_name read from tenants (NEW-136)', async () => {
+    const r = await run();
+    expect(r.plan.tenants).toEqual([
+      { id: 1, tenantCode: 'GYM-RESETA', status: 'ACTIVE', dbName: TENANT_A },
+      { id: 2, tenantCode: 'GYM-RESETB', status: 'PROVISIONING_FAILED', dbName: TENANT_B },
+    ]);
+  });
+
+  test('never works a name out from tenant_code: a tenant with no db_name keeps the database the naming rule would give (R-79)', async () => {
+    // buildDbName('test_reset_bystander') is BYSTANDER; the row does not name it, so it is not the wipe's to drop.
+    await conn.query('INSERT INTO tenants VALUES (3,\'test_reset_bystander\',\'PROVISIONING_FAILED\',NULL)');
+    const r = await run({ confirm: true, db: PLATFORM, host: HOST, dropTenantDatabases: true });
+    expect(r.droppedDatabases.sort()).toEqual([TENANT_A, TENANT_B]);
+    expect(await dbExists(BYSTANDER)).toBe(true);
+  });
+
   test('never drops a system schema, the platform database or an oddly named database from the tenants table', async () => {
-    await conn.query('UPDATE tenants SET dbName = \'mysql\' WHERE id = 1');
-    await conn.query('UPDATE tenants SET dbName = ? WHERE id = 2', [PLATFORM]);
+    await conn.query('UPDATE tenants SET db_name = \'mysql\' WHERE id = 1');
+    await conn.query('UPDATE tenants SET db_name = ? WHERE id = 2', [PLATFORM]);
     const r = await run({ confirm: true, db: PLATFORM, host: HOST, dropTenantDatabases: true });
     expect(r.droppedDatabases).toEqual([]);
     expect(r.leftInPlace.sort()).toEqual([PLATFORM, 'mysql'].sort());

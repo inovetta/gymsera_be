@@ -3206,6 +3206,14 @@ Not verified here: the IIS logs that would show which site approved GYM-4814C134
 
 Next prompt: **P3** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5, Google Maps, Places and location; D5 decided as R-76).
 
+### Drop tools take names only from `tenants.db_name` 2026-10-28 (R-79, Claude Code Opus 5.5)
+
+The owner asked that no tenant database name is inferred, and that the launch wipe and the orphan-database drop refuse a name the `tenants` table does not hold (R-79). Checked both on `docs/new-127-verified` (`83bdf91` + docs).
+
+| Issue | Root cause | Pattern reused | Fix | Test | Result |
+|---|---|---|---|---|---|
+| **NEW-136** (P1, launch blocker) the launch wipe cannot read the real `tenants` table | `platform-reset.service.js:100` ran `` SELECT id, status, `dbName` FROM tenants ``. The Tenant model is `underscored: true`, so the column is `db_name` (checked on the local MySQL 5.7 schema; every `docs/sql` check uses `db_name`). On the real schema the plan step fails `Unknown column 'dbName'`, dry run included, so the wipe could not run (it failed before any delete, so nothing was lost). The test created its own `tenants` table with a `dbName` column, which hid it. Names already came only from that read, never from `tenant_code` | the existing plan / drop loop and its refusals | Reads `id, tenant_code, status, db_name`; the plan line lists `tenantCode` next to `dbName`, so the dry run can be compared with the R-79 query. A tenant with NULL `db_name` is skipped (as before) | `tests/regression/reset-platform-data.test.js` (9): scratch table now has the real column names; new: the plan lists `tenant_code` with `db_name`; a tenant with NULL `db_name` whose naming-rule database exists keeps it | Red 7/9 (`Unknown column 'dbName'`), green 9/9 |
+
 ---
 
 ## 14. Remaining risks and open decisions
@@ -3293,6 +3301,7 @@ Next prompt: **P3** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5, Google Maps, Place
 | R-76 | Google Maps / Places billing and the Maps key (Phase 7 D5, BUG-01 to 04, NEW-109) | Amir | **DECIDED 2026-10-26: approved, with a budget alert.** The key committed in the app (`AndroidManifest.xml`, `AppDelegate.swift`) is a **restricted client key**; the owner is confirming its restrictions in Google Cloud. In P3 the agent only moves it out of source into build-time config. **No new key is created and the key is not rotated** (supersedes the "rotate" step in the NEW-109 ledger row). |
 | R-77 | What counts as a live gym in traveller city lists (Phase 7 D6, BUG-26) | Amir | **DECIDED 2026-10-26:** tenant ACTIVE **and** subscription entitled (paid or in grace) **and** branch approved **and** branch visible **and** at least one plan visible to travellers (P6). |
 | R-78 | Host intro marketing numbers (Phase 7 D7, BUG-07) | Amir | **DECIDED 2026-10-26:** the invented "12k+ active users", "98% growth", "24/7" are replaced with real numbers from the API (P8). No invented number ships. |
+| R-79 | Which tenant database a drop may touch (launch wipe, orphan drop, any manual drop) | Amir | **DECIDED 2026-10-28:** a tenant database name is **never inferred** (not from the `gymsera_<tenant code>` naming rule, not from memory, not from a doc). Immediately before any drop, read it from the platform `tenants` table for that `tenant_code` with the read-only query in `docs/runbooks/launch-wipe.md`. Tools drop only a name that a `tenants.db_name` row holds; a tenant with no `db_name` is left for the owner to decide by hand. |
 
 **P1 owner and date (§17.2).** Recorded above as R-39 to R-62 from [`P1_OWNER_DATE.md`](P1_OWNER_DATE.md) (filled by the owner, merged in #147). R-63 to R-69 record the §17 criteria accepted as launch gaps, each with a date. R-72 to R-78 are the Phase 7 owner decisions D1 to D7 (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §1), recorded 2026-10-26.
 

@@ -8,7 +8,8 @@
  * Kept:   schema_migrations, billing_plans, billing_plan_prices, platform_packages, cities, areas,
  *         and the platform admin users named with --keep-admin.
  * Emptied: every other base table in the platform database.
- * Tenant databases: dropped only with dropTenantDatabases, only the names found in `tenants.dbName`, each one logged.
+ * Tenant databases: dropped only with dropTenantDatabases, only the names found in `tenants.db_name`, each one logged.
+ *   A tenant with no db_name is skipped; a name is never worked out from tenant_code (R-79).
  *
  * Not covered here (the day-of runbook lists them): object storage (R2), Redis, push tokens held by Firebase.
  */
@@ -97,8 +98,10 @@ const planReset = async (conn, { keepAdmins }) => {
   if (!plan.users) throw refusal('the platform database has no users table; refusing', 'no_users_table');
 
   if (names.includes('tenants')) {
-    const [rows] = await conn.query('SELECT id, status, `dbName` FROM tenants');
-    plan.tenants = rows.map((r) => ({ id: r.id, status: r.status, dbName: r.dbName }));
+    // The real columns are tenant_code and db_name (Tenant model, underscored). NEW-136: this read `dbName`,
+    // which does not exist, so the wipe stopped at its plan step. Names come only from this read (R-79).
+    const [rows] = await conn.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id');
+    plan.tenants = rows.map((r) => ({ id: r.id, tenantCode: r.tenant_code, status: r.status, dbName: r.db_name }));
   }
   return plan;
 };
@@ -146,7 +149,7 @@ const runReset = async ({
     tables: plan.tables,
     users: plan.users,
     adminIdsKept: plan.keepIds,
-    tenantDatabases: tenantDbs.map((t) => ({ tenantId: t.id, status: t.status, dbName: t.dbName, droppable: t.ok })),
+    tenantDatabases: tenantDbs.map((t) => ({ tenantId: t.id, tenantCode: t.tenantCode, status: t.status, dbName: t.dbName, droppable: t.ok })),
   });
 
   const result = { mode, plan, log, removed: [], droppedDatabases: [], leftInPlace: [] };
