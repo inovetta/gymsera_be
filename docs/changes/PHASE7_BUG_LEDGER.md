@@ -255,3 +255,22 @@ Detail: spec §13 "Phase 7 Prompt P3". Local branches, not pushed: be `fix/p3-go
 
 New: NEW-138 (P2, P6), NEW-139 (P2, P6/P8), NEW-140 (P2, P9). See spec §13.
 
+## P3 device follow-ups (2026-10-28, Claude Code Opus 5.5)
+
+Owner device test on iOS (production): P3 map, pin, current location and address autocomplete work. Detail: spec §13 "Phase 7 P3 device follow-ups". Local branches, not pushed: be `fix/p3-device-followups` (`e0fd34f`), app `fix/p3-device-followups` (`bca5ba4`).
+
+| ID | Status | Fix / test |
+|---|---|---|
+| NEW-141 (P1) | **FIXED** (not yet on a device) | map hint moved under the map, off Google's logo. app `p3_places_become_host_test.dart` |
+| NEW-142 (P1) | **FIXED** (not yet on a device) | autocomplete limited to the city's country (p025 `cities.country_code`), else `GOOGLE_PLACES_REGION_CODES`, else `pk`; address biased to the city centre; app sends the city. be `p3-places-country.test.js`, `platform-migrations-p025.test.js` |
+| NEW-143 (P1) | **FIXED** (not yet on a device) | suggestions scroll into view; sticky bars hidden while the keyboard is up. app `p3_places_become_host_test.dart` |
+| BUG-26 | **CHECKED, NOT CORRECT, unchanged** (P6) | production `/discovery/cities`: 30 cities, 21 with `gymCount` 0; Bahawalpur 5, Abbottabad 5, Gujrat 2. The web owner registration uses the same list, so P6 changes both (spec §13) |
+
+## NEW-144 (2026-10-28, Claude Code Opus 5.5): iOS purchase sync failing on production
+
+| ID | Severity | Status | Root cause | Fix / test | Prompt |
+|---|---|---|---|---|---|
+| NEW-144 | P0 (money) | **FIXED** locally, not deployed | `axios` only in `devDependencies` (`package.json:53`, lockfile `dev: true`); production `npm install --omit=dev` skips it; `apple-billing.service.js:134,255` → `POST /billing/ios/sync` 500 `MODULE_NOT_FOUND` | be `fix/axios-runtime-dependency` (`b0929fd`): axios in `dependencies` (1.20.0, unchanged); `tests/regression/runtime-dependencies.test.js`. Production-style install check: all billing modules load and resolve | cross-reference **P7a** (booking and payment): re-test iOS purchase and restore after deploy; recover purchases made while sync failed |
+
+Detail: spec §13 "NEW-144".
+
