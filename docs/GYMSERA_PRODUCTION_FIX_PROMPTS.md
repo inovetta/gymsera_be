@@ -302,6 +302,7 @@ Report per Prompt G.
 3. BUG-31: a pending request shows no start or expiry date until the host approves; after approval show the real dates. Check My Plans, plan detail and the CMS subscription screens.
 4. Remove or hide payment options that are "Not available for this gym" unless the host has them configured.
 5. Confirm the old /home/checkout/add-card route is gone or unreachable after SEC-09.
+6. NEW-144 (fixed 2026-10-28, spec §13): iOS purchase sync answered 500 on production because axios was a dev-only package. After its deploy, test an iOS sandbox purchase and Restore Purchases end to end, and recover purchases made while sync was failing.
 
 Report per Prompt G.
 ```

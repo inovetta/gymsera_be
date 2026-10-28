@@ -3263,6 +3263,22 @@ Tests: be full suite 243/243 suites, 2500/2500 (local Docker MySQL 5.7, `DISABLE
 
 Not tested: real Google (no network in tests); the device itself (owner re-test: hint under the map, "Pesh" shows Peshawar results only, at least 4 suggestions with the keyboard up on Become a Host step 1 and step 2, Add Branch and Edit Location).
 
+### NEW-144: iOS purchase sync 500 "Cannot find module 'axios'" on production 2026-10-28 (Claude Code Opus 5.5; cross-reference P7a)
+
+Owner evidence: the production error journal shows `POST /api/v1/billing/ios/sync` answering 500 `MODULE_NOT_FOUND` "Cannot find module 'axios'" (required by `src/services/apple-billing.service.js`). Production installs with `npm install --omit=dev`. Branch be `fix/axios-runtime-dependency` from `origin/main` `6b9478b`, not pushed.
+
+| Issue | Root cause (file:line) | Pattern reused | Fix | Test | Result |
+|---|---|---|---|---|---|
+| **NEW-144** (P0, money: iOS purchases not recorded on production) | `package.json:53` declares `axios` in `devDependencies`; `package-lock.json` marks `axios`, `follow-redirects`, `form-data` and `proxy-from-env` `"dev": true` (and `form-data`'s `asynckit` / `combined-stream` / `delayed-stream` `devOptional`), so `--omit=dev` leaves them out. `apple-billing.service.js:134` (transaction lookup, used by iOS sync and verify) and `:255` (subscription status) require it inside the function, so the server starts and only those calls fail | npm's own `--save-prod`; jest regression test | `axios` moved to `dependencies` at the version already locked (1.20.0, range `^1.20.0`); lockfile updated by npm (`--package-lock-only`), no version change | `tests/regression/runtime-dependencies.test.js` (3): reads every `require` / `import` in `src/`, `server.js`, `app.js` (comments ignored; the vendored `src/socket/socket-bundle.js` excluded: its `bufferutil` / `utf-8-validate` are optional, in try/catch) and fails if a package is not in `dependencies` or the lockfile marks it, or anything it needs (resolved as Node does), dev or devOptional | red 2/3 on `main`, green 3/3 |
+
+**Scan (item 2).** 316 files, 32 packages. Only `axios` is required at run time and not in `dependencies`. Not real: `bufferutil`, `utf-8-validate` (optional, vendored bundle), and two words in comments that a plain text search reads as module names.
+
+**Production-style install (item 4).** `git archive origin/main` → `npm ci --omit=dev --ignore-scripts`, then load each billing module and resolve every package it requires, including requires inside functions: `apple-billing`, `google-play-billing`, `stripe-billing`, `billing-event`, `billing-plan-catalog`, `branch-billing-lock`, `subscription-migration`, `subscription-quota`, `payment` services, `billing` / `billing-plans` controllers and routes, and `app.js`. On `main`: every module and `app.js` load; **`axios` does not resolve** (2 failures, both in `apple-billing.service.js`): the production failure. Every other package those files require resolves, so Google Play verify and the webhook handlers (in the billing controller, routes and services above) load in a production install; only the Apple calls that use axios fail. With the fix: all load and every package resolves.
+
+**Deploy (no migration, no env change).** On the API server: `git pull`, `npm install --omit=dev` (installs axios), `iisreset`. Check: `node -e "require.resolve('axios')"` in the app folder prints a path, then an iOS sandbox purchase or restore on a device answers 200 on `/billing/ios/sync`.
+
+**Open (P7a / owner).** iOS purchases made while sync answered 500 may not be recorded on our side (the app got an error, so no entitlement was granted). After the deploy: check the error journal for each failed `/billing/ios/sync` since axios moved to dev, and have those users run Restore Purchases (or re-sync) on the fixed server; check `billing_events` for the matching transactions. Not checked here (no production database access from this session).
+
 Next prompt: **P4** (`GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5, membership plans).
 
 ---

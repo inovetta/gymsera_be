@@ -266,3 +266,11 @@ Owner device test on iOS (production): P3 map, pin, current location and address
 | NEW-143 (P1) | **FIXED** (not yet on a device) | suggestions scroll into view; sticky bars hidden while the keyboard is up. app `p3_places_become_host_test.dart` |
 | BUG-26 | **CHECKED, NOT CORRECT, unchanged** (P6) | production `/discovery/cities`: 30 cities, 21 with `gymCount` 0; Bahawalpur 5, Abbottabad 5, Gujrat 2. The web owner registration uses the same list, so P6 changes both (spec §13) |
 
+## NEW-144 (2026-10-28, Claude Code Opus 5.5): iOS purchase sync failing on production
+
+| ID | Severity | Status | Root cause | Fix / test | Prompt |
+|---|---|---|---|---|---|
+| NEW-144 | P0 (money) | **FIXED** locally, not deployed | `axios` only in `devDependencies` (`package.json:53`, lockfile `dev: true`); production `npm install --omit=dev` skips it; `apple-billing.service.js:134,255` → `POST /billing/ios/sync` 500 `MODULE_NOT_FOUND` | be `fix/axios-runtime-dependency` (`b0929fd`): axios in `dependencies` (1.20.0, unchanged); `tests/regression/runtime-dependencies.test.js`. Production-style install check: all billing modules load and resolve | cross-reference **P7a** (booking and payment): re-test iOS purchase and restore after deploy; recover purchases made while sync failed |
+
+Detail: spec §13 "NEW-144".
+
