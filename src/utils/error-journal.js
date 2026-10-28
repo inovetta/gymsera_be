@@ -132,9 +132,17 @@ const boot = () => {
   try {
     const dir = directory();
     const time = new Date().toISOString();
-    const written = dir ? append({ time, event: 'boot', pid: process.pid, node: process.version }) : null;
+    // NEW-130: which build this process loaded, since when, and which platform database it uses.
+    const { getBuildInfo, STARTED_AT } = require('./build-info');
+    const build = getBuildInfo();
+    const platform = require('../config/database.config').resolvePlatformDbName();
+    const platformDb = `${platform.name} (${platform.source})`;
+    const written = dir
+      ? append({ time, event: 'boot', pid: process.pid, node: process.version, commit: build.commit, builtAt: build.builtAt, platformDb: platform.name, platformDbSource: platform.source })
+      : null;
     console.log(
       `[ErrorJournal] boot pid=${process.pid} node=${process.version} NODE_ENV=${process.env.NODE_ENV || '(unset)'} ` +
+        `commit=${build.commit.slice(0, 12)} built=${build.builtAt || 'unknown'} started=${STARTED_AT} platformDb=${platformDb} ` +
         (dir ? `journal=${written || `NOT WRITTEN (${dir})`}` : 'journal=off')
     );
     return written;

@@ -98,7 +98,9 @@ process.on('SIGINT', () => shutdown('SIGINT', 0));
 async function bootstrap() {
   try {
     // 0. Refuse to start without SMTP settings or database passwords — there
-    //    is no built-in fallback for either.
+    //    is no built-in fallback for either — or as staging on the production
+    //    platform database (NEW-131).
+    require('./src/config/environment-guard').assertEnvironmentSafe();
     require('./src/config/smtp.config').assertSmtpConfigured();
     require('./src/config/database.config').assertDatabaseConfigured();
 

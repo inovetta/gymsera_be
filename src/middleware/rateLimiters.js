@@ -95,7 +95,10 @@ const build = (name, message, keyOf) => {
     max,
     standardHeaders: true,
     legacyHeaders: false,
-    validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
+    // Only keys express-rate-limit 7.5 knows: an unknown key logs a ValidationError per limiter at
+    // every startup (NEW-133). `keyGeneratorIpFallback` arrives in v8; set it to false on upgrade,
+    // since keyGenerator uses our own clientIp.
+    validate: { xForwardedForHeader: false },
     keyGenerator: (req) => keyOf(req) || 'none',
     skip: (req) => keyOf(req) === null,
     handler: handler(message),

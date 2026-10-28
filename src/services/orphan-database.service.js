@@ -89,7 +89,11 @@ const _countMoneyRows = async (adminConn, dbName) => {
  */
 const dropOrphanTenantDatabase = async ({ dbName, adminConn, apply = false, confirm, now = new Date() }) => {
   if (!SAFE_NAME.test(String(dbName))) throw new Error(`Refusing "${dbName}": only gymsera_* database names are handled.`);
-  if (dbName === (process.env.PLATFORM_DB_NAME || 'gymsera')) throw new Error('Refusing: that is the platform database.');
+  // The name the platform connection resolves (NEW-134); it used to compare with 'gymsera' while
+  // the connection fell back to 'gymsera_platform'.
+  if (dbName === require('../config/database.config').resolvePlatformDbName().name) {
+    throw new Error('Refusing: that is the platform database.');
+  }
   if (apply && confirm !== dbName) {
     throw new Error(`Refusing: pass --confirm ${dbName} (the exact database name) together with --apply.`);
   }
