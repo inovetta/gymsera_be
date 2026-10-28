@@ -238,3 +238,20 @@ Owner evidence on production (`83bdf91`; boot line `tenantDbHost=209.209.42.64`,
 | NEW-129 | P3 | Open, CI only: the test harness skips p017. Not a production issue |
 
 Test data: GYM-16516973 must be removed in the production launch wipe (`docs/runbooks/launch-wipe.md`). Read its database name from `tenants.db_name` immediately before the drop (R-79); never infer it.
+
+## P3 status (2026-10-28, Claude Code Opus 5.5)
+
+Detail: spec §13 "Phase 7 Prompt P3". Local branches, not pushed: be `fix/p3-google-places` (`fa8b134`), app `fix/p3-google-maps-places` (`e00da68`).
+
+| ID | Status | Fix / test |
+|---|---|---|
+| BUG-01 | **FIXED** (not yet on a device) | `/places` autocomplete + details, city/area upsert (p024); app `PlaceSearchField` on Location, Add Branch, Edit Location. be `p3-google-places.test.js`, app `p3_places_become_host_test.dart` |
+| BUG-02 | **FIXED** (not yet on a device) | `LocationMapPicker` (real Google map, draggable pin). app `p3_places_become_host_test.dart` |
+| BUG-03 | **FIXED** (not yet on a device) | GPS + `/places/reverse-geocode` fills address, city, area, lat/lng; permission states explained. app tests above, `p3_branch_location_editor_test.dart` |
+| BUG-04 | **FIXED** (not yet on a device) | address autocomplete; place id saved (`mainBranchData.placeId`, `branches.google_place_id`) |
+| NEW-109 | **FIXED** (key moved, not rotated, R-76) | app `maps_key_build_config_test.dart` |
+| Traveller location | **FIXED** | real position or the API city centre, no Karachi default, manual city selects. app `p3_traveller_location_test.dart` |
+| CMS branch form (P3 text) | **NOT DONE** | carried to P9 as NEW-140 |
+
+New: NEW-138 (P2, P6), NEW-139 (P2, P6/P8), NEW-140 (P2, P9). See spec §13.
+
