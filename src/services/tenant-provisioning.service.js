@@ -474,6 +474,7 @@ const stepCreateBranch = async (ctx) => {
         areaId: b.areaId || tenant.areaId || null,
         latitude: safeBranchLat,
         longitude: safeBranchLng,
+        googlePlaceId: b.placeId || null, // Phase 7 P3: the address the host picked from Google
         phone: b.phone || tenant.phone || null,
         openingTime: b.openingTime || null,
         closingTime: b.closingTime || null,

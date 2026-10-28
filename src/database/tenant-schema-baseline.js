@@ -56,6 +56,7 @@ const ADDS = {
   17: { columns: { payments: ['pending_change_json'] } },
   18: { columns: { payments: ['expires_at'] } },
   19: { columns: { branches: ['currency'] } },
+  20: { columns: { branches: ['google_place_id'] } },
 };
 
 /** One read of information_schema for the current database. */
@@ -208,6 +209,10 @@ const PROBES = {
   19: async (s) => columnOfType(
     s, 'branches', 'currency',
     (c) => ['varchar', 'char'].includes(type(c)) && Number(c.CHARACTER_MAXIMUM_LENGTH) >= 3
+  ),
+  20: async (s) => columnOfType(
+    s, 'branches', 'google_place_id',
+    (c) => type(c) === 'varchar' && Number(c.CHARACTER_MAXIMUM_LENGTH) >= 255
   ),
 };
 

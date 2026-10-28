@@ -215,7 +215,7 @@ describe('NEW-127: helpers', () => {
     const { dbName } = await tenantWithDb({ status: 'ACTIVE', shape: 'v18' });
     const s = new Sequelize(tenantUrl(dbName), { dialect: 'mysql', logging: false });
     try {
-      expect(await runner.missingTenantMigrations(s)).toEqual([19]);
+      expect(await runner.missingTenantMigrations(s)).toEqual(ALL_VERSIONS.filter((v) => v > 18));
       await s.query('DROP TABLE schema_migrations');
       expect(await runner.missingTenantMigrations(s)).toEqual(ALL_VERSIONS);
     } finally {

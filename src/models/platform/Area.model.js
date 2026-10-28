@@ -21,6 +21,12 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(500),
         allowNull: true,
       },
+      // Phase 7 P3: set when the area is picked from Google Places (migration p024).
+      googlePlaceId: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        unique: 'areas_google_place_id',
+      },
     },
     {
       tableName: 'areas',

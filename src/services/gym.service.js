@@ -362,6 +362,7 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { trans
     areaId: data.areaId || null,
     latitude: data.latitude || null,
     longitude: data.longitude || null,
+    googlePlaceId: data.googlePlaceId || null,
     openingTime: data.openingTime || null,
     closingTime: data.closingTime || null,
     phone: data.phone || null,
@@ -894,7 +895,7 @@ const updateBranch = async (tenantDb, branchId, data) => {
   }
 
   // Deliberately no 'status' — see the guard above.
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'travelerVisibilityStatus', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'googlePlaceId', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'travelerVisibilityStatus', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
   fields.forEach((f) => {
     if (data[f] !== undefined) branch[f] = data[f];
   });

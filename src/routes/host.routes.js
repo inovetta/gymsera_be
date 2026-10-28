@@ -94,7 +94,11 @@ router.patch(
   authorize('GYM_HOST'),
   tenantContext,
   ownerHere,
-  validate.allowBody(['address', 'addressLine1', 'addressLine2', 'areaId', 'branchName', 'category', 'cityId', 'closingTime', 'country', 'description', 'establishedYear', 'facilitiesJson', 'floorArea', 'imagesJson', 'latitude', 'longitude', 'openingTime', 'phone', 'postalCode', 'tagline', 'tagsJson']),
+  // Phase 7 P3: coordinates in range and the Google place id (the app's branch location editor).
+  validate.strict(gymsValidators.branchLocation, {
+    stage: 2,
+    allow: ['address', 'addressLine1', 'addressLine2', 'areaId', 'branchName', 'category', 'cityId', 'closingTime', 'country', 'description', 'establishedYear', 'facilitiesJson', 'floorArea', 'googlePlaceId', 'imagesJson', 'latitude', 'longitude', 'openingTime', 'phone', 'postalCode', 'tagline', 'tagsJson'],
+  }),
   gymsController.updateBranchListingContent
 );
 

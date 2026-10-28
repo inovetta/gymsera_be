@@ -53,12 +53,19 @@ test('every tenant at the target: /health/tenant-schema 200 ok, --check exit 0, 
   expect(await Notification.count({ where: { type: 'PLATFORM_ALERT' } })).toBe(0);
 });
 
+// The tenant below is at v18: every migration from 19 up is missing (019 in the NEW-124 incident; P3 added 020).
+const { MIGRATIONS: TENANT_MIGRATIONS, TARGET_SCHEMA_VERSION } = require('../../src/database/tenant-migration-runner');
+const FROM_19 = TENANT_MIGRATIONS.filter((m) => m.version >= 19);
+const MISSING = FROM_19.map((m) => m.version).join(', ');
+
 describe('a tenant below the target', () => {
   beforeAll(async () => {
     await h.tenant1.sequelize.query('DELETE FROM schema_migrations WHERE version >= 19');
   });
   afterAll(async () => {
-    await h.tenant1.sequelize.query('INSERT INTO schema_migrations (version, name, applied_at) VALUES (19, \'019_add_branch_currency\', NOW())');
+    for (const m of FROM_19) {
+      await h.tenant1.sequelize.query('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, NOW())', { replacements: [m.version, m.name] });
+    }
   });
 
   test('an error line names the tenant, its version and the fix; the platform admin gets TENANT_SCHEMA_BEHIND', async () => {
@@ -66,7 +73,7 @@ describe('a tenant below the target', () => {
     try {
       await health.runTenantSchemaCheck();
       const line = errors.mock.calls.map((c) => c.join(' ')).find((l) => l.includes('GYM-N126A'));
-      expect(line).toMatch(/\[TenantSchema\] BEHIND: tenant GYM-N126A \(ACTIVE\) is at v18, target v19; missing 19\. Fix: node src\/scripts\/run-tenant-migrations\.js --dry-run/);
+      expect(line).toContain(`[TenantSchema] BEHIND: tenant GYM-N126A (ACTIVE) is at v18, target v${TARGET_SCHEMA_VERSION}; missing ${MISSING}. Fix: node src/scripts/run-tenant-migrations.js --dry-run`);
     } finally {
       errors.mockRestore();
     }
@@ -82,7 +89,7 @@ describe('a tenant below the target', () => {
     const res = await request(app).get('/api/v1/health/tenant-schema');
     expect(res.status).toBe(503);
     expect(res.body.success).toBe(false);
-    expect(res.body.data.tenantSchema).toEqual(expect.objectContaining({ status: 'behind', behindCount: 1, failedCount: 0, targetVersion: 19 }));
+    expect(res.body.data.tenantSchema).toEqual(expect.objectContaining({ status: 'behind', behindCount: 1, failedCount: 0, targetVersion: TARGET_SCHEMA_VERSION }));
     expect(JSON.stringify(res.body)).not.toContain('GYM-N126A');
     expect(JSON.stringify(res.body)).not.toContain(tenantA.gymName);
 
@@ -92,7 +99,7 @@ describe('a tenant below the target', () => {
   test('--check (deploy gate) exits 1 and names the tenant', async () => {
     const out = capture();
     expect(await check(out.write)).toBe(1);
-    expect(out.text()).toMatch(/BEHIND\s+GYM-N126A \(ACTIVE\) at v18; missing 19/);
+    expect(out.text()).toMatch(new RegExp(`BEHIND\\s+GYM-N126A \\(ACTIVE\\) at v18; missing ${MISSING}`));
     expect(out.text()).toMatch(/FAILED: 1 behind, 0 unchecked/);
   });
 });
