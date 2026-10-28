@@ -17,25 +17,28 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-28 (Phase 7 production verification; P2 and the NEW-127 incident closed) |
+| Last updated | 2026-10-28 (Phase 7 P3 done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P3** (Real Google Maps, Places and location: `GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5 "P3"; BUG-01 to BUG-04; D5 decided as R-76) |
-| Prompt status | `NOT STARTED`. The incident before it is closed: NEW-127, NEW-124, NEW-123, NEW-134 and NEW-135 are **VERIFIED** on production `83bdf91`, and the P2 bugs BUG-11, BUG-12, BUG-21 (list and counts) and BUG-24 are **VERIFIED** on a device. NEW-136 and NEW-137 (drop tools take names only from `tenants.db_name`, R-79) are fixed on `docs/new-127-verified` (spec §13 "Phase 7 production verification 2026-10-28") <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Phase 7 Prompt P3** (Real Google Maps, Places and location: `GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5 "P3"; BUG-01 to BUG-04, NEW-109; R-76) |
+| Prompt status | `DONE` for the scope the owner gave (Become a Host and traveller flows, key moved to build config, no key created or rotated). The CMS branch form part of the P3 text is **not done** and is carried to P9 as NEW-140. Spec §13 "Phase 7 Prompt P3" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
-**Next action:** **Agent:** start Prompt P3 on new branches from origin/main (be) and origin/master (app), per the playbook: backend first (place ids, formatted address, lat/lng, city/area upsert, migration with dry run), then mobile, then CMS. The Maps / Places keys come from build config and env, never git (R-76). **Owner, still open (not blocking P3):** (1) push web and cms `fix/new-132-api-url-required` (`4de22c3`, `342881e`), then rebuild both with `NEXT_PUBLIC_API_URL`. (2) Keep apistaging stopped until it has its own platform database and tenant server (`docs/runbooks/production-environments.md`); its `check-environment.js` must print `OK` before it starts. (3) Optional, for the record: IIS logs of both sites for the GYM-4814C134 approval (2026-10-24 10:43 server time). (4) Remove test gym **GYM-16516973** in the production launch wipe (`docs/runbooks/launch-wipe.md`), not before. Its database name is read from `tenants.db_name` for that `tenant_code` immediately before the drop (R-79, `docs/sql/tenant-db-name-before-drop.sql`), never inferred. (5) Deploy NEW-136 / NEW-137 with this branch: no migration, no env variable; only the two manual drop tools change. NEW-129 stays a P3 that affects CI only (the harness skips p017); no production check needed.
+**Next action:** **Owner:** (1) push and open PRs: be `fix/p3-google-places`, app `fix/p3-google-maps-places`, be docs `docs/p3-google-places` (stacked on `docs/new-127-verified`, merge that first). (2) Deploy the backend exactly as spec §13 "Phase 7 Prompt P3" → Deploy: backup cities/areas, p024 dry run then apply, tenant migrations dry run then apply, `run-tenant-migrations.js --check` prints OK **before** the code serves (the Branch model reads `google_place_id`), set `GOOGLE_MAPS_SERVER_KEY` (existing server key), deploy, `/health/tenant-schema` 200. (3) Put the existing Maps client key on the build machine (`android/local.properties`, `ios/Flutter/MapsKey.xcconfig`; `gyms_era/docs/MAPS_KEY_SETUP.md`). (4) Device check list in the P3 report (map renders, drag pin, GPS fills, denied permission message, city/area/address suggestions, traveller Near You). **Agent, next:** Prompt **P4** (membership plans: visibility, naming, currency). **Owner, still open from before P3 (not blocking):** keep apistaging stopped until it has its own platform database and tenant server (`docs/runbooks/production-environments.md`); optional IIS logs for the GYM-4814C134 approval; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79); merge and deploy `docs/new-127-verified` (NEW-136 / NEW-137, no migration).
 
 ### Branches and last commits
 
-Merged on origin and deployed (checked 2026-10-28): Phase 7 P1 and P2 in all four repos (be through `83bdf91`, PR #180; app `fix/p2-host-status-and-plan` and `feat/release-app-env-guard` in master; cms and web `fix/p2-error-copy-new-codes` in main). Production API runs `83bdf91`.
-Committed locally, **not pushed**:
+Merged on origin and deployed (checked 2026-10-28): Phase 7 P1 and P2 in all four repos (be through `83bdf91`); cms/web `fix/new-132-api-url-required` merged (cms #41, web #26).
+
+Committed locally, **not pushed** (P3):
 
 | Repo | Branch | Last commit | What |
 |---|---|---|---|
-| gymsera_be | `docs/new-127-verified` | (docs commit on `83bdf91`, then NEW-136 `f6c91b6`, NEW-137 `ed63fbb`, docs) | spec §13 verification section, BUG-21 fully verified, NEW-136 / NEW-137 drop-name fixes, R-79, launch-wipe and provisioning-failure runbooks, handoff |
-| gymsera_cms | `fix/new-132-api-url-required` | `342881e` | NEW-132: `next build` needs `NEXT_PUBLIC_API_URL` |
-| gymsera_web | `fix/new-132-api-url-required` | `4de22c3` | same |
+| gymsera_be | `fix/p3-google-places` (from `origin/main` `83bdf91`) | `fa8b134` | `/places` proxy (server key), city/area upsert by place id, p024, tenant 020, coordinate ranges, `googlePlaceId` on branches, city centre in `/discovery/cities` |
+| gyms_era | `fix/p3-google-maps-places` (from `origin/master` `c5d4d15`) | `e00da68` | NEW-109 key to build config (`dc63359`), Become a Host (`ecb82d2`), traveller (`ef4c7a1`), Add Branch / Edit Location + guard (`e00da68`) |
+| gymsera_be | `docs/p3-google-places` (on `docs/new-127-verified`) | (this docs commit) | spec §13 P3 section, ledger "P3 status", handoff |
+
+Still from before: be `docs/new-127-verified` (pushed, not merged; this docs branch sits on it).
 
 ### Next action (exact, so another agent can do it without guessing)
 
@@ -122,6 +125,15 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Phase 7 Prompt P3: Google Maps, Places and location (be `fix/p3-google-places`, app `fix/p3-google-maps-places`; not pushed):**
+- [x] NEW-109: Maps key out of source into build config, same key (app `dc63359`)
+- [x] BUG-01 to BUG-04 backend: `/places` proxy, upsert, p024, tenant 020, ranges, `googlePlaceId` (be `fa8b134`)
+- [x] BUG-01 to BUG-04 Become a Host (app `ecb82d2`)
+- [x] Traveller: current location, city search, maps (app `ef4c7a1`)
+- [x] Add Branch, Edit Location, invented-coordinates guard (app `e00da68`)
+- [ ] CMS branch create/edit form with Places + Playwright: not done, P9 (NEW-140)
+- [ ] Device and staging checks (owner); real Google not called in any test
 
 **Prompt 5A-4: Security (gymsera_be PRs #128 to #133, gymsera_web #18, gymsera_cms #30 and #31; docs in be):**
 - [x] SEC-05: `/system` routes deleted, committed secrets removed, seeders refuse production, gitleaks, key rotation script (be `accd58c`, PR #128)
@@ -538,3 +550,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 111 | 2026-10-28 | Claude Code (Opus 5.5) | NEW-135 staging guard on the tenant server (owner: production tenant host 209.209.42.64) | be `10d6243` on `fix/new-135-staging-tenant-host-guard` (13 tests, red 9/13): staging refuses when its resolved tenant host is `PRODUCTION_TENANT_DB_HOST` (default 209.209.42.64); one tenant-host resolver shared with provisioning; check-environment.js and the boot line print host and source. Full suite in band, CI env, no .env: 239/239 suites, 2459/2459 tests. Runbook updated | blocked on owner (push; fresh-approval result for NEW-127) | yes |
 | 112 | 2026-10-28 | Claude Code (Opus 5.5) | Phase 7 production verification (owner evidence), close the NEW-127 incident | Docs only, be `docs/new-127-verified` on `83bdf91`: spec §13 "Phase 7 production verification 2026-10-28" (NEW-127, NEW-124, NEW-123, NEW-134, NEW-135 VERIFIED; BUG-11, BUG-12, BUG-21 list part, BUG-24 VERIFIED on a device; NEW-129 open P3, CI only); status cells updated in the earlier rows; bug ledger; launch-wipe lists test gym GYM-16516973; next prompt P3 | task complete (not pushed) | yes |
 | 113 | 2026-10-28 | Claude Code (Opus 5.5) | Owner answers: BUG-21 fully verified, NEW-123 stays verified, R-79 (never infer a tenant database name) | be `docs/new-127-verified`: BUG-21 VERIFIED (list and counts, savayora) in spec §13, ledger, P5 prompt; R-79 in §14; NEW-136 `f6c91b6` (launch wipe read `dbName`, the real column is `db_name`; red 7/9, green 9/9); NEW-137 `ed63fbb` (orphan drop inferred a name from `tenant_code`; red 1/24, green 24/24); `docs/sql/tenant-db-name-before-drop.sql`; launch-wipe and provisioning-failure runbooks read the name before any drop; test gym's database name removed from docs | task complete (not pushed) | yes |
+| 114 | 2026-10-28 | Claude Code (Opus 5.5) | Phase 7 P3 (Google Maps, Places, location; R-76) | be `fa8b134` (/places proxy with server key, city/area upsert by place id, p024, tenant 020, coordinate ranges; 23 + 3 tests; full suite 241/241, 2485/2485); app `dc63359` NEW-109 key to build config, `ecb82d2` Become a Host, `ef4c7a1` traveller, `e00da68` branch editors + guard (267 tests x3, analyze no new findings); NEW-138 to NEW-140 recorded; CMS part carried to P9 | task complete (not pushed) | yes |
