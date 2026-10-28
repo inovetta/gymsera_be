@@ -45,6 +45,19 @@ const resolvePlatformDbName = (env = process.env, dotenvParsed = readDotenvFile(
     : { name: DEFAULT_PLATFORM_DB_NAME, source: 'built-in default; PLATFORM_DB_NAME is not set' };
 };
 
+/**
+ * { host, source }: the tenant database server provisioning connects to (TENANT_DB_HOST, else
+ * PLATFORM_DB_HOST, else 127.0.0.1; tenant-provisioning.service.js#getTenantDbConfig uses this), and
+ * why (NEW-135). Host names only.
+ */
+const resolveTenantDbHost = (env = process.env, dotenvParsed = readDotenvFile()) => {
+  for (const key of ['TENANT_DB_HOST', 'PLATFORM_DB_HOST']) {
+    const source = envSource(key, env, dotenvParsed);
+    if (source) return { host: env[key], source: key === 'TENANT_DB_HOST' ? source : `TENANT_DB_HOST is not set; ${source}` };
+  }
+  return { host: '127.0.0.1', source: 'built-in default; TENANT_DB_HOST and PLATFORM_DB_HOST are not set' };
+};
+
 /** The required database password variables that are not set at all in `env`. */
 const missingDatabaseSettings = (env = process.env) => REQUIRED_DATABASE_SETTINGS.filter((key) => env[key] === undefined);
 
@@ -88,6 +101,7 @@ module.exports = {
   DEFAULT_PLATFORM_DB_NAME,
   envSource,
   resolvePlatformDbName,
+  resolveTenantDbHost,
   missingDatabaseSettings,
   assertDatabaseConfigured,
 };

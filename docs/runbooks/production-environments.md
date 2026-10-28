@@ -1,4 +1,4 @@
-# Production and staging on one server (NEW-127, NEW-131, NEW-134)
+# Production and staging on one server (NEW-127, NEW-131, NEW-134, NEW-135)
 
 `api.gymsera.com` (production) and `apistaging.gymsera.com` (staging) run as two IIS sites on the same
 Windows server. On 2026-10-24 the staging site's `.env` named the production platform database
@@ -14,8 +14,17 @@ staging API with older code wrote into production. A gym was approved without it
    - Its own tenant databases: `TENANT_DB_HOST` is not the production tenant server (`209.209.42.64`), or
      its `TENANT_DB_ADMIN_USER` / `TENANT_DB_USER` have no rights on production's `gymsera_*` databases.
      Tenant databases are named `gymsera_<tenant code>` whatever the platform database is, so a separate
-     platform name alone does not keep staging off production's tenant server. The startup guard does
-     not check this yet (NEW-135).
+     platform name alone does not keep staging off production's tenant server. Since NEW-135 the startup
+     guard refuses a staging site whose tenant host (`TENANT_DB_HOST`, else `PLATFORM_DB_HOST`) is the
+     production tenant host (`PRODUCTION_TENANT_DB_HOST`, default `209.209.42.64`). It compares host
+     names only: another name or IP for the same MySQL server (for example `127.0.0.1` when the tenant
+     server is this machine) is not caught, so this rule still matters.
+   - **Today (2026-10-28) staging and production use the same tenant server, `209.209.42.64`.** Staging
+     stays off until it has its own tenant server, or its own MySQL users and databases there with no
+     rights on production's. The guard refuses `209.209.42.64` for staging in both cases, so the second
+     option also needs an owner decision on how the guard should allow it (not built). Never get past
+     the guard by writing another name or IP for the same server. Set `PRODUCTION_TENANT_DB_HOST` only
+     when production itself moves to another tenant server.
    - Its own MySQL users and passwords, not production's.
    - Sandbox keys only (Stripe test keys, Apple sandbox, Play test track), as for every non-production site.
    - Staging stays stopped until all of the above is true and the checks below pass.
@@ -37,13 +46,15 @@ staging API with older code wrote into production. A gym was approved without it
 Run these in the site's own folder.
 
 1. `node src\scripts\check-environment.js`. Production: `staging: no`, `platform database: gymsera (...)`,
-   `OK`. Staging: `staging: yes`, a platform database that is **not** `gymsera`, `OK`. `REFUSED` (exit 2)
+   `tenant database server: 209.209.42.64 (...)`, `OK`. Staging: `staging: ...` (its signals), a platform
+   database that is **not** `gymsera`, a tenant database server that is **not** `209.209.42.64`, `OK`. `REFUSED` (exit 2)
    means the site will not start; fix that site's own `.env`. The script prints names and sources only,
    never a password. A shell cannot see variables set only on the IIS app pool, so also do check 2.
 2. Start or restart the site and read its boot line (iisnode stdout file or the error journal):
-   `[ErrorJournal] boot ... commit=<12> built=<..> started=<..> platformDb=<name> (<source>)`.
+   `[ErrorJournal] boot ... commit=<12> built=<..> started=<..> platformDb=<name> (<source>) tenantDbHost=<host> (<source>)`.
    - `commit` must be the commit just deployed.
    - `platformDb` must be the site's own database. On staging it must never be `gymsera`.
+   - `tenantDbHost` must be the site's own tenant server. On staging it must never be `209.209.42.64`.
    - The source says where the name came from: `.env`, the process environment, the process
      environment overriding `.env` (it quotes the `.env` value), or the built-in default.
 3. `GET https://<site>/api/v1/health`: `data.build.commit` is the deployed commit and `data.startedAt` is

@@ -40,6 +40,7 @@ const { encrypt } = require('../utils/crypto.utils');
 const { redactString } = require('../utils/log-redaction');
 const emailService = require('./email.service');
 const { safeRedisSetex } = require('../config/redis.config');
+const { resolveTenantDbHost } = require('../config/database.config');
 const { TenantStatus } = require('../constants/subscription-status');
 
 // ── Env helpers ───────────────────────────────────────────────────────────────
@@ -67,7 +68,7 @@ const getTenantDbConfig = (env = process.env) => {
         'Provisioning uses only these settings (there is no fallback to other credentials).'
     );
   }
-  const host = env.TENANT_DB_HOST || env.PLATFORM_DB_HOST || '127.0.0.1';
+  const { host } = resolveTenantDbHost(env, {});
   const port = parseInt(env.TENANT_DB_PORT || env.PLATFORM_DB_PORT || '3306');
   return {
     host,

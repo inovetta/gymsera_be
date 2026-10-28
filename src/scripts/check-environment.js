@@ -7,7 +7,8 @@
  * Run it in each site's folder (production and apistaging) before deploying. It sees this shell's
  * environment: a value set only for an IIS application pool is not visible here, so the boot line
  * (`platformDb=... (source)`) of the running site is the final word (NEW-134).
- * Exit 0 = allowed, 2 = the API would refuse to start (staging on the production platform database).
+ * Exit 0 = allowed, 2 = the API would refuse to start (staging on the production platform database or
+ * tenant database server, NEW-135). Host names only, never a password.
  */
 require('dotenv').config();
 const { checkEnvironment } = require('../config/environment-guard');
@@ -19,6 +20,8 @@ const lines = [
   `APP_URL: ${process.env.APP_URL || '(unset)'}`,
   `platform database: ${result.platformDb} (${result.platformDbSource})`,
   `production platform database: ${result.productionPlatformDb} (${result.productionPlatformDbSource})`,
+  `tenant database server: ${result.tenantDbHost} (${result.tenantDbHostSource})`,
+  `production tenant database server: ${result.productionTenantDbHost} (${result.productionTenantDbHostSource})`,
   `staging: ${result.signals.length ? result.signals.join(', ') : 'no'}`,
   result.ok ? 'OK: the API would start with these settings.' : `REFUSED: ${result.reason}`,
 ];

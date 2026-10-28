@@ -132,17 +132,20 @@ const boot = () => {
   try {
     const dir = directory();
     const time = new Date().toISOString();
-    // NEW-130: which build this process loaded, since when, and which platform database it uses.
+    // NEW-130: which build this process loaded, since when, and which platform database it uses;
+    // NEW-135: and which tenant database server.
     const { getBuildInfo, STARTED_AT } = require('./build-info');
     const build = getBuildInfo();
     const platform = require('../config/database.config').resolvePlatformDbName();
     const platformDb = `${platform.name} (${platform.source})`;
+    const tenant = require('../config/database.config').resolveTenantDbHost();
+    const tenantDbHost = `${tenant.host} (${tenant.source})`;
     const written = dir
-      ? append({ time, event: 'boot', pid: process.pid, node: process.version, commit: build.commit, builtAt: build.builtAt, platformDb: platform.name, platformDbSource: platform.source })
+      ? append({ time, event: 'boot', pid: process.pid, node: process.version, commit: build.commit, builtAt: build.builtAt, platformDb: platform.name, platformDbSource: platform.source, tenantDbHost: tenant.host, tenantDbHostSource: tenant.source })
       : null;
     console.log(
       `[ErrorJournal] boot pid=${process.pid} node=${process.version} NODE_ENV=${process.env.NODE_ENV || '(unset)'} ` +
-        `commit=${build.commit.slice(0, 12)} built=${build.builtAt || 'unknown'} started=${STARTED_AT} platformDb=${platformDb} ` +
+        `commit=${build.commit.slice(0, 12)} built=${build.builtAt || 'unknown'} started=${STARTED_AT} platformDb=${platformDb} tenantDbHost=${tenantDbHost} ` +
         (dir ? `journal=${written || `NOT WRITTEN (${dir})`}` : 'journal=off')
     );
     return written;
