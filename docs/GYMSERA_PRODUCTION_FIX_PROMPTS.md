@@ -264,7 +264,7 @@ Report per Prompt G.
 ```text
 1. BUG-19: every card/button on the Today dashboard that opens another screen must push onto the stack (context.push or a nested route), so Back returns to Today. Audit all host tabs for context.go used where push is meant. Add a navigation test: open each dashboard card, press back, assert Today is visible.
 2. BUG-20: trend badges come only from real comparisons; hide the badge when there is no previous-period data or both values are 0.
-3. BUG-21: Gyms & Operations must list the branches the host created in onboarding. Find why the list is empty while the capacity banner says "1 of 1 used", and why it also shows "0 branches · Limit reached". Use one source for branch count and list. Test with an approved tenant created through the real onboarding path.
+3. BUG-21: ALREADY VERIFIED on a device 2026-10-28 (list and counts; spec §13 "Phase 7 production verification 2026-10-28"). Skip it unless it comes back. Original text: Gyms & Operations must list the branches the host created in onboarding. Find why the list is empty while the capacity banner says "1 of 1 used", and why it also shows "0 branches · Limit reached". Use one source for branch count and list. Test with an approved tenant created through the real onboarding path.
 4. BUG-22: Listings tab. Fix the header title, and walk New Organization (build new branch / move existing branch), Edit Organization and Delete Organization end to end with tests: capacity checks, what happens to branches on delete, re-auth for delete, empty states, error states, and that the list refreshes after each action. List every defect you find before fixing.
 5. BUG-25: one avatar rule app-wide (uploaded photo, otherwise initials). No stock photos.
 
