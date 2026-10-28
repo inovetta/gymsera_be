@@ -19,6 +19,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1058.0",
     "@sentry/node": "10.76.0",
+    "axios": "^1.20.0",
     "bcrypt": "^6.0.0",
     "bull": "^4.16.0",
     "cors": "^2.8.5",
@@ -50,7 +51,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "axios": "^1.16.0",
     "eslint": "^9.0.0",
     "jest": "^30.4.0",
     "prettier": "^3.3.3",
