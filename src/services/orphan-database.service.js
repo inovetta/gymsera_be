@@ -10,7 +10,8 @@
  *
  * Hard refusals (the database is kept):
  *   - not a `gymsera_*` name, unsafe characters, or the platform database;
- *   - no tenant row maps to it (unknown data: the owner decides by hand);
+ *   - no tenant row maps to it: no `tenants.db_name` holds this exact name. The name is never worked out from
+ *     tenant_code (R-79), so a database a failed provisioning run left before it wrote db_name is the owner's to decide;
  *   - the tenant is live (APPROVED / ACTIVE / SUSPENDED), inside its 30-day undo window
  *     (PENDING_DELETION), or still in review;
  *   - a provisioning run holds a live lease on it;
@@ -19,9 +20,8 @@
  *   - a REJECTED tenant's database holds payment / invoice / ledger / payout rows (money is never dropped;
  *     after the 6 years a DELETED tenant's records may go, that is what the retention period is for).
  */
-const { Op } = require('sequelize');
 const { Tenant, PlatformAuditLog } = require('../models/platform');
-const { provisioningSummary, buildDbName } = require('./tenant-provisioning.service');
+const { provisioningSummary } = require('./tenant-provisioning.service');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REJECTED_RETENTION_DAYS = 90;
@@ -33,7 +33,9 @@ const _refuse = (reason) => ({ eligible: false, reason });
 
 /** Pure decision: may this tenant's database be dropped? */
 const assessOrphanDrop = ({ tenant, paymentRows = 0, now = new Date() }) => {
-  if (!tenant) return _refuse('No tenant row maps to this database; decide by hand, this tool will not drop unknown data.');
+  if (!tenant) {
+    return _refuse('No tenant row maps to this database (no tenants.db_name holds this name); decide by hand, this tool will not drop unknown data.');
+  }
   if (provisioningSummary(tenant, now).inProgress) {
     return _refuse('A provisioning run holds a live lease on this tenant; wait for it to stop.');
   }
@@ -62,12 +64,9 @@ const assessOrphanDrop = ({ tenant, paymentRows = 0, now = new Date() }) => {
   return { eligible: true, reason: null };
 };
 
-const _findTenant = async (dbName) => {
-  const byName = await Tenant.findOne({ where: { dbName } });
-  if (byName) return byName;
-  const unnamed = await Tenant.findAll({ where: { dbName: { [Op.is]: null } } });
-  return unnamed.find((t) => buildDbName(t.tenantCode) === dbName) || null;
-};
+// Only a row whose tenants.db_name holds this exact name (R-79). NEW-137: a tenant with no db_name used to be
+// matched through buildDbName(tenant_code), so a database the table never named could be dropped.
+const _findTenant = (dbName) => Tenant.findOne({ where: { dbName } });
 
 const _countMoneyRows = async (adminConn, dbName) => {
   let total = 0;

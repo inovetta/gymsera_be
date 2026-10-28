@@ -45,8 +45,11 @@ A tenant was approved but has not become ACTIVE. Three situations look the same 
 Provisioning only ever adds things for one tenant, so there is nothing to undo for the other tenants. If the application must not go live:
 1. Reject it through the admin screen (`POST /admin/tenants/:id/reject`): refused with 409 while a live lease is held, so wait for the lease to expire first.
 2. A database left behind is reported as `ORPHAN_DATABASE` by the check script. It is **never dropped automatically** (R-28). Look at the report, then, if
-   the verdict allows it, per database: `node src/scripts/drop-orphan-tenant-database.js <dbName>` (dry run), then with `--apply --confirm <dbName>`. The script
-   refuses live tenants, tenants in the undo window, REJECTED under 90 days, DELETED under 6 years and databases holding payment, invoice or ledger rows.
+   the verdict allows it, per database: `node src/scripts/drop-orphan-tenant-database.js <dbName>` (dry run), then with `--apply --confirm <dbName>`.
+   `<dbName>` is never inferred (R-79). Immediately before the drop, read it from the platform `tenants` table for that `tenant_code`
+   (`docs/sql/tenant-db-name-before-drop.sql`, read-only; the query is also in `launch-wipe.md`). No row, or a NULL `db_name`, means stop. The script
+   refuses live tenants, tenants in the undo window, REJECTED under 90 days, DELETED under 6 years, databases holding payment, invoice or ledger rows,
+   and any name that no `tenants.db_name` holds.
 
 ## Escalate
 
