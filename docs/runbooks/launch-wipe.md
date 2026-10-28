@@ -29,6 +29,7 @@ The database holds TEST data only (R-19), but the wipe is still irreversible. Do
 1. Dry run, read the plan: `node src/scripts/reset-platform-data.js --keep-admin <emails>`
    - [ ] Every table you expect is `KEEP` or `EMPTY`; the user counts say `keep` = the admins you named.
    - [ ] The tenant database list is exactly the databases you expect to lose.
+   - [ ] It includes the test gyms made for production checks: **GYM-16516973** (`gymsera_gym_16516973`, approved 2026-10-28 for the NEW-127 check). If the wipe keeps tenant databases, remove that tenant and its database anyway.
 2. Real run:
    `node src/scripts/reset-platform-data.js --keep-admin <emails> --confirm --db <name> --host <host>`
    Add `--drop-tenant-databases` in the same command if the tenant databases must go. The script reads the names from
