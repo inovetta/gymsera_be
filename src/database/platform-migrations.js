@@ -999,6 +999,34 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 25,
+    name: 'p025_city_country_code',
+    description:
+      'cities.country_code VARCHAR(2) NULL (no backfill), so Places autocomplete stays in the selected city country (P3 device follow-up). Safe to re-run.',
+    // BACKUP before applying live:  mysqldump <platform_db> cities > cities_pre_p025.sql
+    // ROLLBACK (deploy the previous app build FIRST: the City model selects this column):
+    //   ALTER TABLE `cities` DROP COLUMN `country_code`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 25;
+    // Existing cities keep NULL, which means the default country (GOOGLE_PLACES_REGION_CODES, else
+    // Pakistan); a city gets its code the next time it is resolved from Google.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const [hasTable] = await sequelize.query(
+        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cities' LIMIT 1",
+        { type: QueryTypes.SELECT }
+      );
+      if (!hasTable) return null; // created later with the column (model sync)
+      const added = await _addNullableColumn(sequelize, {
+        table: 'cities',
+        column: 'country_code',
+        type: 'VARCHAR(2)',
+        expectedType: 'varchar(2)',
+        migrationName: 'p025',
+      });
+      return added?.skipped ? added : null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

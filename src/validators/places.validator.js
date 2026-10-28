@@ -16,12 +16,20 @@ const cityIdForArea = query('cityId')
   .isInt({ min: 1 })
   .withMessage('cityId is required to search areas');
 
+// An address search may name the selected city (country and bias); a city search ignores it.
+const optionalCityId = query('cityId')
+  .if(query('kind').not().equals('area'))
+  .optional()
+  .isInt({ min: 1 })
+  .withMessage('cityId must be a positive integer');
+
 const placesValidators = {
   autocomplete: [
     query('input').isString().trim().isLength({ min: 2, max: 200 }).withMessage('input must be 2-200 characters'),
     query('kind').isIn(KINDS).withMessage('kind must be city, area or address'),
     sessionToken(true),
     cityIdForArea,
+    optionalCityId,
   ],
 
   details: [
