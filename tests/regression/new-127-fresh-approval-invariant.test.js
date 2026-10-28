@@ -105,12 +105,14 @@ describe('NEW-127: the production check after a deploy (docs/sql/new-127-fresh-a
     return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
   };
 
-  test('on the gym just approved: PASS, 29 tables, and 19 migrations recorded from 1 to 19', () => {
+  test('on the gym just approved: PASS, 29 tables, and every migration recorded from 1 to the target', () => {
+    const { TARGET_SCHEMA_VERSION } = require('../../src/database/tenant-migration-runner');
     const { status, out } = cli();
     const grid1 = out.slice(out.indexOf('Grid 1'), out.indexOf('Grid 2'));
     expect(grid1).toMatch(new RegExp(`\\|\\s*${tenant.tenantCode}\\s*\\|`));
     expect(grid1).toMatch(/\|\s*ACTIVE\s*\|\s*ACTIVE\s*\|\s*NULL\s*\|\s*29\s*\|\s*1\s*\|\s*1\s*\|\s*4\s*\|\s*PASS\s*\|/);
-    expect(out.slice(out.indexOf('Grid 2'))).toMatch(/\|\s*19\s*\|\s*1\s*\|\s*19\s*\|/);
+    const t = TARGET_SCHEMA_VERSION;
+    expect(out.slice(out.indexOf('Grid 2'))).toMatch(new RegExp(`\\|\\s*${t}\\s*\\|\\s*1\\s*\\|\\s*${t}\\s*\\|`));
     expect(out).toMatch(/^Done: 2 grids\./m);
     expect(status).toBe(0);
   });

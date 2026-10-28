@@ -78,15 +78,21 @@ const gymsValidators = {
       .isInt({ min: 1 })
       .withMessage('areaId must be a positive integer'),
 
+    // Phase 7 P3: in range, not just any decimal (latitude 123 used to be stored).
     body('latitude')
       .optional({ nullable: true, checkFalsy: true })
-      .isDecimal()
-      .withMessage('latitude must be a decimal number'),
+      .isFloat({ min: -90, max: 90 })
+      .withMessage('latitude must be between -90 and 90'),
 
     body('longitude')
       .optional({ nullable: true, checkFalsy: true })
-      .isDecimal()
-      .withMessage('longitude must be a decimal number'),
+      .isFloat({ min: -180, max: 180 })
+      .withMessage('longitude must be between -180 and 180'),
+
+    body('googlePlaceId')
+      .optional({ nullable: true, checkFalsy: true })
+      .matches(/^[A-Za-z0-9_-]{1,255}$/)
+      .withMessage('googlePlaceId is not a Google place id'),
 
     body('phone')
       .optional({ nullable: true, checkFalsy: true })
@@ -164,13 +170,23 @@ const gymsValidators = {
     body('address').optional().isString(),
     body('cityId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
     body('areaId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
-    body('latitude').optional({ nullable: true, checkFalsy: true }).isDecimal(),
-    body('longitude').optional({ nullable: true, checkFalsy: true }).isDecimal(),
+    body('latitude').optional({ nullable: true, checkFalsy: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
+    body('longitude').optional({ nullable: true, checkFalsy: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be between -180 and 180'),
+    body('googlePlaceId').optional({ nullable: true, checkFalsy: true }).matches(/^[A-Za-z0-9_-]{1,255}$/).withMessage('googlePlaceId is not a Google place id'),
     body('phone').optional({ nullable: true, checkFalsy: true }).isMobilePhone(),
     body('openingTime').optional({ nullable: true, checkFalsy: true }).matches(/^\d{2}:\d{2}$/),
     body('closingTime').optional({ nullable: true, checkFalsy: true }).matches(/^\d{2}:\d{2}$/),
     body('facilitiesJson').optional({ nullable: true }).isArray(),
     body('imagesJson').optional({ nullable: true }).isArray(),
+  ],
+
+  // Phase 7 P3: PATCH /host/branches/:branchId/listing-content (location fields only; the rest is free-form there).
+  branchLocation: [
+    body('latitude').optional({ nullable: true, checkFalsy: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
+    body('longitude').optional({ nullable: true, checkFalsy: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be between -180 and 180'),
+    body('googlePlaceId').optional({ nullable: true, checkFalsy: true }).matches(/^[A-Za-z0-9_-]{1,255}$/).withMessage('googlePlaceId is not a Google place id'),
+    body('cityId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
+    body('areaId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
   ],
 
   assignStaff: [

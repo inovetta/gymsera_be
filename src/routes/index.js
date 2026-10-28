@@ -175,6 +175,7 @@ router.use('/auth', require('./auth.routes'));
 
 // ── Sprint 3 — Platform Core & Tenant Onboarding ────────────────────────────
 router.use('/cities',            require('./cities.routes'));
+router.use('/places',            require('./places.routes'));
 router.use('/platform-packages', require('./platform-packages.routes'));
 router.use('/tenants',           require('./tenants.routes'));
 router.use('/billing',           require('./billing.routes'));

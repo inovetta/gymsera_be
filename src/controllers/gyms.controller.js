@@ -431,10 +431,12 @@ const updateBranchListingContent = async (req, res, next) => {
       country,
       cityId,
       areaId,
+      googlePlaceId,
     } = req.body;
 
     const patch = {};
     if (branchName !== undefined) patch.branchName = branchName;
+    if (googlePlaceId !== undefined) patch.googlePlaceId = googlePlaceId || null;
     if (tagline !== undefined) patch.tagline = tagline;
     if (category !== undefined) patch.category = category;
     if (tagsJson !== undefined) patch.tagsJson = tagsJson;

@@ -100,7 +100,7 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
     }
   });
 
-  test('dry run (the default): reports 18 present and 019 to run, changes nothing', async () => {
+  test('dry run (the default): reports every other migration present and 019 to run, changes nothing', async () => {
     const { tenantCode, db, seq } = await legacyTenant();
     try {
       const before = await fingerprint(db);
@@ -109,7 +109,7 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
       expect(code).toBe(0);
       expect(out.text()).toMatch(/DRY RUN complete\. Nothing was changed/);
       expect(out.text()).toMatch(/Would run 1 migration\(s\): 019_add_branch_currency/);
-      expect(out.text()).toMatch(/Would record 18 migration\(s\) as already applied/);
+      expect(out.text()).toContain(`Would record ${ALL_VERSIONS.length - 1} migration(s) as already applied`);
       expect(out.text()).toContain(`--apply --confirm ${tenantCode}`);
       expect(await fingerprint(db)).toEqual(before);
     } finally {
@@ -132,7 +132,7 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
     }
   });
 
-  test('--apply --confirm: records 1-18 without running them, runs 019 only, every version recorded, rows kept', async () => {
+  test('--apply --confirm: records the others without running them, runs 019 only, every version recorded, rows kept', async () => {
     const { tenantCode, db, seq } = await legacyTenant();
     try {
       const ran = [];
@@ -143,7 +143,7 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
       const out = capture();
       const code = await main(['--tenant', tenantCode, '--apply', '--confirm', tenantCode], { write: out.write });
       expect(code).toBe(0);
-      expect(out.text()).toMatch(/DONE: tenant .* is at v19, every migration recorded/);
+      expect(out.text()).toMatch(new RegExp(`DONE: tenant .* is at v${ALL_VERSIONS[ALL_VERSIONS.length - 1]}, every migration recorded`));
       expect(ran).toEqual([19]);
       expect(await recorded(seq)).toEqual(ALL_VERSIONS);
       const [branches] = await seq.query('SELECT currency FROM branches');

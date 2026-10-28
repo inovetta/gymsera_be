@@ -952,6 +952,53 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 24,
+    name: 'p024_city_area_google_place',
+    description:
+      'cities.google_place_id / latitude / longitude and areas.google_place_id (nullable, no backfill) + unique keys on the place ids, so Places results upsert without duplicates (Phase 7 P3, BUG-01). Safe to re-run.',
+    // BACKUP before applying live:  mysqldump <platform_db> cities areas > cities_areas_pre_p024.sql
+    // ROLLBACK (deploy the previous app build FIRST: the models select these columns):
+    //   ALTER TABLE `cities` DROP INDEX `cities_google_place_id`, DROP COLUMN `google_place_id`, DROP COLUMN `latitude`, DROP COLUMN `longitude`;
+    //   ALTER TABLE `areas` DROP INDEX `areas_google_place_id`, DROP COLUMN `google_place_id`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 24;
+    // Existing cities and areas keep NULL (no backfill): the first time someone picks one from Google
+    // it is matched by name and gets its place id then.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+
+      const columns = [
+        { table: 'cities', column: 'google_place_id', type: 'VARCHAR(255)', expectedType: 'varchar(255)' },
+        { table: 'cities', column: 'latitude', type: 'DECIMAL(10,8)', expectedType: 'decimal(10,8)' },
+        { table: 'cities', column: 'longitude', type: 'DECIMAL(11,8)', expectedType: 'decimal(11,8)' },
+        { table: 'areas', column: 'google_place_id', type: 'VARCHAR(255)', expectedType: 'varchar(255)' },
+      ];
+      const present = new Set(
+        (await sequelize.query(
+          "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('cities', 'areas')",
+          { type: QueryTypes.SELECT }
+        )).map((r) => r.name)
+      );
+      for (const c of columns) {
+        if (!present.has(c.table)) continue; // created later with the column (model sync)
+        const added = await _addNullableColumn(sequelize, { ...c, migrationName: 'p024' });
+        if (added?.skipped) return added;
+      }
+
+      for (const table of ['cities', 'areas']) {
+        if (!present.has(table)) continue;
+        const index = `${table}_google_place_id`;
+        const [hasIndex] = await sequelize.query(
+          'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
+          { replacements: [table, index], type: QueryTypes.SELECT }
+        );
+        if (!hasIndex) {
+          await sequelize.query(`ALTER TABLE \`${table}\` ADD UNIQUE KEY \`${index}\` (\`google_place_id\`)`);
+        }
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

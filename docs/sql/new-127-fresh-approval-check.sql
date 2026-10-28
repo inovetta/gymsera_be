@@ -9,7 +9,7 @@
 --
 -- PASS on today's code: grid 1 verdict PASS (status ACTIVE, provisioning_state ACTIVE,
 -- 29 tables, schema_migrations 1, branches.currency 1, the four newest tables 4), and grid 2
--- 19 rows, lowest 1, highest 19. The build that made GYM-4814C134 (before 2026-09-26) gives
+-- One row per tenant migration (20 since Phase 7 P3), lowest 1, highest the target. The build that made GYM-4814C134 (before 2026-09-26) gives
 -- 24 tables, provisioning_state NULL, schema_migrations 0, newest tables 0, and grid 2 ends
 -- with "Table ... schema_migrations doesn't exist": that is a FAIL, the server is running old code.
 
@@ -53,7 +53,7 @@ FROM (
 ) x;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 2. Its recorded tenant migrations (expect 19 rows, 1 to 19).
+-- 2. Its recorded tenant migrations (expect 20 rows, 1 to 20, since Phase 7 P3 added 020).
 -- ─────────────────────────────────────────────────────────────────────────────
 SET @versions_sql = CONCAT(
   'SELECT COUNT(*) AS recorded, MIN(version) AS lowest, MAX(version) AS highest FROM `',

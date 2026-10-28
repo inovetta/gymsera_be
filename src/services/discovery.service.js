@@ -516,12 +516,15 @@ const listCities = async () => {
 
   const cities = await City.findAll({
     where: { isActive: true },
-    attributes: ['id', 'name'],
+    attributes: ['id', 'name', 'latitude', 'longitude'],
   });
 
   return cities.map(c => {
     const plain = c.get({ plain: true });
     plain.gymCount = cityCounts[c.id] || 0;
+    // Phase 7 P3: the city's centre from Google (null until picked once), for "Near You" without GPS.
+    plain.latitude = plain.latitude === null ? null : Number(plain.latitude);
+    plain.longitude = plain.longitude === null ? null : Number(plain.longitude);
     return plain;
   }).sort((a, b) => b.gymCount - a.gymCount);
 };

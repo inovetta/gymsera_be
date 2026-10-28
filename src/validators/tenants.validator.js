@@ -52,6 +52,11 @@ const tenantsValidators = {
     body('address').optional().isString(),
 
     body('mainBranchData').optional().isObject().withMessage('mainBranchData must be an object'),
+    // Phase 7 P3: the main branch's map pin and Google place, copied to the branch at approval.
+    body('mainBranchData.latitude').optional({ nullable: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
+    body('mainBranchData.longitude').optional({ nullable: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be between -180 and 180'),
+    body('mainBranchData.placeId').optional({ nullable: true }).matches(/^[A-Za-z0-9_-]{1,255}$/).withMessage('placeId is not a Google place id'),
+    body('mainBranchData.areaId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaId must be a positive integer'),
     body('mainBranchData.plans').optional().isArray().withMessage('mainBranchData.plans must be an array'),
     body('mainBranchData.plans.*.name').optional().trim().notEmpty().withMessage('Plan name cannot be empty'),
     body('mainBranchData.plans.*.price').optional().isFloat({ min: 0 }).withMessage('Plan price must be a valid number >= 0'),

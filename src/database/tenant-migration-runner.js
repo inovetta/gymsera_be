@@ -734,6 +734,39 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // Phase 7 P3: the Google place id of a branch's address. Nullable, no backfill: existing branches keep
+    // their address and coordinates and get a place id the next time the host picks the address from Google.
+    // ROLLBACK (previous app build first): ALTER TABLE `branches` DROP COLUMN `google_place_id`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 20;
+    version: 20,
+    name: '020_add_branch_google_place_id',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [branchesExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'branches\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (!branchesExists) return null;
+
+      const [col] = await sequelize.query(
+        'SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'branches\' AND COLUMN_NAME = \'google_place_id\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (col) {
+        const ok = String(col.DATA_TYPE).toLowerCase() === 'varchar' && Number(col.CHARACTER_MAXIMUM_LENGTH) >= 255;
+        if (ok) return null;
+        console.warn(
+          `[TenantMigration] SKIPPING 020: branches.google_place_id already exists as ${col.DATA_TYPE}. Resolve it by hand, then re-run.`
+        );
+        return { skipped: true, reason: 'column_exists_with_other_type', table: 'branches', column: 'google_place_id', type: col.DATA_TYPE };
+      }
+
+      await sequelize.query('ALTER TABLE `branches` ADD COLUMN `google_place_id` VARCHAR(255) NULL');
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

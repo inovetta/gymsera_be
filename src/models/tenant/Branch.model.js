@@ -44,6 +44,11 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(11, 8),
         allowNull: true,
       },
+      // Phase 7 P3: Google place id of the address (tenant migration 020). `address` holds its formatted address.
+      googlePlaceId: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
       openingTime: {
         type: DataTypes.TIME,
         allowNull: true,
