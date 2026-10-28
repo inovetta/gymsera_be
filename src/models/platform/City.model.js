@@ -35,6 +35,11 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(11, 8),
         allowNull: true,
       },
+      // ISO 3166-1 alpha-2 from Google (e.g. 'PK'); keeps Places search in the city's country (p025).
+      countryCode: {
+        type: DataTypes.STRING(2),
+        allowNull: true,
+      },
     },
     {
       tableName: 'cities',
