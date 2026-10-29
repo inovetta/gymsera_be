@@ -21,6 +21,19 @@ const subscribe = [
     .isIn(SOURCE_CHANNELS).withMessage(`sourceChannel must be one of: ${SOURCE_CHANNELS.join(', ')}`),
 ];
 
+// ── GET /subscriptions/quote ──────────────────────────────────────────────────
+const quote = [
+  query('planId')
+    .notEmpty().withMessage('planId is required')
+    .isUUID(4).withMessage('planId must be a valid UUID'),
+  query('gymListingId')
+    .notEmpty().withMessage('gymListingId is required')
+    .isUUID(4).withMessage('gymListingId must be a valid UUID'),
+  query('branchId')
+    .notEmpty().withMessage('branchId is required')
+    .isUUID(4).withMessage('branchId must be a valid UUID'),
+];
+
 // ── GET /me/subscriptions ─────────────────────────────────────────────────────
 const listMySubscriptions = [
   query('status')
@@ -70,4 +83,4 @@ const changePlan = [
   body('planId').isUUID(4).withMessage('planId must be a valid UUID'),
 ];
 
-module.exports = { subscribe, listMySubscriptions, freeze, cancel, renew, changePlan };
+module.exports = { subscribe, quote, listMySubscriptions, freeze, cancel, renew, changePlan };

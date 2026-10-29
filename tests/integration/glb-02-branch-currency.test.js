@@ -20,6 +20,8 @@ describe('GLB-02: currency per branch', () => {
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
     });
     const listing = await factories.createGymListing(ctx.tenant1.id, { branchId: branch.id, title: `${name} Gym`, status: 'ACTIVE' });
+    // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
+    await require('../harness/factories').makeBranchLive(tenantDb, branch);
     return { branch, plan, listing };
   };
 

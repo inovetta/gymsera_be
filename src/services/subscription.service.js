@@ -146,7 +146,48 @@ const priceFirstPayment = async (models, plan, userId, branchId) => {
   const subtotalMinor = toMinorUnits(plan.price);
   const joiningMinor = hasPreviousSubscription ? 0 : toMinorUnits(plan.joiningFee || 0);
   const securityMinor = toMinorUnits(plan.securityFee || 0);
-  return { subtotalMinor, totalAmountMinor: subtotalMinor + joiningMinor + securityMinor };
+  return { subtotalMinor, joiningMinor, securityMinor, totalAmountMinor: subtotalMinor + joiningMinor + securityMinor };
+};
+
+// ── GET /subscriptions/quote ──────────────────────────────────────────────────
+/**
+ * BUG-34 / NEW-150: what POST /subscriptions will charge this traveller, so the order
+ * screen shows the server's price (no platform fee, R-74; no promo code) instead of its own.
+ */
+const quoteFirstPayment = async (userId, { planId, gymListingId, branchId }) => {
+  const { models } = await _resolveTenant(gymListingId);
+
+  const plan = await models.MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
+  if (!plan) throw createError('Membership plan not found or inactive', 404);
+  const branch = await models.Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
+  if (!branch) throw createError('Branch not found or inactive', 404);
+  await require('./discovery.service').assertBranchBookable(branch.id);
+
+  const { subtotalMinor, joiningMinor, securityMinor, totalAmountMinor } = await priceFirstPayment(models, plan, userId, branch.id);
+  return {
+    planId: plan.id,
+    branchId: branch.id,
+    currency: branch.currency || 'PKR',
+    price: toMajorUnitsNumber(subtotalMinor),
+    joiningFee: toMajorUnitsNumber(joiningMinor),
+    securityFee: toMajorUnitsNumber(securityMinor),
+    totalPrice: toMajorUnitsNumber(totalAmountMinor),
+  };
+};
+
+/**
+ * BUG-31: a traveller's request (created by the member) starts on the day the host approves
+ * it, in the branch's timezone; the dates written when it was sent were only an estimate.
+ * A membership staff entered keeps the start date they chose (null = keep the dates).
+ */
+const datesOnApproval = async (models, sub, transaction = null) => {
+  if (sub.createdByRole !== 'MEMBER') return null;
+  const opts = transaction ? { transaction } : {};
+  const plan = await models.MembershipPlan.findByPk(sub.membershipPlanId, opts);
+  if (!plan) return null;
+  const branch = sub.branchId ? await models.Branch.findByPk(sub.branchId, { ...opts, attributes: ['id', 'timezone'] }) : null;
+  const startDate = require('./ledger.service').computeBusinessDate(new Date(), branch ? branch.timezone : undefined);
+  return { startDate, endDate: _calcEndDate(startDate, plan.durationType, plan.durationValue) };
 };
 
 // ── POST /subscriptions ───────────────────────────────────────────────────────
@@ -170,6 +211,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
 
   const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
   assertBranchNotBillingLocked(branch);
+  await require('./discovery.service').assertBranchBookable(branch.id);
 
   const existing = await MemberSubscription.findOne({
     where: {
@@ -866,8 +908,9 @@ const activateSubscription = async (tenantDb, subscriptionId) => {
   }
 
   const qrCode = sub.qrCode || `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
-  await sub.update({ status: SubscriptionStatus.ACTIVE, qrCode });
-  await UserGymMembership.update({ status: SubscriptionStatus.ACTIVE }, { where: { subscriptionId } });
+  const dates = sub.status === SubscriptionStatus.PENDING ? await datesOnApproval(tenantDb.models, sub) : null;
+  await sub.update({ status: SubscriptionStatus.ACTIVE, qrCode, ...(dates || {}) });
+  await UserGymMembership.update({ status: SubscriptionStatus.ACTIVE, ...(dates || {}) }, { where: { subscriptionId } });
 
   return sub.reload();
 };
@@ -1087,4 +1130,5 @@ module.exports = {
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
   getSubscriptionQrToken, applyUpgrade, applyRenewal, parsePendingChange: _parsePendingChange, priceFirstPayment,
+  quoteFirstPayment, datesOnApproval,
 };

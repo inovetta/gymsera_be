@@ -31,6 +31,8 @@ describe('gymsera-prompt-2b-group4-check.js (read-only)', () => {
     h = await setupTestDatabases();
     personas = await setupPersonas(h);
     ctx = require('../harness/personas').personaManager.context;
+    // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
+    await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     const { MembershipPlan, Payment } = ctx.tenant1Db.models;
     basic = await MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'G4 Basic',

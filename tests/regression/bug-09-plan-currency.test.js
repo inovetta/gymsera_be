@@ -39,6 +39,8 @@ beforeAll(async () => {
   usdPlan = await MembershipPlan.create({ ...base, branchId: usd.id, name: 'USD monthly', price: 30 });
   pkrPlan = await MembershipPlan.create({ ...base, branchId: first.id, name: 'PKR monthly', price: 5000 });
   gymWide = await MembershipPlan.create({ ...base, branchId: null, name: 'Everywhere', price: 7000 });
+  // Phase 7 P7a (NEW-159): the gym detail opens only for a live branch (R-77).
+  await factories.makeBranchLive(tenantDb, usd);
 });
 
 afterAll(async () => {

@@ -138,6 +138,20 @@ const ERROR_COPY = {
     ar: 'لم تُحدَّد مدينة لهذا النادي بعد. حدّد المدينة ثم وافق عليه.',
     action: 'none',
   },
+  // Phase 7 P7a (NEW-159): a saved or shared link to a gym that is not live (R-77).
+  gym_not_available: {
+    en: 'This gym is not available right now.',
+    ur: 'یہ جم اس وقت دستیاب نہیں ہے۔',
+    ar: 'هذا النادي غير متاح حالياً.',
+    action: 'none',
+  },
+  // Phase 7 P7a (NEW-159): the gym is not live for travellers (R-77), so it takes no booking.
+  gym_not_bookable: {
+    en: 'This gym is not taking bookings right now.',
+    ur: 'یہ جم اس وقت بکنگ نہیں لے رہا۔',
+    ar: 'هذا النادي لا يستقبل الحجوزات حالياً.',
+    action: 'none',
+  },
   // Phase 7 P4 (BUG-05): a branch with no plan travellers can see is hidden from them.
   last_visible_plan: {
     en: 'Travellers must always see at least one plan at each branch. Show another plan first, then hide this one.',

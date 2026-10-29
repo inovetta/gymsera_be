@@ -77,6 +77,25 @@ const _liveTenants = async (attributes) => {
 };
 
 /**
+ * NEW-159: is this branch id (or listing id) live for travellers under R-77? Same snapshot,
+ * so the same rule, as every discovery list: a gym that is not listed does not open either.
+ */
+const isLiveForTravellers = async (id, { fresh = false } = {}) => {
+  const live = await _getAllActiveBranches({ fresh });
+  if (live.some((b) => b.id === id)) return true;
+  const listing = await GymListing.findByPk(id, { attributes: ['tenantId', 'status'] });
+  return !!listing && listing.status === 'ACTIVE' && live.some((b) => b.tenantId === listing.tenantId);
+};
+
+/** NEW-159: a booking (or its quote) is for a branch that is live right now (fresh: it authorizes a write). */
+const assertBranchBookable = async (branchId) => {
+  const live = await _getAllActiveBranches({ fresh: true });
+  if (!live.some((b) => b.id === branchId)) {
+    throw createError('This gym is not taking bookings right now.', 409, 'gym_not_bookable');
+  }
+};
+
+/**
  * BUG-29: the name travellers see. Organization and branch with the same name (ignoring case
  * and spaces) read once ("heist", not "heist - heist"); otherwise "Organization · Branch".
  */
@@ -427,6 +446,7 @@ const getGym = async (id) => {
   }
 
   if (!listing || listing.status !== 'ACTIVE') throw createError('Gym not found', 404);
+  if (!(await isLiveForTravellers(id))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
 
   // Fetch public membership plans + branches from tenant DB
   let membershipPlans = [];
@@ -1076,16 +1096,34 @@ const _resolveTenantId = async (id) => {
 const resolveBranchCityId = (branch, listing, tenant) =>
   branch.cityId || (listing ? listing.cityId : null) || (tenant ? tenant.cityId : null) || null;
 
+// BUG-35: the payment details a traveller is shown. Blank values are dropped; null when
+// nothing is left, so the app can say the gym has not added them instead of "Loading".
+const TRAVELLER_PAYMENT_FIELDS = [
+  'bankName', 'accountTitle', 'accountNumber', 'iban', 'branchCode',
+  'jazzCashNumber', 'easyPaisaNumber', 'additionalInstructions',
+];
+const travellerPaymentDetails = (json) => {
+  if (!json || typeof json !== 'object') return null;
+  const details = {};
+  for (const key of TRAVELLER_PAYMENT_FIELDS) {
+    const value = json[key];
+    if ((typeof value === 'string' || typeof value === 'number') && String(value).trim()) {
+      details[key] = String(value).trim();
+    }
+  }
+  return Object.keys(details).length > 0 ? details : null;
+};
+
 const getPaymentDetails = async (gymListingId) => {
   const tenantId = await _resolveTenantId(gymListingId);
-  if (!tenantId) throw createError('Gym not found', 404);
+  if (!tenantId || !(await isLiveForTravellers(gymListingId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
 
   const tenant = await Tenant.findByPk(tenantId, {
     attributes: ['paymentDetailsJson'],
   });
 
   return {
-    paymentDetails: tenant ? tenant.paymentDetailsJson : null,
+    paymentDetails: travellerPaymentDetails(tenant ? tenant.paymentDetailsJson : null),
   };
 };
 
@@ -1165,6 +1203,8 @@ module.exports = {
   listGyms,
   getGym,
   getPaymentDetails,
+  isLiveForTravellers,
+  assertBranchBookable,
   listCities,
   nearbyGyms,
   mapGyms,

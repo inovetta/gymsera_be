@@ -12,6 +12,17 @@ const subscribe = async (req, res, next) => {
   }
 };
 
+// ── GET /subscriptions/quote ──────────────────────────────────────────────────
+const quote = async (req, res, next) => {
+  try {
+    const { planId, gymListingId, branchId } = req.query;
+    const result = await subscriptionService.quoteFirstPayment(req.user.id, { planId, gymListingId, branchId });
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /me/subscriptions ─────────────────────────────────────────────────────
 const listMySubscriptions = async (req, res, next) => {
   try {
@@ -260,7 +271,7 @@ const createStaffSubscription = async (req, res, next) => {
 };
 
 module.exports = {
-  subscribe, listMySubscriptions, freeze, cancel, renew, changePlan,
+  subscribe, quote, listMySubscriptions, freeze, cancel, renew, changePlan,
   listForStaff, getForStaff, preview, createStaffSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
