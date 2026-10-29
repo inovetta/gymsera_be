@@ -201,7 +201,8 @@ AuditLog.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: 
 
 // Discovery snapshot (PERF-06): a write to any platform model the public listing
 // reads (listing status/featured, tenant status, ratings, cities/areas) drops it.
-require('../../services/discovery-cache.service').watchModels([GymListing, Tenant, GymReview, City, Area]);
+// TenantSubscription: a subscription that stops (or starts) entitling a tenant changes who is live (R-77, BUG-26).
+require('../../services/discovery-cache.service').watchModels([GymListing, Tenant, TenantSubscription, GymReview, City, Area]);
 
 module.exports = {
   sequelize,

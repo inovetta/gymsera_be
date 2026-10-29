@@ -1,7 +1,9 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { GymListing, City, Area, Tenant, GymReview, User, UserGymMembership } = require('../models/platform');
+const { GymListing, City, Area, Tenant, TenantSubscription, GymReview, User, UserGymMembership } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const discoveryCache = require('./discovery-cache.service');
+const { ENTITLING_STATUSES } = require('./subscription-quota.service');
+const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 
 const _normalizeFacilities = (listing) => {
@@ -58,13 +60,41 @@ const _getTravelerVisibleListingIds = async () => {
 const _getAllActiveBranches = ({ fresh = false } = {}) =>
   discoveryCache.getSnapshot(_buildAllActiveBranches, { fresh });
 
+/**
+ * R-77 (Phase 7 D6, BUG-26): a gym is live for travellers only when its tenant is ACTIVE and
+ * its subscription entitles it (ENTITLING_STATUSES: ACTIVE = paid, GRACE = pay later or a
+ * renewal the store is retrying). The branch and plan parts of the rule are in the snapshot.
+ */
+const _liveTenants = async (attributes) => {
+  const entitled = await TenantSubscription.findAll({
+    where: { status: { [Op.in]: ENTITLING_STATUSES } },
+    attributes: ['tenantId'],
+    raw: true,
+  });
+  const ids = [...new Set(entitled.map((r) => r.tenantId))];
+  if (ids.length === 0) return [];
+  return Tenant.findAll({ where: { status: 'ACTIVE', id: { [Op.in]: ids } }, attributes });
+};
+
+/**
+ * BUG-29: the name travellers see. Organization and branch with the same name (ignoring case
+ * and spaces) read once ("heist", not "heist - heist"); otherwise "Organization · Branch".
+ */
+const _sameName = (a, b) => a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase();
+const displayName = (organizationName, branchName) => {
+  const org = (organizationName || '').trim();
+  const branch = (branchName || '').trim();
+  if (!branch) return org;
+  if (!org) return branch;
+  return _sameName(org, branch) ? org : `${org} · ${branch}`;
+};
+
+const _firstPhoto = (images) => (Array.isArray(images) ? images.find((u) => typeof u === 'string' && u.trim()) : null) || null;
+
 const _buildAllActiveBranches = async () => {
   let complete = true;
   const [tenants, listings, cities, areas] = await Promise.all([
-    Tenant.findAll({
-      where: { status: 'ACTIVE' },
-      attributes: ['id', 'connectionStringEncrypted', 'cityId', 'areaId'],
-    }),
+    _liveTenants(['id', 'connectionStringEncrypted', 'cityId', 'areaId']),
     GymListing.findAll({
       where: { status: 'ACTIVE' },
       include: [
@@ -79,11 +109,12 @@ const _buildAllActiveBranches = async () => {
   const cityMap = new Map(cities.map(c => [c.id, c]));
   const areaMap = new Map(areas.map(a => [a.id, a]));
 
-  // Load branch-level average ratings from platform reviews
+  // BUG-27: rating and count from approved reviews only.
   const reviewStats = await GymReview.findAll({
     attributes: [
       'branchId',
       [fn('AVG', col('rating')), 'avgRating'],
+      [fn('COUNT', col('id')), 'reviewCount'],
     ],
     where: { status: 'APPROVED', branchId: { [Op.ne]: null } },
     group: ['branchId'],
@@ -92,6 +123,7 @@ const _buildAllActiveBranches = async () => {
   const ratingMap = new Map(
     reviewStats.map((r) => [r.branchId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
   );
+  const reviewCountMap = new Map(reviewStats.map((r) => [r.branchId, Number(r.reviewCount) || 0]));
 
   const listingMap = new Map(listings.map(l => [l.id, l]));
   const branchesList = [];
@@ -150,12 +182,23 @@ const _buildAllActiveBranches = async () => {
             gymId: gym.id,
             cityId: finalCityId,
             areaId: finalAreaId,
-            title: `${gym.name} - ${b.branchName}`,
+            title: displayName(gym.name, b.branchName),
+            organizationName: gym.name || null,
+            branchName: b.branchName || null,
             shortDescription: gym.description || b.tagline,
             logoUrl: gym.logoUrl,
-            coverImageUrl: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson[0] : (gym.coverImageUrl || (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson[0] : null)),
+            // BUG-28: the branch's first photo, else the organization's cover or first photo, else
+            // the listing's cover; null = the client's neutral placeholder.
+            coverImageUrl: _firstPhoto(b.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || (listing && listing.coverImageUrl) || null,
+            organization: {
+              name: gym.name || null,
+              description: gym.description || null,
+              logoUrl: gym.logoUrl || null,
+              coverImageUrl: gym.coverImageUrl || null,
+            },
             genderType: gym.genderType,
             averageRating: ratingMap.get(b.id) || 0,
+            reviewCount: reviewCountMap.get(b.id) || 0,
             latitude: b.latitude ? parseFloat(b.latitude) : null,
             longitude: b.longitude ? parseFloat(b.longitude) : null,
             isFeatured: listing ? listing.isFeatured : false,
@@ -165,6 +208,8 @@ const _buildAllActiveBranches = async () => {
             imagesJson: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson : (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson : (gym.coverImageUrl ? [gym.coverImageUrl] : [])),
             category: b.category || gym.category || listing?.category || 'General',
             minPrice,
+            // NEW-145: the price is in the branch's currency (GLB-02, BUG-09).
+            currency: b.currency || DEFAULT_CURRENCY,
             gymListingId: b.gymListingId || null,
             status: 'ACTIVE',
             createdAt: b.createdAt,
@@ -463,22 +508,25 @@ const getGym = async (id) => {
       if (branchRecord && gym) {
         listing = listing.get({ plain: true });
         listing.id = branchRecord.id; // Override gymListingId with branchId so client matches
-        listing.title = `${gym.name} - ${branchRecord.branchName}`;
+        listing.title = displayName(gym.name, branchRecord.branchName);
+        listing.organizationName = gym.name || null;
+        listing.branchName = branchRecord.branchName || null;
         listing.shortDescription = gym.description || branchRecord.tagline;
-        listing.coverImageUrl = (branchRecord.imagesJson && branchRecord.imagesJson.length > 0) ? branchRecord.imagesJson[0] : (gym.coverImageUrl || (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson[0] : listing.coverImageUrl));
+        listing.coverImageUrl = _firstPhoto(branchRecord.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || listing.coverImageUrl || null;
         listing.latitude = branchRecord.latitude ? parseFloat(branchRecord.latitude) : listing.latitude;
         listing.longitude = branchRecord.longitude ? parseFloat(branchRecord.longitude) : listing.longitude;
         listing.contactPhone = branchRecord.phone || gym.contactPhone;
         listing.facilitiesJson = (branchRecord.facilitiesJson && branchRecord.facilitiesJson.length > 0) ? branchRecord.facilitiesJson : listing.facilitiesJson;
         listing.imagesJson = (branchRecord.imagesJson && branchRecord.imagesJson.length > 0) ? branchRecord.imagesJson : (listing.imagesJson && listing.imagesJson.length > 0 ? listing.imagesJson : (listing.coverImageUrl ? [listing.coverImageUrl] : []));
 
-        // Fetch branch-specific average rating
+        // Branch rating and count from approved reviews (BUG-27)
         const branchReviewStats = await GymReview.findOne({
-          attributes: [[fn('AVG', col('rating')), 'avg']],
+          attributes: [[fn('AVG', col('rating')), 'avg'], [fn('COUNT', col('id')), 'count']],
           where: { branchId: branchRecord.id, status: 'APPROVED' },
           raw: true,
         });
         listing.averageRating = branchReviewStats && branchReviewStats.avg ? parseFloat(parseFloat(branchReviewStats.avg).toFixed(2)) : 0;
+        listing.reviewCount = branchReviewStats ? Number(branchReviewStats.count) || 0 : 0;
 
         // Filter plans for this specific branch
         membershipPlans = membershipPlans.filter(p => p.branchId === null || p.branchId === branchRecord.id);
@@ -492,6 +540,12 @@ const getGym = async (id) => {
           minPrice = Math.min(...membershipPlans.map(p => parseFloat(p.price)));
         }
         listing.minPrice = minPrice;
+      }
+      if (typeof listing.get === 'function') listing = listing.get({ plain: true });
+      // NEW-145: the detail's price is in the branch's currency.
+      listing.currency = (resolvedBranch && resolvedBranch.currency) || DEFAULT_CURRENCY;
+      if (listing.reviewCount === undefined) {
+        listing.reviewCount = await GymReview.count({ where: { gymListingId: listing.id, status: 'APPROVED' } });
       }
       // BUG-09: each plan says which currency it is sold in.
       await require('./membership-plan.service').withCurrency(tenantDb, membershipPlans, resolvedBranch ? resolvedBranch.id : null);
@@ -521,6 +575,8 @@ const listCities = async () => {
     attributes: ['id', 'name', 'latitude', 'longitude'],
   });
 
+  // BUG-26: only cities with at least one live gym (R-77). Every active city, for a host
+  // registering a gym, is GET /cities.
   return cities.map(c => {
     const plain = c.get({ plain: true });
     plain.gymCount = cityCounts[c.id] || 0;
@@ -528,7 +584,8 @@ const listCities = async () => {
     plain.latitude = plain.latitude === null ? null : Number(plain.latitude);
     plain.longitude = plain.longitude === null ? null : Number(plain.longitude);
     return plain;
-  }).sort((a, b) => b.gymCount - a.gymCount);
+  }).filter((c) => c.gymCount > 0)
+    .sort((a, b) => b.gymCount - a.gymCount || a.name.localeCompare(b.name));
 };
 
 // ── haversineKm ───────────────────────────────────────────────────────────────
@@ -594,236 +651,55 @@ const topRatedGyms = async ({ cityId, limit = 12 } = {}) => {
 };
 
 // ── listOrganizations ─────────────────────────────────────────────────────────
-const listOrganizations = ({ featured, page = 1, limit = 12 }) =>
-  discoveryCache.memo(
-    `orgs:${featured ? 1 : 0}:${page}:${limit}`,
-    () => _listOrganizations({ featured, page, limit }),
-    { reportsCompleteness: true }
-  );
-
-// Resolves { value, complete }: complete is false when a tenant had to be skipped.
-const _listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
-  let complete = true;
-  const tenants = await Tenant.findAll({
-    where: { status: 'ACTIVE' },
-    attributes: ['id', 'connectionStringEncrypted'],
-  });
-
-  const listings = await GymListing.findAll({
-    where: { status: 'ACTIVE' },
-  });
-  const listingMap = new Map(listings.map(l => [l.id, l]));
-
-  const orgs = [];
-
-  for (const tenant of tenants) {
-    try {
-      if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
-      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-      const { Gym, Branch } = tenantDb.models;
-      const gyms = await Gym.findAll();
-      if (gyms.length === 0) continue;
-
-      const otherGymIds = gyms.slice(1).map(g => g.id);
-
-      for (const gym of gyms) {
-        const isPrimaryGym = gym.id === gyms[0].id;
-        const visibleBranches = await Branch.findAll({
-          where: {
-            status: 'ACTIVE',
-            travelerVisibilityStatus: 'active',
-            adminSuspended: { [Op.ne]: true },
-            ...(isPrimaryGym
-              ? {
-                  [Op.or]: [
-                    { gymId: gym.id },
-                    { gymId: null },
-                    { gymId: '' },
-                    ...(otherGymIds.length > 0 ? [{ gymId: { [Op.notIn]: otherGymIds } }] : [])
-                  ]
-                }
-              : { gymId: gym.id }
-            )
-          },
-        });
-
-        if (visibleBranches.length === 0) continue;
-
-        // Calculate aggregate stats
-        let totalRating = 0;
-        let ratedBranchesCount = 0;
-        for (const b of visibleBranches) {
-          const listing = b.gymListingId ? listingMap.get(b.gymListingId) : null;
-          if (listing) {
-            totalRating += parseFloat(listing.averageRating || 0);
-            ratedBranchesCount++;
-          }
-        }
-        const avgRating = ratedBranchesCount > 0 ? (totalRating / ratedBranchesCount) : 0.0;
-
-        orgs.push({
-          id: gym.id,
-          gymId: gym.id,
-          tenantId: tenant.id,
-          name: gym.name,
-          description: gym.description,
-          logoUrl: gym.logoUrl,
-          coverImageUrl: gym.coverImageUrl,
-          branchCount: visibleBranches.length,
-          averageRating: Math.round(avgRating * 10) / 10,
-          tagline: gym.description ? gym.description.slice(0, 60) : 'Premium Gym Network',
-        });
-      }
-    } catch (err) {
-      complete = false;
-      console.error(`[listOrganizations] Error processing tenant ${tenant.id}:`, err);
-    }
+// Built from the live-branch snapshot (R-77, BUG-26), so an organization is listed only
+// with at least one live branch, and shares the snapshot's cache and invalidation.
+// `featured` is accepted and, as before, not applied.
+const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
+  const branches = await _getAllActiveBranches();
+  const byGym = new Map();
+  for (const b of branches) {
+    const key = `${b.tenantId}:${b.gymId}`;
+    if (!byGym.has(key)) byGym.set(key, []);
+    byGym.get(key).push(b);
   }
 
-  // Paginate orgs
-  const offset = (page - 1) * limit;
-  const paginated = orgs.slice(offset, offset + parseInt(limit));
+  const orgs = [...byGym.values()].map((list) => {
+    const first = list[0];
+    const org = first.organization || {};
+    const reviewCount = list.reduce((n, b) => n + (b.reviewCount || 0), 0);
+    // Weighted by each branch's approved reviews (BUG-27); 0 with none.
+    const ratingSum = list.reduce((n, b) => n + (b.averageRating || 0) * (b.reviewCount || 0), 0);
+    const averageRating = reviewCount > 0 ? Math.round((ratingSum / reviewCount) * 10) / 10 : 0;
+    return {
+      id: first.gymId,
+      gymId: first.gymId,
+      tenantId: first.tenantId,
+      name: org.name,
+      description: org.description,
+      logoUrl: org.logoUrl,
+      // BUG-28: the organization's own cover, else its first branch photo.
+      coverImageUrl: org.coverImageUrl || list.map((b) => b.coverImageUrl).find(Boolean) || null,
+      branchCount: list.length,
+      averageRating,
+      reviewCount,
+      tagline: org.description ? org.description.slice(0, 60) : null,
+    };
+  }).sort((a, b) => b.averageRating - a.averageRating || (a.name || '').localeCompare(b.name || ''));
 
+  const offset = (page - 1) * limit;
   return {
-    value: {
-      organizations: paginated,
-      pagination: buildPagination(orgs.length, page, limit),
-    },
-    complete,
+    organizations: orgs.slice(offset, offset + parseInt(limit)),
+    pagination: buildPagination(orgs.length, page, limit),
   };
 };
 
 // ── listOrganizationBranches ──────────────────────────────────────────────────
-const listOrganizationBranches = (gymId) =>
-  discoveryCache.memo(`org-branches:${gymId}`, () => _listOrganizationBranches(gymId));
-
-const _listOrganizationBranches = async (gymId) => {
-  const tenants = await Tenant.findAll({
-    where: { status: 'ACTIVE' },
-    attributes: ['id', 'connectionStringEncrypted', 'cityId', 'areaId'],
-  });
-
-  const [listings, cities, areas] = await Promise.all([
-    GymListing.findAll({
-      where: { status: 'ACTIVE' },
-      include: [
-        { model: City, as: 'city', attributes: ['id', 'name'] },
-        { model: Area, as: 'area', attributes: ['id', 'name', 'cityId'] },
-      ]
-    }),
-    City.findAll({ attributes: ['id', 'name'] }),
-    Area.findAll({ attributes: ['id', 'name', 'cityId'] }),
-  ]);
-  const listingMap = new Map(listings.map(l => [l.id, l]));
-  const cityMap = new Map(cities.map(c => [c.id, c]));
-  const areaMap = new Map(areas.map(a => [a.id, a]));
-
-  // Load branch-level average ratings from platform reviews
-  const reviewStats = await GymReview.findAll({
-    attributes: [
-      'branchId',
-      [fn('AVG', col('rating')), 'avgRating'],
-    ],
-    where: { status: 'APPROVED', branchId: { [Op.ne]: null } },
-    group: ['branchId'],
-    raw: true,
-  });
-  const ratingMap = new Map(
-    reviewStats.map((r) => [r.branchId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
-  );
-
-  for (const tenant of tenants) {
-    try {
-      if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
-      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-      const { Branch, Gym, MembershipPlan } = tenantDb.models;
-
-      const gyms = await Gym.findAll();
-      const gym = gyms.find(g => g.id === gymId);
-      if (!gym) continue;
-
-      const otherGymIds = gyms.filter(g => g.id !== gym.id).map(g => g.id);
-      const isPrimaryGym = gym.id === gyms[0].id;
-      const [branches, plans] = await Promise.all([
-        Branch.findAll({
-          where: {
-            status: 'ACTIVE',
-            travelerVisibilityStatus: 'active',
-            adminSuspended: { [Op.ne]: true },
-            ...(isPrimaryGym
-              ? {
-                  [Op.or]: [
-                    { gymId: gym.id },
-                    { gymId: null },
-                    { gymId: '' },
-                    ...(otherGymIds.length > 0 ? [{ gymId: { [Op.notIn]: otherGymIds } }] : [])
-                  ]
-                }
-              : { gymId: gym.id }
-            )
-          },
-        }),
-        MembershipPlan.findAll({
-          where: { status: 'ACTIVE', isPublic: true },
-          attributes: ['price', 'branchId', 'isFeatured'],
-          raw: true,
-        })
-      ]);
-
-      const mappedBranches = branches.map(b => {
-        const listing = b.gymListingId ? listingMap.get(b.gymListingId) : null;
-
-        // Compute branch-specific minPrice dynamically based on public plans
-        const branchPlans = plans.filter(p => p.branchId === null || p.branchId === b.id);
-        if (branchPlans.length === 0) return null;
-
-        const featuredPlan = branchPlans.find(p => p.isFeatured);
-        let minPrice = 0;
-        if (featuredPlan) {
-          minPrice = parseFloat(featuredPlan.price);
-        } else if (branchPlans.length > 0) {
-          minPrice = Math.min(...branchPlans.map(p => parseFloat(p.price)));
-        }
-
-        const finalCityId = resolveBranchCityId(b, listing, tenant);
-        const finalAreaId = b.areaId || (listing ? listing.areaId : null) || tenant.areaId || null;
-
-        return {
-          id: b.id,
-          tenantId: tenant.id,
-          branchId: b.id,
-          gymId: gym.id,
-          cityId: finalCityId,
-          areaId: finalAreaId,
-          title: `${gym.name} - ${b.branchName}`,
-          shortDescription: gym.description || b.tagline,
-          logoUrl: gym.logoUrl,
-          coverImageUrl: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson[0] : (gym.coverImageUrl || (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson[0] : null)),
-          genderType: gym.genderType,
-          averageRating: ratingMap.get(b.id) || 0,
-          latitude: b.latitude ? parseFloat(b.latitude) : null,
-          longitude: b.longitude ? parseFloat(b.longitude) : null,
-          isFeatured: listing ? listing.isFeatured : false,
-          contactPhone: b.phone || gym.contactPhone,
-          website: gym.website,
-          facilitiesJson: b.facilitiesJson || [],
-          imagesJson: (b.imagesJson && b.imagesJson.length > 0) ? b.imagesJson : (gym.imagesJson && gym.imagesJson.length > 0 ? gym.imagesJson : (gym.coverImageUrl ? [gym.coverImageUrl] : [])),
-          category: b.category || gym.category || listing?.category || 'General',
-          minPrice,
-          status: 'ACTIVE',
-          createdAt: b.createdAt,
-          city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
-          area: (listing && listing.area) ? listing.area : (finalAreaId ? (areaMap.get(finalAreaId) || null) : null),
-        };
-      }).filter(Boolean);
-
-      return { gyms: mappedBranches, branches: mappedBranches };
-    } catch (err) {
-      // Ignore
-    }
-  }
-
-  throw createError('Organization not found', 404);
+const listOrganizationBranches = async (gymId) => {
+  const branches = (await _getAllActiveBranches())
+    .filter((b) => b.gymId === gymId)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  if (branches.length === 0) throw createError('Organization not found', 404);
+  return { gyms: branches, branches };
 };
 
 // ── getGymListingByIdentifier (helper) ────────────────────────────────────────
@@ -1242,6 +1118,7 @@ const listTopHosts = async () => {
     attributes: [
       'tenantId',
       [fn('AVG', col('rating')), 'avgRating'],
+      [fn('COUNT', col('id')), 'reviewCount'],
     ],
     where: { status: 'APPROVED' },
     group: ['tenantId'],
@@ -1251,6 +1128,7 @@ const listTopHosts = async () => {
   const ratingMap = new Map(
     reviewStats.map((r) => [r.tenantId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
   );
+  const reviewCountMap = new Map(reviewStats.map((r) => [r.tenantId, Number(r.reviewCount) || 0]));
 
   const topHosts = tenants
     .map((tenant) => {
@@ -1265,10 +1143,12 @@ const listTopHosts = async () => {
         id: tenant.id,
         tenantId: tenant.id,
         businessName: tenant.businessName,
-        ownerName: tenant.owner ? tenant.owner.fullName : 'Premium Host',
+        ownerName: tenant.owner ? tenant.owner.fullName : null,
         logoUrl,
         coverImageUrl,
         averageRating,
+        // BUG-27: approved reviews; 0 = "New".
+        reviewCount: reviewCountMap.get(tenant.id) || 0,
         branchesCount: tenantBranches.length,
         branches: tenantBranches,
       };
@@ -1281,6 +1161,7 @@ const listTopHosts = async () => {
 
 module.exports = {
   resolveBranchCityId,
+  displayName,
   listGyms,
   getGym,
   getPaymentDetails,

@@ -77,6 +77,8 @@ describe('PERF-06: discovery snapshot cache', () => {
   test('an organizations list built while a tenant was unreachable is kept only 10 s', async () => {
     const { factories } = require('../harness');
     const broken = await factories.createTenant({ gymName: 'Broken DB', connectionStringEncrypted: 'not-decryptable' });
+    // Entitled, so it is live (R-77, Phase 7 P6) and the build has to try its database.
+    await factories.createTenantSubscription(broken.id);
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval', 'clearTimeout'], now: Date.now() });
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     try {
