@@ -358,7 +358,7 @@ Using the P0 ledger's "repos affected" column, make sure every fix in P1–P8 is
 - Team & Access / Staff isolation and errors (P1).
 - Host status and plan naming on the CMS dashboard, Business Profile and Subscription & Billing (P2).
 - Google Places branch forms and the /admin/cities page now fed by Google data (P3).
-- Plan visibility rule and plan naming on /gym/plans and admin tenant Plans tab (P4).
+- Plan visibility rule and plan naming on /gym/plans and admin tenant Plans tab (P4). R-80: the whole CMS half of P4 is here: a "Show to Travellers" control (NEW-112; plans created in the CMS are hidden today), the API's `last_visible_plan` / `visible_plan_required` copy, the price label and plan amounts from the plan's `currency`, and the mobile naming rule (`planDisplayName` + `planDurationLabel`, QUARTERLY n = 3n months).
 - Branch list consistency on /gym/branches and admin tenant Branches tab (P5).
 - Live-city rule, ratings, photos and names on gymsera.com listing pages (P6).
 - Platform fee removal and bank-details state on web checkout or member pages (P7a).
