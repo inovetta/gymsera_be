@@ -338,6 +338,12 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { trans
     }
   }
 
+  // Phase 7 P5 (NEW-147, BUG-05): keep each plan's "Show to Travellers" (absent = visible, as
+  // provisioning does), and refuse before anything is created when no plan would be visible.
+  if (!packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
+    throw createError('Show at least one plan to travellers before you submit.', 422, 'visible_plan_required');
+  }
+
   // GLB-01 / GLB-02: timezone and currency per branch. A new branch inherits its organization's first branch,
   // so a host who set USD / America/New_York once is not asked again for every branch.
   const sibling = await Branch.findOne({
@@ -394,7 +400,7 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { trans
         durationType: pkg.durationType || 'MONTHLY',
         durationValue: pkg.durationValue || 1,
         description: pkg.description || null,
-        isPublic: true,
+        isPublic: pkg.isPublic !== false,
       }, { transaction });
       createdPlansCount++;
     } catch (pkgErr) {

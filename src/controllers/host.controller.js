@@ -461,6 +461,12 @@ const createListing = async (req, res, next) => {
       if (branchSource === 'new' && (!Array.isArray(packages) || packages.length === 0)) {
         throw createError('At least 1 membership package/plan is required to create an organization', 400);
       }
+      // Phase 7 P5 (NEW-147): the same rule gym.service.js#_createBranchRecord enforces, checked here
+      // too because the organization's tenant-DB gym is created before the branch (and outside the
+      // platform transaction), so a refusal there would leave an orphan gym behind.
+      if (branchSource === 'new' && !packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
+        throw createError('Show at least one plan to travellers before you submit.', 422, 'visible_plan_required');
+      }
 
       const targetCityId = cityId || tenant.cityId;
       if (!targetCityId) throw createError('cityId is required', 400);
