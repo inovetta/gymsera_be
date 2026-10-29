@@ -312,6 +312,8 @@ Report per Prompt G.
 Report per Prompt G.
 ```
 
+Status 2026-10-30: DONE locally except item 6 (owner device check), spec §13 "Phase 7 Prompt P7a".
+
 ---
 
 ### P7b — Host payout accounts and card payments (Wave B, after D2)
@@ -373,7 +375,7 @@ Using the P0 ledger's "repos affected" column, make sure every fix in P1–P8 is
 - Plan visibility rule and plan naming on /gym/plans and admin tenant Plans tab (P4). R-80: the whole CMS half of P4 is here: a "Show to Travellers" control (NEW-112; plans created in the CMS are hidden today), the API's `last_visible_plan` / `visible_plan_required` copy, the price label and plan amounts from the plan's `currency`, and the mobile naming rule (`planDisplayName` + `planDurationLabel`, QUARTERLY n = 3n months).
 - Branch list consistency on /gym/branches and admin tenant Branches tab (P5). P5 also changed the API the CMS should use for an organization: `GET /host/listings/:id` and PUT/PATCH with category, establishedYear, contactEmail, website, imagesJson (BUG-22 L8). Check every CMS screen that edits an organization through `/gyms/profile` (it edits the tenant's first gym only) and NEW-151 (tagline, category, established year sent to `/gyms/profile` are never stored).
 - Live-city rule, ratings, photos and names on gymsera.com listing pages (P6). Done on web in P6 (registration city source, "New" / review count, prices in their currency; names come from the API). Still here: the BUG-29 name rule on CMS lists, and NEW-158 (a photo check at CMS approval; a screenshot of the app was a live gym's cover).
-- Platform fee removal and bank-details state on web checkout or member pages (P7a).
+- Platform fee removal and bank-details state on web checkout or member pages (P7a). Checked in P7a (2026-10-30): web has no fee and no bank-details screen. Still here: pending requests show start → end on CMS `gym/subscriptions` and web `subscriptions/[id]` (BUG-31; show "Starts when the host approves").
 - Brand, copy and fake-data guard (P8).
 For each, add Vitest + Playwright coverage, then run tsc, lint, build and the security-header Playwright specs.
 

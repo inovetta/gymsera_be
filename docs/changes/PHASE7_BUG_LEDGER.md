@@ -320,3 +320,19 @@ Detail: spec §13 "Phase 7 Prompt P6". Local branches, not pushed: be, app and w
 | NEW-139 | **PART FIXED** (traveller screens: distances, hours, stock photos, "Premium Host") | the rest stays in P8 (BUG-38 sweep) |
 
 New in P6: NEW-158 (P1, owner now + P9), NEW-159 (P2, P7a), NEW-160 (P2, P8), NEW-161 (P3, P8), NEW-162 (P3, P8). See spec §13.
+
+## P7a status (2026-10-30, Claude Code Opus 5.5)
+
+Detail: spec §13 "Phase 7 Prompt P7a". Local branches, not pushed: be and app `fix/p7a-booking-payment`.
+
+| ID | Status | Fix / test |
+|---|---|---|
+| BUG-34 | **FIXED** (app; backend had no fee, R-74) | Review and Payment show the server's total (`GET /subscriptions/quote`, the created payment); no 5% line. be `p7a-booking-payment.test.js`, app `p7a_booking_payment_test.dart` |
+| NEW-150 | **FIXED** (app) | `GYMSERA10` and the promo field removed; the client amount is no longer sent |
+| BUG-35 | **FIXED** (backend + app) | API sends only real traveller fields or null; app: loading / error with retry / "hasn't added bank details — send a request instead" / the details. Only wallets the gym has (item 4) |
+| BUG-31 | **FIXED** (backend + app); CMS and web in P9 | a request starts on the day the host approves it; screens say "Starts when the host approves" |
+| NEW-159 | **FIXED** (backend + app copy) | a gym not live under R-77 answers 404 `gym_not_available` (detail, payment details) and 409 `gym_not_bookable` (booking, quote) |
+| Item 5 | **Confirmed gone** | SEC-09 removed `/home/checkout/add-card`; `sec_09_no_card_collection_test.dart` |
+| Item 6 (NEW-144) | open (owner) | iOS sandbox purchase and Restore Purchases on a device |
+
+New in P7a: NEW-163 (P2), NEW-164 (P3, P7b), NEW-165 (P2, P8). See spec §13.

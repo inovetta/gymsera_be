@@ -17,20 +17,22 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-29 (Phase 7 P6 done locally, not pushed) |
+| Last updated | 2026-10-30 (Phase 7 P7a done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P6** (traveller discovery; BUG-26 to BUG-30, NEW-145; NEW-138 and the traveller part of NEW-139 folded in; R-77) |
-| Prompt status | `DONE` (local). Spec §13 "Phase 7 Prompt P6" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Phase 7 Prompt P7a** (booking and payment; BUG-31, BUG-34, BUG-35, items 4 and 5, NEW-150, NEW-159; R-74) |
+| Prompt status | `DONE` (local) except item 6 (owner: iOS sandbox purchase after NEW-144). Spec §13 "Phase 7 Prompt P7a" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
-**Next action:** **Owner:** (1) push and open PRs: be `fix/p6-traveller-discovery` (`ccaf07b`, `4f021af`), app `fix/p6-traveller-discovery` (`835d060`), web `fix/p6-traveller-discovery` (`e05a6e0`), be docs `docs/p6-traveller-discovery`. (2) Deploy **web first** (or together with the backend): the backend now lists only live cities on `/discovery/cities`, and the new web registration reads `/cities`. No migration, no env variable. Then backend (`git pull`, `npm install --omit=dev`, `iisreset`), then a new mobile build. (3) After deploy, check `/discovery/cities` and the gym list: tenants with no ACTIVE or GRACE subscription are no longer listed (R-77). (4) Remove the screenshot cover photo of branch `0d3c9766-4640-4934-b126-d603a27b765c` ("lion2", organization "flex") (BUG-30 / NEW-158). (5) Device check: Home opens on a live city (nearest one with location allowed), city picker lists only live cities, "New" on unrated gyms, no "(124)", prices with the right currency, single names ("heist"), photos on organization cards, gallery of a gym with no photo shows the placeholder. **Agent, next:** Prompt **P7a** (booking and payment; includes NEW-150 and NEW-159). **Owner, still open (not blocking):** push / deploy P4 and P5 if not done; keep apistaging stopped until it has its own platform database and tenant server; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79).
+**Next action:** **Owner:** (1) push and open PRs: be `fix/p7a-booking-payment` (`c9de1e4`), app `fix/p7a-booking-payment` (`ff8d8a0`), be docs `docs/p7a-booking-payment` (built on `docs/p6-traveller-discovery`: merge that PR first). (2) Deploy the backend first (no migration, no env variable): `git pull`, `npm install --omit=dev`, `iisreset`; then a new mobile build. (3) After deploy: gyms without an ACTIVE or GRACE subscription, or with a hidden branch, answer 404 on detail and 409 `gym_not_bookable` on booking (R-77). (4) Device check: Review your order shows no "Platform fee" and no coupon field, its total equals the payment the host sees; a gym with no bank details says so and "Send request" reaches the confirmation; a gym with details lists them and only its own wallets; a pending request says "Starts when the host approves"; approve it a day later and its start date is the approval day. (5) Item 6: iOS sandbox purchase and Restore Purchases (NEW-144). **Run the backend suite on mains power:** the P7a full run on this Mac was on battery and timed out (spec §13 P7a); CI runs the full suite, and the next local run should be on mains power with `caffeinate -i npm test`. **Agent, next:** Prompt **P8** (copy, brand and fake-data sweep; includes NEW-165). **Owner, still open (not blocking):** remove the screenshot photo on branch `0d3c9766` (NEW-158); keep apistaging stopped until it has its own platform database and tenant server; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79).
 
 ### Branches and last commits
 
 Merged on origin (checked 2026-10-29): Phase 7 P1 to P5, the P3 device follow-ups and NEW-144 (be through `dad4fa3`, app through `ad7bb9a`, web through `469ca91`).
 
-P6 branches, committed locally, **not pushed** (from `origin/main` `dad4fa3` / `origin/master` `ad7bb9a` / web `origin/main` `469ca91`): be `fix/p6-traveller-discovery` (`ccaf07b` BUG-26/27/28/29/NEW-145, `4f021af` top hosts review count), app `fix/p6-traveller-discovery` (`835d060`), web `fix/p6-traveller-discovery` (`e05a6e0`), be docs `docs/p6-traveller-discovery`.
+P7a branches, committed locally, **not pushed** (from `origin/main` `08eb0e9` / `origin/master` `2527fca`): be `fix/p7a-booking-payment` (`c9de1e4`), app `fix/p7a-booking-payment` (`ff8d8a0`), be docs `docs/p7a-booking-payment` (on top of `docs/p6-traveller-discovery`, which is not merged yet). P6 code is merged (be `08eb0e9`, app `2527fca`, web `8f83418`).
+
+P6 branches (code merged 2026-10-30; docs branch `docs/p6-traveller-discovery` still open) (from `origin/main` `dad4fa3` / `origin/master` `ad7bb9a` / web `origin/main` `469ca91`): be `fix/p6-traveller-discovery` (`ccaf07b` BUG-26/27/28/29/NEW-145, `4f021af` top hosts review count), app `fix/p6-traveller-discovery` (`835d060`), web `fix/p6-traveller-discovery` (`e05a6e0`), be docs `docs/p6-traveller-discovery`.
 
 Committed locally, **not pushed** (P4):
 
@@ -127,6 +129,15 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Phase 7 Prompt P7a: booking and payment (be and app `fix/p7a-booking-payment`; not pushed):**
+- [x] BUG-34 / NEW-150: `GET /subscriptions/quote`; app shows the server total, no fee, no promo (be `c9de1e4`, app `ff8d8a0`)
+- [x] BUG-35 + item 4: payment details only real fields or null; app loading / error / none added / details, only configured wallets (be `c9de1e4`, app `ff8d8a0`)
+- [x] BUG-31: a request starts on the approval day (be `c9de1e4`); screens hide pending dates (app `ff8d8a0`)
+- [x] NEW-159: not-live gym 404 `gym_not_available` / 409 `gym_not_bookable` (be `c9de1e4`, app copy `ff8d8a0`)
+- [x] Item 5: add-card route confirmed gone (SEC-09)
+- [ ] Item 6: iOS sandbox purchase and Restore Purchases (owner, device)
+- [ ] CMS / web pending dates (BUG-31): P9
 
 **Phase 7 Prompt P6: traveller discovery (be, app, web `fix/p6-traveller-discovery`; not pushed):**
 - [x] BUG-26 backend: R-77 live rule in the snapshot, cities with a live gym only, organizations from the snapshot, subscription writes drop the cache (be `ccaf07b`)
@@ -576,3 +587,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 116 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P4 (membership plans: visibility, naming, currency; R-80) | be `b163f3e` BUG-05 (19 tests, red 13/19), `d70a984` BUG-09 (6, red 6/6); related suites 37/37 green; full suite 246/246 suites, 2528/2528 tests (be `d70a984`); app `2c39c23` BUG-05 (10), `2e9286c` BUG-09 (7 + guard), `050a625` BUG-33 (6 + guard); flutter test 295/295 x3, analyze 169 before and after; NEW-145 to NEW-150; CMS half to P9 | task complete (not pushed) | yes |
 | 117 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P5 (host area after approval: BUG-19, BUG-20, BUG-22, BUG-25; NEW-147) | be `bfdec1b` NEW-147 (4 tests, red 3), `cc9546d` BUG-22 L8 (5, red 5); full suite 248/248, 2537/2537; app `7e35532` BUG-19/20 (9, red 8), `1da6260` BUG-22 (15, red 13 + 2 hang), `6bc1fb5` BUG-25 (5, red 4); flutter test 3x 324/324; NEW-151 to NEW-157; NEW-145 to NEW-150 mapped with prompt lines | task complete |
 | 118 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P6 (traveller discovery: BUG-26 to BUG-30, NEW-145, NEW-138, NEW-139 traveller part) | be `ccaf07b` (11 tests, red 9), `4f021af` (1, red 1); backend full suite 249 / 249 suites, 2549 / 2549 tests (be `4f021af`, local Docker MySQL 5.7, `DISABLE_REDIS=true`, in band); app `835d060` (9 tests, red 8; flutter test 333/333 x3; analyze 168 vs 169); web `e05a6e0` (Vitest 3 red 3, Playwright 1 red; vitest 135/135, tsc, lint, build); BUG-30 cause found in production photo data; docs `docs/p6-traveller-discovery`; nothing pushed | task complete |
+| 119 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P7a (booking and payment: BUG-31, BUG-34, BUG-35, NEW-150, NEW-159; items 4, 5) | be `c9de1e4` (12 tests, red 9; related suites 10 / 10, 61 / 61; full suite: not yet clean on this machine: run 1 (be `c9de1e4`, local Docker MySQL 5.7, `DISABLE_REDIS=true`) 249 / 250 suites, 2547 / 2561 tests; the one failing suite, new-35 re-auth (14 tests, routes P7a does not touch), passes alone 14 / 14. Run 2 ran on battery and degraded into 30 s hook timeouts (16 suites) and was stopped; all 23 suites that failed in either run pass one by one (247 / 247). GitHub CI runs the full suite; a clean local run on mains power is still owed); app `ff8d8a0` (10 tests, red 9 / 9; `flutter test` 3x 343 / 343; analyze 168 = master); new NEW-163 to NEW-165 | task complete | yes |
