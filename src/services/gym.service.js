@@ -114,7 +114,9 @@ const _refreshCapacityFlags = async (tenantId, tenantDb, idempotencyPrefix, acto
  */
 const _getOrCreateGym = async (tenantDb, tenantId) => {
   const { Gym } = tenantDb.models;
-  let gym = await Gym.findOne();
+  // Phase 7 P5 (BUG-22): the tenant's first gym (its first organization), not whichever row the
+  // database returns first; a host with several organizations has one gym each.
+  let gym = await Gym.findOne({ order: [['createdAt', 'ASC']] });
 
   if (!gym) {
     // Seed initial data from the Platform Tenant record
@@ -137,10 +139,14 @@ const _getOrCreateGym = async (tenantDb, tenantId) => {
 };
 
 /**
- * Sync key public fields back to the platform GymListing record.
+ * Sync key public fields back to the platform GymListing record of this gym.
  * Called whenever the gym profile is updated.
+ *
+ * Phase 7 P5 (BUG-22): only the gym's own organization. This used to update every GymListing of
+ * the tenant, so editing one organization renamed (and re-logoed) all of them. A gym not yet linked
+ * to a listing (tenants from before organizations) belongs to the tenant's first organization.
  */
-const _syncGymListing = async (tenantId, patch) => {
+const _syncGymListing = async (tenantId, gym, patch) => {
   const syncFields = {};
   if (patch.name !== undefined) syncFields.title = patch.name;
   if (patch.description !== undefined) syncFields.shortDescription = patch.description;
@@ -155,9 +161,13 @@ const _syncGymListing = async (tenantId, patch) => {
   if (patch.latitude != null) syncFields.latitude = patch.latitude;
   if (patch.longitude != null) syncFields.longitude = patch.longitude;
 
-  if (Object.keys(syncFields).length > 0) {
-    await GymListing.update(syncFields, { where: { tenantId } });
+  if (Object.keys(syncFields).length === 0) return;
+  let listingId = gym && gym.gymListingId;
+  if (!listingId) {
+    const first = await GymListing.findOne({ where: { tenantId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
+    listingId = first && first.id;
   }
+  if (listingId) await GymListing.update(syncFields, { where: { id: listingId, tenantId } });
 };
 
 // ── Gym profile ───────────────────────────────────────────────────────────────
@@ -236,7 +246,7 @@ const updateProfile = async (tenantDb, tenantId, data) => {
   }
 
   // Keep the public gym_listings record in sync
-  await _syncGymListing(tenantId, data);
+  await _syncGymListing(tenantId, gym, data);
 
   const tenant = await Tenant.findByPk(tenantId, { attributes: ['paymentDetailsJson', 'paymentDetailsUpdatedAt'] });
   return {
@@ -1548,7 +1558,7 @@ const addGymImages = async (tenantDb, tenantId, newUrls) => {
   const existing = Array.isArray(gym.imagesJson) ? gym.imagesJson : [];
   const combined = [...existing, ...newUrls];
   await gym.update({ imagesJson: combined });
-  await _syncGymListing(tenantId, { imagesJson: combined });
+  await _syncGymListing(tenantId, gym, { imagesJson: combined });
   return { gym };
 };
 
@@ -1557,7 +1567,7 @@ const removeGymImage = async (tenantDb, tenantId, imageUrl) => {
   const existing = Array.isArray(gym.imagesJson) ? gym.imagesJson : [];
   const updated = existing.filter((url) => url !== imageUrl);
   await gym.update({ imagesJson: updated });
-  await _syncGymListing(tenantId, { imagesJson: updated });
+  await _syncGymListing(tenantId, gym, { imagesJson: updated });
   return { gym };
 };
 

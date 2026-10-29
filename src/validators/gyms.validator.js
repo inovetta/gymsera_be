@@ -1,12 +1,29 @@
 const { body, param, query } = require('express-validator');
 
+// Organization details shared by PATCH /gyms/profile and PUT /host/listings/:id (Phase 7 P5, BUG-22).
+const organizationDetails = () => [
+  body('imagesJson').optional({ nullable: true }).isArray().withMessage('imagesJson must be an array'),
+  body('category').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  body('establishedYear').optional({ nullable: true }).isInt({ min: 1800, max: 2100 }),
+  body('contactEmail')
+    .optional({ nullable: true, checkFalsy: true })
+    .isEmail()
+    .withMessage('contactEmail must be a valid email'),
+  body('website')
+    .optional({ nullable: true, checkFalsy: true })
+    .isURL()
+    .withMessage('website must be a valid URL'),
+];
+
 const gymsValidators = {
+  // PUT/PATCH /host/listings/:id: one organization (the rest of its body is listed in host.routes.js)
+  // (no tagline: an organization has none; each branch has its own, in the listing editor)
+  updateOrganization: organizationDetails(),
+
   updateProfile: [
     // SEC-06: listing fields gym.service#updateProfile writes
-    body('imagesJson').optional({ nullable: true }).isArray().withMessage('imagesJson must be an array'),
+    ...organizationDetails(),
     body('tagline').optional({ nullable: true }).isString().isLength({ max: 200 }),
-    body('category').optional({ nullable: true }).isString().isLength({ max: 100 }),
-    body('establishedYear').optional({ nullable: true }).isInt({ min: 1800, max: 2100 }),
     body('name')
       .optional()
       .trim()
@@ -20,16 +37,6 @@ const gymsValidators = {
       .optional({ nullable: true, checkFalsy: true })
       .isMobilePhone()
       .withMessage('contactPhone must be a valid phone number'),
-
-    body('contactEmail')
-      .optional({ nullable: true, checkFalsy: true })
-      .isEmail()
-      .withMessage('contactEmail must be a valid email'),
-
-    body('website')
-      .optional({ nullable: true, checkFalsy: true })
-      .isURL()
-      .withMessage('website must be a valid URL'),
 
     body('genderType')
       .optional()
