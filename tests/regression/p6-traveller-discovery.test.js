@@ -136,6 +136,14 @@ describe('Phase 7 P6: traveller discovery', () => {
       const o1 = (await orgs()).find((o) => o.tenantId === t1.tenantId);
       expect(o1).toMatchObject({ averageRating: 4, reviewCount: 1 });
     });
+
+    test('top hosts carry the approved review count too', async () => {
+      const res = await request(server).get('/api/v1/discovery/top-hosts');
+      expect(res.status).toBe(200);
+      const hosts = res.body.data.hosts || res.body.data;
+      expect(hosts.find((x) => x.tenantId === t1.tenantId)).toMatchObject({ averageRating: 4, reviewCount: 1 });
+      expect(hosts.find((x) => x.tenantId === t2.tenantId)).toMatchObject({ reviewCount: 0 });
+    });
   });
 
   describe('BUG-28: photos', () => {

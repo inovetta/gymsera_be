@@ -1118,6 +1118,7 @@ const listTopHosts = async () => {
     attributes: [
       'tenantId',
       [fn('AVG', col('rating')), 'avgRating'],
+      [fn('COUNT', col('id')), 'reviewCount'],
     ],
     where: { status: 'APPROVED' },
     group: ['tenantId'],
@@ -1127,6 +1128,7 @@ const listTopHosts = async () => {
   const ratingMap = new Map(
     reviewStats.map((r) => [r.tenantId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
   );
+  const reviewCountMap = new Map(reviewStats.map((r) => [r.tenantId, Number(r.reviewCount) || 0]));
 
   const topHosts = tenants
     .map((tenant) => {
@@ -1141,10 +1143,12 @@ const listTopHosts = async () => {
         id: tenant.id,
         tenantId: tenant.id,
         businessName: tenant.businessName,
-        ownerName: tenant.owner ? tenant.owner.fullName : 'Premium Host',
+        ownerName: tenant.owner ? tenant.owner.fullName : null,
         logoUrl,
         coverImageUrl,
         averageRating,
+        // BUG-27: approved reviews; 0 = "New".
+        reviewCount: reviewCountMap.get(tenant.id) || 0,
         branchesCount: tenantBranches.length,
         branches: tenantBranches,
       };
