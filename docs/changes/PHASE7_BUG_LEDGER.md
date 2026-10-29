@@ -285,4 +285,21 @@ Detail: spec §13 "Phase 7 Prompt P4". Local branches, not pushed: be `fix/p4-me
 | BUG-33 | **FIXED** (app) | name as typed + one duration label; no invented badges, features, stand-in plan or stock photos. app `bug_33_one_plan_one_name_test.dart` |
 | CMS half (BUG-05/09/33, NEW-112) | **NOT DONE** (R-80) | P9 |
 
-New: NEW-145 (P2, P6), NEW-146 (P2, P8), NEW-147 (P3), NEW-148 (P2, P8), NEW-149 (P2, P8), NEW-150 (P1, P7a). See spec §13.
+New: NEW-145 (P2, P6), NEW-146 (P2, P8), NEW-147 (P3, **P5, DONE** 2026-10-29), NEW-148 (P2, P8), NEW-149 (P2, P8), NEW-150 (P1, P7a). See spec §13. Each has a line in its prompt in `GYMSERA_PRODUCTION_FIX_PROMPTS.md` (checked 2026-10-29 in P5).
+
+## P5 status (2026-10-29, Claude Code Opus 5.5)
+
+Detail: spec §13 "Phase 7 Prompt P5". Local branches, not pushed: be `fix/p5-host-area`, app `fix/p5-host-area`.
+
+| ID | Status | Fix / test |
+|---|---|---|
+| BUG-19 | **FIXED** (app; not yet on a device) | the branch dashboard's back arrow did `context.go('/host/gyms')` (`gym_dashboard_screen.dart:100`); it now pops to whichever screen opened it. app `p5_today_navigation_test.dart` |
+| BUG-20 | **FIXED** (app) | hardcoded "+12.4%" (`host_today_screen.dart:402`) and a trending arrow on New Subs removed; the API sends no previous-period numbers. app `p5_today_navigation_test.dart` |
+| BUG-21 | VERIFIED 2026-10-28 (skipped, as the prompt says) | — |
+| BUG-22 | **FIXED** (backend + app; not yet on a device) | 12 defects L1 to L12 (spec §13): header, tab back arrow, stock photo, empty states, date label, raw errors, wrong-password refresh loop, **Edit Organization edited and renamed every organization**, move gate, rollback, refresh. be `p5-bug-22-edit-organization.test.js`, app `p5_bug_22_listings_test.dart` |
+| BUG-25 | **FIXED** (app) | `PersonAvatar` (photo, else initials) on Inbox, Today, Home, member profile, renew, Host Profile, Profile; invented "Ahmed Khan" removed. app `p5_bug_25_avatar_test.dart` |
+| NEW-147 | **FIXED** (backend) | `_createBranchRecord` keeps `isPublic`; all hidden = 422 `visible_plan_required`. be `new-147-show-to-travellers-on-create.test.js` |
+
+NEW items from P4, final mapping (each has a line in its prompt): NEW-145 → P6 (item 6); NEW-146 → P8 (item 7); NEW-147 → P5 (DONE; P5 item 6); NEW-148 → P8 (item 8); NEW-149 → P8 (item 9); NEW-150 → P7a (item 7).
+
+New in P5: NEW-151 (P2, P9), NEW-152 (P3, later), NEW-153 (P2, P8), NEW-154 (P3, P8), NEW-155 (P3, P8), NEW-156 (P3, later), NEW-157 (P3, P8). See spec §13.

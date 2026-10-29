@@ -17,14 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-29 (Phase 7 P5 in progress) |
+| Last updated | 2026-10-29 (Phase 7 P5 done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P5** (host area after approval: navigation and data; `GYMSERA_PRODUCTION_FIX_PROMPTS.md` "P5"; BUG-19, BUG-20, BUG-22, BUG-25; BUG-21 already VERIFIED, skipped) |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BUG-25 (one avatar rule app-wide) |
-| Step within issue | starting: shared avatar widget in `lib/core/widgets/`, then the screens |
+| Current prompt | **Phase 7 Prompt P5** (host area after approval: navigation and data; BUG-19, BUG-20, BUG-22, BUG-25; NEW-147; BUG-21 already verified, skipped) |
+| Prompt status | `DONE` (local). Spec §13 "Phase 7 Prompt P5" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | (none) |
 
-**Next action:** Done and committed: app `7e35532` (BUG-19, BUG-20), app `1da6260` (BUG-22 app half, L1 to L12), be `bfdec1b` (NEW-147), be `cc9546d` (BUG-22 L8 backend: `GET /host/listings/:id`, PUT/PATCH new fields, profile sync scoped). Next: BUG-25: one `PersonAvatar` (uploaded photo, else initials, first + last letter) used by the Inbox header, Today header, Home header, member profile, renew screen, Host Profile and traveller Profile (drop the invented "Ahmed Khan" fallback there). Then the full app suite 3x, the docs commit (spec §13 P5 section, NEW-151 onwards, ledger mapping NEW-145 to NEW-150 with NEW-147 now P5, prompt lines in P6 / P7a / P8), and the report.
+**Next action:** **Owner:** (1) push and open PRs: be `fix/p5-host-area` (`bfdec1b` NEW-147, `cc9546d` BUG-22 L8), app `fix/p5-host-area` (`7e35532` BUG-19 + BUG-20, `1da6260` BUG-22, `6bc1fb5` BUG-25), be docs `docs/p5-host-area`. (2) Deploy the backend first (no migration, no env variable): `git pull`, `npm install --omit=dev`, `iisreset`. Then a new mobile build (Edit Organization needs the new `GET /host/listings/:id`). (3) Device check: each Today card → Back returns to Today; no "+12.4%"; Listings header "Listings", no back arrow; with two organizations, Edit one and check the other keeps its name and logo; wrong password on Delete Organization says so at once (no spinner loop); "Move an existing branch here" works with one organization; New Organization with a hidden plan keeps it hidden; avatars show initials. **Agent, next:** Prompt **P6** (traveller discovery; includes NEW-145). **Owner, still open (not blocking):** push / deploy P4 if not done; keep apistaging stopped until it has its own platform database and tenant server; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79).
 
 ### Branches and last commits
 
@@ -563,4 +563,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 114 | 2026-10-28 | Claude Code (Opus 5.5) | Phase 7 P3 (Google Maps, Places, location; R-76) | be `fa8b134` (/places proxy with server key, city/area upsert by place id, p024, tenant 020, coordinate ranges; 23 + 3 tests; full suite 241/241, 2485/2485); app `dc63359` NEW-109 key to build config, `ecb82d2` Become a Host, `ef4c7a1` traveller, `e00da68` branch editors + guard (267 tests x3, analyze no new findings); NEW-138 to NEW-140 recorded; CMS part carried to P9 | task complete (not pushed) | yes |
 | 115 | 2026-10-28 | Claude Code (Opus 5.5) | P3 device follow-ups (owner iOS test) and NEW-144 (axios dev-only, iOS sync 500 on production) | be `e0fd34f` (p025 country, autocomplete region/bias; 9 + 3 tests; full suite 243/243, 2500/2500), app `bca5ba4` (hint, city on address search, suggestions visible; flutter test 272/272), be `b0929fd` NEW-144 (axios to dependencies, runtime-dependency test red 2/3 → 3/3; `npm ci --omit=dev` check: axios missing on main, all billing modules resolve with the fix); BUG-26 checked on production, not correct, unchanged (P6); docs `docs/p3-device-followups`; nothing pushed | task complete |
 | 116 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P4 (membership plans: visibility, naming, currency; R-80) | be `b163f3e` BUG-05 (19 tests, red 13/19), `d70a984` BUG-09 (6, red 6/6); related suites 37/37 green; full suite 246/246 suites, 2528/2528 tests (be `d70a984`); app `2c39c23` BUG-05 (10), `2e9286c` BUG-09 (7 + guard), `050a625` BUG-33 (6 + guard); flutter test 295/295 x3, analyze 169 before and after; NEW-145 to NEW-150; CMS half to P9 | task complete (not pushed) | yes |
-| 117 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P5 (host area after approval: BUG-19, BUG-20, BUG-22, BUG-25) | in progress: app `7e35532` BUG-19 + BUG-20 | |
+| 117 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P5 (host area after approval: BUG-19, BUG-20, BUG-22, BUG-25; NEW-147) | be `bfdec1b` NEW-147 (4 tests, red 3), `cc9546d` BUG-22 L8 (5, red 5); full suite 248/248, 2537/2537; app `7e35532` BUG-19/20 (9, red 8), `1da6260` BUG-22 (15, red 13 + 2 hang), `6bc1fb5` BUG-25 (5, red 4); flutter test 3x 324/324; NEW-151 to NEW-157; NEW-145 to NEW-150 mapped with prompt lines | task complete |
