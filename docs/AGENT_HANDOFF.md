@@ -22,9 +22,22 @@ next agent won't know it.
 | Current prompt | **Phase 7 Prompt P5** (host area after approval: navigation and data; `GYMSERA_PRODUCTION_FIX_PROMPTS.md` "P5"; BUG-19, BUG-20, BUG-22, BUG-25; BUG-21 already VERIFIED, skipped) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | BUG-22 (Listings tab: header, New / Edit / Delete Organization) |
-| Step within issue | audit: list every defect before fixing |
+| Step within issue | defect list written (below); fixing backend first (be `fix/p5-host-area`), then app |
 
-**Next action:** BUG-19 and BUG-20 committed on app `fix/p5-host-area` (`7e35532`, test `test/regression/p5_today_navigation_test.dart`). Next: BUG-22 audit of `listings_overview_screen.dart` (header says "Host Dashboard"), New Organization (`/host/organizations/new-source`, quick form), Edit (`edit_organization_screen.dart`), Delete; list the defects, then failing tests, then fixes. Then BUG-25 (one avatar rule). Owner also asked: confirm NEW-145 to NEW-150 each have a phase in `docs/changes/PHASE7_BUG_LEDGER.md` and a line in the P6 / P7a / P8 prompts; NEW-147 goes in P5 if P5 touches Add Branch, otherwise P8; list the mapping in the P5 report.
+**Next action:** BUG-19 + BUG-20 done (app `7e35532`). BUG-22 audit done; defect list (fix all in P5, backend first):
+- L1 Listings header says "Host Dashboard" (`listings_overview_screen.dart:64`).
+- L2 the back arrow on the Listings tab root switches to traveller mode (`go('/mode-switch')`, :57); no other tab has it.
+- L3 stock Unsplash photo when an organization has no logo/cover (:634).
+- L4 blank screen when the host has no organizations and capacity left, or the search matches nothing (:285).
+- L5 "Last updated" shows `createdAt`, and invents "Today" when it is null (:844).
+- L6 raw `$e` / server text in snackbars: delete, move, delete-everything, quick form create and cleanup, Edit load and save.
+- L7 wrong password on Delete Organization: 401 `invalid_credentials` makes `error_interceptor.dart` refresh the token and re-send the same wrong password, then show a generic server/network error.
+- L8 **Edit Organization edits the wrong organization**: the app ignores `orgId` and uses `/gyms/profile`; the backend edits `Gym.findOne()` and `_syncGymListing` (`gym.service.js:143-159`) updates **every** GymListing of the tenant (renames all organizations, overwrites their logos, covers and photos). Fix: `GET` + `PUT /host/listings/:id` carry the organization's own Gym fields; the app uses them; the profile sync touches only that gym's own listing.
+- L9 "Move an existing branch here" is disabled for a host with one organization (needs `activeOrgs.length > 1`) and the picker lists deleted branches (`new_organization_source_screen.dart:94`).
+- L10 quick form: if the move fails for any reason other than last-branch, the new empty organization is left behind.
+- L11 = NEW-147: New Organization > Build a brand new branch sends each plan's `isPublic`, but `_createBranchRecord` (`gym.service.js:397`) makes every plan public. Same function as Add Branch, so NEW-147 is fixed in P5 (422 `visible_plan_required` when every plan is hidden).
+- L12 after a delete, Today and the host status are not refreshed.
+Then BUG-25. Owner asked: NEW-145 to NEW-150 mapping in the ledger and the P6 / P7a / P8 prompts (NEW-147 is in P5 now); list it in the report.
 
 ### Branches and last commits
 
