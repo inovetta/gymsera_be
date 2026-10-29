@@ -267,6 +267,7 @@ Report per Prompt G.
 3. BUG-21: ALREADY VERIFIED on a device 2026-10-28 (list and counts; spec §13 "Phase 7 production verification 2026-10-28"). Skip it unless it comes back. Original text: Gyms & Operations must list the branches the host created in onboarding. Find why the list is empty while the capacity banner says "1 of 1 used", and why it also shows "0 branches · Limit reached". Use one source for branch count and list. Test with an approved tenant created through the real onboarding path.
 4. BUG-22: Listings tab. Fix the header title, and walk New Organization (build new branch / move existing branch), Edit Organization and Delete Organization end to end with tests: capacity checks, what happens to branches on delete, re-auth for delete, empty states, error states, and that the list refreshes after each action. List every defect you find before fixing.
 5. BUG-25: one avatar rule app-wide (uploaded photo, otherwise initials). No stock photos.
+6. NEW-147 (from P4; DONE in P5 2026-10-29, spec §13 "Phase 7 Prompt P5"): "Show to Travellers" ignored when a branch is built (New Organization and Add Branch share `_createBranchRecord`).
 
 Report per Prompt G.
 ```
@@ -284,6 +285,7 @@ Report per Prompt G.
 3. BUG-28: cards use the branch/listing cover photo, then the first gallery photo, then a neutral placeholder. Find why uploaded photos are not reaching discovery responses.
 4. BUG-29: display name rule: if branch name equals organization name, show it once; otherwise "Organization · Branch". Same rule on web and CMS.
 5. BUG-30: a host's own onboarding status card ("Submitted! Your gym is under review") must never appear in traveller discovery lists. Move it to the host's own surfaces only.
+6. NEW-145 (from P4, P2): discovery listing cards print "Rs." in front of `minPrice` and the API sends no currency with a listing (`home_screen.dart`, `search_results_screen.dart`, `gym_detail_screen.dart`, `map_search_screen.dart`, `filters_bottom_sheet.dart`; spec §13 P4 "New"). Send the currency with each listing and format with GLB-02 `formatMoney`; remove the invented "Rs. 0/mo" / "Rs. 1,500 / session" fallbacks (with NEW-139).
 
 Apply the same fixes to gymsera.com listing pages. Tests on backend (live-city filter, rating source), mobile (widgets), web (Vitest/Playwright).
 
@@ -303,6 +305,7 @@ Report per Prompt G.
 4. Remove or hide payment options that are "Not available for this gym" unless the host has them configured.
 5. Confirm the old /home/checkout/add-card route is gone or unreachable after SEC-09.
 6. NEW-144 (fixed 2026-10-28, spec §13): iOS purchase sync answered 500 on production because axios was a dev-only package. After its deploy, test an iOS sandbox purchase and Restore Purchases end to end, and recover purchases made while sync was failing.
+7. NEW-150 (from P4, P1): review order and payment take 10% off when the hardcoded promo code `GYMSERA10` is typed (`order_review_screen.dart:193,594`, `payment_screen.dart:65`); the API has no promo logic, so the total shown is not what is owed. Remove it with BUG-34 (the total equals what the server charges).
 
 Report per Prompt G.
 ```
@@ -343,6 +346,11 @@ Give me: data model, routes, screens, webhook list, test plan, migration plan, r
 4. Wording: one label for switching modes (for example "Switch to Traveller" / "Switch to Host") everywhere; tab and screen titles match (Inbox = Inbox).
 5. BUG-38: remove every mock/placeholder data source found in P0 from production code paths. Add a guard test that scans lib/ and src/ for known fake strings and mock providers used outside tests.
 6. Run a copy pass with the UX-08 rules: every empty, loading and error state has real, specific copy.
+7. NEW-146 (from P4, P2): provisioning invents a "Standard Membership" plan at 5,000 when onboarding has no usable plan (`tenant-provisioning.service.js`, fallback after the plan loop), and `_createBranchRecord`'s default package is "<branch> Membership" at 0. Refuse instead (visible_plan_required) or ask the host; no invented plan.
+8. NEW-148 (from P4, P2): host screens invent plan names when the API sends none ("Daily Pass", "Gym Pass", "Pass", "Monthly Pro": `host_providers.dart`, `check_ins_screen.dart`, `host_today_screen.dart`, `gym_dashboard_screen.dart`, `members_list_screen.dart`, `member_subscriptions_history_screen.dart`, `staff_gyms_tab_screen.dart`, `change_plan_screen.dart`; spec §13 P4 "New").
+9. NEW-149 (from P4, P2, GLB-02 client part): platform-billing and member-subscription screens still print "PKR" / "Rs." (`host_subscription_detail_dialog.dart`, `invoices_screen.dart`, `analytics_screen.dart` passes 'PKR'). Found in P5: Today's Net Profit / Gross Revenue / Total Expenses cards print a hardcoded "Rs" too (`host_today_screen.dart`, `_buildStatCard` callers).
+10. NEW-153 (from P5, P2): stock Unsplash photos still used as decoration or fallback on host and member screens (`add_member_screen.dart`, `package_editor_screen.dart`, `host_gyms_overview_screen.dart` branch card fallback, `core/widgets/app_image_widget.dart` fallback, `my_subscriptions_screen.dart`, `subscription_history_screen.dart`). Traveller discovery photos are BUG-28 (P6). Person avatars were fixed in P5 (BUG-25, `PersonAvatar`).
+11. NEW-154, NEW-155, NEW-157 (from P5, P3): invented values: staff names in the class form (`add_class_screen.dart:293`), "Pakistan" as a branch's city on the branch dashboard header (`gym_dashboard_screen.dart`), Add Branch prefilled with established year 2024 and floor area 5000 (`add_branch_screen.dart:70-71`).
 
 Report per Prompt G.
 ```
@@ -359,7 +367,7 @@ Using the P0 ledger's "repos affected" column, make sure every fix in P1–P8 is
 - Host status and plan naming on the CMS dashboard, Business Profile and Subscription & Billing (P2).
 - Google Places branch forms and the /admin/cities page now fed by Google data (P3).
 - Plan visibility rule and plan naming on /gym/plans and admin tenant Plans tab (P4). R-80: the whole CMS half of P4 is here: a "Show to Travellers" control (NEW-112; plans created in the CMS are hidden today), the API's `last_visible_plan` / `visible_plan_required` copy, the price label and plan amounts from the plan's `currency`, and the mobile naming rule (`planDisplayName` + `planDurationLabel`, QUARTERLY n = 3n months).
-- Branch list consistency on /gym/branches and admin tenant Branches tab (P5).
+- Branch list consistency on /gym/branches and admin tenant Branches tab (P5). P5 also changed the API the CMS should use for an organization: `GET /host/listings/:id` and PUT/PATCH with category, establishedYear, contactEmail, website, imagesJson (BUG-22 L8). Check every CMS screen that edits an organization through `/gyms/profile` (it edits the tenant's first gym only) and NEW-151 (tagline, category, established year sent to `/gyms/profile` are never stored).
 - Live-city rule, ratings, photos and names on gymsera.com listing pages (P6).
 - Platform fee removal and bank-details state on web checkout or member pages (P7a).
 - Brand, copy and fake-data guard (P8).
