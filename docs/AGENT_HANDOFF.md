@@ -17,14 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-28 (P3 device follow-ups and NEW-144 done locally, not pushed) |
+| Last updated | 2026-10-29 (Phase 7 P4 in progress) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 P3 device follow-ups** (owner iOS device test) and **NEW-144** (axios runtime dependency, iOS purchase sync 500 on production) |
-| Prompt status | `DONE` (local). Spec §13 "Phase 7 P3 device follow-ups" and "NEW-144" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **Phase 7 Prompt P4** (membership plans: visibility, naming, currency; `GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5 "P4"; BUG-05, BUG-09, BUG-33) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | BUG-09 (backend: currency on every plan payload) |
+| Step within issue | starting the failing test |
 
-**Next action:** **Owner:** (1) push and open PRs: be `fix/axios-runtime-dependency` (NEW-144, P0, deploy first: `git pull`, `npm install --omit=dev`, `iisreset`; no migration), be `fix/p3-device-followups` and app `fix/p3-device-followups` (NEW-141 to NEW-143), be docs `docs/p3-device-followups`. (2) Deploy NEW-144, then re-test an iOS sandbox purchase and Restore Purchases; recover purchases that failed to sync (spec §13 "NEW-144", P7a item 6). (3) Deploy the P3 follow-ups backend: backup `cities`, p025 dry run then apply **before** the code serves (the City model reads `country_code`), deploy. (4) New mobile build; device re-test: hint under the map, "Pesh" shows only Pakistan results near the city, at least 4 suggestions with the keyboard up. **Agent, next:** Prompt **P4** (membership plans: visibility, naming, currency). BUG-26 was checked and is **not** correct (21 of 30 cities have no live gym); it stays in P6 with the web registration note in the P6 prompt. **Owner, still open (not blocking):** keep apistaging stopped until it has its own platform database and tenant server; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79).
+**Owner answers 2026-10-29 (record as R-80 in spec §14):** (a) Become a Host shows the currency the server says the new branch will get (PKR today, provisioning default); no country mapping, no picker. (b) P4 does backend + mobile only; the CMS half of P4 (visibility control, NEW-112, currency, naming, error copy, Playwright) moves to P9.
+
+**Next action:** BUG-05 backend is committed (be `b163f3e` on `fix/p4-membership-plans`, 19 tests, red 13/19). Next: BUG-09 backend: add `currency` to plan payloads (host list, create/update responses, public list/get, discovery gym detail) from the plan's branch, a gym-wide plan the requested branch or else the first branch (same rule as `gym.service.js` `_createBranchRecord` sibling); failing test first. Then the app: BUG-05 toggle + error copy, BUG-09 formatter, BUG-33 one display rule (branch `fix/p4-membership-plans` from `origin/master`). Then docs on be `docs/p4-membership-plans`.
 
 ### Branches and last commits
 
@@ -551,3 +553,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 113 | 2026-10-28 | Claude Code (Opus 5.5) | Owner answers: BUG-21 fully verified, NEW-123 stays verified, R-79 (never infer a tenant database name) | be `docs/new-127-verified`: BUG-21 VERIFIED (list and counts, savayora) in spec §13, ledger, P5 prompt; R-79 in §14; NEW-136 `f6c91b6` (launch wipe read `dbName`, the real column is `db_name`; red 7/9, green 9/9); NEW-137 `ed63fbb` (orphan drop inferred a name from `tenant_code`; red 1/24, green 24/24); `docs/sql/tenant-db-name-before-drop.sql`; launch-wipe and provisioning-failure runbooks read the name before any drop; test gym's database name removed from docs | task complete (not pushed) | yes |
 | 114 | 2026-10-28 | Claude Code (Opus 5.5) | Phase 7 P3 (Google Maps, Places, location; R-76) | be `fa8b134` (/places proxy with server key, city/area upsert by place id, p024, tenant 020, coordinate ranges; 23 + 3 tests; full suite 241/241, 2485/2485); app `dc63359` NEW-109 key to build config, `ecb82d2` Become a Host, `ef4c7a1` traveller, `e00da68` branch editors + guard (267 tests x3, analyze no new findings); NEW-138 to NEW-140 recorded; CMS part carried to P9 | task complete (not pushed) | yes |
 | 115 | 2026-10-28 | Claude Code (Opus 5.5) | P3 device follow-ups (owner iOS test) and NEW-144 (axios dev-only, iOS sync 500 on production) | be `e0fd34f` (p025 country, autocomplete region/bias; 9 + 3 tests; full suite 243/243, 2500/2500), app `bca5ba4` (hint, city on address search, suggestions visible; flutter test 272/272), be `b0929fd` NEW-144 (axios to dependencies, runtime-dependency test red 2/3 → 3/3; `npm ci --omit=dev` check: axios missing on main, all billing modules resolve with the fix); BUG-26 checked on production, not correct, unchanged (P6); docs `docs/p3-device-followups`; nothing pushed | task complete |
+| 116 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P4 (membership plans: visibility, naming, currency) | in progress | | |
