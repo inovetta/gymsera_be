@@ -17,20 +17,22 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-29 (Phase 7 P4 done locally, not pushed) |
+| Last updated | 2026-10-29 (Phase 7 P5 in progress) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P4** (membership plans: visibility, naming, currency; `GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5 "P4"; BUG-05, BUG-09, BUG-33; R-80) |
-| Prompt status | `DONE` for backend + mobile (R-80). The CMS half is carried to P9. Spec §13 "Phase 7 Prompt P4" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **Phase 7 Prompt P5** (host area after approval: navigation and data; `GYMSERA_PRODUCTION_FIX_PROMPTS.md` "P5"; BUG-19, BUG-20, BUG-22, BUG-25; BUG-21 already VERIFIED, skipped) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | BUG-22 (Listings tab: header, New / Edit / Delete Organization) |
+| Step within issue | audit: list every defect before fixing |
 
-**Next action:** **Owner:** (1) push and open PRs: be `fix/p4-membership-plans`, app `fix/p4-membership-plans`, be docs `docs/p4-membership-plans`. (2) Deploy the backend (no migration, no env variable): `git pull`, `npm install --omit=dev`, `iisreset`. Then a new mobile build. (3) Run the read-only BUG-05 data report on the API server: `node src\scripts\run-sql-check.js docs\sql\phase7-open-data-checks.sql`; fix the branches with `visible_and_not_deactivated = 0` and the drafts in 05b whose plans are all hidden (show one plan in the app, or tell the agent which). (4) Device check: hide / deactivate / delete the last visible plan (refused with the reason), the switch is locked on it, a USD branch shows USD on the plan cards and price field, plan names read exactly as typed on plan detail, review order and confirmation, a quarterly plan says "3 Months". **Agent, next:** Prompt **P5** (host area after approval: navigation and data). **Owner, still open (not blocking):** push / deploy the P3 follow-ups and NEW-144 if not done; keep apistaging stopped until it has its own platform database and tenant server; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79).
+**Next action:** BUG-19 and BUG-20 committed on app `fix/p5-host-area` (`7e35532`, test `test/regression/p5_today_navigation_test.dart`). Next: BUG-22 audit of `listings_overview_screen.dart` (header says "Host Dashboard"), New Organization (`/host/organizations/new-source`, quick form), Edit (`edit_organization_screen.dart`), Delete; list the defects, then failing tests, then fixes. Then BUG-25 (one avatar rule). Owner also asked: confirm NEW-145 to NEW-150 each have a phase in `docs/changes/PHASE7_BUG_LEDGER.md` and a line in the P6 / P7a / P8 prompts; NEW-147 goes in P5 if P5 touches Add Branch, otherwise P8; list the mapping in the P5 report.
 
 ### Branches and last commits
 
 Merged on origin (checked 2026-10-29): Phase 7 P1, P2, P3, the P3 device follow-ups and NEW-144 (be through `fc7f78c`, app through `932c4ac`).
 
 Committed locally, **not pushed** (P4):
+
+P5 branches (from `origin/main` `e5cb373` / `origin/master` `a0ba3af`): be `fix/p5-host-area`, app `fix/p5-host-area`, be docs `docs/p5-host-area`.
 
 | Repo | Branch | Last commit | What |
 |---|---|---|---|
@@ -561,3 +563,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 114 | 2026-10-28 | Claude Code (Opus 5.5) | Phase 7 P3 (Google Maps, Places, location; R-76) | be `fa8b134` (/places proxy with server key, city/area upsert by place id, p024, tenant 020, coordinate ranges; 23 + 3 tests; full suite 241/241, 2485/2485); app `dc63359` NEW-109 key to build config, `ecb82d2` Become a Host, `ef4c7a1` traveller, `e00da68` branch editors + guard (267 tests x3, analyze no new findings); NEW-138 to NEW-140 recorded; CMS part carried to P9 | task complete (not pushed) | yes |
 | 115 | 2026-10-28 | Claude Code (Opus 5.5) | P3 device follow-ups (owner iOS test) and NEW-144 (axios dev-only, iOS sync 500 on production) | be `e0fd34f` (p025 country, autocomplete region/bias; 9 + 3 tests; full suite 243/243, 2500/2500), app `bca5ba4` (hint, city on address search, suggestions visible; flutter test 272/272), be `b0929fd` NEW-144 (axios to dependencies, runtime-dependency test red 2/3 → 3/3; `npm ci --omit=dev` check: axios missing on main, all billing modules resolve with the fix); BUG-26 checked on production, not correct, unchanged (P6); docs `docs/p3-device-followups`; nothing pushed | task complete |
 | 116 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P4 (membership plans: visibility, naming, currency; R-80) | be `b163f3e` BUG-05 (19 tests, red 13/19), `d70a984` BUG-09 (6, red 6/6); related suites 37/37 green; full suite 246/246 suites, 2528/2528 tests (be `d70a984`); app `2c39c23` BUG-05 (10), `2e9286c` BUG-09 (7 + guard), `050a625` BUG-33 (6 + guard); flutter test 295/295 x3, analyze 169 before and after; NEW-145 to NEW-150; CMS half to P9 | task complete (not pushed) | yes |
+| 117 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P5 (host area after approval: BUG-19, BUG-20, BUG-22, BUG-25) | in progress: app `7e35532` BUG-19 + BUG-20 | |
