@@ -52,6 +52,12 @@ const formatMoney = (amount, currency = DEFAULT_CURRENCY, locale = 'en') => {
   }).format(Number(amount));
 };
 
+/**
+ * Currency of a new organization's first branch (BUG-09, R-80). Become a Host does not ask for one,
+ * so approval creates the branch in the default; the onboarding screens show this same value.
+ */
+const firstBranchCurrency = () => DEFAULT_CURRENCY;
+
 /** Stable plain text for notes and server messages: `PKR 5000.00` (clients format with ICU for display). */
 const moneyText = (amount, currency = DEFAULT_CURRENCY) => `${normalizeCurrency(currency) || DEFAULT_CURRENCY} ${amount}`;
 
@@ -59,6 +65,7 @@ module.exports = {
   CURRENCY_MINOR_DIGITS,
   moneyText,
   DEFAULT_CURRENCY,
+  firstBranchCurrency,
   SUPPORTED_CURRENCIES,
   normalizeCurrency,
   isSupportedCurrency,

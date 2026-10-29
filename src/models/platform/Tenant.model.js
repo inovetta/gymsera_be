@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const { TenantStatus, KycStatus } = require('../../constants/subscription-status');
+const { firstBranchCurrency } = require('../../utils/currency.utils');
 
 module.exports = (sequelize) => {
   const Tenant = sequelize.define(
@@ -76,6 +77,14 @@ module.exports = (sequelize) => {
         type: DataTypes.JSON,
         allowNull: true,
         comment: 'Branch data captured during onboarding; used to auto-create Branch on provisioning',
+      },
+      // BUG-09 (R-80): not stored. The currency approval gives the first branch, for the price
+      // labels in Become a Host; provisioning uses the same function.
+      mainBranchCurrency: {
+        type: DataTypes.VIRTUAL,
+        get() {
+          return firstBranchCurrency();
+        },
       },
       paymentMethod: {
         type: DataTypes.STRING(30),

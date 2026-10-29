@@ -493,6 +493,8 @@ const getGym = async (id) => {
         }
         listing.minPrice = minPrice;
       }
+      // BUG-09: each plan says which currency it is sold in.
+      await require('./membership-plan.service').withCurrency(tenantDb, membershipPlans, resolvedBranch ? resolvedBranch.id : null);
     }
   } catch (error) {
     console.error('Error fetching tenant details in getGym:', error);

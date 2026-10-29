@@ -2,6 +2,7 @@ const { GymListing, Tenant } = require('../models/platform');
 const TenantDbManager = require('../database/TenantDbManager');
 const { createError } = require('../utils/response.utils');
 const { Op, QueryTypes } = require('sequelize');
+const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -140,9 +141,28 @@ const _syncMinPrice = async (tenantDb, gymId, { transaction } = {}) => {
   }
 };
 
+/**
+ * BUG-09 (Phase 7 P4): set `currency` on each plan. A plan has no currency of its own; it is sold
+ * in its branch's (GLB-02). A gym-wide plan uses `branchId` (the branch it is shown for), else the
+ * organization's first branch, the one a new branch copies its currency from (gym.service.js).
+ */
+const withCurrency = async (tenantDb, plans, branchId = null) => {
+  const list = (Array.isArray(plans) ? plans : [plans]).filter(Boolean);
+  if (list.length === 0) return plans;
+  const branches = await tenantDb.models.Branch.findAll({ attributes: ['id', 'currency'], order: [['createdAt', 'ASC']] });
+  const byId = new Map(branches.map((b) => [b.id, b.currency]));
+  const fallback = byId.get(branchId) || (branches[0] && branches[0].currency) || DEFAULT_CURRENCY;
+  for (const p of list) {
+    const currency = (p.branchId && byId.get(p.branchId)) || fallback;
+    if (typeof p.setDataValue === 'function') p.setDataValue('currency', currency);
+    else p.currency = currency;
+  }
+  return plans;
+};
+
 // ── Public: list active + public plans for a gym ──────────────────────────────
 const listPublic = async (gymListingId, branchId) => {
-  const { models, branchId: resolvedBranchId } = await _tenantFromGymListing(gymListingId);
+  const { tenantDb, models, branchId: resolvedBranchId } = await _tenantFromGymListing(gymListingId);
   const targetBranchId = branchId || resolvedBranchId;
 
   const where = { status: 'ACTIVE', isDeactivated: false, isPublic: true };
@@ -155,17 +175,17 @@ const listPublic = async (gymListingId, branchId) => {
   }
   // Gym-wide plans OR branch-specific plans for the requested branch
   const plans = await models.MembershipPlan.findAll({ where, order: [['price', 'ASC']] });
-  return plans;
+  return withCurrency(tenantDb, plans, targetBranchId);
 };
 
 // ── Public: single plan ───────────────────────────────────────────────────────
 const getPublic = async (planId, gymListingId) => {
-  const { models } = await _tenantFromGymListing(gymListingId);
+  const { tenantDb, models, branchId } = await _tenantFromGymListing(gymListingId);
   const plan = await models.MembershipPlan.findOne({
     where: { id: planId, status: 'ACTIVE', isDeactivated: false, isPublic: true },
   });
   if (!plan) throw createError('Plan not found', 404);
-  return plan;
+  return withCurrency(tenantDb, plan, branchId);
 };
 
 const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
@@ -304,7 +324,7 @@ const listForHost = async (tenantDb, branchId, tenantId, branchIds) => {
     };
   }
   const plans = await MembershipPlan.findAll({ where, order: [['createdAt', 'DESC']] });
-  return plans;
+  return withCurrency(tenantDb, plans, branchId);
 };
 
 // ── Host: create plan ─────────────────────────────────────────────────────────
@@ -344,30 +364,53 @@ const createPlan = async (tenantDb, data, { transaction } = {}) => {
   });
 
   await _syncMinPrice(tenantDb, gym.id, { transaction });
-  return plan;
+  return withCurrency(tenantDb, plan);
 };
 
-const _validateRemainingPlansForBranch = async (tenantDb, plan, actionVerb = 'remove') => {
-  if (!plan.branchId) return;
-  const { Branch, MembershipPlan } = tenantDb.models;
-  const branch = await Branch.findByPk(plan.branchId);
-  if (branch && branch.status === 'ACTIVE') {
-    const remainingCount = await MembershipPlan.count({
-      where: {
-        branchId: plan.branchId,
-        id: { [Op.ne]: plan.id },
-        status: 'ACTIVE',
-        isDeactivated: false,
-        isPublic: true,
-      },
-    });
-    if (remainingCount === 0) {
-      throw createError(
-        `Cannot ${actionVerb} the only active membership plan for an active branch. Every branch must have at least 1 active plan.`,
-        400
-      );
-    }
+// BUG-05 (Phase 7 P4): discovery hides a branch with no plan travellers can see, so the last one
+// cannot be hidden, deactivated or deleted. A plan counts for a branch when it is ACTIVE, not
+// deactivated and public, and is either for that branch or for every branch (branchId null).
+const isTravellerVisible = (p) => p.status === 'ACTIVE' && !p.isDeactivated && Boolean(p.isPublic);
+
+/**
+ * Apply `patch` to `plan`, refusing 422 `last_visible_plan` when the plan stops being visible and
+ * an ACTIVE branch it applies to would have no visible plan left. The branch rows are locked for
+ * the check and the write, so two hides at the same time cannot both remove the last two.
+ */
+const _updateKeepingVisiblePlan = async (tenantDb, plan, patch) => {
+  if (!isTravellerVisible(plan) || isTravellerVisible({ ...plan.get({ plain: true }), ...patch })) {
+    return plan.update(patch);
   }
+  const { Branch, MembershipPlan } = tenantDb.models;
+  return tenantDb.sequelize.transaction(async (transaction) => {
+    const branches = await Branch.findAll({
+      where: plan.branchId ? { id: plan.branchId, status: 'ACTIVE' } : { status: 'ACTIVE' },
+      attributes: ['id'],
+      order: [['id', 'ASC']], // one lock order, so two gym-wide hides cannot deadlock
+      lock: transaction.LOCK.UPDATE,
+      transaction,
+    });
+    for (const branch of branches) {
+      const others = await MembershipPlan.count({
+        where: {
+          id: { [Op.ne]: plan.id },
+          status: 'ACTIVE',
+          isDeactivated: false,
+          isPublic: true,
+          [Op.or]: [{ branchId: branch.id }, { branchId: null }],
+        },
+        transaction,
+      });
+      if (others === 0) {
+        throw createError(
+          'Travellers must always see at least one plan at each branch. Show another plan first, then hide this one.',
+          422,
+          'last_visible_plan'
+        );
+      }
+    }
+    return plan.update(patch, { transaction });
+  });
 };
 
 // ── Host: update plan ─────────────────────────────────────────────────────────
@@ -394,13 +437,9 @@ const updatePlan = async (tenantDb, planId, data) => {
     if (data[key] !== undefined) patch[key] = data[key];
   }
 
-  if (patch.status === 'INACTIVE' || patch.isDeactivated === true || patch.isPublic === false) {
-    await _validateRemainingPlansForBranch(tenantDb, plan, 'modify');
-  }
-
-  await plan.update(patch);
+  await _updateKeepingVisiblePlan(tenantDb, plan, patch);
   await _syncMinPrice(tenantDb, gym.id);
-  return plan.reload();
+  return withCurrency(tenantDb, await plan.reload());
 };
 
 // ── Host: delete (soft delete: set status to INACTIVE) ────────────────────────
@@ -414,10 +453,8 @@ const deletePlan = async (tenantDb, planId) => {
   });
   if (!plan) throw createError('Plan not found', 404);
 
-  await _validateRemainingPlansForBranch(tenantDb, plan, 'delete');
-
   // Soft delete: set status to INACTIVE and remove from public listings
-  await plan.update({
+  await _updateKeepingVisiblePlan(tenantDb, plan, {
     status: 'INACTIVE',
     isPublic: false,
     isFeatured: false,
@@ -445,10 +482,6 @@ const toggleStatus = async (tenantDb, planId) => {
   }
 
   const newIsDeactivated = !plan.isDeactivated;
-  if (newIsDeactivated) {
-    await _validateRemainingPlansForBranch(tenantDb, plan, 'deactivate');
-  }
-
   const patch = { isDeactivated: newIsDeactivated };
   if (newIsDeactivated) {
     // If deactivating, unpublish and unfeature
@@ -456,9 +489,9 @@ const toggleStatus = async (tenantDb, planId) => {
     patch.isFeatured = false;
   }
 
-  await plan.update(patch);
+  await _updateKeepingVisiblePlan(tenantDb, plan, patch);
   await _syncMinPrice(tenantDb, gym.id);
-  return plan.reload();
+  return withCurrency(tenantDb, await plan.reload());
 };
 
 // ── Host: toggle public visibility (isPublic) ─────────────────────────────────
@@ -478,14 +511,9 @@ const togglePublic = async (tenantDb, planId) => {
     }
   }
 
-  const newIsPublic = !plan.isPublic;
-  if (!newIsPublic) {
-    await _validateRemainingPlansForBranch(tenantDb, plan, 'unpublish');
-  }
-
-  await plan.update({ isPublic: newIsPublic });
+  await _updateKeepingVisiblePlan(tenantDb, plan, { isPublic: !plan.isPublic });
   await _syncMinPrice(tenantDb, gym.id);
-  return plan.reload();
+  return withCurrency(tenantDb, await plan.reload());
 };
 
 // ── Host: update plan poster image ────────────────────────────────────────────
@@ -505,7 +533,7 @@ const updatePoster = async (tenantDb, planId, posterUrl) => {
   }
 
   await plan.update({ posterUrl });
-  return plan.reload();
+  return withCurrency(tenantDb, await plan.reload());
 };
 
 // ── Host: set a plan as the featured ("Starting from") plan ──────────────────
@@ -540,7 +568,7 @@ const setFeatured = async (tenantDb, planId) => {
   }
 
   await _syncMinPrice(tenantDb, gym.id);
-  return plan.reload();
+  return withCurrency(tenantDb, await plan.reload());
 };
 
 module.exports = {
@@ -551,4 +579,6 @@ module.exports = {
   // can re-sync minPrice after an operation that changes which plans are
   // active, without duplicating this logic.
   syncMinPrice: _syncMinPrice,
+  isTravellerVisible,
+  withCurrency,
 };

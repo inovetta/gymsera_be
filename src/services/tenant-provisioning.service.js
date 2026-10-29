@@ -42,6 +42,7 @@ const emailService = require('./email.service');
 const { safeRedisSetex } = require('../config/redis.config');
 const { resolveTenantDbHost } = require('../config/database.config');
 const { TenantStatus } = require('../constants/subscription-status');
+const { firstBranchCurrency } = require('../utils/currency.utils');
 
 // ── Env helpers ───────────────────────────────────────────────────────────────
 // Credentials come ONLY from TENANT_DB_ADMIN_USER / TENANT_DB_ADMIN_PASS (to
@@ -475,6 +476,7 @@ const stepCreateBranch = async (ctx) => {
         latitude: safeBranchLat,
         longitude: safeBranchLng,
         googlePlaceId: b.placeId || null, // Phase 7 P3: the address the host picked from Google
+        currency: firstBranchCurrency(), // BUG-09 / R-80: the currency Become a Host showed
         phone: b.phone || tenant.phone || null,
         openingTime: b.openingTime || null,
         closingTime: b.closingTime || null,
