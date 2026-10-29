@@ -264,15 +264,20 @@
    "path": "/api/v1/host/listings/:p",
    "allowed": [
     "areaId",
+    "category",
     "cityId",
+    "contactEmail",
     "contactPhone",
     "coverImageUrl",
+    "establishedYear",
     "genderType",
     "gymDescription",
     "gymName",
+    "imagesJson",
     "latitude",
     "logoUrl",
-    "longitude"
+    "longitude",
+    "website"
    ],
    "clientKeys": []
   },
@@ -281,27 +286,37 @@
    "path": "/api/v1/host/listings/:p",
    "allowed": [
     "areaId",
+    "category",
     "cityId",
+    "contactEmail",
     "contactPhone",
     "coverImageUrl",
+    "establishedYear",
     "genderType",
     "gymDescription",
     "gymName",
+    "imagesJson",
     "latitude",
     "logoUrl",
-    "longitude"
+    "longitude",
+    "website"
    ],
    "clientKeys": [
     "areaId",
+    "category",
     "cityId",
+    "contactEmail",
     "contactPhone",
     "coverImageUrl",
+    "establishedYear",
     "genderType",
     "gymDescription",
     "gymName",
+    "imagesJson",
     "latitude",
     "logoUrl",
-    "longitude"
+    "longitude",
+    "website"
    ]
   },
   {

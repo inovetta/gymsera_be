@@ -51,8 +51,10 @@ router.post(
   validate.allowBody([]), hostController.uploadListingStagingImages
 );
 router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['address', 'areaId', 'branchSource', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'images', 'latitude', 'logoUrl', 'longitude', 'packages']), hostController.createListing);
-router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude']), hostController.updateListing);
-router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude']), hostController.updateListing);
+// Phase 7 P5 (BUG-22): one organization and its own gym details, for Edit Organization.
+router.get('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, hostController.getListing);
+router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
+router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
 router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'targetListingId', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
 router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toListingId']), hostController.transferReservedSlots);
 router.post('/branches/:branchId/move', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['confirmOrganizationDeletion', 'targetListingId']), hostController.moveBranchToOrganization);

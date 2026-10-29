@@ -461,6 +461,12 @@ const createListing = async (req, res, next) => {
       if (branchSource === 'new' && (!Array.isArray(packages) || packages.length === 0)) {
         throw createError('At least 1 membership package/plan is required to create an organization', 400);
       }
+      // Phase 7 P5 (NEW-147): the same rule gym.service.js#_createBranchRecord enforces, checked here
+      // too because the organization's tenant-DB gym is created before the branch (and outside the
+      // platform transaction), so a refusal there would leave an orphan gym behind.
+      if (branchSource === 'new' && !packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
+        throw createError('Show at least one plan to travellers before you submit.', 422, 'visible_plan_required');
+      }
 
       const targetCityId = cityId || tenant.cityId;
       if (!targetCityId) throw createError('cityId is required', 400);
@@ -642,6 +648,35 @@ const createListing = async (req, res, next) => {
   }
 };
 
+/**
+ * The tenant-DB gym of one organization. A gym from before organizations has no gymListingId; it
+ * belongs to the tenant's first organization (same rule as gym.service.js#_syncGymListing).
+ */
+const _organizationGym = async (tenantDb, listing) => {
+  const { Gym } = tenantDb.models;
+  const linked = await Gym.findOne({ where: { gymListingId: listing.id } });
+  if (linked) return linked;
+  const first = await GymListing.findOne({ where: { tenantId: listing.tenantId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
+  return first && first.id === listing.id ? Gym.findOne({ where: { gymListingId: null } }) : null;
+};
+
+/**
+ * GET /host/listings/:id — one organization and its own gym details (Phase 7 P5, BUG-22: Edit
+ * Organization read /gyms/profile, which is whichever gym comes first, not the one being edited).
+ */
+const getListing = async (req, res, next) => {
+  try {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw createError('Tenant not found', 404);
+    const listing = await GymListing.findOne({ where: { id: req.params.id, tenantId } });
+    if (!listing) throw createError('Organization not found or access denied', 404);
+    const gym = await _organizationGym(req.tenantDb, listing);
+    return sendSuccess(res, { ...listing.toJSON(), gym: gym ? gym.toJSON() : null });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const updateListing = async (req, res, next) => {
   try {
     const tenantId = req.user.tenantId;
@@ -659,6 +694,9 @@ const updateListing = async (req, res, next) => {
     }
 
     const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
+    // Phase 7 P5 (BUG-22): the rest of Edit Organization, for this organization only.
+    // category and establishedYear live on the organization; the gym has no columns for them.
+    const { category, establishedYear, contactEmail, website, imagesJson } = req.body;
 
     const updates = {};
     if (gymName !== undefined) updates.title = gymName;
@@ -671,13 +709,15 @@ const updateListing = async (req, res, next) => {
     if (contactPhone !== undefined) updates.contactPhone = contactPhone || null;
     if (latitude !== undefined) updates.latitude = latitude || null;
     if (longitude !== undefined) updates.longitude = longitude || null;
+    if (category !== undefined) updates.category = category || null;
+    if (establishedYear !== undefined) updates.establishedYear = establishedYear ? parseInt(establishedYear, 10) : null;
+    if (website !== undefined) updates.website = website || null;
+    if (imagesJson !== undefined) updates.imagesJson = imagesJson || [];
 
     await listing.update(updates);
 
     // Update corresponding Gym in tenant DB
-    const gym = await req.tenantDb.models.Gym.findOne({
-      where: { gymListingId: listing.id }
-    });
+    const gym = await _organizationGym(req.tenantDb, listing);
     if (gym) {
       const gymUpdates = {};
       if (gymName !== undefined) gymUpdates.name = gymName;
@@ -686,6 +726,9 @@ const updateListing = async (req, res, next) => {
       if (contactPhone !== undefined) gymUpdates.contactPhone = contactPhone || null;
       if (logoUrl !== undefined) gymUpdates.logoUrl = logoUrl || null;
       if (coverImageUrl !== undefined) gymUpdates.coverImageUrl = coverImageUrl || null;
+      if (contactEmail !== undefined) gymUpdates.contactEmail = contactEmail || null;
+      if (website !== undefined) gymUpdates.website = website || null;
+      if (imagesJson !== undefined) gymUpdates.imagesJson = imagesJson || [];
       await gym.update(gymUpdates);
     }
 
@@ -1528,6 +1571,7 @@ module.exports = {
   getListings,
   uploadListingStagingImages,
   createListing,
+  getListing,
   updateListing,
   deleteListing,
   moveBranchToOrganization,
