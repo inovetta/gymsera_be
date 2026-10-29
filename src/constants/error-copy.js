@@ -138,6 +138,19 @@ const ERROR_COPY = {
     ar: 'لم تُحدَّد مدينة لهذا النادي بعد. حدّد المدينة ثم وافق عليه.',
     action: 'none',
   },
+  // Phase 7 P4 (BUG-05): a branch with no plan travellers can see is hidden from them.
+  last_visible_plan: {
+    en: 'Travellers must always see at least one plan at each branch. Show another plan first, then hide this one.',
+    ur: 'مسافروں کو ہر برانچ میں کم از کم ایک پلان نظر آنا ضروری ہے۔ پہلے کوئی اور پلان دکھائیں، پھر اسے چھپائیں۔',
+    ar: 'يجب أن يرى المسافرون خطة واحدة على الأقل في كل فرع. اعرض خطة أخرى أولاً، ثم أخفِ هذه الخطة.',
+    action: 'none',
+  },
+  visible_plan_required: {
+    en: 'Show at least one plan to travellers before you submit.',
+    ur: 'جمع کرانے سے پہلے کم از کم ایک پلان مسافروں کو دکھائیں۔',
+    ar: 'اعرض خطة واحدة على الأقل للمسافرين قبل الإرسال.',
+    action: 'none',
+  },
   tenant_not_found: {
     en: 'Tenant not found or not active.',
     ur: 'ادارہ نہیں ملا یا غیر فعال ہے۔',

@@ -274,6 +274,11 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
   if (!plans || plans.length === 0) {
     throw createError('At least 1 membership plan is required before completing listing and submitting for review.', 400);
   }
+  // BUG-05: the approved branch would be hidden from travellers. Provisioning treats a plan
+  // without isPublic as visible (tenant-provisioning.service.js), so the same rule applies here.
+  if (!plans.some((p) => p && p.isPublic !== false)) {
+    throw createError('Show at least one plan to travellers before you submit.', 422, 'visible_plan_required');
+  }
 
   await tenant.update({
     paymentMethod: paymentMethod || 'BANK_TRANSFER',
