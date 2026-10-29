@@ -274,3 +274,15 @@ Owner device test on iOS (production): P3 map, pin, current location and address
 
 Detail: spec §13 "NEW-144".
 
+## P4 status (2026-10-29, Claude Code Opus 5.5)
+
+Detail: spec §13 "Phase 7 Prompt P4". Local branches, not pushed: be `fix/p4-membership-plans`, app `fix/p4-membership-plans`. Owner decision R-80.
+
+| ID | Status | Fix / test |
+|---|---|---|
+| BUG-05 | **FIXED** (backend + app; not yet on a device) | one rule, 422 `last_visible_plan` / `visible_plan_required`, switch locked on the last visible plan. be `bug-05-last-visible-plan.test.js`, app `bug_05_last_visible_plan_test.dart`. Existing data: owner runs `phase7-open-data-checks.sql` (BUG-05 and 05b) |
+| BUG-09 | **FIXED** (backend + app) | `currency` on every plan payload, `mainBranchCurrency` for Become a Host, `formatMoney` on every plan amount. be `bug-09-plan-currency.test.js`, app `bug_09_plan_currency_test.dart` |
+| BUG-33 | **FIXED** (app) | name as typed + one duration label; no invented badges, features, stand-in plan or stock photos. app `bug_33_one_plan_one_name_test.dart` |
+| CMS half (BUG-05/09/33, NEW-112) | **NOT DONE** (R-80) | P9 |
+
+New: NEW-145 (P2, P6), NEW-146 (P2, P8), NEW-147 (P3), NEW-148 (P2, P8), NEW-149 (P2, P8), NEW-150 (P1, P7a). See spec §13.
