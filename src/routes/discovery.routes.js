@@ -23,7 +23,7 @@ const router = Router();
  * @swagger
  * /discovery/cities:
  *   get:
- *     summary: List all cities with active gym counts — for home page city picker
+ *     summary: Cities with at least one live gym (R-77), with counts, for the traveller city picker. Every active city (host registration) is GET /cities.
  *     tags: [Discovery]
  *     security: []
  *     responses:

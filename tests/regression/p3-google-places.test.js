@@ -33,9 +33,12 @@ const fakeGoogle = (routes) => {
 
 const component = (longText, types) => ({ longText, shortText: longText, types });
 
+let harness;
+
 beforeAll(async () => {
   process.env.GOOGLE_MAPS_SERVER_KEY = 'test-server-key-not-real';
   const h = await setupTestDatabases();
+  harness = h;
   await setupPersonas(h);
 });
 
@@ -265,9 +268,22 @@ describe('P3: reverse geocode for "Use current location" (BUG-03)', () => {
 
 describe('P3: the traveller city list carries each city centre', () => {
   test('GET /discovery/cities returns latitude / longitude (null when unknown), never an invented point', async () => {
-    const { City } = require('../../src/models/platform');
+    const { City, GymListing } = require('../../src/models/platform');
     const withCentre = await City.create({ name: 'Centre City', isActive: true, latitude: 33.6844, longitude: 73.0479 });
     const without = await City.create({ name: 'No Centre City', isActive: true });
+    // Phase 7 P6 (BUG-26): the list holds only cities with a live gym, so give each one.
+    const liveIn = async (tenantDb, tenantId, cityId) => {
+      const listing = await GymListing.findOne({ where: { tenantId } });
+      await listing.update({ status: 'ACTIVE', cityId });
+      const branch = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+      await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false, cityId });
+      await tenantDb.models.MembershipPlan.create({
+        gymId: branch.gymId, branchId: branch.id, name: 'Monthly', price: 2500,
+        durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
+      });
+    };
+    await liveIn(harness.tenant1, personaManager.personas.owner.tenantId, withCentre.id);
+    await liveIn(harness.tenant2, personaManager.personas.otherTenantOwner.tenantId, without.id);
     const res = await asPersona('anonymous').get('/discovery/cities');
     expect(res.status).toBe(200);
     const list = res.body.data.cities || res.body.data;
