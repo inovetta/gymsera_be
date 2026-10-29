@@ -307,6 +307,8 @@ Report per Prompt G.
 6. NEW-144 (fixed 2026-10-28, spec §13): iOS purchase sync answered 500 on production because axios was a dev-only package. After its deploy, test an iOS sandbox purchase and Restore Purchases end to end, and recover purchases made while sync was failing.
 7. NEW-150 (from P4, P1): review order and payment take 10% off when the hardcoded promo code `GYMSERA10` is typed (`order_review_screen.dart:193,594`, `payment_screen.dart:65`); the API has no promo logic, so the total shown is not what is owed. Remove it with BUG-34 (the total equals what the server charges).
 
+8. NEW-159 (from P6, P2): `GET /discovery/gyms/:id` still opens a gym that is not live under R-77 (no subscription check), so a saved or shared link reaches booking. Apply the live rule to the detail and to booking (spec §13 P6 "New").
+
 Report per Prompt G.
 ```
 
@@ -352,6 +354,8 @@ Give me: data model, routes, screens, webhook list, test plan, migration plan, r
 10. NEW-153 (from P5, P2): stock Unsplash photos still used as decoration or fallback on host and member screens (`add_member_screen.dart`, `package_editor_screen.dart`, `host_gyms_overview_screen.dart` branch card fallback, `core/widgets/app_image_widget.dart` fallback, `my_subscriptions_screen.dart`, `subscription_history_screen.dart`). Traveller discovery photos are BUG-28 (P6). Person avatars were fixed in P5 (BUG-25, `PersonAvatar`).
 11. NEW-154, NEW-155, NEW-157 (from P5, P3): invented values: staff names in the class form (`add_class_screen.dart:293`), "Pakistan" as a branch's city on the branch dashboard header (`gym_dashboard_screen.dart`), Add Branch prefilled with established year 2024 and floor area 5000 (`add_branch_screen.dart:70-71`).
 
+12. NEW-160, NEW-161, NEW-162 (from P6): gym detail always shows "VERIFIED" and "OPEN NOW" (`gym_detail_screen.dart:268-277`); search filter price range invented (Rs 1,000 to 8,000, always "Rs") and the map card's "Book Day Pass" label on the monthly price; stock category photos on Home "Explore by type" and the filter sheet (spec §13 P6 "New").
+
 Report per Prompt G.
 ```
 
@@ -368,7 +372,7 @@ Using the P0 ledger's "repos affected" column, make sure every fix in P1–P8 is
 - Google Places branch forms and the /admin/cities page now fed by Google data (P3).
 - Plan visibility rule and plan naming on /gym/plans and admin tenant Plans tab (P4). R-80: the whole CMS half of P4 is here: a "Show to Travellers" control (NEW-112; plans created in the CMS are hidden today), the API's `last_visible_plan` / `visible_plan_required` copy, the price label and plan amounts from the plan's `currency`, and the mobile naming rule (`planDisplayName` + `planDurationLabel`, QUARTERLY n = 3n months).
 - Branch list consistency on /gym/branches and admin tenant Branches tab (P5). P5 also changed the API the CMS should use for an organization: `GET /host/listings/:id` and PUT/PATCH with category, establishedYear, contactEmail, website, imagesJson (BUG-22 L8). Check every CMS screen that edits an organization through `/gyms/profile` (it edits the tenant's first gym only) and NEW-151 (tagline, category, established year sent to `/gyms/profile` are never stored).
-- Live-city rule, ratings, photos and names on gymsera.com listing pages (P6).
+- Live-city rule, ratings, photos and names on gymsera.com listing pages (P6). Done on web in P6 (registration city source, "New" / review count, prices in their currency; names come from the API). Still here: the BUG-29 name rule on CMS lists, and NEW-158 (a photo check at CMS approval; a screenshot of the app was a live gym's cover).
 - Platform fee removal and bank-details state on web checkout or member pages (P7a).
 - Brand, copy and fake-data guard (P8).
 For each, add Vitest + Playwright coverage, then run tsc, lint, build and the security-header Playwright specs.

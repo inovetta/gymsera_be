@@ -17,18 +17,20 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-29 (Phase 7 P5 done locally, not pushed) |
+| Last updated | 2026-10-29 (Phase 7 P6 done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P5** (host area after approval: navigation and data; BUG-19, BUG-20, BUG-22, BUG-25; NEW-147; BUG-21 already verified, skipped) |
-| Prompt status | `DONE` (local). Spec §13 "Phase 7 Prompt P5" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Phase 7 Prompt P6** (traveller discovery; BUG-26 to BUG-30, NEW-145; NEW-138 and the traveller part of NEW-139 folded in; R-77) |
+| Prompt status | `DONE` (local). Spec §13 "Phase 7 Prompt P6" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
-**Next action:** **Owner:** (1) push and open PRs: be `fix/p5-host-area` (`bfdec1b` NEW-147, `cc9546d` BUG-22 L8), app `fix/p5-host-area` (`7e35532` BUG-19 + BUG-20, `1da6260` BUG-22, `6bc1fb5` BUG-25), be docs `docs/p5-host-area`. (2) Deploy the backend first (no migration, no env variable): `git pull`, `npm install --omit=dev`, `iisreset`. Then a new mobile build (Edit Organization needs the new `GET /host/listings/:id`). (3) Device check: each Today card → Back returns to Today; no "+12.4%"; Listings header "Listings", no back arrow; with two organizations, Edit one and check the other keeps its name and logo; wrong password on Delete Organization says so at once (no spinner loop); "Move an existing branch here" works with one organization; New Organization with a hidden plan keeps it hidden; avatars show initials. **Agent, next:** Prompt **P6** (traveller discovery; includes NEW-145). **Owner, still open (not blocking):** push / deploy P4 if not done; keep apistaging stopped until it has its own platform database and tenant server; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79).
+**Next action:** **Owner:** (1) push and open PRs: be `fix/p6-traveller-discovery` (`ccaf07b`, `4f021af`), app `fix/p6-traveller-discovery` (`835d060`), web `fix/p6-traveller-discovery` (`e05a6e0`), be docs `docs/p6-traveller-discovery`. (2) Deploy **web first** (or together with the backend): the backend now lists only live cities on `/discovery/cities`, and the new web registration reads `/cities`. No migration, no env variable. Then backend (`git pull`, `npm install --omit=dev`, `iisreset`), then a new mobile build. (3) After deploy, check `/discovery/cities` and the gym list: tenants with no ACTIVE or GRACE subscription are no longer listed (R-77). (4) Remove the screenshot cover photo of branch `0d3c9766-4640-4934-b126-d603a27b765c` ("lion2", organization "flex") (BUG-30 / NEW-158). (5) Device check: Home opens on a live city (nearest one with location allowed), city picker lists only live cities, "New" on unrated gyms, no "(124)", prices with the right currency, single names ("heist"), photos on organization cards, gallery of a gym with no photo shows the placeholder. **Agent, next:** Prompt **P7a** (booking and payment; includes NEW-150 and NEW-159). **Owner, still open (not blocking):** push / deploy P4 and P5 if not done; keep apistaging stopped until it has its own platform database and tenant server; remove test gym GYM-16516973 in the launch wipe, reading its database name from `tenants.db_name` right before the drop (R-79).
 
 ### Branches and last commits
 
-Merged on origin (checked 2026-10-29): Phase 7 P1, P2, P3, the P3 device follow-ups and NEW-144 (be through `fc7f78c`, app through `932c4ac`).
+Merged on origin (checked 2026-10-29): Phase 7 P1 to P5, the P3 device follow-ups and NEW-144 (be through `dad4fa3`, app through `ad7bb9a`, web through `469ca91`).
+
+P6 branches, committed locally, **not pushed** (from `origin/main` `dad4fa3` / `origin/master` `ad7bb9a` / web `origin/main` `469ca91`): be `fix/p6-traveller-discovery` (`ccaf07b` BUG-26/27/28/29/NEW-145, `4f021af` top hosts review count), app `fix/p6-traveller-discovery` (`835d060`), web `fix/p6-traveller-discovery` (`e05a6e0`), be docs `docs/p6-traveller-discovery`.
 
 Committed locally, **not pushed** (P4):
 
@@ -125,6 +127,15 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Phase 7 Prompt P6: traveller discovery (be, app, web `fix/p6-traveller-discovery`; not pushed):**
+- [x] BUG-26 backend: R-77 live rule in the snapshot, cities with a live gym only, organizations from the snapshot, subscription writes drop the cache (be `ccaf07b`)
+- [x] BUG-27, BUG-28, BUG-29, NEW-145 backend: reviewCount, branch-photo fallback, display name, currency (be `ccaf07b`); top hosts review count (be `4f021af`)
+- [x] BUG-26 / NEW-138, BUG-27, BUG-28, NEW-145, NEW-139 (traveller part) app (app `835d060`)
+- [x] BUG-26 web registration on `GET /cities`; BUG-27 / NEW-145 web cards and plan prices (web `e05a6e0`)
+- [x] BUG-30: NOT REPRODUCED in code; cause is a screenshot uploaded as a gym photo (NEW-158)
+- [ ] Owner: remove the screenshot photo on branch `0d3c9766`; device and staging checks
+- [ ] CMS half (BUG-29 name rule on CMS lists, NEW-158 photo check): P9
 
 **Phase 7 Prompt P4: membership plans (be and app `fix/p4-membership-plans`; not pushed):**
 - [x] BUG-05 backend: one rule, 422 `last_visible_plan` / `visible_plan_required`, branch lock (be `b163f3e`)
@@ -564,3 +575,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 115 | 2026-10-28 | Claude Code (Opus 5.5) | P3 device follow-ups (owner iOS test) and NEW-144 (axios dev-only, iOS sync 500 on production) | be `e0fd34f` (p025 country, autocomplete region/bias; 9 + 3 tests; full suite 243/243, 2500/2500), app `bca5ba4` (hint, city on address search, suggestions visible; flutter test 272/272), be `b0929fd` NEW-144 (axios to dependencies, runtime-dependency test red 2/3 → 3/3; `npm ci --omit=dev` check: axios missing on main, all billing modules resolve with the fix); BUG-26 checked on production, not correct, unchanged (P6); docs `docs/p3-device-followups`; nothing pushed | task complete |
 | 116 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P4 (membership plans: visibility, naming, currency; R-80) | be `b163f3e` BUG-05 (19 tests, red 13/19), `d70a984` BUG-09 (6, red 6/6); related suites 37/37 green; full suite 246/246 suites, 2528/2528 tests (be `d70a984`); app `2c39c23` BUG-05 (10), `2e9286c` BUG-09 (7 + guard), `050a625` BUG-33 (6 + guard); flutter test 295/295 x3, analyze 169 before and after; NEW-145 to NEW-150; CMS half to P9 | task complete (not pushed) | yes |
 | 117 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P5 (host area after approval: BUG-19, BUG-20, BUG-22, BUG-25; NEW-147) | be `bfdec1b` NEW-147 (4 tests, red 3), `cc9546d` BUG-22 L8 (5, red 5); full suite 248/248, 2537/2537; app `7e35532` BUG-19/20 (9, red 8), `1da6260` BUG-22 (15, red 13 + 2 hang), `6bc1fb5` BUG-25 (5, red 4); flutter test 3x 324/324; NEW-151 to NEW-157; NEW-145 to NEW-150 mapped with prompt lines | task complete |
+| 118 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P6 (traveller discovery: BUG-26 to BUG-30, NEW-145, NEW-138, NEW-139 traveller part) | be `ccaf07b` (11 tests, red 9), `4f021af` (1, red 1); backend full suite 249 / 249 suites, 2549 / 2549 tests (be `4f021af`, local Docker MySQL 5.7, `DISABLE_REDIS=true`, in band); app `835d060` (9 tests, red 8; flutter test 333/333 x3; analyze 168 vs 169); web `e05a6e0` (Vitest 3 red 3, Playwright 1 red; vitest 135/135, tsc, lint, build); BUG-30 cause found in production photo data; docs `docs/p6-traveller-discovery`; nothing pushed | task complete |
