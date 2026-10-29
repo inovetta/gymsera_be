@@ -21,12 +21,12 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P4** (membership plans: visibility, naming, currency; `GYMSERA_PRODUCTION_FIX_PROMPTS.md` §5 "P4"; BUG-05, BUG-09, BUG-33) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | BUG-09 (backend: currency on every plan payload) |
+| Issue in progress | BUG-33 (app: one plan name and duration label) |
 | Step within issue | starting the failing test |
 
 **Owner answers 2026-10-29 (record as R-80 in spec §14):** (a) Become a Host shows the currency the server says the new branch will get (PKR today, provisioning default); no country mapping, no picker. (b) P4 does backend + mobile only; the CMS half of P4 (visibility control, NEW-112, currency, naming, error copy, Playwright) moves to P9.
 
-**Next action:** BUG-05 backend is committed (be `b163f3e` on `fix/p4-membership-plans`, 19 tests, red 13/19). Next: BUG-09 backend: add `currency` to plan payloads (host list, create/update responses, public list/get, discovery gym detail) from the plan's branch, a gym-wide plan the requested branch or else the first branch (same rule as `gym.service.js` `_createBranchRecord` sibling); failing test first. Then the app: BUG-05 toggle + error copy, BUG-09 formatter, BUG-33 one display rule (branch `fix/p4-membership-plans` from `origin/master`). Then docs on be `docs/p4-membership-plans`.
+**Next action:** Committed: be `fix/p4-membership-plans` `b163f3e` (BUG-05) and `d70a984` (BUG-09); app `fix/p4-membership-plans` `2c39c23` (BUG-05) and `2e9286c` (BUG-09). Next: BUG-33 in the app: one display rule (plan name exactly as typed + one duration label that follows the server's QUARTERLY = 3 x value months) on gym detail, plans, plan detail, order review, payment, confirmed, My Plans; remove "Athlete Pass", "Full-Access … Plan", "Pass", "BEST SELLER", the invented "Pro" 6500 fallback plan and the invented plan features. Then flutter test x3, analyze, full backend suite, docs (spec §13 P4 section, R-80, ledger, NEW items), report.
 
 ### Branches and last commits
 
