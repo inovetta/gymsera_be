@@ -303,3 +303,20 @@ Detail: spec §13 "Phase 7 Prompt P5". Local branches, not pushed: be `fix/p5-ho
 NEW items from P4, final mapping (each has a line in its prompt): NEW-145 → P6 (item 6); NEW-146 → P8 (item 7); NEW-147 → P5 (DONE; P5 item 6); NEW-148 → P8 (item 8); NEW-149 → P8 (item 9); NEW-150 → P7a (item 7).
 
 New in P5: NEW-151 (P2, P9), NEW-152 (P3, later), NEW-153 (P2, P8), NEW-154 (P3, P8), NEW-155 (P3, P8), NEW-156 (P3, later), NEW-157 (P3, P8). See spec §13.
+
+## P6 status (2026-10-29, Claude Code Opus 5.5)
+
+Detail: spec §13 "Phase 7 Prompt P6". Local branches, not pushed: be, app and web `fix/p6-traveller-discovery`.
+
+| ID | Status | Fix / test |
+|---|---|---|
+| BUG-26 | **FIXED** (backend + app + web; not yet on a device) | live = tenant ACTIVE + subscription ACTIVE/GRACE + branch approved and visible + a traveller-visible plan (R-77); `/discovery/cities` only cities with a live gym; organizations from the same snapshot; app default city = saved live city, else nearest live, else first live, else none (NEW-138); web registration reads `GET /cities`. be `p6-traveller-discovery.test.js`, app `p6_traveller_discovery_test.dart`, web `p6-traveller-discovery.test.tsx` |
+| BUG-27 | **FIXED** (backend + app + web) | `reviewCount` from approved reviews on list, detail, organizations, top hosts; "New" without reviews; every invented "(124)" / "124 reviews" / "(124+)" removed. Same tests + web `e2e/p6-traveller-discovery.spec.ts` |
+| BUG-28 | **FIXED** (backend + app) | organization cards had only the organization cover (23 of 28 null on production) while branches had photos; now falls back to the first branch photo; stock photos replaced by a neutral placeholder (cards, detail, gallery) |
+| BUG-29 | **FIXED** (backend; app and web print the server title) | "heist" once, else "Organization · Branch". CMS: P9 |
+| BUG-30 | **NOT REPRODUCED** in code | cause is data: branch `0d3c9766` ("lion2", org "flex") has a screenshot of the "Submitted!" screen as its cover. Owner removes it; moderation is NEW-158 |
+| NEW-145 | **FIXED** (backend + app + web) | `currency` on every listing; prices via `formatMoney` / `formatCurrency` in that currency; invented "Rs. 0/mo", "Rs. 1,500", "Rs2,500" removed |
+| NEW-138 | **FIXED** (app) | see BUG-26 |
+| NEW-139 | **PART FIXED** (traveller screens: distances, hours, stock photos, "Premium Host") | the rest stays in P8 (BUG-38 sweep) |
+
+New in P6: NEW-158 (P1, owner now + P9), NEW-159 (P2, P7a), NEW-160 (P2, P8), NEW-161 (P3, P8), NEW-162 (P3, P8). See spec §13.
