@@ -330,27 +330,20 @@ const _countActiveBranchesForTenant = async (tenantDb) => {
  * innodb_lock_wait_timeout) waiting on itself before giving up. Both current
  * callers (createBranch, createListing) always have one open.
  */
-const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { transaction, allowDefaultPackage = false } = {}) => {
+const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { transaction, allowNoPlan = false } = {}) => {
   const { Branch } = tenantDb.models;
 
-  let packages = data.packages;
-  if (!Array.isArray(packages) || packages.length === 0) {
-    if (allowDefaultPackage || data.allowDefaultPackage) {
-      packages = [{
-        name: `${data.branchName || 'Standard'} Membership`,
-        price: 0,
-        durationType: 'MONTHLY',
-        durationValue: 1,
-        description: 'Standard membership plan',
-      }];
-    } else {
-      throw createError('At least 1 membership package/plan is required to create a branch', 400);
-    }
+  // NEW-146: no plan is ever invented (it used to be "<branch> Membership" at 0, visible to
+  // travellers). Only an administrator may add a branch without plans (the CMS form has none):
+  // it is not live for travellers until the host adds a visible plan (R-77).
+  const packages = Array.isArray(data.packages) ? data.packages : [];
+  if (packages.length === 0 && !allowNoPlan) {
+    throw createError('At least 1 membership package/plan is required to create a branch', 400);
   }
 
   // Phase 7 P5 (NEW-147, BUG-05): keep each plan's "Show to Travellers" (absent = visible, as
   // provisioning does), and refuse before anything is created when no plan would be visible.
-  if (!packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
+  if (packages.length > 0 && !packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
     throw createError('Show at least one plan to travellers before you submit.', 422, 'visible_plan_required');
   }
 
@@ -419,7 +412,7 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { trans
     }
   }
 
-  if (createdPlansCount === 0) {
+  if (packages.length > 0 && createdPlansCount === 0) {
     throw createError('Failed to create initial membership plan for branch. At least 1 valid plan is required.', 400);
   }
 
@@ -539,7 +532,7 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
     actorType = null,
     reason = null,
     isProvisioning = false,
-    allowDefaultPackage = false,
+    allowNoPlan = false,
   } = options;
 
   const isLocalTx = !callerTx;
@@ -617,7 +610,7 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
 
     const branch = await _createBranchRecord(tenantDb, gym, targetListingId, data, {
       transaction: platformTx,
-      allowDefaultPackage: allowDefaultPackage || data.allowDefaultPackage,
+      allowNoPlan,
     });
 
     if (consumingReservedSlot) {

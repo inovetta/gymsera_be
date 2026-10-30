@@ -175,7 +175,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
                 address: 'Random Street',
               },
               hostUser.id,
-              { allowDefaultPackage: true }
+              { allowNoPlan: true }
             );
           }
         } else if (action === 'DELETE') {

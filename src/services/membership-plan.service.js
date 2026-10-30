@@ -235,7 +235,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
             skipCapacityCheck: true,
             skipCapacityEvent: true,
             isProvisioning: true,
-            allowDefaultPackage: false,
+            allowNoPlan: false,
           }
         );
       }

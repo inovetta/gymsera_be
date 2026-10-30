@@ -67,6 +67,7 @@ describe('Tenant Provisioning Migrations (Step 2.6)', () => {
       ownerUserId: hostUser.id,
       status: 'PENDING_REVIEW',
       connectionStringEncrypted: null,
+      mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] }, // NEW-146: approval needs a visible plan
     });
 
     // 2. Approve tenant (triggers processTenantProvisioning)
