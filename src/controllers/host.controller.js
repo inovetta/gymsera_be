@@ -452,12 +452,13 @@ const createListing = async (req, res, next) => {
       //   'reserve' — no branch yet, just earmark 1 unit of capacity on this
       //             organization (a "slot") to be built later from the Gyms
       //             tab, or moved to a different organization first.
-      //   'none'    — bare organization, consumes no capacity at all. Used
-      //             right before the client separately calls the move-branch
-      //             or transfer-reserved-slot endpoints to attach something
-      //             this tenant already owns — moving doesn't change the
-      //             tenant's total usage, so there's nothing to check here.
-      const branchSource = ['new', 'reserve', 'none'].includes(req.body.branchSource) ? req.body.branchSource : 'new';
+      //   'none'    — refused (NEW-168): it made a bare organization for the
+      //             move-branch flow, which P5b removed (R-81); an organization
+      //             is never empty (CAP-07).
+      if (req.body.branchSource === 'none') {
+        throw createError('An organization needs its first branch. Add the branch with its plans.', 422, 'organization_needs_branch');
+      }
+      const branchSource = ['new', 'reserve'].includes(req.body.branchSource) ? req.body.branchSource : 'new';
       if (branchSource === 'new' && (!Array.isArray(packages) || packages.length === 0)) {
         throw createError('At least 1 membership package/plan is required to create an organization', 400);
       }

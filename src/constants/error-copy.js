@@ -177,6 +177,13 @@ const ERROR_COPY = {
     ar: 'يجب أن يرى المسافرون خطة واحدة على الأقل في كل فرع. اعرض خطة أخرى أولاً، ثم أخفِ هذه الخطة.',
     action: 'none',
   },
+  // Phase 7 P8 (NEW-168): an organization is created with its first branch.
+  organization_needs_branch: {
+    en: 'An organization needs its first branch. Add the branch with its plans.',
+    ur: 'ہر ادارے کی پہلی برانچ ضروری ہے۔ برانچ اس کے پلانز کے ساتھ شامل کریں۔',
+    ar: 'تحتاج كل مؤسسة إلى فرعها الأول. أضف الفرع مع خططه.',
+    action: 'none',
+  },
   visible_plan_required: {
     en: 'Show at least one plan to travellers before you submit.',
     ur: 'جمع کرانے سے پہلے کم از کم ایک پلان مسافروں کو دکھائیں۔',
