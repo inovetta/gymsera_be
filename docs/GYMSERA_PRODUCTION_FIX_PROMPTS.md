@@ -274,6 +274,14 @@ Report per Prompt G.
 
 ---
 
+### P5b — Branch lifecycle (R-81 revised)
+
+Added 2026-10-30 by the owner after the read-only branch delete/move review. The prompt text is decision R-81 (revised) in spec §14: authorization check first; pause; delete block for a branch and an organization (one transaction, all or nothing), no refund logic; no payment approval at a closed branch; platform membership copy; honest delete copy; store-plan notice; remove Move branch completely. Report per Prompt G.
+
+Status 2026-10-30: DONE locally, spec §13 "Phase 7 Prompt P5b". CMS half (move option, copy, block and pause UI) in P9 (NEW-167).
+
+---
+
 ### P6 — Traveller discovery
 
 **Covers:** BUG-26, BUG-27, BUG-28, BUG-29, BUG-30 (needs D6).
@@ -376,6 +384,7 @@ Using the P0 ledger's "repos affected" column, make sure every fix in P1–P8 is
 - Branch list consistency on /gym/branches and admin tenant Branches tab (P5). P5 also changed the API the CMS should use for an organization: `GET /host/listings/:id` and PUT/PATCH with category, establishedYear, contactEmail, website, imagesJson (BUG-22 L8). Check every CMS screen that edits an organization through `/gyms/profile` (it edits the tenant's first gym only) and NEW-151 (tagline, category, established year sent to `/gyms/profile` are never stored).
 - Live-city rule, ratings, photos and names on gymsera.com listing pages (P6). Done on web in P6 (registration city source, "New" / review count, prices in their currency; names come from the API). Still here: the BUG-29 name rule on CMS lists, and NEW-158 (a photo check at CMS approval; a screenshot of the app was a live gym's cover).
 - Platform fee removal and bank-details state on web checkout or member pages (P7a). Checked in P7a (2026-10-30): web has no fee and no bank-details screen. Still here: pending requests show start → end on CMS `gym/subscriptions` and web `subscriptions/[id]` (BUG-31; show "Starts when the host approves").
+- Branch lifecycle (P5b, NEW-167): remove the CMS "move an existing branch" option (`new-organization-dialog.tsx`, `hostApi.moveBranch`; the route is gone), the last-branch copy in `src/lib/api/error-copy.ts`, the delete-block 409s with "Pause instead", pause / resume on `/gym/branches`, and the store-plan notice after an organization is deleted.
 - Brand, copy and fake-data guard (P8).
 For each, add Vitest + Playwright coverage, then run tsc, lint, build and the security-header Playwright specs.
 
