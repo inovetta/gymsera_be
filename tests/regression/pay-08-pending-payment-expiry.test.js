@@ -59,6 +59,8 @@ describe('PAY-08: pending member payments expire; only the verified server path 
     const h = await setupTestDatabases();
     personas = await setupPersonas(h);
     ctx = require('../harness/personas').personaManager.context;
+    // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
+    await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     basic = await models().MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Pay08 Basic',
       price: '1200.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',

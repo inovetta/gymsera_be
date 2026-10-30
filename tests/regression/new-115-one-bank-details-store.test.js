@@ -16,6 +16,9 @@ let personas;
 beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
+  // Phase 7 P7a (NEW-159): payment details are shown only for a live gym (R-77).
+  const { personaManager } = require('../harness/personas');
+  await require('../harness/factories').makeBranchLive(personaManager.context.tenant1Db, personaManager.context.branch1.id);
 });
 
 afterAll(async () => {

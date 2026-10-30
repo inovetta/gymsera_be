@@ -66,6 +66,28 @@ router.post('/', validate.strict(validators.subscribe), controller.subscribe);
 
 /**
  * @swagger
+ * /subscriptions/quote:
+ *   get:
+ *     summary: What POST /subscriptions will charge for this plan and branch (Phase 7 P7a)
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: query, name: planId, required: true, schema: { type: string, format: uuid } }
+ *       - { in: query, name: gymListingId, required: true, schema: { type: string, format: uuid } }
+ *       - { in: query, name: branchId, required: true, schema: { type: string, format: uuid } }
+ *     responses:
+ *       200:
+ *         description: price, joiningFee (0 when waived), securityFee, totalPrice, currency
+ *       404:
+ *         description: Plan or branch not found
+ *       409:
+ *         description: gym_not_bookable (the gym is not live for travellers)
+ */
+router.get('/quote', validate(validators.quote), controller.quote);
+
+/**
+ * @swagger
  * /subscriptions/{id}/freeze:
  *   post:
  *     summary: Freeze an active subscription for a date range

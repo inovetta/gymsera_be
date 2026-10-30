@@ -26,6 +26,8 @@ describe('NEW-39: verifyPayment completes the whole member checkout', () => {
     personas = await setupPersonas(dbHarness);
     const { personaManager } = require('../harness/personas');
     ctx = personaManager.context;
+    // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
+    await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
 
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
       gymId: ctx.branch1.gymId,

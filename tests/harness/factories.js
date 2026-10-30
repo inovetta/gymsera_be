@@ -287,6 +287,28 @@ async function createPayment(tenantDb, branchId, overrides = {}) {
   });
 }
 
+/**
+ * Makes a branch live for travellers under R-77 (Phase 7 P6): branch approved and visible,
+ * listing ACTIVE, at least one plan travellers can see. The tenant must already have an
+ * entitled TenantSubscription (setupPersonas gives both persona tenants one).
+ */
+async function makeBranchLive(tenantDb, branch) {
+  const { Branch, MembershipPlan } = tenantDb.models || tenantDb;
+  const row = typeof branch === 'string' ? await Branch.findByPk(branch) : branch;
+  await row.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
+  if (row.gymListingId) {
+    await GymListing.update({ status: 'ACTIVE' }, { where: { id: row.gymListingId } });
+  }
+  const visible = await MembershipPlan.count({ where: { branchId: row.id, status: 'ACTIVE', isPublic: true } });
+  if (visible === 0) {
+    await MembershipPlan.create({
+      gymId: row.gymId, branchId: row.id, name: 'Visible Monthly', price: 1000,
+      durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
+    });
+  }
+  return row;
+}
+
 module.exports = {
   createUser,
   createBillingPlan,
@@ -296,4 +318,5 @@ module.exports = {
   createTenantSubscription,
   createRoleAssignment,
   createPayment,
+  makeBranchLive,
 };

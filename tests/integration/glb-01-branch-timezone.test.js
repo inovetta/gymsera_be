@@ -38,6 +38,8 @@ describe('GLB-01: memberships and recurring expenses use the branch timezone', (
     const listing = await require('../harness/factories').createGymListing(ctx.tenant1.id, {
       branchId: branch.id, title: `${name} Gym`, status: 'ACTIVE',
     });
+    // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
+    await require('../harness/factories').makeBranchLive(tenantDb, branch);
     return { branch, plan, listing };
   };
 

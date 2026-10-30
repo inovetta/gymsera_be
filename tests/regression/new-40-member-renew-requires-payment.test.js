@@ -49,6 +49,8 @@ describe('NEW-40: member self-renew waits for a verified payment', () => {
     const h = await setupTestDatabases();
     personas = await setupPersonas(h);
     ctx = require('../harness/personas').personaManager.context;
+    // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
+    await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'New40 Monthly',
       price: '2000.15', joiningFee: '300.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',

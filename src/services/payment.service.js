@@ -67,15 +67,18 @@ const _activateSubscription = async (tenantDb, subscriptionId, transaction = nul
   const sub = await MemberSubscription.findByPk(subscriptionId, transaction ? { transaction } : {});
   if (sub && sub.status === 'PENDING') {
     const qrCode = sub.qrCode || `GE-${crypto.randomBytes(20).toString('hex').toUpperCase()}`;
-    await sub.update({ status: 'ACTIVE', qrCode }, transaction ? { transaction } : {});
+    // BUG-31: a traveller's request starts on the day it is approved.
+    const dates = await require('./subscription.service').datesOnApproval(tenantDb.models, sub, transaction);
+    const activated = { status: 'ACTIVE', ...(dates || {}) };
+    await sub.update({ ...activated, qrCode }, transaction ? { transaction } : {});
     if (transaction) {
       transaction.afterCommit(async () => {
-        await UserGymMembership.update({ status: 'ACTIVE' }, { where: { subscriptionId } }).catch((err) => {
+        await UserGymMembership.update(activated, { where: { subscriptionId } }).catch((err) => {
           console.warn('[Payment] Failed to sync UserGymMembership after commit:', err.message);
         });
       });
     } else {
-      await UserGymMembership.update({ status: 'ACTIVE' }, { where: { subscriptionId } }).catch(() => {});
+      await UserGymMembership.update(activated, { where: { subscriptionId } }).catch(() => {});
     }
   }
 };
