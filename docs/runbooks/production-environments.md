@@ -63,6 +63,20 @@ Run these in the site's own folder.
 4. Production only, after a backend deploy: the fresh-approval check in spec §13 (approve a test gym, run
    `docs\sql\new-127-fresh-approval-check.sql`, expect `PASS`; then
    `node src\scripts\run-tenant-migrations.js --check`, expect `OK`).
+5. Nothing internal is public (NEW-125, NEW-181): `https://<site>/iisnode/index.html` must answer 404, not
+   "iisnode logs". iisnode still writes its stdout and stderr files in the site's `iisnode\` folder: read
+   them there (Remote Desktop), never over HTTP. `web.config` must keep `devErrorsEnabled="false"`, so a crash
+   shows the plain IIS error, not a stack trace.
+
+## Why is a gym not live for travellers?
+
+`node src\scripts\why-not-live.js --branch <branch id or part of its name>` (read-only) prints, for each
+matching branch in every tenant, each condition of the live-gym rule (R-77) as PASS / FAIL / WARN and which
+one fails: tenant status, the entitling subscription (status, platform, environment, end date), tenant
+database, organization, branch open, visible to travellers, not suspended, not paused, public plan count.
+The billing lock and the city (id and name) are WARN: they do not hide the branch, but a locked branch
+refuses new members and payments, and a branch with no city is in no city's list. Traveller lists are cached
+for a short time, so a fix can take a moment to show.
 
 ## When searching a `.env`
 
