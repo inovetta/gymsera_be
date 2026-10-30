@@ -1027,6 +1027,34 @@ const PLATFORM_MIGRATIONS = [
       return added?.skipped ? added : null;
     },
   },
+  {
+    version: 26,
+    name: 'p026_tenant_subscriptions_entitlement_ended_at',
+    description:
+      'tenant_subscriptions.entitlement_ended_at DATETIME NULL (no backfill): when a plan stopped entitling, so a lapsed plan locks branches after the 7-day over-quota grace (P7c, R-82, NEW-170). Safe to re-run.',
+    // BACKUP before applying live:  mysqldump <platform_db> tenant_subscriptions > tenant_subscriptions_pre_p026.sql
+    // ROLLBACK (deploy the previous app build FIRST: the TenantSubscription model selects this column):
+    //   ALTER TABLE `tenant_subscriptions` DROP COLUMN `entitlement_ended_at`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 26;
+    // Rows that are already lapsed keep NULL; the first capacity pass after the deploy sets it to that
+    // moment (branch-billing-lock.service.js), so those hosts get the full 7 days from the deploy.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const [hasTable] = await sequelize.query(
+        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_subscriptions' LIMIT 1",
+        { type: QueryTypes.SELECT }
+      );
+      if (!hasTable) return null; // created later with the column (model sync)
+      const added = await _addNullableColumn(sequelize, {
+        table: 'tenant_subscriptions',
+        column: 'entitlement_ended_at',
+        type: 'DATETIME',
+        expectedType: 'datetime',
+        migrationName: 'p026',
+      });
+      return added?.skipped ? added : null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

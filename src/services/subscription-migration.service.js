@@ -389,6 +389,8 @@ const _nextPendingChange = (existing, billingPlanId, upcoming) => {
  * @param {string} opts.idempotencyPrefix - capacity-event key prefix (a per-transaction or per-event id).
  * @param {string|null} [opts.supersededExternalId] - see requestProviderChange.
  * @param {string|null} [opts.boundTenantId] - the tenant the store says made the purchase (BILL-01).
+ * @param {boolean} [opts.revocationReported] - the provider reports a refund on the verified
+ *   transaction itself (Apple's revocationDate), so its absence lifts REVOKED for the same period.
  * @param {string} [opts.logLabel]
  * @returns {Promise<object>} the persisted TenantSubscription.
  */
@@ -416,7 +418,14 @@ const _ownedByOtherAccount = () => {
 const _applyVerifiedSubscriptionOnce = async (
   tenantId,
   values,
-  { originListingId = null, idempotencyPrefix, supersededExternalId = null, boundTenantId = null, logLabel = 'Billing' } = {}
+  {
+    originListingId = null,
+    idempotencyPrefix,
+    supersededExternalId = null,
+    boundTenantId = null,
+    revocationReported = false,
+    logLabel = 'Billing',
+  } = {}
 ) => {
   const { sequelize } = require('../database/platform');
   const TenantDbManager = require('../database/TenantDbManager');
@@ -493,7 +502,16 @@ const _applyVerifiedSubscriptionOnce = async (
       // revoke, still reads "active"), so a later resync of the SAME paid
       // period must not undo a revocation. Only a newer paid period — the
       // host paid again — makes a REVOKED row entitled again (BILL-02).
-      if (existing.status === 'REVOKED' && _entitling(rowValues.status) && !(rowValues.endDate > existing.endDate)) {
+      // Apple is the exception (P7c item 6, NEW-175): it reports a refund on
+      // the transaction itself (revocationDate), so a verified transaction
+      // without one means the refund was reversed (REFUND_REVERSED) and the
+      // same period entitles again.
+      if (
+        existing.status === 'REVOKED' &&
+        _entitling(rowValues.status) &&
+        !(rowValues.endDate > existing.endDate) &&
+        !revocationReported
+      ) {
         rowValues.status = 'REVOKED';
       }
       // A renewal/resync for an external id already on file — never a
@@ -580,6 +598,17 @@ const _applyVerifiedSubscriptionOnce = async (
     }
 
     await platformTx.commit();
+
+    // Tell the host when what the plan covers changed (P7c item 7, NEW-176): once per
+    // transition, after commit, never failing the sync.
+    const hostPlanNotice = require('./host-plan-notice.service');
+    const notice = hostPlanNotice.noticeKind({
+      previousStatus,
+      previousBranchCount: previousMaxBranches,
+      status: subscription.status,
+      branchCount: subscription.branchCount,
+    });
+    if (notice) await hostPlanNotice.notifyHostOfPlanChange(tenantId, notice, subscription);
 
     // A real Stripe API call must never happen inside a DB transaction that
     // might still roll back — done here, only after commit, only when this
@@ -910,16 +939,9 @@ const recordDowngradeChoice = async (tenantId, { billingPlanId, keepBranchIds = 
  */
 const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 const GOOGLE_MANAGE_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
-const paymentIssueFor = (subscription) => {
-  if (!subscription || subscription.status !== 'GRACE') return null;
+// The provider's own page for this subscription (fixed addresses, the verified row only).
+const _manageLinkFor = (subscription) => {
   switch (subscription.platform) {
-    case 'MANUAL': {
-      // Pay later (BILL-13): the countdown to the day the plan ends unpaid.
-      const payBy = subscription.endDate;
-      const today = new Date(`${_isoDate(new Date())}T00:00:00Z`);
-      const daysLeft = Math.max(0, Math.round((new Date(`${payBy}T00:00:00Z`) - today) / (24 * 60 * 60 * 1000)));
-      return { provider: 'MANUAL', manageUrl: null, payBy, daysLeft };
-    }
     case 'IOS':
       return { provider: 'IOS', manageUrl: APPLE_MANAGE_SUBSCRIPTIONS_URL };
     case 'ANDROID': {
@@ -935,12 +957,44 @@ const paymentIssueFor = (subscription) => {
   }
 };
 
+const paymentIssueFor = (subscription) => {
+  if (!subscription || subscription.status !== 'GRACE') return null;
+  if (subscription.platform === 'MANUAL') {
+    // Pay later (BILL-13): the countdown to the day the plan ends unpaid.
+    const payBy = subscription.endDate;
+    const today = new Date(`${_isoDate(new Date())}T00:00:00Z`);
+    const daysLeft = Math.max(0, Math.round((new Date(`${payBy}T00:00:00Z`) - today) / (24 * 60 * 60 * 1000)));
+    return { provider: 'MANUAL', manageUrl: null, payBy, daysLeft };
+  }
+  return _manageLinkFor(subscription);
+};
+
+/**
+ * What GET /host/subscription/current says about a plan that no longer entitles (P7c item 5,
+ * NEW-174, R-82): why, where the host fixes it, when it ended and when the branches lock
+ * (`state` from branch-billing-lock.service.js#getOverQuotaState). Null for an entitling row.
+ */
+const LAPSE_REASON = { EXPIRED: 'expired', ON_HOLD: 'on_hold', PAUSED: 'paused', REVOKED: 'refunded' };
+const lapseFor = (subscription, state) => {
+  if (!subscription || _entitling(subscription.status)) return null;
+  return {
+    status: subscription.status,
+    reason: LAPSE_REASON[subscription.status] || 'ended',
+    ..._manageLinkFor(subscription),
+    endedAt: state?.graceStartedAt ? state.graceStartedAt.toISOString() : null,
+    branchesLockAt: state?.graceEndsAt ? state.graceEndsAt.toISOString() : null,
+    inGrace: !!state?.inGrace,
+    remainingDays: state?.remainingDays ?? null,
+  };
+};
+
 module.exports = {
   requestProviderChange,
   reconcileRenewalStatus,
   applyVerifiedSubscription,
   resolveSubscriptionOwner,
   paymentIssueFor,
+  lapseFor,
   previewDowngrade,
   recordDowngradeChoice,
   PAY_LATER_ID_PREFIX,

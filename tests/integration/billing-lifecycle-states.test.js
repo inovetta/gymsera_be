@@ -115,7 +115,10 @@ describe('BILL-04: grace, hold and pause states', () => {
       expect((await rowFor('tok')).status).toBe('ON_HOLD');
       expect(await maxBranches()).toBe(0);
       expect(await reservedSlots()).toBe(0);
-      expect((await current()).status).toBe(404);
+      // P7c item 5 (R-82): the held plan is answered as it is, not as "no plan" (was 404).
+      const held = await current();
+      expect(held.status).toBe(200);
+      expect(held.body.data).toMatchObject({ status: 'ON_HOLD', entitled: false, lapse: expect.objectContaining({ reason: 'on_hold' }) });
 
       truth.tok = fakes.googlePurchase({
         productId: plan5.androidProductId, latestOrderId: 'GPA.0000-0000-0000-00001..1',

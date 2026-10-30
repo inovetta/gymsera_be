@@ -33,7 +33,7 @@ describe('GLB-01: memberships and recurring expenses use the branch timezone', (
     const branch = await Branch.create({ gymId: ctx.branch1.gymId, branchName: name, timezone, status: 'ACTIVE' });
     const plan = await MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: branch.id, name: `${name} Monthly`, price: '1000.00',
-      durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     const listing = await require('../harness/factories').createGymListing(ctx.tenant1.id, {
       branchId: branch.id, title: `${name} Gym`, status: 'ACTIVE',

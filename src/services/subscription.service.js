@@ -149,6 +149,19 @@ const priceFirstPayment = async (models, plan, userId, branchId) => {
   return { subtotalMinor, joiningMinor, securityMinor, totalAmountMinor: subtotalMinor + joiningMinor + securityMinor };
 };
 
+/**
+ * NEW-163 (P7c item 8): a traveller books only a plan the branch offers to travellers: shown to
+ * travellers (isPublic) and either this branch's own plan or a gym-wide plan (branchId null) of the
+ * same gym. Before, any ACTIVE plan id was accepted, so a hidden plan or another branch's plan could
+ * be booked by sending its id.
+ */
+const assertPlanBookableAt = (plan, branch) => {
+  const offeredHere = plan.branchId ? plan.branchId === branch.id : plan.gymId === branch.gymId;
+  if (!plan.isPublic || !offeredHere) {
+    throw createError('This plan is not available at this branch.', 404, 'plan_not_available');
+  }
+};
+
 // ── GET /subscriptions/quote ──────────────────────────────────────────────────
 /**
  * BUG-34 / NEW-150: what POST /subscriptions will charge this traveller, so the order
@@ -161,6 +174,7 @@ const quoteFirstPayment = async (userId, { planId, gymListingId, branchId }) => 
   if (!plan) throw createError('Membership plan not found or inactive', 404);
   const branch = await models.Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
+  assertPlanBookableAt(plan, branch);
   await require('./discovery.service').assertBranchBookable(branch.id);
 
   const { subtotalMinor, joiningMinor, securityMinor, totalAmountMinor } = await priceFirstPayment(models, plan, userId, branch.id);
@@ -208,6 +222,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
 
   const branch = await models.Branch.findOne({ where: { id: branchIdToUse, status: 'ACTIVE' } });
   if (!branch) throw createError('Branch not found or inactive', 404);
+  assertPlanBookableAt(plan, branch);
 
   const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
   assertBranchNotBillingLocked(branch);

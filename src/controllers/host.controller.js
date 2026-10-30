@@ -890,7 +890,25 @@ const getCurrentSubscription = async (req, res, next) => {
     const subscription = await subscriptionQuotaService.getActiveSubscription(tenantId);
 
     if (!subscription) {
-      throw createError('No active subscription found', 404);
+      // P7c item 5 (NEW-174, R-82): a plan that ended, is on hold, paused or refunded is still
+      // this host's plan: answered as it is (entitled: false, why, where to fix it, when the
+      // branches lock), never as "no subscription". 404 only when there never was one.
+      const lapsed = await subscriptionQuotaService.getLapsedSubscription(tenantId);
+      if (!lapsed) throw createError('No active subscription found', 404);
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'status', 'connectionStringEncrypted'] });
+      const tenantDb =
+        tenant?.status === 'ACTIVE' && tenant.connectionStringEncrypted
+          ? await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted)
+          : null;
+      const state = await require('../services/branch-billing-lock.service').getOverQuotaState(tenantId, tenantDb, {
+        readOnly: true,
+      });
+      return sendSuccess(res, {
+        ...lapsed.toJSON(),
+        entitled: false,
+        lapse: subscriptionMigrationService.lapseFor(lapsed, state),
+        paymentIssue: null,
+      });
     }
 
     const overquotaGraceDays = require('../config/billing.config').overquotaGraceDays;
@@ -919,6 +937,8 @@ const getCurrentSubscription = async (req, res, next) => {
 
     return sendSuccess(res, {
       ...subscription.toJSON(),
+      entitled: true,
+      lapse: null,
       overQuotaGraceDays: graceDays,
       overQuotaGraceRemainingDays,
       isOverQuotaGraceExpired,

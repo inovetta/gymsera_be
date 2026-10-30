@@ -54,6 +54,7 @@ describe('NEW-40: member self-renew waits for a verified payment', () => {
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'New40 Monthly',
       price: '2000.15', joiningFee: '300.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
   });
 

@@ -246,29 +246,21 @@ const _processPlatformSubscriptions = async () => {
 
   for (const sub of expiredSubs) {
     try {
-      // Mark subscription expired (a pay-later grace through the one write path)
-      if (sub.status === 'GRACE') await expirePayLaterGrace(sub);
-      else await sub.update({ status: 'EXPIRED' });
+      // Mark subscription expired. A pay-later grace goes through the one write path, which
+      // also tells the host; any other row is told here, with the expired template (P7c item 7:
+      // the "expires in 2 days" warning used to be sent again on the day it expired).
+      if (sub.status === 'GRACE') {
+        await expirePayLaterGrace(sub);
+      } else {
+        await sub.update({ status: 'EXPIRED' });
+        await require('../services/host-plan-notice.service').notifyHostOfPlanChange(sub.tenantId, 'expired', sub);
+      }
 
       // REL-04: Never mutate tenant status from billing jobs (tenant stays as-is, capacity handles quota)
       const tenant = sub.tenant;
       if (!tenant) continue;
 
       console.log(`[Cron] Subscription expired for tenant ${tenant.id} (${tenant.businessName})`);
-
-      // Send notice email to gym host
-      const owner = tenant.owner;
-      if (owner) {
-        try {
-          await emailService.sendTenantSubscriptionWarningEmail(owner.email, owner.fullName, {
-            businessName: tenant.businessName,
-            packageName: sub.package?.name || 'Platform',
-            endDate: sub.endDate,
-          });
-        } catch (emailErr) {
-          console.error(`[Cron] Failed to send expiration notice email to ${owner.email}:`, emailErr.message);
-        }
-      }
     } catch (err) {
       console.error(`[Cron] Failed to process expired subscription ${sub.id}:`, err.message);
     }
@@ -298,6 +290,28 @@ const _reconcileCapacityForAllTenants = async () => {
     where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES }, branchCount: { [Op.ne]: null } },
     attributes: ['id', 'tenantId', 'branchCount'],
   });
+  // Tenants with no entitling plan but an ended or expired one (P7c, R-82, NEW-171):
+  // entitled to 0 branches, so their slots are trimmed and, after the 7-day grace,
+  // every active branch is locked. Before P7c this pass never looked at them.
+  const entitledTenantIds = new Set(
+    (
+      await TenantSubscription.findAll({
+        where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES } },
+        attributes: ['tenantId'],
+      })
+    ).map((r) => r.tenantId)
+  );
+  const lapsedTenantIds = [
+    ...new Set(
+      (
+        await TenantSubscription.findAll({
+          where: { status: { [Op.in]: subscriptionQuotaService.ENDED_STATUSES } },
+          attributes: ['tenantId'],
+        })
+      ).map((r) => r.tenantId)
+    ),
+  ].filter((id) => !entitledTenantIds.has(id));
+  for (const tenantId of lapsedTenantIds) activeSubs.push({ tenantId, branchCount: 0 });
 
   let reconciled = 0;
   let audited = 0;

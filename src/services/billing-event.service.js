@@ -59,7 +59,11 @@ const _processApple = async (payload) => {
   if (!transactionJws) return { outcome: 'IGNORED', note: `${decoded.notificationType || 'Notification'} carries no transaction` };
   // Used only as a key to look the subscription up — its state is re-fetched.
   const transaction = appleBilling.appleApi.verifyAndDecode(transactionJws);
-  const synced = await appleBilling.syncFromApple({ transactionId: String(transaction.originalTransactionId) });
+  // The notification says which App Store environment it came from: ask that one first (P7c item 4).
+  const synced = await appleBilling.syncFromApple({
+    transactionId: String(transaction.originalTransactionId),
+    environment: decoded.data?.environment || null,
+  });
   if (!synced) return { outcome: 'IGNORED', note: 'No GymsEra tenant owns this transaction' };
   return { outcome: 'PROCESSED' };
 };
@@ -211,6 +215,7 @@ const refreshStoreSubscription = async (row) => {
     return require('./apple-billing.service').syncFromApple({
       transactionId: row.externalOriginalTransactionId,
       tenantId: row.tenantId,
+      environment: row.environment || null,
     });
   }
   if (row.platform === 'ANDROID') {
@@ -225,20 +230,30 @@ const refreshStoreSubscription = async (row) => {
   throw new Error(`Not a store-backed subscription: ${row.platform}`);
 };
 
+// How long an EXPIRED store row is still re-fetched every night (P7c item 3, R-82).
+const RECHECK_EXPIRED_DAYS = 7;
+
 /**
  * Daily safety net for notifications that never arrived: every store-backed
  * row that can still carry entitlement is re-fetched through the same sync
- * entry point (spec §7.6).
+ * entry point (spec §7.6). That includes a row that stopped entitling as
+ * EXPIRED in the last RECHECK_EXPIRED_DAYS: the daily expiry pass expires a
+ * store row past its end date when the re-fetch before it failed (an outage),
+ * and without this a renewed, paying host stayed expired (NEW-172).
  */
 const reconcileStoreSubscriptions = async () => {
+  const since = new Date(Date.now() - RECHECK_EXPIRED_DAYS * 24 * 60 * 60 * 1000);
   const rows = await TenantSubscription.findAll({
     where: {
       platform: { [Op.in]: ['IOS', 'ANDROID', 'STRIPE'] },
-      // GRACE / ON_HOLD / PAUSED can still recover (or lapse) at the provider (BILL-04).
-      status: { [Op.in]: ['ACTIVE', 'GRACE', 'ON_HOLD', 'PAUSED', 'PENDING_CANCEL', 'SCHEDULED'] },
       externalOriginalTransactionId: { [Op.ne]: null },
+      [Op.or]: [
+        // GRACE / ON_HOLD / PAUSED can still recover (or lapse) at the provider (BILL-04).
+        { status: { [Op.in]: ['ACTIVE', 'GRACE', 'ON_HOLD', 'PAUSED', 'PENDING_CANCEL', 'SCHEDULED'] } },
+        { status: 'EXPIRED', entitlementEndedAt: { [Op.gte]: since } },
+      ],
     },
-    attributes: ['id', 'tenantId', 'platform', 'externalOriginalTransactionId'],
+    attributes: ['id', 'tenantId', 'platform', 'externalOriginalTransactionId', 'environment'],
   });
   let failed = 0;
   for (const row of rows) {

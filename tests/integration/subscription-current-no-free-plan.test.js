@@ -145,7 +145,9 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
 
     const res = await getCurrent();
 
-    expect(res.status).toBe(404);
+    // P7c item 5 (R-82): the refunded plan is answered as it is, not entitled (was 404).
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ status: 'REVOKED', entitled: false });
     expect(
       await TenantSubscription.count({ where: { tenantId: tenant.id, status: 'ACTIVE' } })
     ).toBe(0);
@@ -154,7 +156,7 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
     expect((await GymListing.findByPk(listing.id)).reservedSlots).toBe(0);
 
     // Calling it again (the app polls it) still grants nothing.
-    expect((await getCurrent()).status).toBe(404);
+    expect((await getCurrent()).body.data.entitled).toBe(false);
     expect(await rows()).toEqual(before);
   });
 
@@ -171,7 +173,10 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
 
       const res = await getCurrent();
 
-      expect(res.status).toBe(404);
+      // P7c item 5 (R-82): an EXPIRED or REVOKED plan is answered as it is, not entitled (was 404);
+      // CANCELLED is not a lapse and still answers 404.
+      if (status === 'CANCELLED') expect(res.status).toBe(404);
+      else expect(res.body.data).toMatchObject({ status, entitled: false });
       expect(await rows()).toEqual(before);
     }
   );

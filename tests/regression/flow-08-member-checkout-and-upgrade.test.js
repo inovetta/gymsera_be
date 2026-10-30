@@ -58,11 +58,11 @@ describe('FLOW-08: member checkout and upgrade wait for verified money', () => {
     const { MembershipPlan } = ctx.tenant1Db.models;
     basic = await MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Flow08 Basic',
-      price: '1000.05', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      price: '1000.05', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     premium = await MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Flow08 Premium',
-      price: '1500.10', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      price: '1500.10', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
   });
 
