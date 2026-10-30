@@ -397,19 +397,40 @@ const getPayment = async (tenantDb, paymentId) => {
  * Tenant (GYM_HOST) gives final approval to a PENDING or STAFF_COLLECTED payment.
  * Activates the linked subscription and marks the invoice as PAID.
  */
+/**
+ * P5b item 4 (R-81): a payment is only approved or collected at a branch that
+ * is open. Deleting a branch is refused while it has payments in progress, so
+ * this is defence in depth (an admin path, an older client, a race). Rejecting
+ * stays allowed, so the host can always clear a payment.
+ */
+const _paymentBranch = async (tenantDb, payment) => {
+  const { Branch, MemberSubscription } = tenantDb.models;
+  if (!Branch) return null;
+  let branchId = payment.branchId;
+  if (!branchId && payment.paymentFor === 'MEMBERSHIP' && payment.referenceEntityId && MemberSubscription) {
+    const sub = await MemberSubscription.findByPk(payment.referenceEntityId, { attributes: ['branchId'] });
+    branchId = sub?.branchId || null;
+  }
+  return branchId ? Branch.findByPk(branchId) : null;
+};
+
+const _assertBranchTakesPayments = (branch) => {
+  if (branch && branch.status !== 'ACTIVE') {
+    throw createError('This branch is closed, so this payment cannot be approved. Reject it instead.', 409, 'branch_inactive');
+  }
+};
+
 const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waiveJoiningFee = false) => {
   const { Payment, Invoice, MemberSubscription, MembershipPlan } = tenantDb.models;
 
   const payment = await Payment.findByPk(paymentId);
   if (!payment) throw createError('Payment not found', 404);
 
-  const targetBranchId = payment.branchId;
-  if (targetBranchId && tenantDb.models.Branch) {
-    const branch = await tenantDb.models.Branch.findByPk(targetBranchId);
-    if (branch) {
-      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
-      assertBranchNotBillingLocked(branch);
-    }
+  const branch = await _paymentBranch(tenantDb, payment);
+  _assertBranchTakesPayments(branch);
+  if (branch) {
+    const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+    assertBranchNotBillingLocked(branch);
   }
 
   const verifiableStatuses = [PaymentStatus.PENDING, PaymentStatus.STAFF_COLLECTED];
@@ -631,12 +652,11 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
   if (!payment) throw createError('Payment not found', 404);
 
   if (action === 'collect') {
-    if (payment.branchId && tenantDb.models.Branch) {
-      const branch = await tenantDb.models.Branch.findByPk(payment.branchId);
-      if (branch) {
-        const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
-        assertBranchNotBillingLocked(branch);
-      }
+    const branch = await _paymentBranch(tenantDb, payment);
+    _assertBranchTakesPayments(branch);
+    if (branch) {
+      const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
+      assertBranchNotBillingLocked(branch);
     }
     if (payment.status !== PaymentStatus.PENDING) {
       throw createError(`Cannot collect a payment that is already ${payment.status.toLowerCase()}`, 409);

@@ -51,7 +51,7 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
         MembershipPlan: { findByPk: jest.fn().mockResolvedValue(planRow) },
         // verifyPayment stamps the branch-local business date (ledger.service
         // stampBusinessDate reads Branch.timezone), added by fb3cd2a / PAY ledger work.
-        Branch: { findByPk: jest.fn().mockResolvedValue({ id: 'branch-1', timezone: 'Asia/Karachi' }) },
+        Branch: { findByPk: jest.fn().mockResolvedValue({ id: 'branch-1', status: 'ACTIVE', timezone: 'Asia/Karachi' }) },
       },
       paymentRow,
     };

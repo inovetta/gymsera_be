@@ -22,6 +22,24 @@ const ERROR_COPY = {
     ar: 'يجب أن تحتوي المنظمة على فرع واحد على الأقل. لا يمكنك حذف الفرع الوحيد.',
     action: 'none',
   },
+  branch_delete_blocked: {
+    en: 'This branch still has active members, upcoming bookings or payments to settle. Settle them or wait until they end, or pause the branch instead.',
+    ur: 'اس برانچ میں ابھی فعال ممبرز، آنے والی بکنگز یا زیرِ التوا ادائیگیاں موجود ہیں۔ پہلے انہیں نمٹائیں یا ان کے ختم ہونے کا انتظار کریں، یا اس کے بجائے برانچ کو روک دیں۔',
+    ar: 'لا يزال لدى هذا الفرع أعضاء نشطون أو حجوزات قادمة أو مدفوعات معلقة. قم بتسويتها أو انتظر حتى تنتهي، أو أوقف الفرع مؤقتًا بدلاً من ذلك.',
+    action: 'none',
+  },
+  organization_delete_blocked: {
+    en: 'Some branches in this organization still have active members, upcoming bookings or payments to settle. Settle them or wait until they end, or pause those branches instead.',
+    ur: 'اس تنظیم کی کچھ برانچز میں ابھی فعال ممبرز، آنے والی بکنگز یا زیرِ التوا ادائیگیاں موجود ہیں۔ پہلے انہیں نمٹائیں یا ان کے ختم ہونے کا انتظار کریں، یا ان برانچز کو روک دیں۔',
+    ar: 'لا تزال بعض فروع هذه المنظمة تضم أعضاء نشطين أو حجوزات قادمة أو مدفوعات معلقة. قم بتسويتها أو انتظر حتى تنتهي، أو أوقف تلك الفروع مؤقتًا بدلاً من ذلك.',
+    action: 'none',
+  },
+  branch_inactive: {
+    en: 'This branch is closed, so this payment cannot be approved. Reject it instead.',
+    ur: 'یہ برانچ بند ہے، اس لیے یہ ادائیگی منظور نہیں ہو سکتی۔ اس کے بجائے اسے مسترد کریں۔',
+    ar: 'هذا الفرع مغلق، لذا لا يمكن الموافقة على هذه الدفعة. ارفضها بدلاً من ذلك.',
+    action: 'none',
+  },
   iap_subscription_active: {
     en: 'This plan is billed through Apple or Google Play. Manage or cancel it through the store.',
     ur: 'یہ پلان ایپل یا گوگل پلے کے ذریعے بل کیا جاتا ہے۔ براہ کرم اسٹور کے ذریعے اس کا نظم کریں۔',
