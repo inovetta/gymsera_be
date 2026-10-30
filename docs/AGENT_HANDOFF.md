@@ -21,8 +21,10 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P7c** (subscription lifecycle, R-82; NEW-163, NEW-170 to NEW-178) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | P7c item 1 (NEW-170, lapsed plan locks branches) |
-| Step within issue | Code read and gaps confirmed; writing the failing test next |
+| Issue in progress | P7c items 3, 4, 6 (tests written and red: be `tests/regression/p7c-03-*`, `p7c-04-*`, `p7c-06-*`, uncommitted), then 5, 7, 8, 9 |
+| Step within issue | Items 1+2 committed (be `4da28f3`, platform migration p026). App item 5 screen + `test/regression/p7c_plan_lapse_test.dart` written, green, uncommitted on app `fix/p7c-subscription-lifecycle` (needs the backend half of item 5 first). Tests `p7c-07-*` (item 7) and `p7c-08-*` (item 8) written, not yet run |
+
+**Next action:** make p7c-03 (add EXPIRED rows with `entitlement_ended_at` in the last 7 days to `billing-event.service.js#reconcileStoreSubscriptions`), p7c-04 (Apple Production first, Sandbox on errorCode 4040010/4040005, hint from notification `data.environment` and row `environment`), p7c-06 (Apple: no revocationDate is the truth) green; commit each.
 
 **P7c branches** (from `origin/main` `da3e9dd` / `origin/master` `c1618e8`, as the owner asked; P5b is NOT in them): be `fix/p7c-subscription-lifecycle`, app `fix/p7c-subscription-lifecycle`, be docs `docs/p7c-subscription-lifecycle` (on top of `docs/p5b-branch-lifecycle`). Not pushed.
 
