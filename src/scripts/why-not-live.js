@@ -5,10 +5,10 @@
  * `_buildAllActiveBranches`) for each branch whose id or name matches, and which ones fail:
  *   tenant status ACTIVE; an entitling subscription (ACTIVE or GRACE; status, platform,
  *   environment); the tenant database; an organization; branch ACTIVE, visible to travellers,
- *   not suspended by an administrator, not paused; at least one ACTIVE public plan for the
- *   branch or the whole organization.
- * Also printed, as WARN because discovery does not hide the branch for them: the billing lock
- * and the city (id and name; no city = in no city's list or search).
+ *   not suspended by an administrator, not paused, not locked for billing (R-83); at least one
+ *   ACTIVE public plan for the branch or the whole organization.
+ * Also printed, as WARN because discovery does not hide the branch for it: the city (id and name;
+ * no city = in no city's list or search).
  * Makes no writes. Traveller lists are cached for a short time, so a fix can take a moment to show.
  *
  * Usage: node src/scripts/why-not-live.js --branch <branch id or name>
@@ -74,10 +74,8 @@ const _report = async (tenant, tenantDb, branch) => {
 
   add(
     'billing lock',
-    branch.billingLockedAt ? 'WARN' : 'PASS',
-    branch.billingLockedAt
-      ? `locked on ${_day(branch.billingLockedAt)} (${branch.billingLockReason || 'no reason'}): still listed, but new members and payments are refused`
-      : 'not locked'
+    branch.billingLockedAt ? 'FAIL' : 'PASS', // R-83: a locked branch is hidden from travellers
+    branch.billingLockedAt ? `locked on ${_day(branch.billingLockedAt)} (${branch.billingLockReason || 'no reason'})` : 'not locked'
   );
 
   const listing = branch.gymListingId ? await GymListing.findByPk(branch.gymListingId, { attributes: ['id', 'status', 'cityId'] }) : null;
