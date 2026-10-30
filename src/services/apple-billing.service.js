@@ -120,22 +120,61 @@ const _appleApiJwt = () => {
   );
 };
 
-const _appleApiBase = () =>
-  process.env.APPLE_IAP_ENVIRONMENT === 'Production'
-    ? 'https://api.storekit.itunes.apple.com'
-    : 'https://api.storekit-sandbox.itunes.apple.com';
+const APPLE_API_BASE = {
+  Production: 'https://api.storekit.itunes.apple.com',
+  Sandbox: 'https://api.storekit-sandbox.itunes.apple.com',
+};
+// App Store Server API errors for an id this environment doesn't know:
+// TransactionIdNotFoundError, OriginalTransactionIdNotFoundError.
+const APPLE_NOT_FOUND_CODES = [4040010, 4040005];
+
+/** 'Sandbox' | 'Production' | null, from Apple's spelling or the row's (SANDBOX / PRODUCTION). */
+const _appleEnvironment = (value) => {
+  const v = String(value || '').toUpperCase();
+  if (v === 'SANDBOX') return 'Sandbox';
+  if (v === 'PRODUCTION') return 'Production';
+  return null;
+};
+
+/**
+ * Which App Store Server API environments to ask, in order (P7c item 4, NEW-173, R-82).
+ * Production first, then Sandbox when Production doesn't know the id — Apple's
+ * documented order, so TestFlight and App Review purchases (always Sandbox) verify
+ * on the production server. A known environment (a notification's own
+ * `environment`, the stored row's) goes first. APPLE_IAP_ENVIRONMENT=Sandbox keeps
+ * a staging server on Sandbox only (scripts/staging/lib/guard.js refuses Production).
+ */
+const _environmentOrder = (hint) => {
+  if (_appleEnvironment(process.env.APPLE_IAP_ENVIRONMENT) === 'Sandbox') return ['Sandbox'];
+  return _appleEnvironment(hint) === 'Sandbox' ? ['Sandbox', 'Production'] : ['Production', 'Sandbox'];
+};
+
+const _isNotFound = (err) =>
+  err?.response?.status === 404 && APPLE_NOT_FOUND_CODES.includes(Number(err.response.data?.errorCode));
 
 /**
  * Ask Apple directly "what is this transaction," rather than trusting
  * whatever the app claims — the whole point of server-side verification.
+ * Only "not found" moves on to the next environment; any other error (auth,
+ * outage) is thrown as it is.
+ * @param {string} transactionId
+ * @param {{ environment?: string|null }} [opts] - the environment to try first, when known.
  * @returns {object} the decoded, chain-verified transaction payload.
  */
-const getTransactionInfo = async (transactionId) => {
+const getTransactionInfo = async (transactionId, { environment = null } = {}) => {
   const axios = require('axios');
-  const response = await axios.get(`${_appleApiBase()}/inApps/v1/transactions/${transactionId}`, {
-    headers: { Authorization: `Bearer ${_appleApiJwt()}` },
-  });
-  return verifyAndDecode(response.data.signedTransactionInfo);
+  const order = _environmentOrder(environment);
+  for (let i = 0; ; i++) {
+    try {
+      const response = await axios.get(`${APPLE_API_BASE[order[i]]}/inApps/v1/transactions/${transactionId}`, {
+        headers: { Authorization: `Bearer ${_appleApiJwt()}` },
+      });
+      return appleApi.verifyAndDecode(response.data.signedTransactionInfo);
+    } catch (err) {
+      if (i + 1 < order.length && _isNotFound(err)) continue;
+      throw err;
+    }
+  }
 };
 
 /**
@@ -251,11 +290,13 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
  * `subscriptionStatus` / `renewalInfo` (grace, billing retry, auto-renew —
  * BILL-04; the upcoming product — BILL-03).
  */
-const getLatestTransaction = async (transactionId) => {
+const getLatestTransaction = async (transactionId, { environment = null } = {}) => {
   const axios = require('axios');
-  const known = await appleApi.getTransactionInfo(transactionId);
+  const known = await appleApi.getTransactionInfo(transactionId, { environment });
   const originalId = String(known.originalTransactionId);
-  const response = await axios.get(`${_appleApiBase()}/inApps/v1/subscriptions/${encodeURIComponent(originalId)}`, {
+  // The environment that found the transaction answers for its subscription too.
+  const base = APPLE_API_BASE[_appleEnvironment(known.environment) || _environmentOrder(environment)[0]];
+  const response = await axios.get(`${base}/inApps/v1/subscriptions/${encodeURIComponent(originalId)}`, {
     headers: { Authorization: `Bearer ${_appleApiJwt()}` },
   });
   for (const group of response.data?.data || []) {
@@ -288,9 +329,10 @@ const appleApi = { verifyAndDecode, getTransactionInfo, getLatestTransaction };
  * `tenantId` is the caller's tenant for /sync. Without one (a notification,
  * the daily sweep) the owner is resolved from the existing row or the
  * transaction's appAccountToken; returns null when no tenant owns it.
+ * `environment` (a notification's, a stored row's) is asked first, when known.
  */
-const syncFromApple = async ({ transactionId, tenantId = null, originListingId = null }) => {
-  const decodedTransaction = await appleApi.getLatestTransaction(transactionId);
+const syncFromApple = async ({ transactionId, tenantId = null, originListingId = null, environment = null }) => {
+  const decodedTransaction = await appleApi.getLatestTransaction(transactionId, { environment });
   const owner =
     tenantId ||
     (await subscriptionMigrationService.resolveSubscriptionOwner(

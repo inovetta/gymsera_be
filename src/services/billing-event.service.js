@@ -59,7 +59,11 @@ const _processApple = async (payload) => {
   if (!transactionJws) return { outcome: 'IGNORED', note: `${decoded.notificationType || 'Notification'} carries no transaction` };
   // Used only as a key to look the subscription up — its state is re-fetched.
   const transaction = appleBilling.appleApi.verifyAndDecode(transactionJws);
-  const synced = await appleBilling.syncFromApple({ transactionId: String(transaction.originalTransactionId) });
+  // The notification says which App Store environment it came from: ask that one first (P7c item 4).
+  const synced = await appleBilling.syncFromApple({
+    transactionId: String(transaction.originalTransactionId),
+    environment: decoded.data?.environment || null,
+  });
   if (!synced) return { outcome: 'IGNORED', note: 'No GymsEra tenant owns this transaction' };
   return { outcome: 'PROCESSED' };
 };
@@ -211,6 +215,7 @@ const refreshStoreSubscription = async (row) => {
     return require('./apple-billing.service').syncFromApple({
       transactionId: row.externalOriginalTransactionId,
       tenantId: row.tenantId,
+      environment: row.environment || null,
     });
   }
   if (row.platform === 'ANDROID') {
