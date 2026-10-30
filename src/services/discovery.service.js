@@ -611,6 +611,18 @@ const listCities = async () => {
     .sort((a, b) => b.gymCount - a.gymCount || a.name.localeCompare(b.name));
 };
 
+/**
+ * R-78 (BUG-07): the host intro's numbers, all counted, none typed in: gyms live for travellers
+ * (the R-77 snapshot every list uses), cities with a live gym, and active accounts (platform
+ * administrators and closed accounts excluded).
+ */
+const platformStats = async () => {
+  const branches = await _getAllActiveBranches();
+  const cities = new Set(branches.map((b) => b.cityId).filter(Boolean));
+  const activeUsers = await User.count({ where: { status: 'ACTIVE', role: { [Op.ne]: 'PLATFORM_ADMIN' } } });
+  return { liveGyms: branches.length, cities: cities.size, activeUsers };
+};
+
 // ── haversineKm ───────────────────────────────────────────────────────────────
 const haversineKm = (lat1, lng1, lat2, lng2) => {
   const R = 6371;
@@ -1207,6 +1219,7 @@ module.exports = {
   getGym,
   getPaymentDetails,
   isLiveForTravellers,
+  platformStats,
   assertBranchBookable,
   listCities,
   nearbyGyms,

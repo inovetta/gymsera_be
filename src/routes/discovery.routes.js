@@ -50,6 +50,30 @@ const router = Router();
  */
 router.get('/cities', publicCache, controller.listCities);
 
+/**
+ * @openapi
+ * /discovery/stats:
+ *   get:
+ *     tags: [Discovery]
+ *     summary: Real platform numbers for the host intro (R-78)
+ *     description: Gyms live for travellers (R-77), cities with a live gym, active accounts. Public, cached.
+ *     responses:
+ *       200:
+ *         description: Counts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     liveGyms:    { type: integer }
+ *                     cities:      { type: integer }
+ *                     activeUsers: { type: integer }
+ */
+router.get('/stats', publicCache, controller.platformStats);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Special gym list endpoints — must come BEFORE /gyms/:id to avoid path clash
 // ─────────────────────────────────────────────────────────────────────────────
