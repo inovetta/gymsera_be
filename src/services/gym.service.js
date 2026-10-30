@@ -1192,6 +1192,34 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
 };
 
 /**
+ * P5b item 2 (R-81): pause a branch. Hidden from travellers (discovery,
+ * TRAVELLER_VISIBLE_BRANCH), nothing else changes: it stays ACTIVE and keeps
+ * its members, plans, staff, payments, capacity and review state
+ * (travelerVisibilityStatus), so resuming shows it exactly as it was. Always
+ * allowed for a branch that is not deleted, also with members or money in
+ * progress: it is what a host does instead of deleting. Pausing again keeps
+ * the first pause time.
+ */
+const pauseBranch = async (tenantDb, branchId, pausedByUserId) => {
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch || branch.status !== 'ACTIVE') throw createError('Branch not found or has been deleted', 404);
+  if (!branch.pausedAt) {
+    await branch.update({ pausedAt: new Date(), pausedBy: pausedByUserId || null });
+  }
+  return { branch };
+};
+
+/** Undoes pauseBranch. Resuming a branch that is not paused changes nothing. */
+const resumeBranch = async (tenantDb, branchId) => {
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch || branch.status !== 'ACTIVE') throw createError('Branch not found or has been deleted', 404);
+  if (branch.pausedAt) {
+    await branch.update({ pausedAt: null, pausedBy: null });
+  }
+  return { branch };
+};
+
+/**
  * Restores a branch previously closed via deleteBranch, flipping it back to
  * ACTIVE. Re-consumes exactly one unit of capacity, through the identical
  * check createBranch uses (this organization's own reserved slot first, else
@@ -2215,6 +2243,8 @@ module.exports = {
   removeStaff,
   addBranchImages,
   removeBranchImage,
+  pauseBranch,
+  resumeBranch,
   listMembers,
   searchMember,
   enrollMember,

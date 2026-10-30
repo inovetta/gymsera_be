@@ -187,6 +187,18 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'billing_lock_reason',
       },
+      // P5b item 2 (tenant migration 021): paused by the host, hidden from travellers. Not a
+      // status: a paused branch stays ACTIVE and keeps everything (gym.service.js pauseBranch).
+      pausedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'paused_at',
+      },
+      pausedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: 'paused_by',
+      },
     },
     {
       tableName: 'branches',

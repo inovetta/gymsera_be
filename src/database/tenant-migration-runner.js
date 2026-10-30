@@ -767,6 +767,39 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // P5b item 2 (R-81): a host can pause a branch (hidden from travellers, nothing else changes).
+    // Both nullable, no backfill: no branch is paused. Not a status: the branch stays ACTIVE.
+    // ROLLBACK (previous build first): ALTER TABLE `branches` DROP COLUMN `paused_at`, DROP COLUMN `paused_by`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 21;
+    version: 21,
+    name: '021_add_branch_pause_columns',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+
+      const [branchesExists] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'branches\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (!branchesExists) return null;
+
+      const wanted = { paused_at: ['datetime'], paused_by: ['char', 'varchar'] };
+      const existing = await sequelize.query(
+        'SELECT COLUMN_NAME AS name, DATA_TYPE AS type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'branches\' AND COLUMN_NAME IN (\'paused_at\', \'paused_by\')',
+        { type: QueryTypes.SELECT }
+      );
+      for (const col of existing) {
+        if (!wanted[col.name].includes(String(col.type).toLowerCase())) {
+          console.warn(`[TenantMigration] SKIPPING 021: branches.${col.name} already exists as ${col.type}. Resolve it by hand, then re-run.`);
+          return { skipped: true, reason: 'column_exists_with_other_type', table: 'branches', column: col.name, type: col.type };
+        }
+      }
+      const have = new Set(existing.map((c) => c.name));
+      if (!have.has('paused_at')) await sequelize.query('ALTER TABLE `branches` ADD COLUMN `paused_at` DATETIME NULL');
+      if (!have.has('paused_by')) await sequelize.query('ALTER TABLE `branches` ADD COLUMN `paused_by` CHAR(36) NULL');
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

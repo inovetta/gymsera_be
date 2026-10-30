@@ -804,6 +804,28 @@ const deleteListing = async (req, res, next) => {
 };
 
 /**
+ * POST /host/branches/:branchId/pause and /resume (P5b item 2, R-81).
+ * Hidden from travellers while paused; nothing else changes.
+ */
+const pauseBranch = async (req, res, next) => {
+  try {
+    const result = await gymService.pauseBranch(req.tenantDb, req.params.branchId, req.user.sub || req.user.id);
+    return sendSuccess(res, result, 'Branch paused');
+  } catch (err) {
+    next(err);
+  }
+};
+
+const resumeBranch = async (req, res, next) => {
+  try {
+    const result = await gymService.resumeBranch(req.tenantDb, req.params.branchId);
+    return sendSuccess(res, result, 'Branch resumed');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /host/branches/:branchId/restore
  * Re-activates a previously deleted branch. Re-consumes one unit of
  * capacity the same way building a new branch does — see
@@ -1548,6 +1570,8 @@ module.exports = {
   updateListing,
   deleteListing,
   restoreBranch,
+  pauseBranch,
+  resumeBranch,
   transferReservedSlots,
   getCurrentSubscription,
   upgradeSubscription,

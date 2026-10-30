@@ -58,6 +58,9 @@ router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext
 router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
 router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toListingId']), hostController.transferReservedSlots);
 router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody([]), hostController.restoreBranch);
+// P5b item 2 (R-81): pause hides a branch from travellers and changes nothing else; who may change the branch's settings may pause it.
+router.post('/branches/:branchId/pause', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('branch.settings'), validate.allowBody([]), hostController.pauseBranch);
+router.post('/branches/:branchId/resume', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('branch.settings'), validate.allowBody([]), hostController.resumeBranch);
 router.get('/subscription/current', authenticate, authorize('GYM_HOST'), hostController.getCurrentSubscription);
 router.post('/subscription/upgrade', authenticate, authorize('GYM_HOST'), validate.allowBody(['newPlanId', 'planId']), hostController.upgradeSubscription);
 
