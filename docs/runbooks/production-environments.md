@@ -73,10 +73,9 @@ Run these in the site's own folder.
 `node src\scripts\why-not-live.js --branch <branch id or part of its name>` (read-only) prints, for each
 matching branch in every tenant, each condition of the live-gym rule (R-77) as PASS / FAIL / WARN and which
 one fails: tenant status, the entitling subscription (status, platform, environment, end date), tenant
-database, organization, branch open, visible to travellers, not suspended, not paused, public plan count.
-The billing lock and the city (id and name) are WARN: they do not hide the branch, but a locked branch
-refuses new members and payments, and a branch with no city is in no city's list. Traveller lists are cached
-for a short time, so a fix can take a moment to show.
+database, organization, branch open, visible to travellers, not suspended, not paused, not locked for billing
+(R-83), public plan count. The city (id and name) is WARN: it does not hide the branch, but a branch with no
+city is in no city's list. Traveller lists are cached for a short time, so a fix can take a moment to show.
 
 ## When searching a `.env`
 
