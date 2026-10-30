@@ -302,12 +302,12 @@ const sendTenantSubscriptionWarningEmail = async (to, fullName, { businessName, 
 <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:20px;margin:0 0 24px;">
 <p style="color:#92400e;margin:0;font-size:14px;font-weight:600;">⚠️ What happens if you don't renew?</p>
 <ul style="color:#92400e;font-size:14px;margin:8px 0 0;padding-left:20px;line-height:1.8;">
-<li>Your account will be automatically suspended</li>
-<li>Your gym listings will be hidden from public search</li>
-<li>Your members will not be affected immediately</li>
+<li>Your branches stay open for 7 days after the plan ends</li>
+<li>Then they are locked: no new members, sales or plans</li>
+<li>Members can still check in for 7 more days after the lock</li>
 </ul>
 </div>
-<p style="color:#6b7280;font-size:13px;">To renew, contact your platform administrator or log in to your account to arrange payment.</p>
+<p style="color:#6b7280;font-size:13px;">To renew, open My Subscription in the GymsEra app.</p>
 <p style="color:#374151;font-size:15px;margin:24px 0 0;">Best regards,<br><strong>GymsEra Platform Team</strong></p>
 </td></tr>
 <tr><td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
@@ -401,6 +401,81 @@ const sendTenantAccountReactivatedEmail = async (to, fullName, { businessName, p
   });
 };
 
+// ── Host plan changes (P7c item 7, NEW-176, R-82) ────────────────────────────
+// One layout for the plan notices below. Every value is escaped: names come from users.
+const _escapeHtml = (v) =>
+  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const _formatDay = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null);
+const _hostPlanNotice = ({ fullName, heading, color, paragraphs }) => `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;">
+<tr><td style="background:${color};padding:28px 40px;"><h1 style="color:#ffffff;margin:0;font-size:21px;">${_escapeHtml(heading)}</h1></td></tr>
+<tr><td style="padding:32px 40px;">
+<p style="color:#374151;font-size:15px;margin:0 0 16px;">Hi ${_escapeHtml(fullName)},</p>
+${paragraphs.map((t) => `<p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px;">${_escapeHtml(t)}</p>`).join('\n')}
+<p style="color:#374151;font-size:15px;margin:16px 0 0;">GymsEra</p>
+</td></tr></table></td></tr></table></body></html>`;
+
+const _lockSentence = (lockDate) =>
+  lockDate
+    ? `Your branches stay open until ${lockDate}. After that they are locked: no new members, sales or plans. Members can still check in for 7 more days.`
+    : 'Your branches are locked: no new members, sales or plans. Members can still check in for 7 days after the lock.';
+
+/** The plan has expired: its own template (the "expires in 2 days" warning was sent again before P7c). */
+const sendTenantSubscriptionExpiredEmail = async (to, fullName, { businessName, endDate, branchesLockAt }) => {
+  const ended = _formatDay(endDate);
+  const paragraphs = [
+    `The GymsEra plan for ${businessName} ${ended ? `ended on ${ended}` : 'has ended'}.`,
+    _lockSentence(_formatDay(branchesLockAt)),
+    'Choose a plan in the GymsEra app (Profile, My Subscription) to keep everything open.',
+  ];
+  await sendMail({
+    to,
+    subject: `Your GymsEra plan for ${businessName} has ended`,
+    html: _hostPlanNotice({ fullName, heading: 'Your plan has ended', color: '#dc2626', paragraphs }),
+    text: `Hi ${fullName},\n\n${paragraphs.join('\n\n')}\n\nGymsEra`,
+  });
+};
+
+/**
+ * The provider changed what the plan covers: kind 'on_hold' (a renewal payment failed),
+ * 'refunded' (refund or chargeback) or 'downgraded' (the smaller plan took effect).
+ */
+const sendTenantPlanChangedEmail = async (to, fullName, { kind, businessName, storeName, branchCount, branchesLockAt }) => {
+  const lock = _lockSentence(_formatDay(branchesLockAt));
+  const content = {
+    on_hold: {
+      subject: `Payment problem: your GymsEra plan for ${businessName} is on hold`,
+      heading: 'Your plan is on hold',
+      paragraphs: [
+        `${storeName || 'Your store'} couldn't take the renewal payment for ${businessName}, so the plan is on hold.`,
+        `Update your payment method in ${storeName || 'your store account'} to get it back.`,
+        lock,
+      ],
+    },
+    refunded: {
+      subject: `Your GymsEra plan for ${businessName} was refunded`,
+      heading: 'Your plan was refunded',
+      paragraphs: [`The plan for ${businessName} was refunded, so it no longer covers your branches.`, lock, 'Choose a plan in the GymsEra app to keep everything open.'],
+    },
+    downgraded: {
+      subject: `Your GymsEra plan for ${businessName} now covers ${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}`,
+      heading: 'Your plan has changed',
+      paragraphs: [
+        `The plan for ${businessName} now covers ${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}.`,
+        'If you have more active branches than that, the extra ones are locked after 7 days, starting with the ones you did not choose to keep.',
+      ],
+    },
+  }[kind];
+  if (!content) throw new Error(`Unknown plan change: ${kind}`);
+  await sendMail({
+    to,
+    subject: content.subject,
+    html: _hostPlanNotice({ fullName, heading: content.heading, color: '#f59e0b', paragraphs: content.paragraphs }),
+    text: `Hi ${fullName},\n\n${content.paragraphs.join('\n\n')}\n\nGymsEra`,
+  });
+};
+
 const sendTenantInvitationEmail = async (to, fullName, businessName, inviteUrl) => {
   await sendMail({
     to,
@@ -478,6 +553,8 @@ module.exports = {
   sendPlatformInvoiceReminderEmail,
   sendPlatformInvoicePaidEmail,
   sendTenantSubscriptionWarningEmail,
+  sendTenantSubscriptionExpiredEmail,
+  sendTenantPlanChangedEmail,
   sendTenantSubscriptionSuspendedEmail,
   sendTenantAccountReactivatedEmail,
   sendTenantInvitationEmail,

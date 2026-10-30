@@ -599,6 +599,17 @@ const _applyVerifiedSubscriptionOnce = async (
 
     await platformTx.commit();
 
+    // Tell the host when what the plan covers changed (P7c item 7, NEW-176): once per
+    // transition, after commit, never failing the sync.
+    const hostPlanNotice = require('./host-plan-notice.service');
+    const notice = hostPlanNotice.noticeKind({
+      previousStatus,
+      previousBranchCount: previousMaxBranches,
+      status: subscription.status,
+      branchCount: subscription.branchCount,
+    });
+    if (notice) await hostPlanNotice.notifyHostOfPlanChange(tenantId, notice, subscription);
+
     // A real Stripe API call must never happen inside a DB transaction that
     // might still roll back — done here, only after commit, only when this
     // sync just migrated the tenant away from a Stripe subscription.
