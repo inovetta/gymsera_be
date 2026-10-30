@@ -17,12 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-30 (Phase 7 P5b done locally, not pushed) |
+| Last updated | 2026-10-30 (Phase 7 P7c started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P5b** (branch lifecycle, R-81 revised) |
-| Prompt status | `DONE` (local). Spec §13 "Phase 7 Prompt P5b" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **Phase 7 Prompt P7c** (subscription lifecycle, R-82; NEW-163, NEW-170 to NEW-178) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | P7c item 1 (NEW-170, lapsed plan locks branches) |
+| Step within issue | Code read and gaps confirmed; writing the failing test next |
+
+**P7c branches** (from `origin/main` `da3e9dd` / `origin/master` `c1618e8`, as the owner asked; P5b is NOT in them): be `fix/p7c-subscription-lifecycle`, app `fix/p7c-subscription-lifecycle`, be docs `docs/p7c-subscription-lifecycle` (on top of `docs/p5b-branch-lifecycle`). Not pushed.
 
 **Next action:** **Owner:** (1) push and open PRs, merge in this order: be `fix/p7a-booking-payment` then be `fix/p5b-branch-lifecycle` (both from `08eb0e9`; P5b's pause is bookable-proof only with P7a's `assertBranchBookable`); app `fix/p7a-booking-payment` then app `fix/p5b-branch-lifecycle`; docs `docs/p6-traveller-discovery` → `docs/p7a-booking-payment` → `docs/p5b-branch-lifecycle` (stacked). (2) Deploy the backend: **tenant migration 021 first** (`node src/scripts/run-tenant-migrations.js --dry-run`, read it, then without the flag), then `git pull`, `npm install --omit=dev`, `iisreset`; check `/health` shows tenant schema v21. Then a new mobile build. (3) The CMS "move an existing branch" option answers 404 after this deploy (NEW-167, P9). (4) Device check: delete a branch with an active member → "This branch can't be deleted yet" with the count, "Pause instead" pauses it and the gym disappears from traveller search; Resume brings it back; delete an empty organization on an iOS plan → "Your plan still renews" opens Apple subscriptions; the last-branch screen says "This also deletes ...". **Agent, next:** Prompt **P8** (copy, brand and fake-data sweep; includes NEW-165, NEW-169), then schedule NEW-170 (P0, lapsed plan never locks branches) with the owner. **Owner, still open from P7a and before:** see below.
 
@@ -604,3 +606,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 118 | 2026-10-29 | Claude Code (Opus 5.5) | Phase 7 P6 (traveller discovery: BUG-26 to BUG-30, NEW-145, NEW-138, NEW-139 traveller part) | be `ccaf07b` (11 tests, red 9), `4f021af` (1, red 1); backend full suite 249 / 249 suites, 2549 / 2549 tests (be `4f021af`, local Docker MySQL 5.7, `DISABLE_REDIS=true`, in band); app `835d060` (9 tests, red 8; flutter test 333/333 x3; analyze 168 vs 169); web `e05a6e0` (Vitest 3 red 3, Playwright 1 red; vitest 135/135, tsc, lint, build); BUG-30 cause found in production photo data; docs `docs/p6-traveller-discovery`; nothing pushed | task complete |
 | 119 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P7a (booking and payment: BUG-31, BUG-34, BUG-35, NEW-150, NEW-159; items 4, 5) | be `c9de1e4` (12 tests, red 9; related suites 10 / 10, 61 / 61; full suite: not yet clean on this machine: run 1 (be `c9de1e4`, local Docker MySQL 5.7, `DISABLE_REDIS=true`) 249 / 250 suites, 2547 / 2561 tests; the one failing suite, new-35 re-auth (14 tests, routes P7a does not touch), passes alone 14 / 14. Run 2 ran on battery and degraded into 30 s hook timeouts (16 suites) and was stopped; all 23 suites that failed in either run pass one by one (247 / 247). GitHub CI runs the full suite; a clean local run on mains power is still owed); app `ff8d8a0` (10 tests, red 9 / 9; `flutter test` 3x 343 / 343; analyze 168 = master); new NEW-163 to NEW-165 | task complete | yes |
 | 120 | 2026-10-30 | Claude Code (Opus 5.5) | Read-only reviews (branch delete/move; subscription lifecycle), then Phase 7 P5b (branch lifecycle, R-81 revised) | be `f22e9b4` item 1 NOT REPRODUCED (11 tests), `9e3e231` item 8 (4, red 4), `116c78d` items 3/4/5 (16, red 10/15), `276719b` item 2 (16 + 3, red 12/15), `9706b1a` item 7 (5, red 4), `c09ad61` item 6, `4f02922`; full suite 255 / 255 suites, 2599 / 2599 tests (29 min, mains power); app `f3d5078` item 8 (3, red 3), `538e538` items 2/3/6/7 (10, red 9); flutter 341/341; NEW-166 to NEW-178 | task complete | yes |
+| 121 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P7c (subscription lifecycle, R-82) | (in progress) | | |
