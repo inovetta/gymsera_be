@@ -8,14 +8,15 @@ const { createError, parsePagination, buildPagination } = require('../utils/resp
 
 /**
  * The one rule for "travellers can see this branch": open (ACTIVE), approved for
- * travellers, not suspended by an administrator, and not paused by its host
- * (P5b item 2). Every traveller-facing branch read uses it.
+ * travellers, not suspended by an administrator, not paused by its host
+ * (P5b item 2) and not locked for billing (R-83). Every traveller-facing branch read uses it.
  */
 const TRAVELLER_VISIBLE_BRANCH = () => ({
   status: 'ACTIVE',
   travelerVisibilityStatus: 'active',
   adminSuspended: { [Op.ne]: true },
   pausedAt: null,
+  billingLockedAt: null,
 });
 
 const _normalizeFacilities = (listing) => {
