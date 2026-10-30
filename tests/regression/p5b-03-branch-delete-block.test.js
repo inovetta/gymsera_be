@@ -158,6 +158,11 @@ describe('P5b item 3: a branch with members or money in progress is not deleted'
     expect(res.status).toBe(401);
   });
 
+  test('P5b item 6: the last-branch copy says the organization is deleted too, not that it cannot be deleted', () => {
+    expect(ERROR_COPY.last_branch_in_organization.en).toMatch(/also deletes the organization/);
+    expect(ERROR_COPY.last_branch_in_organization.en).not.toMatch(/cannot delete/i);
+  });
+
   test('the error code has copy in every language', () => {
     for (const code of ['branch_delete_blocked', 'organization_delete_blocked', 'branch_inactive']) {
       expect(ERROR_COPY[code]).toBeDefined();

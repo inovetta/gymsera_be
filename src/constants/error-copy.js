@@ -17,9 +17,9 @@ const ERROR_COPY = {
     action: 'open_upsell',
   },
   last_branch_in_organization: {
-    en: 'An organization must have at least one branch. You cannot delete the only branch.',
-    ur: 'کسی تنظیم میں کم از کم ایک برانچ کا ہونا ضروری ہے۔ آپ واحد برانچ کو حذف نہیں کر سکتے۔',
-    ar: 'يجب أن تحتوي المنظمة على فرع واحد على الأقل. لا يمكنك حذف الفرع الوحيد.',
+    en: 'This is the last branch in its organization. Deleting it also deletes the organization.',
+    ur: 'یہ اس تنظیم کی آخری برانچ ہے۔ اسے حذف کرنے سے تنظیم بھی حذف ہو جائے گی۔',
+    ar: 'هذا هو آخر فرع في منظمته. حذفه يحذف المنظمة أيضًا.',
     action: 'none',
   },
   branch_delete_blocked: {
