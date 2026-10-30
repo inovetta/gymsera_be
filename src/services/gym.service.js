@@ -1122,8 +1122,9 @@ const _afterBranchDeletion = async (tenantDb, branch, deletedByUserId, { outboxE
   // 7b. If that was the organization's last branch, the organization goes
   // with it — see _deactivateOrganizationIfEmpty for why the capacity the
   // host paid for survives this untouched.
+  let organizationDeleted = false;
   try {
-    await _deactivateOrganizationIfEmpty(
+    organizationDeleted = await _deactivateOrganizationIfEmpty(
       tenantDb,
       branch.gymListingId,
       deletedByUserId,
@@ -1141,6 +1142,33 @@ const _afterBranchDeletion = async (tenantDb, branch, deletedByUserId, { outboxE
   } catch (syncErr) {
     console.warn('[Branch Deletion] Warning re-syncing minPrice:', syncErr.message);
   }
+
+  return { organizationDeleted };
+};
+
+/**
+ * P5b item 7 (R-81): deleting an organization never touches the GymsEra plan.
+ * When that plan bills through the App Store or Google Play, the host is told
+ * it keeps renewing and where to cancel it. Never cancels anything itself.
+ * Same live statuses and store pages as the account-deletion preflight.
+ */
+const _storePlanNotice = async (tenantId) => {
+  if (!tenantId) return null;
+  const { LIVE_SUBSCRIPTION_STATUSES, STORE_MANAGE_URLS } = require('./account-deletion.service');
+  const { TenantSubscription } = require('../models/platform');
+  const sub = await TenantSubscription.findOne({
+    where: { tenantId, platform: { [Op.in]: ['IOS', 'ANDROID'] }, status: { [Op.in]: LIVE_SUBSCRIPTION_STATUSES } },
+    order: [['createdAt', 'DESC']],
+  });
+  if (!sub) return null;
+  const store = sub.platform === 'IOS' ? 'the App Store' : 'Google Play';
+  return {
+    platform: sub.platform,
+    manageUrl: STORE_MANAGE_URLS[sub.platform],
+    message:
+      `Your GymsEra plan still renews through ${store}. Deleting an organization does not cancel it. ` +
+      `If you no longer need it, cancel it in your ${sub.platform === 'IOS' ? 'Apple ID' : 'Google Play'} subscriptions.`,
+  };
 };
 
 const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrganizationDeletion = false } = {}) => {
@@ -1187,8 +1215,13 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
     throw err;
   }
 
-  await _afterBranchDeletion(tenantDb, branch, deletedByUserId, cascade);
-  return { message: 'Branch deleted successfully' };
+  const { organizationDeleted } = await _afterBranchDeletion(tenantDb, branch, deletedByUserId, cascade);
+  let storePlanNotice = null;
+  if (organizationDeleted) {
+    const listing = await GymListing.findByPk(branch.gymListingId, { attributes: ['tenantId'] });
+    storePlanNotice = await _storePlanNotice(listing?.tenantId || tenantDb.tenantId);
+  }
+  return { message: 'Branch deleted successfully', organizationDeleted, storePlanNotice };
 };
 
 /**
@@ -1457,7 +1490,7 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, del
     },
     { transaction: null }
   );
-  return { message: 'Organization deleted successfully' };
+  return { message: 'Organization deleted successfully', storePlanNotice: await _storePlanNotice(tenantId) };
 };
 
 // ── Staff ─────────────────────────────────────────────────────────────────────

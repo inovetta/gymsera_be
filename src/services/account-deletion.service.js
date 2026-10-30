@@ -275,6 +275,7 @@ const cancelDeletion = async (userId) => {
 module.exports = {
   DELETION_WINDOW_DAYS,
   LIVE_SUBSCRIPTION_STATUSES,
+  STORE_MANAGE_URLS,
   getDeletionPreflight,
   requestDeletion,
   cancelDeletion,
