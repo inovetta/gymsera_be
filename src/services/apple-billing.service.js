@@ -278,6 +278,8 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     idempotencyPrefix: values.externalTransactionId,
     // The tenant id the app sent as applicationUserName (BILL-01).
     boundTenantId: decodedTransaction.appAccountToken || null,
+    // Apple puts a refund on the transaction (revocationDate): no date = not refunded (NEW-175).
+    revocationReported: true,
     logLabel: 'Apple Billing',
   });
 };

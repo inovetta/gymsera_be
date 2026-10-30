@@ -389,6 +389,8 @@ const _nextPendingChange = (existing, billingPlanId, upcoming) => {
  * @param {string} opts.idempotencyPrefix - capacity-event key prefix (a per-transaction or per-event id).
  * @param {string|null} [opts.supersededExternalId] - see requestProviderChange.
  * @param {string|null} [opts.boundTenantId] - the tenant the store says made the purchase (BILL-01).
+ * @param {boolean} [opts.revocationReported] - the provider reports a refund on the verified
+ *   transaction itself (Apple's revocationDate), so its absence lifts REVOKED for the same period.
  * @param {string} [opts.logLabel]
  * @returns {Promise<object>} the persisted TenantSubscription.
  */
@@ -416,7 +418,14 @@ const _ownedByOtherAccount = () => {
 const _applyVerifiedSubscriptionOnce = async (
   tenantId,
   values,
-  { originListingId = null, idempotencyPrefix, supersededExternalId = null, boundTenantId = null, logLabel = 'Billing' } = {}
+  {
+    originListingId = null,
+    idempotencyPrefix,
+    supersededExternalId = null,
+    boundTenantId = null,
+    revocationReported = false,
+    logLabel = 'Billing',
+  } = {}
 ) => {
   const { sequelize } = require('../database/platform');
   const TenantDbManager = require('../database/TenantDbManager');
@@ -493,7 +502,16 @@ const _applyVerifiedSubscriptionOnce = async (
       // revoke, still reads "active"), so a later resync of the SAME paid
       // period must not undo a revocation. Only a newer paid period — the
       // host paid again — makes a REVOKED row entitled again (BILL-02).
-      if (existing.status === 'REVOKED' && _entitling(rowValues.status) && !(rowValues.endDate > existing.endDate)) {
+      // Apple is the exception (P7c item 6, NEW-175): it reports a refund on
+      // the transaction itself (revocationDate), so a verified transaction
+      // without one means the refund was reversed (REFUND_REVERSED) and the
+      // same period entitles again.
+      if (
+        existing.status === 'REVOKED' &&
+        _entitling(rowValues.status) &&
+        !(rowValues.endDate > existing.endDate) &&
+        !revocationReported
+      ) {
         rowValues.status = 'REVOKED';
       }
       // A renewal/resync for an external id already on file — never a
