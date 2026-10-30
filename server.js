@@ -117,21 +117,28 @@ async function bootstrap() {
     // 2. Warm up Redis connection
     getRedisClient();
 
-    // 4. Register subscription-expiry cron (REL-03: runs with distributed lock)
-    cron.schedule(EXPIRY_CRON, () => {
-      runExpiryCheck().catch((err) =>
-        console.error('[Cron] subscription-expiry error:', err.message)
-      );
-    });
+    // 4 and 4b run here unless SCHEDULED_JOBS=external: under iisnode this process stops with
+    // the IIS application pool, so production can run them from Windows Task Scheduler instead
+    // (src/scripts/run-scheduled-job.js, P7c item 9, NEW-178).
+    if (require('./src/jobs/scheduled-jobs').inProcessSchedulesEnabled()) {
+      // 4. Register subscription-expiry cron (REL-03: runs with distributed lock)
+      cron.schedule(EXPIRY_CRON, () => {
+        runExpiryCheck().catch((err) =>
+          console.error('[Cron] subscription-expiry error:', err.message)
+        );
+      });
 
-    // 4b. Retry billing webhook events that failed to process (BILL-12, REL-03: runs with distributed lock)
-    const { processPendingEvents, sweepBillingAlerts } = require('./src/services/billing-event.service');
-    cron.schedule('* * * * *', () => {
-      processPendingEvents()
-        .catch((err) => console.error('[Cron] billing-events sweep error:', err.message))
-        // OBS-05: alert on stuck / failing events and duplicate billing (never throws; one alert per code per hour)
-        .then(() => sweepBillingAlerts());
-    });
+      // 4b. Retry billing webhook events that failed to process (BILL-12, REL-03: runs with distributed lock)
+      const { processPendingEvents, sweepBillingAlerts } = require('./src/services/billing-event.service');
+      cron.schedule('* * * * *', () => {
+        processPendingEvents()
+          .catch((err) => console.error('[Cron] billing-events sweep error:', err.message))
+          // OBS-05: alert on stuck / failing events and duplicate billing (never throws; one alert per code per hour)
+          .then(() => sweepBillingAlerts());
+      });
+    } else {
+      console.log('[Cron] SCHEDULED_JOBS=external: the daily job and the billing inbox retry run from Task Scheduler');
+    }
 
     // 4c. Daily read-only check of Play Console prices against the plan catalog (BILL-15).
     // Inert without GOOGLE_PLAY_SERVICE_ACCOUNT_JSON; runs under the distributed lock; never changes a plan.
