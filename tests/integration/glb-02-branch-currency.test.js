@@ -17,7 +17,7 @@ describe('GLB-02: currency per branch', () => {
     const branch = await Branch.create({ gymId: ctx.branch1.gymId, branchName: name, status: 'ACTIVE', ...over });
     const plan = await MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: branch.id, name: `${name} Plan`, price: '100.00',
-      durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     const listing = await factories.createGymListing(ctx.tenant1.id, { branchId: branch.id, title: `${name} Gym`, status: 'ACTIVE' });
     // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.

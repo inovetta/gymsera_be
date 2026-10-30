@@ -39,6 +39,7 @@ describe('NEW-39: verifyPayment completes the whole member checkout', () => {
       durationType: 'MONTHLY',
       durationValue: 1,
       status: 'ACTIVE',
+      isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
   });
 

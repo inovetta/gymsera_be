@@ -36,11 +36,11 @@ describe('gymsera-prompt-2b-group4-check.js (read-only)', () => {
     const { MembershipPlan, Payment } = ctx.tenant1Db.models;
     basic = await MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'G4 Basic',
-      price: '1000.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      price: '1000.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     premium = await MembershipPlan.create({
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'G4 Premium',
-      price: '1500.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      price: '1500.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
 
     // NEW-39: payment COMPLETED, membership left PENDING (old verify crashed after the payment update)
