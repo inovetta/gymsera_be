@@ -748,14 +748,14 @@ const updateListing = async (req, res, next) => {
  *       3. Created < 5 minutes ago
  *       4. No strategy/cascade flag set
  *   Optional strategy (only required if the organization has branches or unbuilt slots):
- *   { strategy: 'moveBranches', targetListingId } | { strategy: 'deleteBranches' }
+ *   { strategy: 'deleteBranches' }. Moving branches out was removed (P5b, R-81).
  */
 const deleteListing = async (req, res, next) => {
   try {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw createError('Tenant not found', 404);
     const { id } = req.params;
-    const { strategy, targetListingId, password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
+    const { strategy, password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
 
     const userId = req.user.sub || req.user.id;
 
@@ -795,7 +795,6 @@ const deleteListing = async (req, res, next) => {
 
     const result = await gymService.deleteOrganization(req.tenantDb, tenantId, id, {
       strategy,
-      targetListingId,
       deletedByUserId: userId,
     });
     return sendSuccess(res, result, result.message);
@@ -805,26 +804,22 @@ const deleteListing = async (req, res, next) => {
 };
 
 /**
- * POST /host/branches/:branchId/move
- * Body: { targetListingId, confirmOrganizationDeletion? }
- *
- * confirmOrganizationDeletion is the client acknowledging the 409
- * `last_branch_in_organization` warning — moving this branch out will leave
- * its source organization empty, so that organization is removed too.
+ * POST /host/branches/:branchId/pause and /resume (P5b item 2, R-81).
+ * Hidden from travellers while paused; nothing else changes.
  */
-const moveBranchToOrganization = async (req, res, next) => {
+const pauseBranch = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
-    const { branchId } = req.params;
-    const { targetListingId, confirmOrganizationDeletion } = req.body;
-    if (!targetListingId) throw createError('targetListingId is required', 400);
+    const result = await gymService.pauseBranch(req.tenantDb, req.params.branchId, req.user.sub || req.user.id);
+    return sendSuccess(res, result, 'Branch paused');
+  } catch (err) {
+    next(err);
+  }
+};
 
-    const result = await gymService.moveBranch(req.tenantDb, tenantId, branchId, targetListingId, {
-      confirmOrganizationDeletion: confirmOrganizationDeletion === true,
-      movedByUserId: req.user.sub,
-    });
-    return sendSuccess(res, result, 'Branch moved successfully');
+const resumeBranch = async (req, res, next) => {
+  try {
+    const result = await gymService.resumeBranch(req.tenantDb, req.params.branchId);
+    return sendSuccess(res, result, 'Branch resumed');
   } catch (err) {
     next(err);
   }
@@ -1574,8 +1569,9 @@ module.exports = {
   getListing,
   updateListing,
   deleteListing,
-  moveBranchToOrganization,
   restoreBranch,
+  pauseBranch,
+  resumeBranch,
   transferReservedSlots,
   getCurrentSubscription,
   upgradeSubscription,

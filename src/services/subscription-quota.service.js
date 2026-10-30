@@ -199,7 +199,7 @@ const reconcileCapacity = async (
   if (!idempotencyPrefix) throw new Error('reconcileCapacity requires idempotencyPrefix (e.g. an externalTransactionId or a cron run key)');
 
   // Lock every non-deleted listing for this tenant up front so nothing else
-  // (createBranch, moveBranch, transferReservedSlots) can mutate reservedSlots
+  // (createBranch, transferReservedSlots) can mutate reservedSlots
   // underneath this reconciliation. Oldest-first — the natural order to fall
   // back to for "which org gets an upgrade's new capacity" when no specific
   // origin is known.

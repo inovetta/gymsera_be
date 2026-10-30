@@ -57,6 +57,7 @@ const ADDS = {
   18: { columns: { payments: ['expires_at'] } },
   19: { columns: { branches: ['currency'] } },
   20: { columns: { branches: ['google_place_id'] } },
+  21: { columns: { branches: ['paused_at', 'paused_by'] } },
 };
 
 /** One read of information_schema for the current database. */
@@ -214,6 +215,11 @@ const PROBES = {
     s, 'branches', 'google_place_id',
     (c) => type(c) === 'varchar' && Number(c.CHARACTER_MAXIMUM_LENGTH) >= 255
   ),
+  21: async (s) => {
+    const at = await columnOfType(s, 'branches', 'paused_at', (c) => ['datetime', 'timestamp'].includes(type(c)));
+    if (at.state !== 'present') return at;
+    return columnOfType(s, 'branches', 'paused_by', (c) => ['char', 'varchar'].includes(type(c)) && Number(c.CHARACTER_MAXIMUM_LENGTH) >= 36);
+  },
 };
 
 /** Tables and columns the tenant models read (Sequelize field names, no VIRTUAL attributes). */

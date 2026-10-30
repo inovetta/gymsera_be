@@ -6,6 +6,18 @@ const { ENTITLING_STATUSES } = require('./subscription-quota.service');
 const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
 
+/**
+ * The one rule for "travellers can see this branch": open (ACTIVE), approved for
+ * travellers, not suspended by an administrator, and not paused by its host
+ * (P5b item 2). Every traveller-facing branch read uses it.
+ */
+const TRAVELLER_VISIBLE_BRANCH = () => ({
+  status: 'ACTIVE',
+  travelerVisibilityStatus: 'active',
+  adminSuspended: { [Op.ne]: true },
+  pausedAt: null,
+});
+
 const _normalizeFacilities = (listing) => {
   if (!listing) return listing;
   const json = listing.toJSON ? listing.toJSON() : { ...listing };
@@ -36,11 +48,7 @@ const _getTravelerVisibleListingIds = async () => {
         const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
         const { Branch } = tenantDb.models;
         const branches = await Branch.findAll({
-          where: {
-            status: 'ACTIVE',
-            travelerVisibilityStatus: 'active',
-            adminSuspended: { [Op.ne]: true },
-          },
+          where: TRAVELLER_VISIBLE_BRANCH(),
           attributes: ['id', 'gymListingId'],
         });
         for (const b of branches) {
@@ -160,11 +168,7 @@ const _buildAllActiveBranches = async () => {
 
         const [branches, plans] = await Promise.all([
           Branch.findAll({
-            where: {
-              status: 'ACTIVE',
-              travelerVisibilityStatus: 'active',
-              adminSuspended: { [Op.ne]: true },
-            },
+            where: TRAVELLER_VISIBLE_BRANCH(),
           }),
           MembershipPlan.findAll({
             where: { status: 'ACTIVE', isPublic: true },
@@ -495,9 +499,7 @@ const getGym = async (id) => {
         }),
         Branch.findAll({
           where: {
-            status: 'ACTIVE',
-            travelerVisibilityStatus: 'active',
-            adminSuspended: { [Op.ne]: true },
+            ...TRAVELLER_VISIBLE_BRANCH(),
             ...(gymIdToUse ? { gymId: gymIdToUse } : {}),
           },
           attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],

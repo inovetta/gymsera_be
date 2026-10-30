@@ -125,7 +125,12 @@ const deleteBranch = async (req, res, next) => {
     const result = await gymService.deleteBranch(req.tenantDb, req.params.branchId, req.user.sub, {
       confirmOrganizationDeletion,
     });
-    return sendSuccess(res, null, result.message);
+    // P5b item 7: whether the organization went too, and the store-plan notice if so.
+    return sendSuccess(
+      res,
+      { organizationDeleted: result.organizationDeleted, storePlanNotice: result.storePlanNotice },
+      result.message
+    );
   } catch (err) {
     next(err);
   }

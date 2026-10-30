@@ -457,7 +457,7 @@ const _countActiveBranchesInListing = async (tenantDb, listingId) => {
 
 /**
  * Business rule: an organization must never exist without at least one
- * branch. Called after the last branch leaves one (deleted or moved away)
+ * branch. Called after the last branch leaves one (deleted)
  * to take the now-empty organization down with it.
  *
  * Deliberately re-counts rather than trusting the caller's earlier check:
@@ -508,8 +508,7 @@ const _deactivateOrganizationIfEmpty = async (tenantDb, listingId, actorUserId, 
 };
 
 /**
- * Advisory guard for the two destructive paths below (delete a branch, move
- * a branch out). Throws a 409 the client can recognise and turn into an
+ * Advisory guard before deleting a branch. Throws a 409 the client can recognise and turn into an
  * "are you sure?" dialog, unless the caller has already confirmed. Purely a
  * warning mechanism — the actual cascade is decided by
  * _deactivateOrganizationIfEmpty after the fact, so losing this race just
@@ -668,92 +667,9 @@ const getBranch = async (tenantDb, branchId) => {
 };
 
 /**
- * Reassigns an existing branch to a different organization (GymListing)
- * owned by the same tenant. Doesn't touch the branch-count subscription at
- * all — the branch already counted against it wherever it was, and moving
- * it doesn't change the tenant's total usage. Also reassigns gymId to the
- * target organization's own Gym row: Branch.gymId must always match the
- * organization it's actually in, the same reason every organization gets
- * its own Gym row immediately at creation (host.controller.js#createListing).
- *
- * Also keeps GymListing.branchId (the "primary branch" pointer discovery,
- * inbox, and membership-plan defaults all read) in sync on both ends —
- * this was the actual bug behind a moved branch appearing to show up under
- * both its old and new organization at once: the branch's own gymListingId
- * was correctly updated, but the OLD listing's branchId kept pointing at
- * it, a second, unsynchronized "which branch is this" reference that never
- * agreed with the first once branches could move between organizations.
- */
-const moveBranch = async (
-  tenantDb,
-  tenantId,
-  branchId,
-  targetListingId,
-  { confirmOrganizationDeletion = false, movedByUserId = null } = {}
-) => {
-  const { Branch } = tenantDb.models;
-  const branch = await Branch.findByPk(branchId);
-  if (!branch || branch.status !== 'ACTIVE') {
-    throw createError('Branch not found', 404);
-  }
-  const sourceListingId = branch.gymListingId;
-  if (sourceListingId === targetListingId) {
-    return { branch };
-  }
-
-  const targetListing = await GymListing.findOne({ where: { id: targetListingId, tenantId } });
-  if (!targetListing) {
-    throw createError('Target organization not found', 404);
-  }
-
-  // Moving the last branch out empties the source organization just as
-  // surely as deleting it does — same rule, same warning, same cascade.
-  await _guardLastBranchInOrganization(tenantDb, branch, confirmOrganizationDeletion);
-
-  let targetGym = await tenantDb.models.Gym.findOne({ where: { gymListingId: targetListingId } });
-  if (!targetGym) {
-    targetGym = await _getOrCreateGym(tenantDb, tenantId);
-  }
-
-  await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
-
-  // The source listing's branchId pointer, if it was pointing at this
-  // branch, is now stale — reassign it to another branch still left there,
-  // or clear it if this was the last one.
-  if (sourceListingId) {
-    const sourceListing = await GymListing.findOne({ where: { id: sourceListingId, tenantId } });
-    if (sourceListing && sourceListing.branchId === branchId) {
-      const remainingBranch = await Branch.findOne({ where: { gymListingId: sourceListingId, status: 'ACTIVE' } });
-      await sourceListing.update({ branchId: remainingBranch ? remainingBranch.id : null });
-    }
-  }
-
-  // The target listing may never have had a primary branch (e.g. it was
-  // created bare and had a branch moved into it) — give it one now rather
-  // than leaving branchId null while it visibly has a real branch.
-  if (!targetListing.branchId) {
-    await targetListing.update({ branchId: branch.id });
-  }
-
-  // If that emptied the source organization, it goes too.
-  try {
-    await _deactivateOrganizationIfEmpty(
-      tenantDb,
-      sourceListingId,
-      movedByUserId,
-      `Organization emptied by moving its last branch "${branch.branchName}" to another organization`
-    );
-  } catch (orgErr) {
-    console.warn('[Branch Move] Failed to deactivate the now-empty source organization:', orgErr.message);
-  }
-
-  return { branch };
-};
-
-/**
  * Moves `count` units of unbuilt (paid, reserved but not yet a real branch)
- * capacity from one organization to another. Also doesn't change total
- * usage — see moveBranch above.
+ * capacity from one organization to another. Doesn't change the tenant's
+ * total usage: the slots already counted wherever they were.
  */
 const transferReservedSlots = async (tenantId, fromListingId, toListingId, count = 1, actorUserId = null) => {
   if (fromListingId === toListingId) {
@@ -924,9 +840,112 @@ const updateBranch = async (tenantDb, branchId, data) => {
   return { branch };
 };
 
-const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrganizationDeletion = false } = {}) => {
+// ── Delete block (P5b item 3, R-81) ───────────────────────────────────────────
+// A branch is never deleted while it still has paid-up members, upcoming
+// bookings, or money in progress. No refunds are decided here: the host settles
+// them (approves or rejects the payments) or waits until the memberships end, or
+// pauses the branch instead, which hides it from travellers and loses nothing.
+
+const DELETE_BLOCK_REASONS = [
+  ['activeMemberships', 'active_memberships'],
+  ['upcomingBookings', 'upcoming_bookings'],
+  ['pendingPayments', 'pending_payments'],
+  ['cashCollectedPayments', 'cash_collected_payments'],
+];
+
+const _emptyBlockCounts = () => ({ activeMemberships: 0, upcomingBookings: 0, pendingPayments: 0, cashCollectedPayments: 0 });
+
+const _blockReasons = (counts) =>
+  DELETE_BLOCK_REASONS.filter(([key]) => counts[key] > 0).map(([key, code]) => ({ code, count: counts[key] }));
+
+/**
+ * What still stops this branch from being deleted, counted on the branch's
+ * own business date:
+ * - activeMemberships: ACTIVE or FROZEN, started, not ended (paid, time left);
+ * - upcomingBookings: a PENDING request, or a paid membership that starts later;
+ * - pendingPayments / cashCollectedPayments: PENDING / STAFF_COLLECTED payments
+ *   at the branch or for one of its memberships.
+ */
+const _branchDeleteBlockers = async (tenantDb, branch, transaction = null) => {
+  const { MemberSubscription, Payment } = tenantDb.models;
+  const { computeBusinessDate } = require('./ledger.service');
+  const today = computeBusinessDate(new Date(), branch.timezone);
+  const paid = [SubscriptionStatus.ACTIVE, SubscriptionStatus.FROZEN];
+
+  const activeMemberships = await MemberSubscription.count({
+    where: {
+      branchId: branch.id,
+      status: { [Op.in]: paid },
+      [Op.and]: [
+        { [Op.or]: [{ startDate: null }, { startDate: { [Op.lte]: today } }] },
+        { [Op.or]: [{ endDate: null }, { endDate: { [Op.gte]: today } }] },
+      ],
+    },
+    transaction,
+  });
+  const upcomingBookings = await MemberSubscription.count({
+    where: {
+      branchId: branch.id,
+      [Op.or]: [
+        { status: SubscriptionStatus.PENDING },
+        { status: { [Op.in]: paid }, startDate: { [Op.gt]: today } },
+      ],
+    },
+    transaction,
+  });
+
+  const subscriptionIds = (
+    await MemberSubscription.findAll({ where: { branchId: branch.id }, attributes: ['id'], raw: true, transaction })
+  ).map((r) => r.id);
+  const atBranch = {
+    [Op.or]: [{ branchId: branch.id }, ...(subscriptionIds.length ? [{ referenceEntityId: { [Op.in]: subscriptionIds } }] : [])],
+  };
+  const paymentCount = (status) => Payment.count({ where: { [Op.and]: [atBranch, { status }] }, transaction });
+  const pendingPayments = await paymentCount(PaymentStatus.PENDING);
+  const cashCollectedPayments = await paymentCount(PaymentStatus.STAFF_COLLECTED);
+
+  const counts = { activeMemberships, upcomingBookings, pendingPayments, cashCollectedPayments };
+  return { counts, reasons: _blockReasons(counts) };
+};
+
+const _deleteBlockedError = (code, message, data) => {
+  const err = createError(message, 409, code);
+  err.data = { ...data, canPause: true };
+  return err;
+};
+
+/**
+ * Every branch's blockers, plus the organization totals. `branches` are only
+ * the blocked ones.
+ */
+const _organizationDeleteBlockers = async (tenantDb, branches, transaction = null) => {
+  const counts = _emptyBlockCounts();
+  const blocked = [];
+  for (const branch of branches) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await _branchDeleteBlockers(tenantDb, branch, transaction);
+    for (const key of Object.keys(counts)) counts[key] += result.counts[key];
+    if (result.reasons.length > 0) {
+      blocked.push({ branchId: branch.id, branchName: branch.branchName, counts: result.counts, reasons: result.reasons });
+    }
+  }
+  return { counts, reasons: _blockReasons(counts), branches: blocked };
+};
+
+const BRANCH_DELETE_BLOCKED_MESSAGE =
+  'This branch still has active members, upcoming bookings or payments to settle. ' +
+  'Settle them or wait until they end, or pause the branch instead.';
+const ORGANIZATION_DELETE_BLOCKED_MESSAGE =
+  'Some branches in this organization still have active members, upcoming bookings or payments to settle. ' +
+  'Settle them or wait until they end, or pause those branches instead.';
+
+/**
+ * The tenant-DB half of deleting one branch, inside the caller's transaction
+ * `t` (deleteBranch: one branch; deleteOrganization: all of its branches in
+ * one transaction). Returns what the platform-DB half needs after commit.
+ */
+const _cascadeBranchDeletion = async (tenantDb, branch, deletedByUserId, t) => {
   const {
-    Branch,
     MembershipPlan,
     MemberSubscription,
     GymStaff,
@@ -934,143 +953,142 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
     Announcement,
     ClassSchedule,
     StaffActionRequest,
-    RoleAssignment,
-    RoleAssignmentBranch,
   } = tenantDb.models;
+  const branchId = branch.id;
 
-  const t = await tenantDb.sequelize.transaction();
-  let branch;
-  let outboxEntry = null;
-  try {
-    // Row-locked fetch + guard, both inside the transaction — found via
-    // concurrency testing that two near-simultaneous deletes of the same
-    // branch (a duplicate client request, a retried tap) could BOTH pass an
-    // unlocked "already deleted?" check before either committed, each then
-    // independently crediting a reservedSlot for the same branch — a real
-    // double-credit path, not just a display glitch. Locking here forces the
-    // second call to wait for the first to commit, so it then correctly
-    // sees INACTIVE and is rejected before ever reaching the capacity step.
-    branch = await Branch.findByPk(branchId, { lock: true, transaction: t });
-    if (!branch || branch.status === 'INACTIVE') {
-      throw createError('Branch not found or already deleted', 404);
-    }
+  // 1. Mark branch INACTIVE and traveler visibility deactivated
+  await branch.update({
+    status: 'INACTIVE',
+    travelerVisibilityStatus: 'deactivated',
+    deactivatedAt: new Date(),
+    deactivatedBy: deletedByUserId || null,
+    deactivationReason: 'Branch deleted by host/admin',
+  }, { transaction: t });
 
-    // An organization must never be left without a branch — warn before
-    // taking its last one, unless the host has already confirmed they
-    // understand the organization goes with it. Runs before any mutation so
-    // a declined confirmation changes nothing.
-    await _guardLastBranchInOrganization(tenantDb, branch, confirmOrganizationDeletion);
+  // 2. Cascade deactivation to all membership plans for this branch
+  if (MembershipPlan) {
+    await MembershipPlan.update(
+      { status: 'INACTIVE', isPublic: false },
+      { where: { branchId }, transaction: t }
+    );
+  }
 
-    // 1. Mark branch INACTIVE and traveler visibility deactivated
-    await branch.update({
-      status: 'INACTIVE',
-      travelerVisibilityStatus: 'deactivated',
-      deactivatedAt: new Date(),
-      deactivatedBy: deletedByUserId || null,
-      deactivationReason: 'Branch deleted by host/admin',
-    }, { transaction: t });
-
-    // 2. Cascade deactivation to all membership plans for this branch
-    if (MembershipPlan) {
-      await MembershipPlan.update(
-        { status: 'INACTIVE', isPublic: false },
-        { where: { branchId }, transaction: t }
-      );
-    }
-
-    // 3. Cascade cancellation to all active/pending/frozen subscriptions on this branch
-    if (MemberSubscription) {
+  // 3. Cancel what is left of this branch's memberships. The delete block
+  // above means none of them is paid-up or upcoming any more: these are
+  // memberships whose time ran out before the expiry job marked them. Their
+  // ids go to the platform copy after commit (P5b item 5).
+  let cancelledSubscriptionIds = [];
+  if (MemberSubscription) {
+    cancelledSubscriptionIds = (
+      await MemberSubscription.findAll({
+        where: { branchId, status: { [Op.in]: ['ACTIVE', 'PENDING', 'FROZEN', 'PAST_DUE'] } },
+        attributes: ['id'],
+        raw: true,
+        transaction: t,
+      })
+    ).map((r) => r.id);
+    if (cancelledSubscriptionIds.length > 0) {
       await MemberSubscription.update(
         { status: 'CANCELLED' },
-        {
-          where: {
-            branchId,
-            status: { [Op.in]: ['ACTIVE', 'PENDING', 'FROZEN', 'PAST_DUE'] },
-          },
-          transaction: t,
-        }
+        { where: { id: { [Op.in]: cancelledSubscriptionIds } }, transaction: t }
       );
     }
+  }
 
-    // 4. Terminate active staff assignments on this branch and revoke branch RoleAssignments (RBAC-09)
-    if (GymStaff) {
-      await GymStaff.update(
-        { employmentStatus: 'TERMINATED' },
-        { where: { branchId, employmentStatus: 'ACTIVE' }, transaction: t }
-      );
-    }
-
-    const teamService = require('./team.service');
-    await teamService.revokeBranchAssignments(
-      {
-        tenantDb,
-        tenantId: branch.tenantId || tenantDb.tenantId,
-        userId: 'system:branch_deleted',
-      },
-      branchId,
-      { transaction: t }
+  // 4. Terminate active staff assignments on this branch and revoke branch RoleAssignments (RBAC-09)
+  if (GymStaff) {
+    await GymStaff.update(
+      { employmentStatus: 'TERMINATED' },
+      { where: { branchId, employmentStatus: 'ACTIVE' }, transaction: t }
     );
+  }
 
-    // 5. Cancel any pending staff action requests for this branch
-    if (StaffActionRequest) {
-      await StaffActionRequest.update(
-        { status: 'CANCELLED' },
-        { where: { branchId, status: 'PENDING' }, transaction: t }
-      );
-    }
+  const teamService = require('./team.service');
+  await teamService.revokeBranchAssignments(
+    {
+      tenantDb,
+      tenantId: branch.tenantId || tenantDb.tenantId,
+      userId: 'system:branch_deleted',
+    },
+    branchId,
+    { transaction: t }
+  );
 
-    // 6. Deactivate/delete announcements, schedules, trainers for this branch
-    if (Announcement) {
-      await Announcement.destroy({ where: { branchId }, transaction: t });
-    }
-    if (ClassSchedule) {
-      await ClassSchedule.destroy({ where: { branchId }, transaction: t });
-    }
-    if (Trainer) {
-      await Trainer.update(
-        { status: 'INACTIVE' },
-        { where: { branchId }, transaction: t }
-      );
-    }
+  // 5. Cancel any pending staff action requests for this branch
+  if (StaffActionRequest) {
+    await StaffActionRequest.update(
+      { status: 'CANCELLED' },
+      { where: { branchId, status: 'PENDING' }, transaction: t }
+    );
+  }
 
-    // CAP-02: Write tenant-DB Outbox row inside tenant transaction t
-    // so cross-database capacity credit can never be lost if the process
-    // dies between the tenant commit and the platform credit.
-    outboxEntry = null;
-    const deactivatedTimestamp = branch.deactivatedAt ? branch.deactivatedAt.getTime() : Date.now();
-    const idempotencyKey = `branch_delete:${branch.id}:${deactivatedTimestamp}`;
+  // 6. Deactivate/delete announcements, schedules, trainers for this branch
+  if (Announcement) {
+    await Announcement.destroy({ where: { branchId }, transaction: t });
+  }
+  if (ClassSchedule) {
+    await ClassSchedule.destroy({ where: { branchId }, transaction: t });
+  }
+  if (Trainer) {
+    await Trainer.update(
+      { status: 'INACTIVE' },
+      { where: { branchId }, transaction: t }
+    );
+  }
 
-    if (branch.gymListingId) {
-      const listing = await GymListing.findByPk(branch.gymListingId, { attributes: ['id', 'tenantId'] });
-      if (listing) {
-        const capacityOutboxService = require('./capacity-outbox.service');
-        outboxEntry = await capacityOutboxService.createOutboxEntry(
-          tenantDb,
-          {
-            eventType: 'BRANCH_DELETED',
-            payloadJson: {
-              tenantId: listing.tenantId,
-              listingId: listing.id,
-              branchId: branch.id,
-              action: 'BRANCH_DELETED',
-              delta: 1,
-              reservedSlotsDelta: 1,
-              actorUserId: deletedByUserId || null,
-              actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
-              reason: `Branch "${branch.branchName}" deleted`,
-              idempotencyKey,
-            },
+  // CAP-02: Write tenant-DB Outbox row inside tenant transaction t
+  // so cross-database capacity credit can never be lost if the process
+  // dies between the tenant commit and the platform credit.
+  let outboxEntry = null;
+  const deactivatedTimestamp = branch.deactivatedAt ? branch.deactivatedAt.getTime() : Date.now();
+  const idempotencyKey = `branch_delete:${branch.id}:${deactivatedTimestamp}`;
+
+  if (branch.gymListingId) {
+    const listing = await GymListing.findByPk(branch.gymListingId, { attributes: ['id', 'tenantId'] });
+    if (listing) {
+      const capacityOutboxService = require('./capacity-outbox.service');
+      outboxEntry = await capacityOutboxService.createOutboxEntry(
+        tenantDb,
+        {
+          eventType: 'BRANCH_DELETED',
+          payloadJson: {
+            tenantId: listing.tenantId,
+            listingId: listing.id,
+            branchId: branch.id,
+            action: 'BRANCH_DELETED',
+            delta: 1,
+            reservedSlotsDelta: 1,
+            actorUserId: deletedByUserId || null,
+            actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
+            reason: `Branch "${branch.branchName}" deleted`,
             idempotencyKey,
           },
-          { transaction: t }
-        );
-      }
+          idempotencyKey,
+        },
+        { transaction: t }
+      );
     }
+  }
 
-    await t.commit();
-  } catch (err) {
-    await t.rollback();
-    throw err;
+  return { outboxEntry, cancelledSubscriptionIds };
+};
+
+/**
+ * The platform-DB half of deleting one branch, after the tenant transaction
+ * committed. MySQL cannot share one transaction across two databases, so each
+ * step here is idempotent and recovered by a sweep if it fails.
+ */
+const _afterBranchDeletion = async (tenantDb, branch, deletedByUserId, { outboxEntry, cancelledSubscriptionIds }) => {
+  // P5b item 5: the platform copy members read their memberships from.
+  if (cancelledSubscriptionIds.length > 0) {
+    try {
+      await UserGymMembership.update(
+        { status: 'CANCELLED' },
+        { where: { subscriptionId: { [Op.in]: cancelledSubscriptionIds } } }
+      );
+    } catch (syncErr) {
+      console.warn('[Branch Deletion] Failed to cancel the platform membership copies:', syncErr.message);
+    }
   }
 
   // 7. Give the organization back the capacity this branch was using, as an
@@ -1104,8 +1122,9 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
   // 7b. If that was the organization's last branch, the organization goes
   // with it — see _deactivateOrganizationIfEmpty for why the capacity the
   // host paid for survives this untouched.
+  let organizationDeleted = false;
   try {
-    await _deactivateOrganizationIfEmpty(
+    organizationDeleted = await _deactivateOrganizationIfEmpty(
       tenantDb,
       branch.gymListingId,
       deletedByUserId,
@@ -1117,11 +1136,6 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
 
   // 8. Re-sync minPrice for the gym profile — this deleted branch's plans
   // are now INACTIVE and shouldn't factor into the gym's displayed minPrice.
-  // Found broken during live end-to-end testing: this called a function
-  // that was never in scope here (only ever defined, unexported, in
-  // membership-plan.service.js), so it had silently no-op'd via the
-  // catch below on every branch deletion — minPrice was never actually
-  // updated after a delete.
   try {
     const membershipPlanService = require('./membership-plan.service');
     await membershipPlanService.syncMinPrice(tenantDb, branch.gymId);
@@ -1129,7 +1143,113 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
     console.warn('[Branch Deletion] Warning re-syncing minPrice:', syncErr.message);
   }
 
-  return { message: 'Branch deleted successfully' };
+  return { organizationDeleted };
+};
+
+/**
+ * P5b item 7 (R-81): deleting an organization never touches the GymsEra plan.
+ * When that plan bills through the App Store or Google Play, the host is told
+ * it keeps renewing and where to cancel it. Never cancels anything itself.
+ * Same live statuses and store pages as the account-deletion preflight.
+ */
+const _storePlanNotice = async (tenantId) => {
+  if (!tenantId) return null;
+  const { LIVE_SUBSCRIPTION_STATUSES, STORE_MANAGE_URLS } = require('./account-deletion.service');
+  const { TenantSubscription } = require('../models/platform');
+  const sub = await TenantSubscription.findOne({
+    where: { tenantId, platform: { [Op.in]: ['IOS', 'ANDROID'] }, status: { [Op.in]: LIVE_SUBSCRIPTION_STATUSES } },
+    order: [['createdAt', 'DESC']],
+  });
+  if (!sub) return null;
+  const store = sub.platform === 'IOS' ? 'the App Store' : 'Google Play';
+  return {
+    platform: sub.platform,
+    manageUrl: STORE_MANAGE_URLS[sub.platform],
+    message:
+      `Your GymsEra plan still renews through ${store}. Deleting an organization does not cancel it. ` +
+      `If you no longer need it, cancel it in your ${sub.platform === 'IOS' ? 'Apple ID' : 'Google Play'} subscriptions.`,
+  };
+};
+
+const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrganizationDeletion = false } = {}) => {
+  const { Branch } = tenantDb.models;
+
+  const t = await tenantDb.sequelize.transaction();
+  let branch;
+  let cascade;
+  try {
+    // Row-locked fetch + guard, both inside the transaction — found via
+    // concurrency testing that two near-simultaneous deletes of the same
+    // branch (a duplicate client request, a retried tap) could BOTH pass an
+    // unlocked "already deleted?" check before either committed, each then
+    // independently crediting a reservedSlot for the same branch — a real
+    // double-credit path, not just a display glitch. Locking here forces the
+    // second call to wait for the first to commit, so it then correctly
+    // sees INACTIVE and is rejected before ever reaching the capacity step.
+    branch = await Branch.findByPk(branchId, { lock: true, transaction: t });
+    if (!branch || branch.status === 'INACTIVE') {
+      throw createError('Branch not found or already deleted', 404);
+    }
+
+    // P5b item 3: members or money in progress → refused, with what and how many.
+    const { counts, reasons } = await _branchDeleteBlockers(tenantDb, branch, t);
+    if (reasons.length > 0) {
+      throw _deleteBlockedError('branch_delete_blocked', BRANCH_DELETE_BLOCKED_MESSAGE, {
+        branchId: branch.id,
+        branchName: branch.branchName,
+        counts,
+        reasons,
+      });
+    }
+
+    // An organization must never be left without a branch — warn before
+    // taking its last one, unless the host has already confirmed they
+    // understand the organization goes with it. Runs before any mutation so
+    // a declined confirmation changes nothing.
+    await _guardLastBranchInOrganization(tenantDb, branch, confirmOrganizationDeletion);
+
+    cascade = await _cascadeBranchDeletion(tenantDb, branch, deletedByUserId, t);
+    await t.commit();
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+
+  const { organizationDeleted } = await _afterBranchDeletion(tenantDb, branch, deletedByUserId, cascade);
+  let storePlanNotice = null;
+  if (organizationDeleted) {
+    const listing = await GymListing.findByPk(branch.gymListingId, { attributes: ['tenantId'] });
+    storePlanNotice = await _storePlanNotice(listing?.tenantId || tenantDb.tenantId);
+  }
+  return { message: 'Branch deleted successfully', organizationDeleted, storePlanNotice };
+};
+
+/**
+ * P5b item 2 (R-81): pause a branch. Hidden from travellers (discovery,
+ * TRAVELLER_VISIBLE_BRANCH), nothing else changes: it stays ACTIVE and keeps
+ * its members, plans, staff, payments, capacity and review state
+ * (travelerVisibilityStatus), so resuming shows it exactly as it was. Always
+ * allowed for a branch that is not deleted, also with members or money in
+ * progress: it is what a host does instead of deleting. Pausing again keeps
+ * the first pause time.
+ */
+const pauseBranch = async (tenantDb, branchId, pausedByUserId) => {
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch || branch.status !== 'ACTIVE') throw createError('Branch not found or has been deleted', 404);
+  if (!branch.pausedAt) {
+    await branch.update({ pausedAt: new Date(), pausedBy: pausedByUserId || null });
+  }
+  return { branch };
+};
+
+/** Undoes pauseBranch. Resuming a branch that is not paused changes nothing. */
+const resumeBranch = async (tenantDb, branchId) => {
+  const branch = await tenantDb.models.Branch.findByPk(branchId);
+  if (!branch || branch.status !== 'ACTIVE') throw createError('Branch not found or has been deleted', 404);
+  if (branch.pausedAt) {
+    await branch.update({ pausedAt: null, pausedBy: null });
+  }
+  return { branch };
 };
 
 /**
@@ -1174,7 +1294,7 @@ const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => 
 
     const listing = await GymListing.findByPk(branch.gymListingId, { lock: true, transaction: platformTx });
     if (!listing) {
-      throw createError('This branch\'s organization no longer exists — move it to another organization instead', 404);
+      throw createError('This branch\'s organization no longer exists, so the branch cannot be restored', 404);
     }
 
     // CAP-06: Restoring a branch whose organization was auto-deactivated reactivates
@@ -1278,114 +1398,80 @@ const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => 
 
 /**
  * Deletes an organization (GymListing). Never silently drops branches: if it
- * has any real branches or unbuilt reserved slots, the caller must say what
- * happens to them first — 'moveBranches' reassigns everything (branches and
- * reservedSlots) to targetListingId, 'deleteBranches' soft-deletes each
- * branch the same way deleteBranch already does above (handling active
- * members/subscriptions properly, never a hard delete). Either way the
- * organization itself is soft-deleted (status INACTIVE), same as a branch.
+ * has any real branches or unbuilt reserved slots, the caller must confirm
+ * with 'deleteBranches', which soft-deletes all of its branches the same way
+ * deleteBranch does above (never a hard delete), in one tenant transaction,
+ * and only when none of them is blocked (P5b item 3). The organization itself
+ * is soft-deleted (status INACTIVE), same as a branch. Moving branches to
+ * another organization was removed (P5b, R-81): it is not a strategy any more.
  */
-const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, targetListingId, deletedByUserId }) => {
+const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, deletedByUserId }) => {
+  if (strategy !== undefined && strategy !== null && strategy !== 'deleteBranches') {
+    const err = createError('Deleting an organization deletes its branches. Moving them is not available.', 400);
+    err.code = 'invalid_strategy';
+    throw err;
+  }
   const listing = await GymListing.findOne({ where: { id: listingId, tenantId } });
   if (!listing || listing.status === 'INACTIVE') {
     throw createError('Organization not found or already deleted', 404);
   }
 
   const { Branch } = tenantDb.models;
-  const branches = await Branch.findAll({ where: { gymListingId: listingId, status: 'ACTIVE' } });
+  const branches = await Branch.findAll({ where: { gymListingId: listingId, status: 'ACTIVE' }, order: [['createdAt', 'ASC']] });
+
+  // P5b item 3: what stops any of its branches from being deleted is said
+  // first, before the host is asked to confirm deleting them.
+  const blockers = await _organizationDeleteBlockers(tenantDb, branches);
+  if (blockers.branches.length > 0) {
+    throw _deleteBlockedError('organization_delete_blocked', ORGANIZATION_DELETE_BLOCKED_MESSAGE, { listingId, ...blockers });
+  }
 
   if (branches.length > 0 || listing.reservedSlots > 0) {
-    if (strategy === 'moveBranches') {
-      if (!targetListingId) throw createError('targetListingId is required to move branches', 400);
-      if (targetListingId === listing.id) throw createError('Target organization must be different', 400);
-      const target = await GymListing.findOne({ where: { id: targetListingId, tenantId } });
-      if (!target) throw createError('Target organization not found', 404);
-
-      let targetGym = await tenantDb.models.Gym.findOne({ where: { gymListingId: targetListingId } });
-      if (!targetGym) targetGym = await _getOrCreateGym(tenantDb, tenantId);
-
-      for (const branch of branches) {
-        // eslint-disable-next-line no-await-in-loop
-        await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
-      }
-      // Give the target a primary-branch pointer if it never had one — same
-      // reasoning as moveBranch above. The source is about to be marked
-      // INACTIVE below, so its own (now-stale) branchId doesn't need
-      // reassigning here the way moveBranch does for a live organization.
-      if (!target.branchId && branches.length > 0) {
-        await target.update({ branchId: branches[0].id });
-      }
-
-      const reservedToMove = listing.reservedSlots;
-      const platformTx = await sequelize.transaction();
-      try {
-        const lockedTarget = await GymListing.findByPk(targetListingId, { lock: true, transaction: platformTx });
-        const lockedListing = await GymListing.findByPk(listingId, { lock: true, transaction: platformTx });
-        // Two-sided, so two events — same reasoning as transferReservedSlots
-        // above: the target's +reservedToMove needs its own ledger row or
-        // auditCapacity sees unexplained slots on it.
-        const moveId = crypto.randomUUID();
-        const { applied } = await subscriptionQuotaService.recordCapacityEvent(
-          {
-            tenantId,
-            listingId,
-            action: 'ORG_BRANCHES_MOVED',
-            delta: -(reservedToMove),
-            reservedSlotsBefore: lockedListing.reservedSlots,
-            reservedSlotsAfter: 0,
-            actorUserId: deletedByUserId || null,
-            actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
-            reason: `Organization deleted: ${branches.length} branch(es) and ${reservedToMove} slot(s) moved to ${targetListingId}`,
-            idempotencyKey: `org_branches_moved_out:${listingId}:${moveId}`,
-          },
-          { transaction: platformTx }
-        );
-        if (applied && reservedToMove > 0) {
-          await subscriptionQuotaService.recordCapacityEvent(
-            {
-              tenantId,
-              listingId: targetListingId,
-              action: 'ORG_BRANCHES_MOVED',
-              delta: reservedToMove,
-              reservedSlotsBefore: lockedTarget.reservedSlots,
-              reservedSlotsAfter: lockedTarget.reservedSlots + reservedToMove,
-              actorUserId: deletedByUserId || null,
-              actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
-              reason: `Received ${reservedToMove} slot(s) from deleted organization ${listingId}`,
-              idempotencyKey: `org_branches_moved_in:${listingId}:${moveId}`,
-            },
-            { transaction: platformTx }
-          );
-          await lockedTarget.increment('reservedSlots', { by: reservedToMove, transaction: platformTx });
-          await lockedListing.update({ reservedSlots: 0 }, { transaction: platformTx });
-        }
-        await platformTx.commit();
-      } catch (err) {
-        await platformTx.rollback();
-        throw err;
-      }
-      await listing.reload();
-    } else if (strategy === 'deleteBranches') {
-      for (const branch of branches) {
-        // Already an explicit "delete this whole organization" instruction —
-        // the last-branch confirmation has effectively been given, so skip
-        // the guard that would otherwise 409 on the final branch.
-        // eslint-disable-next-line no-await-in-loop
-        await deleteBranch(tenantDb, branch.id, deletedByUserId, { confirmOrganizationDeletion: true });
-      }
-      // reservedSlots are simply released back to the shared pool by
-      // deleting the organization itself below — getUsedCapacity only sums
-      // reservedSlots for organizations that still exist.
-    } else {
+    if (strategy !== 'deleteBranches') {
       const err = createError(
         `This organization has ${branches.length} branch(es)` +
           `${listing.reservedSlots > 0 ? ` and ${listing.reservedSlots} unbuilt slot(s)` : ''}. ` +
-          'Choose whether to move them to another organization or delete them.',
+          'Deleting the organization deletes them too. Confirm to continue.',
         409
       );
       err.code = 'organization_has_branches';
       throw err;
     }
+
+    // All of its branches in one tenant transaction: all deleted, or none.
+    // The blockers are checked again under the row locks, so a membership
+    // sold since the check above still stops it.
+    const cascades = [];
+    if (branches.length > 0) {
+      const t = await tenantDb.sequelize.transaction();
+      try {
+        const locked = await Branch.findAll({
+          where: { id: { [Op.in]: branches.map((b) => b.id) }, status: 'ACTIVE' },
+          order: [['createdAt', 'ASC']],
+          lock: true,
+          transaction: t,
+        });
+        const lockedBlockers = await _organizationDeleteBlockers(tenantDb, locked, t);
+        if (lockedBlockers.branches.length > 0) {
+          throw _deleteBlockedError('organization_delete_blocked', ORGANIZATION_DELETE_BLOCKED_MESSAGE, { listingId, ...lockedBlockers });
+        }
+        for (const branch of locked) {
+          // eslint-disable-next-line no-await-in-loop
+          cascades.push({ branch, cascade: await _cascadeBranchDeletion(tenantDb, branch, deletedByUserId, t) });
+        }
+        await t.commit();
+      } catch (err) {
+        await t.rollback();
+        throw err;
+      }
+    }
+    for (const { branch, cascade } of cascades) {
+      // eslint-disable-next-line no-await-in-loop
+      await _afterBranchDeletion(tenantDb, branch, deletedByUserId, cascade);
+    }
+    // reservedSlots are simply released back to the shared pool by
+    // deleting the organization itself below — getUsedCapacity only sums
+    // reservedSlots for organizations that still exist.
   }
 
   await listing.update({ status: 'INACTIVE' });
@@ -1404,7 +1490,7 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
     },
     { transaction: null }
   );
-  return { message: 'Organization deleted successfully' };
+  return { message: 'Organization deleted successfully', storePlanNotice: await _storePlanNotice(tenantId) };
 };
 
 // ── Staff ─────────────────────────────────────────────────────────────────────
@@ -2183,7 +2269,6 @@ module.exports = {
   updateBranch,
   deleteBranch,
   restoreBranch,
-  moveBranch,
   transferReservedSlots,
   deleteOrganization,
   listStaff,
@@ -2191,6 +2276,8 @@ module.exports = {
   removeStaff,
   addBranchImages,
   removeBranchImage,
+  pauseBranch,
+  resumeBranch,
   listMembers,
   searchMember,
   enrollMember,

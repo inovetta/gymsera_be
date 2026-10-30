@@ -330,15 +330,13 @@
     "provider",
     "reauthIdToken",
     "reauthProvider",
-    "strategy",
-    "targetListingId"
+    "strategy"
    ],
    "clientKeys": [
     "idToken",
     "password",
     "provider",
-    "strategy",
-    "targetListingId"
+    "strategy"
    ]
   },
   {
@@ -351,18 +349,6 @@
    "clientKeys": [
     "count",
     "toListingId"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/v1/host/branches/:p/move",
-   "allowed": [
-    "confirmOrganizationDeletion",
-    "targetListingId"
-   ],
-   "clientKeys": [
-    "confirmOrganizationDeletion",
-    "targetListingId"
    ]
   },
   {
