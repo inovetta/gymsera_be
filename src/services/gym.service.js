@@ -457,7 +457,7 @@ const _countActiveBranchesInListing = async (tenantDb, listingId) => {
 
 /**
  * Business rule: an organization must never exist without at least one
- * branch. Called after the last branch leaves one (deleted or moved away)
+ * branch. Called after the last branch leaves one (deleted)
  * to take the now-empty organization down with it.
  *
  * Deliberately re-counts rather than trusting the caller's earlier check:
@@ -508,8 +508,7 @@ const _deactivateOrganizationIfEmpty = async (tenantDb, listingId, actorUserId, 
 };
 
 /**
- * Advisory guard for the two destructive paths below (delete a branch, move
- * a branch out). Throws a 409 the client can recognise and turn into an
+ * Advisory guard before deleting a branch. Throws a 409 the client can recognise and turn into an
  * "are you sure?" dialog, unless the caller has already confirmed. Purely a
  * warning mechanism — the actual cascade is decided by
  * _deactivateOrganizationIfEmpty after the fact, so losing this race just
@@ -668,92 +667,9 @@ const getBranch = async (tenantDb, branchId) => {
 };
 
 /**
- * Reassigns an existing branch to a different organization (GymListing)
- * owned by the same tenant. Doesn't touch the branch-count subscription at
- * all — the branch already counted against it wherever it was, and moving
- * it doesn't change the tenant's total usage. Also reassigns gymId to the
- * target organization's own Gym row: Branch.gymId must always match the
- * organization it's actually in, the same reason every organization gets
- * its own Gym row immediately at creation (host.controller.js#createListing).
- *
- * Also keeps GymListing.branchId (the "primary branch" pointer discovery,
- * inbox, and membership-plan defaults all read) in sync on both ends —
- * this was the actual bug behind a moved branch appearing to show up under
- * both its old and new organization at once: the branch's own gymListingId
- * was correctly updated, but the OLD listing's branchId kept pointing at
- * it, a second, unsynchronized "which branch is this" reference that never
- * agreed with the first once branches could move between organizations.
- */
-const moveBranch = async (
-  tenantDb,
-  tenantId,
-  branchId,
-  targetListingId,
-  { confirmOrganizationDeletion = false, movedByUserId = null } = {}
-) => {
-  const { Branch } = tenantDb.models;
-  const branch = await Branch.findByPk(branchId);
-  if (!branch || branch.status !== 'ACTIVE') {
-    throw createError('Branch not found', 404);
-  }
-  const sourceListingId = branch.gymListingId;
-  if (sourceListingId === targetListingId) {
-    return { branch };
-  }
-
-  const targetListing = await GymListing.findOne({ where: { id: targetListingId, tenantId } });
-  if (!targetListing) {
-    throw createError('Target organization not found', 404);
-  }
-
-  // Moving the last branch out empties the source organization just as
-  // surely as deleting it does — same rule, same warning, same cascade.
-  await _guardLastBranchInOrganization(tenantDb, branch, confirmOrganizationDeletion);
-
-  let targetGym = await tenantDb.models.Gym.findOne({ where: { gymListingId: targetListingId } });
-  if (!targetGym) {
-    targetGym = await _getOrCreateGym(tenantDb, tenantId);
-  }
-
-  await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
-
-  // The source listing's branchId pointer, if it was pointing at this
-  // branch, is now stale — reassign it to another branch still left there,
-  // or clear it if this was the last one.
-  if (sourceListingId) {
-    const sourceListing = await GymListing.findOne({ where: { id: sourceListingId, tenantId } });
-    if (sourceListing && sourceListing.branchId === branchId) {
-      const remainingBranch = await Branch.findOne({ where: { gymListingId: sourceListingId, status: 'ACTIVE' } });
-      await sourceListing.update({ branchId: remainingBranch ? remainingBranch.id : null });
-    }
-  }
-
-  // The target listing may never have had a primary branch (e.g. it was
-  // created bare and had a branch moved into it) — give it one now rather
-  // than leaving branchId null while it visibly has a real branch.
-  if (!targetListing.branchId) {
-    await targetListing.update({ branchId: branch.id });
-  }
-
-  // If that emptied the source organization, it goes too.
-  try {
-    await _deactivateOrganizationIfEmpty(
-      tenantDb,
-      sourceListingId,
-      movedByUserId,
-      `Organization emptied by moving its last branch "${branch.branchName}" to another organization`
-    );
-  } catch (orgErr) {
-    console.warn('[Branch Move] Failed to deactivate the now-empty source organization:', orgErr.message);
-  }
-
-  return { branch };
-};
-
-/**
  * Moves `count` units of unbuilt (paid, reserved but not yet a real branch)
- * capacity from one organization to another. Also doesn't change total
- * usage — see moveBranch above.
+ * capacity from one organization to another. Doesn't change the tenant's
+ * total usage: the slots already counted wherever they were.
  */
 const transferReservedSlots = async (tenantId, fromListingId, toListingId, count = 1, actorUserId = null) => {
   if (fromListingId === toListingId) {
@@ -1174,7 +1090,7 @@ const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => 
 
     const listing = await GymListing.findByPk(branch.gymListingId, { lock: true, transaction: platformTx });
     if (!listing) {
-      throw createError('This branch\'s organization no longer exists — move it to another organization instead', 404);
+      throw createError('This branch\'s organization no longer exists, so the branch cannot be restored', 404);
     }
 
     // CAP-06: Restoring a branch whose organization was auto-deactivated reactivates
@@ -1278,14 +1194,18 @@ const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => 
 
 /**
  * Deletes an organization (GymListing). Never silently drops branches: if it
- * has any real branches or unbuilt reserved slots, the caller must say what
- * happens to them first — 'moveBranches' reassigns everything (branches and
- * reservedSlots) to targetListingId, 'deleteBranches' soft-deletes each
- * branch the same way deleteBranch already does above (handling active
- * members/subscriptions properly, never a hard delete). Either way the
- * organization itself is soft-deleted (status INACTIVE), same as a branch.
+ * has any real branches or unbuilt reserved slots, the caller must confirm
+ * with 'deleteBranches', which soft-deletes each branch the same way
+ * deleteBranch does above (never a hard delete). The organization itself is
+ * soft-deleted (status INACTIVE), same as a branch. Moving branches to another
+ * organization was removed (P5b, R-81): it is not a strategy any more.
  */
-const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, targetListingId, deletedByUserId }) => {
+const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, deletedByUserId }) => {
+  if (strategy !== undefined && strategy !== null && strategy !== 'deleteBranches') {
+    const err = createError('Deleting an organization deletes its branches. Moving them is not available.', 400);
+    err.code = 'invalid_strategy';
+    throw err;
+  }
   const listing = await GymListing.findOne({ where: { id: listingId, tenantId } });
   if (!listing || listing.status === 'INACTIVE') {
     throw createError('Organization not found or already deleted', 404);
@@ -1295,77 +1215,7 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
   const branches = await Branch.findAll({ where: { gymListingId: listingId, status: 'ACTIVE' } });
 
   if (branches.length > 0 || listing.reservedSlots > 0) {
-    if (strategy === 'moveBranches') {
-      if (!targetListingId) throw createError('targetListingId is required to move branches', 400);
-      if (targetListingId === listing.id) throw createError('Target organization must be different', 400);
-      const target = await GymListing.findOne({ where: { id: targetListingId, tenantId } });
-      if (!target) throw createError('Target organization not found', 404);
-
-      let targetGym = await tenantDb.models.Gym.findOne({ where: { gymListingId: targetListingId } });
-      if (!targetGym) targetGym = await _getOrCreateGym(tenantDb, tenantId);
-
-      for (const branch of branches) {
-        // eslint-disable-next-line no-await-in-loop
-        await branch.update({ gymListingId: targetListingId, gymId: targetGym.id });
-      }
-      // Give the target a primary-branch pointer if it never had one — same
-      // reasoning as moveBranch above. The source is about to be marked
-      // INACTIVE below, so its own (now-stale) branchId doesn't need
-      // reassigning here the way moveBranch does for a live organization.
-      if (!target.branchId && branches.length > 0) {
-        await target.update({ branchId: branches[0].id });
-      }
-
-      const reservedToMove = listing.reservedSlots;
-      const platformTx = await sequelize.transaction();
-      try {
-        const lockedTarget = await GymListing.findByPk(targetListingId, { lock: true, transaction: platformTx });
-        const lockedListing = await GymListing.findByPk(listingId, { lock: true, transaction: platformTx });
-        // Two-sided, so two events — same reasoning as transferReservedSlots
-        // above: the target's +reservedToMove needs its own ledger row or
-        // auditCapacity sees unexplained slots on it.
-        const moveId = crypto.randomUUID();
-        const { applied } = await subscriptionQuotaService.recordCapacityEvent(
-          {
-            tenantId,
-            listingId,
-            action: 'ORG_BRANCHES_MOVED',
-            delta: -(reservedToMove),
-            reservedSlotsBefore: lockedListing.reservedSlots,
-            reservedSlotsAfter: 0,
-            actorUserId: deletedByUserId || null,
-            actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
-            reason: `Organization deleted: ${branches.length} branch(es) and ${reservedToMove} slot(s) moved to ${targetListingId}`,
-            idempotencyKey: `org_branches_moved_out:${listingId}:${moveId}`,
-          },
-          { transaction: platformTx }
-        );
-        if (applied && reservedToMove > 0) {
-          await subscriptionQuotaService.recordCapacityEvent(
-            {
-              tenantId,
-              listingId: targetListingId,
-              action: 'ORG_BRANCHES_MOVED',
-              delta: reservedToMove,
-              reservedSlotsBefore: lockedTarget.reservedSlots,
-              reservedSlotsAfter: lockedTarget.reservedSlots + reservedToMove,
-              actorUserId: deletedByUserId || null,
-              actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
-              reason: `Received ${reservedToMove} slot(s) from deleted organization ${listingId}`,
-              idempotencyKey: `org_branches_moved_in:${listingId}:${moveId}`,
-            },
-            { transaction: platformTx }
-          );
-          await lockedTarget.increment('reservedSlots', { by: reservedToMove, transaction: platformTx });
-          await lockedListing.update({ reservedSlots: 0 }, { transaction: platformTx });
-        }
-        await platformTx.commit();
-      } catch (err) {
-        await platformTx.rollback();
-        throw err;
-      }
-      await listing.reload();
-    } else if (strategy === 'deleteBranches') {
+    if (strategy === 'deleteBranches') {
       for (const branch of branches) {
         // Already an explicit "delete this whole organization" instruction —
         // the last-branch confirmation has effectively been given, so skip
@@ -1380,7 +1230,7 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, tar
       const err = createError(
         `This organization has ${branches.length} branch(es)` +
           `${listing.reservedSlots > 0 ? ` and ${listing.reservedSlots} unbuilt slot(s)` : ''}. ` +
-          'Choose whether to move them to another organization or delete them.',
+          'Deleting the organization deletes them too. Confirm to continue.',
         409
       );
       err.code = 'organization_has_branches';
@@ -2183,7 +2033,6 @@ module.exports = {
   updateBranch,
   deleteBranch,
   restoreBranch,
-  moveBranch,
   transferReservedSlots,
   deleteOrganization,
   listStaff,

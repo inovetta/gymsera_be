@@ -117,7 +117,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
     expect(audit.hasEmptyActiveOrgs).toBe(false);
   });
 
-  test('Property-based randomized sequence of create/delete/move/restore/lock/unlock preserves invariant and no active org is empty', async () => {
+  test('Property-based randomized sequence of create/delete/restore/lock/unlock preserves invariant and no active org is empty', async () => {
     const { Branch, Gym, MembershipPlan } = tenantDb.models;
 
     // Seed 2 active organizations each with 1 active branch
@@ -153,7 +153,8 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
     }
 
     // Run 25 randomized operational steps
-    const actionTypes = ['CREATE', 'DELETE', 'MOVE', 'RESTORE', 'LOCK', 'UNLOCK'];
+    // MOVE was removed with Move branch (P5b, R-81).
+    const actionTypes = ['CREATE', 'DELETE', 'RESTORE', 'LOCK', 'UNLOCK'];
 
     for (let step = 0; step < 25; step++) {
       const action = actionTypes[Math.floor(Math.random() * actionTypes.length)];
@@ -182,17 +183,6 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
           if (activeBranches.length > 1) {
             const b = activeBranches[Math.floor(Math.random() * activeBranches.length)];
             await gymService.deleteBranch(tenantDb, b.id, hostUser.id, { confirmOrganizationDeletion: true });
-          }
-        } else if (action === 'MOVE') {
-          const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' } });
-          const activeListings = await GymListing.findAll({ where: { tenantId, status: 'ACTIVE' } });
-          if (activeBranches.length > 1 && activeListings.length > 1) {
-            const b = activeBranches[Math.floor(Math.random() * activeBranches.length)];
-            const otherListings = activeListings.filter((l) => l.id !== b.gymListingId);
-            if (otherListings.length > 0) {
-              const targetListing = otherListings[0];
-              await gymService.moveBranch(tenantDb, tenantId, b.id, targetListing.id, hostUser.id);
-            }
           }
         } else if (action === 'RESTORE') {
           const inactiveBranches = await Branch.findAll({ where: { status: 'INACTIVE' } });
