@@ -21,8 +21,8 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P8** (copy, brand and fake-data sweep; plus R-83 / NEW-184 and the host My Subscription entry) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | inventory done; backend first (R-83, NEW-146, NEW-168, R-78 stats, brand in e-mails) |
-| Step within issue | (none) |
+| Issue in progress | app sweep: BUG-08 stepper, BUG-17 wording, BUG-32 Inbox, BUG-38 list, NEW-119/139/148/149/153/154/155/157/160/161/162/165/169, packages copy |
+| Step within issue | **Done and committed:** be `e7baa90` R-83, `619d16d` NEW-146, `3912524` NEW-168, `96643e1` R-78 `/discovery/stats`, `1a40338` brand guard; app `91d731a` My Subscription entry (banner every state + Profile row), `5e9c30e` brand + guard, `9868be8` host intro real numbers. **Left:** the app items above; CMS/web brand guards; merge `origin/fix/pre-p8-small-items` into be P8 and make why-not-live report the billing lock as FAIL (R-83); docs; full app runs 3x |
 
 **P7c branches**, not pushed, rebased 2026-10-30 after P5b was merged: be `fix/p7c-subscription-lifecycle` on `origin/main` `dbb718f` (`3f2c71e` items 1+2, `98d3888` 3, `8a1f255` 4, `0a88455` 6, `d6ea34d` 8, `7951006` 5, `727a27c` 7, `0bb85b6` 9, `1c728d8` pause-vs-lock test); app `fix/p7c-subscription-lifecycle` on `origin/master` `ba7feef` (`9fecda6` item 5); be docs `docs/p7c-subscription-lifecycle` on `origin/main` `dbb718f`.
 
