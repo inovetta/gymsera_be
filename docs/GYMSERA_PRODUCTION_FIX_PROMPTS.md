@@ -282,6 +282,14 @@ Status 2026-10-30: DONE locally, spec §13 "Phase 7 Prompt P5b". CMS half (move 
 
 ---
 
+### P7c — Subscription lifecycle (R-82)
+
+Added 2026-10-30 by the owner after the read-only subscription lifecycle review. The prompt text is decision R-82 in spec §14: lapsed plan locks branches after the 7-day grace (P0), EXPIRED cuts capacity, nightly re-check of recently expired store rows, Apple Production then Sandbox, `/current` after a lapse plus the app view, Apple refund reversal, host notices, NEW-163, scheduled jobs on IIS. Report per Prompt G.
+
+Status 2026-10-30: DONE locally, spec §13 "Phase 7 Prompt P7c". CMS/web lapse view in P9 (NEW-180). P3: NEW-177, NEW-183.
+
+---
+
 ### P6 — Traveller discovery
 
 **Covers:** BUG-26, BUG-27, BUG-28, BUG-29, BUG-30 (needs D6).
