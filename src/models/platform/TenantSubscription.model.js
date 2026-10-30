@@ -1,7 +1,11 @@
 const { DataTypes } = require('sequelize');
 
+// The entitling statuses (subscription-quota.service.js#ENTITLING_STATUSES, which
+// requires this model, so the list is repeated here rather than imported).
+const ENTITLING = ['ACTIVE', 'GRACE'];
+
 module.exports = (sequelize) => {
-  return sequelize.define(
+  const TenantSubscription = sequelize.define(
     'TenantSubscription',
     {
       id: {
@@ -175,6 +179,14 @@ module.exports = (sequelize) => {
         defaultValue: false,
         field: 'duplicate_billing',
       },
+      // When this row stopped entitling (ACTIVE/GRACE → anything else), set by the
+      // beforeSave hook below; null while it entitles. A lapsed plan's 7-day
+      // over-quota grace counts from here, never from updatedAt, which every
+      // daily re-fetch moves (P7c, R-82, NEW-170). Added by platform migration p026.
+      entitlementEndedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
     },
     {
       tableName: 'tenant_subscriptions',
@@ -195,4 +207,19 @@ module.exports = (sequelize) => {
       ],
     }
   );
+
+  // One place for every write path (provider sync, daily expiry, admin): a row
+  // that leaves the entitling set records when, and loses it when it entitles
+  // again. Moving between two non-entitling statuses (ON_HOLD → EXPIRED) keeps
+  // the first time, so the grace is never restarted by a later state.
+  TenantSubscription.beforeSave((row) => {
+    if (!row.isNewRecord && !row.changed('status')) return;
+    if (ENTITLING.includes(row.status)) {
+      row.entitlementEndedAt = null;
+    } else if (row.isNewRecord || ENTITLING.includes(row.previous('status'))) {
+      row.entitlementEndedAt = new Date();
+    }
+  });
+
+  return TenantSubscription;
 };

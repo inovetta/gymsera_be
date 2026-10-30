@@ -29,17 +29,14 @@ const ENTITLING_STATUSES = ['ACTIVE', 'GRACE'];
 /**
  * Statuses that END entitlement while the tenant still has a plan on record —
  * it must read as 0 branches, never fall through to the legacy defaults in
- * resolveMaxBranches (BILL-02, BILL-04).
+ * resolveMaxBranches (BILL-02, BILL-04). EXPIRED is one of them (spec §7.5.8):
+ * a lapsed plan, e.g. an unpaid pay-later grace (BILL-13) or a store plan that
+ * ran out, cuts capacity like a revoke, hold or pause (P7c, NEW-171).
  */
-const ENDED_STATUSES = ['REVOKED', 'ON_HOLD', 'PAUSED'];
+const ENDED_STATUSES = ['REVOKED', 'ON_HOLD', 'PAUSED', 'EXPIRED'];
 
-/**
- * A tenant whose plan is in any of these (and has no entitling row) is
- * entitled to 0 branches — never the legacy defaults. EXPIRED joins the ended
- * states here (spec §7.5.8): a lapsed plan, e.g. an unpaid pay-later grace
- * (BILL-13), must not fall back to the registration package.
- */
-const NO_FALLBACK_STATUSES = [...ENDED_STATUSES, 'EXPIRED'];
+/** A tenant whose plan is in any of these (and has no entitling row) is entitled to 0 branches. */
+const NO_FALLBACK_STATUSES = ENDED_STATUSES;
 
 /** The tenant's current entitlement — the most recently created entitling (ACTIVE or GRACE) subscription, if any. */
 const getActiveSubscription = async (tenantId, { transaction } = {}) => {
@@ -49,6 +46,35 @@ const getActiveSubscription = async (tenantId, { transaction } = {}) => {
     order: [['createdAt', 'DESC']],
     transaction,
   });
+};
+
+/**
+ * The plan a lapsed tenant last had (P7c, R-82, spec §7.5.8): when no row
+ * entitles, the most recently ended row in ENDED_STATUSES; null when a row
+ * entitles or the tenant never had a plan (legacy default, unchanged).
+ */
+const getLapsedSubscription = async (tenantId, { transaction } = {}) => {
+  if (await getActiveSubscription(tenantId, { transaction })) return null;
+  return TenantSubscription.findOne({
+    where: { tenantId, status: { [Op.in]: ENDED_STATUSES } },
+    order: [['entitlementEndedAt', 'DESC'], ['updatedAt', 'DESC']],
+    transaction,
+  });
+};
+
+/**
+ * Records the real-branch overage on the row that holds the tenant's capacity:
+ * the entitling row, or — when none entitles — the lapsed one, so the audit and
+ * the branch billing lock read the same number for a lapsed plan (NEW-170).
+ */
+const _recordOverQuota = async (tenantId, overQuotaCount, { transaction }) => {
+  const [updated] = await TenantSubscription.update(
+    { overQuotaCount },
+    { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
+  );
+  if (updated > 0) return;
+  const lapsed = await getLapsedSubscription(tenantId, { transaction });
+  if (lapsed && lapsed.overQuotaCount !== overQuotaCount) await lapsed.update({ overQuotaCount }, { transaction });
 };
 
 /**
@@ -258,15 +284,12 @@ const reconcileCapacity = async (
     }
 
     // Any previously-set over-quota flag is now resolved.
-    await TenantSubscription.update(
-      { overQuotaCount: 0 },
-      { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
-    );
+    await _recordOverQuota(tenantId, 0, { transaction });
 
     if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
       try {
         const branchBillingLockService = require('./branch-billing-lock.service');
-        await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+        await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb, { transaction });
       } catch (lockErr) {
         console.warn(`[reconcileCapacity] Failed to unlock branches for tenant ${tenantId}:`, lockErr.message);
       }
@@ -311,16 +334,13 @@ const reconcileCapacity = async (
 
   // `remaining` > 0 here means real ACTIVE branches alone exceed the new
   // plan — never resolved by deleting or hiding anything, only flagged.
-  await TenantSubscription.update(
-    { overQuotaCount: Math.max(0, remaining) },
-    { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
-  );
+  await _recordOverQuota(tenantId, Math.max(0, remaining), { transaction });
 
   // Automatic lock/unlock enforcement when capacity changes (CAP-01)
   if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
     try {
       const branchBillingLockService = require('./branch-billing-lock.service');
-      await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+      await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb, { transaction });
     } catch (lockErr) {
       console.warn(`[reconcileCapacity] Failed to enforce branch locks for tenant ${tenantId}:`, lockErr.message);
     }
@@ -431,7 +451,8 @@ const auditCapacity = async (tenantId, tenantDb) => {
       .map((org) => ({ listingId: org.id, title: org.title }));
   }
 
-  const recordedOverQuota = activeSub?.overQuotaCount ?? 0;
+  // A lapsed plan records its overage on the lapsed row (NEW-170).
+  const recordedOverQuota = (activeSub || (await getLapsedSubscription(tenantId)))?.overQuotaCount ?? 0;
   const overQuotaMismatch =
     expectedOverQuota !== null && expectedOverQuota !== recordedOverQuota;
 
@@ -476,6 +497,7 @@ module.exports = {
   ENTITLING_STATUSES,
   getBranchesToKeep,
   ENDED_STATUSES,
+  getLapsedSubscription,
   recordCapacityEvent,
   getActiveSubscription,
   resolveMaxBranches,

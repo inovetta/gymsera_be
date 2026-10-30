@@ -6,8 +6,12 @@ const subscriptionQuotaService = require('./subscription-quota.service');
 /**
  * Branch Billing Lock Service (spec §4, §7.5.8, CAP-01)
  *
- * Enforces capacity limits on real branches when an account goes over quota after a downgrade.
+ * Enforces capacity limits on real branches when an account goes over quota after a downgrade,
+ * or when its plan lapses (P7c, R-82: no entitling plan but an EXPIRED, ON_HOLD, PAUSED or
+ * REVOKED one — entitled to 0 branches, so every active branch is over quota).
  * - During OVERQUOTA_GRACE_DAYS (7 days), branches remain unlocked while a countdown is surfaced.
+ *   A downgrade counts from when the provider applied it; a lapse from when the plan stopped
+ *   entitling (TenantSubscription.entitlementEndedAt).
  * - After grace expires, exactly overQuotaCount branches are locked:
  *   1. Branches NOT in getBranchesToKeep(tenantId) first (most recently created first).
  *   2. Otherwise the most recently created first.
@@ -15,24 +19,77 @@ const subscriptionQuotaService = require('./subscription-quota.service');
  *   - Data stays visible (GET requests).
  *   - No new members, sales/payments, plans, or staff (checked in ONE shared place).
  *   - Existing members can still check in for MEMBER_CHECKIN_GRACE_DAYS (7 days) after lock, then not.
- * - Unlock is automatic when capacity returns (upgrade or deleting another branch).
+ * - Unlock is automatic when capacity returns (upgrade, a plan that entitles again, or deleting another branch).
  * - Every lock/unlock writes a CapacityEvent (BRANCH_BILLING_LOCKED / BRANCH_BILLING_UNLOCKED) with idempotencyKey.
  */
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The tenant's over-quota state, the one computation the lock sweep, the branch quota and
+ * GET /host/subscription/current all read (P7c):
+ *   - an entitling plan: its overQuotaCount, grace from the applied downgrade (else updatedAt);
+ *   - a lapsed plan: every active branch, grace from entitlementEndedAt (set here once, to now,
+ *     for a row that lapsed before platform migration p026 recorded it);
+ *   - neither (a tenant that never had a plan): not over quota.
+ * @returns {Promise<{ subscription: object|null, lapsed: boolean, overQuotaCount: number,
+ *   graceStartedAt: Date|null, graceEndsAt: Date|null, inGrace: boolean, remainingDays: number|null }>}
+ */
+const getOverQuotaState = async (tenantId, tenantDb, { transaction } = {}) => {
+  const graceDays = overquotaGraceDays();
+  const notOver = (subscription, lapsed) => ({
+    subscription, lapsed, overQuotaCount: 0, graceStartedAt: null, graceEndsAt: null, inGrace: false, remainingDays: null,
+  });
+
+  let subscription = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction });
+  let lapsed = false;
+  let overQuotaCount;
+  let graceStartedAt;
+  if (subscription) {
+    overQuotaCount = subscription.overQuotaCount || 0;
+    if (overQuotaCount <= 0) return notOver(subscription, false);
+    const change = subscription.pendingChange;
+    graceStartedAt = change?.appliedAt ? new Date(change.appliedAt) : new Date(subscription.updatedAt);
+  } else {
+    subscription = await subscriptionQuotaService.getLapsedSubscription(tenantId, { transaction });
+    if (!subscription) return notOver(null, false);
+    lapsed = true;
+    overQuotaCount = tenantDb ? await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }) : subscription.overQuotaCount || 0;
+    if (overQuotaCount <= 0) return notOver(subscription, true);
+    if (!subscription.entitlementEndedAt) await subscription.update({ entitlementEndedAt: new Date() }, { transaction });
+    graceStartedAt = new Date(subscription.entitlementEndedAt);
+  }
+
+  const graceEndsAt = new Date(graceStartedAt.getTime() + graceDays * DAY_MS);
+  const inGrace = Date.now() < graceEndsAt.getTime();
+  return {
+    subscription,
+    lapsed,
+    overQuotaCount,
+    graceStartedAt,
+    graceEndsAt,
+    inGrace,
+    remainingDays: Math.max(0, Math.ceil((graceEndsAt.getTime() - Date.now()) / DAY_MS)),
+  };
+};
 
 /**
  * Evaluates and applies/removes branch billing locks for a tenant.
  *
  * @param {string} tenantId
  * @param {object} tenantDb
- * @returns {Promise<{ overQuotaCount: number, lockedCount: number, unlockedCount: number, inGrace: boolean, remainingDays: number|null }>}
+ * @param {object} [opts]
+ * @param {import('sequelize').Transaction} [opts.transaction] - the platform transaction that just wrote
+ *   the plan (reconcileCapacity): the state is read inside it, so the sweep sees the new status.
+ * @returns {Promise<{ overQuotaCount: number, lockedCount: number, unlockedCount: number, inGrace: boolean, remainingDays: number|null, lapsed: boolean }>}
  */
-const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb) => {
+const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb, { transaction } = {}) => {
   const { Branch } = tenantDb.models;
-  const sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
-  const overQuotaCount = sub?.overQuotaCount || 0;
+  const state = await getOverQuotaState(tenantId, tenantDb, { transaction });
+  const { overQuotaCount, lapsed } = state;
 
   // 1. If not over quota, unlock any previously locked branches
-  if (!sub || overQuotaCount <= 0) {
+  if (overQuotaCount <= 0) {
     const lockedBranches = await Branch.findAll({
       where: { billingLockedAt: { [Op.ne]: null } },
     });
@@ -54,19 +111,12 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb) => {
       unlockedCount++;
     }
 
-    return { overQuotaCount: 0, lockedCount: 0, unlockedCount, inGrace: false, remainingDays: null };
+    return { overQuotaCount: 0, lockedCount: 0, unlockedCount, inGrace: false, remainingDays: null, lapsed };
   }
 
-  // 2. Check over-quota grace countdown (R-3, default 7 days)
-  const graceDays = overquotaGraceDays();
-  const change = sub.pendingChange;
-  const appliedAt = change?.appliedAt ? new Date(change.appliedAt) : new Date(sub.updatedAt);
-  const graceExpiry = new Date(appliedAt.getTime() + graceDays * 24 * 60 * 60 * 1000);
-  const isGraceExpired = Date.now() >= graceExpiry.getTime();
-  const remainingDays = Math.max(0, Math.ceil((graceExpiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-
-  if (!isGraceExpired) {
-    return { overQuotaCount, lockedCount: 0, unlockedCount: 0, inGrace: true, remainingDays };
+  // 2. Over-quota grace countdown (R-3, default 7 days)
+  if (state.inGrace) {
+    return { overQuotaCount, lockedCount: 0, unlockedCount: 0, inGrace: true, remainingDays: state.remainingDays, lapsed };
   }
 
   // 3. Grace has expired: determine exactly `overQuotaCount` branches to lock
@@ -75,7 +125,7 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb) => {
     order: [['createdAt', 'DESC']],
   });
 
-  const keepBranchIds = await subscriptionQuotaService.getBranchesToKeep(tenantId);
+  const keepBranchIds = await subscriptionQuotaService.getBranchesToKeep(tenantId, { transaction });
   const keepSet = new Set(Array.isArray(keepBranchIds) ? keepBranchIds : []);
 
   // Partition: not in keep list first (newest first), then in keep list (newest first)
@@ -95,7 +145,9 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb) => {
       if (!branch.billingLockedAt) {
         await branch.update({
           billingLockedAt: new Date(),
-          billingLockReason: 'Account over branch capacity following subscription change',
+          billingLockReason: lapsed
+            ? 'The plan has ended: no branch is covered until a plan is active again'
+            : 'Account over branch capacity following subscription change',
         });
         await subscriptionQuotaService.recordCapacityEvent({
           tenantId,
@@ -136,6 +188,7 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb) => {
     unlockedCount,
     inGrace: false,
     remainingDays: 0,
+    lapsed,
     lockedBranchIds: Array.from(targetLockIds),
   };
 };
@@ -214,6 +267,7 @@ const getBranchBillingLockStatus = (branch) => {
 };
 
 module.exports = {
+  getOverQuotaState,
   enforceBranchBillingLocksForTenant,
   assertBranchNotBillingLocked,
   assertBranchCheckinAllowed,

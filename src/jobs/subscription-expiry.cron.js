@@ -298,6 +298,28 @@ const _reconcileCapacityForAllTenants = async () => {
     where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES }, branchCount: { [Op.ne]: null } },
     attributes: ['id', 'tenantId', 'branchCount'],
   });
+  // Tenants with no entitling plan but an ended or expired one (P7c, R-82, NEW-171):
+  // entitled to 0 branches, so their slots are trimmed and, after the 7-day grace,
+  // every active branch is locked. Before P7c this pass never looked at them.
+  const entitledTenantIds = new Set(
+    (
+      await TenantSubscription.findAll({
+        where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES } },
+        attributes: ['tenantId'],
+      })
+    ).map((r) => r.tenantId)
+  );
+  const lapsedTenantIds = [
+    ...new Set(
+      (
+        await TenantSubscription.findAll({
+          where: { status: { [Op.in]: subscriptionQuotaService.ENDED_STATUSES } },
+          attributes: ['tenantId'],
+        })
+      ).map((r) => r.tenantId)
+    ),
+  ].filter((id) => !entitledTenantIds.has(id));
+  for (const tenantId of lapsedTenantIds) activeSubs.push({ tenantId, branchCount: 0 });
 
   let reconciled = 0;
   let audited = 0;
