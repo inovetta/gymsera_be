@@ -32,10 +32,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *   - a lapsed plan: every active branch, grace from entitlementEndedAt (set here once, to now,
  *     for a row that lapsed before platform migration p026 recorded it);
  *   - neither (a tenant that never had a plan): not over quota.
+ * `readOnly`: never writes (a GET); a lapsed row without entitlementEndedAt is reported as starting now.
  * @returns {Promise<{ subscription: object|null, lapsed: boolean, overQuotaCount: number,
  *   graceStartedAt: Date|null, graceEndsAt: Date|null, inGrace: boolean, remainingDays: number|null }>}
  */
-const getOverQuotaState = async (tenantId, tenantDb, { transaction } = {}) => {
+const getOverQuotaState = async (tenantId, tenantDb, { transaction, readOnly = false } = {}) => {
   const graceDays = overquotaGraceDays();
   const notOver = (subscription, lapsed) => ({
     subscription, lapsed, overQuotaCount: 0, graceStartedAt: null, graceEndsAt: null, inGrace: false, remainingDays: null,
@@ -56,8 +57,12 @@ const getOverQuotaState = async (tenantId, tenantDb, { transaction } = {}) => {
     lapsed = true;
     overQuotaCount = tenantDb ? await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }) : subscription.overQuotaCount || 0;
     if (overQuotaCount <= 0) return notOver(subscription, true);
-    if (!subscription.entitlementEndedAt) await subscription.update({ entitlementEndedAt: new Date() }, { transaction });
-    graceStartedAt = new Date(subscription.entitlementEndedAt);
+    // A read (GET /host/subscription/current) never writes: it reports the grace as starting now,
+    // which is what the next capacity pass records.
+    if (!subscription.entitlementEndedAt && !readOnly) {
+      await subscription.update({ entitlementEndedAt: new Date() }, { transaction });
+    }
+    graceStartedAt = subscription.entitlementEndedAt ? new Date(subscription.entitlementEndedAt) : new Date();
   }
 
   const graceEndsAt = new Date(graceStartedAt.getTime() + graceDays * DAY_MS);

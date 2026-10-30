@@ -928,16 +928,9 @@ const recordDowngradeChoice = async (tenantId, { billingPlanId, keepBranchIds = 
  */
 const APPLE_MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 const GOOGLE_MANAGE_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
-const paymentIssueFor = (subscription) => {
-  if (!subscription || subscription.status !== 'GRACE') return null;
+// The provider's own page for this subscription (fixed addresses, the verified row only).
+const _manageLinkFor = (subscription) => {
   switch (subscription.platform) {
-    case 'MANUAL': {
-      // Pay later (BILL-13): the countdown to the day the plan ends unpaid.
-      const payBy = subscription.endDate;
-      const today = new Date(`${_isoDate(new Date())}T00:00:00Z`);
-      const daysLeft = Math.max(0, Math.round((new Date(`${payBy}T00:00:00Z`) - today) / (24 * 60 * 60 * 1000)));
-      return { provider: 'MANUAL', manageUrl: null, payBy, daysLeft };
-    }
     case 'IOS':
       return { provider: 'IOS', manageUrl: APPLE_MANAGE_SUBSCRIPTIONS_URL };
     case 'ANDROID': {
@@ -953,12 +946,44 @@ const paymentIssueFor = (subscription) => {
   }
 };
 
+const paymentIssueFor = (subscription) => {
+  if (!subscription || subscription.status !== 'GRACE') return null;
+  if (subscription.platform === 'MANUAL') {
+    // Pay later (BILL-13): the countdown to the day the plan ends unpaid.
+    const payBy = subscription.endDate;
+    const today = new Date(`${_isoDate(new Date())}T00:00:00Z`);
+    const daysLeft = Math.max(0, Math.round((new Date(`${payBy}T00:00:00Z`) - today) / (24 * 60 * 60 * 1000)));
+    return { provider: 'MANUAL', manageUrl: null, payBy, daysLeft };
+  }
+  return _manageLinkFor(subscription);
+};
+
+/**
+ * What GET /host/subscription/current says about a plan that no longer entitles (P7c item 5,
+ * NEW-174, R-82): why, where the host fixes it, when it ended and when the branches lock
+ * (`state` from branch-billing-lock.service.js#getOverQuotaState). Null for an entitling row.
+ */
+const LAPSE_REASON = { EXPIRED: 'expired', ON_HOLD: 'on_hold', PAUSED: 'paused', REVOKED: 'refunded' };
+const lapseFor = (subscription, state) => {
+  if (!subscription || _entitling(subscription.status)) return null;
+  return {
+    status: subscription.status,
+    reason: LAPSE_REASON[subscription.status] || 'ended',
+    ..._manageLinkFor(subscription),
+    endedAt: state?.graceStartedAt ? state.graceStartedAt.toISOString() : null,
+    branchesLockAt: state?.graceEndsAt ? state.graceEndsAt.toISOString() : null,
+    inGrace: !!state?.inGrace,
+    remainingDays: state?.remainingDays ?? null,
+  };
+};
+
 module.exports = {
   requestProviderChange,
   reconcileRenewalStatus,
   applyVerifiedSubscription,
   resolveSubscriptionOwner,
   paymentIssueFor,
+  lapseFor,
   previewDowngrade,
   recordDowngradeChoice,
   PAY_LATER_ID_PREFIX,
