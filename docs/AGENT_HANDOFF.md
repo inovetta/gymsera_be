@@ -17,14 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-30 (pre-P8 small items done locally, not pushed; P7c pushed, not merged) |
+| Last updated | 2026-10-30 (Phase 7 P8 started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Pre-P8 small items** (NEW-181, NEW-125, NEW-180 guard, `why-not-live` script); before that Phase 7 P7c |
-| Prompt status | `DONE` (local). Spec §13 "Pre-P8 small items" and "Phase 7 Prompt P7c" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
+| Current prompt | **Phase 7 Prompt P8** (copy, brand and fake-data sweep; plus R-83 / NEW-184 and the host My Subscription entry) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | inventory done; backend first (R-83, NEW-146, NEW-168, R-78 stats, brand in e-mails) |
 | Step within issue | (none) |
 
 **P7c branches**, not pushed, rebased 2026-10-30 after P5b was merged: be `fix/p7c-subscription-lifecycle` on `origin/main` `dbb718f` (`3f2c71e` items 1+2, `98d3888` 3, `8a1f255` 4, `0a88455` 6, `d6ea34d` 8, `7951006` 5, `727a27c` 7, `0bb85b6` 9, `1c728d8` pause-vs-lock test); app `fix/p7c-subscription-lifecycle` on `origin/master` `ba7feef` (`9fecda6` item 5); be docs `docs/p7c-subscription-lifecycle` on `origin/main` `dbb718f`.
+
+**P8 branches** (from `origin/main` be `767456f` (P7c merged), CMS `e397fd1`, web `8f83418`, app `origin/master` `23636a4`): `fix/p8-copy-brand-sweep` in all four repos; be docs `docs/p8-copy-brand-sweep` on top of `docs/pre-p8-small-items` (not merged yet, with `docs/p7c-subscription-lifecycle`). Owner scope for P8 (2026-10-30): R-83 (billing-locked branch hidden from travellers, NEW-184), My Subscription reachable from the Gyms tab quota banner in every state plus a permanent Profile row with a status badge, and every ledger item assigned to P8 (BUG-06/07/08/17/32/38, NEW-119, NEW-139 rest, NEW-146, 148, 149, 153, 154, 155, 157, 160, 161, 162, 165, 168, 169, the invented packages copy).
 
 **Pre-P8 branches**, not pushed: be `fix/pre-p8-small-items` on `origin/main` `dbb718f` (`0e84e34` NEW-181, `21c13e7` NEW-125, `eb72c4e` why-not-live); CMS `fix/new-180-lapsed-plan-guard` on `origin/main` `e397fd1` (`8bcad4e`); web `fix/new-180-lapsed-plan-guard` on `origin/main` `8f83418` (`0085767`); be docs `docs/pre-p8-small-items` on top of `docs/p7c-subscription-lifecycle` (merge that PR first).
 
@@ -612,3 +614,4 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 120 | 2026-10-30 | Claude Code (Opus 5.5) | Read-only reviews (branch delete/move; subscription lifecycle), then Phase 7 P5b (branch lifecycle, R-81 revised) | be `f22e9b4` item 1 NOT REPRODUCED (11 tests), `9e3e231` item 8 (4, red 4), `116c78d` items 3/4/5 (16, red 10/15), `276719b` item 2 (16 + 3, red 12/15), `9706b1a` item 7 (5, red 4), `c09ad61` item 6, `4f02922`; full suite 255 / 255 suites, 2599 / 2599 tests (29 min, mains power); app `f3d5078` item 8 (3, red 3), `538e538` items 2/3/6/7 (10, red 9); flutter 341/341; NEW-166 to NEW-178 | task complete | yes |
 | 121 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P7c (subscription lifecycle, R-82; items 1 to 9; pause-vs-lock rule with P5b) | be `15c2e97`..`cee0378` (8 commits, new tests 10 files / 45 tests, each red before green except the p7c-10 guard); related suites green; full suite after the rebase onto main with P5b 266 / 266 suites, 2656 / 2656 tests (32 min, mains power); app `d25b0fb` (5 tests, red 4/5; `flutter test` 356 / 356 x3 after the rebase; analyze 168 = master); new NEW-179 to NEW-183 | task complete | yes |
 | 122 | 2026-10-30 | Claude Code (Opus 5.5) | Pre-P8 small items (NEW-181; NEW-180 read-only check and guard; why-not-live script) | be `0e84e34` NEW-181 (red 2/3), `21c13e7` NEW-125 found live (200) and fixed (red 2/3), `eb72c4e` why-not-live (12 tests, red: no module); CMS `8bcad4e` (red 5/6; vitest 499 / 499), web `0085767` (red 2/3; 138 / 138); related be suites 8 / 8 (78); new NEW-184 (P2, decision) | task complete |
+| 123 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P8 (copy, brand, fake data; R-83; My Subscription entry) | in progress | |
