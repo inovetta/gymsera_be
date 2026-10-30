@@ -336,3 +336,20 @@ Detail: spec §13 "Phase 7 Prompt P7a". Local branches, not pushed: be and app `
 | Item 6 (NEW-144) | open (owner) | iOS sandbox purchase and Restore Purchases on a device |
 
 New in P7a: NEW-163 (P2), NEW-164 (P3, P7b), NEW-165 (P2, P8). See spec §13.
+
+## P5b status (2026-10-30, Claude Code Opus 5.5): branch lifecycle, R-81 (revised)
+
+Detail: spec §13 "Phase 7 Prompt P5b", decision R-81 (revised) in §14. Local branches, not pushed: be and app `fix/p5b-branch-lifecycle`.
+
+| Item | Status | Fix / test |
+|---|---|---|
+| 1 GYM_HOST of another tenant | **NOT REPRODUCED** (regression guard added) | be `p5b-01-cross-tenant-host-authorization` |
+| 2 Pause / resume | **DONE** (backend + app) | tenant migration 021; `POST /host/branches/:id/pause` and `/resume`; be `p5b-02`, `tenant-migrations-021`; app `p5b_branch_lifecycle_test` |
+| 3 Delete block (branch and organization, all or nothing) | **DONE** (backend + app) | 409 `branch_delete_blocked` / `organization_delete_blocked`; be `p5b-03`; app dialog with "Pause instead" |
+| 4 No approval at a closed branch | **DONE** (backend) | 409 `branch_inactive`; be `p5b-03` |
+| 5 Platform membership copy | **DONE** (backend) | be `p5b-03` |
+| 6 Wording | **DONE** (backend + app); CMS in P9 (NEW-167) | be `p5b-03`; app `p5b_branch_lifecycle_test` |
+| 7 Store-plan notice | **DONE** (backend + app) | `storePlanNotice`; be `p5b-07`; app `p5b_branch_lifecycle_test` |
+| 8 Move branch removed | **DONE** (backend + app); CMS in P9 (NEW-167) | be `p5b-08`; app `p5b_move_branch_removed_test` |
+
+New in P5b: NEW-166 (post-launch, transfer branch), NEW-167 (P1, P9), NEW-168 (P3), NEW-169 (P3, P8), and from the subscription lifecycle review NEW-170 (P0) to NEW-178. See spec §13.
