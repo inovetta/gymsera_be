@@ -36,7 +36,11 @@ const getTenant = async (req, res, next) => {
 // ── POST /admin/tenants/:id/approve ──────────────────────────────────────────
 const approveTenant = async (req, res, next) => {
   try {
-    const result = await adminService.approveTenant(req.params.id, req.user.sub);
+    // R-84 (NEW-158): the admin must have looked at the photos the approval publishes.
+    if (req.body?.photosChecked !== true) {
+      throw createError('Check the gym photos, then tick "I checked the photos" to approve.', 422, 'photos_not_checked');
+    }
+    const result = await adminService.approveTenant(req.params.id, req.user.sub, { photosChecked: true });
     // Another run is provisioning this tenant (FLOW-02): 202 with its step.
     if (result.provisioning?.inProgress) {
       return sendSuccess(
@@ -461,6 +465,14 @@ const uploadAdminBranchImages = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── DELETE /admin/tenants/:id/approval-photos (R-84, NEW-158) ──────────────────
+const removeApprovalPhoto = async (req, res, next) => {
+  try {
+    const result = await require('../services/approval-photos.service').removeApprovalPhoto(req.params.id, req.body.imageUrl, req.user.sub);
+    return sendSuccess(res, result, 'Photo removed');
+  } catch (err) { next(err); }
+};
+
 const deleteAdminBranchImage = async (req, res, next) => {
   try {
     const { imageUrl } = req.body;
@@ -510,7 +522,7 @@ module.exports = {
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,
-  createAdminTenantBranch, updateAdminTenantBranch, uploadAdminBranchImages, deleteAdminBranchImage,
+  createAdminTenantBranch, updateAdminTenantBranch, uploadAdminBranchImages, deleteAdminBranchImage, removeApprovalPhoto,
   getTenantSubscriptions, assignTenantSubscription, revokeTenantSubscription, verifyPayLaterPayment,
   getTenantInvoices, createTenantInvoice, updateTenantInvoice,
   sendInvoiceReminder, sendInvoiceConfirmation,

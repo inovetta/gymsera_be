@@ -115,7 +115,13 @@ router.get('/tenants/:id', adminController.getTenant);
  *       502:
  *         description: A provisioning step failed; the tenant stays APPROVED and can be resumed
  */
-router.post('/tenants/:id/approve', idempotency(), validate.allowBody([]), adminController.approveTenant);
+router.post('/tenants/:id/approve', idempotency(), validate.allowBody(['photosChecked']), adminController.approveTenant);
+// R-84 (NEW-158): take a photo off an application before approving it (audited).
+router.delete(
+  '/tenants/:id/approval-photos',
+  validate.strict([body('imageUrl').isString().trim().notEmpty().withMessage('imageUrl is required')], { stage: 2 }),
+  adminController.removeApprovalPhoto
+);
 
 /**
  * @swagger

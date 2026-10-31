@@ -341,6 +341,9 @@ const getTenant = async (tenantId) => {
     }));
   }
 
+  // R-84 (NEW-158): what the approval would publish, for the photo check on the approve screen.
+  tenantJson.approvalPhotos = await require('./approval-photos.service').listApprovalPhotos(tenantId).catch(() => []);
+
   return { tenant: tenantJson };
 };
 
@@ -360,12 +363,17 @@ const getTenant = async (tenantId) => {
  * `provisioning.inProgress` (the controller answers 202). The route also takes
  * an optional Idempotency-Key (REL-01 middleware).
  */
-const approveTenant = async (tenantId, adminUserId) => {
+const approveTenant = async (tenantId, adminUserId, { photosChecked = false } = {}) => {
   const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
+  // R-84 (NEW-158): the route requires the admin's photo check; the record is written once the
+  // approval's own checks have passed, before anything changes.
+  const recordPhotoCheck = () =>
+    photosChecked ? require('./approval-photos.service').recordPhotosChecked(tenantId, adminUserId) : null;
 
   if (listingId) {
     const listing = await GymListing.findByPk(listingId);
     if (!listing) throw createError('Gym listing not found', 404);
+    await recordPhotoCheck();
 
     await listing.update({
       status: 'ACTIVE',
@@ -419,6 +427,8 @@ const approveTenant = async (tenantId, adminUserId) => {
       throw err;
     }
   }
+
+  await recordPhotoCheck();
 
   // Re-approving an APPROVED tenant is Resume (FLOW-02): the first approval's
   // record is kept.

@@ -16,8 +16,12 @@
   {
    "method": "POST",
    "path": "/api/v1/admin/tenants/:p/approve",
-   "allowed": [],
-   "clientKeys": []
+   "allowed": [
+    "photosChecked"
+   ],
+   "clientKeys": [
+    "photosChecked"
+   ]
   },
   {
    "method": "DELETE",
