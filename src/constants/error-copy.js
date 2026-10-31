@@ -190,6 +190,13 @@ const ERROR_COPY = {
     ar: 'اعرض خطة واحدة على الأقل للمسافرين قبل الإرسال.',
     action: 'none',
   },
+  // Phase 7 P9 (R-85, NEW-185): a verification document of a type we do not take.
+  invalid_document_type: {
+    en: 'Choose which document this is: ID, business registration or proof of premises.',
+    ur: 'بتائیں یہ کون سی دستاویز ہے: شناختی کارڈ، کاروبار کی رجسٹریشن یا جگہ کا ثبوت۔',
+    ar: 'اختر نوع هذا المستند: الهوية أو السجل التجاري أو إثبات المقر.',
+    action: 'none',
+  },
   tenant_not_found: {
     en: 'Tenant not found or not active.',
     ur: 'ادارہ نہیں ملا یا غیر فعال ہے۔',
