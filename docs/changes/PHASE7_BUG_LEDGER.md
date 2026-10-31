@@ -353,3 +353,24 @@ Detail: spec §13 "Phase 7 Prompt P5b", decision R-81 (revised) in §14. Local b
 | 8 Move branch removed | **DONE** (backend + app); CMS in P9 (NEW-167) | be `p5b-08`; app `p5b_move_branch_removed_test` |
 
 New in P5b: NEW-166 (post-launch, transfer branch), NEW-167 (P1, P9), NEW-168 (P3), NEW-169 (P3, P8), and from the subscription lifecycle review NEW-170 (P0) to NEW-178. See spec §13.
+
+## P7c status (2026-10-30, Claude Code Opus 5.5): subscription lifecycle, R-82
+
+Detail: spec §13 "Phase 7 Prompt P7c", decision R-82 in §14. Branches, not pushed: be and app `fix/p7c-subscription-lifecycle`.
+
+| Item | Status | Fix / test |
+|---|---|---|
+| 1 NEW-170 (P0) lapsed plan locks branches | **FIXED** (backend) | platform migration p026; be `p7c-01`, `platform-migrations-p026` |
+| 2 NEW-171 EXPIRED cuts capacity, nightly covers lapsed tenants | **FIXED** (backend) | be `p7c-01` |
+| 3 NEW-172 re-check recently expired store rows | **FIXED** (backend) | be `p7c-03` |
+| 4 NEW-173 Apple Production then Sandbox | **FIXED** (backend) | be `p7c-04` |
+| 5 NEW-174 current subscription after a lapse | **FIXED** (backend + app); CMS/web in P9 (NEW-180) | be `p7c-05`; app `p7c_plan_lapse_test` |
+| 6 NEW-175 Apple refund reversal | **FIXED** (backend) | be `p7c-06` |
+| 7 NEW-176 host notices, expired template | **FIXED** (backend) | be `p7c-07` |
+| 8 NEW-163 hidden or other-branch plan | **FIXED** (backend) | be `p7c-08` |
+| 9 NEW-178 jobs on IIS | **FIXED** (backend CLI + switch; owner sets up Task Scheduler) | be `p7c-09`; runbook `scheduled-jobs.md` |
+| Pause vs billing lock (with P5b) | **Guarded** (no change needed) | be `p7c-10` |
+| NEW-177 Apple certificate OID checks | open, P3 | — |
+| NEW-183 API docs | open, P3 | — |
+
+New in P7c: NEW-179 (P2), NEW-180 (P1, P9), NEW-181 (P2), NEW-182 (P3, decision), NEW-183 (P3). See spec §13.
