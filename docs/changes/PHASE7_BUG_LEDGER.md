@@ -219,7 +219,7 @@ Open data checks: `docs/sql/phase7-open-data-checks.sql` (read-only, one run aga
 |---|---|---|---|
 | NEW-124 | P0 until confirmed | Approved host's Gyms tab "A database error occurred": production tenant databases below tenant schema v19, `branches.currency` missing; `GET /host/branches` and the branch dashboard fail, counts do not. Same cause as BUG-21's "no branch" before P2 (the app hid the error as `[]`). | **VERIFIED 2026-10-28**: `run-tenant-migrations.js --check` OK for 32 tenants on production; GYM-4814C134 shows its branch on a device. be `ff3e385` (test); fix = tenant migrations + NEW-127 repair |
 | NEW-123 | P1 | No API log file since 2026-10-16: the OBS-01 logger writes to descriptor 1, which iisnode does not read. | REOPENED 2026-10-27: `f457114` did not work on real iisnode (fd check never true; journal errors swallowed). Second fix on be `fix/new-123-iisnode-real`. **VERIFIED 2026-10-28**: production's boot line is read on the server (`commit`, `platformDb`, `tenantDbHost`) |
-| NEW-125 | P1 | `web.config` serves the iisnode log folder over HTTP. | open, owner check |
+| NEW-125 | P1 | `web.config` serves the iisnode log folder over HTTP. | **FIXED** 2026-10-30 (confirmed live: 200), be `21c13e7` |
 | NEW-126 | P2 | July `branches` columns with no tenant migration; no deploy step fails on a tenant below target schema. | open, grid 2 of the check decides |
 
 ## Production verification 2026-10-28 (Claude Code Opus 5.5)
@@ -374,3 +374,15 @@ Detail: spec §13 "Phase 7 Prompt P7c", decision R-82 in §14. Branches, not pus
 | NEW-183 API docs | open, P3 | — |
 
 New in P7c: NEW-179 (P2), NEW-180 (P1, P9), NEW-181 (P2), NEW-182 (P3, decision), NEW-183 (P3). See spec §13.
+
+## Pre-P8 small items status (2026-10-30, Claude Code Opus 5.5)
+
+Detail: spec §13 "Pre-P8 small items". Branches, not pushed: be `fix/pre-p8-small-items`, CMS and web `fix/new-180-lapsed-plan-guard`.
+
+| Item | Status | Fix / test |
+|---|---|---|
+| NEW-181 `devErrorsEnabled` on production | **FIXED** | be `new-181-web-config-no-dev-errors` |
+| NEW-125 iisnode logs served over HTTP (confirmed live) | **FIXED** | be `new-125-iisnode-logs-not-served` |
+| NEW-180 CMS / web after the P7c `/current` change | **Guarded** (lapsed plan reads as before P7c); lapse view still P9 | CMS and web `new-180-lapsed-plan-guard` |
+| why-not-live script | **ADDED** | be `why-not-live-script` |
+| NEW-184 billing-locked branch still listed (booking refuses it) | open, P2, decision | — |
