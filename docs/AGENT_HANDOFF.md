@@ -17,16 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-31 (Phase 7 P9 started) |
+| Last updated | 2026-10-31 (Phase 7 P9 done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P9** (CMS and website parity; owner scope: NEW-140, NEW-167, NEW-180, NEW-158, `visible_plan_required` copy, NEW-185) |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | backend + CMS done; next: web (NEW-140 location picker on /places, NEW-180 lapse view, copy), then app (NEW-185, copy) |
+| Prompt status | `DONE` (owner scope; the rest of BUG-37 is listed under "Not done" in spec §13 "Phase 7 Prompt P9") <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
 | Step within issue | (none) |
 
-**P9 branches** (P8 merged everywhere, checked 2026-10-31): `fix/p9-cms-web-parity` in every repo, from be `origin/main` `1451a99`, CMS `8a1ff1e`, web `f8390fd`, app `origin/master` `d20b051`; be docs `docs/p9-cms-web-parity` from `1451a99`. Not pushed.
+**P9 branches**, not pushed, `fix/p9-cms-web-parity` in every repo (P8 merged everywhere, checked 2026-10-31): be from `origin/main` `1451a99` (`e4a7a55` R-84, `b1c32d5` R-85, `a4f436d` + `0778b74` NEW-140, `d8abe69` copy); CMS from `8a1ff1e` (`f536c01` NEW-140, `6d212bf` R-84, `a45d3e8` NEW-167, `9029f3e` NEW-180 + R-86, `2da24ea` copy); web from `f8390fd` (`e19018f` + `6a9fc75` NEW-140, `8333a46` + `9de5922` NEW-180, `0ff63b2` copy); app from `origin/master` `d20b051` (`a8829b8` + `661a969` NEW-185, `2ffb5ac` copy); be docs `docs/p9-cms-web-parity` from `1451a99`. Results: backend full suite 278 / 278 suites, 2715 / 2715 tests (41 min, mains power, local Docker MySQL, DISABLE_REDIS=true, at be `d8abe69`); app `flutter test` 392 / 392 x3 (one flake in run 2, NEW-189), analyze 166 = master; CMS vitest 528 / 528, tsc, lint, build, Playwright 27 / 27, security 9 / 9; web vitest 152 / 152, tsc, lint, build, Playwright 4 / 4, security 15 / 15.
 
-**Next action (P9):** web on `fix/p9-cms-web-parity`: `location-picker.tsx` off browser Places / Geocoder onto `/places` (map only with the web key, `.env.example` entry), `/gymsera-billing` lapse view, `visible_plan_required` copy. Then app: NEW-185 Verification Docs by type (and the upload answer is `data: [...]`, not `data.kycDocuments`), copy. Then full suites, spec §13, report. Commits so far: be `e4a7a55`, `b1c32d5`, `a4f436d`, `0778b74`, `d8abe69`; CMS `f536c01`, `6d212bf`, `a45d3e8`, `9029f3e`, `2da24ea`.
+**Next action:** **Owner:** (1) push and open PRs in all four repos, plus be docs. (2) Deploy the backend, then **the CMS straight after** (an older CMS approve answers 422 `photos_not_checked`); no migration. (3) Set `BANK_TRANSFER_*` on the API server (R-86; the values the CMS used to show are in the CMS git history, `settings/billing/page.tsx` before `9029f3e`). (4) Create the web key (Maps JavaScript API only; referrers in spec §13 P9) and set `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` for the CMS and web builds; check `GOOGLE_MAPS_SERVER_KEY` is set on the API. (5) `npm ci` for the CMS build (Leaflet removed, `@vis.gl/react-google-maps` added). (6) New mobile build. **Agent, next:** the rest of P9 / BUG-37 (Team & Access, tier names, P4 CMS half R-80 / NEW-112, P5 lists / NEW-151, BUG-29 CMS names, BUG-31 CMS / web dates), then P10. Open: NEW-189 to NEW-193.
 
 **P7c branches**, not pushed, rebased 2026-10-30 after P5b was merged: be `fix/p7c-subscription-lifecycle` on `origin/main` `dbb718f` (`3f2c71e` items 1+2, `98d3888` 3, `8a1f255` 4, `0a88455` 6, `d6ea34d` 8, `7951006` 5, `727a27c` 7, `0bb85b6` 9, `1c728d8` pause-vs-lock test); app `fix/p7c-subscription-lifecycle` on `origin/master` `ba7feef` (`9fecda6` item 5); be docs `docs/p7c-subscription-lifecycle` on `origin/main` `dbb718f`.
 
@@ -164,12 +164,14 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 
 **Phase 7 Prompt P9: CMS and website parity (`fix/p9-cms-web-parity` in every repo; not pushed):**
 - [x] NEW-158 / R-84: photo check at CMS approval (be `e4a7a55`, CMS `6d212bf`)
-- [ ] NEW-185 / R-85: KYC documents by type (be `b1c32d5` done; app Verification Docs; upload answer read correctly)
-- [ ] NEW-140: CMS done (be `a4f436d`, `0778b74`; CMS `f536c01`); web location picker off browser Places/Geocoder, web key in `.env.example`: open
+- [x] NEW-185 / R-85: KYC documents by type (be `b1c32d5`, app `a8829b8`, `661a969`; two app parsing defects fixed)
+- [x] NEW-140: be `a4f436d`, `0778b74`; CMS `f536c01`; web `e19018f`, `6a9fc75`
 - [x] NEW-167: CMS move-branch option removed, last-branch copy, delete-block 409 with "Pause instead", pause / resume, store-plan notice (CMS `a45d3e8`)
-- [ ] NEW-180: CMS done with R-86 (`9029f3e`); web `/gymsera-billing`: open
-- [ ] `visible_plan_required` / `last_visible_plan` copy: be `d8abe69`, CMS `2da24ea`; web, app: open
-- [ ] Spec §13 P9 section, ledger, handoff close-out
+- [x] NEW-180: CMS with R-86 `9029f3e`; web `8333a46`, `9de5922`
+- [x] `visible_plan_required` / `last_visible_plan` copy: be `d8abe69`, CMS `2da24ea`, web `0ff63b2`, app `2ffb5ac`
+- [x] Spec §13 P9 section, ledger, handoff close-out
+- [ ] Owner: push, deploy (backend then CMS), `BANK_TRANSFER_*`, web key, mobile build
+- [ ] Rest of BUG-37 (not in the owner's list): next prompt
 
 **Phase 7 Prompt P5b: branch lifecycle, R-81 revised (be and app `fix/p5b-branch-lifecycle`; not pushed):**
 - [x] Item 1: cross-tenant GYM_HOST: NOT REPRODUCED, regression guard (be `f22e9b4`, `4f02922`)
@@ -645,4 +647,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 122 | 2026-10-31 | Claude Code (Opus 5.5) | CI red on P8 (why-not-live parse error after merge `ef72b38`) | be fix/p8-copy-brand-sweep: script and test restored to `13f6e32` (R-83); full suite 274 / 274 suites, 2690 / 2690 tests; pre-push checklist added to §1 | task complete | yes |
 | 122 | 2026-10-30 | Claude Code (Opus 5.5) | Pre-P8 small items (NEW-181; NEW-180 read-only check and guard; why-not-live script) | be `0e84e34` NEW-181 (red 2/3), `21c13e7` NEW-125 found live (200) and fixed (red 2/3), `eb72c4e` why-not-live (12 tests, red: no module); CMS `8bcad4e` (red 5/6; vitest 499 / 499), web `0085767` (red 2/3; 138 / 138); related be suites 8 / 8 (78); new NEW-184 (P2, decision) | task complete |
 | 123 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P8 (copy, brand, fake data; R-83; My Subscription entry) | be R-83 `e7baa90`, NEW-146 `619d16d`, NEW-168 `3912524`, R-78 `96643e1`, brand `1a40338`, why-not-live `13f6e32`; app 12 commits (`91d731a`..`89b28c4`); CMS `73a46be`, web `a233ebb`; every fix red before green; full be 2690 / 2690; app 386 x3; new NEW-185..188 | task complete |
-| 124 | 2026-10-31 | Claude Code (Opus 5.5) | Phase 7 P9 (CMS and website parity; owner scope NEW-140, 158, 167, 180, 185, visible_plan_required copy) | in progress | | |
+| 124 | 2026-10-31 | Claude Code (Opus 5.5) | Phase 7 P9 (CMS and website parity; owner scope NEW-140, 158, 167, 180, 185, visible_plan_required copy; R-84 to R-86) | be 5 commits (new suites 5, each red first); CMS 5; web 5; app 3; backend full 278 / 278 suites, 2715 / 2715 tests (41 min, mains power, local Docker MySQL, DISABLE_REDIS=true, at be `d8abe69`); app 392 x3, CMS 528, web 152; NEW-189 to NEW-193 | task complete (not pushed) | yes |
