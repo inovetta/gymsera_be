@@ -385,4 +385,43 @@ Detail: spec §13 "Pre-P8 small items". Branches, not pushed: be `fix/pre-p8-sma
 | NEW-125 iisnode logs served over HTTP (confirmed live) | **FIXED** | be `new-125-iisnode-logs-not-served` |
 | NEW-180 CMS / web after the P7c `/current` change | **Guarded** (lapsed plan reads as before P7c); lapse view still P9 | CMS and web `new-180-lapsed-plan-guard` |
 | why-not-live script | **ADDED** | be `why-not-live-script` |
-| NEW-184 billing-locked branch still listed (booking refuses it) | open, P2, decision | — |
+| NEW-184 billing-locked branch still listed (booking refuses it) | **FIXED** in P8 (R-83) | be `p8-r83-billing-locked-hidden` |
+
+## P8 status (2026-10-30, Claude Code Opus 5.5): copy, brand and fake data, R-83, My Subscription entry
+
+Detail: spec §13 "Phase 7 Prompt P8", decision R-83 in §14. Branches, not pushed: `fix/p8-copy-brand-sweep` in be, app, CMS, web.
+
+Final mapping of every item assigned to P8:
+
+| Item | Status | Where / test |
+|---|---|---|
+| BUG-06 brand | **FIXED** (app, be, web; CMS already clean) | brand guards in all four repos |
+| BUG-07 host intro numbers (R-78) | **FIXED** (be `/discovery/stats` + app) | be `p8-r78-public-stats`, app `p8_bug07_host_intro_numbers_test` |
+| BUG-08 stepper | **FIXED** | app `p8_bug08_one_stepper_test` |
+| BUG-17 mode wording | **FIXED** | app `p8_bug17_bug32_wording_test` |
+| BUG-32 Inbox title | **FIXED** | same |
+| BUG-38 list rows 1, 15, 19 (fake tenant, inbox avatar, Verified / Growth Plan) | already fixed (P2, P5) | `bug_38_host_profile_no_mock_test`, `p2_host_status_test` |
+| BUG-38 rows 3, 6, 7, 9, 11, 12, 13 (gallery stock list, detail hours, `_mockResults`, "(124)", order / payment / QR fallbacks) | **NOT REPRODUCED** on `master` `23636a4` (fixed in P6 / P7a); guarded | `p8_bug38_no_invented_data_test` |
+| BUG-38 rows 2, 4, 5, 8, 10, 14, 16, 17, 18, 20, 22 | **FIXED** | `p8_bug38_no_invented_data_test` |
+| BUG-38 rows 21 (mock coordinates), 23 (city id 1) | already fixed (P3 NEW-111, P2 NEW-113) | `new_111_no_mock_coordinates_test`, be `new-113-no-default-city` |
+| NEW-119 verification documents | **FIXED** (real status and upload; per-type upload is NEW-185) | app `p8_new119_verification_docs_test` |
+| NEW-139 rest (distance, hours, "Rs2,500", "Karachi" header, "Premium Host") | **NOT REPRODUCED** on `master` (fixed in P6); guarded | `p8_bug38_no_invented_data_test` |
+| NEW-146 invented membership plan | **FIXED** (backend) | be `p8-new-146-no-invented-plan` |
+| NEW-148 invented plan names | **FIXED** | guard |
+| NEW-149 PKR / Rs | **FIXED** | app `p8_new149_currency_test` |
+| NEW-153 stock photos (host / member) | **FIXED** | guard |
+| NEW-154 invented staff names | **FIXED** | guard |
+| NEW-155 "Pakistan" city | **FIXED** | guard |
+| NEW-157 Add Branch 2024 / 5,000 | **FIXED** | guard (fallback rule) and code review |
+| NEW-160 VERIFIED / OPEN NOW | **FIXED** | guard |
+| NEW-161 price range, "Book Day Pass" | **FIXED** | app `p8_new161_price_filter_test`, guard |
+| NEW-162 category stock photos | **FIXED** | guard |
+| NEW-165 plan detail / My Plans stock photo, "Pro Monthly" | **FIXED** | guard |
+| NEW-168 empty organization | **FIXED** (backend) | be `p8-new-168-organization-needs-branch` |
+| NEW-169 Gyms tab branch card stock photo | **FIXED** | guard |
+| "Premium facility access included in all plans", "No long-term commitment. Cancel anytime." | **FIXED** | guard |
+| NEW-184 (R-83) billing-locked branch hidden | **FIXED** (backend) | be `p8-r83-billing-locked-hidden` |
+| Owner: My Subscription from the Gyms banner (every state) and Profile row | **FIXED** (app) | app `p8_my_subscription_entry_test` |
+| Prompt item 6: full copy pass of empty / loading / error states | **PARTLY**: the UX-08 guard plus the screens touched here; no full manual pass | `ux08_error_handlers_test` |
+
+New in P8: NEW-185 (P2), NEW-186 (P3), NEW-187 (P3), NEW-188 (P3). See spec §13.

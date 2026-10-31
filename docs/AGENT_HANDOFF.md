@@ -17,14 +17,18 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-30 (pre-P8 small items done locally, not pushed; P7c pushed, not merged) |
+| Last updated | 2026-10-30 (Phase 7 P8 done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Pre-P8 small items** (NEW-181, NEW-125, NEW-180 guard, `why-not-live` script); before that Phase 7 P7c |
-| Prompt status | `DONE` (local). Spec §13 "Pre-P8 small items" and "Phase 7 Prompt P7c" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **Phase 7 Prompt P8** (copy, brand and fake-data sweep; plus R-83 / NEW-184 and the host My Subscription entry) |
+| Prompt status | `DONE` (local). Spec §13 "Phase 7 Prompt P8" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
 
 **P7c branches**, not pushed, rebased 2026-10-30 after P5b was merged: be `fix/p7c-subscription-lifecycle` on `origin/main` `dbb718f` (`3f2c71e` items 1+2, `98d3888` 3, `8a1f255` 4, `0a88455` 6, `d6ea34d` 8, `7951006` 5, `727a27c` 7, `0bb85b6` 9, `1c728d8` pause-vs-lock test); app `fix/p7c-subscription-lifecycle` on `origin/master` `ba7feef` (`9fecda6` item 5); be docs `docs/p7c-subscription-lifecycle` on `origin/main` `dbb718f`.
+
+**P8 branches**, not pushed, `fix/p8-copy-brand-sweep` in every repo: be from `767456f` (11 commits incl. the merge of `fix/pre-p8-small-items`, last `13f6e32`), app from `origin/master` `23636a4` (last `89b28c4`), CMS from `e397fd1` (`73a46be`), web from `8f83418` (`a233ebb`); be docs `docs/p8-copy-brand-sweep` on top of `docs/pre-p8-small-items`. Full backend suite 274 / 274 suites, 2690 / 2690 tests; app 386 / 386 three times, analyze 166 (master 168, none new); CMS 495 / 495; web 137 / 137, build passes.
+
+**Next action:** **Owner:** merge in this order: be `docs/p7c-subscription-lifecycle` → `docs/pre-p8-small-items` → `docs/p8-copy-brand-sweep`; be `fix/pre-p8-small-items` before be `fix/p8-copy-brand-sweep`; CMS/web `fix/new-180-lapsed-plan-guard` and `fix/p8-copy-brand-sweep` in any order; app `fix/p8-copy-brand-sweep`. Deploy the backend (no migration, no env variable): `git pull`, `npm install --omit=dev`, `iisreset`; check `/iisnode/index.html` answers 404 and `GET /api/v1/discovery/stats` answers. Tell admins that approving a gym with no visible plan now answers 422 `visible_plan_required`. New mobile build (display name "GymsEra"). **Agent, next:** Prompt **P9** (CMS and website parity; includes NEW-180 lapse view, NEW-167, NEW-151), then NEW-185 to NEW-188.
 
 **Pre-P8 branches**, not pushed: be `fix/pre-p8-small-items` on `origin/main` `dbb718f` (`0e84e34` NEW-181, `21c13e7` NEW-125, `eb72c4e` why-not-live); CMS `fix/new-180-lapsed-plan-guard` on `origin/main` `e397fd1` (`8bcad4e`); web `fix/new-180-lapsed-plan-guard` on `origin/main` `8f83418` (`0085767`); be docs `docs/pre-p8-small-items` on top of `docs/p7c-subscription-lifecycle` (merge that PR first).
 
@@ -627,3 +631,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 121 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P7c (subscription lifecycle, R-82; items 1 to 9; pause-vs-lock rule with P5b) | be `15c2e97`..`cee0378` (8 commits, new tests 10 files / 45 tests, each red before green except the p7c-10 guard); related suites green; full suite after the rebase onto main with P5b 266 / 266 suites, 2656 / 2656 tests (32 min, mains power); app `d25b0fb` (5 tests, red 4/5; `flutter test` 356 / 356 x3 after the rebase; analyze 168 = master); new NEW-179 to NEW-183 | task complete | yes |
 | 122 | 2026-10-31 | Claude Code (Opus 5.5) | CI red on P8 (why-not-live parse error after merge `ef72b38`) | be fix/p8-copy-brand-sweep: script and test restored to `13f6e32` (R-83); full suite 274 / 274 suites, 2690 / 2690 tests; pre-push checklist added to §1 | task complete | yes |
 | 122 | 2026-10-30 | Claude Code (Opus 5.5) | Pre-P8 small items (NEW-181; NEW-180 read-only check and guard; why-not-live script) | be `0e84e34` NEW-181 (red 2/3), `21c13e7` NEW-125 found live (200) and fixed (red 2/3), `eb72c4e` why-not-live (12 tests, red: no module); CMS `8bcad4e` (red 5/6; vitest 499 / 499), web `0085767` (red 2/3; 138 / 138); related be suites 8 / 8 (78); new NEW-184 (P2, decision) | task complete |
+| 123 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P8 (copy, brand, fake data; R-83; My Subscription entry) | be R-83 `e7baa90`, NEW-146 `619d16d`, NEW-168 `3912524`, R-78 `96643e1`, brand `1a40338`, why-not-live `13f6e32`; app 12 commits (`91d731a`..`89b28c4`); CMS `73a46be`, web `a233ebb`; every fix red before green; full be 2690 / 2690; app 386 x3; new NEW-185..188 | task complete |
