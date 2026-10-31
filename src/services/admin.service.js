@@ -1586,7 +1586,8 @@ const updateAdminTenantBranch = async (tenantId, branchId, data, adminUserId) =>
   // audit row). Routed through the same gymService functions instead.
   // NEW-103: latitude / longitude (null clears them) and `facilities` (the array the CMS form sends) were dropped here;
   // same handling as the host-side gym.service#updateBranch.
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'phone', 'openingTime', 'closingTime', 'facilitiesJson'];
+  // NEW-140 (P9): googlePlaceId, the address the admin picked from Google (as the host's updateBranch).
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'googlePlaceId', 'phone', 'openingTime', 'closingTime', 'facilitiesJson'];
   fields.forEach((f) => { if (data[f] !== undefined) branch[f] = data[f]; });
   if (Array.isArray(data.facilities)) branch.facilitiesJson = data.facilities;
   await branch.save();
