@@ -17,12 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-30 (Phase 7 P8 done locally, not pushed) |
+| Last updated | 2026-10-31 (Phase 7 P9 started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P8** (copy, brand and fake-data sweep; plus R-83 / NEW-184 and the host My Subscription entry) |
-| Prompt status | `DONE` (local). Spec §13 "Phase 7 Prompt P8" <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
+| Current prompt | **Phase 7 Prompt P9** (CMS and website parity; owner scope: NEW-140, NEW-167, NEW-180, NEW-158, `visible_plan_required` copy, NEW-185) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | verification done; decisions R-84, R-85, R-86 recorded; next: backend first |
 | Step within issue | (none) |
+
+**P9 branches** (P8 merged everywhere, checked 2026-10-31): `fix/p9-cms-web-parity` in every repo, from be `origin/main` `1451a99`, CMS `8a1ff1e`, web `f8390fd`, app `origin/master` `d20b051`; be docs `docs/p9-cms-web-parity` from `1451a99`. Not pushed.
+
+**Next action (P9):** backend first: (1) R-84 photo check on approve (`photosChecked`, audit log, admin route to remove an application photo); (2) R-85 KYC `documentType` list; (3) admin branch routes accept `googlePlaceId`. Then CMS, web, app (see §2 P9 checklist).
 
 **P7c branches**, not pushed, rebased 2026-10-30 after P5b was merged: be `fix/p7c-subscription-lifecycle` on `origin/main` `dbb718f` (`3f2c71e` items 1+2, `98d3888` 3, `8a1f255` 4, `0a88455` 6, `d6ea34d` 8, `7951006` 5, `727a27c` 7, `0bb85b6` 9, `1c728d8` pause-vs-lock test); app `fix/p7c-subscription-lifecycle` on `origin/master` `ba7feef` (`9fecda6` item 5); be docs `docs/p7c-subscription-lifecycle` on `origin/main` `dbb718f`.
 
@@ -157,6 +161,15 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 ## 2. Done in the current prompt (checklist)
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
+
+**Phase 7 Prompt P9: CMS and website parity (`fix/p9-cms-web-parity` in every repo; not pushed):**
+- [ ] NEW-158 / R-84: photo check at CMS approval (be route + audit, CMS approve screen)
+- [ ] NEW-185 / R-85: KYC documents by type (be list, app Verification Docs; upload answer read correctly)
+- [ ] NEW-140: CMS branch forms (host and admin) on `/places` via our API; Google map with the web key; web location picker off browser Places/Geocoder; web key in `.env.example`
+- [ ] NEW-167: CMS move-branch option removed, last-branch copy, delete-block 409 with "Pause instead", pause / resume, store-plan notice
+- [ ] NEW-180: lapsed-plan view on CMS Subscription & Billing and web `/gymsera-billing`; R-86 bank details from the API
+- [ ] `visible_plan_required` / `last_visible_plan` copy in CMS and web
+- [ ] Spec §13 P9 section, ledger, handoff close-out
 
 **Phase 7 Prompt P5b: branch lifecycle, R-81 revised (be and app `fix/p5b-branch-lifecycle`; not pushed):**
 - [x] Item 1: cross-tenant GYM_HOST: NOT REPRODUCED, regression guard (be `f22e9b4`, `4f02922`)
@@ -632,3 +645,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 122 | 2026-10-31 | Claude Code (Opus 5.5) | CI red on P8 (why-not-live parse error after merge `ef72b38`) | be fix/p8-copy-brand-sweep: script and test restored to `13f6e32` (R-83); full suite 274 / 274 suites, 2690 / 2690 tests; pre-push checklist added to §1 | task complete | yes |
 | 122 | 2026-10-30 | Claude Code (Opus 5.5) | Pre-P8 small items (NEW-181; NEW-180 read-only check and guard; why-not-live script) | be `0e84e34` NEW-181 (red 2/3), `21c13e7` NEW-125 found live (200) and fixed (red 2/3), `eb72c4e` why-not-live (12 tests, red: no module); CMS `8bcad4e` (red 5/6; vitest 499 / 499), web `0085767` (red 2/3; 138 / 138); related be suites 8 / 8 (78); new NEW-184 (P2, decision) | task complete |
 | 123 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P8 (copy, brand, fake data; R-83; My Subscription entry) | be R-83 `e7baa90`, NEW-146 `619d16d`, NEW-168 `3912524`, R-78 `96643e1`, brand `1a40338`, why-not-live `13f6e32`; app 12 commits (`91d731a`..`89b28c4`); CMS `73a46be`, web `a233ebb`; every fix red before green; full be 2690 / 2690; app 386 x3; new NEW-185..188 | task complete |
+| 124 | 2026-10-31 | Claude Code (Opus 5.5) | Phase 7 P9 (CMS and website parity; owner scope NEW-140, 158, 167, 180, 185, visible_plan_required copy) | in progress | | |
