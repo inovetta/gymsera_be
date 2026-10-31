@@ -21,12 +21,12 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P9** (CMS and website parity; owner scope: NEW-140, NEW-167, NEW-180, NEW-158, `visible_plan_required` copy, NEW-185) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | backend done (be `e4a7a55` R-84, `b1c32d5` R-85, `a4f436d` NEW-140 admin routes); next: CMS |
+| Issue in progress | backend + CMS done; next: web (NEW-140 location picker on /places, NEW-180 lapse view, copy), then app (NEW-185, copy) |
 | Step within issue | (none) |
 
 **P9 branches** (P8 merged everywhere, checked 2026-10-31): `fix/p9-cms-web-parity` in every repo, from be `origin/main` `1451a99`, CMS `8a1ff1e`, web `f8390fd`, app `origin/master` `d20b051`; be docs `docs/p9-cms-web-parity` from `1451a99`. Not pushed.
 
-**Next action (P9):** CMS on `fix/p9-cms-web-parity`: approve screen photo check (send `photosChecked: true`, `approvalPhotos`, DELETE `/admin/tenants/:id/approval-photos`); Places location fields for `/gym/branches` and the admin branch form; NEW-167; NEW-180 lapse view + R-86; error copy. Then web, then app NEW-185.
+**Next action (P9):** web on `fix/p9-cms-web-parity`: `location-picker.tsx` off browser Places / Geocoder onto `/places` (map only with the web key, `.env.example` entry), `/gymsera-billing` lapse view, `visible_plan_required` copy. Then app: NEW-185 Verification Docs by type (and the upload answer is `data: [...]`, not `data.kycDocuments`), copy. Then full suites, spec §13, report. Commits so far: be `e4a7a55`, `b1c32d5`, `a4f436d`, `0778b74`, `d8abe69`; CMS `f536c01`, `6d212bf`, `a45d3e8`, `9029f3e`, `2da24ea`.
 
 **P7c branches**, not pushed, rebased 2026-10-30 after P5b was merged: be `fix/p7c-subscription-lifecycle` on `origin/main` `dbb718f` (`3f2c71e` items 1+2, `98d3888` 3, `8a1f255` 4, `0a88455` 6, `d6ea34d` 8, `7951006` 5, `727a27c` 7, `0bb85b6` 9, `1c728d8` pause-vs-lock test); app `fix/p7c-subscription-lifecycle` on `origin/master` `ba7feef` (`9fecda6` item 5); be docs `docs/p7c-subscription-lifecycle` on `origin/main` `dbb718f`.
 
@@ -163,12 +163,12 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
 **Phase 7 Prompt P9: CMS and website parity (`fix/p9-cms-web-parity` in every repo; not pushed):**
-- [ ] NEW-158 / R-84: photo check at CMS approval (be `e4a7a55` done; CMS approve screen)
+- [x] NEW-158 / R-84: photo check at CMS approval (be `e4a7a55`, CMS `6d212bf`)
 - [ ] NEW-185 / R-85: KYC documents by type (be `b1c32d5` done; app Verification Docs; upload answer read correctly)
-- [ ] NEW-140: CMS branch forms (host and admin) on `/places` via our API; Google map with the web key; web location picker off browser Places/Geocoder; web key in `.env.example`
-- [ ] NEW-167: CMS move-branch option removed, last-branch copy, delete-block 409 with "Pause instead", pause / resume, store-plan notice
-- [ ] NEW-180: lapsed-plan view on CMS Subscription & Billing and web `/gymsera-billing`; R-86 bank details from the API
-- [ ] `visible_plan_required` / `last_visible_plan` copy in CMS and web
+- [ ] NEW-140: CMS done (be `a4f436d`, `0778b74`; CMS `f536c01`); web location picker off browser Places/Geocoder, web key in `.env.example`: open
+- [x] NEW-167: CMS move-branch option removed, last-branch copy, delete-block 409 with "Pause instead", pause / resume, store-plan notice (CMS `a45d3e8`)
+- [ ] NEW-180: CMS done with R-86 (`9029f3e`); web `/gymsera-billing`: open
+- [ ] `visible_plan_required` / `last_visible_plan` copy: be `d8abe69`, CMS `2da24ea`; web, app: open
 - [ ] Spec §13 P9 section, ledger, handoff close-out
 
 **Phase 7 Prompt P5b: branch lifecycle, R-81 revised (be and app `fix/p5b-branch-lifecycle`; not pushed):**
