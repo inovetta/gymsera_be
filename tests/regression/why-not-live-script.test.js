@@ -7,8 +7,6 @@
  * platform, environment), the tenant database and organization, branch open / visible to
  * travellers / not suspended / not paused / not locked for billing (R-83), a plan travellers can
  * see, plus the city (id and name), which does not hide a branch but matters to the host.
- * travellers / not suspended / not paused, a plan travellers can see, plus the billing lock
- * and the city (id and name), which do not hide a branch but matter to the host.
  *
  * Each case also asks discovery itself (`isLiveForTravellers`, fresh), so the script can
  * never disagree with the real rule. Nothing is written: row counts are compared before and after.
@@ -111,18 +109,11 @@ describe('why-not-live: every live-gym condition, and which one fails', () => {
     try {
       const r = await only();
       expect(r.live).toBe(true);
-  test('billing lock and an unknown city are reported but, as in discovery, do not hide the branch', async () => {
-    await branch.update({ billingLockedAt: new Date(), cityId: 999999 });
-    try {
-      const r = await only();
-      expect(r.live).toBe(true);
-      expect(check(r, 'billing lock').status).toBe('WARN');
       expect(check(r, 'city').status).toBe('WARN');
       expect(check(r, 'city').detail).toMatch(/999999 \(no such city\)/);
       await agreesWithDiscovery(r);
     } finally {
       await branch.update({ cityId: city.id });
-      await branch.update({ billingLockedAt: null, cityId: city.id });
     }
   });
 
