@@ -408,6 +408,18 @@ const approveTenant = async (tenantId, adminUserId) => {
     throw err;
   }
 
+  // NEW-146: provisioning creates only the host's own plans, so the first approval needs one
+  // that travellers can see (the same rule as submit, tenant.service.js). Checked before
+  // anything changes.
+  if (!(await GymListing.count({ where: { tenantId: tenant.id } }))) {
+    const plans = require('./tenant.service').mainBranchPlans(tenant) || [];
+    if (!plans.some((p) => p && p.name && p.price != null && p.isPublic !== false)) {
+      const err = createError('This gym has no plan travellers can see. The host must add one before approval.', 422);
+      err.code = 'visible_plan_required';
+      throw err;
+    }
+  }
+
   // Re-approving an APPROVED tenant is Resume (FLOW-02): the first approval's
   // record is kept.
   if (tenant.status !== TenantStatus.APPROVED) {
@@ -1540,7 +1552,7 @@ const createAdminTenantBranch = async (tenantId, data, adminUserId) => {
     adminUserId,
     {
       actorType: 'ADMIN',
-      allowDefaultPackage: true,
+      allowNoPlan: true, // NEW-146: the host adds the plans; none is invented
       reason: `Branch "${data.branchName}" created by admin`,
     }
   );

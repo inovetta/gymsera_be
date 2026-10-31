@@ -5,8 +5,8 @@
  * live-gym rule (R-77, NEW-159; discovery.service.js `_buildAllActiveBranches`) for each
  * matching branch, and which ones fail: tenant status, an entitling subscription (status,
  * platform, environment), the tenant database and organization, branch open / visible to
- * travellers / not suspended / not paused, a plan travellers can see, plus the billing lock
- * and the city (id and name), which do not hide a branch but matter to the host.
+ * travellers / not suspended / not paused / not locked for billing (R-83), a plan travellers can
+ * see, plus the city (id and name), which does not hide a branch but matters to the host.
  *
  * Each case also asks discovery itself (`isLiveForTravellers`, fresh), so the script can
  * never disagree with the real rule. Nothing is written: row counts are compared before and after.
@@ -90,6 +90,7 @@ describe('why-not-live: every live-gym condition, and which one fails', () => {
     ['admin suspension', () => branch.update({ adminSuspended: true }), () => branch.update({ adminSuspended: false })],
     ['paused', () => branch.update({ pausedAt: new Date() }), () => branch.update({ pausedAt: null })],
     ['public plans', () => plan.update({ isPublic: false }), () => plan.update({ isPublic: true })],
+    ['billing lock', () => branch.update({ billingLockedAt: new Date() }), () => branch.update({ billingLockedAt: null })],
   ])('%s fails alone: named as the failing condition, and discovery agrees', async (name, breakIt, fixIt) => {
     await breakIt();
     try {
@@ -103,17 +104,16 @@ describe('why-not-live: every live-gym condition, and which one fails', () => {
     }
   });
 
-  test('billing lock and an unknown city are reported but, as in discovery, do not hide the branch', async () => {
-    await branch.update({ billingLockedAt: new Date(), cityId: 999999 });
+  test('an unknown city is reported but, as in discovery, does not hide the branch', async () => {
+    await branch.update({ cityId: 999999 });
     try {
       const r = await only();
       expect(r.live).toBe(true);
-      expect(check(r, 'billing lock').status).toBe('WARN');
       expect(check(r, 'city').status).toBe('WARN');
       expect(check(r, 'city').detail).toMatch(/999999 \(no such city\)/);
       await agreesWithDiscovery(r);
     } finally {
-      await branch.update({ billingLockedAt: null, cityId: city.id });
+      await branch.update({ cityId: city.id });
     }
   });
 

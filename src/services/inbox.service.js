@@ -118,7 +118,7 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
     const { GymListing } = require('../models/platform');
     const notificationsService = require('./notifications.service');
     const listing = await GymListing.findByPk(conversation.gymListingId);
-    const tenantName = listing ? listing.title : 'Gymsera Host';
+    const tenantName = listing ? listing.title : 'GymsEra Host';
 
     await notificationsService.createNotification({
       userId: conversation.userId,

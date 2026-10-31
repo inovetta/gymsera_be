@@ -126,6 +126,20 @@ P5 branches (from `origin/main` `e5cb373` / `origin/master` `a0ba3af`): be `fix/
 
 Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_ENV=staging|production` is passed (debug still defaults to staging). **Production:** `flutter build ipa --release --dart-define=APP_ENV=production` / `flutter build appbundle --release --dart-define=APP_ENV=production`. Check any CI or store-upload script passes it. Test: `test/regression/release_env_guard_test.dart`. Also pending: be branch `fix/discovery-reviews-500` (`eec0f03`, NEW-107: reviews route was 500 for every gym id; deploy needed).
 
+### Pre-push checklist (every push, every repo with tests)
+
+Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both sides of a conflict in
+`src/scripts/why-not-live.js` and its test. Neither file parsed, and CI failed 1 / 274 suites. Only the new suites had been run before the push.
+
+1. **After any merge or rebase, look for half-resolved conflicts.** `git diff --check` and
+   `git grep -nE '^(<<<<<<<|=======|>>>>>>>)'` must print nothing. Read the merge diff (`git show <merge>`)
+   for each conflicted file: a resolution that kept both sides parses often enough not to be noticed.
+2. **Syntax step.** Every changed JS file must parse: `git diff --name-only --diff-filter=AM origin/main...HEAD -- '*.js' | xargs -n1 node --check`.
+   Then `npx eslint` on the same files (CI does not run lint).
+3. **Run the full `npm test` before every push, not only the new suites.** Use the env below (local Docker MySQL, never the live
+   databases), on mains power, with `caffeinate -i`. Paste the final `Test Suites:` and `Tests:` lines in the spec §13 entry or the commit.
+   A push whose full run is not green waits, or says in the handoff which suite fails and why.
+
 ### Notes for running the suite locally
 
 - **Use `caffeinate -i npm test`.** A Mac that sleeps mid-run makes hook timeouts (one file took 3566 s) that look like real failures. Env: `MYSQL_HOST`, `PLATFORM_DB_HOST`, `TENANT_DB_HOST` = `127.0.0.1`, `TEST_MYSQL_PORT=3308`, `DISABLE_REDIS=true` (no local Redis). A full run takes about 25 minutes on this machine.
@@ -611,4 +625,5 @@ Release/profile builds of `gyms_era` fail to compile unless `--dart-define=APP_E
 | 119 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P7a (booking and payment: BUG-31, BUG-34, BUG-35, NEW-150, NEW-159; items 4, 5) | be `c9de1e4` (12 tests, red 9; related suites 10 / 10, 61 / 61; full suite: not yet clean on this machine: run 1 (be `c9de1e4`, local Docker MySQL 5.7, `DISABLE_REDIS=true`) 249 / 250 suites, 2547 / 2561 tests; the one failing suite, new-35 re-auth (14 tests, routes P7a does not touch), passes alone 14 / 14. Run 2 ran on battery and degraded into 30 s hook timeouts (16 suites) and was stopped; all 23 suites that failed in either run pass one by one (247 / 247). GitHub CI runs the full suite; a clean local run on mains power is still owed); app `ff8d8a0` (10 tests, red 9 / 9; `flutter test` 3x 343 / 343; analyze 168 = master); new NEW-163 to NEW-165 | task complete | yes |
 | 120 | 2026-10-30 | Claude Code (Opus 5.5) | Read-only reviews (branch delete/move; subscription lifecycle), then Phase 7 P5b (branch lifecycle, R-81 revised) | be `f22e9b4` item 1 NOT REPRODUCED (11 tests), `9e3e231` item 8 (4, red 4), `116c78d` items 3/4/5 (16, red 10/15), `276719b` item 2 (16 + 3, red 12/15), `9706b1a` item 7 (5, red 4), `c09ad61` item 6, `4f02922`; full suite 255 / 255 suites, 2599 / 2599 tests (29 min, mains power); app `f3d5078` item 8 (3, red 3), `538e538` items 2/3/6/7 (10, red 9); flutter 341/341; NEW-166 to NEW-178 | task complete | yes |
 | 121 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P7c (subscription lifecycle, R-82; items 1 to 9; pause-vs-lock rule with P5b) | be `15c2e97`..`cee0378` (8 commits, new tests 10 files / 45 tests, each red before green except the p7c-10 guard); related suites green; full suite after the rebase onto main with P5b 266 / 266 suites, 2656 / 2656 tests (32 min, mains power); app `d25b0fb` (5 tests, red 4/5; `flutter test` 356 / 356 x3 after the rebase; analyze 168 = master); new NEW-179 to NEW-183 | task complete | yes |
+| 122 | 2026-10-31 | Claude Code (Opus 5.5) | CI red on P8 (why-not-live parse error after merge `ef72b38`) | be fix/p8-copy-brand-sweep: script and test restored to `13f6e32` (R-83); full suite 274 / 274 suites, 2690 / 2690 tests; pre-push checklist added to §1 | task complete | yes |
 | 122 | 2026-10-30 | Claude Code (Opus 5.5) | Pre-P8 small items (NEW-181; NEW-180 read-only check and guard; why-not-live script) | be `0e84e34` NEW-181 (red 2/3), `21c13e7` NEW-125 found live (200) and fixed (red 2/3), `eb72c4e` why-not-live (12 tests, red: no module); CMS `8bcad4e` (red 5/6; vitest 499 / 499), web `0085767` (red 2/3; 138 / 138); related be suites 8 / 8 (78); new NEW-184 (P2, decision) | task complete |

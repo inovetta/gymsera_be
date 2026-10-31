@@ -65,7 +65,7 @@ describe('FLOW-05: a created organization is in the next GET /host/listings', ()
     try {
       created = await request(server).post('/api/v1/host/listings')
         .set('Authorization', `Bearer ${noTenantToken}`)
-        .send({ gymName: 'Flow05 Tenantless Org', branchSource: 'none', cityId: 1 });
+        .send({ gymName: 'Flow05 Tenantless Org', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }] }); // NEW-168: never an empty organization
       expect(created.status).toBe(201);
 
       const list = await request(server).get('/api/v1/host/listings').set('Authorization', `Bearer ${noTenantToken}`);

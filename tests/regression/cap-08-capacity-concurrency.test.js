@@ -134,7 +134,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       {
         gymListingId: listing.id,
         branchName: 'Keep Org Alive Branch',
-        allowDefaultPackage: true,
+        packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
       hostUser.id
     );
@@ -145,7 +145,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       {
         gymListingId: listing.id,
         branchName: 'Contended Branch',
-        allowDefaultPackage: true,
+        packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
       hostUser.id
     );
@@ -259,7 +259,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       {
         gymListingId: donorListing.id,
         branchName: 'Sole Active Branch',
-        allowDefaultPackage: true,
+        packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
       hostUser.id,
       { skipCapacityCheck: true }

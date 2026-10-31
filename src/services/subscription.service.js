@@ -224,9 +224,10 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   if (!branch) throw createError('Branch not found or inactive', 404);
   assertPlanBookableAt(plan, branch);
 
+  // R-83: a locked branch is not live, so the traveller gets the same answer as for any hidden gym.
+  await require('./discovery.service').assertBranchBookable(branch.id);
   const { assertBranchNotBillingLocked } = require('./branch-billing-lock.service');
   assertBranchNotBillingLocked(branch);
-  await require('./discovery.service').assertBranchBookable(branch.id);
 
   const existing = await MemberSubscription.findOne({
     where: {

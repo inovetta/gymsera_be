@@ -12,6 +12,15 @@ const listCities = async (req, res, next) => {
   }
 };
 
+// ── GET /discovery/stats (R-78) ──────────────────────────────────────────────
+const platformStats = async (req, res, next) => {
+  try {
+    return sendSuccess(res, await discoveryService.platformStats());
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── GET /discovery/gyms ───────────────────────────────────────────────────────
 const listGyms = async (req, res, next) => {
   try {
@@ -279,6 +288,7 @@ const getTopHosts = async (req, res, next) => {
 
 module.exports = {
   listCities,
+  platformStats,
   listGyms,
   nearbyGyms,
   mapGyms,

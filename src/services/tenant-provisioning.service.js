@@ -486,7 +486,6 @@ const stepCreateBranch = async (ctx) => {
       null,
       {
         actorType: 'SYSTEM',
-        allowDefaultPackage: true,
         isProvisioning: true,
         skipCapacityCheck: true,
         skipCapacityEvent: true,
@@ -601,30 +600,8 @@ const stepCreateBranch = async (ctx) => {
       }
     }
 
-    // Fallback: If no plans were provided or created, ensure at least 1 standard plan exists
-    const existingCount = await models.MembershipPlan.count({
-      where: { branchId: branch.id, status: 'ACTIVE' }
-    });
-    if (existingCount === 0) {
-      const defaultPrice = 5000;
-      await models.MembershipPlan.create({
-        gymId,
-        branchId: branch.id,
-        name: 'Standard Membership',
-        description: 'Full access to gym facilities and equipment.',
-        durationType: 'MONTHLY',
-        durationValue: 1,
-        price: defaultPrice,
-        joiningFee: 0,
-        securityFee: 0,
-        isTrial: false,
-        isPublic: true,
-        isDeactivated: false,
-        status: 'ACTIVE',
-      }).catch((pErr) => console.warn('[Provisioning] Fallback plan creation error:', pErr.message));
-      lowestPrice = defaultPrice;
-      console.log(`[Provisioning] Fallback initial MembershipPlan created in '${dbName}'`);
-    }
+    // NEW-146: no fallback plan. Approval refuses a gym with no visible plan
+    // (admin.service.js#approveTenant), so only the host's own plans exist here.
 
     if (listingId && lowestPrice !== null) {
       await GymListing.update({ minPrice: lowestPrice }, { where: { id: listingId } }).catch(() => {});

@@ -8,14 +8,15 @@ const { createError, parsePagination, buildPagination } = require('../utils/resp
 
 /**
  * The one rule for "travellers can see this branch": open (ACTIVE), approved for
- * travellers, not suspended by an administrator, and not paused by its host
- * (P5b item 2). Every traveller-facing branch read uses it.
+ * travellers, not suspended by an administrator, not paused by its host
+ * (P5b item 2) and not locked for billing (R-83). Every traveller-facing branch read uses it.
  */
 const TRAVELLER_VISIBLE_BRANCH = () => ({
   status: 'ACTIVE',
   travelerVisibilityStatus: 'active',
   adminSuspended: { [Op.ne]: true },
   pausedAt: null,
+  billingLockedAt: null,
 });
 
 const _normalizeFacilities = (listing) => {
@@ -608,6 +609,18 @@ const listCities = async () => {
     return plain;
   }).filter((c) => c.gymCount > 0)
     .sort((a, b) => b.gymCount - a.gymCount || a.name.localeCompare(b.name));
+};
+
+/**
+ * R-78 (BUG-07): the host intro's numbers, all counted, none typed in: gyms live for travellers
+ * (the R-77 snapshot every list uses), cities with a live gym, and active accounts (platform
+ * administrators and closed accounts excluded).
+ */
+const platformStats = async () => {
+  const branches = await _getAllActiveBranches();
+  const cities = new Set(branches.map((b) => b.cityId).filter(Boolean));
+  const activeUsers = await User.count({ where: { status: 'ACTIVE', role: { [Op.ne]: 'PLATFORM_ADMIN' } } });
+  return { liveGyms: branches.length, cities: cities.size, activeUsers };
 };
 
 // ── haversineKm ───────────────────────────────────────────────────────────────
@@ -1206,6 +1219,7 @@ module.exports = {
   getGym,
   getPaymentDetails,
   isLiveForTravellers,
+  platformStats,
   assertBranchBookable,
   listCities,
   nearbyGyms,
