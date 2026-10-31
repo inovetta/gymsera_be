@@ -281,7 +281,7 @@ describe('FLOW-02: HTTP approve endpoint', () => {
       .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .set('Idempotency-Key', key)
-      .send({});
+      .send({ photosChecked: true });
     expect(first.status).toBe(200);
     expect(first.body.data.provisioning).toMatchObject({ state: 'ACTIVE', step: 6 });
 
@@ -289,7 +289,7 @@ describe('FLOW-02: HTTP approve endpoint', () => {
       .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .set('Idempotency-Key', key)
-      .send({});
+      .send({ photosChecked: true });
     expect(second.status).toBe(200);
     expect(second.headers['x-idempotent-replay']).toBe('true');
     await expectFullyProvisioned(tenant);
@@ -306,7 +306,7 @@ describe('FLOW-02: HTTP approve endpoint', () => {
     const res = await request(app)
       .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
+      .send({ photosChecked: true });
     expect(res.status).toBe(202);
     expect(res.body.data.provisioning).toMatchObject({ state: 'LISTING_CREATED', step: 3, totalSteps: 6, inProgress: true });
 

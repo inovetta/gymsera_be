@@ -1,6 +1,7 @@
 const tenantService = require('../services/tenant.service');
 const storageService = require('../services/storage.service');
 const { sendSuccess, createError } = require('../utils/response.utils');
+const { KycDocumentType } = require('../constants/subscription-status');
 
 // ── POST /tenants/register ────────────────────────────────────────────────────
 const register = async (req, res, next) => {
@@ -121,6 +122,9 @@ const uploadKycDocuments = async (req, res, next) => {
     }
 
     const { documentType } = req.body;
+    if (documentType !== undefined && !Object.values(KycDocumentType).includes(documentType)) {
+      throw createError('Choose which document this is: ID, business registration or proof of premises.', 422, 'invalid_document_type');
+    }
     const result = await tenantService.uploadKycDocuments({
       tenantId: req.params.id,
       userId: req.user.sub,

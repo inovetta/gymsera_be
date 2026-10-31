@@ -443,7 +443,7 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, address, packages, images } = req.body;
+      const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
       if (!gymName) throw createError('gymName is required', 400);
 
       // How this organization's first branch gets filled:
@@ -620,6 +620,7 @@ const createListing = async (req, res, next) => {
             areaId,
             latitude,
             longitude,
+            googlePlaceId: googlePlaceId || null, // NEW-140: the address picked from Google
             phone: contactPhone || tenant.phone || null,
             images: Array.isArray(images) && images.length > 0
               ? images

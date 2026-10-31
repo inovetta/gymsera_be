@@ -4,6 +4,7 @@ const adminController     = require('../controllers/admin.controller');
 const reportsController   = require('../controllers/reports.controller');
 const discoveryController = require('../controllers/discovery.controller');
 const discoveryValidators = require('../validators/discovery.validator');
+const gymsValidators = require('../validators/gyms.validator');
 const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
@@ -115,7 +116,13 @@ router.get('/tenants/:id', adminController.getTenant);
  *       502:
  *         description: A provisioning step failed; the tenant stays APPROVED and can be resumed
  */
-router.post('/tenants/:id/approve', idempotency(), validate.allowBody([]), adminController.approveTenant);
+router.post('/tenants/:id/approve', idempotency(), validate.allowBody(['photosChecked']), adminController.approveTenant);
+// R-84 (NEW-158): take a photo off an application before approving it (audited).
+router.delete(
+  '/tenants/:id/approval-photos',
+  validate.strict([body('imageUrl').isString().trim().notEmpty().withMessage('imageUrl is required')], { stage: 2 }),
+  adminController.removeApprovalPhoto
+);
 
 /**
  * @swagger
@@ -244,8 +251,18 @@ router.post('/tenants/:id/gym-listing/images', upload.images('images', 10), uplo
 router.delete('/tenants/:id/gym-listing/images', validate.allowBody(['imageUrl']), adminController.deleteGymListingImage);
 
 // ── Admin branch management ────────────────────────────────────────────────────
-router.post('/tenants/:id/branches', validate.allowBody(['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages']), adminController.createAdminTenantBranch);
-router.patch('/tenants/:id/branches/:branchId', validate.allowBody(['branchName', 'address', 'cityId', 'areaId', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'status', 'facilities', 'latitude', 'longitude']), adminController.updateAdminTenantBranch);
+// NEW-140 (P9): the CMS admin form picks the place from Google through /places, like the host forms;
+// the location fields get the host routes' range and place-id rules (gyms.validator.js branchLocation).
+router.post(
+  '/tenants/:id/branches',
+  validate.strict(gymsValidators.branchLocation, { stage: 2, allow: ['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages'] }),
+  adminController.createAdminTenantBranch
+);
+router.patch(
+  '/tenants/:id/branches/:branchId',
+  validate.strict(gymsValidators.branchLocation, { stage: 2, allow: ['branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'status', 'facilities'] }),
+  adminController.updateAdminTenantBranch
+);
 router.post('/tenants/:id/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadAdminBranchImages);
 router.delete('/tenants/:id/branches/:branchId/images', validate.allowBody(['imageUrl']), adminController.deleteAdminBranchImage);
 router.patch(

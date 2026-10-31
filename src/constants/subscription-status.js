@@ -28,4 +28,12 @@ const KycStatus = {
   REJECTED: 'REJECTED',
 };
 
-module.exports = { SubscriptionStatus, TenantStatus, KycStatus };
+// Phase 7 P9, R-85 (NEW-185): the verification documents a host can send. An upload with no type
+// (older app builds) keeps the storage default.
+const KycDocumentType = {
+  OWNER_ID: 'OWNER_ID',
+  BUSINESS_REGISTRATION: 'BUSINESS_REGISTRATION',
+  PROOF_OF_PREMISES: 'PROOF_OF_PREMISES',
+};
+
+module.exports = { SubscriptionStatus, TenantStatus, KycStatus, KycDocumentType };

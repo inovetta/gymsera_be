@@ -51,7 +51,7 @@ describe('NEW-113: no branch is filed under city id 1 by default', () => {
       cityId: null,
       mainBranchDataJson: { ...completeListing, cityId: null },
     });
-    const res = await asPersona('platformAdmin').post(`/admin/tenants/${tenant.id}/approve`).send({});
+    const res = await asPersona('platformAdmin').post(`/admin/tenants/${tenant.id}/approve`).send({ photosChecked: true });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('city_required');
     const { Tenant } = require('../../src/models/platform');

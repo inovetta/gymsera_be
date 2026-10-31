@@ -132,7 +132,7 @@ describe('NEW-127: provisioning ends with every tenant migration recorded', () =
     const res = await request(app)
       .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
+      .send({ photosChecked: true });
     expect(res.status).toBe(200);
 
     await tenant.reload();
@@ -151,7 +151,7 @@ describe('NEW-127: provisioning ends with every tenant migration recorded', () =
     const res = await request(app)
       .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
+      .send({ photosChecked: true });
     expect(res.status).toBe(502);
 
     await tenant.reload();
@@ -165,7 +165,7 @@ describe('NEW-127: provisioning ends with every tenant migration recorded', () =
     const resumed = await request(app)
       .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
+      .send({ photosChecked: true });
     expect(resumed.status).toBe(200);
     await tenant.reload();
     expect(tenant.status).toBe('ACTIVE');

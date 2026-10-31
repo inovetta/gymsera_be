@@ -184,10 +184,18 @@ const ERROR_COPY = {
     ar: 'تحتاج كل مؤسسة إلى فرعها الأول. أضف الفرع مع خططه.',
     action: 'none',
   },
+  // P9: sent by Add Branch, New Organization, submit and approval, so it names the switch, not "submit".
   visible_plan_required: {
-    en: 'Show at least one plan to travellers before you submit.',
-    ur: 'جمع کرانے سے پہلے کم از کم ایک پلان مسافروں کو دکھائیں۔',
-    ar: 'اعرض خطة واحدة على الأقل للمسافرين قبل الإرسال.',
+    en: 'Turn on "Show to Travellers" for at least one plan, then try again.',
+    ur: 'کم از کم ایک پلان کے لیے "مسافروں کو دکھائیں" آن کریں، پھر دوبارہ کوشش کریں۔',
+    ar: 'فعّل "إظهار للمسافرين" لخطة واحدة على الأقل، ثم حاول مرة أخرى.',
+    action: 'none',
+  },
+  // Phase 7 P9 (R-85, NEW-185): a verification document of a type we do not take.
+  invalid_document_type: {
+    en: 'Choose which document this is: ID, business registration or proof of premises.',
+    ur: 'بتائیں یہ کون سی دستاویز ہے: شناختی کارڈ، کاروبار کی رجسٹریشن یا جگہ کا ثبوت۔',
+    ar: 'اختر نوع هذا المستند: الهوية أو السجل التجاري أو إثبات المقر.',
     action: 'none',
   },
   tenant_not_found: {

@@ -1,5 +1,5 @@
 const { UserRole } = require('./roles');
-const { SubscriptionStatus, TenantStatus, KycStatus } = require('./subscription-status');
+const { SubscriptionStatus, TenantStatus, KycStatus, KycDocumentType } = require('./subscription-status');
 const { PaymentStatus, PaymentMethod, InvoiceStatus } = require('./payment-status');
 
 module.exports = {
@@ -7,6 +7,7 @@ module.exports = {
   SubscriptionStatus,
   TenantStatus,
   KycStatus,
+  KycDocumentType,
   PaymentStatus,
   PaymentMethod,
   InvoiceStatus,
