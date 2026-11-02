@@ -17,12 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-10-31 (Phase 7 P9 done locally, not pushed) |
+| Last updated | 2026-11-02 (Phase 7 P9b started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P9** (CMS and website parity; owner scope: NEW-140, NEW-167, NEW-180, NEW-158, `visible_plan_required` copy, NEW-185) |
-| Prompt status | `DONE` (owner scope; the rest of BUG-37 is listed under "Not done" in spec §13 "Phase 7 Prompt P9") <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **Phase 7 Prompt P9b** (rest of BUG-37: item 0 old-build KYC compatibility; NEW-112 / R-77 Show to Travellers; R-80 CMS currency, naming, tier names; Team & Access; NEW-151 branch lists; BUG-29; BUG-31; NEW-193; NEW-192) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | Item 0 (backend, test not yet run: local Docker MySQL was not starting) and the CMS items |
+| Step within issue | Survey done (root causes below); building now |
+
+**P9b branches** (P9 code merged and deployed; P9 docs PR not merged yet, so this docs branch is stacked on it): be `fix/p9b-cms-parity` from `origin/main` `72d8a74`; CMS `fix/p9b-cms-parity` from `69ec36e`; web `fix/p9b-cms-parity` from `7646ac6`; be docs `docs/p9b-cms-parity` on `origin/docs/p9-cms-web-parity` `0bb921f` (worktree `../gymsera_be_docs_p9b`). No app change planned.
+
+**P9b plan (root causes found 2026-11-02):** item 0: live app reads the upload answer as `data.kycDocuments` (API answers `data: [...]`) and casts `/tenants/me` `kycDocumentsJson` items `as String` (API sends objects with `key`, NEW-190) → API: host tenant answers send document names; an untyped upload answers `{ kycDocuments }`. Item 1: CMS `/gym/plans` has no Show to Travellers control (`plansApi` has no `/public` call). Item 2: `Price (PKR)` hard-coded, `formatCurrency` without the plan currency, `formatDuration` QUARTERLY = quarters; CMS Add Branch first plan sends `durationValue` 12 for YEARLY and 3 for QUARTERLY (`gym/branches/page.tsx`; API stores it, `gym.service.js:404`) = 12 years / 9 months; tier names: billing page and admin tab use package names, API `tierName` exists. Item 3: Team load error is an EmptyState without reference; invite roles error without retry; branch step without loading / error / empty and lists deleted branches. Item 4: branch cards show no traveller state or billing lock; organization strip hides non-ACTIVE organizations; NEW-151 profile form. Item 6: CMS `gym/subscriptions` and web `subscriptions/[id]` / `subscription-card` print estimated dates on a member's PENDING request; no pending plan change shown. Item 7: remove the Status select (API refuses it). Item 8: web registration city `<Select>` over `GET /cities` → `/places` city search.
 
 **P9 branches**, not pushed, `fix/p9-cms-web-parity` in every repo (P8 merged everywhere, checked 2026-10-31): be from `origin/main` `1451a99` (`e4a7a55` R-84, `b1c32d5` R-85, `a4f436d` + `0778b74` NEW-140, `d8abe69` copy); CMS from `8a1ff1e` (`f536c01` NEW-140, `6d212bf` R-84, `a45d3e8` NEW-167, `9029f3e` NEW-180 + R-86, `2da24ea` copy); web from `f8390fd` (`e19018f` + `6a9fc75` NEW-140, `8333a46` + `9de5922` NEW-180, `0ff63b2` copy); app from `origin/master` `d20b051` (`a8829b8` + `661a969` NEW-185, `2ffb5ac` copy); be docs `docs/p9-cms-web-parity` from `1451a99`. Results: backend full suite 278 / 278 suites, 2715 / 2715 tests (41 min, mains power, local Docker MySQL, DISABLE_REDIS=true, at be `d8abe69`); app `flutter test` 392 / 392 x3 (one flake in run 2, NEW-189), analyze 166 = master; CMS vitest 528 / 528, tsc, lint, build, Playwright 27 / 27, security 9 / 9; web vitest 152 / 152, tsc, lint, build, Playwright 4 / 4, security 15 / 15.
 
@@ -648,3 +652,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 122 | 2026-10-30 | Claude Code (Opus 5.5) | Pre-P8 small items (NEW-181; NEW-180 read-only check and guard; why-not-live script) | be `0e84e34` NEW-181 (red 2/3), `21c13e7` NEW-125 found live (200) and fixed (red 2/3), `eb72c4e` why-not-live (12 tests, red: no module); CMS `8bcad4e` (red 5/6; vitest 499 / 499), web `0085767` (red 2/3; 138 / 138); related be suites 8 / 8 (78); new NEW-184 (P2, decision) | task complete |
 | 123 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P8 (copy, brand, fake data; R-83; My Subscription entry) | be R-83 `e7baa90`, NEW-146 `619d16d`, NEW-168 `3912524`, R-78 `96643e1`, brand `1a40338`, why-not-live `13f6e32`; app 12 commits (`91d731a`..`89b28c4`); CMS `73a46be`, web `a233ebb`; every fix red before green; full be 2690 / 2690; app 386 x3; new NEW-185..188 | task complete |
 | 124 | 2026-10-31 | Claude Code (Opus 5.5) | Phase 7 P9 (CMS and website parity; owner scope NEW-140, 158, 167, 180, 185, visible_plan_required copy; R-84 to R-86) | be 5 commits (new suites 5, each red first); CMS 5; web 5; app 3; backend full 278 / 278 suites, 2715 / 2715 tests (41 min, mains power, local Docker MySQL, DISABLE_REDIS=true, at be `d8abe69`); app 392 x3, CMS 528, web 152; NEW-189 to NEW-193 | task complete (not pushed) | yes |
+| 125 | 2026-11-02 | Claude Code (Opus 5.5) | Phase 7 P9b (rest of BUG-37) | in progress | | |
