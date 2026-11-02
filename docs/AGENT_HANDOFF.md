@@ -17,14 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-02 (Phase 7 P9b started) |
+| Last updated | 2026-11-02 (P9b: CMS and web done, backend written, not yet tested) |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P9b** (rest of BUG-37: item 0 old-build KYC compatibility; NEW-112 / R-77 Show to Travellers; R-80 CMS currency, naming, tier names; Team & Access; NEW-151 branch lists; BUG-29; BUG-31; NEW-193; NEW-192) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | Item 0 (backend, test not yet run: local Docker MySQL was not starting) and the CMS items |
-| Step within issue | Survey done (root causes below); building now |
+| Issue in progress | Backend (item 0, admin plan currency, review gymTitle): code and tests written, uncommitted, not run (Docker Desktop did not start on 2026-11-02) |
+| Step within issue | Run `tests/regression/p9b-old-build-kyc.test.js` and `p9b-admin-plan-currency-review-names.test.js` red on `origin/main` code then green, commit, full backend suite |
 
 **P9b branches** (P9 code merged and deployed; P9 docs PR not merged yet, so this docs branch is stacked on it): be `fix/p9b-cms-parity` from `origin/main` `72d8a74`; CMS `fix/p9b-cms-parity` from `69ec36e`; web `fix/p9b-cms-parity` from `7646ac6`; be docs `docs/p9b-cms-parity` on `origin/docs/p9-cms-web-parity` `0bb921f` (worktree `../gymsera_be_docs_p9b`). No app change planned.
+
+**P9b progress:** CMS `fix/p9b-cms-parity`: `0ca595d` NEW-112, `80103bb` BUG-24 / R-80, `f47d0bc` Team, `c879530` branch states, `6bc316c` NEW-193, `9d07cc5` BUG-31, `dabef2d` BUG-29 reviews, `93585de` NEW-194 (vitest 565 / 565, tsc, lint, build, Playwright 27 / 27, security 9 / 9). Web `fix/p9b-cms-parity`: `2556627` BUG-31, `7629f5e` NEW-192 (vitest 159 / 159, tsc, lint, build, Playwright 4 / 4, security 15 / 15). Backend `fix/p9b-cms-parity` (uncommitted): `src/controllers/tenants.controller.js` (hostTenantView, untyped upload answers `{ kycDocuments }`), `src/services/admin.service.js` (withCurrency on admin plans), `src/services/discovery.service.js` (adminListReviews `gymTitle`), tests `tests/regression/p9b-old-build-kyc.test.js`, `tests/regression/p9b-admin-plan-currency-review-names.test.js`. Node 22 (`~/.nvm/versions/node/v22.22.1`) runs the CMS / web tests; Node 20.17 cannot load vitest here.
 
 **P9b plan (root causes found 2026-11-02):** item 0: live app reads the upload answer as `data.kycDocuments` (API answers `data: [...]`) and casts `/tenants/me` `kycDocumentsJson` items `as String` (API sends objects with `key`, NEW-190) → API: host tenant answers send document names; an untyped upload answers `{ kycDocuments }`. Item 1: CMS `/gym/plans` has no Show to Travellers control (`plansApi` has no `/public` call). Item 2: `Price (PKR)` hard-coded, `formatCurrency` without the plan currency, `formatDuration` QUARTERLY = quarters; CMS Add Branch first plan sends `durationValue` 12 for YEARLY and 3 for QUARTERLY (`gym/branches/page.tsx`; API stores it, `gym.service.js:404`) = 12 years / 9 months; tier names: billing page and admin tab use package names, API `tierName` exists. Item 3: Team load error is an EmptyState without reference; invite roles error without retry; branch step without loading / error / empty and lists deleted branches. Item 4: branch cards show no traveller state or billing lock; organization strip hides non-ACTIVE organizations; NEW-151 profile form. Item 6: CMS `gym/subscriptions` and web `subscriptions/[id]` / `subscription-card` print estimated dates on a member's PENDING request; no pending plan change shown. Item 7: remove the Status select (API refuses it). Item 8: web registration city `<Select>` over `GET /cities` → `/places` city search.
 
