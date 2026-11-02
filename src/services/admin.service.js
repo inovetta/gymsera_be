@@ -995,11 +995,14 @@ const revealTenantMemberContact = async (tenantId, memberUserId, { adminUserId, 
 
 // ── getTenantMembershipPlans (admin) ──────────────────────────────────────────
 const getTenantMembershipPlans = async (tenantId) => {
-  const { models } = await _getTenantDb(tenantId);
+  const tenantDb = await _getTenantDb(tenantId);
+  const { models } = tenantDb;
   const plans = await models.MembershipPlan.findAll({
     include: [{ model: models.Branch, as: 'branch', attributes: ['id', 'branchName'] }],
     order: [['createdAt', 'DESC']],
   });
+  // P9b (R-80, BUG-09): the admin Plans tab shows each plan in its branch's currency, as every other plan payload.
+  await require('./membership-plan.service').withCurrency(tenantDb, plans);
   return { plans };
 };
 
