@@ -9,6 +9,10 @@ const { signToken } = require('../../src/utils/jwt.utils');
 const { generateAttendanceQrToken, _clearInMemoryNonces } = require('../../src/utils/qr.utils');
 const { startTestServer, stopTestServer } = require('../harness/test-server');
 
+// NEW-199: the membership is current on any day the suite runs. It used fixed October 2026 dates, so
+// from 2026-11-01 every check-in answered 403 (membership ended) and six cases failed.
+const daysFromToday = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
 describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & duplicate window', () => {
   let dbHarness;
   let personas;
@@ -57,8 +61,8 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
       userId: memberUser.id,
       branchId: branch.id,
       membershipPlanId: plan.id,
-      startDate: '2026-10-01',
-      endDate: '2026-10-31',
+      startDate: daysFromToday(-5),
+      endDate: daysFromToday(30),
       status: 'ACTIVE',
       qrCode: 'GE-STATIC-TOKEN-12345',
     });
@@ -73,8 +77,8 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
       subscriptionId: subscription.id,
       planName: plan.name,
       status: 'ACTIVE',
-      startDate: '2026-10-01',
-      endDate: '2026-10-31',
+      startDate: daysFromToday(-5),
+      endDate: daysFromToday(30),
     });
 
     appServer = await startTestServer();
