@@ -14,6 +14,9 @@ const { normalizeKycDocuments } = require('../services/kyc-storage.service');
 const hostTenantView = (result) => {
   if (!result || !result.tenant) return result;
   const tenant = typeof result.tenant.toJSON === 'function' ? result.tenant.toJSON() : { ...result.tenant };
+  // NEW-195: the tenant database's encrypted connection string and name are never the owner's to read.
+  delete tenant.connectionStringEncrypted;
+  delete tenant.dbName;
   if (tenant.kycDocumentsJson != null) {
     tenant.kycDocumentsJson = normalizeKycDocuments(tenant.kycDocumentsJson).map((d) => d.originalName || 'document');
   }
