@@ -8,6 +8,7 @@
     "dev": "node --watch server.js",
     "seed:packages": "node seed-packages.js",
     "lint": "eslint .",
+    "lint:src": "eslint src",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "test": "jest --testTimeout=30000 --runInBand --forceExit",

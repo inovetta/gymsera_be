@@ -33,6 +33,10 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      # NEW-204: errors fail the build, warnings do not. tests/, scripts/ and the root one-off
+      # scripts are linted after launch (spec §13 P10b).
+      - name: Lint (src/)
+        run: npm run lint:src
       # Throwaway keys for this run only — generated, never committed.
       - name: Generate test-only keys
         run: |
