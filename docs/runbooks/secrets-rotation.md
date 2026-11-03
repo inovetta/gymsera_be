@@ -37,3 +37,30 @@ The key protects `tenants.connection_string_encrypted` and `users.apple_refresh_
 ## 4. Adding a secret to the scan allow-list
 
 Do not. If the scan flags a fake value in a test, change the fake so it does not look like a real token. A real finding means: rotate the secret first, then fix the commit.
+
+## 5. Rotation list before launch (P10, 2026-11-03)
+
+Why now: NEW-195 (P9b) found that host tenant answers sent the tenant's `connectionStringEncrypted` and
+`dbName` to its owner (fixed in be `77a18e1`). The ciphertext alone is useless without
+`TENANT_CONN_ENCRYPTION_KEY`, but anyone who saved one and ever learns the key can read the tenant
+database password. Rotating the key re-encrypts the **same** password, so the tenant database password is
+rotated too. Everything else below is routine hygiene before real customers. Values never go in git, a doc
+or a chat; they go in the server's protected settings (R-55).
+
+| # | Secret (env) | Where | Why | How | Check after |
+|---|---|---|---|---|---|
+| 1 | `TENANT_DB_PASS` (MySQL user `TENANT_DB_USER`) | tenant MySQL server; inside every `tenants.connection_string_encrypted` | NEW-195 ciphertexts left the server | change the MySQL user's password; then every tenant's stored connection string must be rebuilt with it. **No tool does this yet (NEW-203)**: do it in the same window as row 2, or wait for the tool | open a tenant dashboard; `node src/scripts/check-environment.js` |
+| 2 | `TENANT_CONN_ENCRYPTION_KEY` | API `.env` | NEW-195; the demo key check of section 1 | section 3 (`rotate-encryption-key.js`, dry run first, `--apply`), restart; with R-88 there is no Redis cache to clear | section 3 step 6 |
+| 3 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | API `.env` | launch hygiene; signs every session | new 64-byte random values, restart. **Every user is signed out** (mobile asks to sign in again); do it in the launch window | sign in on app, CMS, web |
+| 4 | `TENANT_DB_ADMIN_PASS`, `PLATFORM_DB_PASS` | MySQL; API `.env` | launch hygiene | change in MySQL, then `.env`, restart | `/health` |
+| 5 | Google: `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` key, `FIREBASE_SERVICE_ACCOUNT_JSON` key, `GOOGLE_MAPS_SERVER_KEY` | Google Cloud console; API `.env` | launch hygiene; the Maps key moves to GymsEra's own project anyway (R-76a) | create a new key for each service account, deploy it, then delete the old key in the console; Maps: R-76a keys | a sandbox purchase sync; a push; a Places search |
+| 6 | Apple: `APPLE_IAP_PRIVATE_KEY_PATH` (.p8, `APPLE_IAP_KEY_ID`), `APPLE_SIGNIN_PRIVATE_KEY_PATH` | App Store Connect → Keys; API server file | launch hygiene | create a new In-App Purchase key (and Sign in with Apple key), copy the .p8 to the server, update the key id, restart, then revoke the old key | `POST /billing/ios/sync` with a sandbox purchase |
+| 7 | `SMTP_USER` / `SMTP_PASS` | mail provider; API `.env` | the old mailbox password is in git history (section 1); NEW-73 moves to a transactional provider | set when NEW-73 moves to ZeptoMail or SES (`SMTP_*` only) | team welcome e-mail arrives |
+| 8 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare R2; API `.env` | launch hygiene; KYC bucket shares the credentials (R-27) | new API token, deploy, delete the old one | upload a photo and a KYC document |
+| 9 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe; API `.env` | sandbox only today (R-7, web card off) | roll in the Stripe dashboard when a live key is first set | n/a until R-39 |
+| 10 | `METRICS_KEY`, `CRON_SECRET`, `DEVICE_API_KEY`, `PAYMENT_TEST_KEY` | API `.env` | launch hygiene | new random values; `DEVICE_API_KEY` must also be set on each gym device | `/metrics` with the new key |
+| 11 | Apple / Google client keys in the app (`GOOGLE_MAPS_API_KEY` in `android/local.properties`, `ios/Flutter/MapsKey.xcconfig`) | build machine only | R-76a: new restricted keys in GymsEra's project | build with the new keys; the friend's project deletes the old key after the new build is live | map shows on both phones |
+
+Order on the day: 4, 1 + 2 (one maintenance window, backup first), 3 (signs everyone out), then 5, 6, 8, 10
+while the API runs; 7 with NEW-73; 11 with the next store build. `firebase-service-account.json` is
+git-ignored (`.gitignore:17`) and was never committed (checked `git log --all` 2026-11-03).

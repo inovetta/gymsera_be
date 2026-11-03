@@ -44,6 +44,10 @@ start it). Both paths use the same database locks (REL-03), so an overlap is ski
 
 Rollback: delete the two tasks and remove `SCHEDULED_JOBS` (or set `in-process`), then `iisreset`.
 
+## Redis (P10 item 4, R-88)
+
+The jobs lock through MySQL when there is no Redis; production runs without it (`DISABLE_REDIS=true`). Since P10 the CLI prints nothing about Redis then. If the task output shows `[Redis] not reachable at ...`, `REDIS_HOST` is set but nothing listens: set `DISABLE_REDIS=true` ([redis.md](redis.md)).
+
 ## Also (optional): keep the API process alive
 
 Useful for the first request after a quiet period and for Socket.IO, but not a replacement for

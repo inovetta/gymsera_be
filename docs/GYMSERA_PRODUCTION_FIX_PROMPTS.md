@@ -421,6 +421,8 @@ No new features. Prove the flows work end to end on staging with the real backen
 Report per Prompt G.
 ```
 
+Status 2026-11-03: run with the owner's own scope (items 1 to 9: NEW-179 / R-87, security pass, capacity ledger, Redis / R-88, Apple ownership mismatch, release logging, NEW-177 to NEW-198, launch readiness, release-gate table), DONE locally, spec §13 "Phase 7 Prompt P10". Not done from the text above: the QA script `docs/qa/PHASE7_E2E.md`, the integration / Playwright automation of flows A to F, the 6A gap re-check and the device checklist pass; they stay for a P10b.
+
 ---
 
 ## 6. Device checklist for the owner (after P10)
