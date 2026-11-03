@@ -82,6 +82,26 @@ function clearUserAuthCache(userId) {
   }
 }
 
+/** Redis key of a user's cached auth status (written by middleware/authenticate.js, 60 s). */
+const userAuthRedisKey = (userId) => `user:${userId}:auth`;
+
+/**
+ * Forget a user's auth status everywhere it is cached: this process and Redis (NEW-200).
+ * Called by the User model after any update or delete, so a suspension or permission change is
+ * never undone by a copy another process left in Redis. Never throws.
+ * @param {string|number} userId
+ */
+async function invalidateUserAuth(userId) {
+  if (!userId) return;
+  clearUserAuthCache(userId);
+  try {
+    const { safeRedisDel } = require('../config/redis.config');
+    await safeRedisDel(userAuthRedisKey(userId));
+  } catch (_) {
+    /* Redis is optional; the copy expires after 60 s at most */
+  }
+}
+
 /**
  * Get current entry count (for telemetry / tests).
  * @returns {number}
@@ -94,6 +114,8 @@ module.exports = {
   getUserAuthCache,
   setUserAuthCache,
   clearUserAuthCache,
+  invalidateUserAuth,
+  userAuthRedisKey,
   getUserAuthCacheSize,
   MAX_ENTRIES,
   DEFAULT_TTL_MS,

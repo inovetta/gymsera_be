@@ -110,17 +110,14 @@ module.exports = (sequelize) => {
         { name: 'users_apple_id', fields: ['apple_id'] },
       ],
       hooks: {
-        afterUpdate: (user) => {
-          try {
-            const { clearUserAuthCache } = require('../../utils/user-auth-cache');
-            if (user?.id) clearUserAuthCache(user.id);
-          } catch (_) {}
+        // NEW-200: clear the auth status in this process and in Redis.
+        afterUpdate: async (user) => {
+          const { invalidateUserAuth } = require('../../utils/user-auth-cache');
+          if (user?.id) await invalidateUserAuth(user.id);
         },
-        afterDestroy: (user) => {
-          try {
-            const { clearUserAuthCache } = require('../../utils/user-auth-cache');
-            if (user?.id) clearUserAuthCache(user.id);
-          } catch (_) {}
+        afterDestroy: async (user) => {
+          const { invalidateUserAuth } = require('../../utils/user-auth-cache');
+          if (user?.id) await invalidateUserAuth(user.id);
         },
       },
     }
