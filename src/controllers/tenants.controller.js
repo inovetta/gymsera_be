@@ -2,6 +2,26 @@ const tenantService = require('../services/tenant.service');
 const storageService = require('../services/storage.service');
 const { sendSuccess, createError } = require('../utils/response.utils');
 const { KycDocumentType } = require('../constants/subscription-status');
+const { normalizeKycDocuments } = require('../services/kyc-storage.service');
+
+/**
+ * P9b item 0 (old app builds) and NEW-190: a host's tenant answer lists its verification documents
+ * by file name only. Released app builds read `kycDocumentsJson` as a list of strings
+ * (tenant_model.g.dart `e as String`) and failed to parse /tenants/me for every host who had sent a
+ * document; the P9 app reads names from either shape. The stored objects keep the private storage
+ * `key`, which the owner never needs (GET /tenants/:id/kyc-documents is the list with types).
+ */
+const hostTenantView = (result) => {
+  if (!result || !result.tenant) return result;
+  const tenant = typeof result.tenant.toJSON === 'function' ? result.tenant.toJSON() : { ...result.tenant };
+  // NEW-195: the tenant database's encrypted connection string and name are never the owner's to read.
+  delete tenant.connectionStringEncrypted;
+  delete tenant.dbName;
+  if (tenant.kycDocumentsJson != null) {
+    tenant.kycDocumentsJson = normalizeKycDocuments(tenant.kycDocumentsJson).map((d) => d.originalName || 'document');
+  }
+  return { ...result, tenant };
+};
 
 // ── POST /tenants/register ────────────────────────────────────────────────────
 const register = async (req, res, next) => {
@@ -15,7 +35,7 @@ const register = async (req, res, next) => {
       cityId,
       areaId,
     });
-    return sendSuccess(res, result, 'Gym business registered successfully. Your application is under review.', 201);
+    return sendSuccess(res, hostTenantView(result), 'Gym business registered successfully. Your application is under review.', 201);
   } catch (err) {
     next(err);
   }
@@ -25,7 +45,7 @@ const register = async (req, res, next) => {
 const submitGymProfile = async (req, res, next) => {
   try {
     const result = await tenantService.submitGymProfile(req.params.id, req.user.sub, req.body);
-    return sendSuccess(res, result, 'Gym profile submitted successfully');
+    return sendSuccess(res, hostTenantView(result), 'Gym profile submitted successfully');
   } catch (err) {
     next(err);
   }
@@ -35,7 +55,7 @@ const submitGymProfile = async (req, res, next) => {
 const selectPackage = async (req, res, next) => {
   try {
     const result = await tenantService.selectPackage(req.params.id, req.user.sub, req.body.packageId);
-    return sendSuccess(res, result, 'Package selected successfully');
+    return sendSuccess(res, hostTenantView(result), 'Package selected successfully');
   } catch (err) {
     next(err);
   }
@@ -74,7 +94,7 @@ const replaceOnboardingImages = async (req, res, next) => {
 const reapplyTenant = async (req, res, next) => {
   try {
     const result = await tenantService.reapplyTenant(req.params.id, req.user.sub);
-    return sendSuccess(res, result, 'Application reopened. Update it and submit again.');
+    return sendSuccess(res, hostTenantView(result), 'Application reopened. Update it and submit again.');
   } catch (err) {
     next(err);
   }
@@ -85,7 +105,7 @@ const finalizeApplication = async (req, res, next) => {
   try {
     const { paymentMethod, bankTransferRef } = req.body;
     const result = await tenantService.finalizeApplication(req.params.id, req.user.sub, { paymentMethod, bankTransferRef });
-    return sendSuccess(res, result, 'Application finalized successfully');
+    return sendSuccess(res, hostTenantView(result), 'Application finalized successfully');
   } catch (err) {
     next(err);
   }
@@ -95,7 +115,7 @@ const finalizeApplication = async (req, res, next) => {
 const getMyTenant = async (req, res, next) => {
   try {
     const result = await tenantService.getMyTenant(req.user.sub);
-    return sendSuccess(res, result);
+    return sendSuccess(res, hostTenantView(result));
   } catch (err) {
     next(err);
   }
@@ -105,7 +125,7 @@ const getMyTenant = async (req, res, next) => {
 const updateMyTenant = async (req, res, next) => {
   try {
     const result = await tenantService.updateMyTenant(req.user.sub, req.body);
-    return sendSuccess(res, result, 'Business profile updated successfully');
+    return sendSuccess(res, hostTenantView(result), 'Business profile updated successfully');
   } catch (err) {
     next(err);
   }

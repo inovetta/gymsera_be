@@ -1006,7 +1006,22 @@ const adminListReviews = async ({ gymListingId, status, page, limit, offset }) =
     distinct: true,
   });
 
-  return { reviews: rows, pagination: buildPagination(count, page, limit) };
+  // P9b (BUG-29 on CMS lists): a review is for a branch; name the gym by the traveller rule
+  // (displayName: the name once when organization and branch match, else "Organization · Branch").
+  // A branch travellers cannot see is not in the snapshot: the organization's title is used.
+  let titles = new Map();
+  try {
+    titles = new Map((await _getAllActiveBranches()).map((b) => [b.branchId, b.title]));
+  } catch (err) {
+    console.warn('[adminListReviews] branch titles unavailable:', err.message);
+  }
+  const reviews = rows.map((r) => {
+    const json = typeof r.toJSON === 'function' ? r.toJSON() : { ...r };
+    json.gymTitle = (r.branchId && titles.get(r.branchId)) || (json.gym && json.gym.title) || null;
+    return json;
+  });
+
+  return { reviews, pagination: buildPagination(count, page, limit) };
 };
 
 // ── moderateReview ────────────────────────────────────────────────────────────
