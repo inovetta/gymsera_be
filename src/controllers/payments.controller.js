@@ -187,6 +187,8 @@ const uploadProof = async (req, res, next) => {
 // ── POST /payments/:id/printed — audit-only receipt-printed ping ──────────────
 const markPrinted = async (req, res, next) => {
   try {
+    // NEW-212: `Payment` was never defined here, so every call answered 500.
+    const { Payment } = req.tenantDb.models;
     const existing = await Payment.findByPk(req.params.id);
     if (!existing) throw createError('Payment not found', 404);
     if (!(await hasBranchAccess(req, existing.branchId, 'payments.view'))) {
