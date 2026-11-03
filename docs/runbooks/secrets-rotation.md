@@ -34,6 +34,38 @@ The key protects `tenants.connection_string_encrypted` and `users.apple_refresh_
 
 **Escalate:** if tenant routes fail after step 5 and swapping the key back does not help, restore the backup and stop; do not retry blindly.
 
+## 3b. Rotate the tenant database password (`TENANT_DB_PASS`, row 1 of section 5)
+
+Every tenant's stored connection string (`tenants.connection_string_encrypted`) holds the tenant MySQL
+user's password. Changing the password in MySQL alone breaks every tenant route; the stored strings must
+be rebuilt with `src/scripts/rebuild-tenant-connection-strings.js` (NEW-203). Needs a short window: from
+step 2 to step 6 new tenant connections fail. If row 2 (the encryption key) is rotated in the same window,
+do this section first, then section 3.
+
+1. Back up: `mysqldump <platform_db> tenants > tenantpass_pre.sql` (somewhere that is not the repo).
+2. On the tenant MySQL server, as the admin user, change the password of `TENANT_DB_USER` for both hosts
+   provisioning creates: `ALTER USER '<user>'@'%' IDENTIFIED BY '<new>';` and
+   `ALTER USER '<user>'@'localhost' IDENTIFIED BY '<new>';` (skip a host that does not exist). Keep the new
+   value in the server's protected settings only (R-55).
+3. Put the new password in `TENANT_DB_PASS` in the API `.env`. Do not restart yet.
+4. Dry run: `node src/scripts/rebuild-tenant-connection-strings.js`. Read it: every tenant must say
+   `REBUILD (new password connects)`, `ALREADY CURRENT`, or `LEFT ALONE` (another MySQL user, R-25: check
+   it with `gymsera-r25-tenant-db-credentials-check.js`), and the last line must say `0 failed`. Optional:
+   `--tenant=<code>` to look at one tenant. Failures and what they mean:
+   - `unreadable`: `TENANT_CONN_ENCRYPTION_KEY` in `.env` is not the key the data was written with. Stop.
+   - `db_name_mismatch`: the stored database name differs from `tenants.db_name` (or it is empty). The
+     tool never guesses a name (R-79); look at that tenant by hand before going on.
+   - `cannot_connect`: the new password does not open that database (step 2 missed a host, a typo, or
+     the user lacks a grant on it).
+   A run with any failure writes nothing.
+5. Apply: same command with `--apply` (one transaction: everything changes or nothing).
+6. Restart the API (`iisreset`): open pools keep the old connections until then. With R-88 there is no
+   Redis; if Redis is ever on, the tool clears the `tenant:<id>:connStr` keys itself.
+7. Check: log in as a host and open the dashboard; `node src/scripts/check-environment.js`.
+
+**Rollback:** before step 5, set the old password back in MySQL and in `.env`; nothing else changed. After
+step 5, restore `tenantpass_pre.sql` and set the old password back in MySQL and `.env`, then restart.
+
 ## 4. Adding a secret to the scan allow-list
 
 Do not. If the scan flags a fake value in a test, change the fake so it does not look like a real token. A real finding means: rotate the secret first, then fix the commit.
@@ -49,7 +81,7 @@ or a chat; they go in the server's protected settings (R-55).
 
 | # | Secret (env) | Where | Why | How | Check after |
 |---|---|---|---|---|---|
-| 1 | `TENANT_DB_PASS` (MySQL user `TENANT_DB_USER`) | tenant MySQL server; inside every `tenants.connection_string_encrypted` | NEW-195 ciphertexts left the server | change the MySQL user's password; then every tenant's stored connection string must be rebuilt with it. **No tool does this yet (NEW-203)**: do it in the same window as row 2, or wait for the tool | open a tenant dashboard; `node src/scripts/check-environment.js` |
+| 1 | `TENANT_DB_PASS` (MySQL user `TENANT_DB_USER`) | tenant MySQL server; inside every `tenants.connection_string_encrypted` | NEW-195 ciphertexts left the server | section 3b: change the MySQL user's password, then `rebuild-tenant-connection-strings.js` (dry run first, `--apply`, NEW-203), restart; before row 2 if both are done in one window | open a tenant dashboard; `node src/scripts/check-environment.js` |
 | 2 | `TENANT_CONN_ENCRYPTION_KEY` | API `.env` | NEW-195; the demo key check of section 1 | section 3 (`rotate-encryption-key.js`, dry run first, `--apply`), restart; with R-88 there is no Redis cache to clear | section 3 step 6 |
 | 3 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | API `.env` | launch hygiene; signs every session | new 64-byte random values, restart. **Every user is signed out** (mobile asks to sign in again); do it in the launch window | sign in on app, CMS, web |
 | 4 | `TENANT_DB_ADMIN_PASS`, `PLATFORM_DB_PASS` | MySQL; API `.env` | launch hygiene | change in MySQL, then `.env`, restart | `/health` |

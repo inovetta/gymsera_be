@@ -17,12 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-03 (P10 done locally, not pushed) |
+| Last updated | 2026-11-03 (P10b done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P10** (release gate, owner scope items 1 to 9; spec §13 "Phase 7 Prompt P10") |
+| Current prompt | **Phase 7 Prompt P10b** (owner scope: NEW-207, NEW-203, NEW-196, NEW-200, NEW-204 + NEW-206, NEW-208; R-71 extension for NEW-201; NEW-210 accepted) |
 | Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
+
+**P10b branches (2026-11-03), not pushed:** `fix/p10b-release-gate` from the latest main. be from `0c742fc`: `e6df6ae` NEW-200, `e37eba6` NEW-212, `b3c7ac6` lint (mechanical), `3291007` seeder, `ee8d2f5` CI lint, `ca06351` NEW-206, `b55e2bb` NEW-203, `0638731` + `e151def` NEW-196 (R-89), `3e95d05` NEW-207. CMS from `e76f14e`: `40d3f8e` CI lint, `863ae13` NEW-196, `dc93424` NEW-208. Web from `6a1ba50`: `7a39739` CI lint, `c8d83a9` NEW-208. App worktree `../gyms_era_p10b` from `origin/master` `0668508`: `ae051af` CI analyze, `c00c520` NEW-208 (sentry_flutter 9.30.1). Be docs `docs/p10b-release-gate` (worktree `../gymsera_be_docs_p10b`) from `0c742fc`. Results: be 298 / 298 suites, 2833 / 2833 tests; 2027-01-02 run 296 / 297 (the NEW-177 openssl artifact); CMS 593 / 593 + Playwright 29 + security 9; web 180 / 180 + Playwright 4 + security 15; app 426 / 426 x3, analyze 159; Android and iOS release builds compile. Decisions R-71 extended, R-89 to R-93. Local only: Docker container `gymsera-test-mysql57-2027` (port 3309, libfaketime) can be removed with `docker rm -f gymsera-test-mysql57-2027`.
+
+**Next action:** **Owner:** (1) merge be docs `docs/p10b-release-gate`. (2) Push and open PRs for `fix/p10b-release-gate` in all four repos (be before CMS: the CMS profile needs the R-89 routes). (3) Deploy: backend first (no migration, no new required variable; `git pull`, `npm install --omit=dev`, `iisreset`), then CMS and web (`npm ci`, build, restart), then a new app build. (4) Sentry stays off until you set `NEXT_PUBLIC_SENTRY_DSN` (CMS and web builds) and `--dart-define=SENTRY_DSN` (app), plus the API's `SENTRY_DSN` (R-90). (5) Secrets rotation row 1 now with `secrets-rotation.md` section 3b. **Agent, next:** Prompt **P7b** (plan first). Open: NEW-213 (mobile org logo writes to the first organization), NEW-215, NEW-216 (Sentry 10.78 after 2026-11-11), NEW-217 (owner: bank details per tenant or per organization), R-92 post-launch lint; from the P10 text: QA script, flows A to F automation, 6A gap re-check, device checklist.
 
 **P10 branches (2026-11-03), not pushed:** `fix/p10-release-gate` everywhere from the latest main. be from `6e2a8ae` (11 commits, last `c463a4a`: `24314b0` NEW-179, `fe72dd7` item 3, `96d417d` item 4, `838ad47` item 5, `850872c` audit, `8091732` iisnode logs, `e0ddfef` NEW-177, `bf8d712` NEW-183, `282f522` NEW-187, `8e8e8cd` NEW-188, `c463a4a` env); CMS from `f5216bc` (`f81e582` audit, `cf49e34` NEW-197); web from `165330f` (`d295a4a`, `358a3e6`); app from `origin/master` `6db7ad3` (worktree `../gyms_era_p10`: `f4bce92` item 5, `716c38d` item 6, `743d260` NEW-186, `55bb465` NEW-188, `c9eb23c` NEW-189, `eb6ace9` NEW-209); be docs `docs/p10-release-gate` on `docs/new-125-iisnode-exposure` (worktree `../gymsera_be_docs_p10`). Results: be 289 / 289 suites, 2786 / 2786 tests; app 414 / 414 x3, analyze 159 (master 169); CMS 573 / 573 + Playwright 27 + security 9; web 167 / 167 + Playwright 4 + security 15; builds pass. Decisions R-87 (NEW-179: Sandbox entitles the host, never the public) and R-88 (no Redis in production). The main `gyms_era` checkout's uncommitted `analysis_options.yaml`, `ios/Podfile.lock`, `pubspec.lock` are written by `flutter pub get` on Flutter 3.47.9; left untouched.
 
@@ -173,6 +177,17 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 ---
 
 ## 2. Done in the current prompt (checklist)
+
+**Phase 7 Prompt P10b (`fix/p10b-release-gate` in every repo; not pushed):**
+- [x] NEW-207 test date bombs, relative dates, guard, 2027-01-02 proof run (be `3e95d05`)
+- [x] NEW-203 connection-string rebuild tool, runbook section 3b (be `b55e2bb`)
+- [x] NEW-196 every organization in the CMS profile, R-89 with audit (be `0638731`, `e151def`; CMS `863ae13`)
+- [x] NEW-200 auth status in Redis and its invalidation (be `e6df6ae`)
+- [x] NEW-204 lint: src/ clean, CI lint in all repos, NEW-212 and the seeder bug (be `b3c7ac6`, `3291007`, `ee8d2f5`, `e37eba6`; CMS `40d3f8e`; web `7a39739`; app `ae051af`)
+- [x] NEW-206 `.env.example` (be `ca06351`)
+- [x] NEW-208 Sentry CMS / web / app (CMS `dc93424`, web `c8d83a9`, app `c00c520`)
+- [x] §13, §14 (R-71 ext., R-89 to R-93), runbooks (secrets 3b, NEW-210, test date bombs), handoff
+- [ ] Owner: push, PRs, deploy, Sentry DSNs
 
 <!-- Copy the issue list of the current prompt here when you start it. Tick items as they are committed. -->
 
@@ -665,3 +680,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 125 | 2026-11-02 | Claude Code (Opus 5.5) | Phase 7 P9b (rest of BUG-37: item 0 old builds, NEW-112, R-80 / BUG-24, Team, branch states, BUG-29, BUG-31, NEW-193, NEW-192) | be 4 commits, CMS 8, web 2; every fix red first; be full 281 / 281, 2727 / 2727; CMS 565, web 159, Playwright 27 + 4, security 9 + 15; new NEW-194 to NEW-199 (194, 195, 199 fixed) | task complete (not pushed) | yes |
 | 126 | 2026-11-03 | Claude Code (Opus 5.5) | Hotfix NEW-125 on CMS and website (iisnode log folder served, owner saw 200) | CMS `88d64e1`, web `e51353c` (6 tests each, red 3/6); CMS 571 / 571, web 165 / 165, tsc, lint, build pass; tracked iisnode logs untracked; not deployed | task complete (not pushed) | yes |
 | 127 | 2026-11-03 | Claude Code (Opus 5.5) | Phase 7 P10 (release gate, owner items 1 to 9; R-87, R-88) | be 11 commits, app 6, CMS 2, web 2, each fix red first; be 289 / 289, 2786 / 2786; app 414 x3; CMS 573; web 167; NEW-200 to NEW-211 | task complete (not pushed) | yes |
+| 128 | 2026-11-03 | Claude Code (Opus 5.5) | Phase 7 P10b (NEW-207, NEW-203, NEW-196 / R-89, NEW-200, NEW-204 + NEW-206 / R-92, NEW-208 / R-90 / R-91; R-71 extended; NEW-210 / R-93) | be 11 commits, CMS 3, web 2, app 2, each fix red first; NEW-212 and seeder bug found by lint and fixed; be 298 / 298, 2833 / 2833; 2027-01-02 run 296 / 297 (openssl artifact); CMS 593 + PW 29 + sec 9; web 180 + PW 4 + sec 15; app 426 x3, analyze 159; release builds compile | task complete | yes |

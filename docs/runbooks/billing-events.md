@@ -69,3 +69,25 @@ mistake, cancel it in Stripe and refund per policy, then tell the tenant.
 **Known gap: the flag does not clear itself.** Nothing in the code resets `duplicate_billing` once the store stops billing
 (`subscription-migration.service.js` only ever sets it), so after the tenant has cancelled, set `duplicate_billing = 0` on that
 `tenant_subscriptions` row (platform DB), or this alert and the host's banner keep coming back. Tracked as a follow-up (NEW-89).
+
+## Apple: one subscription per group per Apple ID (NEW-210, accepted limitation)
+
+**What happens.** Apple allows one active subscription per subscription group per Apple ID. If two host accounts
+use the same Apple ID on their phones and one of them buys a different GymsEra plan, Apple changes the
+subscription that Apple ID already has, which belongs to the *other* host account. This is how the App Store
+works; we cannot prevent it (owner decision 2026-11-03, spec §14 R-93).
+
+**What our side does.** The ownership guard (P10 item 5) keeps the Apple subscription with the host account that
+first linked it: the second host is not entitled by it, and the app tells them the purchase belongs to another
+GymsEra account and to use a different Apple ID. The first host's next sync (or Apple's notification) shows the
+plan Apple now reports, which may be the one the second host chose.
+
+**When a host reports it.**
+1. `GET /admin/tenants/<tenantId>/subscriptions` for both tenants: the Apple row (`platform = IOS`) sits on the
+   first tenant, with the `product_id` Apple now reports.
+2. Explain the rule: one Apple ID per GymsEra host account. The second host signs in to the App Store with their
+   own Apple ID and buys there; the first host checks their plan in Settings, Apple ID, Subscriptions.
+3. Refunds for the plan change are Apple's (reportaproblem.apple.com); we do not move an Apple subscription
+   between tenants by hand.
+
+**Rollback.** Nothing to roll back on our side: no data was changed by hand.
