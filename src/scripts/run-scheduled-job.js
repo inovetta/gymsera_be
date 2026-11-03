@@ -11,6 +11,8 @@
  * Exit code 0 = done, 1 = failed (Task Scheduler shows it as the last run result).
  */
 require('dotenv').config();
+// R-88: production has no Redis; the jobs then lock through MySQL. No "not configured" line here.
+require('../config/redis.config').setQuietWhenNotConfigured(true);
 const { connect, sequelize } = require('../database/platform');
 const { runScheduledJob, JOB_NAMES } = require('../jobs/scheduled-jobs');
 
