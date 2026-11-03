@@ -4,7 +4,8 @@
  * Prints every condition of the live-gym rule (R-77, NEW-159; discovery.service.js
  * `_buildAllActiveBranches`) for each branch whose id or name matches, and which ones fail:
  *   tenant status ACTIVE; an entitling subscription (ACTIVE or GRACE; status, platform,
- *   environment); the tenant database; an organization; branch ACTIVE, visible to travellers,
+ *   environment: a store test purchase, environment SANDBOX, never counts on production, R-87);
+ *   the tenant database; an organization; branch ACTIVE, visible to travellers,
  *   not suspended by an administrator, not paused, not locked for billing (R-83); at least one
  *   ACTIVE public plan for the branch or the whole organization.
  * Also printed, as WARN because discovery does not hide the branch for it: the city (id and name;
@@ -18,7 +19,7 @@ const { Op, where, fn, col } = require('sequelize');
 const TenantDbManager = require('../database/TenantDbManager');
 const { Tenant, TenantSubscription, GymListing, City } = require('../models/platform');
 const { ENTITLING_STATUSES } = require('../services/subscription-quota.service');
-const { resolveBranchCityId } = require('../services/discovery.service');
+const { resolveBranchCityId, entitlesTravellers } = require('../services/discovery.service');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,9 +39,16 @@ const _subscriptionCheck = async (tenantId) => {
     attributes: ['status', 'platform', 'environment', 'endDate', 'createdAt'],
     order: [['createdAt', 'DESC']],
   });
-  const entitling = rows.find((r) => ENTITLING_STATUSES.includes(r.status));
-  if (entitling) return { status: 'PASS', detail: _sub(entitling) };
+  const counted = rows.find(entitlesTravellers);
+  if (counted) return { status: 'PASS', detail: _sub(counted) };
   if (rows.length === 0) return { status: 'FAIL', detail: 'no subscription row' };
+  const sandbox = rows.find((r) => ENTITLING_STATUSES.includes(r.status));
+  if (sandbox) {
+    return {
+      status: 'FAIL',
+      detail: `only a test purchase (Sandbox) entitles: ${_sub(sandbox)}; it serves the host but is not live on this server (R-87, SANDBOX_PURCHASES_GO_LIVE)`,
+    };
+  }
   return { status: 'FAIL', detail: `none entitles (${ENTITLING_STATUSES.join(' or ')}); latest: ${_sub(rows[0])}` };
 };
 

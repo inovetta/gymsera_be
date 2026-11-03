@@ -70,13 +70,27 @@ const _getAllActiveBranches = ({ fresh = false } = {}) =>
   discoveryCache.getSnapshot(_buildAllActiveBranches, { fresh });
 
 /**
+ * R-87 (P10, NEW-179): a store test purchase (Apple Sandbox: TestFlight, App Review; Google
+ * license tester), stored as environment SANDBOX, entitles the host but never makes a gym live
+ * for travellers. Only a staging server sets SANDBOX_PURCHASES_GO_LIVE=true (exactly "true").
+ */
+const sandboxPurchasesGoLive = () => process.env.SANDBOX_PURCHASES_GO_LIVE === 'true';
+/** The environment part of the live rule: PRODUCTION, or none (manual grant, pay later, bank transfer). */
+const travellerEnvironmentWhere = () =>
+  sandboxPurchasesGoLive() ? {} : { [Op.or]: [{ environment: null }, { environment: 'PRODUCTION' }] };
+/** The same rule for one row already read (why-not-live). */
+const entitlesTravellers = (row) =>
+  ENTITLING_STATUSES.includes(row.status) && (sandboxPurchasesGoLive() || row.environment !== 'SANDBOX');
+
+/**
  * R-77 (Phase 7 D6, BUG-26): a gym is live for travellers only when its tenant is ACTIVE and
  * its subscription entitles it (ENTITLING_STATUSES: ACTIVE = paid, GRACE = pay later or a
- * renewal the store is retrying). The branch and plan parts of the rule are in the snapshot.
+ * renewal the store is retrying) with a real purchase (R-87, above). The branch and plan parts
+ * of the rule are in the snapshot.
  */
 const _liveTenants = async (attributes) => {
   const entitled = await TenantSubscription.findAll({
-    where: { status: { [Op.in]: ENTITLING_STATUSES } },
+    where: { status: { [Op.in]: ENTITLING_STATUSES }, ...travellerEnvironmentWhere() },
     attributes: ['tenantId'],
     raw: true,
   });
@@ -1234,6 +1248,7 @@ module.exports = {
   getGym,
   getPaymentDetails,
   isLiveForTravellers,
+  entitlesTravellers,
   platformStats,
   assertBranchBookable,
   listCities,
