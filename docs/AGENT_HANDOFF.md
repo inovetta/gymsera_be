@@ -17,12 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-02 (Phase 7 P9b done locally, not pushed) |
+| Last updated | 2026-11-03 (NEW-125 hotfix for CMS and web done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P9b** (rest of BUG-37; spec §13 "Phase 7 Prompt P9b") |
 | Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
+
+**NEW-125 hotfix (2026-11-03), not pushed:** CMS `fix/new-125-iisnode-exposure` from `origin/main` `f755906` (`88d64e1`), web `fix/new-125-iisnode-exposure` from `origin/main` `2b11364` (`e51353c`), be docs `docs/new-125-iisnode-exposure` on top of `docs/p9b-cms-parity` (merge that first). Spec §13 "NEW-125 hotfix: CMS and website". **Owner next:** push and merge both; on each server clear the tracked iisnode logs and local edits before `git pull` (`git stash push -- iisnode package-lock.json` or `git checkout -- iisnode package-lock.json`; `.env` is untracked and untouched), then `iisreset`; no rebuild for this change. Then check `https://cms.gymsera.com/iisnode/index.html` and `https://gymsera.com/iisnode/index.html` answer 404. **Agent, next:** unchanged (P10, see below).
 
 **P9b branches** (P9 code merged and deployed; P9 docs PR not merged yet, so this docs branch is stacked on it): be `fix/p9b-cms-parity` from `origin/main` `72d8a74`; CMS `fix/p9b-cms-parity` from `69ec36e`; web `fix/p9b-cms-parity` from `7646ac6`; be docs `docs/p9b-cms-parity` on `origin/docs/p9-cms-web-parity` `0bb921f` (worktree `../gymsera_be_docs_p9b`). No app change planned.
 
@@ -657,3 +659,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 123 | 2026-10-30 | Claude Code (Opus 5.5) | Phase 7 P8 (copy, brand, fake data; R-83; My Subscription entry) | be R-83 `e7baa90`, NEW-146 `619d16d`, NEW-168 `3912524`, R-78 `96643e1`, brand `1a40338`, why-not-live `13f6e32`; app 12 commits (`91d731a`..`89b28c4`); CMS `73a46be`, web `a233ebb`; every fix red before green; full be 2690 / 2690; app 386 x3; new NEW-185..188 | task complete |
 | 124 | 2026-10-31 | Claude Code (Opus 5.5) | Phase 7 P9 (CMS and website parity; owner scope NEW-140, 158, 167, 180, 185, visible_plan_required copy; R-84 to R-86) | be 5 commits (new suites 5, each red first); CMS 5; web 5; app 3; backend full 278 / 278 suites, 2715 / 2715 tests (41 min, mains power, local Docker MySQL, DISABLE_REDIS=true, at be `d8abe69`); app 392 x3, CMS 528, web 152; NEW-189 to NEW-193 | task complete (not pushed) | yes |
 | 125 | 2026-11-02 | Claude Code (Opus 5.5) | Phase 7 P9b (rest of BUG-37: item 0 old builds, NEW-112, R-80 / BUG-24, Team, branch states, BUG-29, BUG-31, NEW-193, NEW-192) | be 4 commits, CMS 8, web 2; every fix red first; be full 281 / 281, 2727 / 2727; CMS 565, web 159, Playwright 27 + 4, security 9 + 15; new NEW-194 to NEW-199 (194, 195, 199 fixed) | task complete (not pushed) | yes |
+| 126 | 2026-11-03 | Claude Code (Opus 5.5) | Hotfix NEW-125 on CMS and website (iisnode log folder served, owner saw 200) | CMS `88d64e1`, web `e51353c` (6 tests each, red 3/6); CMS 571 / 571, web 165 / 165, tsc, lint, build pass; tracked iisnode logs untracked; not deployed | task complete (not pushed) | yes |
