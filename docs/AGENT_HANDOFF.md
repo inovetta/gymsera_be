@@ -21,8 +21,8 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P10** (release gate, owner scope of 2026-11-03: items 1 to 9 below) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | NEW-179 (item 1) |
-| Step within issue | rule decided (R-87); writing the failing test |
+| Issue in progress | item 2 (security pass) |
+| Step within issue | items 1, 3, 4, 5, 6 committed (be `24314b0`, `fe72dd7`, `96d417d`, `838ad47`; app `f4bce92`, `716c38d`); next: npm audit in be / CMS / web, then items 7, 8, 9 |
 
 **P10 branches (2026-11-03), not pushed:** `fix/p10-release-gate` in every repo from the latest main (P9b and the NEW-125 hotfix merged and deployed): be from `origin/main` `6e2a8ae`, CMS from `f5216bc`, web from `165330f`, app from `origin/master` `6db7ad3` (worktree `../gyms_era_p10`; the main `gyms_era` checkout has uncommitted `analysis_options.yaml`, `ios/Podfile.lock`, `pubspec.lock` that no handoff explains: left untouched for the owner), be docs `docs/p10-release-gate` on `docs/new-125-iisnode-exposure` (worktree `../gymsera_be_docs_p10`). Owner scope: (1) NEW-179 sandbox entitlement, (2) security pass (audits, iisnode logs, firebase key, rotation list), (3) capacity ledger "-2" (read-only), (4) Redis quiet + doc, (5) Apple ownership mismatch message + journal, (6) mobile release logging, (7) NEW-177, 182, 183, 186, 187, 188, 189, 196, 197, 198, (8) launch readiness (Sentry, MIN_APP_VERSION, SEC-06 flip, launch-wipe dry-run check), (9) release-gate table in the spec. Decisions taken 2026-11-03 (owner, question tool): **R-87** NEW-179 = a Sandbox entitlement serves the host, never the public (R-77 counts only PRODUCTION or no-environment rows; `SANDBOX_PURCHASES_GO_LIVE=true` on staging only); **R-88** no Redis in production for now (`DISABLE_REDIS=true`), Redis before a second API instance.
 
