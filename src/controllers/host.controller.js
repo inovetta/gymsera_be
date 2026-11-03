@@ -1,5 +1,5 @@
 const TenantDbManager = require('../database/TenantDbManager');
-const { Tenant, TenantSubscription, GymListing, User } = require('../models/platform');
+const { Tenant, TenantSubscription, GymListing, User, PlatformAuditLog } = require('../models/platform');
 const { sendSuccess, createError, buildPagination } = require('../utils/response.utils');
 const { likeContains } = require('../utils/sql-like');
 const { Op } = require('sequelize');
@@ -757,7 +757,22 @@ const updateListing = async (req, res, next) => {
     if (website !== undefined) updates.website = website || null;
     if (imagesJson !== undefined) updates.imagesJson = imagesJson || [];
 
-    await listing.update(updates);
+    // NEW-196 (R-89): every organization edit is in the platform audit log with its actor (field
+    // names only, no values), in the same transaction: an edit that cannot be audited is not saved.
+    const fields = ['gymName', 'gymDescription', 'genderType', 'cityId', 'areaId', 'logoUrl', 'coverImageUrl',
+      'contactPhone', 'latitude', 'longitude', 'category', 'establishedYear', 'contactEmail', 'website', 'imagesJson']
+      .filter((f) => req.body[f] !== undefined);
+    await GymListing.sequelize.transaction(async (transaction) => {
+      await listing.update(updates, { transaction });
+      await PlatformAuditLog.create({
+        actorUserId: req.user.id || req.user.sub,
+        action: 'organization.profile_updated',
+        targetType: 'GymListing',
+        targetId: listing.id,
+        details: { tenantId, fields, asOwner: req.user.isOwner === true },
+        createdAt: new Date(),
+      }, { transaction });
+    });
 
     // Update corresponding Gym in tenant DB
     const gym = await _organizationGym(req.tenantDb, listing);

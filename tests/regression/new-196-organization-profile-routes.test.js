@@ -9,14 +9,20 @@
  * Admin pass; Branch Manager and Front Desk (no listing.manage) get 403; another tenant's owner
  * cannot read or change this tenant's organization; no token is 401.
  *
+ * Owner conditions (2026-11-03): deny by default; listing.manage must be organization-wide (the same
+ * permission granted at one branch gives no organization edit); a user of another tenant is always
+ * refused, even an Org Admin there; a platform admin gets nothing on these host routes; every edit
+ * is written to the platform audit log with the actor (field names only, no values), in the same
+ * transaction, so an edit that cannot be audited is not saved.
+ *
  * Photo uploads are called with no file: past the permission check the answer is 422 (nothing
  * stored), so 403 is the only refusal.
  */
 const request = require('supertest');
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, factories } = require('../harness');
 const { startTestServer, stopTestServer } = require('../harness/test-server');
-const { buildTwoBranchTeam } = require('../harness/two-branch-team');
-const { GymListing } = require('../../src/models/platform');
+const { buildTwoBranchTeam, teamMember } = require('../harness/two-branch-team');
+const { GymListing, PlatformAuditLog } = require('../../src/models/platform');
 
 let app;
 let team;
@@ -25,6 +31,8 @@ let dbHarness;
 let firstOrg;
 let secondOrg;
 let secondGym;
+let branchScoped;
+let otherTenantOrgAdmin;
 
 beforeAll(async () => {
   dbHarness = await setupTestDatabases();
@@ -33,6 +41,16 @@ beforeAll(async () => {
   firstOrg = await GymListing.findOne({ where: { tenantId: team.tenantId }, order: [['createdAt', 'ASC']] });
   secondOrg = await factories.createGymListing(team.tenantId, { title: 'Second Organization' });
   secondGym = await dbHarness.tenant1.models.Gym.create({ name: 'Second Organization', gymListingId: secondOrg.id, genderType: 'MIXED' });
+  // listing.manage granted at one branch only: a Front Desk at branch A with an ALLOW override.
+  branchScoped = await teamMember({
+    tenantDb: dbHarness.tenant1, tenantId: team.tenantId, email: 'branch-listing@new196.test',
+    roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [team.branchA.id], allow: ['listing.manage'],
+  });
+  // An Org Admin with listing.manage in the other tenant.
+  otherTenantOrgAdmin = await teamMember({
+    tenantDb: dbHarness.tenant2, tenantId: personas.otherTenantOwner.tenantId, email: 'other-orgadmin@new196.test',
+    roleKey: 'ORG_ADMIN', scopeType: 'ORG', branchIds: [],
+  });
   app = await startTestServer();
 });
 
@@ -119,7 +137,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     }
   });
 
-  test("another tenant's owner cannot read or change this tenant's organization", async () => {
+  test('another tenant\'s owner cannot read or change this tenant\'s organization', async () => {
     const other = personas.otherTenantOwner;
     for (const tenantId of [other.tenantId, team.tenantId]) {
       const read = await call('get', `/host/listings/${secondOrg.id}`, other.token, undefined, tenantId);
@@ -135,5 +153,67 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     expect((await call('get', `/host/listings/${secondOrg.id}`)).status).toBe(401);
     expect((await call('patch', `/host/listings/${secondOrg.id}`, null, { gymDescription: 'x' })).status).toBe(401);
     expect((await call('post', '/host/listings/staging-images')).status).toBe(401);
+  });
+
+  test('listing.manage granted at a branch only does not edit the organization (403 everywhere)', async () => {
+    const t = branchScoped.token;
+    expect((await call('get', '/host/listings', t)).status).toBe(403);
+    expect((await call('get', `/host/listings/${secondOrg.id}`, t)).status).toBe(403);
+    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'branch scoped' })).status).toBe(403);
+    expect((await call('post', '/host/listings/staging-images', t)).status).toBe(403);
+    await secondGym.reload();
+    expect(secondGym.description).not.toBe('branch scoped');
+  });
+
+  test('another tenant\'s Org Admin (listing.manage there) is refused here, with either tenant header', async () => {
+    for (const tenantId of [personas.otherTenantOwner.tenantId, team.tenantId]) {
+      const t = otherTenantOrgAdmin.token;
+      expect([403, 404]).toContain((await call('get', `/host/listings/${secondOrg.id}`, t, undefined, tenantId)).status);
+      expect([403, 404]).toContain((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'cross tenant' }, tenantId)).status);
+    }
+    await secondGym.reload();
+    expect(secondGym.description).not.toBe('cross tenant');
+  });
+
+  test('a platform admin gets nothing on these host routes (deny by default; the admin area has its own)', async () => {
+    const t = personas.platformAdmin.token;
+    expect((await call('get', `/host/listings/${secondOrg.id}`, t)).status).toBe(403);
+    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'platform admin' })).status).toBe(403);
+    await secondGym.reload();
+    expect(secondGym.description).not.toBe('platform admin');
+  });
+});
+
+describe('NEW-196 every organization edit is in the audit log with its actor', () => {
+  const auditRows = () =>
+    PlatformAuditLog.findAll({ where: { action: 'organization.profile_updated', targetId: secondOrg.id }, order: [['createdAt', 'ASC']] });
+
+  test('owner and Org Admin edits each write a row: actor, organization, tenant, changed fields, no values', async () => {
+    const seen = new Set((await auditRows()).map((r) => r.id));
+    await call('patch', `/host/listings/${secondOrg.id}`, team.ownerToken, { website: 'https://owner.example.test' }).expect(200);
+    await call('put', `/host/listings/${secondOrg.id}`, team.orgAdmin.token, { contactEmail: 'audit@gymsera.test', gymDescription: 'by org admin' }).expect(200);
+    const rows = (await auditRows()).filter((r) => !seen.has(r.id));
+    expect(rows).toHaveLength(2);
+    const byOwner = rows.find((r) => r.actorUserId === personas.owner.user.id);
+    const byOrgAdmin = rows.find((r) => r.actorUserId === team.orgAdmin.user.id);
+    expect(byOwner.targetType).toBe('GymListing');
+    expect(byOwner.details).toMatchObject({ tenantId: team.tenantId, fields: ['website'], asOwner: true });
+    expect(byOrgAdmin.targetType).toBe('GymListing');
+    expect(byOrgAdmin.details).toMatchObject({ tenantId: team.tenantId, asOwner: false });
+    expect([...byOrgAdmin.details.fields].sort()).toEqual(['contactEmail', 'gymDescription']);
+    expect(JSON.stringify(rows.map((r) => r.details))).not.toContain('audit@gymsera.test');
+  });
+
+  test('an edit that cannot be audited is not saved', async () => {
+    const spy = jest.spyOn(PlatformAuditLog, 'create').mockRejectedValueOnce(new Error('audit table down'));
+    try {
+      const res = await call('patch', `/host/listings/${secondOrg.id}`, team.ownerToken, { gymName: 'Not audited' });
+      expect(res.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await GymListing.findByPk(secondOrg.id)).title).not.toBe('Not audited');
+    await secondGym.reload();
+    expect(secondGym.name).not.toBe('Not audited');
   });
 });

@@ -22,12 +22,15 @@ const ownerHere = authorize('GYM_HOST');
 // NEW-196 (R-89): an organization's profile (read, save, photo upload) is edited by the owner or by a
 // team member with listing.manage organization-wide, the rule /gyms/profile uses (NEW-45). The owner
 // passes first, as before (the photo upload runs without a tenant context for the owner: onboarding
-// uploads before the tenant database exists). Anyone else needs a tenant they belong to and the grant;
-// a caller with no such tenant keeps the owner check's 403, as before this change.
+// uploads before the tenant database exists). Anyone else needs a tenant they belong to and the grant
+// at organization level (a branch-level listing.manage is not enough); a caller with no such tenant,
+// and a platform admin, keep the owner check's 403. Edits are audited in hostController.updateListing.
 const canManageListing = can('listing.manage', { orgWide: true });
 const ownerOrListingManager = ({ ownerNeedsContext }) => (req, res, next) =>
   ownerHere(req, res, async (notOwner) => {
     if (!notOwner) return ownerNeedsContext ? tenantContext(req, res, next) : next();
+    // Deny by default: a platform admin uses the admin routes, never a host's organization routes.
+    if (req.user?.role === 'PLATFORM_ADMIN') return next(notOwner);
     try {
       if (!(await tenantContext.resolveTenantId(req))) return next(notOwner);
     } catch (err) {
