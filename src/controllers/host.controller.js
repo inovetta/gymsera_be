@@ -1098,7 +1098,7 @@ const getBranchDashboard = async (req, res, next) => {
         const u = userMap.get(log.userId);
         recentCheckins.push({
           id: log.id,
-          name: u ? u.fullName : 'Unknown Athlete',
+          name: u ? u.fullName : null, // NEW-188: the app shows a dash, never an invented name
           time: log.checkInAt,
           passType: planNames.get(log.id),
           status: 'ACTIVE'
@@ -1266,7 +1266,7 @@ const getBranchCheckins = async (req, res, next) => {
       logsList.push({
         id: log.id,
         createdAt: log.checkInAt,
-        userName: u ? u.fullName : 'Unknown Athlete',
+        userName: u ? u.fullName : null, // NEW-188
         planName: planNames.get(log.id),
         user: u
       });

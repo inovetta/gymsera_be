@@ -58,6 +58,8 @@ describe('NEW-187: host lists send the real plan name or null, never an invented
     await checkIn(deviceCovered, null, 3, 'DEVICE');
     await checkIn(noPlanAtAll, null, 2, 'DEVICE');
     await checkIn(planGone, subD.id, 1);
+    // NEW-188: a check-in whose member account is gone (no platform user row).
+    await checkIn({ id: '0d0d0d0d-0d0d-4d0d-8d0d-0d0d0d0d0d0d' }, null, 0, 'DEVICE');
   });
 
   afterAll(async () => {
@@ -99,5 +101,13 @@ describe('NEW-187: host lists send the real plan name or null, never an invented
     expect(rows['NEW187 a'].planName).toBe('Gold Monthly');
     expect(rows['NEW187 d'].planName).toBe('Retired Plan');
     expect(JSON.stringify(users)).not.toContain('Daily Pass');
+  });
+
+  test('NEW-188: a check-in whose member account is gone sends no name (null), not "Unknown Athlete"', async () => {
+    const { logs } = await get('/checkins?page=1&limit=20');
+    const { recentCheckins } = await get('/dashboard');
+    expect(logs.filter((l) => l.userName === null)).toHaveLength(1);
+    expect(recentCheckins.filter((c) => c.name === null)).toHaveLength(1);
+    expect(JSON.stringify([logs, recentCheckins])).not.toContain('Unknown Athlete');
   });
 });
