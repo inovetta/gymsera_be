@@ -35,7 +35,7 @@ const authorize = (...roles) => {
             return next();
           }
         }
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
     }
 
     const err = new Error('Forbidden: you do not have permission to access this resource');

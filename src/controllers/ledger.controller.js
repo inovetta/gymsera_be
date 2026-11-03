@@ -11,7 +11,7 @@ const getToday = async (req, res, next) => {
     const data = req.branchId
       ? await ledgerService.getTodayLedger(req.tenantDb, req.branchId)
       : await ledgerService.getTodayLedgerAllBranches(req.tenantDb);
-    return sendSuccess(res, data, "Today's ledger retrieved");
+    return sendSuccess(res, data, 'Today\'s ledger retrieved');
   } catch (err) {
     next(err);
   }

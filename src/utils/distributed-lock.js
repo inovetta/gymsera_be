@@ -61,7 +61,7 @@ async function acquireDistributedLock(lockName, ttlMs = 300000) {
     const releaseConn = () => {
       try {
         platformSequelize.connectionManager.releaseConnection(conn);
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
     };
 
     try {

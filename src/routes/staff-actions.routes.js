@@ -342,7 +342,7 @@ router.post('/host/action-requests/:requestId/approve', validate.allowBody([]), 
           title: 'Request Approved',
           message: `Your request to ${_getActionText(request.actionType)} at ${branchName} was approved by the Host.`,
           priority: 'normal',
-          deepLink: `/staff/dashboard`,
+          deepLink: '/staff/dashboard',
           metadataJson: { requestId: request.id, branchId: request.branchId, tenantId: tenant.id }
         });
       }
@@ -394,7 +394,7 @@ router.post('/host/action-requests/:requestId/reject', validate.allowBody(['reje
           title: 'Request Rejected',
           message: `Your request to ${_getActionText(request.actionType)} at ${branchName} was rejected by the Host.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
           priority: 'normal',
-          deepLink: `/staff/dashboard`,
+          deepLink: '/staff/dashboard',
           metadataJson: { requestId: request.id, branchId: request.branchId, tenantId: tenant.id }
         });
       }

@@ -126,7 +126,7 @@ router.get('/system/fcm-status', async (_req, res) => {
     const pkg = require('firebase-admin/package.json');
     adminInstalled = true;
     adminVersion = pkg.version;
-  } catch (_) {}
+  } catch (_) { /* ignored on purpose */ }
 
   let deviceTokensCount = 0;
   let sampleTokens = [];

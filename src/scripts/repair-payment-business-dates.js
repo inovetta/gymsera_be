@@ -321,9 +321,9 @@ async function repairAllTenantsPaymentBusinessDates(options = {}) {
     );
   }
 
-  console.log(`\n============================================================`);
+  console.log('\n============================================================');
   console.log(`  PAYMENT BUSINESS DATE REPAIR: ${isApply ? '🚀 APPLY MODE (MUTATIONS ACTIVE)' : '🔍 PREVIEW MODE (READ ONLY)'}`);
-  console.log(`============================================================`);
+  console.log('============================================================');
   console.log(`Found ${activeTenants.length} active tenant database(s) to inspect.\n`);
 
   let totalScannedPayments = 0;
@@ -381,7 +381,7 @@ async function repairAllTenantsPaymentBusinessDates(options = {}) {
   }
 
   console.log('\n============================================================');
-  console.log(`                   SUMMARY REPORT                           `);
+  console.log('                   SUMMARY REPORT                           ');
   console.log('============================================================');
   console.log(`Mode:                    ${isApply ? 'APPLY (Committed)' : 'PREVIEW (Zero writes)'}`);
   console.log(`Tenants Scanned:         ${activeTenants.length}`);

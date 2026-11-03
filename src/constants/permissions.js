@@ -396,7 +396,7 @@ const CATALOGUE = [
     module: 'ledger',
     label: 'Collection ledger',
     permissions: [
-      { key: 'ledger.today.view', label: "View Today's Ledger", tiers: ['F', 'F', 'F', 'F', 'V', 'x', 'x'] },
+      { key: 'ledger.today.view', label: 'View Today\'s Ledger', tiers: ['F', 'F', 'F', 'F', 'V', 'x', 'x'] },
       {
         key: 'ledger.verify',
         label: 'Verify / reconcile ledger',
@@ -406,7 +406,7 @@ const CATALOGUE = [
       },
       {
         key: 'ledger.close',
-        label: "Close Today's Ledger",
+        label: 'Close Today\'s Ledger',
         approvable: true,
         dangerous: true,
         tiers: ['D', 'D', 'R', 'x', 'x', 'x', 'x'],

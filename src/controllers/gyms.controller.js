@@ -170,7 +170,7 @@ const assignStaff = async (req, res, next) => {
           userId: tenant.ownerUserId,
           type: 'staff_update',
           title: 'New Staff Assigned',
-          body: `A new staff member has been successfully assigned to your branch.`,
+          body: 'A new staff member has been successfully assigned to your branch.',
           metadata: {
             route: '/host/staff',
             branchId: req.params.branchId,

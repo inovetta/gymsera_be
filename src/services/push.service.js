@@ -43,7 +43,7 @@ const _getFirebaseApp = () => {
           if (decoded.trim().startsWith('{')) {
             serviceAccount = JSON.parse(decoded);
           }
-        } catch (_) {}
+        } catch (_) { /* ignored on purpose */ }
       }
     }
 
@@ -66,7 +66,7 @@ const _getFirebaseApp = () => {
           try {
             serviceAccount = JSON.parse(fs.readFileSync(fp, 'utf8'));
             break;
-          } catch (_) {}
+          } catch (_) { /* ignored on purpose */ }
         }
       }
     }
@@ -336,7 +336,7 @@ const _pruneDeadToken = async (token) => {
     const { DeviceToken } = require('../models/platform');
     await DeviceToken.destroy({ where: { token } });
     console.log(`[Push] Pruned unregistered token: ${token.slice(0, 16)}...`);
-  } catch (_) {}
+  } catch (_) { /* ignored on purpose */ }
 };
 
 const _pruneDeadTokens = async (tokens) => {
@@ -345,7 +345,7 @@ const _pruneDeadTokens = async (tokens) => {
     const { Op } = require('sequelize');
     await DeviceToken.destroy({ where: { token: { [Op.in]: tokens } } });
     console.log(`[Push] Pruned ${tokens.length} unregistered tokens`);
-  } catch (_) {}
+  } catch (_) { /* ignored on purpose */ }
 };
 
 module.exports = {
