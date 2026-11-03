@@ -17,12 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-03 (NEW-125 hotfix for CMS and web done locally, not pushed) |
+| Last updated | 2026-11-03 (P10 started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P9b** (rest of BUG-37; spec §13 "Phase 7 Prompt P9b") |
-| Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **Phase 7 Prompt P10** (release gate, owner scope of 2026-11-03: items 1 to 9 below) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | NEW-179 (item 1) |
+| Step within issue | rule decided (R-87); writing the failing test |
+
+**P10 branches (2026-11-03), not pushed:** `fix/p10-release-gate` in every repo from the latest main (P9b and the NEW-125 hotfix merged and deployed): be from `origin/main` `6e2a8ae`, CMS from `f5216bc`, web from `165330f`, app from `origin/master` `6db7ad3` (worktree `../gyms_era_p10`; the main `gyms_era` checkout has uncommitted `analysis_options.yaml`, `ios/Podfile.lock`, `pubspec.lock` that no handoff explains: left untouched for the owner), be docs `docs/p10-release-gate` on `docs/new-125-iisnode-exposure` (worktree `../gymsera_be_docs_p10`). Owner scope: (1) NEW-179 sandbox entitlement, (2) security pass (audits, iisnode logs, firebase key, rotation list), (3) capacity ledger "-2" (read-only), (4) Redis quiet + doc, (5) Apple ownership mismatch message + journal, (6) mobile release logging, (7) NEW-177, 182, 183, 186, 187, 188, 189, 196, 197, 198, (8) launch readiness (Sentry, MIN_APP_VERSION, SEC-06 flip, launch-wipe dry-run check), (9) release-gate table in the spec. Decisions taken 2026-11-03 (owner, question tool): **R-87** NEW-179 = a Sandbox entitlement serves the host, never the public (R-77 counts only PRODUCTION or no-environment rows; `SANDBOX_PURCHASES_GO_LIVE=true` on staging only); **R-88** no Redis in production for now (`DISABLE_REDIS=true`), Redis before a second API instance.
 
 **NEW-125 hotfix (2026-11-03), not pushed:** CMS `fix/new-125-iisnode-exposure` from `origin/main` `f755906` (`88d64e1`), web `fix/new-125-iisnode-exposure` from `origin/main` `2b11364` (`e51353c`), be docs `docs/new-125-iisnode-exposure` on top of `docs/p9b-cms-parity` (merge that first). Spec §13 "NEW-125 hotfix: CMS and website". **Owner next:** push and merge both; on each server clear the tracked iisnode logs and local edits before `git pull` (`git stash push -- iisnode package-lock.json` or `git checkout -- iisnode package-lock.json`; `.env` is untracked and untouched), then `iisreset`; no rebuild for this change. Then check `https://cms.gymsera.com/iisnode/index.html` and `https://gymsera.com/iisnode/index.html` answer 404. **Agent, next:** unchanged (P10, see below).
 
@@ -660,3 +662,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 124 | 2026-10-31 | Claude Code (Opus 5.5) | Phase 7 P9 (CMS and website parity; owner scope NEW-140, 158, 167, 180, 185, visible_plan_required copy; R-84 to R-86) | be 5 commits (new suites 5, each red first); CMS 5; web 5; app 3; backend full 278 / 278 suites, 2715 / 2715 tests (41 min, mains power, local Docker MySQL, DISABLE_REDIS=true, at be `d8abe69`); app 392 x3, CMS 528, web 152; NEW-189 to NEW-193 | task complete (not pushed) | yes |
 | 125 | 2026-11-02 | Claude Code (Opus 5.5) | Phase 7 P9b (rest of BUG-37: item 0 old builds, NEW-112, R-80 / BUG-24, Team, branch states, BUG-29, BUG-31, NEW-193, NEW-192) | be 4 commits, CMS 8, web 2; every fix red first; be full 281 / 281, 2727 / 2727; CMS 565, web 159, Playwright 27 + 4, security 9 + 15; new NEW-194 to NEW-199 (194, 195, 199 fixed) | task complete (not pushed) | yes |
 | 126 | 2026-11-03 | Claude Code (Opus 5.5) | Hotfix NEW-125 on CMS and website (iisnode log folder served, owner saw 200) | CMS `88d64e1`, web `e51353c` (6 tests each, red 3/6); CMS 571 / 571, web 165 / 165, tsc, lint, build pass; tracked iisnode logs untracked; not deployed | task complete (not pushed) | yes |
+| 127 | 2026-11-03 | Claude Code (Opus 5.5) | Phase 7 P10 (release gate, owner items 1 to 9) | in progress | (open) | yes |
