@@ -425,3 +425,19 @@ Final mapping of every item assigned to P8:
 | Prompt item 6: full copy pass of empty / loading / error states | **PARTLY**: the UX-08 guard plus the screens touched here; no full manual pass | `ux08_error_handlers_test` |
 
 New in P8: NEW-185 (P2), NEW-186 (P3), NEW-187 (P3), NEW-188 (P3). See spec §13.
+
+## P9 status (2026-10-31, Claude Code Opus 5.5): CMS and website parity, R-84 to R-86
+
+Detail: spec §13 "Phase 7 Prompt P9", decisions R-84, R-85, R-86 in §14. Branches `fix/p9-cms-web-parity` in every repo, not pushed.
+
+| Item | Status | Fix / test |
+|---|---|---|
+| NEW-158 photo check at CMS approval (R-84) | **FIXED** (backend + CMS) | be `p9-r84-photo-check`; CMS `p9-r84-approve-photos` |
+| NEW-185 documents by type (R-85) | **FIXED** (backend + app); also two app parsing defects (tenant documents as objects, upload answer) | be `p9-r85-kyc-document-types`; app `p9_new185_kyc_parsing`, `p9_new185_documents_by_type` |
+| NEW-140 CMS branch forms on Places, web key | **FIXED** (backend admin / listing routes, CMS forms + Google map, website picker on `/places`) | be `p9-new-140-admin-branch-place`; CMS `p9-new-140-branch-places`, `e2e/branch-places.spec.ts`; web `p9-new-140-location-picker` |
+| NEW-167 CMS branch lifecycle (P5b CMS half) | **FIXED** (CMS) | CMS `p9-new-167-branch-lifecycle` |
+| NEW-180 lapse view (CMS, web) + R-86 bank details | **FIXED** | CMS `p9-new-180-lapse-view`; web `new-180-lapsed-plan-guard` |
+| `visible_plan_required` copy | **FIXED** (be, app, CMS, web) | be `p9-visible-plan-copy`; app `bug_05`; CMS / web `p9-plan-visibility-copy` |
+| BUG-37 rest: P1 Team & Access, P2 tier names, P4 CMS half (R-80, NEW-112), P5 lists / NEW-151, BUG-29 CMS names, BUG-31 CMS / web dates | **NOT DONE** (outside the owner's P9 list) | next prompt |
+
+New in P9: NEW-189 (P3), NEW-190 (P3), NEW-191 (P3), NEW-192 (P2), NEW-193 (P3). See spec §13.
