@@ -445,16 +445,30 @@ const _applyVerifiedSubscriptionOnce = async (
     // row exists, the tenant id the app sent with the purchase — echoed back
     // by the store (Apple appAccountToken / Google obfuscatedExternalAccountId
     // / our own Stripe metadata) — decides.
+    // P10 item 5: every ownership mismatch (typically one Apple ID or Google account used on two
+    // host accounts) writes one "ownership mismatch" line naming both tenants (ids only; no store
+    // transaction id), so an admin can see which two accounts share the store account.
     const bound = boundTenantId ? String(boundTenantId).toLowerCase() : null;
+    const mismatch = (text) => console.warn(`[${logLabel}] ownership mismatch: ${values.platform} ${text}`);
     if (existing) {
-      if (existing.tenantId !== tenantId) throw _ownedByOtherAccount();
+      if (existing.tenantId !== tenantId) {
+        mismatch(
+          `TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}; tenant ${tenantId} tried to ` +
+            'use it (same store account) and was refused (409). It stays with its owner.'
+        );
+        throw _ownedByOtherAccount();
+      }
       if (bound && bound !== String(existing.tenantId).toLowerCase()) {
-        console.warn(
-          `[${logLabel}] TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}, but the store says ` +
-            `tenant ${bound} made the purchase — left with its current owner; needs a human look.`
+        mismatch(
+          `TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}, but the store says ` +
+            `tenant ${bound} made the purchase (same store account). Left with its current owner; needs a human look.`
         );
       }
     } else if (bound && bound !== String(tenantId).toLowerCase()) {
+      mismatch(
+        `purchase is bound by the store to tenant ${bound}; tenant ${tenantId} tried to use it (same store account) ` +
+          'and was refused (409). No row was written.'
+      );
       throw _ownedByOtherAccount();
     }
 
