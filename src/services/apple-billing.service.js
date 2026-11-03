@@ -47,18 +47,71 @@ at+qIxUCMG1mihDK1A3UT82NQz60imOlM27jbdoXt2QfyFMm+YhidDkLF1vLUagM
 6BgD56KyKA==
 -----END CERTIFICATE-----`;
 
+// NEW-177 (P10, R-82): the markers Apple's App Store Server Library also requires. The leaf
+// carries the App Store receipt-signing extension and is not a CA; the intermediate (Apple
+// Worldwide Developer Relations) carries its own extension and is a CA. Revocation (OCSP) is not
+// checked here: it would be a network call on every verification (spec §13 P10).
+const APPLE_LEAF_OID = '1.2.840.113635.100.6.11.1';
+const APPLE_INTERMEDIATE_OID = '1.2.840.113635.100.6.2.1';
+
+/** One DER TLV at `offset`: tag, content start, content end. */
+const _derTlv = (buf, offset) => {
+  const tag = buf[offset];
+  let len = buf[offset + 1];
+  let start = offset + 2;
+  if (len & 0x80) {
+    const n = len & 0x7f;
+    len = 0;
+    for (let i = 0; i < n; i++) len = len * 256 + buf[start + i];
+    start += n;
+  }
+  return { tag, start, end: start + len };
+};
+const _derChildren = (buf, { start, end }) => {
+  const out = [];
+  for (let at = start; at < end; ) {
+    const tlv = _derTlv(buf, at);
+    out.push(tlv);
+    at = tlv.end;
+  }
+  return out;
+};
+const _derOid = (buf, { start, end }) => {
+  const parts = [Math.floor(buf[start] / 40), buf[start] % 40];
+  let value = 0;
+  for (let i = start + 1; i < end; i++) {
+    value = value * 128 + (buf[i] & 0x7f);
+    if (!(buf[i] & 0x80)) {
+      parts.push(value);
+      value = 0;
+    }
+  }
+  return parts.join('.');
+};
+/** The extension OIDs of an X.509 certificate (tbsCertificate [3] extensions). */
+const _extensionOids = (cert) => {
+  const der = cert.raw;
+  const tbs = _derChildren(der, _derTlv(der, 0))[0];
+  const extensions = _derChildren(der, tbs).find((t) => t.tag === 0xa3);
+  if (!extensions) return [];
+  const list = _derChildren(der, extensions)[0];
+  return _derChildren(der, list).map((extension) => _derOid(der, _derChildren(der, extension)[0]));
+};
+
 /**
- * Verify a certificate chain (leaf → ... → root) ends at our pinned Apple
- * root, and that every link's signature and validity period actually holds.
+ * Verify a certificate chain (leaf, intermediate, root, as Apple sends it) ends at our pinned
+ * Apple root, that every link's signature and validity period holds, and that the leaf and the
+ * intermediate carry Apple's markers (NEW-177).
  * @param {string[]} x5cBase64 DER certs, leaf first, as Apple sends them.
+ * @param {{rootPem?: string}} [opts] the pinned root; tests only. Production always pins Apple's.
  * @returns {crypto.X509Certificate} the leaf certificate, once trusted.
  */
-const _verifyCertChain = (x5cBase64) => {
-  if (!Array.isArray(x5cBase64) || x5cBase64.length === 0) {
-    throw createError('Signed payload is missing its certificate chain', 401);
+const _verifyCertChain = (x5cBase64, { rootPem = APPLE_ROOT_CA_G3_PEM } = {}) => {
+  if (!Array.isArray(x5cBase64) || x5cBase64.length !== 3) {
+    throw createError('Signed payload is missing its certificate chain (leaf, intermediate, root)', 401);
   }
   const chain = x5cBase64.map((b64) => new crypto.X509Certificate(Buffer.from(b64, 'base64')));
-  const root = new crypto.X509Certificate(APPLE_ROOT_CA_G3_PEM);
+  const root = new crypto.X509Certificate(rootPem);
   const now = new Date();
 
   for (let i = 0; i < chain.length; i++) {
@@ -76,8 +129,15 @@ const _verifyCertChain = (x5cBase64) => {
   if (!lastLink.checkIssued(root)) {
     throw createError('Signed payload does not chain to Apple\'s Root CA', 401);
   }
+  const [leaf, intermediate] = chain;
+  if (leaf.ca || !_extensionOids(leaf).includes(APPLE_LEAF_OID)) {
+    throw createError('Signed payload is not signed by an App Store signing certificate', 401);
+  }
+  if (!intermediate.ca || !_extensionOids(intermediate).includes(APPLE_INTERMEDIATE_OID)) {
+    throw createError('Signed payload\'s intermediate certificate is not Apple\'s', 401);
+  }
 
-  return chain[0];
+  return leaf;
 };
 
 /**
@@ -349,6 +409,7 @@ const syncFromApple = async ({ transactionId, tenantId = null, originListingId =
 module.exports = {
   appleApi,
   verifyAndDecode,
+  _verifyCertChain, // tests only (NEW-177)
   getTransactionInfo,
   findPlanForProductId,
   syncSubscriptionFromTransaction,

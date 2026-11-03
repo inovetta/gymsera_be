@@ -429,7 +429,11 @@ const auditCapacity = async (tenantId, tenantDb) => {
     activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
     const reservedTotal = listings.reduce((sum, l) => sum + l.reservedSlots, 0);
     usedCapacity = activeBranches + reservedTotal;
-    invariantHolds = usedCapacity <= maxBranches;
+    // Over the plan is legitimate once every unbuilt slot is trimmed: a downgrade never closes a
+    // real branch, and a lapsed tenant (P7c, R-82) is entitled to 0 while its branches stay
+    // (locked after the grace). reconcileCapacity trims slots first, so it is broken only while
+    // unbuilt slots remain; a wrong recorded overage is overQuotaMismatch below (P10 item 3).
+    invariantHolds = usedCapacity <= maxBranches || reservedTotal === 0;
     // Real branches alone beyond the plan — what overQuotaCount should be
     // once every unbuilt slot has already been trimmed.
     expectedOverQuota = Math.max(0, activeBranches - maxBranches);

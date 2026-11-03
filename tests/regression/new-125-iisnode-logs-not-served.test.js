@@ -9,6 +9,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const xml = () => fs.readFileSync(path.join(__dirname, '../../web.config'), 'utf8');
 
@@ -23,5 +24,15 @@ describe('NEW-125: the iisnode log folder is not served', () => {
 
   test('the logs are still written on the server', () => {
     expect(xml()).toMatch(/<iisnode[^>]*loggingEnabled="true"/);
+  });
+
+  // P10 item 2: 23 production stdout / stderr files stayed tracked after iisnode/ was ignored,
+  // so every clone and every server `git pull` carried them, and a server's new logs showed as
+  // local changes that block the pull.
+  test('no iisnode log file is tracked in git, and the folder is ignored', () => {
+    const root = path.join(__dirname, '../..');
+    const tracked = execFileSync('git', ['ls-files', '--', 'iisnode'], { cwd: root, encoding: 'utf8' }).trim();
+    expect(tracked).toBe('');
+    expect(fs.readFileSync(path.join(root, '.gitignore'), 'utf8')).toMatch(/^\/?iisnode\/$/m);
   });
 });

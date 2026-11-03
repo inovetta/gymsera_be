@@ -2,6 +2,13 @@ const Redis = require('ioredis');
 
 let client;
 let isRedisDisabled = false;
+// P10 item 4 (R-88): a CLI (run-scheduled-job.js) asks for no "Redis not configured" line; the API
+// keeps its one boot line. An unreachable Redis is reported once per process in both.
+let quietWhenNotConfigured = false;
+let unreachableReported = false;
+const setQuietWhenNotConfigured = (quiet = true) => {
+  quietWhenNotConfigured = quiet;
+};
 
 /**
  * Returns the singleton Redis client, creating it on first call.
@@ -17,7 +24,7 @@ const getRedisClient = () => {
   // If no Redis host/url is configured or disabled
   if ((!redisHost && !redisUrl) || process.env.DISABLE_REDIS === 'true') {
     isRedisDisabled = true;
-    console.log('[Redis] No REDIS_HOST or REDIS_URL configured. Redis caching disabled.');
+    if (!quietWhenNotConfigured) console.log('[Redis] No REDIS_HOST or REDIS_URL configured. Redis caching disabled.');
     return null;
   }
 
@@ -31,7 +38,7 @@ const getRedisClient = () => {
       connectTimeout: 5000,
       retryStrategy(times) {
         if (times > 3) {
-          console.warn('[Redis] Max reconnect attempts reached. Disabling Redis cache.');
+          reportUnreachable('no answer after 3 reconnect attempts');
           isRedisDisabled = true;
           return null; // Stop reconnecting
         }
@@ -39,15 +46,29 @@ const getRedisClient = () => {
       },
     });
 
-    client.on('connect', () => console.log('[Redis] Connected'));
-    client.on('error', (err) => {
-      console.warn('[Redis] Connection warning:', err.message);
-      if (err.code === 'ECONNREFUSED') {
+    const where = redisUrl ? 'REDIS_URL' : `${redisHost || '127.0.0.1'}:${process.env.REDIS_PORT || '6379'}`;
+    // One line per process, not one per reconnect attempt plus "Connection ended" (P10 item 4).
+    const reportUnreachable = (why) => {
+      if (unreachableReported) return;
+      unreachableReported = true;
+      console.warn(
+        `[Redis] not reachable at ${where} (${why}); this process runs without Redis: locks use MySQL, ` +
+          'caches stay in process. Set DISABLE_REDIS=true on a server without Redis.'
+      );
+    };
+    const current = client;
+    current.on('connect', () => console.log('[Redis] Connected'));
+    current.on('error', (err) => {
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'EHOSTUNREACH') {
+        reportUnreachable(err.code);
         isRedisDisabled = true;
+        current.disconnect(); // disabled for good in this process: stop reconnecting
+        return;
       }
+      console.warn('[Redis] Connection warning:', err.message);
     });
-    client.on('end', () => {
-      console.warn('[Redis] Connection ended. Bypassing Redis cache.');
+    current.on('end', () => {
+      if (!unreachableReported) console.warn('[Redis] Connection ended. Bypassing Redis cache.');
       isRedisDisabled = true;
     });
   }
@@ -151,4 +172,4 @@ const safeRedisDel = async (key) => {
   }
 };
 
-module.exports = { getRedisClient, closeRedisClient, ensureRedisReady, safeRedisGet, safeRedisSetex, safeRedisDel };
+module.exports = { getRedisClient, setQuietWhenNotConfigured, closeRedisClient, ensureRedisReady, safeRedisGet, safeRedisSetex, safeRedisDel };
