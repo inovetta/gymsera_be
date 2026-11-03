@@ -9,6 +9,7 @@ const { startTestServer } = require('../harness/test-server');
 const { createUser, createBranch } = require('../harness/factories');
 const { UserGymMembership } = require('../../src/models/platform');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar dates for current memberships
 
 describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
   let dbHarness;
@@ -97,8 +98,8 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
       membershipPlanId: planT1.id,
       branchId: tenant1Branch1.id,
       status: 'ACTIVE',
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+      startDate: daysFromToday(-30),
+      endDate: daysFromToday(335),
     });
     await UserGymMembership.create({
       userId: tenant1Member.id,
@@ -113,8 +114,8 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
       membershipPlanId: planT1.id,
       branchId: tenant1Branch2.id,
       status: 'ACTIVE',
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+      startDate: daysFromToday(-30),
+      endDate: daysFromToday(335),
     });
     await UserGymMembership.create({
       userId: tenant1Member.id,
@@ -129,8 +130,8 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
       membershipPlanId: planT2.id,
       branchId: tenant2Branch.id,
       status: 'ACTIVE',
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+      startDate: daysFromToday(-30),
+      endDate: daysFromToday(335),
     });
     await UserGymMembership.create({
       userId: tenant2Member.id,
@@ -174,7 +175,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
       subtotal: 1000,
       totalAmount: 1000,
       status: 'ISSUED',
-      dueDate: '2026-12-31',
+      dueDate: daysFromToday(30),
     });
     tenant2Invoice = await tenant2Db.models.Invoice.create({
       userId: tenant2Member.id,
@@ -183,7 +184,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
       subtotal: 2000,
       totalAmount: 2000,
       status: 'ISSUED',
-      dueDate: '2026-12-31',
+      dueDate: daysFromToday(30),
     });
 
     tenant1MemberToken = signToken({

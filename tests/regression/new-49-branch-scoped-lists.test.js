@@ -19,6 +19,7 @@ const { teamMember } = require('../harness/two-branch-team');
 const { GymListing } = require('../../src/models/platform');
 const { signToken } = require('../../src/utils/jwt.utils');
 const membershipService = require('../../src/services/membership.service');
+const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar dates for current memberships
 
 let app;
 let dbHarness;
@@ -68,8 +69,8 @@ beforeAll(async () => {
       membershipPlanId: plan.id,
       branchId: branch.id,
       status: 'ACTIVE',
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+      startDate: daysFromToday(-30),
+      endDate: daysFromToday(335),
     });
     rec.subs[letter] = sub.id;
 
