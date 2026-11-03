@@ -43,6 +43,47 @@ const _weeklyCheckins = async (AttendanceLog, where, todayStr, timezone) => {
  * so a token issued before they became a host (role MEMBER, no tenantId) still gets
  * the right answer (BUG-11). A non-host gets NONE.
  */
+/**
+ * NEW-187 (P10): the plan each check-in was made on, by log id; null when there is none. Never an
+ * invented plan (it used to say "Daily Pass"). The check-in's own subscription first (a plan the
+ * host deleted keeps its name: plans are soft-deleted); for a device / iClock check-in saved
+ * without one, the member's subscription at that branch that covered the check-in day. Two
+ * queries for the whole page, not one per row.
+ */
+const _checkinPlanNames = async (models, logs) => {
+  const { MemberSubscription, MembershipPlan } = models;
+  const names = new Map(logs.map((l) => [l.id, null]));
+  const include = [{ model: MembershipPlan, as: 'plan', attributes: ['name'] }];
+  const subIds = [...new Set(logs.map((l) => l.memberSubscriptionId).filter(Boolean))];
+  const subs = subIds.length
+    ? await MemberSubscription.findAll({ where: { id: { [Op.in]: subIds } }, attributes: ['id'], include })
+    : [];
+  const byId = new Map(subs.map((sub) => [sub.id, sub.plan ? sub.plan.name : null]));
+  const without = logs.filter((l) => !l.memberSubscriptionId);
+  const covering = without.length
+    ? await MemberSubscription.findAll({
+      where: {
+        userId: { [Op.in]: [...new Set(without.map((l) => l.userId))] },
+        branchId: { [Op.in]: [...new Set(without.map((l) => l.branchId))] },
+      },
+      attributes: ['id', 'userId', 'branchId', 'startDate', 'endDate', 'subscribedAt'],
+      include,
+      order: [['subscribedAt', 'DESC']],
+    })
+    : [];
+  for (const log of logs) {
+    if (log.memberSubscriptionId) {
+      names.set(log.id, byId.get(log.memberSubscriptionId) ?? null);
+      continue;
+    }
+    const dayOf = new Date(log.checkInAt).toISOString().slice(0, 10);
+    const sub = covering.find((c) => c.userId === log.userId && c.branchId === log.branchId && c.plan &&
+      (!c.startDate || String(c.startDate) <= dayOf) && (!c.endDate || String(c.endDate) >= dayOf));
+    names.set(log.id, sub ? sub.plan.name : null);
+  }
+  return names;
+};
+
 const getHostStatus = async (req, res, next) => {
   try {
     return sendSuccess(res, await hostStatusService.getHostStatus(req.user.id || req.user.sub));
@@ -975,7 +1016,7 @@ const upgradeSubscription = async (req, res, next) => {
 const getBranchDashboard = async (req, res, next) => {
   try {
     const { branchId } = req.params;
-    const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = req.tenantDb.models;
+    const { Branch, AttendanceLog, Payment, MemberSubscription, Expense } = req.tenantDb.models;
 
     const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
@@ -1051,24 +1092,15 @@ const getBranchDashboard = async (req, res, next) => {
         attributes: ['id', 'fullName', 'profileImageUrl']
       });
       const userMap = new Map(users.map((u) => [u.id, u]));
+      const planNames = await _checkinPlanNames(req.tenantDb.models, logs);
 
       for (const log of logs) {
         const u = userMap.get(log.userId);
-        let planName = 'Daily Pass';
-        if (log.memberSubscriptionId) {
-          const sub = await MemberSubscription.findByPk(log.memberSubscriptionId, {
-            include: [{ model: MembershipPlan, as: 'plan', attributes: ['name'] }]
-          });
-          if (sub && sub.plan) {
-            planName = sub.plan.name;
-          }
-        }
-
         recentCheckins.push({
           id: log.id,
           name: u ? u.fullName : 'Unknown Athlete',
           time: log.checkInAt,
-          passType: planName,
+          passType: planNames.get(log.id),
           status: 'ACTIVE'
         });
       }
@@ -1174,7 +1206,7 @@ const getBranchMembers = async (req, res, next) => {
         usersList.push({
           ...u,
           status: sub.status === 'ACTIVE' ? 'ACTIVE' : (sub.status || u.status),
-          planName: sub.plan ? sub.plan.name : 'Daily Pass',
+          planName: sub.plan ? sub.plan.name : null, // NEW-187: never an invented plan
           endDate: sub.endDate,
           subscriptionStatus: sub.status
         });
@@ -1194,7 +1226,7 @@ const getBranchCheckins = async (req, res, next) => {
   try {
     const { branchId } = req.params;
     const { page = 1, limit = 20, date } = req.query;
-    const { Branch, AttendanceLog, MemberSubscription, MembershipPlan } = req.tenantDb.models;
+    const { Branch, AttendanceLog } = req.tenantDb.models;
 
     const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
@@ -1228,23 +1260,14 @@ const getBranchCheckins = async (req, res, next) => {
     const userMap = new Map(users.map(u => [u.id, u.toJSON()]));
 
     const logsList = [];
+    const planNames = await _checkinPlanNames(req.tenantDb.models, logs);
     for (const log of logs) {
       const u = userMap.get(log.userId);
-      let planName = 'Daily Pass';
-      if (log.memberSubscriptionId) {
-        const sub = await MemberSubscription.findByPk(log.memberSubscriptionId, {
-          include: [{ model: MembershipPlan, as: 'plan', attributes: ['name'] }]
-        });
-        if (sub && sub.plan) {
-          planName = sub.plan.name;
-        }
-      }
-
       logsList.push({
         id: log.id,
         createdAt: log.checkInAt,
         userName: u ? u.fullName : 'Unknown Athlete',
-        planName,
+        planName: planNames.get(log.id),
         user: u
       });
     }
