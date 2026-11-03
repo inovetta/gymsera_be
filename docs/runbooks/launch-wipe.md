@@ -1,5 +1,7 @@
 # Launch-day wipe: removing test data before real customers
 
+> **P10 check (2026-11-03):** ready for a dry run. `reset-platform-data.js` defaults to a dry run, the real run needs `--confirm --db --host` and `--keep-admin`, tenant drops use only `tenants.db_name` (R-79; `docs/sql/tenant-db-name-before-drop.sql`, `run-sql-check.js`), and `tests/regression/reset-platform-data.test.js` passes in the full suite. Not run (owner).
+
 Owner: Amir. Script: `src/scripts/reset-platform-data.js` (service `src/services/platform-reset.service.js`).
 The database holds TEST data only (R-19), but the wipe is still irreversible. Do the steps in order and tick them.
 
@@ -59,13 +61,13 @@ The same query is in `docs/sql/tenant-db-name-before-drop.sql`. On the API serve
 ## After
 
 - [ ] Empty the R2 bucket prefixes for test uploads (gym images, documents) by hand.
-- [ ] Flush Redis (`FLUSHDB` on the app's database only).
+- [ ] Redis: nothing to do while production runs without it (R-88, `DISABLE_REDIS=true`). If Redis was added since, `FLUSHDB` on the app's database only.
 - [ ] Remove test device tokens in Firebase if any were registered.
 - [ ] Revoke sandbox keys that must not reach production; confirm production keys (not sandbox) are set for Apple, Google Play, Stripe, per §16.
 - [ ] Start the API. Log in as a kept admin. `GET /api/v1/billing/plans` returns the plans; cities and areas load.
-- [ ] Run `auditCapacity` (see `capacity-audit.md`): zero findings on an empty platform.
-- [ ] Register a fresh test host account in the app, run one sandbox purchase, delete it afterwards by hand.
-- [ ] Re-enable cron and workers.
+- [ ] Run `auditCapacity` (see `capacity-audit.md`): zero findings on an empty platform. (The "ledger says -2" drift on 8 test tenants, P10 item 3, is pre-ledger test data; the wipe removes it.)
+- [ ] Register a fresh test host account in the app, run one sandbox purchase, delete it afterwards by hand. Expected since R-87 (P10, NEW-179): the purchase entitles the host (plan Active, branches open) but the gym is **not** listed for travellers; `why-not-live.js --branch <name>` says "only a test purchase (Sandbox) entitles". Do not set `SANDBOX_PURCHASES_GO_LIVE` on production.
+- [ ] Re-enable cron and workers (Task Scheduler `run-scheduled-job.js daily` and `billing-inbox`, `SCHEDULED_JOBS=external`; `scheduled-jobs.md`).
 
 ## Rollback
 
