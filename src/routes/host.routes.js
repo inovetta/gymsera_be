@@ -62,6 +62,71 @@ router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), 
 // P5b item 2 (R-81): pause hides a branch from travellers and changes nothing else; who may change the branch's settings may pause it.
 router.post('/branches/:branchId/pause', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('branch.settings'), validate.allowBody([]), hostController.pauseBranch);
 router.post('/branches/:branchId/resume', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('branch.settings'), validate.allowBody([]), hostController.resumeBranch);
+/**
+ * @swagger
+ * /host/subscription/current:
+ *   get:
+ *     summary: The host's GymsEra plan, entitled or lapsed (R-21 read-only, R-82 / NEW-174)
+ *     description: >
+ *       Read-only; never creates a plan. With an entitling plan (ACTIVE, or GRACE while a renewal
+ *       or a pay-later payment is due): `entitled: true`, `lapse: null`. With none but a plan that
+ *       ended (EXPIRED, ON_HOLD, PAUSED, REVOKED): 200 with that row, `entitled: false` and `lapse`
+ *       (why, where the host fixes it, when the branches lock). 404 only when the tenant never had
+ *       a plan. A store test purchase has `environment: SANDBOX`: it entitles the host but never
+ *       makes a gym live for travellers (R-87).
+ *     tags: [Host]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: The current plan
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: string, format: uuid }
+ *                     status: { type: string, enum: [ACTIVE, GRACE, EXPIRED, ON_HOLD, PAUSED, REVOKED] }
+ *                     platform: { type: string, enum: [IOS, ANDROID, STRIPE, MANUAL] }
+ *                     environment: { type: string, nullable: true, enum: [SANDBOX, PRODUCTION, null] }
+ *                     branchCount: { type: integer, nullable: true }
+ *                     billingCycle: { type: string }
+ *                     amount: { type: number }
+ *                     currency: { type: string }
+ *                     startDate: { type: string, format: date }
+ *                     endDate: { type: string, format: date }
+ *                     overQuotaCount: { type: integer }
+ *                     pendingChange: { type: object, nullable: true }
+ *                     entitled: { type: boolean }
+ *                     lapse:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         status: { type: string, enum: [EXPIRED, ON_HOLD, PAUSED, REVOKED] }
+ *                         reason: { type: string, enum: [expired, on_hold, paused, refunded, ended] }
+ *                         provider: { type: string, nullable: true }
+ *                         manageUrl: { type: string, nullable: true, description: Store page where the host fixes or resumes the plan }
+ *                         endedAt: { type: string, format: date-time, nullable: true }
+ *                         branchesLockAt: { type: string, format: date-time, nullable: true }
+ *                         inGrace: { type: boolean }
+ *                         remainingDays: { type: integer, nullable: true }
+ *                     paymentIssue:
+ *                       type: object
+ *                       nullable: true
+ *                       description: GRACE only. A store renewal being retried (provider, manageUrl) or pay later (payBy, daysLeft)
+ *                     overQuotaGraceDays: { type: integer, description: Entitled plans only }
+ *                     overQuotaGraceRemainingDays: { type: integer, nullable: true }
+ *                     isOverQuotaGraceExpired: { type: boolean }
+ *                     duplicateBilling: { type: boolean, description: A superseded store subscription still bills (BILL-09) }
+ *                     duplicateBillingPlatform: { type: string, nullable: true }
+ *                     duplicateBillingManageUrl: { type: string, nullable: true }
+ *       401: { description: Not signed in }
+ *       403: { description: Not a gym host }
+ *       404: { description: The tenant never had a plan (or only a cancelled one) }
+ */
 router.get('/subscription/current', authenticate, authorize('GYM_HOST'), hostController.getCurrentSubscription);
 router.post('/subscription/upgrade', authenticate, authorize('GYM_HOST'), validate.allowBody(['newPlanId', 'planId']), hostController.upgradeSubscription);
 

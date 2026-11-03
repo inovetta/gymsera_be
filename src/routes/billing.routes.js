@@ -101,6 +101,8 @@ router.post('/purchase-intent', authenticate, validate.allowBody(['planId', 'tar
  *               transactionId: { type: string }
  *     responses:
  *       200: { description: Subscription synced }
+ *       401: { description: Not signed in, or the payload is not signed by Apple (chain, App Store markers; NEW-177) }
+ *       409: { description: "subscription_owned_by_other_account: this purchase belongs to another GymsEra account (BILL-01); nothing changes" }
  */
 router.post('/ios/sync', authenticate, validate.allowBody(['transactionId', 'organizationId']), controller.syncIosPurchase);
 
@@ -187,6 +189,8 @@ router.post('/webhooks/apple', controller.appleWebhook);
  *               productId: { type: string }
  *     responses:
  *       200: { description: Subscription synced }
+ *       401: { description: Not signed in }
+ *       409: { description: "subscription_owned_by_other_account: this purchase belongs to another GymsEra account (BILL-01); nothing changes" }
  */
 router.post('/android/sync', authenticate, validate.allowBody(['purchaseToken', 'productId', 'organizationId']), controller.syncAndroidPurchase);
 
