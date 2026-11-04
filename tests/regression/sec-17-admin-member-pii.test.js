@@ -8,6 +8,7 @@ const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, fac
 const { startTestServer, stopTestServer } = require('../harness/test-server');
 const { PlatformAuditLog, GymListing } = require('../../src/models/platform');
 const { maskEmail, maskPhone } = require('../../src/utils/pii-mask');
+const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar dates for current memberships
 
 describe('SEC-17: pii-mask', () => {
   test('masks e-mail to the first letter and the domain', () => {
@@ -40,7 +41,7 @@ describe('SEC-17: admin Members tab', () => {
     const plan = await MembershipPlan.create({ gymId: branch.gymId, branchId: branch.id, name: 'SEC17', price: 1000, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE' });
     member = await factories.createUser({ email: EMAIL, phone: PHONE, fullName: 'Sec Seventeen', role: 'MEMBER' });
     outsider = await factories.createUser({ email: 'sec17.outsider@example.test', phone: '+923009999999', fullName: 'Not A Member', role: 'MEMBER' });
-    await MemberSubscription.create({ userId: member.id, membershipPlanId: plan.id, branchId: branch.id, status: 'ACTIVE', startDate: '2026-01-01', endDate: '2026-12-31' });
+    await MemberSubscription.create({ userId: member.id, membershipPlanId: plan.id, branchId: branch.id, status: 'ACTIVE', startDate: daysFromToday(-30), endDate: daysFromToday(335) });
   });
   afterAll(async () => {
     await stopTestServer();

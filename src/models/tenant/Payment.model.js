@@ -180,7 +180,7 @@ module.exports = (sequelize) => {
             effectiveBranchId = sub.branchId;
           }
         }
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
     }
 
     let timezone = 'Asia/Karachi';
@@ -196,7 +196,7 @@ module.exports = (sequelize) => {
             timezone = branch.timezone;
           }
         }
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
     }
     return timezone;
   };

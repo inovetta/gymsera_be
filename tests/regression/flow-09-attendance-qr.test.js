@@ -11,7 +11,7 @@ const { startTestServer, stopTestServer } = require('../harness/test-server');
 
 // NEW-199: the membership is current on any day the suite runs. It used fixed October 2026 dates, so
 // from 2026-11-01 every check-in answered 403 (membership ended) and six cases failed.
-const daysFromToday = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+const { daysFromToday } = require('../harness/dates');
 
 describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & duplicate window', () => {
   let dbHarness;

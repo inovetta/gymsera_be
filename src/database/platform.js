@@ -131,7 +131,7 @@ const connect = async () => {
   // Unbuilt branch capacity earmarked for an organization — see the comment
   // on GymListing.model.js#reservedSlots.
   try {
-    await sequelize.query("ALTER TABLE `gym_listings` ADD COLUMN `reserved_slots` INT NOT NULL DEFAULT 0;");
+    await sequelize.query('ALTER TABLE `gym_listings` ADD COLUMN `reserved_slots` INT NOT NULL DEFAULT 0;');
   } catch (err) {
     _logIfUnexpected('gym_listings.reserved_slots', err);
   }
@@ -289,17 +289,17 @@ const connect = async () => {
     logLabel: 'tenant_subscriptions.platform_package_id -> NULL',
   });
   const tenantSubBillingColumns = [
-    "ADD COLUMN `billing_plan_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL",
-    "ADD COLUMN `platform` ENUM('MANUAL','IOS','ANDROID','STRIPE') NOT NULL DEFAULT 'MANUAL'",
-    "ADD COLUMN `branch_count` INT NULL",
-    "ADD COLUMN `product_id` VARCHAR(150) NULL",
-    "ADD COLUMN `external_original_transaction_id` VARCHAR(150) NULL",
-    "ADD COLUMN `external_transaction_id` VARCHAR(150) NULL",
-    "ADD COLUMN `environment` ENUM('SANDBOX','PRODUCTION') NULL",
-    "ADD COLUMN `last_verified_at` DATETIME NULL",
+    'ADD COLUMN `billing_plan_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL',
+    'ADD COLUMN `platform` ENUM(\'MANUAL\',\'IOS\',\'ANDROID\',\'STRIPE\') NOT NULL DEFAULT \'MANUAL\'',
+    'ADD COLUMN `branch_count` INT NULL',
+    'ADD COLUMN `product_id` VARCHAR(150) NULL',
+    'ADD COLUMN `external_original_transaction_id` VARCHAR(150) NULL',
+    'ADD COLUMN `external_transaction_id` VARCHAR(150) NULL',
+    'ADD COLUMN `environment` ENUM(\'SANDBOX\',\'PRODUCTION\') NULL',
+    'ADD COLUMN `last_verified_at` DATETIME NULL',
     // Human-readable context for a transitional status — e.g. what a
     // PENDING_CANCEL row is waiting on. See subscription-migration.service.js.
-    "ADD COLUMN `status_note` VARCHAR(255) NULL",
+    'ADD COLUMN `status_note` VARCHAR(255) NULL',
   ];
   for (const clause of tenantSubBillingColumns) {
     try {
@@ -347,13 +347,13 @@ const connect = async () => {
   // Stripe's is ever set by a real API call (sync-stripe); iOS/Android are
   // admin-attested since neither store exposes a safe price-write API.
   const billingPlanSyncColumns = [
-    "ADD COLUMN `stripe_product_id` VARCHAR(150) NULL",
-    "ADD COLUMN `ios_sync_status` ENUM('SYNCED','PENDING','MISMATCH','NOT_CONFIGURED') NOT NULL DEFAULT 'NOT_CONFIGURED'",
-    "ADD COLUMN `android_sync_status` ENUM('SYNCED','PENDING','MISMATCH','NOT_CONFIGURED') NOT NULL DEFAULT 'NOT_CONFIGURED'",
-    "ADD COLUMN `stripe_sync_status` ENUM('SYNCED','PENDING','MISMATCH','NOT_CONFIGURED') NOT NULL DEFAULT 'NOT_CONFIGURED'",
-    "ADD COLUMN `ios_last_synced_at` DATETIME NULL",
-    "ADD COLUMN `android_last_synced_at` DATETIME NULL",
-    "ADD COLUMN `stripe_last_synced_at` DATETIME NULL",
+    'ADD COLUMN `stripe_product_id` VARCHAR(150) NULL',
+    'ADD COLUMN `ios_sync_status` ENUM(\'SYNCED\',\'PENDING\',\'MISMATCH\',\'NOT_CONFIGURED\') NOT NULL DEFAULT \'NOT_CONFIGURED\'',
+    'ADD COLUMN `android_sync_status` ENUM(\'SYNCED\',\'PENDING\',\'MISMATCH\',\'NOT_CONFIGURED\') NOT NULL DEFAULT \'NOT_CONFIGURED\'',
+    'ADD COLUMN `stripe_sync_status` ENUM(\'SYNCED\',\'PENDING\',\'MISMATCH\',\'NOT_CONFIGURED\') NOT NULL DEFAULT \'NOT_CONFIGURED\'',
+    'ADD COLUMN `ios_last_synced_at` DATETIME NULL',
+    'ADD COLUMN `android_last_synced_at` DATETIME NULL',
+    'ADD COLUMN `stripe_last_synced_at` DATETIME NULL',
   ];
   for (const clause of billingPlanSyncColumns) {
     try {
@@ -412,7 +412,7 @@ const connect = async () => {
   // EXISTS above never retroactively adds it.
   try {
     await sequelize.query(
-      "ALTER TABLE `capacity_events` MODIFY COLUMN `action` ENUM('BRANCH_DELETED','BRANCH_RESTORED','SLOT_TRANSFERRED','SLOT_TRIMMED_DOWNGRADE','SLOT_ATTRIBUTED_UPGRADE','SLOT_CONSUMED_BUILD','ORG_DELETED','ORG_BRANCHES_MOVED','BRANCH_BILLING_LOCKED','BRANCH_BILLING_UNLOCKED') NOT NULL;"
+      'ALTER TABLE `capacity_events` MODIFY COLUMN `action` ENUM(\'BRANCH_DELETED\',\'BRANCH_RESTORED\',\'SLOT_TRANSFERRED\',\'SLOT_TRIMMED_DOWNGRADE\',\'SLOT_ATTRIBUTED_UPGRADE\',\'SLOT_CONSUMED_BUILD\',\'ORG_DELETED\',\'ORG_BRANCHES_MOVED\',\'BRANCH_BILLING_LOCKED\',\'BRANCH_BILLING_UNLOCKED\') NOT NULL;'
     );
   } catch (err) {
     _logIfUnexpected('capacity_events.action widen ENUM', err);
@@ -468,28 +468,28 @@ const connect = async () => {
           {
             type: 'MEMBER',
             messages: [
-              { text: "Hey! Is the squat rack at the Warehouse location free around 5 PM? Looking to get a heavy session in.", senderType: 'USER' },
-              { text: "Hi! Yes, the 5 PM slot is usually quiet on Tuesdays. We have three squat racks, so you should be good.", senderType: 'HOST' },
-              { text: "Awesome. Do I need a new entry code or will my current one work?", senderType: 'USER' },
-              { text: "Your current QR code will work fine. Valid for the next 30 days.", senderType: 'HOST' },
-              { text: "Perfect. One more thing — can I bring a guest tomorrow?", senderType: 'USER' },
-              { text: "Yes! Guests are welcome. Just register them at the reception with your member ID.", senderType: 'HOST' },
-              { text: "Amazing, thanks! See you tomorrow.", senderType: 'USER' },
-              { text: "See you then! Have a great workout 💪", senderType: 'HOST' }
+              { text: 'Hey! Is the squat rack at the Warehouse location free around 5 PM? Looking to get a heavy session in.', senderType: 'USER' },
+              { text: 'Hi! Yes, the 5 PM slot is usually quiet on Tuesdays. We have three squat racks, so you should be good.', senderType: 'HOST' },
+              { text: 'Awesome. Do I need a new entry code or will my current one work?', senderType: 'USER' },
+              { text: 'Your current QR code will work fine. Valid for the next 30 days.', senderType: 'HOST' },
+              { text: 'Perfect. One more thing — can I bring a guest tomorrow?', senderType: 'USER' },
+              { text: 'Yes! Guests are welcome. Just register them at the reception with your member ID.', senderType: 'HOST' },
+              { text: 'Amazing, thanks! See you tomorrow.', senderType: 'USER' },
+              { text: 'See you then! Have a great workout 💪', senderType: 'HOST' }
             ]
           },
           {
             type: 'INQUIRY',
             messages: [
-              { text: "Hi, I'm interested in joining. Do you offer student discounts on the Premium Monthly plan?", senderType: 'USER' },
-              { text: "Hello! Yes, we offer a 15% discount for students with a valid student ID. You can register at the front desk.", senderType: 'HOST' },
-              { text: "Regarding membership pause policy, what's the limit? Can I pause for 2 weeks?", senderType: 'USER' }
+              { text: 'Hi, I\'m interested in joining. Do you offer student discounts on the Premium Monthly plan?', senderType: 'USER' },
+              { text: 'Hello! Yes, we offer a 15% discount for students with a valid student ID. You can register at the front desk.', senderType: 'HOST' },
+              { text: 'Regarding membership pause policy, what\'s the limit? Can I pause for 2 weeks?', senderType: 'USER' }
             ]
           },
           {
             type: 'MEMBER',
             messages: [
-              { text: "Hey, my locker key isn't working today. Can someone help me at 5pm?", senderType: 'USER' }
+              { text: 'Hey, my locker key isn\'t working today. Can someone help me at 5pm?', senderType: 'USER' }
             ]
           }
         ];

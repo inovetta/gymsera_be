@@ -57,7 +57,7 @@ const MIGRATIONS = [
 
       // branches
       await ensureCol('branches', 'gym_listing_id', '`gym_listing_id` CHAR(36) NULL');
-      await ensureCol('branches', 'timezone', "`timezone` VARCHAR(64) NOT NULL DEFAULT 'Asia/Karachi'");
+      await ensureCol('branches', 'timezone', '`timezone` VARCHAR(64) NOT NULL DEFAULT \'Asia/Karachi\'');
 
       // approval_requests
       await ensureCol('approval_requests', 'collected_by', '`collected_by` CHAR(36) NULL');
@@ -336,7 +336,7 @@ const MIGRATIONS = [
       if (context?.dryRun === true) return null;
 
       const [amountCol] = await sequelize.query(
-        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payouts' AND COLUMN_NAME = 'amount'",
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payouts\' AND COLUMN_NAME = \'amount\'',
         { type: QueryTypes.SELECT }
       );
       const [tableExists] = await sequelize.query(
@@ -392,7 +392,7 @@ const MIGRATIONS = [
       if (!tableExists) return null;
 
       const [versionCol] = await sequelize.query(
-        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'role_assignments' AND COLUMN_NAME = 'version'",
+        'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'role_assignments\' AND COLUMN_NAME = \'version\'',
         { type: QueryTypes.SELECT }
       );
 
@@ -425,7 +425,7 @@ const MIGRATIONS = [
       if (context?.dryRun === true) return null;
 
       const [nextNumberCol] = await sequelize.query(
-        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoice_sequences' AND COLUMN_NAME = 'next_number'",
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'invoice_sequences\' AND COLUMN_NAME = \'next_number\'',
         { type: QueryTypes.SELECT }
       );
       const [tableExists] = await sequelize.query(
@@ -486,13 +486,13 @@ const MIGRATIONS = [
       if (context?.dryRun === true) return null;
 
       const [tableExists] = await sequelize.query(
-        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'gym_staff'",
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gym_staff\'',
         { type: QueryTypes.SELECT }
       );
       if (!tableExists) return null;
 
       const [tokenHashCol] = await sequelize.query(
-        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'gym_staff' AND COLUMN_NAME = 'invite_token_hash'",
+        'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gym_staff\' AND COLUMN_NAME = \'invite_token_hash\'',
         { type: QueryTypes.SELECT }
       );
 
@@ -513,7 +513,7 @@ const MIGRATIONS = [
       }
 
       const [expiresAtCol] = await sequelize.query(
-        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'gym_staff' AND COLUMN_NAME = 'token_expires_at'",
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gym_staff\' AND COLUMN_NAME = \'token_expires_at\'',
         { type: QueryTypes.SELECT }
       );
 
@@ -542,14 +542,14 @@ const MIGRATIONS = [
       if (context?.dryRun === true) return null;
 
       const [paymentsExists] = await sequelize.query(
-        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments'",
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payments\'',
         { type: QueryTypes.SELECT }
       );
 
       if (paymentsExists) {
         // 1. Check payments.shift
         const [shiftCol] = await sequelize.query(
-          "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'shift'",
+          'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'payments\' AND COLUMN_NAME = \'shift\'',
           { type: QueryTypes.SELECT }
         );
 
@@ -565,20 +565,20 @@ const MIGRATIONS = [
 
         if (!shiftCol) {
           await sequelize.query(
-            "ALTER TABLE `payments` ADD COLUMN `shift` VARCHAR(20) NULL DEFAULT 'DEFAULT'"
+            'ALTER TABLE `payments` ADD COLUMN `shift` VARCHAR(20) NULL DEFAULT \'DEFAULT\''
           );
         }
       }
 
       const [ledgerExists] = await sequelize.query(
-        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ledger_days'",
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'ledger_days\'',
         { type: QueryTypes.SELECT }
       );
 
       if (ledgerExists) {
         // 2. Check ledger_days.closed_collectors_json
         const [closedCol] = await sequelize.query(
-          "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ledger_days' AND COLUMN_NAME = 'closed_collectors_json'",
+          'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'ledger_days\' AND COLUMN_NAME = \'closed_collectors_json\'',
           { type: QueryTypes.SELECT }
         );
 
@@ -730,7 +730,7 @@ const MIGRATIONS = [
         return { skipped: true, reason: 'column_exists_with_other_type', table: 'branches', column: 'currency', type: col.DATA_TYPE };
       }
 
-      await sequelize.query("ALTER TABLE `branches` ADD COLUMN `currency` VARCHAR(3) NOT NULL DEFAULT 'PKR'");
+      await sequelize.query('ALTER TABLE `branches` ADD COLUMN `currency` VARCHAR(3) NOT NULL DEFAULT \'PKR\'');
       return null;
     },
   },

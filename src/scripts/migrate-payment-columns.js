@@ -32,7 +32,7 @@ async function migrateTenant(gymName, connUrl) {
     await seq.authenticate();
 
     const existing = await seq.query(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments'`,
+      'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = \'payments\'',
       { replacements: [dbName], type: QueryTypes.SELECT }
     );
     const existingSet = new Set(existing.map((r) => r.COLUMN_NAME));
@@ -50,7 +50,7 @@ async function migrateTenant(gymName, connUrl) {
 
     // Always ensure ENUM includes STAFF_COLLECTED
     await seq.query(
-      `ALTER TABLE payments MODIFY COLUMN \`status\` ENUM('PENDING','STAFF_COLLECTED','COMPLETED','FAILED','REFUNDED') NOT NULL DEFAULT 'PENDING'`
+      'ALTER TABLE payments MODIFY COLUMN `status` ENUM(\'PENDING\',\'STAFF_COLLECTED\',\'COMPLETED\',\'FAILED\',\'REFUNDED\') NOT NULL DEFAULT \'PENDING\''
     );
   } catch (err) {
     console.error(`  ❌  ${gymName}: ${err.message}`);
@@ -78,7 +78,7 @@ async function main() {
   console.log('✅  Platform DB connected\n');
 
   const tenants = await platformSeq.query(
-    `SELECT gym_name, connection_string_encrypted FROM tenants WHERE status = 'ACTIVE' AND connection_string_encrypted IS NOT NULL`,
+    'SELECT gym_name, connection_string_encrypted FROM tenants WHERE status = \'ACTIVE\' AND connection_string_encrypted IS NOT NULL',
     { type: QueryTypes.SELECT }
   );
 

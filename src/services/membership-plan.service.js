@@ -18,7 +18,7 @@ const _ensureSchema = async (tenantDb) => {
   } catch (err) {
     try {
       await seq.query('ALTER TABLE membership_plans ADD COLUMN is_deactivated BOOLEAN NOT NULL DEFAULT false').catch(() => {});
-    } catch (_) {}
+    } catch (_) { /* ignored on purpose */ }
   }
 };
 

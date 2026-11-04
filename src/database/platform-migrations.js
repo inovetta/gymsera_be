@@ -344,7 +344,7 @@ const PLATFORM_MIGRATIONS = [
       // Add indexes if missing
       try {
         await sequelize.query('CREATE INDEX `refresh_tokens_family_id` ON `refresh_tokens` (`family_id`);');
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
       return null;
     },
   },
@@ -497,7 +497,7 @@ const PLATFORM_MIGRATIONS = [
       if (context?.dryRun === true) return;
 
       const [idemCol] = await sequelize.query(
-        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'idempotency_records' AND COLUMN_NAME = 'idempotency_key'",
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'idempotency_records\' AND COLUMN_NAME = \'idempotency_key\'',
         { type: QueryTypes.SELECT }
       );
       const [tableExists] = await sequelize.query(
@@ -549,7 +549,7 @@ const PLATFORM_MIGRATIONS = [
       if (!tableExists) return null;
 
       const [col] = await sequelize.query(
-        "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'payment_details_updated_at'",
+        'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenants\' AND COLUMN_NAME = \'payment_details_updated_at\'',
         { type: QueryTypes.SELECT }
       );
       if (col) {
@@ -710,7 +710,7 @@ const PLATFORM_MIGRATIONS = [
       );
       if (tableExists) {
         const [statusCol] = await sequelize.query(
-          "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'audit_logs' AND COLUMN_NAME = 'status_code'",
+          'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'audit_logs\' AND COLUMN_NAME = \'status_code\'',
           { type: QueryTypes.SELECT }
         );
         if (!statusCol || (statusCol.DATA_TYPE !== 'smallint' && statusCol.DATA_TYPE !== 'int')) {
@@ -766,7 +766,7 @@ const PLATFORM_MIGRATIONS = [
       );
       if (tableExists) {
         const [col] = await sequelize.query(
-          "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_plan_prices' AND COLUMN_NAME = 'monthly_minor'",
+          'SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'billing_plan_prices\' AND COLUMN_NAME = \'monthly_minor\'',
           { type: QueryTypes.SELECT }
         );
         if (!col || String(col.DATA_TYPE).toLowerCase() !== 'bigint') {
@@ -820,7 +820,7 @@ const PLATFORM_MIGRATIONS = [
       ];
       for (const [name, ddl] of columns) {
         const [has] = await sequelize.query(
-          "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens' AND COLUMN_NAME = ?",
+          'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'device_tokens\' AND COLUMN_NAME = ?',
           { replacements: [name], type: QueryTypes.SELECT }
         );
         if (!has) await sequelize.query(`ALTER TABLE \`device_tokens\` ADD COLUMN \`${name}\` ${ddl}`);
@@ -847,7 +847,7 @@ const PLATFORM_MIGRATIONS = [
       if (!tableExists) return null;
 
       const [col] = await sequelize.query(
-        "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'messages' AND COLUMN_NAME = 'client_message_id'",
+        'SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'messages\' AND COLUMN_NAME = \'client_message_id\'',
         { type: QueryTypes.SELECT }
       );
       if (col && String(col.DATA_TYPE).toLowerCase() !== 'varchar') {
@@ -861,7 +861,7 @@ const PLATFORM_MIGRATIONS = [
       }
 
       const [hasIndex] = await sequelize.query(
-        "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'messages' AND INDEX_NAME = 'messages_conversation_sender_client_msg' LIMIT 1",
+        'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'messages\' AND INDEX_NAME = \'messages_conversation_sender_client_msg\' LIMIT 1',
         { type: QueryTypes.SELECT }
       );
       if (hasIndex) return null;
@@ -915,7 +915,7 @@ const PLATFORM_MIGRATIONS = [
       if (added?.skipped) return added;
 
       const [hasIndex] = await sequelize.query(
-        "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_events' AND INDEX_NAME = 'billing_events_tenant_status' LIMIT 1",
+        'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'billing_events\' AND INDEX_NAME = \'billing_events_tenant_status\' LIMIT 1',
         { type: QueryTypes.SELECT }
       );
       if (!hasIndex) {
@@ -975,7 +975,7 @@ const PLATFORM_MIGRATIONS = [
       ];
       const present = new Set(
         (await sequelize.query(
-          "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('cities', 'areas')",
+          'SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (\'cities\', \'areas\')',
           { type: QueryTypes.SELECT }
         )).map((r) => r.name)
       );
@@ -1013,7 +1013,7 @@ const PLATFORM_MIGRATIONS = [
     up: async (sequelize, context = {}) => {
       if (context?.dryRun === true) return null;
       const [hasTable] = await sequelize.query(
-        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cities' LIMIT 1",
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'cities\' LIMIT 1',
         { type: QueryTypes.SELECT }
       );
       if (!hasTable) return null; // created later with the column (model sync)
@@ -1041,7 +1041,7 @@ const PLATFORM_MIGRATIONS = [
     up: async (sequelize, context = {}) => {
       if (context?.dryRun === true) return null;
       const [hasTable] = await sequelize.query(
-        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_subscriptions' LIMIT 1",
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenant_subscriptions\' LIMIT 1',
         { type: QueryTypes.SELECT }
       );
       if (!hasTable) return null; // created later with the column (model sync)

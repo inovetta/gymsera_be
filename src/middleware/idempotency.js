@@ -77,7 +77,7 @@ function idempotency(options = {}) {
       try {
         const platformModels = require('../models/platform');
         IdempotencyModel = platformModels.IdempotencyRecord;
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
     }
 
     if (!IdempotencyModel) {
@@ -220,7 +220,7 @@ function idempotency(options = {}) {
         if (typeof data === 'string') {
           try {
             parsed = JSON.parse(data);
-          } catch (_) {}
+          } catch (_) { /* ignored on purpose */ }
         }
 
         if (req.timedOut) {

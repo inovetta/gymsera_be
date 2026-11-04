@@ -186,7 +186,7 @@ const markInquiryRead = async (conversationId, tenantId) => {
       readAt: new Date().toISOString(),
     });
     socketGateway.emitConversationUpdated(conversationId, { unreadCountHost: 0 });
-  } catch (_) {}
+  } catch (_) { /* ignored on purpose */ }
 
   return { success: true };
 };
@@ -408,7 +408,7 @@ const markTravelerRead = async (conversationId, userId) => {
       readAt: new Date().toISOString(),
     });
     socketGateway.emitConversationUpdated(conversationId, { unreadCountUser: 0 });
-  } catch (_) {}
+  } catch (_) { /* ignored on purpose */ }
 
   return { success: true };
 };

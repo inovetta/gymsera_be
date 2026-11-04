@@ -36,7 +36,7 @@ async function checkHistoricalData(options = {}) {
   // ── FLOW-10 Check: Reviews auto-approved or without active/past subscription ─
   try {
     const allReviews = await pSeq.query(
-      "SELECT id, branch_id, user_id, tenant_id, rating, status, created_at FROM gym_reviews",
+      'SELECT id, branch_id, user_id, tenant_id, rating, status, created_at FROM gym_reviews',
       { type: QueryTypes.SELECT }
     );
 
@@ -45,7 +45,7 @@ async function checkHistoricalData(options = {}) {
       let sub = null;
       if (rev.tenant_id) {
         [sub] = await pSeq.query(
-          "SELECT id, status FROM user_gym_memberships WHERE user_id = ? AND tenant_id = ? AND status IN ('ACTIVE', 'EXPIRED', 'FROZEN') LIMIT 1",
+          'SELECT id, status FROM user_gym_memberships WHERE user_id = ? AND tenant_id = ? AND status IN (\'ACTIVE\', \'EXPIRED\', \'FROZEN\') LIMIT 1',
           { replacements: [rev.user_id, rev.tenant_id], type: QueryTypes.SELECT }
         );
       }
@@ -74,7 +74,7 @@ async function checkHistoricalData(options = {}) {
     }));
   } else {
     const tenants = await pSeq.query(
-      "SELECT id, business_name, tenant_code, connection_string_encrypted FROM tenants WHERE status = 'ACTIVE'",
+      'SELECT id, business_name, tenant_code, connection_string_encrypted FROM tenants WHERE status = \'ACTIVE\'',
       { type: QueryTypes.SELECT }
     );
     logger(`[Platform DB] Found ${tenants.length} active tenant(s) to inspect.\n`);
@@ -99,7 +99,7 @@ async function checkHistoricalData(options = {}) {
     // ── FLOW-12 Check: Staff invites without single-use expiring tokens ──────────
     try {
       const legacyInvites = await tSeq.query(
-        "SELECT id, branch_id, email, status FROM gym_staff WHERE status = 'pending' AND (invite_token_hash IS NULL OR token_expires_at IS NULL)",
+        'SELECT id, branch_id, email, status FROM gym_staff WHERE status = \'pending\' AND (invite_token_hash IS NULL OR token_expires_at IS NULL)',
         { type: QueryTypes.SELECT }
       );
       if (legacyInvites.length > 0) {
@@ -117,7 +117,7 @@ async function checkHistoricalData(options = {}) {
     // ── FLOW-09 Check: Subscriptions on legacy static GE- QR codes ─────────────
     try {
       const staticSubs = await tSeq.query(
-        "SELECT id, user_id, branch_id, status, qr_code FROM member_subscriptions WHERE qr_code LIKE 'GE-%' AND status = 'ACTIVE'",
+        'SELECT id, user_id, branch_id, status, qr_code FROM member_subscriptions WHERE qr_code LIKE \'GE-%\' AND status = \'ACTIVE\'',
         { type: QueryTypes.SELECT }
       );
       if (staticSubs.length > 0) {
@@ -136,7 +136,7 @@ async function checkHistoricalData(options = {}) {
     try {
       // Missed open days
       const missedDays = await tSeq.query(
-        "SELECT id, branch_id, business_date, status FROM ledger_days WHERE status = 'OPEN' AND business_date < CURRENT_DATE()",
+        'SELECT id, branch_id, business_date, status FROM ledger_days WHERE status = \'OPEN\' AND business_date < CURRENT_DATE()',
         { type: QueryTypes.SELECT }
       );
       if (missedDays.length > 0) {
@@ -150,7 +150,7 @@ async function checkHistoricalData(options = {}) {
 
       // Closed days without snapshot
       const uncalibratedClosedDays = await tSeq.query(
-        "SELECT id, branch_id, business_date, closed_expected_total, closed_verified_total FROM ledger_days WHERE status = 'CLOSED' AND (closed_collectors_json IS NULL OR closed_collectors_json = '')",
+        'SELECT id, branch_id, business_date, closed_expected_total, closed_verified_total FROM ledger_days WHERE status = \'CLOSED\' AND (closed_collectors_json IS NULL OR closed_collectors_json = \'\')',
         { type: QueryTypes.SELECT }
       );
       if (uncalibratedClosedDays.length > 0) {
@@ -159,7 +159,7 @@ async function checkHistoricalData(options = {}) {
 
       // Cash payments without shift
       const unassignedCash = await tSeq.query(
-        "SELECT id, branch_id, amount, status, staff_collected_by FROM payments WHERE method = 'CASH' AND (shift IS NULL OR shift = '')",
+        'SELECT id, branch_id, amount, status, staff_collected_by FROM payments WHERE method = \'CASH\' AND (shift IS NULL OR shift = \'\')',
         { type: QueryTypes.SELECT }
       );
       if (unassignedCash.length > 0) {

@@ -59,7 +59,7 @@ function validateMagicBytes(buffer, mimetype) {
  * Saves a buffer to private local disk storage.
  */
 function saveLocalPrivate(buffer, key) {
-  const safeKey = path.normalize(key).replace(/^(\.\.[\/\\])+/, '');
+  const safeKey = path.normalize(key).replace(/^(\.\.[/\\])+/, '');
   const targetPath = path.join(PRIVATE_KYC_DIR, safeKey);
   const targetDir = path.dirname(targetPath);
   if (!fs.existsSync(targetDir)) {
@@ -155,7 +155,7 @@ async function getKycStream(key) {
       };
     } catch (err) {
       // Check if file exists locally before throwing
-      const localPath = path.join(PRIVATE_KYC_DIR, path.normalize(key).replace(/^(\.\.[\/\\])+/, ''));
+      const localPath = path.join(PRIVATE_KYC_DIR, path.normalize(key).replace(/^(\.\.[/\\])+/, ''));
       if (fs.existsSync(localPath)) {
         const stat = fs.statSync(localPath);
         return {
@@ -169,7 +169,7 @@ async function getKycStream(key) {
   }
 
   // Local private storage
-  const safeKey = path.normalize(key).replace(/^(\.\.[\/\\])+/, '');
+  const safeKey = path.normalize(key).replace(/^(\.\.[/\\])+/, '');
   const localPath = path.join(PRIVATE_KYC_DIR, safeKey);
   if (!fs.existsSync(localPath)) {
     const err = new Error('KYC document file not found on storage');
@@ -209,7 +209,7 @@ async function deleteKycFile(key) {
 
   // Also clean up local file if present
   try {
-    const safeKey = path.normalize(key).replace(/^(\.\.[\/\\])+/, '');
+    const safeKey = path.normalize(key).replace(/^(\.\.[/\\])+/, '');
     const localPath = path.join(PRIVATE_KYC_DIR, safeKey);
     if (fs.existsSync(localPath)) {
       fs.unlinkSync(localPath);

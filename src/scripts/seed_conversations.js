@@ -7,28 +7,28 @@ const dummyConversations = [
   {
     type: 'MEMBER',
     messages: [
-      { text: "Hey! Is the squat rack at the Warehouse location free around 5 PM? Looking to get a heavy session in.", senderType: 'USER' },
-      { text: "Hi! Yes, the 5 PM slot is usually quiet on Tuesdays. We have three squat racks, so you should be good.", senderType: 'HOST' },
-      { text: "Awesome. Do I need a new entry code or will my current one work?", senderType: 'USER' },
-      { text: "Your current QR code will work fine. Valid for the next 30 days.", senderType: 'HOST' },
-      { text: "Perfect. One more thing — can I bring a guest tomorrow?", senderType: 'USER' },
-      { text: "Yes! Guests are welcome. Just register them at the reception with your member ID.", senderType: 'HOST' },
-      { text: "Amazing, thanks! See you tomorrow.", senderType: 'USER' },
-      { text: "See you then! Have a great workout 💪", senderType: 'HOST' }
+      { text: 'Hey! Is the squat rack at the Warehouse location free around 5 PM? Looking to get a heavy session in.', senderType: 'USER' },
+      { text: 'Hi! Yes, the 5 PM slot is usually quiet on Tuesdays. We have three squat racks, so you should be good.', senderType: 'HOST' },
+      { text: 'Awesome. Do I need a new entry code or will my current one work?', senderType: 'USER' },
+      { text: 'Your current QR code will work fine. Valid for the next 30 days.', senderType: 'HOST' },
+      { text: 'Perfect. One more thing — can I bring a guest tomorrow?', senderType: 'USER' },
+      { text: 'Yes! Guests are welcome. Just register them at the reception with your member ID.', senderType: 'HOST' },
+      { text: 'Amazing, thanks! See you tomorrow.', senderType: 'USER' },
+      { text: 'See you then! Have a great workout 💪', senderType: 'HOST' }
     ]
   },
   {
     type: 'INQUIRY',
     messages: [
-      { text: "Hi, I'm interested in joining. Do you offer student discounts on the Premium Monthly plan?", senderType: 'USER' },
-      { text: "Hello! Yes, we offer a 15% discount for students with a valid student ID. You can register at the front desk.", senderType: 'HOST' },
-      { text: "Regarding membership pause policy, what's the limit? Can I pause for 2 weeks?", senderType: 'USER' }
+      { text: 'Hi, I\'m interested in joining. Do you offer student discounts on the Premium Monthly plan?', senderType: 'USER' },
+      { text: 'Hello! Yes, we offer a 15% discount for students with a valid student ID. You can register at the front desk.', senderType: 'HOST' },
+      { text: 'Regarding membership pause policy, what\'s the limit? Can I pause for 2 weeks?', senderType: 'USER' }
     ]
   },
   {
     type: 'MEMBER',
     messages: [
-      { text: "Hey, my locker key isn't working today. Can someone help me at 5pm?", senderType: 'USER' }
+      { text: 'Hey, my locker key isn\'t working today. Can someone help me at 5pm?', senderType: 'USER' }
     ]
   }
 ];
@@ -41,7 +41,7 @@ async function seed() {
 
   const users = await User.findAll({ where: { role: 'MEMBER' } });
   if (users.length === 0) {
-    console.log("No member users found to seed conversations. Please run main seeder first.");
+    console.log('No member users found to seed conversations. Please run main seeder first.');
     return;
   }
   console.log(`Found ${users.length} member users.`);
@@ -126,10 +126,10 @@ async function seed() {
     }
   }
 
-  console.log("🎉 Seeded conversations successfully!");
+  console.log('🎉 Seeded conversations successfully!');
 }
 
 seed().catch(err => {
-  console.error("Error seeding conversations:", err);
+  console.error('Error seeding conversations:', err);
   process.exit(1);
 });

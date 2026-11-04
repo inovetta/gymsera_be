@@ -21,7 +21,6 @@ const jwt = require('jsonwebtoken');
 const { encrypt, decrypt } = require('../utils/crypto.utils');
 const { PlatformAuditLog } = require('../models/platform');
 
-/* global fetch, AbortSignal */ // Node 20 built-ins (the eslint config has no node globals)
 const APPLE_AUTH_BASE = 'https://appleid.apple.com/auth';
 const APPLE_TIMEOUT_MS = 8000;
 

@@ -15,6 +15,7 @@
 const { Sequelize } = require('sequelize');
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { startTestServer, stopTestServer } = require('../harness/test-server');
+const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar dates for current memberships
 
 describe('API-07/08: slim list DTOs', () => {
   let h; let payment; let sub;
@@ -33,7 +34,7 @@ describe('API-07/08: slim list DTOs', () => {
     const u = await factories.createUser({ email: 'slim@api07.test', fullName: 'Slim Member', role: 'MEMBER' });
     sub = await h.tenant1.models.MemberSubscription.create({
       userId: u.id, membershipPlanId: plan.id, branchId: branch.id, status: 'ACTIVE',
-      startDate: '2026-01-01', endDate: '2026-12-31',
+      startDate: daysFromToday(-30), endDate: daysFromToday(335),
     });
     payment = await factories.createPayment(h.tenant1, branch.id, {
       userId: u.id, referenceEntityId: sub.id, paymentFor: 'MEMBERSHIP', method: 'CASH',
@@ -96,7 +97,7 @@ describe('API-07/08: slim list DTOs', () => {
     const u = await factories.createUser({ email: 'nopay@api07.test', role: 'MEMBER' });
     const s2 = await h.tenant1.models.MemberSubscription.create({
       userId: u.id, membershipPlanId: plan.id, branchId: branch.id, status: 'PENDING',
-      startDate: '2026-01-01', endDate: '2026-12-31',
+      startDate: daysFromToday(-30), endDate: daysFromToday(335),
     });
     const res = await asPersona('owner').get('/subscriptions/staff?page=1&limit=20');
     const row = res.body.data.subscriptions.find((s) => s.id === s2.id);

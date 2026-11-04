@@ -353,7 +353,7 @@ const getRangeLedger = async (tenantDb, branchId, fromDate, toDate) => {
     },
     attributes: [
       'businessDate',
-      [fn('SUM', literal(`CASE WHEN status IN ('${COLLECTED_STATUSES.join("','")}') THEN amount ELSE 0 END`)), 'collected'],
+      [fn('SUM', literal(`CASE WHEN status IN ('${COLLECTED_STATUSES.join('\',\'')}') THEN amount ELSE 0 END`)), 'collected'],
       [fn('SUM', literal(`CASE WHEN status = '${PaymentStatus.COMPLETED}' THEN amount ELSE 0 END`)), 'verified'],
       [fn('SUM', col('amount')), 'expected'],
     ],

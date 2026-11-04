@@ -19,6 +19,26 @@ const router = Router();
 // this request resolved to, so routes that act on req.user.tenantId check again.
 const ownerHere = authorize('GYM_HOST');
 
+// NEW-196 (R-89): an organization's profile (read, save, photo upload) is edited by the owner or by a
+// team member with listing.manage organization-wide, the rule /gyms/profile uses (NEW-45). The owner
+// passes first, as before (the photo upload runs without a tenant context for the owner: onboarding
+// uploads before the tenant database exists). Anyone else needs a tenant they belong to and the grant
+// at organization level (a branch-level listing.manage is not enough); a caller with no such tenant,
+// and a platform admin, keep the owner check's 403. Edits are audited in hostController.updateListing.
+const canManageListing = can('listing.manage', { orgWide: true });
+const ownerOrListingManager = ({ ownerNeedsContext }) => (req, res, next) =>
+  ownerHere(req, res, async (notOwner) => {
+    if (!notOwner) return ownerNeedsContext ? tenantContext(req, res, next) : next();
+    // Deny by default: a platform admin uses the admin routes, never a host's organization routes.
+    if (req.user?.role === 'PLATFORM_ADMIN') return next(notOwner);
+    try {
+      if (!(await tenantContext.resolveTenantId(req))) return next(notOwner);
+    } catch (err) {
+      return next(err);
+    }
+    return tenantContext(req, res, (ctxErr) => (ctxErr ? next(ctxErr) : canManageListing(req, res, next)));
+  });
+
 // Payouts (PAY-10, SEC-13)
 router.get('/payouts/balance', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
 router.get('/payouts', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
@@ -41,11 +61,11 @@ router.get('/status', authenticate, hostController.getHostStatus);
 router.get('/today-summary', authenticate, authorize('GYM_HOST'), hostController.getTodaySummary);
 router.get('/branch-quota', authenticate, authorize('GYM_HOST'), hostController.getBranchQuota);
 router.get('/organization-quota', authenticate, authorize('GYM_HOST'), hostController.getOrganizationQuota);
-router.get('/listings', authenticate, authorize('GYM_HOST'), hostController.getListings);
+router.get('/listings', authenticate, ownerOrListingManager({ ownerNeedsContext: false }), hostController.getListings);
 router.post(
   '/listings/staging-images',
   authenticate,
-  authorize('GYM_HOST'),
+  ownerOrListingManager({ ownerNeedsContext: false }),
   upload.images('images', 10),
   upload.handleMulterError,
   validate.allowBody([]), hostController.uploadListingStagingImages
@@ -53,9 +73,9 @@ router.post(
 // NEW-140 (P9): the first branch's location may come from Google (CMS New Organization), with its place id.
 router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.strict(gymsValidators.branchLocation, { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'images', 'logoUrl', 'packages'] }), hostController.createListing);
 // Phase 7 P5 (BUG-22): one organization and its own gym details, for Edit Organization.
-router.get('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, hostController.getListing);
-router.put('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
-router.patch('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
+router.get('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), hostController.getListing);
+router.put('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
+router.patch('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
 router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
 router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toListingId']), hostController.transferReservedSlots);
 router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody([]), hostController.restoreBranch);

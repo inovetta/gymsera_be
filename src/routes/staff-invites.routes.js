@@ -24,20 +24,20 @@ const _resolveStaffAndTenant = async (staffIdOrToken, requestedTenantId) => {
     let staff = null;
     try {
       staff = await tenantDb.models.GymStaff.findByPk(staffIdOrToken);
-    } catch (_) {}
+    } catch (_) { /* ignored on purpose */ }
     if (staff) return staff;
 
     if (computedHash) {
       try {
         staff = await tenantDb.models.GymStaff.findOne({ where: { inviteTokenHash: computedHash } });
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
       if (staff) return staff;
     }
 
     if (staffIdOrToken) {
       try {
         staff = await tenantDb.models.GymStaff.findOne({ where: { inviteTokenHash: String(staffIdOrToken).toLowerCase() } });
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
     }
     return staff;
   };
@@ -49,7 +49,7 @@ const _resolveStaffAndTenant = async (staffIdOrToken, requestedTenantId) => {
         const tenantDb = await TenantDbManager.getConnection(targetTenant.id, targetTenant.connectionStringEncrypted);
         targetStaff = await findStaffOnDb(tenantDb);
       } catch (err) {
-        console.warn(`[Staff Invite] Failed to connect using provided tenantId:`, err.message);
+        console.warn('[Staff Invite] Failed to connect using provided tenantId:', err.message);
       }
     }
   }

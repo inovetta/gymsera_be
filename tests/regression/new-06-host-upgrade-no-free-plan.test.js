@@ -12,6 +12,7 @@ const { startTestServer } = require('../harness/test-server');
 const { signToken } = require('../../src/utils/jwt.utils');
 const { City, Tenant, TenantSubscription, PlatformPackage } = require('../../src/models/platform');
 const quota = require('../../src/services/subscription-quota.service');
+const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar dates for current memberships
 
 describe('NEW-06: POST /host/subscription/upgrade grants nothing', () => {
   let app;
@@ -73,8 +74,8 @@ describe('NEW-06: POST /host/subscription/upgrade grants nothing', () => {
     await TenantSubscription.create({
       tenantId: tenant.id,
       platformPackageId: pkg.id,
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+      startDate: daysFromToday(-30),
+      endDate: daysFromToday(335),
       amount: 9000,
       billingCycle: 'MONTHLY',
       status: 'ACTIVE',

@@ -322,7 +322,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
       role: 'traveler',
       type: 'subscription_pending',
       title: 'Subscription Pending',
-      message: "Subscription submitted — awaiting verification. We'll notify you once it's confirmed.",
+      message: 'Subscription submitted — awaiting verification. We\'ll notify you once it\'s confirmed.',
       deepLink: '/traveler/subscriptions',
       metadataJson: { subscriptionId: subscription.id },
     });

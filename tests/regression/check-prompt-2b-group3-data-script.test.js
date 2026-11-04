@@ -6,6 +6,7 @@ const {
   setupPersonas,
 } = require('../harness');
 const { checkHistoricalData } = require('../../src/scripts/check-prompt-2b-group3-data');
+const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar dates for current memberships
 
 describe('Rule 8: Read-only check script against migrated schema asserts zero writes', () => {
   let dbHarness;
@@ -79,8 +80,8 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
       userId: memberUserId,
       branchId,
       membershipPlanId: plan.id,
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+      startDate: daysFromToday(-30),
+      endDate: daysFromToday(335),
       status: 'ACTIVE',
       qrCode: 'GE-STATIC-LEGACY-001',
     });

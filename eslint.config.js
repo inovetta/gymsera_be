@@ -25,6 +25,20 @@ module.exports = [
         clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
+        // Node globals the code uses (NEW-204); listed rather than adding a dependency.
+        setImmediate: 'readonly',
+        clearImmediate: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        fetch: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        structuredClone: 'readonly',
+        queueMicrotask: 'readonly',
+        performance: 'readonly',
+        global: 'readonly',
       },
     },
   },
@@ -45,6 +59,7 @@ module.exports = [
     },
   },
   {
-    ignores: ['node_modules/**'],
+    // socket-bundle.js is a generated, self-contained socket.io build (7e28b97); it is not our source.
+    ignores: ['node_modules/**', 'src/socket/socket-bundle.js'],
   },
 ];

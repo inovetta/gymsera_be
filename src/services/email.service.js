@@ -404,7 +404,7 @@ const sendTenantAccountReactivatedEmail = async (to, fullName, { businessName, p
 // ── Host plan changes (P7c item 7, NEW-176, R-82) ────────────────────────────
 // One layout for the plan notices below. Every value is escaped: names come from users.
 const _escapeHtml = (v) =>
-  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' })[c]);
 const _formatDay = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null);
 const _hostPlanNotice = ({ fullName, heading, color, paragraphs }) => `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;"><tr><td align="center">

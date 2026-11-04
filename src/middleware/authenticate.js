@@ -1,10 +1,11 @@
 const { verifyToken } = require('../utils/jwt.utils');
-const { safeRedisGet, safeRedisSet } = require('../config/redis.config');
+const { safeRedisGet, safeRedisSetex } = require('../config/redis.config');
 const { User } = require('../models/platform');
 const {
   getUserAuthCache,
   setUserAuthCache,
   clearUserAuthCache,
+  userAuthRedisKey,
 } = require('../utils/user-auth-cache');
 
 // AUTH-07: a token issued while the account is PENDING_DELETION (`dp` claim) may only
@@ -51,7 +52,7 @@ const authenticate = async (req, _res, next) => {
     // Check user status and permission version (AUTH-08 & NEW-37)
     // 1. Fast in-process cache (30s TTL, bounded) — prevents per-request DB queries when Redis is absent
     let userMeta = getUserAuthCache(userId);
-    const cacheKey = `user:${userId}:auth`;
+    const cacheKey = userAuthRedisKey(userId);
 
     if (!userMeta) {
       // 2. Redis fallback
@@ -63,7 +64,9 @@ const authenticate = async (req, _res, next) => {
             setUserAuthCache(userId, userMeta);
           }
         }
-      } catch (_) {}
+      } catch (_) {
+        /* Redis is optional: fall through to the database */
+      }
     }
 
     if (!userMeta && userId) {
@@ -78,8 +81,11 @@ const authenticate = async (req, _res, next) => {
         };
         setUserAuthCache(userId, userMeta);
         try {
-          await safeRedisSet(cacheKey, JSON.stringify(userMeta), 60);
-        } catch (_) {}
+          // NEW-200: was safeRedisSet, which redis.config never exported, so nothing was cached.
+          await safeRedisSetex(cacheKey, 60, JSON.stringify(userMeta));
+        } catch (_) {
+          /* Redis is optional */
+        }
       }
     }
 

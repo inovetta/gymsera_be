@@ -151,7 +151,7 @@ const enrichAuditDetails = async (tenantDb, items) => {
             }
           }
         }
-      } catch (_) {}
+      } catch (_) { /* ignored on purpose */ }
     }
   }
 

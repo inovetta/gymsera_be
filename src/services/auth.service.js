@@ -359,7 +359,7 @@ const verifyOtp = async ({ email, code }, ipAddress, userAgent) => {
       checkAndTriggerPendingStaffInvites(user).catch((err) => {
         console.warn('[Staff Invite Sync] verifyOtp background check error:', err.message);
       });
-    } catch (_) {}
+    } catch (_) { /* ignored on purpose */ }
   });
 
   return _issueTokenPair(user, ipAddress, userAgent);
@@ -476,7 +476,7 @@ const login = async ({ email, password }, ipAddress, userAgent) => {
       checkAndTriggerPendingStaffInvites(user).catch((err) => {
         console.warn('[Staff Invite Sync] login background check error:', err.message);
       });
-    } catch (_) {}
+    } catch (_) { /* ignored on purpose */ }
   });
 
   return _issueTokenPair(user, ipAddress, userAgent);
@@ -660,7 +660,7 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = fals
       checkAndTriggerPendingStaffInvites(user).catch((err) => {
         console.warn('[Staff Invite Sync] googleLogin background check error:', err.message);
       });
-    } catch (_) {}
+    } catch (_) { /* ignored on purpose */ }
   });
 
   return _issueTokenPair(user, ipAddress, userAgent);
@@ -671,7 +671,6 @@ const googleLogin = async ({ idToken }, ipAddress, userAgent, { staffOnly = fals
 // RS256 signature, issuer, audience (our bundle / service IDs), expiry. The
 // keys are cached for a day; an unknown `kid` (Apple rotated keys) refetches
 // at most once a minute, so a stream of bogus kids cannot hammer Apple.
-/* global fetch, AbortSignal */ // Node 20 built-ins (eslint config has no node globals)
 const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
 const APPLE_ISSUERS = ['https://appleid.apple.com', 'appleid.apple.com'];
 const APPLE_KEYS_TTL_MS = 24 * 60 * 60 * 1000;

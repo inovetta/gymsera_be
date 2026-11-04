@@ -25,7 +25,7 @@ const listNotifications = async (userId, backendRole, { page = 1, limit = 20, of
   const { count, rows } = await Notification.findAndCountAll({
     where,
     order: [
-      [Sequelize.literal("CASE WHEN priority = 'high' THEN 0 ELSE 1 END"), 'ASC'],
+      [Sequelize.literal('CASE WHEN priority = \'high\' THEN 0 ELSE 1 END'), 'ASC'],
       ['createdAt', 'DESC'],
     ],
     limit,
@@ -140,7 +140,7 @@ const registerDeviceToken = async ({
   try {
     return await upsertToken();
   } catch (err) {
-    if (err.message && err.message.includes("doesn't exist")) {
+    if (err.message && err.message.includes('doesn\'t exist')) {
       try {
         await DeviceToken.sync();
         return await upsertToken();

@@ -310,8 +310,8 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   console.warn(
     `[subscription-migration] Refused to resurrect superseded TenantSubscription ${existingRow.id} ` +
     `(tenant ${tenantId}, platform ${existingRow.platform}) to ACTIVE — TenantSubscription ${otherActive.id} ` +
-    `is already this tenant's active entitlement. The provider still reports this subscription as live, ` +
-    `which likely means both are genuinely billing at the store and a human needs to cancel one.`
+    'is already this tenant\'s active entitlement. The provider still reports this subscription as live, ' +
+    'which likely means both are genuinely billing at the store and a human needs to cancel one.'
   );
 
   return {
@@ -320,7 +320,7 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
     status: existingRow.status,
     statusNote:
       existingRow.statusNote ||
-      `Still billing at the store, but superseded by another active GymsEra subscription — cancel this one at the store if you don't need both.`,
+      'Still billing at the store, but superseded by another active GymsEra subscription — cancel this one at the store if you don\'t need both.',
   };
 };
 

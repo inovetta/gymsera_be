@@ -253,7 +253,7 @@ async function processTenantSubscriptionDatesCheck(tenantSeq, context = {}, opti
     console.log(`[${context.gymName || context.tenantId || 'Tenant'}] Scanned: ${subscriptions.length} subscriptions, Found: ${anomalies.length} anomaly(ies).`);
     if (options.verbose) {
       if (anomalies.length === 0) {
-        console.log(`  (No subscription date anomalies detected)`);
+        console.log('  (No subscription date anomalies detected)');
       } else {
         console.log(`  Detailed Anomalies (${anomalies.length}):`);
         for (const a of anomalies) {
@@ -306,9 +306,9 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
     });
   }
 
-  console.log(`\n============================================================`);
-  console.log(`  FLOW-06 SUBSCRIPTION DATES AUDIT (READ ONLY)              `);
-  console.log(`============================================================`);
+  console.log('\n============================================================');
+  console.log('  FLOW-06 SUBSCRIPTION DATES AUDIT (READ ONLY)              ');
+  console.log('============================================================');
   console.log(`Found ${activeTenants.length} active tenant database(s) to inspect.\n`);
 
   let totalScanned = 0;
@@ -357,7 +357,7 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
   }
 
   console.log('\n============================================================');
-  console.log(`                   SUMMARY REPORT                           `);
+  console.log('                   SUMMARY REPORT                           ');
   console.log('============================================================');
   console.log(`Tenants Scanned:               ${activeTenants.length}`);
   console.log(`Total Subscriptions Scanned:   ${totalScanned}`);

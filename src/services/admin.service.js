@@ -681,7 +681,7 @@ const reactivateTenant = async (tenantId, adminUserId) => {
       role: 'host',
       type: 'tenant_reactivated',
       title: 'Gym Account Reactivated! 🎉',
-      message: `Your gym organization has been reactivated.`,
+      message: 'Your gym organization has been reactivated.',
       priority: 'high',
       deepLink: '/host/today',
       metadataJson: { event: 'tenant_status_updated', tenantId: tenant.id, status: 'ACTIVE' },
@@ -834,7 +834,7 @@ const suspendTenantBranch = async (tenantId, branchId, reason, adminUserId) => {
         metadataJson: { event: 'branch_suspended', branchId: branch.id, reason: trimReason },
       }).catch(() => {});
     }
-  } catch (_) {}
+  } catch (_) { /* ignored on purpose */ }
 
   return { branch };
 };

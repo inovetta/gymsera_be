@@ -16,7 +16,7 @@ const { sequelize } = require('../database/platform');
     console.log('[OK] Connected to platform DB.\n');
 
     const [tsCols] = await sequelize.query(
-      "SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_subscriptions' AND COLUMN_NAME IN ('status', 'status_note')"
+      'SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenant_subscriptions\' AND COLUMN_NAME IN (\'status\', \'status_note\')'
     );
     console.log('tenant_subscriptions columns:');
     tsCols.forEach((c) => console.log(`  ${c.COLUMN_NAME}: ${c.COLUMN_TYPE}`));
@@ -27,7 +27,7 @@ const { sequelize } = require('../database/platform');
     console.log(`  status_note column present: ${hasStatusNote ? 'YES' : '*** NO ***'}\n`);
 
     const [bpCols] = await sequelize.query(
-      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_plans' AND COLUMN_NAME IN ('stripe_product_id','ios_sync_status','android_sync_status','stripe_sync_status','ios_last_synced_at','android_last_synced_at','stripe_last_synced_at')"
+      'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'billing_plans\' AND COLUMN_NAME IN (\'stripe_product_id\',\'ios_sync_status\',\'android_sync_status\',\'stripe_sync_status\',\'ios_last_synced_at\',\'android_last_synced_at\',\'stripe_last_synced_at\')'
     );
     const expectedBpCols = ['stripe_product_id', 'ios_sync_status', 'android_sync_status', 'stripe_sync_status', 'ios_last_synced_at', 'android_last_synced_at', 'stripe_last_synced_at'];
     const foundBpCols = bpCols.map((c) => c.COLUMN_NAME);
@@ -51,7 +51,7 @@ const { sequelize } = require('../database/platform');
     console.log(`Tiers with a Stripe monthly price configured: ${stripeConfiguredCount} / ${plans.length} ${stripeConfiguredCount === 0 ? '(run "Sync Stripe Price" in the CMS before Stripe testing)' : ''}`);
 
     const [routeCheck] = await sequelize.query(
-      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_plans'"
+      'SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'billing_plans\''
     );
     console.log(`\n=== Summary: ${statusWidened && hasStatusNote && foundBpCols.length === expectedBpCols.length ? 'MIGRATION APPLIED CORRECTLY' : '*** MIGRATION INCOMPLETE — DO NOT PROCEED WITH TESTING YET ***'} ===\n`);
   } catch (err) {

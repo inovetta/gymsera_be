@@ -14,6 +14,7 @@ const request = require('supertest');
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { startTestServer, stopTestServer } = require('../harness/test-server');
 const cache = require('../../src/services/discovery-cache.service');
+const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar dates for current memberships
 
 let dbHarness;
 let ctx;
@@ -39,7 +40,7 @@ beforeAll(async () => {
   const user = await factories.createUser({ role: 'MEMBER', email: `m-${uuidv4().slice(0, 8)}@p5b.test` });
   member = await models.MemberSubscription.create({
     userId: user.id, branchId: branch.id, membershipPlanId: plan.id,
-    startDate: '2026-01-01', endDate: '2099-01-01', status: 'ACTIVE', subscribedAt: new Date(),
+    startDate: daysFromToday(-30), endDate: daysFromToday(365), status: 'ACTIVE', subscribedAt: new Date(),
   });
 });
 
