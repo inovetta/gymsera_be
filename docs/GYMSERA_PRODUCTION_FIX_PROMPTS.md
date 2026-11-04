@@ -423,6 +423,8 @@ Report per Prompt G.
 
 Status 2026-11-03: run with the owner's own scope (items 1 to 9: NEW-179 / R-87, security pass, capacity ledger, Redis / R-88, Apple ownership mismatch, release logging, NEW-177 to NEW-198, launch readiness, release-gate table), DONE locally, spec §13 "Phase 7 Prompt P10". Not done from the text above: the QA script `docs/qa/PHASE7_E2E.md`, the integration / Playwright automation of flows A to F, the 6A gap re-check and the device checklist pass; they stay for a P10b.
 
+Status 2026-11-03 (P10b): run with the owner's scope (NEW-207 with a 2027-01-02 proof run, NEW-203 tool and runbook, NEW-196 with R-89, NEW-200, NEW-204 + NEW-206 with lint in CI, NEW-208 Sentry with R-90 / R-91; R-71 extended for NEW-201; NEW-210 accepted as R-93), DONE locally, spec §13 "Phase 7 Prompt P10b". Still not done from the P10 text: the QA script, flows A to F automation, the 6A gap re-check, the device checklist pass. Next prompt in order: P7b.
+
 ---
 
 ## 6. Device checklist for the owner (after P10)

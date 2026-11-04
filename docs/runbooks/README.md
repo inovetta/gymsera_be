@@ -23,7 +23,9 @@ missing **What it means**, **First checks** or **Rollback**.
 | Procedure | Runbook |
 |---|---|
 | Slow query log and the weekly index review (OBS-04) | [slow-queries.md](slow-queries.md) |
-| Burned secrets and rotating `TENANT_CONN_ENCRYPTION_KEY` (SEC-05); the launch rotation list (P10) | [secrets-rotation.md](secrets-rotation.md) |
+| Burned secrets and rotating `TENANT_CONN_ENCRYPTION_KEY` (SEC-05); the tenant database password and its connection strings (NEW-203, section 3b); the launch rotation list (P10) | [secrets-rotation.md](secrets-rotation.md) |
+| Apple: one subscription per group per Apple ID, two host accounts on one Apple ID (NEW-210, accepted) | [billing-events.md](billing-events.md#apple-one-subscription-per-group-per-apple-id-new-210-accepted-limitation) |
+| Backend tests on a future day: date bombs, the libfaketime MySQL check (NEW-207) | [test-date-bombs.md](test-date-bombs.md) |
 | Redis warnings, running without Redis (R-88) | [redis.md](redis.md) |
 | A tenant approved but not ACTIVE: provisioning stopped or stalled (FLOW-02, NEW-34) | [provisioning-failure.md](provisioning-failure.md) |
 | Production and staging on one server: separate databases, no copied `.env`, checks after every deploy (NEW-127, NEW-131, NEW-134) | [production-environments.md](production-environments.md) |
