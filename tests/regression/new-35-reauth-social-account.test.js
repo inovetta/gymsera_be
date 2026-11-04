@@ -22,6 +22,7 @@ const {
   setupPersonas,
   factories,
 } = require('../harness');
+const { getTenantPayoutAccount } = require('../harness/factories');
 const { startTestServer } = require('../harness/test-server');
 const { installMailFake } = require('../harness/mail-fake');
 const { signToken } = require('../../src/utils/jwt.utils');
@@ -145,8 +146,8 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
       expect(res.body.code).toBe('invalid_credentials');
 
       // Verify tenant was NOT updated
-      const reloadedTenant = await Tenant.findByPk(tenant.id);
-      expect(reloadedTenant.paymentDetailsUpdatedAt).toBeNull();
+      // P7b (R-94): nothing was saved to the payout account store
+      expect(await getTenantPayoutAccount(tenant.id)).toBeNull();
     });
 
     test('social-only account with no credentials is REJECTED (401 reauth_required)', async () => {
@@ -186,8 +187,9 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         idToken: 'valid-google-id-token',
       });
 
-      const reloadedTenant = await Tenant.findByPk(tenant.id);
-      expect(reloadedTenant.paymentDetailsUpdatedAt).not.toBeNull();
+      // P7b (R-94): saved to the tenant's payout account, stamped for SEC-13
+      const account = await getTenantPayoutAccount(tenant.id);
+      expect(account.detailsUpdatedAt).not.toBeNull();
     });
 
     test('social-only account with invalid social token is REJECTED (401)', async () => {
@@ -225,8 +227,9 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
 
-      const reloadedTenant = await Tenant.findByPk(tenant.id);
-      expect(reloadedTenant.paymentDetailsUpdatedAt).not.toBeNull();
+      // P7b (R-94): saved to the tenant's payout account, stamped for SEC-13
+      const account = await getTenantPayoutAccount(tenant.id);
+      expect(account.detailsUpdatedAt).not.toBeNull();
     });
 
     test('normal password account with incorrect password is REJECTED (401 invalid_credentials)', async () => {

@@ -7,6 +7,7 @@ const {
 const { startTestServer } = require('../harness/test-server');
 const { PaymentStatus } = require('../../src/constants/payment-status');
 const { Tenant, User } = require('../../src/models/platform');
+const { getTenantPayoutAccount } = require('../harness/factories');
 
 describe('SEC-13: Payout Account Changes: Re-auth, Owner Notification, and Cooling Period (spec §12)', () => {
   let dbHarness;
@@ -97,10 +98,11 @@ describe('SEC-13: Payout Account Changes: Re-auth, Owner Notification, and Cooli
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
 
-    // Verify Tenant in Platform DB has paymentDetailsUpdatedAt stamped
-    const tenant = await Tenant.findByPk(personas.owner.tenantId);
-    expect(tenant.paymentDetailsUpdatedAt).not.toBeNull();
-    const updateTime = new Date(tenant.paymentDetailsUpdatedAt).getTime();
+    // Verify the tenant's payout account has detailsUpdatedAt stamped (P7b, R-94: payout_accounts
+    // is the store; tenants.payment_details_updated_at is no longer read or written)
+    const account = await getTenantPayoutAccount(personas.owner.tenantId);
+    expect(account.detailsUpdatedAt).not.toBeNull();
+    const updateTime = new Date(account.detailsUpdatedAt).getTime();
     expect(Date.now() - updateTime).toBeLessThan(10000); // Updated within last 10 seconds
 
     // Verify notification was sent
@@ -131,10 +133,7 @@ describe('SEC-13: Payout Account Changes: Re-auth, Owner Notification, and Cooli
   test('Payout request succeeds once cooling period expires (simulated by setting timestamp >24h ago)', async () => {
     // Simulate cooling period expiration (25 hours ago)
     const expiredCoolingDate = new Date(Date.now() - 25 * 60 * 60 * 1000);
-    await Tenant.update(
-      { paymentDetailsUpdatedAt: expiredCoolingDate },
-      { where: { id: personas.owner.tenantId } }
-    );
+    await (await getTenantPayoutAccount(personas.owner.tenantId)).update({ detailsUpdatedAt: expiredCoolingDate });
 
     const res = await asPersona('owner', { 'Idempotency-Key': 'payout-cooled-' + Date.now() })
       .post('/host/payouts', {

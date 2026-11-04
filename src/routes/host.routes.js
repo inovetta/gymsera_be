@@ -44,6 +44,12 @@ router.get('/payouts/balance', authenticate, tenantContext, can('payouts.view', 
 router.get('/payouts', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
 router.post('/payouts', authenticate, tenantContext, idempotency({ required: true }), validate.allowBody(['amount', 'branchId', 'notes', 'destinationJson', 'idempotencyKey']), payoutsController.requestPayout);
 
+// P7b (R-94, NEW-217): the tenant's default payout account. Owner only (payouts.bank.manage is
+// owner-only and organization-wide); saving needs re-authentication (SEC-13 / NEW-35).
+const PAYOUT_ACCOUNT_BODY = ['details', 'password', 'provider', 'idToken', 'reauthProvider', 'reauthIdToken'];
+router.get('/payout-account', authenticate, tenantContext, can('payouts.bank.manage', { orgWide: true }), payoutsController.getPayoutAccount);
+router.put('/payout-account', authenticate, tenantContext, can('payouts.bank.manage', { orgWide: true }), validate.allowBody(PAYOUT_ACCOUNT_BODY), payoutsController.savePayoutAccount);
+
 // Expense Categories
 router.get('/expense-categories', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.listExpenseCategories);
 router.post('/expense-categories', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), validate.allowBody(['name']), expensesController.createExpenseCategory);

@@ -27,6 +27,7 @@ const {
   UserGymMembership,
   TenantSubscription,
   PlatformInvoice,
+  PayoutAccount,
 } = require('../../src/models/platform');
 const accountDeletionService = require('../../src/services/account-deletion.service');
 const stripeBilling = require('../../src/services/stripe-billing.service');
@@ -59,6 +60,9 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       ...tenantOverrides,
     });
     const listing = await factories.createGymListing(tenant.id);
+    // P7b (R-94): bank details live in payout_accounts (tenant default and an organization override).
+    await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000000' });
+    await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000001' }, { organizationId: listing.id });
     const branch = await factories.createBranch(tenantDbCtx, listing.id, { name: 'Main' });
     await factories.createTenantSubscription(tenant.id, { platform: 'MANUAL', status: 'ACTIVE' });
     await PlatformInvoice.create({
@@ -213,6 +217,8 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       expect(t.businessName).toBe(gym.tenant.businessName);
       expect(t.connectionStringEncrypted).toBe(gym.tenant.connectionStringEncrypted); // the database is kept (R-28)
       expect([t.phone, t.address, t.bankTransferRef, t.paymentDetailsJson]).toEqual([null, null, null, null]);
+      // P7b (R-94): every payout account of the tenant is gone too.
+      expect(await PayoutAccount.count({ where: { tenantId: gym.tenant.id } })).toBe(0);
       expect(t.email).toMatch(/@deleted\.gymsera\.invalid$/); // NOT NULL column: a placeholder
       // The tenant database is still there, with its tables and rows.
       const [{ n }] = await db2.sequelize.query('SELECT COUNT(*) AS n FROM payments', { type: QueryTypes.SELECT });

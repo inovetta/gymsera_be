@@ -27,6 +27,7 @@ const {
   City, Area, PlatformPackage,
   User, Tenant, GymListing, TenantSubscription,
   UserGymMembership, GymReview,
+  PayoutAccount,
 } = require('../models/platform');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -836,6 +837,15 @@ async function seedTenantsAndListings(userMap) {
     });
     tenantMap[td._key] = tenant;
     if (wasCreated) tenantsCreated++;
+
+    // P7b (R-94): bank details are the tenant's default payout account (payout_accounts).
+    const { paymentDetailsJson } = td.data;
+    if (paymentDetailsJson) {
+      await PayoutAccount.findOrCreate({
+        where: { tenantId: tenant.id, scopeKey: PayoutAccount.scopeKeyFor(null), provider: 'BANK_TRANSFER' },
+        defaults: { tenantId: tenant.id, organizationId: null, detailsJson: paymentDetailsJson },
+      });
+    }
 
     await TenantSubscription.findOrCreate({
       where: { tenantId: tenant.id },

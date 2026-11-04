@@ -1055,6 +1055,50 @@ const PLATFORM_MIGRATIONS = [
       return added?.skipped ? added : null;
     },
   },
+  {
+    version: 27,
+    name: 'p027_payout_accounts',
+    description:
+      'payout_accounts: the tenant\'s payout account (tenant id + OPTIONAL organization id, provider BANK_TRANSFER), and each tenant\'s saved tenants.payment_details_json copied in as its tenant default (P7b, R-73, R-94, NEW-217). tenants.payment_details_json is kept, not cleared. Safe to re-run.',
+    // PREVIEW (read-only) before applying live:  node src/scripts/preview-payout-accounts-backfill.js
+    // BACKUP before applying live:  mysqldump <platform_db> tenants > tenants_pre_p027.sql
+    // ROLLBACK (deploy the previous API build FIRST: this build reads only payout_accounts):
+    //   UPDATE tenants t JOIN payout_accounts a ON a.tenant_id = t.id AND a.scope_key = 'TENANT' AND a.provider = 'BANK_TRANSFER'
+    //     SET t.payment_details_json = a.details_json, t.payment_details_updated_at = a.details_updated_at;
+    //   DROP TABLE `payout_accounts`;  DELETE FROM `schema_migrations` WHERE `version` = 27;
+    // (the UPDATE carries back details saved after the deploy; without it the previous build shows the pre-deploy values)
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const { planPayoutAccountBackfill, applyPayoutAccountBackfill } = require('./payout-accounts-backfill');
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`payout_accounts\` (
+          \`id\` CHAR(36) BINARY NOT NULL,
+          \`tenant_id\` CHAR(36) BINARY NOT NULL,
+          \`organization_id\` CHAR(36) BINARY NULL,
+          \`scope_key\` VARCHAR(36) NOT NULL,
+          \`provider\` VARCHAR(32) NOT NULL DEFAULT 'BANK_TRANSFER',
+          \`status\` VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+          \`country_code\` VARCHAR(2) NULL,
+          \`external_account_id\` VARCHAR(255) NULL,
+          \`capabilities_json\` JSON NULL,
+          \`details_json\` JSON NULL,
+          \`details_updated_at\` DATETIME NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`payout_accounts_tenant_scope_provider\` (\`tenant_id\`, \`scope_key\`, \`provider\`),
+          KEY \`payout_accounts_organization_id\` (\`organization_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      const plan = await planPayoutAccountBackfill(sequelize);
+      const copied = await applyPayoutAccountBackfill(sequelize, plan);
+      console.log(
+        `[PlatformMigration] p027: copied ${copied} tenant default payout account(s); ` +
+          `${plan.alreadyHaveDefault.length} already had one; ${plan.emptyOrUnreadable.length} empty or unreadable (left as they are).`
+      );
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

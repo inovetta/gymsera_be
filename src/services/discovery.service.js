@@ -1162,12 +1162,20 @@ const getPaymentDetails = async (gymListingId) => {
   const tenantId = await _resolveTenantId(gymListingId);
   if (!tenantId || !(await isLiveForTravellers(gymListingId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
 
-  const tenant = await Tenant.findByPk(tenantId, {
-    attributes: ['paymentDetailsJson'],
-  });
+  // P7b (R-94): the payout account of this organization (or of the branch's organization), else
+  // the tenant default. `id` is an organization (gym listing) id or a branch id.
+  const payoutAccountService = require('./payout-account.service');
+  const listing = await GymListing.findByPk(gymListingId, { attributes: ['id', 'tenantId'] });
+  const account = listing && listing.tenantId === tenantId
+    ? await payoutAccountService.resolve({ tenantId, organizationId: listing.id })
+    : await payoutAccountService.resolveForBranch(
+      await TenantDbManager.getConnection(tenantId, (await Tenant.findByPk(tenantId, { attributes: ['connectionStringEncrypted'] })).connectionStringEncrypted),
+      tenantId,
+      gymListingId
+    );
 
   return {
-    paymentDetails: travellerPaymentDetails(tenant ? tenant.paymentDetailsJson : null),
+    paymentDetails: travellerPaymentDetails(account ? account.details : null),
   };
 };
 
