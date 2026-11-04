@@ -1,5 +1,16 @@
 'use strict';
 
+// Redis is optional at runtime (R-88); stub it here so this in-process cache test
+// is deterministic regardless of whether Redis is running or disabled.
+jest.mock('../../src/config/redis.config', () => ({
+  getRedisClient: () => null,
+  ensureRedisReady: async () => null,
+  safeRedisGet: jest.fn().mockResolvedValue(null),
+  safeRedisSetex: jest.fn().mockResolvedValue(true),
+  safeRedisDel: jest.fn().mockResolvedValue(true),
+  closeRedisClient: async () => false,
+}));
+
 const http = require('http');
 const express = require('express');
 const request = require('supertest');

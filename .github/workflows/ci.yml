@@ -45,6 +45,8 @@ jobs:
       - name: Run test suites
         run: npm test
         env:
+          # Production runs without Redis (R-88); default CI environment matches it.
+          DISABLE_REDIS: 'true'
           # Safety net only: the suite retained ~25 MB per test file until the rate limiter timers were
           # stopped after each file (tests/harness/release-limiter-timers.js), and ran out of the default
           # heap. 6 GB leaves room on the 7 GB runner; the real fix is the cleanup, not this number.
