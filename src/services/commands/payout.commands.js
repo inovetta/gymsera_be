@@ -5,7 +5,7 @@ const { register } = require('./index');
 const { createError } = require('../../utils/response.utils');
 const { toMinorUnits, fromMinorUnits } = require('../../utils/money.utils');
 const { getPayoutBalance, checkCoolingPeriod } = require('../payout.service');
-const { Tenant } = require('../../models/platform');
+const payoutAccountService = require('../payout-account.service');
 const { moneyText, DEFAULT_CURRENCY } = require('../../utils/currency.utils');
 
 register({
@@ -28,15 +28,11 @@ register({
       throw err;
     }
 
-    // Check cooling period & payout destination on platform Tenant
-    const tenant = await Tenant.findByPk(ctx.tenantId, {
-      attributes: ['id', 'paymentDetailsJson', 'paymentDetailsUpdatedAt'],
-    });
-    if (!tenant) {
-      throw createError('Tenant not found', 404);
-    }
+    // P7b (R-94): the payout account of the branch's organization, else the tenant default.
+    // Its SEC-13 cooling period and its details are the ones that count.
+    const account = await payoutAccountService.resolveForBranch(ctx.tenantDb, ctx.tenantId, payload.branchId || null);
 
-    const cooling = checkCoolingPeriod(tenant);
+    const cooling = checkCoolingPeriod(account);
     if (cooling.active) {
       const err = createError(
         `Payout requests are temporarily blocked. Bank payout details were updated within the last 24 hours (${cooling.remainingHours}h remaining in cooling period).`,
@@ -46,7 +42,7 @@ register({
       throw err;
     }
 
-    const destination = payload.destinationJson || tenant.paymentDetailsJson;
+    const destination = payload.destinationJson || (account ? account.details : null);
     if (!destination || (typeof destination === 'object' && Object.keys(destination).length === 0)) {
       const err = createError('No payout account configured. Set up bank payout details before requesting a payout.', 422);
       err.code = 'no_payout_destination';
@@ -94,11 +90,8 @@ register({
         throw err;
       }
 
-      const tenant = await Tenant.findByPk(ctx.tenantId, {
-        attributes: ['id', 'paymentDetailsJson'],
-      });
-
-      const destination = payload.destinationJson || (tenant ? tenant.paymentDetailsJson : null);
+      const account = await payoutAccountService.resolveForBranch(ctx.tenantDb, ctx.tenantId, payload.branchId || null);
+      const destination = payload.destinationJson || (account ? account.details : null);
 
       const payout = await Payout.create(
         {

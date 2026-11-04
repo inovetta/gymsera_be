@@ -164,7 +164,8 @@ describe('Phase 7 P7a: booking and payment', () => {
       expect(res.status).toBe(200);
       return res.body.data.paymentDetails;
     };
-    const store = (json) => Tenant.update({ paymentDetailsJson: json }, { where: { id: ctx.tenant1.id } });
+    // P7b (R-94): the tenant default payout account is the store travellers read.
+    const store = (json) => require('../harness/factories').setPayoutAccount(ctx.tenant1.id, json);
 
     test('nothing usable (null, empty object, blank values, unknown keys only) is null', async () => {
       for (const json of [null, {}, { bankName: '  ', accountNumber: '' }, { note: 'x' }]) {

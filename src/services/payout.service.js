@@ -118,17 +118,17 @@ const getPayoutBalance = async (tenantDb, branchId = null, options = {}) => {
 };
 
 /**
- * Check if the tenant's payout destination is currently subject to a cooling period.
+ * Check if a payout account is currently subject to the SEC-13 cooling period.
  *
- * @param {object} tenant
+ * @param {{ detailsUpdatedAt?: Date|string|null }|null} account - a payout-account.service view
  * @returns {{ active: boolean, remainingHours?: number }}
  */
-const checkCoolingPeriod = (tenant) => {
-  if (!tenant || !tenant.paymentDetailsUpdatedAt) {
+const checkCoolingPeriod = (account) => {
+  if (!account || !account.detailsUpdatedAt) {
     return { active: false };
   }
 
-  const updatedTime = new Date(tenant.paymentDetailsUpdatedAt).getTime();
+  const updatedTime = new Date(account.detailsUpdatedAt).getTime();
   const elapsedMs = Date.now() - updatedTime;
 
   if (elapsedMs < COOLING_PERIOD_MS) {

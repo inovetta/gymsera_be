@@ -17,6 +17,7 @@ const getProfile = async (req, res, next) => {
     const isOwner = grants.isOwner || (await hasAllBranches(req));
     if (!isOwner && !grants.has('payouts.bank.manage')) {
       delete result.gym.paymentDetailsJson;
+      delete result.gym.paymentDetailsUpdatedAt;
     }
     return sendSuccess(res, result);
   } catch (err) {

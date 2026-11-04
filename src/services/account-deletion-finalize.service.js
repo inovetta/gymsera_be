@@ -170,6 +170,8 @@ const _finalizeTenantData = async (tenant, now) => {
     status: TenantStatus.DELETED,
     deletedAt: now,
   });
+  // P7b (R-94): payout accounts (bank details) are personal data of the business; they go too.
+  await require('./payout-account.service').deleteAllForTenant(tenant.id);
   await safeRedisDel(`tenant:${tenant.id}:connStr`);
   await TenantDbManager.release(tenant.id).catch(() => {});
 };

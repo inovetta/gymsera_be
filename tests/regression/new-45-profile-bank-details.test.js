@@ -18,7 +18,7 @@ beforeAll(async () => {
   const personas = await setupPersonas(dbHarness);
   team = await buildTwoBranchTeam(dbHarness, personas);
   const { Tenant } = require('../../src/models/platform');
-  await Tenant.update({ paymentDetailsJson: BANK }, { where: { id: team.tenantId } });
+  await require('../harness/factories').setPayoutAccount(team.tenantId, BANK); // P7b (R-94): the payout account store
   app = await startTestServer();
 });
 

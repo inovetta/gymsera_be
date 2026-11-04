@@ -38,19 +38,17 @@ describe('PAY-10: Ledger-Derived Payouts and Balance (spec §6.3, §12)', () => 
     const branch = await Branch.findOne({ where: { status: 'ACTIVE' } });
     branchId = branch.id;
 
-    // Set default bank details on Tenant (with paymentDetailsUpdatedAt in the past so cooling period is inactive)
+    // Set the tenant default payout account (P7b, R-94), changed 48h ago so the cooling period is inactive
     const pastDate = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48h ago
-    await Tenant.update(
+    await require('../harness/factories').setPayoutAccount(
+      personas.owner.tenantId,
       {
-        paymentDetailsJson: {
-          bankName: 'Meezan Bank',
-          accountTitle: 'Alpha Fitness Club',
-          accountNumber: '01020304050607',
-          iban: 'PK36MEZN0001020304050607',
-        },
-        paymentDetailsUpdatedAt: pastDate,
+        bankName: 'Meezan Bank',
+        accountTitle: 'Alpha Fitness Club',
+        accountNumber: '01020304050607',
+        iban: 'PK36MEZN0001020304050607',
       },
-      { where: { id: personas.owner.tenantId } }
+      { detailsUpdatedAt: pastDate }
     );
   });
 

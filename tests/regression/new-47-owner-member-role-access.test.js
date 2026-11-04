@@ -38,7 +38,7 @@ beforeAll(async () => {
   const { teamMember } = require('../harness/two-branch-team');
 
   // Set bank details on team's tenant
-  await Tenant.update({ paymentDetailsJson: BANK }, { where: { id: team.tenantId } });
+  await require('../harness/factories').setPayoutAccount(team.tenantId, BANK); // P7b (R-94): the payout account store
 
   // Create a tenant owner user whose account role is MEMBER (users.role = 'MEMBER')
   memberRoleOwnerUser = await factories.createUser({
