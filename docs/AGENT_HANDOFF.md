@@ -21,8 +21,8 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P9c** (owner text 2026-11-05: A payment proof 404 + private access; B website subscribe flow parity; C website Google Maps error; D host platform-plan renewal in the CMS; E channel matrix report + tests + runbook) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | C (website Google Maps dialog) |
-| Step within issue | A DONE: be `4b48dcf`, CMS `a144922` (NEW-222 admin KYC viewer /api/v1/api/v1) + `ee77fcf`, app `963284e`. C root cause proven on the live page: `AdvancedMarker` on a map with no Map ID (gym-map.tsx:39) makes Google show "can't load Google Maps correctly"; the key reaches the build and works. Next: classic Marker + hide the map on load/auth failure, test. Then B, D (owner answers recorded below, to become R-95), E. |
+| Issue in progress | D (host plan renewal in the CMS) — CMS part |
+| Step within issue | Done: A (be `4b48dcf`, CMS `a144922` NEW-222 + `ee77fcf`, app `963284e`); C web `d33ee6c`; B web `b138933`; D backend `acba806` (p028, /host/plan-payments, /admin/plan-payments, R-95 rules) + `24a611b` (legacy package name). Next: CMS billing page flow (choose plan + cycle → bank details → receipt → submit; statuses; lapsed view) and an admin "Plan payments" page (list, receipt, approve, reject); then E (channel matrix report, tests, runbook). |
 
 **Owner answers 2026-11-05 (to record as R-95 in §14):** D approval: new period starts at the end of a running bank-transfer plan, else on approval day; refuse the bank-transfer form while an Apple/Google plan entitles and renews, allow it at once when the store plan has ended or was cancelled (auto-renew off), tests for Apple and Google separately; owner only submits; monthly and annual, the server takes duration (1 month / 1 year) and price (monthlyPrice / annualPrice) from the catalog plan, never the CMS; tests: yearly = one year + annual price, monthly = one month.
 
