@@ -17,12 +17,22 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-03 (P10b done locally, not pushed) |
+| Last updated | 2026-11-05 (P9c done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P10b** (owner scope: NEW-207, NEW-203, NEW-196, NEW-200, NEW-204 + NEW-206, NEW-208; R-71 extension for NEW-201; NEW-210 accepted) |
+| Current prompt | **Phase 7 Prompt P9c** (owner text 2026-11-05: A payment proofs, B website subscribe parity, C website map, D host plan payment by bank transfer in the CMS, E channel matrix; decision R-95) |
 | Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
+
+**P9c branches (2026-11-05), not pushed:** `fix/p9c-payments-parity` from the latest main. be from `33d6656`: `4b48dcf` A, `acba806` D (p028), `24a611b` D legacy package name, `01c5957` p028 test, `a842b1a` E matrix tests, `2efd996` A storage hidden in web.config, `565873f` PAY-08 fixture, `d9e665d` NEW-207 guard fix. CMS from `51ec282`: `a144922` NEW-222, `ee77fcf` A, `d065909` D. Web from `af93621`: `d33ee6c` C, `b138933` B. App worktree `../gyms_era_p9c` from `origin/master` `6486b64`: `963284e` A. Be docs `docs/p9c-payments-parity` (worktree `../gymsera_be_docs_p9c`) stacked on `docs/p7b-payout-accounts` (merge that first). Results in spec §13 "Phase 7 Prompt P9c". Decision R-95. New NEW-222 (fixed), NEW-223 to NEW-226 (open).
+
+**Next action:** **Owner:** (1) merge be docs `docs/p7b-payout-accounts`, then `docs/p9c-payments-parity`. (2) Push and open PRs for `fix/p9c-payments-parity` in be, CMS, web, app. (3) Deploy: platform migration **p028 first** (`node src/scripts/run-platform-migrations.js --dry-run`, then without the flag; new table only), then the API (`git pull`, `npm install --omit=dev`, `iisreset`; check `BANK_TRANSFER_*` is set, R-86), then the CMS and the website (`npm ci`, build with `NEXT_PUBLIC_API_URL`, restart), then the next app build. No new environment variable. (4) After deploy: ask members with a pending payment sent before today to upload the proof again (runbook `billing-channels.md` section 5). **Agent, next:** NEW-225 (P1: the app does not ask `/billing/purchase-intent` before a store purchase; `/host/subscription/current` does not report a superseded store row that still renews) needs an owner go-ahead; then NEW-223 (plan poster never stored), NEW-218, the P7b device checklist (build 21).
+
+**P9c branches (2026-11-05):** `fix/p9c-payments-parity` from the latest main: be from `33d6656`, CMS from `51ec282`, web from `af93621`; app (if needed) as a worktree `../gyms_era_p9c` from `origin/master` `6486b64`. Be docs `docs/p9c-payments-parity` (worktree `../gymsera_be_docs_p9c`) stacked on `docs/p7b-payout-accounts` (not merged yet: merge that first).
+
+**P7b branches (2026-11-04), not pushed:** `fix/p7b-payout-accounts`. be from `origin/main` `1953531`: `18d26f9` NEW-217 (table, resolver, `/host/payout-account`, p027, preview script). CMS from `7a71f8c`: `2f2ebf6` NEW-217 Payouts page. App worktree `../gyms_era_p7b` from `origin/master` `7b66299`: `08bb278` NEW-213. Web: no change. Be docs `docs/p7b-payout-accounts` (worktree `../gymsera_be_docs_p7b`) from `1953531`. Results: be 300 suites / 2864 tests (2 restore-drill tests needed `mysqldump` on PATH, then 24 / 24); CMS 596 / 596 + Playwright 29 + security 9; app 429 / 429 x3, analyze 159 = master. Decision R-94. New NEW-218 to NEW-221.
+
+**Next action:** **Owner:** (1) merge be docs `docs/p7b-payout-accounts`. (2) Push and open PRs for `fix/p7b-payout-accounts` in be, CMS, app. (3) Deploy: platform migration **p027 first** (backup `tenants`; `node src/scripts/preview-payout-accounts-backfill.js`; `node src/scripts/run-platform-migrations.js --dry-run`, then without the flag; spec §13 "Phase 7 Prompt P7b" migration plan), then the API (`git pull`, `npm install --omit=dev`, `iisreset`), then the CMS (`npm ci`, build, restart). No new environment variable. **Agent, next:** app **build 21** from `master` after the app PR is merged (`--dart-define=APP_ENV=production`), then the owner's **device checklist** (prompt pack §6), including: Edit Organization of a second organization → pick logo and cover → Save → only that organization changes; CMS Payouts shows and saves the bank details once for the business. Open: NEW-218 (app Payout & Banking to `/host/payout-account`), NEW-219, NEW-220, NEW-221, NEW-215, NEW-216; card payments (BUG-36) wait for a provider decision (R-73).
 
 **P10b branches (2026-11-03), not pushed:** `fix/p10b-release-gate` from the latest main. be from `0c742fc`: `e6df6ae` NEW-200, `e37eba6` NEW-212, `b3c7ac6` lint (mechanical), `3291007` seeder, `ee8d2f5` CI lint, `ca06351` NEW-206, `b55e2bb` NEW-203, `0638731` + `e151def` NEW-196 (R-89), `3e95d05` NEW-207. CMS from `e76f14e`: `40d3f8e` CI lint, `863ae13` NEW-196, `dc93424` NEW-208. Web from `6a1ba50`: `7a39739` CI lint, `c8d83a9` NEW-208. App worktree `../gyms_era_p10b` from `origin/master` `0668508`: `ae051af` CI analyze, `c00c520` NEW-208 (sentry_flutter 9.30.1). Be docs `docs/p10b-release-gate` (worktree `../gymsera_be_docs_p10b`) from `0c742fc`. Results: be 298 / 298 suites, 2833 / 2833 tests; 2027-01-02 run 296 / 297 (the NEW-177 openssl artifact); CMS 593 / 593 + Playwright 29 + security 9; web 180 / 180 + Playwright 4 + security 15; app 426 / 426 x3, analyze 159; Android and iOS release builds compile. Decisions R-71 extended, R-89 to R-93. Local only: Docker container `gymsera-test-mysql57-2027` (port 3309, libfaketime) can be removed with `docker rm -f gymsera-test-mysql57-2027`.
 
@@ -177,6 +187,14 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 ---
 
 ## 2. Done in the current prompt (checklist)
+
+**Phase 7 Prompt P7b (`fix/p7b-payout-accounts` in be, CMS, app; not pushed):**
+- [x] NEW-217 payout accounts per tenant, organization override in schema and resolver, `/host/payout-account`, consumers moved (be `18d26f9`)
+- [x] p027 migration, read-only preview script, dry run on a local scratch database; not run anywhere live (be `18d26f9`)
+- [x] NEW-217 CMS Payouts page (CMS `2f2ebf6`)
+- [x] NEW-213 Edit Organization uploads on Save for the edited organization (app `08bb278`)
+- [x] §13 P7b, §14 R-94, NEW-61 / NEW-62 status, prompt pack note, handoff
+- [ ] Owner: push, PRs, p027, deploy; build 21; device checklist
 
 **Phase 7 Prompt P10b (`fix/p10b-release-gate` in every repo; not pushed):**
 - [x] NEW-207 test date bombs, relative dates, guard, 2027-01-02 proof run (be `3e95d05`)
@@ -681,3 +699,5 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 126 | 2026-11-03 | Claude Code (Opus 5.5) | Hotfix NEW-125 on CMS and website (iisnode log folder served, owner saw 200) | CMS `88d64e1`, web `e51353c` (6 tests each, red 3/6); CMS 571 / 571, web 165 / 165, tsc, lint, build pass; tracked iisnode logs untracked; not deployed | task complete (not pushed) | yes |
 | 127 | 2026-11-03 | Claude Code (Opus 5.5) | Phase 7 P10 (release gate, owner items 1 to 9; R-87, R-88) | be 11 commits, app 6, CMS 2, web 2, each fix red first; be 289 / 289, 2786 / 2786; app 414 x3; CMS 573; web 167; NEW-200 to NEW-211 | task complete (not pushed) | yes |
 | 128 | 2026-11-03 | Claude Code (Opus 5.5) | Phase 7 P10b (NEW-207, NEW-203, NEW-196 / R-89, NEW-200, NEW-204 + NEW-206 / R-92, NEW-208 / R-90 / R-91; R-71 extended; NEW-210 / R-93) | be 11 commits, CMS 3, web 2, app 2, each fix red first; NEW-212 and seeder bug found by lint and fixed; be 298 / 298, 2833 / 2833; 2027-01-02 run 296 / 297 (openssl artifact); CMS 593 + PW 29 + sec 9; web 180 + PW 4 + sec 15; app 426 x3, analyze 159; release builds compile | task complete | yes |
+| 129 | 2026-11-04 | Claude Code (Opus 5.5) | Phase 7 P7b (NEW-217 / R-94 payout accounts per tenant with organization override, p027 plan + dry run; NEW-213) | be `18d26f9` (23 + 6 new tests, red 22 / 23 first), CMS `2f2ebf6` (red 19 / 19 first), app `08bb278` (red 3 / 3 first); be 300 suites / 2864 tests, CMS 596, app 429 x3; NEW-218 to NEW-221 | task complete |
+| 130 | 2026-11-05 | Claude Code (Opus 5.5) | Phase 7 P9c (A proofs, B web subscribe, C web maps, D host plan payment by bank transfer / R-95, E channel matrix) | be 8 commits, CMS 3, web 2, app 1, each fix red first (E: gap coverage); p028; be 306 / 306 suites, 2912 / 2912 tests (one guard fix re-run); CMS 618 + PW 29 + sec 9; web 193 + PW 4 + sec 15; app 433 x3, analyze 159; NEW-222 fixed, NEW-223 to NEW-226 | task complete (not pushed) | yes |

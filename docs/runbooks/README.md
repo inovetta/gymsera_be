@@ -27,6 +27,7 @@ missing **What it means**, **First checks** or **Rollback**.
 | Apple: one subscription per group per Apple ID, two host accounts on one Apple ID (NEW-210, accepted) | [billing-events.md](billing-events.md#apple-one-subscription-per-group-per-apple-id-new-210-accepted-limitation) |
 | Backend tests on a future day: date bombs, the libfaketime MySQL check (NEW-207) | [test-date-bombs.md](test-date-bombs.md) |
 | Redis warnings, running without Redis (R-88) | [redis.md](redis.md) |
+| One host plan across Apple, Google Play and bank transfer: the channel matrix, `duplicate_billing` support steps, approving bank-transfer plan payments (R-95), payment proofs sent before P9c, a legacy package plan (P9c) | [billing-channels.md](billing-channels.md) |
 | A tenant approved but not ACTIVE: provisioning stopped or stalled (FLOW-02, NEW-34) | [provisioning-failure.md](provisioning-failure.md) |
 | Production and staging on one server: separate databases, no copied `.env`, checks after every deploy (NEW-127, NEW-131, NEW-134) | [production-environments.md](production-environments.md) |
 
