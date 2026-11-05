@@ -347,18 +347,19 @@ const submitPaymentRequest = async (userId, { subscriptionId, method, amount, no
  * Upload bank receipt / proof image for a payment.
  * Searches across all user's tenant DBs to find the payment by ID.
  */
-const uploadPaymentProof = async (userId, paymentId, proofUrl) => {
+const uploadPaymentProof = async (userId, paymentId, file) => {
   const tenantDbs = await _getAllTenantDbs(userId);
   if (tenantDbs.length === 0) throw createError('Payment not found or does not belong to you', 404);
 
-  for (const { models } of tenantDbs) {
+  for (const { tenantId, models } of tenantDbs) {
     const payment = await models.Payment.findOne({ where: { id: paymentId, userId } });
     if (payment) {
       if (payment.status !== 'PENDING') {
         throw createError('Proof can only be uploaded for pending payments', 400);
       }
-      await payment.update({ proofUrl });
-      return { proofUrl };
+      // P9c (A): the file is stored (private store) before the row points at it.
+      await require('./payment-proof.service').storeProof({ tenantId, payment, file });
+      return { proofUrl: payment.proofUrl };
     }
   }
 

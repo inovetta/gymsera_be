@@ -765,7 +765,7 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
 };
 
 // ── POST /payments/:id/proof — upload proof image ─────────────────────────────
-const uploadPaymentProof = async (tenantDb, paymentId, proofUrl) => {
+const uploadPaymentProof = async (tenantDb, paymentId, file, tenantId = tenantDb.tenantId) => {
   const { Payment } = tenantDb.models;
 
   const payment = await Payment.findByPk(paymentId);
@@ -774,7 +774,8 @@ const uploadPaymentProof = async (tenantDb, paymentId, proofUrl) => {
     throw createError('Proof can only be uploaded for pending payments', 400);
   }
 
-  await payment.update({ proofUrl });
+  // P9c (A): the file is stored (private store) before the row points at it.
+  await require('./payment-proof.service').storeProof({ tenantId, payment, file });
   return payment.reload();
 };
 

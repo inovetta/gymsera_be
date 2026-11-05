@@ -73,8 +73,11 @@ const _tenantModels = async (tenant) => {
 
 /** Best-effort delete of stored files; a failure here must not block the deletion. */
 const _deleteFiles = async (urls) => {
+  const paymentProofService = require('./payment-proof.service');
   for (const url of urls.filter(Boolean)) {
-    await storageService.deleteImage(url).catch((err) => console.warn('[AccountDeletion] File delete failed:', err.message));
+    // P9c (A): a payment proof in the private store is removed there; anything else is a public image.
+    const remove = paymentProofService.isPrivateProof(url) ? paymentProofService.deleteProof(url) : storageService.deleteImage(url);
+    await remove.catch((err) => console.warn('[AccountDeletion] File delete failed:', err.message));
   }
 };
 

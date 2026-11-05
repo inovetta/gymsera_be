@@ -892,8 +892,8 @@ const getSubscriptionQrToken = async (userId, subscriptionId) => {
 };
 
 // ── POST /subscriptions/:id/proof — member uploads payment proof ──────────────
-const uploadSubscriptionProof = async (userId, subscriptionId, proofUrl) => {
-  const { models, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
+const uploadSubscriptionProof = async (userId, subscriptionId, file) => {
+  const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
   const { Payment } = models;
 
   const payment = await Payment.findOne({
@@ -902,7 +902,8 @@ const uploadSubscriptionProof = async (userId, subscriptionId, proofUrl) => {
   });
   if (!payment) throw createError('No pending payment found for this subscription', 404);
 
-  await payment.update({ proofUrl });
+  // P9c (A): the file is stored (private store) before the row points at it.
+  await require('./payment-proof.service').storeProof({ tenantId: index.tenantId, payment, file });
   return payment.reload();
 };
 

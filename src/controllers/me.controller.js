@@ -167,8 +167,7 @@ const uploadPaymentProof = async (req, res, next) => {
       return next(err);
     }
 
-    const proofUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/payment-proofs/${req.params.id}-${Date.now()}.jpg`;
-    const result = await meService.uploadPaymentProof(req.user.sub, req.params.id, proofUrl);
+    const result = await meService.uploadPaymentProof(req.user.sub, req.params.id, req.file);
     return sendSuccess(res, result, 'Payment proof uploaded');
   } catch (err) {
     next(err);

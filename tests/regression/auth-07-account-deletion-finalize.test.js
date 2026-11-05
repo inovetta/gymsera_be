@@ -240,10 +240,11 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       expect(sub.notes).toBeNull();
       expect(sub.qrCode).toBeNull();
       const pay = await db2.models.Payment.findByPk(m.payment.id);
-      expect([pay.notes, pay.proofUrl]).toEqual([null, null]);
+      // Raw column (P9c: Payment#proofUrl reads as the proof route, or null for a legacy value).
+      expect([pay.notes, pay.getDataValue('proofUrl')]).toEqual([null, null]);
       expect(Number(pay.amount)).toBe(3000);
       expect(await db2.models.RoleAssignment.count({ where: { status: { [require('sequelize').Op.ne]: 'REVOKED' } } })).toBe(0);
-      expect(deletedFiles).toContain(m.payment.proofUrl); // the bank-slip photo is deleted too
+      expect(deletedFiles).toContain(m.payment.getDataValue('proofUrl')); // the bank-slip photo is deleted too
     });
 
     test('the member keeps their OWN account and history; only the gym ended (R-28)', async () => {
@@ -348,7 +349,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       const sub = await db1.models.MemberSubscription.findByPk(a.sub.id);
       expect([sub.status, sub.notes]).toEqual(['CANCELLED', null]);
       const pay = await db1.models.Payment.findByPk(a.payment.id);
-      expect([pay.notes, pay.proofUrl, Number(pay.amount)]).toEqual([null, null, 3000]);
+      expect([pay.notes, pay.getDataValue('proofUrl'), Number(pay.amount)]).toEqual([null, null, 3000]);
       expect(await money(db1)).toEqual(moneyBefore.map((p) => p));
       expect((await Tenant.findByPk(gym.tenant.id)).status).toBe('ACTIVE');
       expect((await GymListing.findByPk(gym.listing.id)).status).toBe('ACTIVE');

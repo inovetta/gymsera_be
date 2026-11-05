@@ -176,9 +176,49 @@ const uploadProof = async (req, res, next) => {
       throw createError('Payment not found', 404);
     }
 
-    const proofUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/payment-proofs/${req.params.id}-${Date.now()}.jpg`;
-    const payment = await paymentService.uploadPaymentProof(req.tenantDb, req.params.id, proofUrl);
+    const payment = await paymentService.uploadPaymentProof(req.tenantDb, req.params.id, req.file, req.tenantId || req.tenantDb.tenantId);
     return sendSuccess(res, { payment }, 'Proof uploaded');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── GET /payments/:id/proof — the stored proof, for the receiving host only (P9c, A) ─────
+// Tenant context + `payments.view` on the payment's branch (owner, organization admin, branch
+// staff with that grant; platform admins through their X-Tenant-Id). A payment the caller cannot
+// see answers 404 like GET /payments/:id. Every opening is written to the platform audit log
+// (same rule as KYC documents, R-27). Never cached.
+const getProof = async (req, res, next) => {
+  try {
+    const { Payment } = req.tenantDb.models;
+    const payment = await Payment.findByPk(req.params.id, { attributes: ['id', 'branchId', 'proofUrl'] });
+    if (!payment) throw createError('Payment not found', 404);
+    if (!(await hasBranchAccess(req, payment.branchId, 'payments.view'))) {
+      throw createError('Payment not found', 404);
+    }
+    const paymentProofService = require('../services/payment-proof.service');
+    const { stream, contentType } = await paymentProofService.openProof(payment.getDataValue('proofUrl'));
+
+    const { PlatformAuditLog } = require('../models/platform');
+    await PlatformAuditLog.create({
+      actorUserId: req.user?.id || req.user?.sub || null,
+      action: 'PAYMENT_PROOF_ACCESSED',
+      targetType: 'Payment',
+      targetId: payment.id,
+      details: {
+        tenantId: req.tenantDb.tenantId || null,
+        branchId: payment.branchId,
+        isPlatformAdmin: req.user?.role === 'PLATFORM_ADMIN',
+      },
+      createdAt: new Date(),
+    });
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'inline; filename="payment-proof"');
+    stream.on('error', next);
+    stream.pipe(res);
   } catch (err) {
     next(err);
   }
@@ -345,6 +385,7 @@ const refundPayment = async (req, res, next) => {
 };
 
 module.exports = {
+  getProof,
   recordPayment, listPayments, getPaymentById, verifyPayment, verifyOrReject,
   uploadProof, markPrinted, collectionAction, listInvoices, getInvoice, refundPayment,
 };
