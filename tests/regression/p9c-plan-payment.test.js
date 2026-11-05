@@ -100,7 +100,7 @@ describe('P9c D: host plan payment by bank transfer, approved by a platform admi
 
     test('the client cannot send a price, a duration or dates; an unknown cycle is refused', async () => {
       expect((await submit({ amount: 1 })).status).toBe(422);
-      expect((await submit({ endDate: '2099-01-01' })).status).toBe(422);
+      expect((await submit({ endDate: plusDays(3650) })).status).toBe(422);
       expect(await PlanPaymentRequest.count()).toBe(0);
       const bad = await submit({ billingCycle: 'WEEKLY' });
       expect(bad.status).toBe(422);
