@@ -21,8 +21,10 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P9c** (owner text 2026-11-05: A payment proof 404 + private access; B website subscribe flow parity; C website Google Maps error; D host platform-plan renewal in the CMS; E channel matrix report + tests + runbook) |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | A (payment proof 404) |
-| Step within issue | Root cause found: the three proof controllers (`me.controller.js:170`, `payments.controller.js:179`, `subscriptions.controller.js:180`) build a `/uploads/payment-proofs/...` URL and never store the file. Next: red test, then store in the R-27 private store and serve `GET /payments/:id/proof`. |
+| Issue in progress | C (website Google Maps dialog) |
+| Step within issue | A DONE: be `4b48dcf`, CMS `a144922` (NEW-222 admin KYC viewer /api/v1/api/v1) + `ee77fcf`, app `963284e`. C root cause proven on the live page: `AdvancedMarker` on a map with no Map ID (gym-map.tsx:39) makes Google show "can't load Google Maps correctly"; the key reaches the build and works. Next: classic Marker + hide the map on load/auth failure, test. Then B, D (owner answers recorded below, to become R-95), E. |
+
+**Owner answers 2026-11-05 (to record as R-95 in §14):** D approval: new period starts at the end of a running bank-transfer plan, else on approval day; refuse the bank-transfer form while an Apple/Google plan entitles and renews, allow it at once when the store plan has ended or was cancelled (auto-renew off), tests for Apple and Google separately; owner only submits; monthly and annual, the server takes duration (1 month / 1 year) and price (monthlyPrice / annualPrice) from the catalog plan, never the CMS; tests: yearly = one year + annual price, monthly = one month.
 
 **P9c branches (2026-11-05):** `fix/p9c-payments-parity` from the latest main: be from `33d6656`, CMS from `51ec282`, web from `af93621`; app (if needed) as a worktree `../gyms_era_p9c` from `origin/master` `6486b64`. Be docs `docs/p9c-payments-parity` (worktree `../gymsera_be_docs_p9c`) stacked on `docs/p7b-payout-accounts` (not merged yet: merge that first).
 
