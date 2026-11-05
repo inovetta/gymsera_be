@@ -162,7 +162,8 @@ const requestProviderChange = async (
     });
   }
 
-  const storeLabel = { IOS: 'Apple', ANDROID: 'Google Play', STRIPE: 'Stripe' };
+  // MANUAL: a plan paid by bank transfer and approved by an admin (P9c item D); it used to read "undefined".
+  const storeLabel = { IOS: 'Apple', ANDROID: 'Google Play', STRIPE: 'Stripe', MANUAL: 'bank transfer' };
   const today = new Date().toISOString().split('T')[0];
   // Store-confirmed, not client-claimed — only true when the provider's own
   // API response (google-play-billing.service.js reading Google's
@@ -208,6 +209,18 @@ const requestProviderChange = async (
       {
         status: 'SCHEDULED',
         statusNote: `Superseded by a new ${storeLabel[newPlatform]} subscription on ${today} — Stripe cancellation scheduled for the end of the current billing period.`,
+      },
+      { transaction }
+    );
+  } else if (newPlatform === 'MANUAL' && currentActive.autoRenew === false) {
+    // P9c item D (R-95): a bank-transfer plan may replace a store plan only once the host has
+    // cancelled it at the store (auto-renew off). Nothing renews there, so nothing to do: closed
+    // out, not "cancel it yourself". Should the store renew it after all, the renewal guard below
+    // keeps this row superseded and sets duplicateBilling (the support marker).
+    await currentActive.update(
+      {
+        status: 'CANCELLED',
+        statusNote: `Replaced by a bank transfer plan on ${today}. Auto-renew was already off at ${storeLabel[currentActive.platform]} — no action needed.`,
       },
       { transaction }
     );

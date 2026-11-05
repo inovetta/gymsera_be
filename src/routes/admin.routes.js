@@ -338,6 +338,13 @@ router.post(
   adminController.verifyPayLaterPayment
 );
 
+// ── Host plan payments by bank transfer (P9c item D, R-95) ─────────────────────
+const planPaymentsController = require('../controllers/plan-payments.controller');
+router.get('/plan-payments', planPaymentsController.adminList);
+router.get('/plan-payments/:id/proof', planPaymentsController.adminProof);
+router.post('/plan-payments/:id/approve', validate.allowBody([], { stage: 1 }), planPaymentsController.adminApprove);
+router.post('/plan-payments/:id/reject', validate.allowBody(['reason'], { stage: 1 }), planPaymentsController.adminReject);
+
 // ── Tenant platform invoices ───────────────────────────────────────────────────
 router.get('/tenants/:id/invoices', adminController.getTenantInvoices);
 router.post(

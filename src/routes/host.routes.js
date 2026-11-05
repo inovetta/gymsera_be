@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const hostController = require('../controllers/host.controller');
+const planPaymentsController = require('../controllers/plan-payments.controller');
 const gymsController = require('../controllers/gyms.controller');
 const expensesController = require('../controllers/expenses.controller');
 const payoutsController = require('../controllers/payouts.controller');
@@ -154,6 +155,18 @@ router.post('/branches/:branchId/resume', authenticate, tenantContext, authorize
  *       404: { description: The tenant never had a plan (or only a cancelled one) }
  */
 router.get('/subscription/current', authenticate, authorize('GYM_HOST'), hostController.getCurrentSubscription);
+// P9c item D (R-95): pay for a GymsEra plan by bank transfer; the owner only (checked in the service).
+router.get('/plan-payments', authenticate, authorize('GYM_HOST'), planPaymentsController.getOverview);
+router.post(
+  '/plan-payments',
+  authenticate,
+  authorize('GYM_HOST'),
+  upload.image('proof'),
+  upload.handleMulterError,
+  // New route: unknown fields (a price, a duration, dates) are refused now, not only logged (SEC-06 stage 1).
+  validate.allowBody(['billingPlanId', 'billingCycle', 'method', 'payerReference'], { stage: 1 }),
+  planPaymentsController.submit
+);
 router.post('/subscription/upgrade', authenticate, authorize('GYM_HOST'), validate.allowBody(['newPlanId', 'planId']), hostController.upgradeSubscription);
 
 // Branches routes mapped to gymsController but under /host prefix
