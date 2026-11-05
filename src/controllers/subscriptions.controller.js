@@ -177,8 +177,7 @@ const uploadSubscriptionProof = async (req, res, next) => {
       err.statusCode = 422;
       return next(err);
     }
-    const proofUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/payment-proofs/sub-${req.params.id}-${Date.now()}.jpg`;
-    const payment = await subscriptionService.uploadSubscriptionProof(req.user.id, req.params.id, proofUrl);
+    const payment = await subscriptionService.uploadSubscriptionProof(req.user.id, req.params.id, req.file);
     return sendSuccess(res, { payment }, 'Proof uploaded successfully');
   } catch (err) {
     next(err);

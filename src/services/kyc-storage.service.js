@@ -70,6 +70,36 @@ function saveLocalPrivate(buffer, key) {
 }
 
 /**
+ * Writes bytes to the private store (decision R-27): the private R2 bucket with SSE-AES256, or
+ * `storage/private/kyc/<key>` on local disk, outside every public web root. One store for every
+ * private file: KYC documents and, since Phase 7 P9c, payment proofs (`tenants/<id>/payment-proofs/`).
+ * Read back with getKycStream(key), removed with deleteKycFile(key).
+ *
+ * @param {{ buffer: Buffer, mimetype: string, key: string }} params
+ */
+async function putPrivateObject({ buffer, mimetype, key }) {
+  const client = getS3Client();
+  if (client && KYC_BUCKET && process.env.NODE_ENV !== 'test') {
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: KYC_BUCKET,
+          Key: key,
+          Body: buffer,
+          ContentType: mimetype,
+          ServerSideEncryption: 'AES256', // SSE-AES256 encryption at rest (decision R-27)
+        })
+      );
+      return;
+    } catch (err) {
+      console.warn('[Private Storage] Failed to upload to private R2 bucket, falling back to private local storage:', err.message);
+    }
+  }
+  // Local development or test environment (or R2 failure): private disk outside public web roots
+  saveLocalPrivate(buffer, key);
+}
+
+/**
  * Uploads a KYC document to private encrypted storage (R2 with SSE-AES256 or local private disk).
  *
  * @param {object} params
@@ -98,26 +128,7 @@ async function uploadKycDocument({ buffer, mimetype, tenantId, originalName = 'd
   const docId = `doc_${crypto.randomBytes(12).toString('hex')}`;
   const key = `tenants/${tenantId}/kyc/${docId}-${Date.now()}.${ext}`;
 
-  const client = getS3Client();
-  if (client && KYC_BUCKET && process.env.NODE_ENV !== 'test') {
-    try {
-      await client.send(
-        new PutObjectCommand({
-          Bucket: KYC_BUCKET,
-          Key: key,
-          Body: buffer,
-          ContentType: normMime,
-          ServerSideEncryption: 'AES256', // SSE-AES256 encryption at rest (decision R-27)
-        })
-      );
-    } catch (err) {
-      console.warn('[KYC Storage] Failed to upload to private R2 bucket, falling back to private local storage:', err.message);
-      saveLocalPrivate(buffer, key);
-    }
-  } else {
-    // Local development or test environment: private disk outside public web roots
-    saveLocalPrivate(buffer, key);
-  }
+  await putPrivateObject({ buffer, mimetype: normMime, key });
 
   return {
     documentId: docId,
@@ -247,6 +258,7 @@ function normalizeKycDocuments(docs) {
 }
 
 module.exports = {
+  putPrivateObject,
   uploadKycDocument,
   getKycStream,
   deleteKycFile,

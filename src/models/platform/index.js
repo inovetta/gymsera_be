@@ -39,6 +39,7 @@ const PlatformAuditLog = require('./PlatformAuditLog.model')(sequelize);
 const AuditLog = require('./AuditLog.model')(sequelize);
 const IdempotencyRecord = require('./IdempotencyRecord.model')(sequelize);
 const PayoutAccount = require('./PayoutAccount.model')(sequelize);
+const PlanPaymentRequest = require('./PlanPaymentRequest.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -238,4 +239,5 @@ module.exports = {
   AuditLog,
   IdempotencyRecord,
   PayoutAccount,
+  PlanPaymentRequest,
 };

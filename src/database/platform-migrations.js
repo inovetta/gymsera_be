@@ -1099,6 +1099,46 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 28,
+    name: 'p028_plan_payment_requests',
+    description:
+      'plan_payment_requests: a host pays for a GymsEra plan outside the stores (bank transfer with a receipt), a platform admin approves or rejects (P9c item D, R-95). New table only; nothing existing changes. Safe to re-run.',
+    // ROLLBACK (deploy the previous API build FIRST: it never reads this table):
+    //   DROP TABLE `plan_payment_requests`;  DELETE FROM `schema_migrations` WHERE `version` = 28;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`plan_payment_requests\` (
+          \`id\` CHAR(36) BINARY NOT NULL,
+          \`tenant_id\` CHAR(36) BINARY NOT NULL,
+          \`requested_by_user_id\` CHAR(36) BINARY NOT NULL,
+          \`billing_plan_id\` CHAR(36) BINARY NOT NULL,
+          \`branch_count\` INT NOT NULL,
+          \`billing_cycle\` VARCHAR(16) NOT NULL,
+          \`amount\` DECIMAL(12,2) NOT NULL,
+          \`currency\` VARCHAR(3) NOT NULL,
+          \`method\` VARCHAR(32) NOT NULL DEFAULT 'BANK_TRANSFER',
+          \`status\` VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+          \`proof_key\` VARCHAR(500) NULL,
+          \`payer_reference\` VARCHAR(100) NULL,
+          \`external_reference\` VARCHAR(255) NULL,
+          \`reviewed_by_user_id\` CHAR(36) BINARY NULL,
+          \`reviewed_at\` DATETIME NULL,
+          \`rejection_reason\` VARCHAR(500) NULL,
+          \`tenant_subscription_id\` CHAR(36) BINARY NULL,
+          \`period_start\` DATE NULL,
+          \`period_end\` DATE NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          KEY \`plan_payment_requests_tenant_id_status\` (\`tenant_id\`, \`status\`),
+          KEY \`plan_payment_requests_status_created_at\` (\`status\`, \`created_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

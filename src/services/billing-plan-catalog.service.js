@@ -250,7 +250,25 @@ const syncStripePriceForCurrency = async (planId, currency) => {
   return row;
 };
 
+/**
+ * The catalog's two cycles (P9c item D, R-95): each sells `months` of the plan at the plan's own
+ * price for that cycle, in the plan's currency. One definition: a bank-transfer plan and the store
+ * products (iosMonthly / iosAnnual, the Android base plans) are the same two cycles. Clients send
+ * only the plan and the cycle; they never send a duration or a price.
+ */
+const CYCLE_TERMS = Object.freeze({
+  MONTHLY: Object.freeze({ months: 1, priceField: 'monthlyPrice' }),
+  YEARLY: Object.freeze({ months: 12, priceField: 'annualPrice' }),
+});
+
+const cycleTerms = (plan, cycle) => {
+  const terms = CYCLE_TERMS[cycle];
+  if (!terms) return null;
+  return { cycle, months: terms.months, amount: Number(plan[terms.priceField]), currency: plan.currency };
+};
+
 module.exports = {
+  CYCLE_TERMS, cycleTerms,
   listPlans, getPlan, createPlan, updatePlan, syncStripePrice, markProviderSynced,
   priceForCurrency, upsertPrice, deletePrice, syncStripePriceForCurrency,
 };

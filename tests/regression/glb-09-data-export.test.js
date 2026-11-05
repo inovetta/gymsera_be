@@ -65,7 +65,8 @@ describe('GLB-09: GET /me/data-export', () => {
     });
     await models.MemberProfile.create({ userId: member.id, medicalNotes: `asthma-${tag}`, emergencyContactName: `Mum-${tag}`, emergencyContactPhone: '+92300000' });
     await models.AttendanceLog.create({ branchId: gym.branch.id, userId: member.id, memberSubscriptionId: sub.id, attendanceType: 'CHECK_IN', entryMethod: 'MANUAL', checkInAt: new Date(), notes: `checkin-${tag}` });
-    await factories.createPayment(db, gym.branch.id, { userId: member.id, amount: 3000, notes: `paynote-${tag}`, proofUrl: `https://files.example.test/proofs/${tag}.jpg`, referenceEntityId: sub.id });
+    // P9c (A): a stored proof is a private-store key; the API (and so the export) shows it as the proof route, never the key.
+    const payment = await factories.createPayment(db, gym.branch.id, { userId: member.id, amount: 3000, notes: `paynote-${tag}`, proofUrl: `private:tenants/${gym.tenant.id}/payment-proofs/${tag}.jpg`, referenceEntityId: sub.id });
     await UserGymMembership.create({ userId: member.id, tenantId: gym.tenant.id, gymListingId: gym.listing.id, subscriptionId: sub.id, gymName: 'Test Gym', planName: 'Monthly', startDate: sub.startDate, endDate: sub.endDate, status: 'ACTIVE' });
     await RefreshToken.create({ userId: member.id, familyId: uuidv4(), token: `refresh-secret-${tag}`, expiresAt: new Date(Date.now() + DAY), isRevoked: false });
     await DeviceToken.create({ userId: member.id, token: `fcm-secret-${tag}`, platform: 'ios', appVersion: '1.2.3', locale: 'en', timezone: 'Asia/Karachi' });
@@ -74,7 +75,7 @@ describe('GLB-09: GET /me/data-export', () => {
     await GymReview.create({ gymListingId: gym.listing.id, userId: member.id, tenantId: gym.tenant.id, rating: 4, title: `review-title-${tag}`, body: `review-body-${tag}` });
     const convo = await Conversation.create({ tenantId: gym.tenant.id, branchId: gym.branch.id, userId: member.id, type: 'MEMBER', lastMessageText: `chat-${tag}` });
     await Message.create({ conversationId: convo.id, senderId: member.id, senderType: 'USER', text: `chat-${tag}` });
-    return { member, sub };
+    return { member, sub, payment };
   };
 
   beforeAll(async () => {
@@ -95,7 +96,7 @@ describe('GLB-09: GET /me/data-export', () => {
 
   test('a member gets everything held about them, as a no-store download', async () => {
     const gym = await seedGym(db.encryptedConnStr);
-    const { member } = await seedMember(gym, 'alice');
+    const { member, payment } = await seedMember(gym, 'alice');
 
     const res = await api('/me/data-export', member);
 
@@ -109,7 +110,7 @@ describe('GLB-09: GET /me/data-export', () => {
 
     const all = JSON.stringify(data);
     for (const needle of [
-      'notes-alice', 'asthma-alice', 'Mum-alice', 'checkin-alice', 'paynote-alice', 'proofs/alice.jpg',
+      'notes-alice', 'asthma-alice', 'Mum-alice', 'checkin-alice', 'paynote-alice',
       'title-alice', 'message-alice', 'review-title-alice', 'review-body-alice', 'chat-alice', 'Asia/Karachi',
     ]) {
       expect(all).toContain(needle);
@@ -120,6 +121,9 @@ describe('GLB-09: GET /me/data-export', () => {
     expect(data.gyms[0].memberProfile.medicalNotes).toBe('asthma-alice');
     expect(data.gyms[0].subscriptions).toHaveLength(1);
     expect(data.gyms[0].payments).toHaveLength(1);
+    // The payment proof is listed (P9c: by its route; the storage key never leaves the API).
+    expect(data.gyms[0].payments[0].proofUrl).toBe(`/api/v1/payments/${payment.id}/proof`);
+    expect(all).not.toContain('private:tenants/');
     expect(data.gyms[0].attendance).toHaveLength(1);
   });
 

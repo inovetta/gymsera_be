@@ -42,7 +42,8 @@ const NO_FALLBACK_STATUSES = ENDED_STATUSES;
 const getActiveSubscription = async (tenantId, { transaction } = {}) => {
   return TenantSubscription.findOne({
     where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
-    include: [{ model: PlatformPackage, as: 'package', attributes: ['maxBranches', 'maxOrganizations'] }],
+    // P9c: the name too, so a legacy package plan is shown by name, not as "Subscription".
+    include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches', 'maxOrganizations'] }],
     order: [['createdAt', 'DESC']],
     transaction,
   });

@@ -382,13 +382,17 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       expect(payment.businessDate).toBe('2026-09-25');
 
       // 1. uploadPaymentProof
+      // P9c (A): the service now stores the uploaded file (private store) and the row reads as the proof route.
+      const jpeg = await require('sharp')({ create: { width: 8, height: 8, channels: 3, background: { r: 1, g: 2, b: 3 } } }).jpeg().toBuffer();
       const afterProof = await paymentService.uploadPaymentProof(
         tenant1,
         payment.id,
-        'https://storage.gymsera.com/proofs/receipt-123.jpg'
+        { buffer: jpeg, mimetype: 'image/jpeg' },
+        'test-tenant-1'
       );
       expect(afterProof.businessDate).toBe('2026-09-25');
-      expect(afterProof.proofUrl).toBe('https://storage.gymsera.com/proofs/receipt-123.jpg');
+      expect(afterProof.proofUrl).toBe(`/api/v1/payments/${payment.id}/proof`);
+      expect(afterProof.getDataValue('proofUrl')).toMatch(/^private:tenants\/test-tenant-1\/payment-proofs\//);
 
       // 2. markPrinted (instance update)
       await afterProof.update({

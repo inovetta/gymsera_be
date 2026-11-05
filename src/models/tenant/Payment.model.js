@@ -99,9 +99,26 @@ module.exports = (sequelize) => {
         allowNull: true,
       },
       // Receipt / bank transfer proof uploaded by the member
+      // Phase 7 P9c (A): the column holds `private:<key>` in the private store; reads give the
+      // authenticated route that serves it (payment-proof.service.js), never the key and never a
+      // public URL. A pre-P9c `/uploads/...` value was never stored: it reads as null and
+      // `proofMissing` is true. Raw queries see the column as stored.
       proofUrl: {
         type: DataTypes.STRING(500),
         allowNull: true,
+        get() {
+          const raw = this.getDataValue('proofUrl');
+          if (!raw) return raw;
+          const { isPrivateProof, proofRoute } = require('../../services/payment-proof.service');
+          return isPrivateProof(raw) ? proofRoute(this.getDataValue('id')) : null;
+        },
+      },
+      proofMissing: {
+        type: DataTypes.VIRTUAL,
+        get() {
+          const raw = this.getDataValue('proofUrl');
+          return !!raw && !require('../../services/payment-proof.service').isPrivateProof(raw);
+        },
       },
       // Reason provided when a payment is rejected by staff
       rejectedReason: {

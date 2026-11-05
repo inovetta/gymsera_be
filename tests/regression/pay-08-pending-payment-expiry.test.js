@@ -21,6 +21,10 @@ const subscriptionService = require('../../src/services/subscription.service');
 const paymentService = require('../../src/services/payment.service');
 const { runExpiryCheck } = require('../../src/jobs/subscription-expiry.cron');
 
+// P9c (A): the proof services take the uploaded file (stored privately), not a path. Any bytes do here: the
+// upload middleware's image check is not part of these service calls.
+const PROOF = { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]), mimetype: 'image/jpeg' };
+
 describe('PAY-08: pending member payments expire; only the verified server path completes', () => {
   let personas;
   let ctx;
@@ -124,14 +128,14 @@ describe('PAY-08: pending member payments expire; only the verified server path 
     await paymentService.expireStalePendingPayments(ctx.tenant1Db, { now: later(169) });
     await expect(paymentService.verifyPayment(ctx.tenant1Db, m.payment.id, personas.owner.user.id, null))
       .rejects.toMatchObject({ statusCode: 409 });
-    await expect(paymentService.uploadPaymentProof(ctx.tenant1Db, m.payment.id, '/uploads/x.jpg'))
+    await expect(paymentService.uploadPaymentProof(ctx.tenant1Db, m.payment.id, PROOF, ctx.tenant1.id))
       .rejects.toMatchObject({ statusCode: 400 });
     expect((await models().MemberSubscription.findByPk(m.subscription.id)).status).toBe('CANCELLED');
   });
 
   test('5. a payment with an uploaded proof waits for the host instead of expiring', async () => {
     const m = await member();
-    await subscriptionService.uploadSubscriptionProof(m.user.id, m.subscription.id, '/uploads/proof.jpg');
+    await subscriptionService.uploadSubscriptionProof(m.user.id, m.subscription.id, PROOF);
     await paymentService.expireStalePendingPayments(ctx.tenant1Db, { now: later(169) });
     expect((await models().Payment.findByPk(m.payment.id)).status).toBe('PENDING');
     expect((await models().MemberSubscription.findByPk(m.subscription.id)).status).toBe('PENDING');
@@ -212,7 +216,7 @@ describe('PAY-08: pending member payments expire; only the verified server path 
     });
 
     test('proof upload does not change the status', async () => {
-      await subscriptionService.uploadSubscriptionProof(m.user.id, m.subscription.id, '/uploads/p.jpg');
+      await subscriptionService.uploadSubscriptionProof(m.user.id, m.subscription.id, PROOF);
       await stillPending();
     });
   });
