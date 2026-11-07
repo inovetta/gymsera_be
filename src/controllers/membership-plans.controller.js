@@ -108,8 +108,8 @@ const uploadPoster = async (req, res, next) => {
       return next(err);
     }
 
-    const posterUrl = `${process.env.STORAGE_BASE_URL || '/uploads'}/plans/${req.params.id}-${Date.now()}.jpg`;
-    const result = await membershipPlanService.updatePoster(req.tenantDb, req.params.id, posterUrl);
+    // NEW-223: the service stores the image (it only saved a made-up path before).
+    const result = await membershipPlanService.updatePoster(req.tenantDb, req.params.id, req.file);
     return sendSuccess(res, result, 'Poster updated');
   } catch (err) {
     next(err);
