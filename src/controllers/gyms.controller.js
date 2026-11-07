@@ -3,22 +3,26 @@ const { sendSuccess, createError, parsePagination } = require('../utils/response
 const storageService = require('../services/storage.service');
 const { hasBranchAccess, branchIdsWithAnyGrant, branchIdsWithPermission, hasAllBranches } = require('../utils/branchAccess.utils');
 
+// NEW-45 / NEW-231: bank details are shown to, and changed by, only someone who may manage them
+// (payouts.bank.manage: the owner). One rule for the GET answer, the PATCH answer and the PATCH write.
+const mayManageBankDetails = async (req) => {
+  const accessService = require('../services/access.service');
+  const tenantId = req.user.tenantId || req.tenantId;
+  const userId = req.user.id || req.user.sub;
+  const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
+  return Boolean(grants.isOwner || (await hasAllBranches(req)) || grants.has('payouts.bank.manage'));
+};
+const hideBankDetails = (result) => {
+  if (!result || !result.gym) return;
+  delete result.gym.paymentDetailsJson;
+  delete result.gym.paymentDetailsUpdatedAt;
+};
+
 // ── GET /gyms/profile ─────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
   try {
     const result = await gymService.getProfile(req.tenantDb, req.user.tenantId);
-
-    // NEW-45: bank details are shown only to someone who may manage them
-    // (payouts.bank.manage — the owner), the same rule PATCH applies to changing them.
-    const accessService = require('../services/access.service');
-    const tenantId = req.user.tenantId || req.tenantId;
-    const userId = req.user.id || req.user.sub;
-    const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
-    const isOwner = grants.isOwner || (await hasAllBranches(req));
-    if (!isOwner && !grants.has('payouts.bank.manage')) {
-      delete result.gym.paymentDetailsJson;
-      delete result.gym.paymentDetailsUpdatedAt;
-    }
+    if (!(await mayManageBankDetails(req))) hideBankDetails(result);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -32,11 +36,9 @@ const updateProfile = async (req, res, next) => {
     const userId = req.user.id || req.user.sub;
 
     // SEC-13: If updating payment/bank details, require permission & re-auth
+    const mayManageBank = await mayManageBankDetails(req);
     if (req.body && req.body.paymentDetailsJson !== undefined) {
-      const accessService = require('../services/access.service');
-      const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
-      const isOwner = grants.isOwner || (await hasAllBranches(req));
-      if (!isOwner && !grants.has('payouts.bank.manage')) {
+      if (!mayManageBank) {
         throw createError('You do not have permission to manage bank payout details', 403);
       }
 
@@ -50,6 +52,8 @@ const updateProfile = async (req, res, next) => {
     }
 
     const result = await gymService.updateProfile(req.tenantDb, tenantId, req.body);
+    // NEW-231: the answer carries the bank details only for someone who may manage them, as GET.
+    if (!mayManageBank) hideBankDetails(result);
     return sendSuccess(res, result, 'Gym profile updated successfully');
   } catch (err) {
     next(err);
