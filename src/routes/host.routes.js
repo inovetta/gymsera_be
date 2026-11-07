@@ -40,16 +40,16 @@ const ownerOrListingManager = ({ ownerNeedsContext }) => (req, res, next) =>
     return tenantContext(req, res, (ctxErr) => (ctxErr ? next(ctxErr) : canManageListing(req, res, next)));
   });
 
-// Payouts (PAY-10, SEC-13)
-router.get('/payouts/balance', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
-router.get('/payouts', authenticate, tenantContext, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
-router.post('/payouts', authenticate, tenantContext, idempotency({ required: true }), validate.allowBody(['amount', 'branchId', 'notes', 'destinationJson', 'idempotencyKey']), payoutsController.requestPayout);
+// Payouts (PAY-10, SEC-13). forTeamRoutes: a caller in no gym's team gets 403, not 400 (NEW-221).
+router.get('/payouts/balance', authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
+router.get('/payouts', authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
+router.post('/payouts', authenticate, tenantContext.forTeamRoutes, idempotency({ required: true }), validate.allowBody(['amount', 'branchId', 'notes', 'destinationJson', 'idempotencyKey']), payoutsController.requestPayout);
 
 // P7b (R-94, NEW-217): the tenant's default payout account. Owner only (payouts.bank.manage is
 // owner-only and organization-wide); saving needs re-authentication (SEC-13 / NEW-35).
 const PAYOUT_ACCOUNT_BODY = ['details', 'password', 'provider', 'idToken', 'reauthProvider', 'reauthIdToken'];
-router.get('/payout-account', authenticate, tenantContext, can('payouts.bank.manage', { orgWide: true }), payoutsController.getPayoutAccount);
-router.put('/payout-account', authenticate, tenantContext, can('payouts.bank.manage', { orgWide: true }), validate.allowBody(PAYOUT_ACCOUNT_BODY), payoutsController.savePayoutAccount);
+router.get('/payout-account', authenticate, tenantContext.forTeamRoutes, can('payouts.bank.manage', { orgWide: true }), payoutsController.getPayoutAccount);
+router.put('/payout-account', authenticate, tenantContext.forTeamRoutes, can('payouts.bank.manage', { orgWide: true }), validate.allowBody(PAYOUT_ACCOUNT_BODY), payoutsController.savePayoutAccount);
 
 // Expense Categories
 router.get('/expense-categories', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.listExpenseCategories);

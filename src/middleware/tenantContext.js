@@ -263,7 +263,14 @@ const resolveTenantId = async (req, memo = null, { memberRoute = false } = {}) =
   return null;
 };
 
-const makeTenantContext = ({ memberRoute = false } = {}) => async (req, res, next) => {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.memberRoute]  traveller member routes: may fall back to a booked gym.
+ * @param {boolean} [opts.noTenantIsForbidden]  team-only routes (NEW-221): a caller who is part of no
+ *   gym's team gets 403, not 400 `missing_tenant_context`. A platform admin keeps the 400: they may
+ *   act in a tenant once one is chosen with X-Tenant-Id, so "choose a gym" is the right answer.
+ */
+const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } = {}) => async (req, res, next) => {
   try {
     const memo = newRequestMemo(); // this request only; see newRequestMemo
     const user = req.user;
@@ -317,6 +324,9 @@ const makeTenantContext = ({ memberRoute = false } = {}) => async (req, res, nex
       // clients map to "your gym isn't live yet", never a developer sentence.
       if (userId && !isPlatformAdmin && (await membershipService.ownsInactiveTenant(userId))) {
         return sendError(res, 409, 'Your gym is not live yet. Finish setting it up to use this.', 'tenant_not_active');
+      }
+      if (noTenantIsForbidden && !isPlatformAdmin) {
+        return sendError(res, 403, 'Only the gym\'s owner and team can use this.', 'forbidden');
       }
       return sendError(res, 400, 'Choose a gym to continue.', 'missing_tenant_context');
     }
@@ -373,6 +383,9 @@ const tenantContext = makeTenantContext();
 module.exports = tenantContext;
 // Traveller member routes (/member/*): may fall back to a gym the caller booked, as a member.
 module.exports.forMemberRoutes = makeTenantContext({ memberRoute: true });
+// Team-only routes where "no gym" is a refusal (403), not a missing selector (NEW-221). Used only by
+// the routes the ledger names (/host/payout-account, /host/payouts*); see makeTenantContext.
+module.exports.forTeamRoutes = makeTenantContext({ noTenantIsForbidden: true });
 module.exports.resolveTenant = tenantContext;
 module.exports.resolveTenantId = resolveTenantId;
 module.exports.userBelongsToTenant = userBelongsToTenant;
