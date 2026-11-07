@@ -48,12 +48,35 @@ const listPayouts = async (req, res, next) => {
   }
 };
 
+// NEW-232 (R-98): body fields that once named, or could be read as, a payout destination. They are
+// dropped before validation: the payout always goes to the saved payout account. Older clients that
+// still send one keep working; each drop is logged (field names only, never the values).
+const IGNORED_DESTINATION_FIELDS = Object.freeze([
+  'destinationJson', 'destination', 'payoutAccount', 'bankDetails', 'paymentDetailsJson',
+  ...payoutAccountService.BANK_DETAIL_FIELDS,
+]);
+
+/** POST /host/payouts middleware: drop destination / bank fields from the body, with one log line. */
+const ignoreBodyDestination = (req, _res, next) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object') return next();
+  const dropped = IGNORED_DESTINATION_FIELDS.filter((k) => Object.prototype.hasOwnProperty.call(body, k));
+  if (dropped.length) {
+    for (const k of dropped) delete body[k];
+    console.warn(
+      `[Payouts] NEW-232: ignored ${dropped.join(', ')} in the POST /host/payouts body; ` +
+        `the payout goes to the saved payout account (tenant ${req.tenantId || '-'}, user ${req.user?.id || req.user?.sub || '-'})`
+    );
+  }
+  return next();
+};
+
 /**
  * POST /host/payouts
  */
 const requestPayout = async (req, res, next) => {
   try {
-    const { branchId, amount, notes, destinationJson } = req.body || {};
+    const { branchId, amount, notes } = req.body || {};
     const tenantId = req.tenantId || req.user?.tenantId || req.tenant?.id;
     const userId = req.user.id || req.user.sub;
 
@@ -80,7 +103,7 @@ const requestPayout = async (req, res, next) => {
     const outcome = await approvalService.perform(
       ctx,
       'payouts.request',
-      { branchId, amount, notes, destinationJson, idempotencyKey },
+      { branchId, amount, notes, idempotencyKey },
       { idempotencyKey }
     );
 
@@ -200,6 +223,7 @@ const savePayoutAccount = async (req, res, next) => {
 };
 
 module.exports = {
+  ignoreBodyDestination,
   getPayoutAccount,
   savePayoutAccount,
   getBalance,

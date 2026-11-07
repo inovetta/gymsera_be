@@ -12,6 +12,7 @@ const { attachGrants } = require('../middleware/can');
 const controller = require('../controllers/actions.controller');
 const accessService = require('../services/access.service');
 const { createError } = require('../utils/response.utils');
+const refusePlatformAdmin = require('../middleware/refusePlatformAdmin');
 
 const router = Router();
 router.use(authenticate, tenantContext);
@@ -21,8 +22,15 @@ router.use(authenticate, tenantContext);
  * the route is declared. Resolve grants first, then enforce the key the caller
  * named — which is exactly what can() does, one step later.
  */
-const canPerformNamedAction = async (req, _res, next) => {
+// NEW-232 (R-98): actions a platform admin never performs in a gym, even with X-Tenant-Id.
+const PLATFORM_ADMIN_REFUSED = {
+  'payouts.request': refusePlatformAdmin.payoutRequest,
+};
+
+const canPerformNamedAction = async (req, res, next) => {
   try {
+    const refuse = PLATFORM_ADMIN_REFUSED[req.params.actionKey];
+    if (refuse && req.user?.role === 'PLATFORM_ADMIN') return refuse(req, res, next);
     if (!req.grants.has(req.params.actionKey)) {
       return next(createError('You do not have permission to perform this action here', 403));
     }

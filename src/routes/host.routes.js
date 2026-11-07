@@ -6,6 +6,7 @@ const expensesController = require('../controllers/expenses.controller');
 const payoutsController = require('../controllers/payouts.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
+const refusePlatformAdmin = require('../middleware/refusePlatformAdmin');
 const tenantContext = require('../middleware/tenantContext');
 const can = require('../middleware/can');
 const idempotency = require('../middleware/idempotency');
@@ -43,7 +44,10 @@ const ownerOrListingManager = ({ ownerNeedsContext }) => (req, res, next) =>
 // Payouts (PAY-10, SEC-13). forTeamRoutes: a caller in no gym's team gets 403, not 400 (NEW-221).
 router.get('/payouts/balance', authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
 router.get('/payouts', authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
-router.post('/payouts', authenticate, tenantContext.forTeamRoutes, idempotency({ required: true }), validate.allowBody(['amount', 'branchId', 'notes', 'destinationJson', 'idempotencyKey']), payoutsController.requestPayout);
+// NEW-232 (R-98): the payout always goes to the saved payout account. A platform admin is refused
+// first (403); destination / bank fields in the body are dropped with a log line (older clients
+// keep working) and never reach the command.
+router.post('/payouts', authenticate, refusePlatformAdmin.payoutRequest, tenantContext.forTeamRoutes, idempotency({ required: true }), payoutsController.ignoreBodyDestination, validate.allowBody(['amount', 'branchId', 'notes', 'idempotencyKey']), payoutsController.requestPayout);
 
 // P7b (R-94, NEW-217): the tenant's default payout account. Owner only (payouts.bank.manage is
 // owner-only and organization-wide); saving needs re-authentication (SEC-13 / NEW-35).
@@ -51,13 +55,7 @@ router.post('/payouts', authenticate, tenantContext.forTeamRoutes, idempotency({
 // validation and re-authentication, so the answer is the same with any header or body. An admin
 // read is masked and audited (payoutsController.getPayoutAccount).
 const PAYOUT_ACCOUNT_BODY = ['details', 'password', 'provider', 'idToken', 'reauthProvider', 'reauthIdToken'];
-const payoutAccountOwnerOnly = (req, _res, next) => {
-  if (req.user?.role !== 'PLATFORM_ADMIN') return next();
-  const err = new Error('Only the gym owner can change payout details.');
-  err.statusCode = 403;
-  err.code = 'payout_account_owner_only';
-  return next(err);
-};
+const payoutAccountOwnerOnly = refusePlatformAdmin.payoutAccountWrite;
 router.get('/payout-account', authenticate, tenantContext.forTeamRoutes, can('payouts.bank.manage', { orgWide: true }), payoutsController.getPayoutAccount);
 router.put('/payout-account', authenticate, payoutAccountOwnerOnly, tenantContext.forTeamRoutes, can('payouts.bank.manage', { orgWide: true }), validate.allowBody(PAYOUT_ACCOUNT_BODY), payoutsController.savePayoutAccount);
 

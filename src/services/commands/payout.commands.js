@@ -8,6 +8,18 @@ const { getPayoutBalance, checkCoolingPeriod } = require('../payout.service');
 const payoutAccountService = require('../payout-account.service');
 const { moneyText, DEFAULT_CURRENCY } = require('../../utils/currency.utils');
 
+const NO_ACCOUNT_MESSAGE =
+  'There is no payout account to pay to. The owner adds the bank or wallet details under Payouts first; payouts are paid only to that saved account.';
+
+/** The saved payout account's details, or 409 no_payout_destination (NEW-232, R-98). */
+const savedDestinationOrThrow = (account) => {
+  const details = account ? account.details : null;
+  if (!details || typeof details !== 'object' || Object.keys(details).length === 0) {
+    throw createError(NO_ACCOUNT_MESSAGE, 409, 'no_payout_destination');
+  }
+  return details;
+};
+
 register({
   actionKey: 'payouts.request',
 
@@ -42,12 +54,9 @@ register({
       throw err;
     }
 
-    const destination = payload.destinationJson || (account ? account.details : null);
-    if (!destination || (typeof destination === 'object' && Object.keys(destination).length === 0)) {
-      const err = createError('No payout account configured. Set up bank payout details before requesting a payout.', 422);
-      err.code = 'no_payout_destination';
-      throw err;
-    }
+    // NEW-232 (R-98): only the saved payout account; a destination in the payload (a body, or the
+    // stored payload of a request waiting for approval) is never read.
+    savedDestinationOrThrow(account);
 
     // Check dynamic ledger balance
     const balance = await getPayoutBalance(ctx.tenantDb, payload.branchId);
@@ -91,7 +100,12 @@ register({
       }
 
       const account = await payoutAccountService.resolveForBranch(ctx.tenantDb, ctx.tenantId, payload.branchId || null);
-      const destination = payload.destinationJson || (account ? account.details : null);
+      if (checkCoolingPeriod(account).active) {
+        const err = createError('Payout requests are temporarily blocked. Bank payout details were updated within the last 24 hours.', 422);
+        err.code = 'cooling_period_active';
+        throw err;
+      }
+      const destination = savedDestinationOrThrow(account);
 
       const payout = await Payout.create(
         {
