@@ -28,7 +28,9 @@ const displayDate = (iso) =>
   new Date(`${iso}T00:00:00.000Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const days = (n) => `${n} ${n === 1 ? 'day' : 'days'}`;
 const branches = (n) => `${n} ${n === 1 ? 'branch' : 'branches'}`;
-const TARGET_NAMES = { ...STORE_NAMES, IOS: 'App Store' };
+// NEW-230: whole phrases with their article: "in the App Store", "an App Store plan".
+const MANAGE_IN = { IOS: 'the App Store', ANDROID: 'Google Play', STRIPE: STORE_NAMES.STRIPE };
+const A_PLAN_ON = { IOS: 'an App Store plan', ANDROID: 'a Google Play plan', STRIPE: `a ${STORE_NAMES.STRIPE} plan` };
 
 const refuse = (status, code, message, data) => {
   const e = createError(message, status);
@@ -65,8 +67,8 @@ const evaluate = async ({ tenantId, planId = null, platform, billingCycle = null
     throw refuse(
       409,
       'store_plan_active',
-      `${storeRenewsSentence(current.platform)} Change or cancel it in ${TARGET_NAMES[current.platform]} first; ` +
-        `a ${TARGET_NAMES[target] || 'new'} plan can be bought once that plan is cancelled or has ended.`,
+      `${storeRenewsSentence(current.platform)} Change or cancel it in ${MANAGE_IN[current.platform]} first; ` +
+        `${A_PLAN_ON[target] || 'a new plan'} can be bought once that plan is cancelled or has ended.`,
       {
         action: 'blocked',
         mechanism: 'blocked',

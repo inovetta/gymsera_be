@@ -81,6 +81,17 @@ describe('P9d: purchase-intent is the server check before every store purchase (
       expect(res.body.data.manageUrl).toContain(url);
     });
 
+    // P11b, NEW-230: "an App Store plan", "in the App Store" (not "a App Store", "in App Store").
+    test.each([
+      ['IOS', 'ANDROID', 'Your plan is billed by Apple and renews automatically. Change or cancel it in the App Store first; a Google Play plan can be bought once that plan is cancelled or has ended.'],
+      ['ANDROID', 'IOS', 'Your plan is billed by Google Play and renews automatically. Change or cancel it in Google Play first; an App Store plan can be bought once that plan is cancelled or has ended.'],
+    ])('%s renewing → buying on %s: the exact refusal text (NEW-230)', async (current, target, text) => {
+      await reset([current === 'IOS' ? apple(plan1) : google(plan1)]);
+      const res = await ask(plan3, target.toLowerCase());
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe(text);
+    });
+
     test.each([
       ['cancelled (auto-renew off)', { autoRenew: false }],
       ['ended (EXPIRED)', { status: 'EXPIRED', endDate: day(-1) }],
