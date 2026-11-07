@@ -17,16 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-07 (P11 in progress) |
+| Last updated | 2026-11-07 (P11 done locally, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **Phase 7 Prompt P11** (owner text 2026-11-07: app release candidate build 22; Step 0 open mobile items, A NEW-218, B NEW-227, C NEW-221, D build-22 device checklist, E NEW-220 removal plan) |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | full suites (be full run), then close-out |
+| Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
 | Step within issue | (not started) |
 
 **P11 branches (2026-11-07), not pushed:** `fix/p11-app-release-candidate`. App worktree `../gyms_era_p11` from `origin/master` `cbe16ce`: `1bb7a8d` A NEW-218 (test `p11_new218_payout_account_route_test`, red 5 / 5, green). be from `origin/main` `b62f057`: `8d1b588` C NEW-221 (`tenantContext.forTeamRoutes` on the five payout routes; test `p11-new221-payout-routes-status` red 5 / 11, green). CMS from `origin/main` `d4c2a32`: `d13f53b` B NEW-227 (test `p11-new227-plan-poster-field`, red, green). New finding to record: a platform admin with X-Tenant-Id reads the full payout account and can replace it (probe, 200 / 200; `hasAllBranches`), against `payouts.bank.manage` "Owner only". Be docs `docs/p11-app-release-candidate` (worktree `../gymsera_be_docs_p9d`, branch switched from `docs/p9d-prepurchase-check`) stacked on `docs/p9d-prepurchase-check` (merge p7b, p9c, p9d docs first). Flutter: `~/fvm/versions/stable` (3.47.9); `flutter pub get` rewrites `analysis_options.yaml` and `pubspec.lock` in the worktree, never commit them.
 
-**Next action:** D checklist and E removal plan are written (runbook `build-22-device-checklist.md`, ledger "P11 status", spec §13 P11 with `BE_RESULT` / `CMS_EXTRA` placeholders). Done: app 447 / 447 x3, analyze 159; CMS Vitest 96 files / 619 tests, tsc, lint. Left: backend full `npm test` result into §13 (replace `BE_RESULT`), CMS build + Playwright + security headers (replace `CMS_EXTRA`), then close-out (§1 DONE, §2 checklist, session log row).
+**Next action:** **Owner:** (1) merge be docs `docs/p7b-payout-accounts`, `docs/p9c-payments-parity`, `docs/p9d-prepurchase-check`, then `docs/p11-app-release-candidate` (stacked). (2) Push and open PRs for `fix/p11-app-release-candidate` in be (`8d1b588`), CMS (`d13f53b`) and app (`1bb7a8d`, worktree `../gyms_era_p11`). (3) Deploy the API (no migration, no new environment variable: `git pull`, `npm install --omit=dev`, `iisreset`), then the CMS (`npm ci`, build, restart). (4) Build 22 from `master` with `--dart-define=APP_ENV=production`; run `docs/runbooks/build-22-device-checklist.md`. (5) Decide: NEW-228 (P1: a platform admin with X-Tenant-Id reads and replaces a host payout account), NEW-225 remainder (API fix or MIN_APP_VERSION 22), NEW-229 (poster upload screen), NEW-78 (mark NOT REPRODUCED?). Results: be 309 / 309 suites, 2950 / 2950 tests; app 447 / 447 x3, analyze 159; CMS 96 files / 619 tests, tsc, lint, build, Playwright 29, security 9. **Agent, next:** whatever the owner decides on NEW-228; then the NEW-220 removal (plan in the ledger "P11 status") once MIN_APP_VERSION is 1.0.0+22.
 
 **P9d branches (2026-11-07), not pushed:** `fix/p9d-prepurchase-check`. be from `origin/main` `9662b11` (P9c merged): `08fcc53` NEW-225 + NEW-224 server (`POST /billing/purchase-intent` now refuses with 409 `store_plan_active` / `same_plan_active` / `bank_plan_active`, a bigger plan over a paid bank plan answers `warning` + `requiresConfirmation`; new `store-purchase-check.service.js`; test `p9d-prepurchase-check` 20, red 17 / 20 first). App worktree `../gyms_era_p9d` from `origin/master` `b4e8f39`. Be docs `docs/p9d-prepurchase-check` (worktree `../gymsera_be_docs_p9d`) stacked on `docs/p9c-payments-parity` (not merged: merge that first). **R-96 (owner, 2026-11-07):** with a PAID bank-transfer plan that has days left, the app may buy only a plan with more branches (server compares catalog `branchCount`; equal = not bigger, 409), after a server-written warning with the unused days and a confirmation; the same or a smaller plan is refused (409).
 
@@ -195,6 +195,16 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 ---
 
 ## 2. Done in the current prompt (checklist)
+
+**Phase 7 Prompt P11 (`fix/p11-app-release-candidate` in be, CMS, app; not pushed):**
+- [x] Step 0 list of open mobile / MIN_APP_VERSION items (ledger "P11 status")
+- [x] A NEW-218 app Payout & Banking on `/host/payout-account` (app `1bb7a8d`)
+- [x] B NEW-227 CMS poster field `image` (CMS `d13f53b`)
+- [x] C NEW-221 403 on the five payout routes (be `8d1b588`)
+- [x] D build-22 device checklist (`runbooks/build-22-device-checklist.md`)
+- [x] E NEW-220 removal plan (ledger), nothing removed
+- [x] Full suites, spec §13 P11, NEW-228 to NEW-230
+- [ ] Owner: merge docs, push, PRs, deploy, build 22, device checklist, NEW-228 decision
 
 **Phase 7 Prompt P7b (`fix/p7b-payout-accounts` in be, CMS, app; not pushed):**
 - [x] NEW-217 payout accounts per tenant, organization override in schema and resolver, `/host/payout-account`, consumers moved (be `18d26f9`)
@@ -710,3 +720,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 129 | 2026-11-04 | Claude Code (Opus 5.5) | Phase 7 P7b (NEW-217 / R-94 payout accounts per tenant with organization override, p027 plan + dry run; NEW-213) | be `18d26f9` (23 + 6 new tests, red 22 / 23 first), CMS `2f2ebf6` (red 19 / 19 first), app `08bb278` (red 3 / 3 first); be 300 suites / 2864 tests, CMS 596, app 429 x3; NEW-218 to NEW-221 | task complete |
 | 130 | 2026-11-05 | Claude Code (Opus 5.5) | Phase 7 P9c (A proofs, B web subscribe, C web maps, D host plan payment by bank transfer / R-95, E channel matrix) | be 8 commits, CMS 3, web 2, app 1, each fix red first (E: gap coverage); p028; be 306 / 306 suites, 2912 / 2912 tests (one guard fix re-run); CMS 618 + PW 29 + sec 9; web 193 + PW 4 + sec 15; app 433 x3, analyze 159; NEW-222 fixed, NEW-223 to NEW-226 | task complete (not pushed) | yes |
 | 131 | 2026-11-07 | Claude Code (Opus 5.5) | Phase 7 P9d (NEW-225 server check before store purchase, NEW-224 unused bank days warning / R-96, NEW-223 poster stored) | be `08fcc53` (red 17 / 20), `e41eb92` (red 5 / 7); app `08a678f` (did not load before); be 308 / 308, 2939 / 2939; app 442 x3, analyze 159; NEW-227 | task complete (not pushed) | yes |
+| 132 | 2026-11-07 | Claude Code (Opus 5.5) | Phase 7 P11 (app release candidate: A NEW-218, B NEW-227, C NEW-221, D build-22 checklist, E NEW-220 removal plan) | app `1bb7a8d` (red 5 / 5), CMS `d13f53b` (red 1), be `8d1b588` (red 5 / 11); be 309 / 2950, app 447 x3, analyze 159, CMS 619 + PW 29 + sec 9; new NEW-228 (P1 security, owner), NEW-229, NEW-230 | task complete | yes |
