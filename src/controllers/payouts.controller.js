@@ -7,6 +7,8 @@ const accessService = require('../services/access.service');
 const payoutAccountService = require('../services/payout-account.service');
 const { sendSuccess, createError, parsePagination } = require('../utils/response.utils');
 
+const isPlatformAdmin = (req) => req.user?.role === 'PLATFORM_ADMIN';
+
 /**
  * GET /host/payouts/balance
  */
@@ -28,7 +30,14 @@ const listPayouts = async (req, res, next) => {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
     const { branchId } = req.query;
     const result = await payoutService.listPayouts(req.tenantDb, { branchId, limit, offset });
-    return sendSuccess(res, { payouts: result.payouts }, 'OK', 200, {
+    // NEW-228 (R-97): a platform admin sees each payout's destination masked, never the full number.
+    const payouts = isPlatformAdmin(req)
+      ? result.payouts.map((p) => {
+        const row = typeof p.toJSON === 'function' ? p.toJSON() : { ...p };
+        return { ...row, destinationJson: payoutAccountService.maskDetailsForAdmin(row.destinationJson) };
+      })
+      : result.payouts;
+    return sendSuccess(res, { payouts }, 'OK', 200, {
       page,
       limit,
       total: result.total,
@@ -124,12 +133,44 @@ const _readDetails = (details) => {
 };
 
 /**
+ * NEW-228 (R-97): every platform-admin read of a payout account is recorded with the admin's id
+ * and the gym. No entry, no answer (as admin.member_contact_revealed): a failure refuses the read.
+ */
+const _auditAdminRead = async (req, tenantId, account) => {
+  const { PlatformAuditLog, Tenant } = require('../models/platform');
+  try {
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'gymName'] });
+    await PlatformAuditLog.create({
+      actorUserId: req.user.id || req.user.sub,
+      action: 'admin.payout_account_viewed',
+      targetType: 'tenant',
+      targetId: tenantId,
+      details: {
+        tenantId,
+        gymName: tenant ? tenant.gymName : null,
+        payoutAccountId: account ? account.id : null,
+        route: `${req.method} ${req.baseUrl}${req.path}`,
+      },
+      createdAt: new Date(),
+    });
+  } catch (err) {
+    console.error('[Payouts:Audit] Could not record an admin payout-account read:', err.message);
+    throw createError('Could not record the audit entry, so the payout account was not shown', 500);
+  }
+};
+
+/**
  * GET /host/payout-account
  */
 const getPayoutAccount = async (req, res, next) => {
   try {
     const tenantId = req.tenantId || req.user?.tenantId;
     const account = await payoutAccountService.getTenantDefault(tenantId);
+    if (isPlatformAdmin(req)) {
+      // NEW-228 (R-97): masked, and only after the read is on the platform audit trail.
+      await _auditAdminRead(req, tenantId, account);
+      return sendSuccess(res, { account: payoutAccountService.maskViewForAdmin(account) });
+    }
     return sendSuccess(res, { account });
   } catch (err) {
     next(err);

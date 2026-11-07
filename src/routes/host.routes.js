@@ -47,9 +47,19 @@ router.post('/payouts', authenticate, tenantContext.forTeamRoutes, idempotency({
 
 // P7b (R-94, NEW-217): the tenant's default payout account. Owner only (payouts.bank.manage is
 // owner-only and organization-wide); saving needs re-authentication (SEC-13 / NEW-35).
+// NEW-228 (R-97): a platform admin never writes a payout account: 403 before tenant context, body
+// validation and re-authentication, so the answer is the same with any header or body. An admin
+// read is masked and audited (payoutsController.getPayoutAccount).
 const PAYOUT_ACCOUNT_BODY = ['details', 'password', 'provider', 'idToken', 'reauthProvider', 'reauthIdToken'];
+const payoutAccountOwnerOnly = (req, _res, next) => {
+  if (req.user?.role !== 'PLATFORM_ADMIN') return next();
+  const err = new Error('Only the gym owner can change payout details.');
+  err.statusCode = 403;
+  err.code = 'payout_account_owner_only';
+  return next(err);
+};
 router.get('/payout-account', authenticate, tenantContext.forTeamRoutes, can('payouts.bank.manage', { orgWide: true }), payoutsController.getPayoutAccount);
-router.put('/payout-account', authenticate, tenantContext.forTeamRoutes, can('payouts.bank.manage', { orgWide: true }), validate.allowBody(PAYOUT_ACCOUNT_BODY), payoutsController.savePayoutAccount);
+router.put('/payout-account', authenticate, payoutAccountOwnerOnly, tenantContext.forTeamRoutes, can('payouts.bank.manage', { orgWide: true }), validate.allowBody(PAYOUT_ACCOUNT_BODY), payoutsController.savePayoutAccount);
 
 // Expense Categories
 router.get('/expense-categories', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), expensesController.listExpenseCategories);
