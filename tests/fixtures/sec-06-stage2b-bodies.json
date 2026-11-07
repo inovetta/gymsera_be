@@ -161,12 +161,17 @@
    "method": "POST",
    "path": "/api/v1/billing/purchase-intent",
    "allowed": [
+    "billingCycle",
     "planId",
     "platform",
     "targetPlanId",
     "targetPlatform"
    ],
-   "clientKeys": []
+   "clientKeys": [
+    "billingCycle",
+    "planId",
+    "platform"
+   ]
   },
   {
    "method": "POST",

@@ -517,7 +517,13 @@ const togglePublic = async (tenantDb, planId) => {
 };
 
 // ── Host: update plan poster image ────────────────────────────────────────────
-const updatePoster = async (tenantDb, planId, posterUrl) => {
+/**
+ * Stores a plan poster and saves its URL (NEW-223, P9d). A poster is public, so it goes to the image
+ * store gym logos use (storage.service: R2_BUCKET, or public/uploads outside production), never the
+ * private bucket. The plan and its branch are checked before anything is stored; a replaced poster
+ * is deleted after the new URL is saved.
+ */
+const updatePoster = async (tenantDb, planId, file) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
@@ -532,7 +538,11 @@ const updatePoster = async (tenantDb, planId, posterUrl) => {
     }
   }
 
+  const storageService = require('./storage.service');
+  const previous = plan.posterUrl;
+  const posterUrl = await storageService.uploadImage(file.buffer, file.mimetype, 'plans/posters', `plan-${plan.id}-${Date.now()}`);
   await plan.update({ posterUrl });
+  if (previous && previous !== posterUrl) await storageService.deleteImage(previous);
   return withCurrency(tenantDb, await plan.reload());
 };
 
