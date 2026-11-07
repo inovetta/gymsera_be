@@ -17,12 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-07 (P9d done locally, not pushed) |
+| Last updated | 2026-11-07 (P11 in progress) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P9d** (owner text 2026-11-07: A NEW-225 server check before every store purchase, B NEW-224 unused bank days warning, C NEW-223 plan poster never stored; decision R-96) |
-| Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **Phase 7 Prompt P11** (owner text 2026-11-07: app release candidate build 22; Step 0 open mobile items, A NEW-218, B NEW-227, C NEW-221, D build-22 device checklist, E NEW-220 removal plan) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | B NEW-227 |
+| Step within issue | (not started) |
+
+**P11 branches (2026-11-07), not pushed:** `fix/p11-app-release-candidate`. App worktree `../gyms_era_p11` from `origin/master` `cbe16ce`: `1bb7a8d` A NEW-218 (test `p11_new218_payout_account_route_test`, red 5 / 5, green). be from `origin/main` `b62f057` (nothing yet). CMS from `origin/main` `d4c2a32` (nothing yet). Be docs `docs/p11-app-release-candidate` (worktree `../gymsera_be_docs_p9d`, branch switched from `docs/p9d-prepurchase-check`) stacked on `docs/p9d-prepurchase-check` (merge p7b, p9c, p9d docs first). Flutter: `~/fvm/versions/stable` (3.47.9); `flutter pub get` rewrites `analysis_options.yaml` and `pubspec.lock` in the worktree, never commit them.
+
+**Next action:** B NEW-227 (CMS `plans.ts` `uploadPlanPoster` sends `poster`, the route reads `image`): red test first. Then C NEW-221, D checklist (`docs/runbooks/build-22-device-checklist.md`), E NEW-220 removal plan, full suites (app x3 + analyze <= 159, be full, CMS full), §13, report.
 
 **P9d branches (2026-11-07), not pushed:** `fix/p9d-prepurchase-check`. be from `origin/main` `9662b11` (P9c merged): `08fcc53` NEW-225 + NEW-224 server (`POST /billing/purchase-intent` now refuses with 409 `store_plan_active` / `same_plan_active` / `bank_plan_active`, a bigger plan over a paid bank plan answers `warning` + `requiresConfirmation`; new `store-purchase-check.service.js`; test `p9d-prepurchase-check` 20, red 17 / 20 first). App worktree `../gyms_era_p9d` from `origin/master` `b4e8f39`. Be docs `docs/p9d-prepurchase-check` (worktree `../gymsera_be_docs_p9d`) stacked on `docs/p9c-payments-parity` (not merged: merge that first). **R-96 (owner, 2026-11-07):** with a PAID bank-transfer plan that has days left, the app may buy only a plan with more branches (server compares catalog `branchCount`; equal = not bigger, 409), after a server-written warning with the unused days and a confirmation; the same or a smaller plan is refused (409).
 
