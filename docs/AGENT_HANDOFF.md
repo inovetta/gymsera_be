@@ -17,12 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-05 (P9c done locally, not pushed) |
+| Last updated | 2026-11-07 (P9d in progress) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P9c** (owner text 2026-11-05: A payment proofs, B website subscribe parity, C website map, D host plan payment by bank transfer in the CMS, E channel matrix; decision R-95) |
-| Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **Phase 7 Prompt P9d** (owner text 2026-11-07: A NEW-225 server check before every store purchase, B NEW-224 unused bank days warning, C NEW-223 plan poster never stored; decision R-96) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | NEW-225 / NEW-224 app half |
+| Step within issue | backend done |
+
+**P9d branches (2026-11-07), not pushed:** `fix/p9d-prepurchase-check`. be from `origin/main` `9662b11` (P9c merged): `08fcc53` NEW-225 + NEW-224 server (`POST /billing/purchase-intent` now refuses with 409 `store_plan_active` / `same_plan_active` / `bank_plan_active`, a bigger plan over a paid bank plan answers `warning` + `requiresConfirmation`; new `store-purchase-check.service.js`; test `p9d-prepurchase-check` 20, red 17 / 20 first). App worktree `../gyms_era_p9d` from `origin/master` `b4e8f39`. Be docs `docs/p9d-prepurchase-check` (worktree `../gymsera_be_docs_p9d`) stacked on `docs/p9c-payments-parity` (not merged: merge that first). **R-96 (owner, 2026-11-07):** with a PAID bank-transfer plan that has days left, the app may buy only a plan with more branches (server compares catalog `branchCount`; equal = not bigger, 409), after a server-written warning with the unused days and a confirmation; the same or a smaller plan is refused (409).
+
+**Next action:** app: `BillingRepository.checkPurchase` → call it in `BillingNotifier.purchase` and `changeAndroidPlan` before the store opens; 409 → show the server message, store not opened; load failure → block with a retry message; `warning` → confirmation dialog in `branch_plan_picker_screen.dart` (server text). Then NEW-223 (be `membership-plans.controller.js:111`, store via `storage.service` like logos). Then full suites, spec §13 / §14 R-96, runbook `billing-channels.md` rows 4 and 6.
 
 **P9c branches (2026-11-05), not pushed:** `fix/p9c-payments-parity` from the latest main. be from `33d6656`: `4b48dcf` A, `acba806` D (p028), `24a611b` D legacy package name, `01c5957` p028 test, `a842b1a` E matrix tests, `2efd996` A storage hidden in web.config, `565873f` PAY-08 fixture, `d9e665d` NEW-207 guard fix. CMS from `51ec282`: `a144922` NEW-222, `ee77fcf` A, `d065909` D. Web from `af93621`: `d33ee6c` C, `b138933` B. App worktree `../gyms_era_p9c` from `origin/master` `6486b64`: `963284e` A. Be docs `docs/p9c-payments-parity` (worktree `../gymsera_be_docs_p9c`) stacked on `docs/p7b-payout-accounts` (merge that first). Results in spec §13 "Phase 7 Prompt P9c". Decision R-95. New NEW-222 (fixed), NEW-223 to NEW-226 (open).
 
