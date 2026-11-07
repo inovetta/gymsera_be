@@ -3,6 +3,7 @@ const googlePlayBilling = require('../services/google-play-billing.service');
 const stripeBilling = require('../services/stripe-billing.service');
 const billingEvents = require('../services/billing-event.service');
 const subscriptionMigration = require('../services/subscription-migration.service');
+const storePurchaseCheck = require('../services/store-purchase-check.service');
 const { BillingPlan } = require('../models/platform');
 const { sendSuccess, createError } = require('../utils/response.utils');
 const billingConfig = require('../config/billing.config');
@@ -379,21 +380,21 @@ const putDowngradeChoice = async (req, res, next) => {
 };
 
 /**
- * POST /billing/purchase-intent (BILL-07, spec §7.5.1)
- * Evaluates whether a proposed purchase is new, upgrade, downgrade, or blocked
- * by a live subscription with auto-renew on another provider.
+ * POST /billing/purchase-intent (BILL-07, spec §7.5.1; P9d NEW-225, R-96)
+ * The check the app makes before it opens a store purchase sheet. Refusals are 409 with a code and
+ * the message to show (store-purchase-check.service.js); an allowed answer may carry a warning the
+ * host must confirm first (NEW-224).
  */
 const purchaseIntent = async (req, res, next) => {
   try {
-    const { planId: rawPlanId, targetPlanId, platform: rawPlatform, targetPlatform } = req.body || {};
+    const { planId: rawPlanId, targetPlanId, platform: rawPlatform, targetPlatform, billingCycle } = req.body || {};
     const platform = rawPlatform || targetPlatform;
     const planId = rawPlanId || targetPlanId;
     if (!platform) {
       throw createError('platform is required', 400);
     }
 
-    const { TenantSubscription, Tenant, BillingPlan } = require('../models/platform');
-    const { Op } = require('sequelize');
+    const { Tenant } = require('../models/platform');
 
     // NEW-103 / SEC-02: the tenant comes from the login, never from the body.
     let tenantId = req.user.tenantId;
@@ -408,72 +409,8 @@ const purchaseIntent = async (req, res, next) => {
       throw createError('Tenant not found for authenticated user', 404);
     }
 
-    const normTargetPlatform = platform.toUpperCase();
-    const targetPlan = planId ? await BillingPlan.findByPk(planId) : null;
-
-    const currentActive = await TenantSubscription.findOne({
-      where: { tenantId, status: { [Op.in]: ['ACTIVE', 'GRACE'] } },
-      order: [['createdAt', 'DESC']],
-    });
-
-    const storeManageUrls = {
-      IOS: 'https://apps.apple.com/account/subscriptions',
-      ANDROID: 'https://play.google.com/store/account/subscriptions',
-      STRIPE: 'https://gymsera.com/billing',
-    };
-
-    if (!currentActive) {
-      return sendSuccess(res, {
-        action: 'new',
-        mechanism: 'new',
-        appAccountToken: tenantId,
-        replacementMode: null,
-        blocker: null,
-      });
-    }
-
-    const isDifferentPlatform = currentActive.platform !== normTargetPlatform;
-    const isStorePlatform = currentActive.platform !== 'MANUAL';
-
-    if (isDifferentPlatform && isStorePlatform && currentActive.autoRenew !== false) {
-      const manageUrl = storeManageUrls[currentActive.platform] || 'https://gymsera.com/billing';
-      return sendSuccess(res, {
-        action: 'blocked',
-        mechanism: 'blocked',
-        reason: 'active_subscription_other_provider',
-        currentPlatform: currentActive.platform,
-        manageUrl,
-        appAccountToken: tenantId,
-        replacementMode: null,
-        blocker: {
-          provider: currentActive.platform,
-          manageUrl,
-        },
-      });
-    }
-
-    let mechanism = 'upgrade';
-    let replacementMode = null;
-
-    if (targetPlan && currentActive.branchCount) {
-      if (targetPlan.branchCount > currentActive.branchCount) {
-        mechanism = 'upgrade';
-        replacementMode = normTargetPlatform === 'ANDROID' ? 'IMMEDIATE_WITH_TIME_PRORATION' : null;
-      } else if (targetPlan.branchCount < currentActive.branchCount) {
-        mechanism = 'downgrade';
-        replacementMode = normTargetPlatform === 'ANDROID' ? 'DEFERRED' : null;
-      } else {
-        mechanism = 'same_tier';
-      }
-    }
-
-    return sendSuccess(res, {
-      action: mechanism,
-      mechanism,
-      appAccountToken: tenantId,
-      replacementMode,
-      blocker: null,
-    });
+    const answer = await storePurchaseCheck.evaluate({ tenantId, planId, platform, billingCycle });
+    return sendSuccess(res, answer);
   } catch (err) {
     next(err);
   }

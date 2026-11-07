@@ -118,8 +118,10 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
           targetPlanId: plan3.id,
         });
 
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
+      // P9d (NEW-225): a refusal is a 409 with a code and the message the app shows; the details stay in data.
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('store_plan_active');
       expect(res.body.data.action).toBe('blocked');
       expect(res.body.data.reason).toBe('active_subscription_other_provider');
       expect(res.body.data.currentPlatform).toBe('IOS');

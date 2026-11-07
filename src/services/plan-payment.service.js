@@ -56,6 +56,9 @@ const addMonths = (dateStr, months) => {
   return isoDate(d);
 };
 
+/** The first sentence of every "a store plan still renews" refusal (P9c CMS form, P9d app check). */
+const storeRenewsSentence = (platform) => `Your plan is billed by ${STORE_NAMES[platform]} and renews automatically.`;
+
 /** Why the bank-transfer form is refused now, or null. */
 const storeBlock = async (tenantId) => {
   const current = await subscriptionQuotaService.getActiveSubscription(tenantId);
@@ -65,7 +68,7 @@ const storeBlock = async (tenantId) => {
       platform: current.platform,
       manageUrl: MANAGE_URLS[current.platform],
       message:
-        `Your plan is billed by ${STORE_NAMES[current.platform]} and renews automatically. ` +
+        `${storeRenewsSentence(current.platform)} ` +
         'Change or cancel it in the GymsEra app; bank transfer opens once that plan is cancelled or has ended.',
     };
   }
@@ -309,4 +312,7 @@ const openProof = async ({ requestId, adminUserId }) => {
   return { stream, contentType };
 };
 
-module.exports = { getOverview, submit, listForAdmin, approve, reject, openProof, storeBlock, periodFor, addMonths };
+module.exports = {
+  getOverview, submit, listForAdmin, approve, reject, openProof, storeBlock, periodFor, addMonths,
+  storeRenewsSentence, STORE_PLATFORMS, MANAGE_URLS, STORE_NAMES,
+};

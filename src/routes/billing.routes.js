@@ -60,7 +60,12 @@ router.get('/bank-instructions', controller.getBankInstructions);
  * @swagger
  * /billing/purchase-intent:
  *   post:
- *     summary: Check cross-provider conflicts and decide purchase mechanism (BILL-07)
+ *     summary: The server check before every store purchase (BILL-07, P9d NEW-225, R-96)
+ *     description: >
+ *       The app calls this before it opens the Apple or Google purchase sheet and opens it only on a 200.
+ *       409 store_plan_active (another store's plan renews), same_plan_active, bank_plan_active (a paid
+ *       bank-transfer plan has days left and the plan is not bigger by catalog branch count). A 200 may carry
+ *       `warning` (unused bank days lost) with `requiresConfirmation: true`.
  *     tags: [Billing]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -73,10 +78,14 @@ router.get('/bank-instructions', controller.getBankInstructions);
  *             properties:
  *               platform: { type: string, enum: [IOS, ANDROID, STRIPE, ios, android, web] }
  *               planId: { type: string, format: uuid }
+ *               billingCycle: { type: string, enum: [MONTHLY, YEARLY] }
  *     responses:
- *       200: { description: Purchase intent evaluated }
+ *       200: { description: Allowed; may carry a warning to confirm }
+ *       400: { description: plan_required (a paid bank plan needs the plan to compare) }
+ *       404: { description: plan_not_found }
+ *       409: { description: Refused; code and message to show, details in data }
  */
-router.post('/purchase-intent', authenticate, validate.allowBody(['planId', 'targetPlanId', 'platform', 'targetPlatform']), controller.purchaseIntent);
+router.post('/purchase-intent', authenticate, validate.allowBody(['planId', 'targetPlanId', 'platform', 'targetPlatform', 'billingCycle']), controller.purchaseIntent);
 
 /**
  * @swagger
