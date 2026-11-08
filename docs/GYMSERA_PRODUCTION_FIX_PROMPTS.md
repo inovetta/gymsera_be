@@ -353,6 +353,8 @@ Constraints from me:
 Give me: data model, routes, screens, webhook list, test plan, migration plan, risks, and the env variables. Ask me via AskUserQuestion where I must decide.
 ```
 
+Status 2026-11-04: the owner narrowed P7b to the payout-account half (R-94): payout accounts per tenant with an optional organization override, CMS Payouts and API moved, p027 written and dry-run, not run; plus NEW-213. Card payments (BUG-36: Stripe Connect, hosted sheet, webhooks, host connect screen) are **not** built: no provider is approved (R-73). Spec §13 "Phase 7 Prompt P7b".
+
 ---
 
 ### P8 — Copy, brand and fake-data sweep

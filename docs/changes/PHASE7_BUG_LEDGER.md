@@ -441,3 +441,55 @@ Detail: spec §13 "Phase 7 Prompt P9", decisions R-84, R-85, R-86 in §14. Branc
 | BUG-37 rest: P1 Team & Access, P2 tier names, P4 CMS half (R-80, NEW-112), P5 lists / NEW-151, BUG-29 CMS names, BUG-31 CMS / web dates | **NOT DONE** (outside the owner's P9 list) | next prompt |
 
 New in P9: NEW-189 (P3), NEW-190 (P3), NEW-191 (P3), NEW-192 (P2), NEW-193 (P3). See spec §13.
+
+## P11 status (2026-11-07, Claude Code Opus 5.5): app release candidate (build 22)
+
+Detail: spec §13 "Phase 7 Prompt P11". Branches `fix/p11-app-release-candidate` in be, CMS and app, not pushed. Device checklist: `docs/runbooks/build-22-device-checklist.md`.
+
+| Item | Status | Fix / test |
+|---|---|---|
+| NEW-218 app Payout & Banking on `/host/payout-account` (A) | **FIXED** (app) | app `p11_new218_payout_account_route_test` (5) |
+| NEW-227 CMS `uploadPlanPoster` field `image` (B) | **FIXED** (CMS) | CMS `tests/api/p11-new227-plan-poster-field.test.ts` |
+| NEW-221 403 instead of 400 on the payout routes (C) | **FIXED** for the five routes the ledger names; a platform admin without X-Tenant-Id keeps 400 (a real "choose a gym") | be `p11-new221-payout-routes-status` (11) |
+| Build 22 device checklist (D) | **WRITTEN** | `runbooks/build-22-device-checklist.md` |
+| NEW-220 removal plan (E) | **PLAN ONLY**, nothing removed | below |
+
+### Step 0: open items that change the mobile app or need MIN_APP_VERSION (checked 2026-11-07 against code and spec §13)
+
+| ID | Priority | What | Build 22? |
+|---|---|---|---|
+| NEW-218 | P2 | Payout & Banking on `/gyms/profile` | **in scope, fixed (A)** |
+| NEW-220 | P2 | `/gyms/profile` upload routes still live for old builds | **needs MIN_APP_VERSION**; plan below (E) |
+| NEW-225 remainder | P2 | `/host/subscription/current` reports a superseded store row that still renews only once `duplicate_billing` is set; reachable only from builds before P9d or purchases outside the app | backend; **question to owner**: fix in the API, or close it with MIN_APP_VERSION = 22 |
+| NEW-198 | P3 | build 20 shows an upload error although stored | closed by any build >= 21 once MIN_APP_VERSION is set |
+| NEW-215 | P3 | `unawaited_return_in_try_block` in `error_interceptor.dart:73,86,108` (still present) | not in scope (P3) |
+| NEW-191 | P3 | `host_onboarding_providers.dart:741` `uploadKycDocuments` has no caller (still present) | not in scope (P3) |
+| NEW-152 | P3 | `userFacingMessage` returns Dio's own message without an AppException (`error_handler.dart:10`) | not in scope (P3) |
+| UX-10 | P1 (deferred) | text-scale audit of older screens; P1_OWNER_DATE row 14: DEFER | not in scope (recorded deferral) |
+| GLB-03 / UX-09, GLB-04 | P1 (deferred to 2027-01-31) | localization, phone numbers | not in scope (recorded deferral) |
+| NEW-78 | P2 | "an old mobile test calls the staging API": no `apistaging` or real API host in `test/` on `origin/master` `cbe16ce` (only the brand and Sentry guards name gymsera.com) | not reproduced; **question**: mark NOT REPRODUCED |
+| NEW-16 | P1 (List 1, stale) | purchase listener only on My Subscription | **already fixed**: `core/startup/billing_startup.dart` reads `billingProvider` at startup |
+
+### NEW-220 removal plan (E; nothing removed in P11)
+
+**Routes to remove** (gymsera_be `src/routes/gyms.routes.js:39-42`, handlers in `gyms.controller.js`):
+`POST /gyms/profile/logo` (`uploadLogo`), `POST /gyms/profile/cover` (`uploadCover`), `POST /gyms/profile/images` (`uploadGymImages`), `DELETE /gyms/profile/images` (`deleteGymImage`). They write to the tenant's **first** organization and delete its old logo.
+**Also removable at the same version (from P11 A):** the payout compatibility on `GET` / `PATCH /gyms/profile` (`paymentDetailsJson` / `paymentDetailsUpdatedAt` read and written through the tenant default payout account, P7b). The rest of `/gyms/profile` stays (the app and the CMS profile still use `GET` / `PATCH /gyms/profile` for the organization profile).
+
+**Who still calls them:** app builds before NEW-213 (`08bb278`, merged in `6486b64`) call the upload routes; app builds before P11 A (`1bb7a8d`) call the payout fields. CMS and website: no caller (the CMS `gym.ts` helpers `uploadGymLogo`, `uploadGymCover`, `uploadGymImages`, `deleteGymImage` are unused and go in the same change).
+
+**MIN_APP_VERSION that allows removal:** `MIN_APP_VERSION_IOS` = `MIN_APP_VERSION_ANDROID` = **`1.0.0+22`** (build 22 is the first build with both changes). The upload routes alone could go at the first store build containing `08bb278`; no tag records which commit build 21 was cut from, so 22 is the safe number unless the owner confirms build 21 was built from `master` at or after `6486b64`.
+
+**Order (R-62):** (1) build 22 live in both stores and the build-22 checklist all pass; (2) one week of `/me/bootstrap` traffic showing most sessions on build 22; (3) set both variables to `1.0.0+22`, `iisreset`; (4) next API release: the four routes answer **410** `route_removed` (handlers deleted), `GET /gyms/profile` stops returning `paymentDetailsJson` / `paymentDetailsUpdatedAt`, `PATCH /gyms/profile` refuses `paymentDetailsJson` (400 unknown field); (5) a release later, delete the 410 stubs; then NEW-219 (drop `tenants.payment_details_json`).
+
+**Tests to delete or change (backend):**
+- `tests/regression/new-45-listing-image-permissions.test.js` lines 34-37 (route list) and 61-62 (422 on logo / delete images): remove the four entries; add one test that each route answers 410.
+- `tests/regression/new-45-branch-detail-permissions.test.js` lines 32-35: remove the four entries.
+- `tests/regression/new-47-owner-member-role-access.test.js` lines 291-311 (logo, cover, images for a member-role owner and a front desk): delete; its 8 `paymentDetailsJson` uses move to `/host/payout-account`.
+- `tests/fixtures/sec-06-stage2c-bodies.json` (line 60) and `sec-06-stage3-bodies.json` (lines 308-320): remove the `/gyms/profile/images`, `/cover`, `/logo` entries.
+- `tests/regression/rel-timeout-upload-and-idempotency.test.js:39`: use another upload path as the sample (the match in `middleware/timeout.js` is by pattern, no source change).
+- Payout compatibility through `/gyms/profile` (change to `/host/payout-account`, or delete the compat-only case): `new-45-profile-bank-details` (3 route refs), `new-115-one-bank-details-store` (2), `new-35-reauth-social-account` (7), `sec-13-payout-cooling-and-reauth` (6), `p7b-payout-accounts` (the `/gyms/profile` compat cases, 5 refs). `auth-07-account-deletion-finalize` only reads the field name, no route: unchanged.
+- New: `GET /gyms/profile` has no `paymentDetailsJson`; `PATCH` with it answers 400.
+**CMS:** remove the four unused helpers from `src/lib/api/gym.ts`; add them to `tests/api/dead-calls-removed.test.ts`. **App:** nothing (the methods were removed in P7b and P11).
+
+New in P11: NEW-228 (P1, backend, security; owner decision), NEW-229 (P3, product), NEW-230 (P3, copy). See spec §13.
