@@ -7,6 +7,8 @@
  *
  * Read on every call so ops can change the value without a restart-sensitive cache.
  */
+const { features } = require('./features.config');
+
 const VERSION_RE = /^\d+\.\d+\.\d+(\+\d+)?$/;
 const DEFAULT_ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.inovettatech.gymsera';
 
@@ -35,6 +37,8 @@ const appConfig = () => ({
     ios: url('APP_STORE_URL_IOS'),
     android: url('APP_STORE_URL_ANDROID', DEFAULT_ANDROID_URL),
   },
+  // R-99 (P11d): launch switches the clients read to hide entries (features.config.js).
+  features: features(),
 });
 
 module.exports = { appConfig };

@@ -7,6 +7,7 @@ const payoutsController = require('../controllers/payouts.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const refusePlatformAdmin = require('../middleware/refusePlatformAdmin');
+const requirePayoutsEnabled = require('../middleware/requirePayoutsEnabled');
 const tenantContext = require('../middleware/tenantContext');
 const can = require('../middleware/can');
 const idempotency = require('../middleware/idempotency');
@@ -42,12 +43,14 @@ const ownerOrListingManager = ({ ownerNeedsContext }) => (req, res, next) =>
   });
 
 // Payouts (PAY-10, SEC-13). forTeamRoutes: a caller in no gym's team gets 403, not 400 (NEW-221).
-router.get('/payouts/balance', authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
-router.get('/payouts', authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
+// R-99 (P11d): 404 payouts_not_available for everyone while PAYOUTS_ENABLED is not "true" (first, so
+// the answer does not depend on the caller). The payout account below is not gated.
+router.get('/payouts/balance', requirePayoutsEnabled, authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.getBalance);
+router.get('/payouts', requirePayoutsEnabled, authenticate, tenantContext.forTeamRoutes, can('payouts.view', { orgWide: true }), payoutsController.listPayouts);
 // NEW-232 (R-98): the payout always goes to the saved payout account. A platform admin is refused
 // first (403); destination / bank fields in the body are dropped with a log line (older clients
 // keep working) and never reach the command.
-router.post('/payouts', authenticate, refusePlatformAdmin.payoutRequest, tenantContext.forTeamRoutes, idempotency({ required: true }), payoutsController.ignoreBodyDestination, validate.allowBody(['amount', 'branchId', 'notes', 'idempotencyKey']), payoutsController.requestPayout);
+router.post('/payouts', requirePayoutsEnabled, authenticate, refusePlatformAdmin.payoutRequest, tenantContext.forTeamRoutes, idempotency({ required: true }), payoutsController.ignoreBodyDestination, validate.allowBody(['amount', 'branchId', 'notes', 'idempotencyKey']), payoutsController.requestPayout);
 
 // P7b (R-94, NEW-217): the tenant's default payout account. Owner only (payouts.bank.manage is
 // owner-only and organization-wide); saving needs re-authentication (SEC-13 / NEW-35).

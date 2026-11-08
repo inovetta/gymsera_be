@@ -7,6 +7,8 @@ module.exports = {
     '<rootDir>/tests/harness/no-network.js',
     '<rootDir>/tests/harness/loopback-listen.js',
     '<rootDir>/tests/harness/fake-now.js',
+    // R-99: payouts on for the existing payout suites (off by default in production).
+    '<rootDir>/tests/harness/payouts-enabled.js',
   ],
   // Releases what outlives a test file and keeps its module graph in memory (rate limiter timers, the
   // Redis client); see tests/regression/test-hygiene-rate-limit-stores.test.js.

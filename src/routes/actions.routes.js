@@ -13,8 +13,16 @@ const controller = require('../controllers/actions.controller');
 const accessService = require('../services/access.service');
 const { createError } = require('../utils/response.utils');
 const refusePlatformAdmin = require('../middleware/refusePlatformAdmin');
+const requirePayoutsEnabled = require('../middleware/requirePayoutsEnabled');
 
 const router = Router();
+
+// R-99 (P11d): POST /actions/payouts.request answers 404 payouts_not_available for everyone while
+// PAYOUTS_ENABLED is not "true", before authentication (the same answer as POST /host/payouts).
+// Router middleware, not a route: it can only refuse, it never serves a request on its own.
+const PAYOUT_ACTION_PATHS = new Set(['/payouts.request']);
+router.use((req, res, next) => (req.method === 'POST' && PAYOUT_ACTION_PATHS.has(req.path) ? requirePayoutsEnabled(req, res, next) : next()));
+
 router.use(authenticate, tenantContext);
 
 /**
