@@ -21,6 +21,27 @@ const BANK_DETAIL_FIELDS = Object.freeze([
   'jazzCashNumber', 'easyPaisaNumber', 'additionalInstructions',
 ]);
 
+/**
+ * NEW-228 (R-97): what a platform admin may see of bank / wallet details. Numbers as their last
+ * four digits only; names kept; branch code and free text dropped (free text can hold a number).
+ * The owner always sees the stored details; nobody else on the host side reads them at all.
+ */
+const ADMIN_MASKED_FIELDS = Object.freeze(['accountNumber', 'iban', 'jazzCashNumber', 'easyPaisaNumber']);
+const ADMIN_PLAIN_FIELDS = Object.freeze(['bankName', 'accountTitle']);
+const lastFour = (value) => {
+  const compact = String(value).replace(/\s+/g, '');
+  return compact.length > 4 ? `••••${compact.slice(-4)}` : '••••';
+};
+const maskDetailsForAdmin = (details) => {
+  if (!details || typeof details !== 'object') return null;
+  const out = {};
+  for (const key of ADMIN_PLAIN_FIELDS) if (details[key]) out[key] = details[key];
+  for (const key of ADMIN_MASKED_FIELDS) if (details[key]) out[key] = lastFour(details[key]);
+  return out;
+};
+/** An account view (toView) as a platform admin may see it. */
+const maskViewForAdmin = (view) => (view ? { ...view, details: maskDetailsForAdmin(view.details), masked: true } : null);
+
 const toView = (row) =>
   row
     ? {
@@ -134,6 +155,8 @@ const deleteAllForTenant = (tenantId, { transaction } = {}) =>
 
 module.exports = {
   BANK_DETAIL_FIELDS,
+  maskDetailsForAdmin,
+  maskViewForAdmin,
   getTenantDefault,
   resolve,
   resolveForBranch,

@@ -236,9 +236,10 @@ describe('consumers use the resolver', () => {
     expect(ok.body.data.destinationJson).toEqual(ORG_DETAILS);
   });
 
-  test('payout request with no account at all → 422 no_payout_destination', async () => {
+  // P11c (NEW-232, R-98): 409, was 422.
+  test('payout request with no account at all → 409 no_payout_destination', async () => {
     const res = await asPersona('owner', { 'Idempotency-Key': 'p7b-none-1' }).post('/host/payouts', { amount: 100, branchId: ctx.branch1.id });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(409);
     expect(res.body.code).toBe('no_payout_destination');
   });
 

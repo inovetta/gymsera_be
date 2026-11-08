@@ -161,7 +161,6 @@
    "allowed": [
     "amount",
     "branchId",
-    "destinationJson",
     "idempotencyKey",
     "notes"
    ],
