@@ -8,7 +8,8 @@ const request = require('supertest');
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { startTestServer, stopTestServer } = require('../harness/test-server');
 
-const KEYS = ['MIN_APP_VERSION_IOS', 'MIN_APP_VERSION_ANDROID', 'APP_STORE_URL_IOS', 'APP_STORE_URL_ANDROID'];
+// PAYOUTS_ENABLED (R-99, P11d): appConfig() also carries the launch switches; unset here = payouts off.
+const KEYS = ['MIN_APP_VERSION_IOS', 'MIN_APP_VERSION_ANDROID', 'APP_STORE_URL_IOS', 'APP_STORE_URL_ANDROID', 'PAYOUTS_ENABLED'];
 const saved = {};
 
 let appConfig;
@@ -23,6 +24,7 @@ describe('appConfig()', () => {
     expect(appConfig()).toEqual({
       minAppVersion: { ios: null, android: null },
       storeUrls: { ios: null, android: 'https://play.google.com/store/apps/details?id=com.inovettatech.gymsera' },
+      features: { payouts: false },
     });
   });
 
@@ -34,6 +36,7 @@ describe('appConfig()', () => {
     expect(appConfig()).toEqual({
       minAppVersion: { ios: '1.4.0', android: '1.3.2+27' },
       storeUrls: { ios: 'https://apps.apple.com/app/id123', android: 'https://play.google.com/store/apps/details?id=x' },
+      features: { payouts: false },
     });
   });
 
