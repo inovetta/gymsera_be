@@ -125,7 +125,8 @@ async function storeTemplates(db, { memberId, deviceId, templates, now = new Dat
 
 /**
  * Templates and photos a device may hold for these members: consented ones, plus pending ones on
- * the device that enrolled them (kept there until consent or the 7 days end).
+ * the device that enrolled them (kept there until consent or the 7 days end). Templates an import
+ * stored are held (import_hold) until the host goes live: none reaches a device before.
  * → { biometrics: Map(memberId → rows without template data), photos: Map(memberId → rows) }
  */
 async function usableFor(db, memberIds, deviceId) {
@@ -135,7 +136,7 @@ async function usableFor(db, memberIds, deviceId) {
   const bio = await select(
     db,
     `SELECT id, member_id, bio_type, bio_no, bio_index, major_ver, minor_ver, format, duress, valid, template_sha256
-       FROM member_biometrics WHERE member_id IN (?) AND (consent_pending = 0 OR source_device_id = ?)`,
+       FROM member_biometrics WHERE member_id IN (?) AND import_hold = 0 AND (consent_pending = 0 OR source_device_id = ?)`,
     [memberIds, deviceId]
   );
   for (const r of bio) {
@@ -238,6 +239,27 @@ async function deleteRows(db, which, replacements) {
 const deleteMemberBiometrics = (db, memberId) => deleteRows(db, 'all', [memberId]);
 
 /**
+ * One template of one member (spec §11 `DELETE /host/members/:id/biometrics/:bioId`). The caller
+ * reconciles the member so every device drops it. → { deleted, bioType } (deleted 0: not this member's)
+ */
+async function deleteTemplate(db, { memberId, bioId }) {
+  const [row] = await select(db, 'SELECT id, bio_type FROM member_biometrics WHERE id = ? AND member_id = ?', [bioId, memberId]);
+  if (!row) return { deleted: 0, bioType: null };
+  const [, meta] = await db.sequelize.query('DELETE FROM member_biometrics WHERE id = ? AND member_id = ?', { replacements: utc([bioId, memberId]) });
+  return { deleted: affected(meta), bioType: Number(row.bio_type) };
+}
+
+/** The member's templates for a screen: ids and slots, never the data or its hash. */
+async function templatesOf(db, memberId) {
+  const rows = await select(db, `SELECT id, bio_type, bio_no, bio_index, major_ver, consent_pending, import_hold, source_device_id, enrolled_at
+    FROM member_biometrics WHERE member_id = ? ORDER BY bio_type, bio_no, bio_index`, [memberId]);
+  return rows.map((r) => ({
+    id: r.id, type: Number(r.bio_type), no: Number(r.bio_no), index: Number(r.bio_index), version: r.major_ver,
+    pending: Boolean(Number(r.consent_pending)), held: Boolean(Number(r.import_hold)), sourceDeviceId: r.source_device_id, enrolledAt: r.enrolled_at,
+  }));
+}
+
+/**
  * The retention rules of one tenant (D-4, §7.5). → { pendingExpired: [memberIds], retained: [memberIds] }
  * - pending (no consent) past pending_until: deleted;
  * - members whose last package ended more than DEVICE_BIO_RETENTION_DAYS ago (or who never had one
@@ -259,7 +281,8 @@ async function retentionSweep(db, now = new Date()) {
   const cutoff = new Date(now.getTime() - cfg.bioRetentionDays * 86400000).toISOString().slice(0, 10);
   const holders = (await select(
     db,
-    'SELECT DISTINCT member_id FROM member_biometrics UNION SELECT DISTINCT member_id FROM member_biometric_photos',
+    // Templates an import holds until go-live are the import's to keep or roll back (Phase 4).
+    'SELECT DISTINCT member_id FROM member_biometrics WHERE import_hold = 0 UNION SELECT DISTINCT member_id FROM member_biometric_photos',
     []
   )).map((r) => r.member_id);
   const retained = [];
@@ -303,5 +326,7 @@ module.exports = {
   storePhoto,
   photoForDelivery,
   deleteMemberBiometrics,
+  deleteTemplate,
+  templatesOf,
   retentionSweep,
 };

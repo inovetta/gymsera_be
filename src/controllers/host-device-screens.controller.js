@@ -31,6 +31,8 @@ const branchScope = (req) => {
 // ── Sync now / Full audit (§9.1) ──────────────────────────────────────────────
 const syncDevice = wrap(async (req, res) => {
   if (req.body.mode === 'audit') {
+    // Phase 4: an audit removes users GymsEra does not want; never during an import.
+    if (Number(req.device.details?.import_hold)) throw createError('This device is being imported. Audit it after you go live.', 409, 'device_in_import');
     const { requestAudit } = require('../jobs/device-jobs');
     const r = await requestAudit(req.tenantDb, req.params.id);
     await record(req, 'devices.audit_requested', { targetType: 'device', targetId: req.params.id, branchId: req.deviceBranchId, after: { auditId: r.auditId } });

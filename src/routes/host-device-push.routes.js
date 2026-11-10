@@ -67,6 +67,17 @@ router.post(
   ctrl.enroll
 );
 
+// Phase 4 (§11): one template, from GymsEra and every device. biometrics.delete (owner, org admin, manager).
+router.delete(
+  '/members/:memberId/biometrics/:bioId',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([memberParam, param('bioId').isUUID().withMessage('Unknown template')], { stage: 2 }),
+  can.atAnyBranch('biometrics.delete'),
+  require('../controllers/host-device-import.controller').deleteTemplate
+);
+
 router.get(
   '/device-push-requests/:requestId',
   authenticate,

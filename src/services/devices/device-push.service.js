@@ -79,6 +79,10 @@ async function usableDevices(db, { permittedBranchIds = null, branchId = null, d
   }
   const views = (await registry().listDevices({ tenantId: db.tenantId, tenantDb: db, branchIds }))
     .filter((v) => v.enabled && v.status !== 'removed' && v.status !== 'wiping');
+  // Phase 4: a device in import hold takes no member commands. Asked for by name: say why.
+  if (deviceIds && views.some((v) => v.importHold && deviceIds.includes(v.id))) {
+    throw createError('This device is being imported. It gets members once you go live on its cut-over page.', 409, 'device_in_import');
+  }
   const syncable = new Map((await sync().devicesOf(db)).map((d) => [d.id, d]));
   return views
     .filter((v) => syncable.has(v.id) && (!deviceIds || deviceIds.includes(v.id)))
@@ -191,11 +195,20 @@ async function memberTargets(db, memberId, { permittedBranchIds, deviceIds }) {
     if (all.length !== new Set(deviceIds).size) throw createError('Device not found.', 404, 'device_not_found');
     return all;
   }
+  // Only devices that could hold this member (Phase 4 push load test: computing desired state on every
+  // device of a 50-device tenant made one Push now answer in 11 s): a branch of an organization where
+  // they have an ACTIVE package, a branch where they are staff with door access, or a device that has them.
+  const orgs = new Set((await select(db, `SELECT DISTINCT b.gym_id FROM member_subscriptions s JOIN branches b ON b.id = s.branch_id
+    WHERE s.user_id = ? AND s.status = 'ACTIVE'`, [memberId])).map((r) => r.gym_id));
+  const staffAt = new Set((await select(db, 'SELECT DISTINCT branch_id FROM gym_staff WHERE user_id = ? AND device_access = 1', [memberId])).map((r) => r.branch_id));
+  const holding = new Set((await select(db, 'SELECT device_id FROM device_member_sync WHERE member_id = ? AND state <> \'removed\'', [memberId])).map((r) => r.device_id));
   const out = [];
   for (const d of all) {
+    if (!orgs.has(d.device.branch_gym_id) && !staffAt.has(d.device.branch_id) && !holding.has(d.device.id)) continue;
     const want = (await sync().desiredFor(db, d.device, [memberId])).get(memberId) || { desired: false };
     const [row] = await select(db, 'SELECT state FROM device_member_sync WHERE device_id = ? AND member_id = ?', [d.device.id, memberId]);
-    if (want.desired || (row && row.state !== 'removed')) out.push(d);
+    // Kept for pushMember / removeMember (the same moment): not computed a second time per device.
+    if (want.desired || (row && row.state !== 'removed')) out.push({ ...d, want, row: row || null });
   }
   return out;
 }
@@ -213,9 +226,10 @@ async function pushMember(db, { memberId, requestedBy, deviceIds = null, permitt
 
   const plan = [];
   const devices = [];
-  for (const { view, device } of targets) {
-    const want = (await sync().desiredFor(db, device, [memberId], { now })).get(memberId) || { desired: false };
-    const [row] = await select(db, 'SELECT state FROM device_member_sync WHERE device_id = ? AND member_id = ?', [device.id, memberId]);
+  for (const t of targets) {
+    const { view, device } = t;
+    const want = t.want || (await sync().desiredFor(db, device, [memberId], { now })).get(memberId) || { desired: false };
+    const row = t.want ? t.row : (await select(db, 'SELECT state FROM device_member_sync WHERE device_id = ? AND member_id = ?', [device.id, memberId]))[0];
     const onDevice = Boolean(row && row.state !== 'removed');
     let entry;
     if (!want.desired) {
@@ -242,7 +256,7 @@ async function removeMember(db, { memberId, requestedBy, deviceIds = null, permi
   const targets = await memberTargets(db, memberId, { permittedBranchIds, deviceIds });
   const removable = [];
   for (const t of targets) {
-    const want = (await sync().desiredFor(db, t.device, [memberId], { now })).get(memberId) || { desired: false };
+    const want = t.want || (await sync().desiredFor(db, t.device, [memberId], { now })).get(memberId) || { desired: false };
     if (!want.desired) removable.push(t);
   }
   if (!removable.length) {
@@ -499,11 +513,14 @@ async function memberDeviceStatus(db, { memberId, permittedBranchIds = null, now
     pin: identity && !identity.retired_at ? String(identity.pin) : null,
     consent: await biometrics.consentStatus(db, memberId),
     biometrics: enrolled.map((b) => ({ type: Number(b.bio_type), count: Number(b.n), lastEnrolledAt: b.last_at, waitingForConsent: Boolean(Number(b.pending)) })),
+    // Phase 4: each template with its id (the CMS deletes one), never its data.
+    templates: await biometrics.templatesOf(db, memberId),
     devices,
   };
 }
 
 module.exports = {
+  assertMember,
   newRequestId,
   reasonOfCode,
   usableDevices,

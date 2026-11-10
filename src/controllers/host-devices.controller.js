@@ -40,7 +40,7 @@ const listDevices = async (req, res, next) => {
 
 const createDevice = async (req, res, next) => {
   try {
-    const { branchId, name, direction, linkMode, serialNumber } = req.body;
+    const { branchId, name, direction, linkMode, serialNumber, importFirst } = req.body;
     const result = await devices.createDevice({
       tenantId: req.tenantDb.tenantId,
       tenantDb: req.tenantDb,
@@ -49,6 +49,7 @@ const createDevice = async (req, res, next) => {
       direction,
       linkMode,
       serialNumber,
+      importFirst: importFirst === true,
       createdBy: userIdOf(req),
     });
     return sendSuccess(res, result, 'Device added. Enter the settings below on the device.', 201);

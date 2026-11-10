@@ -211,6 +211,9 @@ async function applyState(tenantDb, deviceId, state) {
 }
 
 // ── Command queue (§8.1) ──────────────────────────────────────────────────────
+/** The only commands a device in import hold is given (Phase 4): they read, never change, the device. */
+const READ_ONLY_KINDS = ['query_users', 'query_bio', 'count', 'info', 'check'];
+
 /** The command text for a row that carries no member data (Phase 1 kinds). Member kinds: device-sync.service. */
 function renderCommand(row) {
   const args = parseJson(row.args_json);
@@ -231,17 +234,19 @@ function renderCommand(row) {
  * photos over DEVICE_PHOTOS_PER_POLL, go back to `queued`; a command of a replaced batch is
  * superseded; one that cannot be built is failed and its pair re-planned.
  */
-async function claimCommands(tenantDb, device, { maxPackageSize } = {}) {
+async function claimCommands(tenantDb, device, { maxPackageSize, held = false } = {}) {
   const cfg = getDeviceConfig();
   const sync = require('./device-sync.service');
   const now = new Date();
   const token = newClaimToken();
   // merged_into is cleared on every claim: a command is merged (or not) afresh each time it is handed out.
+  // A device in import hold (Phase 4) gets only commands that read: nothing on it changes during an import.
   await tenantDb.sequelize.query(
     `UPDATE device_commands SET status = 'sent', sent_at = ?, attempts = attempts + 1, claim_token = ?, merged_into = NULL, updated_at = ?
      WHERE device_id = ? AND status = 'queued' AND not_before <= ? AND (expires_at IS NULL OR expires_at > ?)
+       AND (? = 0 OR kind IN (?))
      ORDER BY priority, id LIMIT ?`,
-    { replacements: utc([now, token, now, device.id, now, now, Number(cfg.commandsPerPoll)]) }
+    { replacements: utc([now, token, now, device.id, now, now, held ? 1 : 0, READ_ONLY_KINDS, Number(cfg.commandsPerPoll)]) }
   );
   const rows = await q(tenantDb.sequelize, 'SELECT * FROM device_commands WHERE claim_token = ? ORDER BY priority, id', [token]);
   if (!rows.length) return '';
@@ -323,6 +328,7 @@ function viewOf(row, det, branchName) {
     scheme: row.last_scheme,
     encrypted: row.last_scheme ? row.last_scheme === 'https' : null,
     tokenState: row.last_token_state,
+    tokenMode: row.token_mode,
     serialMismatch: row.serial_mismatch_at ? { at: row.serial_mismatch_at, serialNumber: row.serial_mismatch_value } : null,
     model: det?.model || null,
     firmware: det?.firmware || null,
@@ -341,6 +347,9 @@ function viewOf(row, det, branchName) {
       fingerprints: num(counts.FPCount),
       maxUsers: num(caps.MaxUserCount),
     },
+    importHold: Boolean(Number(det?.import_hold || 0)),
+    importHoldSince: det?.import_hold_since || null,
+    liveAt: det?.live_at || null,
     createdAt: row.created_at,
   };
 }
@@ -354,7 +363,7 @@ async function branchOf(tenantDb, branchId) {
  * Adds a device to a branch. Returns { device, setup } (setup = the card the host types on the device).
  * Mode C (serial) only when DEVICE_SERIAL_PAIRING allows it (D-2).
  */
-async function createDevice({ tenantId, tenantDb, branchId, organizationId, name, direction = 'in', linkMode, serialNumber, createdBy = null }) {
+async function createDevice({ tenantId, tenantDb, branchId, organizationId, name, direction = 'in', linkMode, serialNumber, importFirst = false, createdBy = null }) {
   const cfg = getDeviceConfig();
   const mode = linkMode || cfg.defaultLinkMode;
   if (!LINK_MODES.includes(mode)) throw createError('Choose how the device connects: host, path or serial.', 422, 'invalid_link_mode');
@@ -403,9 +412,11 @@ async function createDevice({ tenantId, tenantDb, branchId, organizationId, name
 
   try {
     await tenantDb.sequelize.query(
-      `INSERT INTO access_device_details (id, branch_id, name, direction, enabled, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
-      { replacements: utc([id, branchId, cleanName, direction, createdBy, now, now]) }
+      `INSERT INTO access_device_details (id, branch_id, name, direction, enabled, import_hold, import_hold_since, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+      // importFirst (Phase 4): the device already holds another system's users (GymBioSync). It gets
+      // nothing from GymsEra until it is imported and the host goes live (device-import.service).
+      { replacements: utc([id, branchId, cleanName, direction, importFirst ? 1 : 0, importFirst ? now : null, createdBy, now, now]) }
     );
   } catch (err) {
     await platformDb.query('DELETE FROM access_devices WHERE id = ?', { replacements: utc([id]) }).catch(() => {});
@@ -514,6 +525,10 @@ async function repairDevice({ tenantId, tenantDb = null, deviceId }) {
 async function unpairDevice({ tenantId, tenantDb, deviceId, wipe = false }) {
   const now = new Date();
   const row = await findById(deviceId);
+  if (wipe && Number((await detailsOf(tenantDb, deviceId))?.import_hold)) {
+    // Phase 4: nothing is deleted on a device during an import. Cancel the import first.
+    throw createError('This device is being imported. Cancel the import before you wipe it.', 409, 'device_in_import');
+  }
   if (wipe && row && row.registered_at && row.serial_number) {
     const det = await detailsOf(tenantDb, deviceId);
     const caps = parseJson(det?.capabilities_json);
@@ -568,7 +583,47 @@ async function finishWipe({ tenantId, tenantDb, deviceId, force = false, now = n
   return true;
 }
 
+/**
+ * Move to another branch of the tenant (spec §11 `POST /host/devices/:id/move`): the platform row (routing,
+ * organization) and the tenant row follow, then the device is reconciled for its new branch with no exit
+ * grace: the old branch's members are removed, the new branch's sent. Not while it is wiping or imported.
+ * → { device, setup, sync: counts }
+ */
+async function moveDevice({ tenantId, tenantDb, deviceId, branchId }) {
+  const found = await getDevice({ tenantId, tenantDb, deviceId });
+  if (!found) throw createError('Device not found.', 404, 'device_not_found');
+  if (found.row.status === 'wiping') throw createError('This device is being wiped.', 409, 'device_wiping');
+  if (Number(found.details.import_hold)) {
+    throw createError('This device is being imported. Go live or cancel the import before you move it.', 409, 'device_in_import');
+  }
+  if (found.row.branch_id === branchId) throw createError('The device is already at that branch.', 422, 'same_branch');
+  const branch = await branchOf(tenantDb, branchId);
+  if (!branch) throw createError('Branch not found.', 404, 'branch_not_found');
+  const now = new Date();
+  await platformDb.query('UPDATE access_devices SET branch_id = ?, organization_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?', {
+    replacements: utc([branchId, branch.gym_id || null, now, deviceId, tenantId]),
+  });
+  await tenantDb.sequelize.query('UPDATE access_device_details SET branch_id = ?, last_sweep_at = NULL, updated_at = ? WHERE id = ?', {
+    replacements: utc([branchId, now, deviceId]),
+  });
+  // Whatever was queued for the old branch is replaced by the reconcile below.
+  await tenantDb.sequelize.query(
+    'UPDATE device_commands SET status = \'superseded\', updated_at = ? WHERE device_id = ? AND status = \'queued\' AND member_id IS NOT NULL',
+    { replacements: utc([now, deviceId]) }
+  );
+  await tenantDb.sequelize.query(
+    // The state stays (a half-sent add still counts as on the device, so it is removed in full).
+    'UPDATE device_member_sync SET pending_batch_id = NULL, pending_hash = NULL WHERE device_id = ? AND pending_batch_id IS NOT NULL',
+    { replacements: utc([deviceId]) }
+  );
+  const counts = await require('./device-sync.service').reconcileDevice(tenantDb, deviceId, 'device_moved', { noGrace: true, priority: 1, now });
+  const after = await getDevice({ tenantId, tenantDb, deviceId });
+  return { device: after.view, setup: after.setup, sync: counts };
+}
+
 module.exports = {
+  moveDevice,
+  READ_ONLY_KINDS,
   KEY_ALPHABET,
   newDeviceKey,
   normalizeKey,

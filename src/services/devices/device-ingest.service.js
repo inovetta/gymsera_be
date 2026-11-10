@@ -83,8 +83,9 @@ async function ingestScans(db, device, body, { attlog = false, now = new Date() 
 
 async function afterScan(db, device, { eventId, pin, result, inout, utc, now }) {
   if (!pin || pin === '0') return null; // door and alarm events: no person
-  const owner = await identity.ownerOfPin(db, pin);
   const note = (fields) => exec(db, `UPDATE device_access_events SET ${Object.keys(fields).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, [...Object.values(fields), eventId]);
+  if (Number(device.import_hold)) return afterHeldScan(db, device, { pin, result, inout, utc, note });
+  const owner = await identity.ownerOfPin(db, pin);
   if (!owner) {
     await sync.noteUnlinked(db, device.id, { pin, source: 'scan' }, now);
     await note({ attendance_note: 'unlinked_pin' });
@@ -130,6 +131,32 @@ async function afterScan(db, device, { eventId, pin, result, inout, utc, now }) 
     const out = await deviceScan(db, { deviceId: device.id, userId: owner.memberId, branchId: device.branch_id, eventTime: utc, direction });
     await note({ attendance_id: out.log.id, attendance_note: out.duplicate ? 'duplicate' : direction === 'out' ? 'check_out' : 'check_in' });
     if (out.visitsLeft === 0) await sync.reconcileMember(db, owner.memberId, 'visits_used', { now });
+    if (out.duplicate) return 'duplicate';
+    return direction === 'out' ? 'check_out' : 'check_in';
+  } catch (err) {
+    await note({ attendance_note: String(err.code || 'attendance_refused').slice(0, 40) });
+    return null;
+  }
+}
+
+/**
+ * Phase 4: a scan on a device in import hold. Its PINs are another system's (GymBioSync) until go-live,
+ * so a PIN means a member only when this device's applied import matched it; anyone else is stored
+ * with the note `import_hold` and no check-in. Nothing is sent to the device (no drift or removal).
+ */
+async function afterHeldScan(db, device, { pin, result, inout, utc, note }) {
+  const memberId = await require('./device-import.service').heldOwnerOfPin(db, device.id, pin);
+  if (!memberId) {
+    await note({ attendance_note: 'import_hold' });
+    return null;
+  }
+  await note({ member_id: memberId });
+  if (result !== 'granted') return null;
+  const direction = device.direction === 'both' ? (inout === 1 ? 'out' : 'in') : device.direction;
+  try {
+    const { deviceScan } = require('../attendance.service');
+    const out = await deviceScan(db, { deviceId: device.id, userId: memberId, branchId: device.branch_id, eventTime: utc, direction });
+    await note({ attendance_id: out.log.id, attendance_note: out.duplicate ? 'duplicate' : direction === 'out' ? 'check_out' : 'check_in' });
     if (out.duplicate) return 'duplicate';
     return direction === 'out' ? 'check_out' : 'check_in';
   } catch (err) {
@@ -224,7 +251,11 @@ async function ingestPhotos(db, tenantId, device, table, body, now = new Date())
 async function ingestQuery(db, device, query, body, now = new Date()) {
   const table = String(query.tablename || '').toLowerCase();
   const cmdId = int(query.cmdid);
-  if (table !== 'user' || !cmdId) return null;
+  if (!cmdId) return null;
+  // Phase 4: the answer to an import's query (users or templates) goes to that import only.
+  const imports = require('./device-import.service');
+  if (await imports.isImportCommand(db, device.id, cmdId)) return imports.ingestPack(db, device, { cmdId, table, query, body, now });
+  if (table !== 'user') return null;
   const [audit] = await select(db, 'SELECT id, status FROM device_audits WHERE query_cmd_id = ? AND device_id = ?', [cmdId, device.id]);
   if (!audit || audit.status === 'compared') return null;
   for (const r of protocol.parseRecords(body, { table: 'user' })) {

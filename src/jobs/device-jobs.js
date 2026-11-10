@@ -156,16 +156,17 @@ const parseJson = (text) => {
  * Per-device owner alerts (spec §13), one notification per incident, only where the branch keeps
  * alerts on:
  *   error rate  DEVICE_ALERT_ERRORS_PER_HOUR failures or device errors in the last hour (again after 24 h)
- *   capacity    users or templates GymsEra wants on it reach 90% of MaxUserCount / MaxMultiBioDataCount
+ *   capacity    users or templates on it reach 90% of MaxUserCount / MaxMultiBioDataCount
  *               (again once it has dropped below 85%)
+ *   serial      another device presented this device's key (Phase 4, §14 point 4), once per incident
  * When each went out is kept in access_device_details.alerts_json.
  */
 async function deviceAlerts({ tenantId, db }, now = new Date()) {
   const cfg = getDeviceConfig();
-  const out = { errors: 0, capacity: 0 };
-  const active = await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([tenantId]), type: QueryTypes.SELECT });
-  for (const { id } of active) {
-    const [det] = await select(db, 'SELECT id, name, enabled, capabilities_json, alerts_json FROM access_device_details WHERE id = ?', [id]);
+  const out = { errors: 0, capacity: 0, serial: 0 };
+  const active = await platformDb.query('SELECT id, serial_mismatch_at FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([tenantId]), type: QueryTypes.SELECT });
+  for (const { id, serial_mismatch_at: mismatchAt } of active) {
+    const [det] = await select(db, 'SELECT id, name, enabled, capabilities_json, counts_json, alerts_json FROM access_device_details WHERE id = ?', [id]);
     if (!det || !Number(det.enabled)) continue;
     const state = parseJson(det.alerts_json);
     const before = JSON.stringify(state);
@@ -183,7 +184,19 @@ async function deviceAlerts({ tenantId, db }, now = new Date()) {
       state.errorRateAt = now.toISOString();
     }
 
-    const use = await capacityUse(db, id, parseJson(det.capabilities_json));
+    // Phase 4 (§14 point 4): another device presented this device's key (a copied key, or the device was
+    // replaced without a re-pair). One alert per incident: a newer mismatch is a new incident. The other
+    // serial is on the device page, not in the notification.
+    if (mismatchAt && (!state.serialMismatchAt || new Date(mismatchAt).getTime() > new Date(state.serialMismatchAt).getTime())) {
+      if (on) {
+        await notifyOwner(tenantId, det, 'device_serial_mismatch', 'Access device key used by another device',
+          `Another device tried to connect with the key of ${det.name}. If you replaced the device, re-pair it on its page; if not, re-pair it now so the old key stops working.`);
+        out.serial += 1;
+      }
+      state.serialMismatchAt = new Date(mismatchAt).toISOString();
+    }
+
+    const use = await capacityUse(db, id, parseJson(det.capabilities_json), parseJson(det.counts_json));
     const percent = use ? Math.round(use.ratio * 100) : null;
     if (use && use.ratio >= cfg.capacityAlertPercent / 100 && !state.capacityAt) {
       if (on) {
@@ -200,16 +213,23 @@ async function deviceAlerts({ tenantId, db }, now = new Date()) {
   return out;
 }
 
-/** The fullest of users (MaxUserCount) and each template type (MaxMultiBioDataCount). null when unknown. */
-async function capacityUse(db, deviceId, caps) {
+/**
+ * The fullest of users (MaxUserCount) and each template type (MaxMultiBioDataCount). null when unknown.
+ * Users: what GymsEra wants on it plus the device users it does not manage (unlinked, e.g. left by
+ * GymBioSync), or the device's own UserCount when that is higher (Phase 4: it counts what is really there).
+ */
+async function capacityUse(db, deviceId, caps, counts = {}) {
   const candidates = [];
   const maxUsers = Number(caps.MaxUserCount);
   const [u] = await select(db, 'SELECT COUNT(*) AS n FROM device_member_sync WHERE device_id = ? AND desired = 1', [deviceId]);
-  if (maxUsers > 0) candidates.push({ what: 'user', used: Number(u.n), max: maxUsers });
+  const [x] = await select(db, 'SELECT COUNT(*) AS n FROM device_unlinked_users WHERE device_id = ? AND dismissed_at IS NULL AND linked_member_id IS NULL', [deviceId]);
+  const reported = Number(counts.UserCount);
+  const users = Math.max(Number(u.n) + Number(x.n), Number.isFinite(reported) ? reported : 0);
+  if (maxUsers > 0) candidates.push({ what: 'user', used: users, max: maxUsers });
   const maxBio = String(caps.MaxMultiBioDataCount || '').split(':').map(Number);
   if (maxBio.some((v) => v > 0)) {
     const rows = await select(db, `SELECT b.bio_type, COUNT(*) AS n FROM member_biometrics b JOIN device_member_sync s ON s.member_id = b.member_id
-      WHERE s.device_id = ? AND s.desired = 1 AND b.consent_pending = 0 GROUP BY b.bio_type`, [deviceId]);
+      WHERE s.device_id = ? AND s.desired = 1 AND b.consent_pending = 0 AND b.import_hold = 0 GROUP BY b.bio_type`, [deviceId]);
     for (const r of rows) {
       const max = maxBio[Number(r.bio_type)];
       if (max > 0) candidates.push({ what: Number(r.bio_type) === 9 || Number(r.bio_type) === 2 ? 'face' : Number(r.bio_type) === 1 ? 'fingerprint' : 'template', used: Number(r.n), max });
@@ -350,10 +370,14 @@ async function retentionTenant({ db }, now = new Date()) {
   // D-6: capture photos are kept 30 days.
   const photos = await require('../services/devices/device-screens.service').deleteCapturePhotos(db, { olderThan: new Date(now.getTime() - cfg.capturePhotoDays * 86400000) })
     .catch((err) => { console.warn(`[device-jobs] capture photo retention: ${err.message}`); return 0; });
+  // Phase 4: imports nobody finished; staging templates of finished imports emptied.
+  const imports = await require('../services/devices/device-import.service').housekeeping(db, now)
+    .catch((err) => { console.warn(`[device-jobs] import housekeeping: ${err.message}`); return { failed: 0, expired: 0, purged: 0 }; });
   const week = new Date(now.getTime() - 7 * 86400000);
   await exec(db, 'DELETE FROM device_state WHERE received_at < ?', [week]);
   await exec(db, 'DELETE FROM capacity_outbox WHERE event_type = \'DEVICE_RECONCILE\' AND status = \'PROCESSED\' AND processed_at < ?', [week]);
-  return { pendingExpired: r.pendingExpired.length, retained: r.retained.length, pinsPurged: purged, capturePhotosDeleted: photos };
+  return { pendingExpired: r.pendingExpired.length, retained: r.retained.length, pinsPurged: purged, capturePhotosDeleted: photos,
+    importsFailed: imports.failed, importsExpired: imports.expired, importTemplatesPurged: imports.purged };
 }
 
 const runRetention = (now = new Date()) => eachTenant('device-retention', (t) => retentionTenant(t, now));

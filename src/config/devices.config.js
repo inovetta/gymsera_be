@@ -38,6 +38,19 @@
  * | DEVICE_SWEEP_MINUTES       | 15                 | 5 to 1440                  | §8.3 layer 2 |
  * | DEVICE_AUDIT_HOUR          | 2                  | 0 to 23                    | §8.3 layer 3 (branch local hour) |
  * | DEVICE_PHOTOS_PER_POLL     | 5                  | 1 to 20                    | §13 |
+ *
+ * Phase 4 (import from GymBioSync, hardening).
+ * | DEVICE_IMPORT_MAX_USERS        | 20000          | 1 to 100000                | size cap per import |
+ * | DEVICE_IMPORT_MAX_TEMPLATES    | 60000          | 1 to 300000                | size cap per import |
+ * | DEVICE_IMPORT_MAX_TEMPLATE_BYTES | 16384        | 1024 to 1048576            | one template (base64 length) |
+ * | DEVICE_IMPORT_BIO_TYPES        | 1,2,9          | comma list of 1 to 10      | when the device reported no capabilities |
+ * | DEVICE_IMPORT_QUERY_HOURS      | 2              | 1 to 48                    | an import whose packs never arrive fails |
+ * | DEVICE_RATE_LIMIT              | true           | true, false                | §5 rate limits (per process) |
+ * | DEVICE_RATE_PER_SECOND         | 2              | 0.01 to 100                | §5: about 2 requests a second per device |
+ * | DEVICE_RATE_BURST              | 20             | 1 to 10000                 | §5: bursts of 20 |
+ * | DEVICE_UNCLAIMED_RATE_SECONDS  | 10             | 0 to 3600                  | §5: an unknown caller answered from memory |
+ * | DEVICE_MAX_SMALL_BODY          | 65536          | 1024 to 1048576 (bytes)    | registry, push, heartbeat, devicecmd, ping |
+ * | DEVICE_TOKEN_SEEN_HOURS        | 24             | 1 to 720                   | token enforce migration: seen with a match since |
  */
 const ENUMS = {
   DEVICE_REGISTRATION_STYLE: { def: 'spec', values: ['spec', 'gbs'] },
@@ -94,6 +107,23 @@ const countResultOf = () => {
   return 'return';
 };
 
+const numOf = (name, def, min, max) => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return def;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= min && n <= max) return n;
+  warnOnce(name, raw, String(def));
+  return def;
+};
+
+const bioTypesOf = () => {
+  const raw = String(process.env.DEVICE_IMPORT_BIO_TYPES || '1,2,9');
+  const list = raw.split(',').map((v) => Number(v.trim())).filter((n) => Number.isInteger(n) && n >= 1 && n <= 10);
+  if (list.length) return [...new Set(list)].sort((a, b) => a - b);
+  warnOnce('DEVICE_IMPORT_BIO_TYPES', raw, '1,2,9');
+  return [1, 2, 9];
+};
+
 const listOf = (name, def) =>
   String(process.env[name] || def).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
@@ -137,6 +167,18 @@ function getDeviceConfig() {
     bioBatchSize: intOf('DEVICE_BIO_BATCH_SIZE', 10, 1, 50), // Phase 0: multi-member biodata (1 = off)
     alertErrorsPerHour: intOf('DEVICE_ALERT_ERRORS_PER_HOUR', 20, 1, 10000),
     wipeWaitDays: intOf('DEVICE_WIPE_WAIT_DAYS', 7, 1, 60),
+    // Phase 4: import from a device another system managed (GymBioSync), and hardening (§5, §14).
+    importMaxUsers: intOf('DEVICE_IMPORT_MAX_USERS', 20000, 1, 100000),
+    importMaxTemplates: intOf('DEVICE_IMPORT_MAX_TEMPLATES', 60000, 1, 300000),
+    importMaxTemplateBytes: intOf('DEVICE_IMPORT_MAX_TEMPLATE_BYTES', 16384, 1024, 1048576),
+    importBioTypes: bioTypesOf(),
+    importQueryHours: intOf('DEVICE_IMPORT_QUERY_HOURS', 2, 1, 48),
+    rateLimit: boolOf('DEVICE_RATE_LIMIT', true),
+    ratePerSecond: numOf('DEVICE_RATE_PER_SECOND', 2, 0.01, 100),
+    rateBurst: intOf('DEVICE_RATE_BURST', 20, 1, 10000),
+    unclaimedRateSeconds: intOf('DEVICE_UNCLAIMED_RATE_SECONDS', 10, 0, 3600),
+    maxSmallBody: intOf('DEVICE_MAX_SMALL_BODY', 65536, 1024, 1048576),
+    tokenSeenHours: intOf('DEVICE_TOKEN_SEEN_HOURS', 24, 1, 720),
     // Not Phase 0 questions: fixed by the spec.
     pushMemberWindowSeconds: 10, // §9.2: 1 push per member per 10 s per user
     capturePhotoDays: 30, // D-6
