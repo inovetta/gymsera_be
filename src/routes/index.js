@@ -185,6 +185,7 @@ router.use('/admin',             require('./admin.routes'));
 router.use('/gyms',      require('./gyms.routes'));
 router.use('/discovery', require('./discovery.routes'));
 router.use('/host/devices', require('./host-devices.routes')); // ZKTeco access devices (before /host)
+router.use('/host', require('./host-device-push.routes')); // ZKTeco manual push, member / branch device views (before /host)
 router.use('/host',      require('./host.routes'));
 
 // ── Sprint 5 — Membership Plans & Subscriptions ───────────────────────────────

@@ -271,6 +271,14 @@ router.get('/subscriptions/:id/qr-token', subscriptionsController.getSubscriptio
 router.get('/attendance', meController.getMyAttendance);
 
 // ── Wishlist / Saved Gyms ────────────────────────────────────────────────────
+// ZKTeco Phase 3 (spec §14): the member's own biometric consent per gym; withdraw at any time.
+router.get('/biometric-consents', require('../controllers/me-biometrics.controller').list);
+router.delete(
+  '/biometric-consents/:tenantId',
+  validate.strict([require('express-validator').param('tenantId').isUUID().withMessage('Unknown gym')], { stage: 2 }),
+  require('../controllers/me-biometrics.controller').withdraw
+);
+
 router.get('/saved-gyms', meController.getSavedGyms);
 router.post('/saved-gyms/:gymId', validate.allowBody([]), meController.saveGym);
 router.delete('/saved-gyms/:gymId', validate.allowBody([]), meController.unsaveGym);

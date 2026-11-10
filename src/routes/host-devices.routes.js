@@ -18,6 +18,7 @@ const can = require('../middleware/can');
 const validate = require('../middleware/validate');
 const refusePlatformAdmin = require('../middleware/refusePlatformAdmin');
 const ctrl = require('../controllers/host-devices.controller');
+const screens = require('../controllers/host-device-screens.controller');
 
 const router = Router();
 const idParam = param('id').isUUID().withMessage('Unknown device');
@@ -48,6 +49,51 @@ router.post(
   ], { stage: 2 }),
   can('devices.manage', { branch: 'body.branchId' }),
   ctrl.createDevice
+);
+
+// ── Phase 3: screens that are not one device (before /:id) ────────────────────────────────
+router.get(
+  '/unlinked-users',
+  authenticate,
+  tenantContext.forTeamRoutes,
+  validate([query('branchId').optional().isUUID().withMessage('Unknown branch')]),
+  can.atAnyBranch('devices.view'),
+  screens.unlinkedAll
+);
+
+router.get(
+  '/branch-settings/:branchId',
+  authenticate,
+  tenantContext.forTeamRoutes,
+  validate([param('branchId').isUUID().withMessage('Unknown branch')]),
+  screens.loadBranch,
+  can('devices.view', { branch: 'params.branchId' }),
+  screens.getBranchSettings
+);
+
+router.put(
+  '/branch-settings/:branchId',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([
+    param('branchId').isUUID().withMessage('Unknown branch'),
+    body('capturePhotos').optional().isBoolean().withMessage('capturePhotos is true or false.'),
+    body('alertsEnabled').optional().isBoolean().withMessage('alertsEnabled is true or false.'),
+  ], { stage: 2 }),
+  screens.loadBranch,
+  can('devices.manage', { branch: 'params.branchId' }),
+  screens.putBranchSettings
+);
+
+router.get(
+  '/capture-photos/:photoId',
+  authenticate,
+  tenantContext.forTeamRoutes,
+  validate([param('photoId').isInt({ min: 1 }).withMessage('Unknown photo')]),
+  screens.loadCapturePhoto,
+  can('devices.view', { branch: 'photoBranchId' }),
+  screens.getCapturePhoto
 );
 
 router.get(
@@ -82,15 +128,21 @@ router.post(
   ctrl.repairDevice
 );
 
+// Remove; with { wipeDevice: true, confirmName: '<device name>' } the device first deletes every
+// GymsEra user (§10.3: explicit confirmation, never automatic).
 router.delete(
   '/:id',
   authenticate,
   refusePlatformAdmin.deviceWrite,
   tenantContext.forTeamRoutes,
-  validate.strict([idParam], { stage: 2 }),
+  validate.strict([
+    idParam,
+    body('wipeDevice').optional().isBoolean().withMessage('wipeDevice is true or false.'),
+    body('confirmName').optional().isString().isLength({ max: 100 }),
+  ], { stage: 2 }),
   ctrl.loadDevice,
   can('devices.manage', { branch: 'deviceBranchId' }),
-  ctrl.unpairDevice
+  screens.unpairDevice
 );
 
 // ── Phase 2 (sync engine): consent, remote enrolment, staff device access ─────────────────
@@ -111,7 +163,7 @@ router.post(
   refusePlatformAdmin.deviceWrite,
   tenantContext.forTeamRoutes,
   validate.strict([memberParam, body('method').optional().isIn(['in_person', 'app']).withMessage('method is in_person or app.')], { stage: 2 }),
-  can.atAnyBranch('devices.manage'),
+  can.atAnyBranch('biometrics.enroll'),
   ctrl.giveConsent
 );
 
@@ -121,7 +173,7 @@ router.delete(
   refusePlatformAdmin.deviceWrite,
   tenantContext.forTeamRoutes,
   validate.strict([memberParam], { stage: 2 }),
-  can.atAnyBranch('devices.manage'),
+  can.atAnyBranch('biometrics.delete'),
   ctrl.withdrawConsent
 );
 
@@ -143,8 +195,62 @@ router.post(
   tenantContext.forTeamRoutes,
   validate.strict([idParam, body('memberId').isUUID().withMessage('Choose a member.'), body('type').optional().isInt({ min: 1, max: 10 }).withMessage('Unknown biometric type.')], { stage: 2 }),
   ctrl.loadDevice,
-  can('devices.manage', { branch: 'deviceBranchId' }),
+  can('biometrics.enroll', { branch: 'deviceBranchId' }),
   ctrl.enroll
+);
+
+// ── Phase 3: one device's tabs and actions (§9.1, §10.3) ──────────────────────────────────
+const view = (path, handler, extra = []) => router.get(
+  path,
+  authenticate,
+  tenantContext.forTeamRoutes,
+  validate([idParam, ...extra]),
+  ctrl.loadDevice,
+  can('devices.view', { branch: 'deviceBranchId' }),
+  handler
+);
+view('/:id/members', screens.deviceMembers, [query('limit').optional().isInt({ min: 1, max: 500 }), query('offset').optional().isInt({ min: 0 })]);
+view('/:id/access-events', screens.deviceAccessEvents, [query('afterId').optional().isInt({ min: 0 }), query('limit').optional().isInt({ min: 1, max: 200 })]);
+view('/:id/errors', screens.deviceErrors, [query('limit').optional().isInt({ min: 1, max: 200 })]);
+view('/:id/commands', screens.deviceCommands);
+view('/:id/audits', screens.deviceAudits);
+view('/:id/unlinked-users', screens.unlinkedForDevice);
+
+/** Sync now: devices.push. Full audit: devices.manage (§12). */
+const syncPermission = (req, res, next) => can(req.body.mode === 'audit' ? 'devices.manage' : 'devices.push', { branch: 'deviceBranchId' })(req, res, next);
+router.post(
+  '/:id/sync',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([idParam, body('mode').optional().isIn(['quick', 'audit']).withMessage('mode is quick or audit.')], { stage: 2 }),
+  ctrl.loadDevice,
+  syncPermission,
+  screens.syncDevice
+);
+
+const pinParam = param('pin').matches(/^[0-9A-Za-z]{1,16}$/).withMessage('Unknown device user');
+router.post(
+  '/:id/unlinked-users/:pin/link',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([idParam, pinParam, body('memberId').isUUID().withMessage('Choose a member.')], { stage: 2 }),
+  ctrl.loadDevice,
+  can('devices.manage', { branch: 'deviceBranchId' }),
+  ctrl.assertBodyMember,
+  screens.linkUnlinked
+);
+
+router.post(
+  '/:id/unlinked-users/:pin/dismiss',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([idParam, pinParam, body('removeFromDevice').optional().isBoolean().withMessage('removeFromDevice is true or false.')], { stage: 2 }),
+  ctrl.loadDevice,
+  can('devices.manage', { branch: 'deviceBranchId' }),
+  screens.dismissUnlinked
 );
 
 module.exports = router;

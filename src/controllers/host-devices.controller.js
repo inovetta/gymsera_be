@@ -79,14 +79,6 @@ const repairDevice = async (req, res, next) => {
   }
 };
 
-const unpairDevice = async (req, res, next) => {
-  try {
-    await devices.unpairDevice({ tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, deviceId: req.params.id });
-    return sendSuccess(res, { id: req.params.id }, 'Device removed from GymsEra.');
-  } catch (err) {
-    return next(err);
-  }
-};
 
 // ── Phase 2: consent, enrolment, staff device access (ZKTeco spec §6.2, §7.6, D-8) ──────────
 const privacy = () => require('../services/devices/device-privacy.service');
@@ -164,7 +156,18 @@ const setStaffDeviceAccess = async (req, res, next) => {
   }
 };
 
+/** 404 unless req.body.memberId is a member (or staff) of this tenant. */
+const assertBodyMember = async (req, _res, next) => {
+  try {
+    await assertMember(req.tenantDb, req.body.memberId);
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
-  loadDevice, listDevices, createDevice, getDevice, updateDevice, repairDevice, unpairDevice,
+  assertBodyMember,
+  loadDevice, listDevices, createDevice, getDevice, updateDevice, repairDevice,
   getConsent, giveConsent, withdrawConsent, enroll, loadStaff, setStaffDeviceAccess,
 };

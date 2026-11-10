@@ -170,7 +170,36 @@ async function handleLegacy(c) {
   return [200, OK];
 }
 
+/**
+ * A device being wiped (§10.3): it gets only its delete commands; anything it uploads is answered
+ * per the protocol and dropped. When the deletes are answered it is removed (registry#finishWipe).
+ */
+async function handleWiping(c, { device, tenantDb }) {
+  if (c.endpoint === 'getrequest') {
+    const body = await registry.claimCommands(tenantDb, device, {});
+    return [200, body ? `${body}\n` : OK];
+  }
+  if (c.endpoint === 'devicecmd') {
+    const results = protocol.parseDevicecmd(c.body);
+    c.logCount = results.length;
+    if (results.length) await registry.recordResults(tenantDb, device, results);
+    await registry.finishWipe({ tenantId: device.tenant_id, tenantDb, deviceId: device.id });
+    return [200, OK];
+  }
+  if (c.endpoint === 'registry') return [200, lines(`RegistryCode=${device.registry_code}`)];
+  if (c.endpoint === 'push') {
+    const cfg = getDeviceConfig();
+    return [200, lines(protocol.configLines({ style: cfg.registrationStyle, registryCode: device.registry_code, sessionId: device.session_id, requestDelay: cfg.requestDelay, forCdata: false }))];
+  }
+  if (c.endpoint === 'cdata' && c.method === 'POST' && String(c.query.table || '').toLowerCase() === 'tabledata') {
+    const name = String(c.query.tablename || '');
+    return [200, lines(`${name}=${protocol.recordCount(c.body, c.query.count)}`)];
+  }
+  return [200, OK];
+}
+
 async function handleDevice(c, { device, tenantDb }) {
+  if (device.status === 'wiping') return handleWiping(c, { device, tenantDb });
   const cfg = getDeviceConfig();
   const det = await registry.detailsOf(tenantDb, device.id);
   if (!det || !det.enabled) return [c.endpoint === 'registry' ? 406 : 200, c.endpoint === 'registry' ? lines('Not Acceptable') : OK];

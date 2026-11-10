@@ -129,7 +129,18 @@ function getDeviceConfig() {
     sweepMinutes: intOf('DEVICE_SWEEP_MINUTES', 15, 5, 1440),
     auditHour: intOf('DEVICE_AUDIT_HOUR', 2, 0, 23),
     photosPerPoll: intOf('DEVICE_PHOTOS_PER_POLL', 5, 1, 20),
+    // Phase 3: manual push (§9), first-sync batching (§13), owner alerts, wipe on unpair (§10.3).
+    pushTimeoutSeconds: intOf('DEVICE_PUSH_TIMEOUT_SECONDS', 15, 5, 60),
+    enrollTimeoutSeconds: intOf('DEVICE_ENROLL_TIMEOUT_SECONDS', 60, 15, 300),
+    pushOfflineSeconds: intOf('DEVICE_PUSH_OFFLINE_SECONDS', 30, 10, 600),
+    pushBranchWindowSeconds: intOf('DEVICE_PUSH_BRANCH_WINDOW_SECONDS', 60, 10, 3600),
+    bioBatchSize: intOf('DEVICE_BIO_BATCH_SIZE', 10, 1, 50), // Phase 0: multi-member biodata (1 = off)
+    alertErrorsPerHour: intOf('DEVICE_ALERT_ERRORS_PER_HOUR', 20, 1, 10000),
+    wipeWaitDays: intOf('DEVICE_WIPE_WAIT_DAYS', 7, 1, 60),
     // Not Phase 0 questions: fixed by the spec.
+    pushMemberWindowSeconds: 10, // §9.2: 1 push per member per 10 s per user
+    capturePhotoDays: 30, // D-6
+    capacityAlertPercent: 90, // §13
     maxAttempts: 5, // §8.1: 4 retries (30 s, 2 min, 10 min, 1 h), then failed
     failedRetriesPerDay: 3, // §8.3 layer 2: failed rows retried after 1 h, at most 3 times a day
     failedRetryAfterMinutes: 60,
