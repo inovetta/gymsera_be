@@ -88,6 +88,11 @@ const ACTIVE_MEMBERSHIP_STATUSES = ['ACTIVE', 'PENDING', 'FROZEN'];
  * Single-table statements only (no joins): safe on tenant databases with mixed collations.
  */
 const _scrubPersonInTenantDb = async (models, userId, now) => {
+  // ZKTeco devices (spec §14 point 6, D-4): templates and photos deleted now, PIN retired, removed
+  // from every device. Never blocks the deletion.
+  await require('./devices/device-privacy.service')
+    .forgetMember({ sequelize: models.MemberSubscription.sequelize, models }, userId)
+    .catch((err) => console.warn('[AccountDeletion] Device data cleanup failed:', err.message));
   const proofs = await models.Payment.findAll({ where: { userId, proofUrl: { [Op.ne]: null } }, attributes: ['proofUrl'], raw: true });
   await _deleteFiles(proofs.map((p) => p.proofUrl));
 
@@ -109,6 +114,18 @@ const _scrubPersonInTenantDb = async (models, userId, now) => {
 const _finalizeTenantData = async (tenant, now) => {
   const models = await _tenantModels(tenant);
   if (models) {
+    // ZKTeco devices (D-4): every member's templates and photos, PINs retired, devices emptied.
+    try {
+      const db = { sequelize: models.MemberSubscription.sequelize, models };
+      const holders = await db.sequelize.query(
+        'SELECT member_id FROM member_device_identity UNION SELECT member_id FROM member_biometrics UNION SELECT member_id FROM member_biometric_photos',
+        { type: require('sequelize').QueryTypes.SELECT }
+      );
+      const privacy = require('./devices/device-privacy.service');
+      for (const h of holders) await privacy.forgetMember(db, h.member_id);
+    } catch (err) {
+      console.warn('[AccountDeletion] Device data cleanup failed:', err.message);
+    }
     const proofs = await models.Payment.findAll({ where: { proofUrl: { [Op.ne]: null } }, attributes: ['proofUrl'], raw: true });
     await _deleteFiles(proofs.map((p) => p.proofUrl));
 

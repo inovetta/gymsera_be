@@ -15,6 +15,7 @@ const { startTestServer } = require('../harness/test-server');
 const { ZkDeviceSimulator } = require('../../scripts/zk-device-simulator');
 const devices = require('../../src/services/devices/device-registry.service');
 const { sequelize: platformDb } = require('../../src/database/platform');
+const { utc } = require('../../src/services/devices/sql-time');
 
 const ENV_KEYS = ['DEVICE_REGISTRATION_STYLE', 'DEVICE_TOKEN_MODE', 'DEVICE_SERIAL_PAIRING', 'DEVICE_ALLOW_HTTP', 'DEVICE_REQUEST_DELAY'];
 const savedEnv = {};
@@ -39,7 +40,7 @@ const queue = async (tenantDb, deviceId, kind, n = 1, extra = {}) => {
   for (let i = 0; i < n; i++) {
     await tenantDb.sequelize.query(
       'INSERT INTO device_commands (device_id, kind, args_json, priority, not_before, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      { replacements: [deviceId, kind, extra.args ? JSON.stringify(extra.args) : null, extra.priority ?? 5, new Date(Date.now() - 1000), new Date(), new Date()] }
+      { replacements: utc([deviceId, kind, extra.args ? JSON.stringify(extra.args) : null, extra.priority ?? 5, new Date(Date.now() - 1000), new Date(), new Date()]) }
     );
   }
 };
@@ -343,7 +344,7 @@ describe('commands (§8.1)', () => {
     await d.connect();
     await ctx.tenant1Db.sequelize.query(
       'INSERT INTO device_commands (device_id, kind, not_before, expires_at, created_at, updated_at) VALUES (?, \'info\', ?, NULL, ?, ?), (?, \'check\', ?, ?, ?, ?)',
-      { replacements: [device.id, new Date(Date.now() + 60000), new Date(), new Date(), device.id, new Date(Date.now() - 60000), new Date(Date.now() - 1000), new Date(), new Date()] }
+      { replacements: utc([device.id, new Date(Date.now() + 60000), new Date(), new Date(), device.id, new Date(Date.now() - 60000), new Date(Date.now() - 1000), new Date(), new Date()]) }
     );
     expect((await d.poll()).text).toBe('OK\n');
   });

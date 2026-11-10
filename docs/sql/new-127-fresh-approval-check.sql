@@ -8,7 +8,7 @@
 -- SELECTs only, over `tenants` and information_schema, plus the gym's own schema_migrations.
 --
 -- PASS on today's code: grid 1 verdict PASS (status ACTIVE, provisioning_state ACTIVE,
--- 31 tables (29 before tenant migration 022, ZKTeco devices), schema_migrations 1, branches.currency 1, the four newest tables 4), and grid 2
+-- 43 tables (29 before tenant migration 022, 31 before 023, ZKTeco devices), schema_migrations 1, branches.currency 1, the four newest tables 4), and grid 2
 -- One row per tenant migration (20 since Phase 7 P3), lowest 1, highest the target. The build that made GYM-4814C134 (before 2026-09-26) gives
 -- 24 tables, provisioning_state NULL, schema_migrations 0, newest tables 0, and grid 2 ends
 -- with "Table ... schema_migrations doesn't exist": that is a FAIL, the server is running old code.

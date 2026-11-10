@@ -63,6 +63,14 @@ const ALERTS = Object.freeze({
     title: 'The Play Console price check could not read some plans',
     runbook: 'docs/runbooks/billing-prices.md#billing_price_check_failed',
   },
+  DEVICE_STORAGE_FULL: {
+    title: 'Access devices report full storage',
+    runbook: 'docs/runbooks/devices.md#device_storage_full',
+  },
+  DEVICE_GRANTED_NOT_DESIRED: {
+    title: 'Access devices let in members GymsEra does not admit',
+    runbook: 'docs/runbooks/devices.md#device_granted_not_desired',
+  },
   TENANT_SCHEMA_BEHIND: {
     title: 'Tenant databases behind the schema target',
     runbook: 'docs/runbooks/tenant-schema.md#tenant_schema_behind',

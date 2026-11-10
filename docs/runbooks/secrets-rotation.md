@@ -66,6 +66,30 @@ do this section first, then section 3.
 **Rollback:** before step 5, set the old password back in MySQL and in `.env`; nothing else changed. After
 step 5, restore `tenantpass_pre.sql` and set the old password back in MySQL and `.env`, then restart.
 
+## 3c. Rotate `BIOMETRIC_DATA_KEY` (ZKTeco access devices, Phase 2)
+
+Face, fingerprint and palm templates (`member_biometrics.template_enc`) and the photo files of
+`member_biometric_photos` are AES-256-GCM under this key. The setting is a comma list of `<version>:<64 hex>`;
+the **first** entry encrypts, every entry decrypts, and each value records its key version, so rotation needs
+no downtime.
+
+1. Generate the new key (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). Pick the
+   next version number.
+2. Set `BIOMETRIC_DATA_KEY=<new version>:<new hex>,<old version>:<old hex>` on every API process and restart.
+   New data uses the new key; old data still reads.
+3. Dry run: `node src/scripts/rotate-biometric-key.js`. Each tenant line must say `0 unreadable`. If not, a key
+   that data was written with is missing from the list: stop and find it.
+4. `node src/scripts/rotate-biometric-key.js --apply`. Templates are rewritten per tenant in one transaction
+   (nothing is written for a tenant with an unreadable value); photo files are rewritten in place.
+5. Run the dry run again: every tenant `0 … on an older key`.
+6. Remove the old entry (`BIOMETRIC_DATA_KEY=<new version>:<new hex>`) and restart.
+
+**Rollback:** before step 4, put the old key back first in the list (or alone) and restart. After step 4, keep
+both keys in the list: everything is readable whichever comes first.
+
+**Escalate:** a value that no key reads is lost (encrypted with a key nobody has). Delete that member's
+biometric data (`DELETE /host/devices/members/:memberId/biometric-consent` withdraws and deletes) and enrol again.
+
 ## 4. Adding a secret to the scan allow-list
 
 Do not. If the scan flags a fake value in a test, change the fake so it does not look like a real token. A real finding means: rotate the secret first, then fix the commit.
@@ -92,6 +116,7 @@ or a chat; they go in the server's protected settings (R-55).
 | 9 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe; API `.env` | sandbox only today (R-7, web card off) | roll in the Stripe dashboard when a live key is first set | n/a until R-39 |
 | 10 | `METRICS_KEY`, `CRON_SECRET`, `DEVICE_API_KEY`, `PAYMENT_TEST_KEY` | API `.env` | launch hygiene | new random values; `DEVICE_API_KEY` must also be set on each gym device | `/metrics` with the new key |
 | 11 | Apple / Google client keys in the app (`GOOGLE_MAPS_API_KEY` in `android/local.properties`, `ios/Flutter/MapsKey.xcconfig`) | build machine only | R-76a: new restricted keys in GymsEra's project | build with the new keys; the friend's project deletes the old key after the new build is live | map shows on both phones |
+| 12 | `BIOMETRIC_DATA_KEY` | API `.env` | new with ZKTeco Phase 2; set before the first device stores a template | section 3c (the first one is just `1:<hex>`; no rotation needed) | a template upload is stored (`member_biometrics`) |
 
 Order on the day: 4, 1 + 2 (one maintenance window, backup first), 3 (signs everyone out), then 5, 6, 8, 10
 while the API runs; 7 with NEW-73; 11 with the next store build. `firebase-service-account.json` is

@@ -652,8 +652,9 @@ after commit. It's a few inserts, so there's no need to wait for a job.
 ### 8.3 The three backup services
 
 They run through the existing Windows Task Scheduler setup (`SCHEDULED_JOBS=external`,
-`run-scheduled-job.js`). Add two jobs: `device-sync` **every minute** (runs layers 1 and 2 with
-their own cadence inside) and `device-audit` **daily**.
+`run-scheduled-job.js`). As built (Phase 2): four tasks, `device-watchdog` every minute, `device-sync`
+every 5 minutes, `device-audit` hourly (once a day per device inside), `device-retention` daily
+(§15 "Phase 2 as built", correction 1).
 
 | Layer | Name | Cadence | What it does |
 |---|---|---|---|
@@ -908,6 +909,99 @@ answers them per the protocol (`OK`, `<table>=N`) and logs counts only. That is 
 - Jobs `device-sync` and `device-audit`, plus the Task Scheduler entries and the runbook
   (`docs/runbooks/devices.md`).
 
+#### Phase 2 as built (2026-11-10, branch `feat/zkteco-phase2` from `feat/zkteco-phase1`, before the Phase 0 device results)
+
+Owner instruction (2026-11-10): build Phase 2 with every Phase 0 open point as a `DEVICE_*` setting, apply
+D-4 to D-8 as recommended in §16 (recorded as R-100 in the master spec §14), no deploy. Runbook:
+`docs/runbooks/devices.md`.
+
+**Names (spec proposal → real).**
+
+| Spec | Built | Notes |
+|---|---|---|
+| tenant migration `t0xx_device_sync` | `023_device_sync_tables` | new tables, plus `device_commands.batch_id`, `access_device_details.last_sweep_at / offline_since / offline_notified_at`, `gym_staff.device_access` (default 0); baseline probe 23; a fresh tenant has 43 tables |
+| `member_id` | the platform user id (`users.id`) | as `attendance_logs.user_id` and `member_subscriptions.user_id`; there is no tenant member table with its own id |
+| PIN sequence | `device_pin_sequence` (one row, from 1001) + `member_device_identity` (`retired_at`) | a PIN is given the first time a member qualifies for any device of the tenant (not at member creation) |
+| `member_biometrics` | same; `template_enc` + `key_version`, `consent_pending`, `pending_until`, `template_size` | AES-256-GCM, `src/utils/biometric-crypto.js` |
+| `member_biometric_photos` | same; `kind` (`biophoto` / `userpic`), `storage_key`, encrypted file in the private store | the base64 text as the device sent it, encrypted (devices get back exactly what they sent) |
+| `member_biometric_consents` | same + `revoked_by_user_id` | |
+| `device_member_sync` | same + `desired_json` / `applied_json`, `pending_batch_id` / `pending_hash`, `undesired_since` (D-7), `incompatible_json` (-30), `retry_day` / `retry_count` | records carry template hashes only, never template data |
+| `device_commands.kind` | spec kinds + `photo_delete` (`DATA DELETE biophoto`) | `batch_id` groups one (device, member) change |
+| `device_access_events` | same + `branch_id`, `reason`, `attendance_note` | `device_record_index` = the device's `index`; an ATTLOG line has none and gets minus its PIN |
+| `device_state` | history table (7 days) | the latest stays in `access_device_details.state_json` (Phase 1) |
+| `device_error_logs` | `source` (`device` / `server`), `kind`, `code`, `message`, `data_json` | no body ever |
+| "unlinked device users" | `device_unlinked_users` (`source`: `scan`, `upload`, `audit`) | |
+| audit report | `device_audits` + `device_audit_pins` | |
+| `device_push_requests` | not built | Phase 3 (manual push) |
+| outbox | the tenant `capacity_outbox` table, `event_type = 'DEVICE_RECONCILE'` | rule 2: no second outbox; the capacity sweep and its stats skip these rows |
+| jobs `device-sync` + `device-audit` (§8.3) | `device-watchdog`, `device-sync`, `device-audit`, `device-retention` | see correction 1 |
+| routes (Phase 2 subset of §11) | `GET/POST/DELETE /host/devices/members/:memberId/biometric-consent`, `POST /host/devices/:id/enroll`, `PATCH /host/devices/staff/:staffId/device-access` | `devices.view` reads, `devices.manage` writes; platform admins read only |
+| alerts | `DEVICE_STORAGE_FULL`, `DEVICE_GRANTED_NOT_DESIRED` (`alert.service.js`, runbook `devices.md`) | IDs and counts only; device offline is an owner notification (`device_offline`) |
+
+**Desired state (§7.1) maps to existing rules, not a second definition.** `attendance.service#isCheckinValid`
+(ACTIVE, not past the end date, visits left), plus started and not inside a freeze window; ACTIVE is set only once
+the payment is verified (`payment.service#_activateSubscription`, `subscription.service#activateSubscription`), so
+"paid" is ACTIVE. Branch coverage is the QR check-in rule, now one function
+(`attendance.service#subscriptionCoversBranch`): the subscription's branch or another branch of the same
+organization. User status `SUSPENDED`, `PENDING_DELETION`, `DELETED` is never desired. D-5 uses
+`branch-billing-lock.service#assertBranchCheckinAllowed` (the R-2 7-day member grace). Scans go through the new
+`attendance.service#deviceScan`, next to the QR and manual paths in the same service.
+
+**Settings added** (`src/config/devices.config.js`, `.env.example`): Phase 0: `DEVICE_SEND_USERAUTHORIZE=true` (d),
+`DEVICE_SEND_VALIDITY=true` (e), `DEVICE_PHOTO_FALLBACK=true` (g), `DEVICE_COUNT_RESULT=return` (where `DATA COUNT`
+answers). Decisions and limits: `DEVICE_SEND_USERPIC=false`, `DEVICE_EXIT_GRACE_HOURS=24` (D-7),
+`DEVICE_BIO_RETENTION_DAYS=90` (D-4), `DEVICE_CONSENT_PENDING_DAYS=7`, `DEVICE_PIN_RETIRE_DAYS=180`,
+`DEVICE_ACK_TIMEOUT_SECONDS=60`, `DEVICE_OFFLINE_MINUTES=10`, `DEVICE_SWEEP_MINUTES=15`, `DEVICE_AUDIT_HOUR=2`,
+`DEVICE_PHOTOS_PER_POLL=5`. New secret: `BIOMETRIC_DATA_KEY` (`<version>:<64 hex>`, comma list, first encrypts;
+rotation `src/scripts/rotate-biometric-key.js`, runbook `secrets-rotation.md` section 3c).
+
+**Spec corrections found while building.**
+1. *Jobs (§8.3).* Four Task Scheduler tasks, not two: `device-watchdog` every minute (layer 1); `device-sync` every
+   5 minutes, each device swept when its last sweep is 15 minutes old **or a local midnight of its branch has passed
+   since** (a 15-minute task cannot meet "within 5 minutes after local midnight"); `device-audit` hourly, once per
+   local day per device from 02:00 branch time plus a 0-59 minute stagger by device; `device-retention` daily.
+2. *Dates in raw SQL.* Sequelize 6 formats a `Date` inside raw-query `replacements` in the **server's local zone**,
+   while the mysql2 connection reads `DATETIME` as UTC. On a server not set to UTC every such value reads back
+   shifted (5 hours ahead on a Pakistan-time machine): a silent device looked online for hours (Phase 1
+   `last_seen_at`), the offline watchdog never fired, grace and backoff were off. All device SQL now passes dates
+   through `src/services/devices/sql-time.js` `utc()`; test `zkteco-p2-utc-times` is red without it. **The rest of
+   the backend uses the same pattern** (NEW-237 in the master spec §13): its effect depends on the production
+   server's time zone, which nobody has checked.
+3. *`utc_time` is a MySQL function name* (`UTC_TIME`): the column is always written quoted.
+4. *Pending templates (§7.5) stay only on the device that enrolled them.* "Keep it pending" would otherwise either
+   delete it from that device at once or send it everywhere without consent. When the 7 days end it is deleted here
+   and a `DATA DELETE biodata` goes to that device.
+5. *Check-out grace (§7.1 point 4)* is 24 real hours after a member stops qualifying on an OUT device (any reason but
+   deletion or consent withdrawal), and `EndTime` on OUT devices is the end date 23:59:59 plus 24 hours.
+6. *`-27` on a delete* means the device does not have it: treated as done. `-27` on an authorization or template:
+   the user is sent again, then the command, once.
+7. *After `-30`* the pair is planned again; if nothing was confirmed yet that re-sends the user and its
+   authorization (harmless), then the comparison photo.
+8. *Audit (layer 3).* Where `DATA COUNT` answers is a Phase 0 question (`DEVICE_COUNT_RESULT`, default: the
+   `Return` value). An audit whose query packs never arrive is marked `incomplete` after 6 hours and **not
+   compared** (a missing answer must not look like an empty device). Unlinked PINs are listed, never removed on
+   their own.
+9. *A device check-in counts a visit* on a visit-limited package (as the QR scan does); the last visit takes the
+   member off the devices.
+10. *D-5 and attendance.* After the branch's member grace, devices keep the members they have (no adds, expiries
+    removed), but `assertBranchCheckinAllowed` refuses the check-in: the scan is stored with
+    `attendance_note = 'member_checkin_grace_expired'` and no attendance row. If the owner wants those visits
+    counted, that is a change to the R-2 check-in rule, not to devices.
+11. *D-6.* Capture photos (`ATTPHOTO`) are never stored in Phase 2; no setting was added, because it would do nothing
+    until the branch opt-in with retention exists (Phase 3).
+12. *Member blocked (user `SUSPENDED`)* is a platform change with no tenant hook: the next sweep (at most
+    15 minutes) removes them. Deletion is immediate (`account-deletion-finalize.service` calls `forgetMember`).
+13. `gym_staff.device_access` is also on the `GymStaff` model, so migration 023 must run before this code (the
+    usual order).
+
+**Left for Phase 3 and later.** Manual push (`device_push_requests`, 15-second result), screens (member device
+status, consent capture and member self-withdrawal in the app, enrol button, unlinked users link / delete, live
+feed, staff device-access switch, audit report), capture photos with a branch opt-in and retention (D-6), alerts to
+the owner per device (only platform alerts and the offline notification now), unpair wiping the device,
+capacity warning at 90% of `MaxUserCount`, batching templates of several members in one command for a first sync
+(today one command per member and type), real-time trigger on user suspension, the D-5 attendance question above,
+and the Phase 0 fixtures and defaults.
+
 **Phase 3: manual push and member screens (CMS, then app)**
 - Push button with 15 s polling, member device status, live feed, unlinked users, remote enrol.
 
@@ -944,11 +1038,11 @@ answers them per the protocol (`OK`, `<table>=N`) and logs counts only. That is 
 | D-1 | Link mode default: path key (A), host key (B) or serial pairing (C) | B, unless Phase 0 shows A works on all your models |
 | D-2 | Allow serial-only pairing (mode C) without `authKey` | No by default, per-tenant opt-in with a warning |
 | D-3 | Allow plain HTTP for devices without HTTPS | Allow, but show an "unencrypted" badge and prefer HTTPS models for new installs |
-| D-4 | Biometric retention after a member leaves | Delete 90 days after the last active package; immediately on deletion or consent withdrawal |
-| D-5 | Branch locked by platform-plan lapse (R-82): do devices keep admitting members? | Keep admitting during the 7-day grace, then freeze sync (no new adds; expiries still removed). Members paid the gym, not us. |
-| D-6 | Store capture photos (`ATTPHOTO`) from scans | Off by default, branch opt-in, 30-day retention |
-| D-7 | Check-out grace on OUT devices | 24 hours |
-| D-8 | Staff on devices | Yes, privilege 0 only, via a "device access" flag on the staff member |
+| D-4 | Biometric retention after a member leaves | Delete 90 days after the last active package; immediately on deletion or consent withdrawal **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
+| D-5 | Branch locked by platform-plan lapse (R-82): do devices keep admitting members? | Keep admitting during the 7-day grace, then freeze sync (no new adds; expiries still removed). Members paid the gym, not us. **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
+| D-6 | Store capture photos (`ATTPHOTO`) from scans | Off by default, branch opt-in, 30-day retention **Applied in part (2026-11-10): off, never stored in Phase 2; branch opt-in with retention is Phase 3.** |
+| D-7 | Check-out grace on OUT devices | 24 hours **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
+| D-8 | Staff on devices | Yes, privilege 0 only, via a "device access" flag on the staff member **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
 | D-9 | Attendance-protocol (`DeviceType=att`) devices | Out of scope for v1 (security/acc protocol only); add an adapter later if needed |
 | D-10 | Release timing versus the 2026-11-30 app freeze | Backend and CMS can ship any time after Phases 0–2. The app screens go into the first post-launch build, unless a launch gym needs them on day one. |
 | D-11 | Device hostname routing on IIS (§4.5) | **Decided by owner:** option 1, a separate `push.gymsera.com` site with URL Rewrite + ARR to a local-only API binding, device paths only. Option 2 is the fallback. |

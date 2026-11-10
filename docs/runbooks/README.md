@@ -17,19 +17,22 @@ missing **What it means**, **First checks** or **Rollback**.
 | `BILLING_PRICE_MISMATCH` | [billing-prices.md](billing-prices.md#billing_price_mismatch) |
 | `BILLING_PRICE_CHECK_FAILED` | [billing-prices.md](billing-prices.md#billing_price_check_failed) |
 | `TENANT_SCHEMA_BEHIND` | [tenant-schema.md](tenant-schema.md#tenant_schema_behind) |
+| `DEVICE_STORAGE_FULL` | [devices.md](devices.md#device_storage_full) |
+| `DEVICE_GRANTED_NOT_DESIRED` | [devices.md](devices.md#device_granted_not_desired) |
 
 ## Procedures (not tied to an alert code)
 
 | Procedure | Runbook |
 |---|---|
 | Slow query log and the weekly index review (OBS-04) | [slow-queries.md](slow-queries.md) |
-| Burned secrets and rotating `TENANT_CONN_ENCRYPTION_KEY` (SEC-05); the tenant database password and its connection strings (NEW-203, section 3b); the launch rotation list (P10) | [secrets-rotation.md](secrets-rotation.md) |
+| Burned secrets and rotating `TENANT_CONN_ENCRYPTION_KEY` (SEC-05); the tenant database password and its connection strings (NEW-203, section 3b); the launch rotation list (P10); `BIOMETRIC_DATA_KEY` (section 3c) | [secrets-rotation.md](secrets-rotation.md) |
 | Apple: one subscription per group per Apple ID, two host accounts on one Apple ID (NEW-210, accepted) | [billing-events.md](billing-events.md#apple-one-subscription-per-group-per-apple-id-new-210-accepted-limitation) |
 | Backend tests on a future day: date bombs, the libfaketime MySQL check (NEW-207) | [test-date-bombs.md](test-date-bombs.md) |
 | Redis warnings, running without Redis (R-88) | [redis.md](redis.md) |
 | One host plan across Apple, Google Play and bank transfer: the channel matrix, `duplicate_billing` support steps, approving bank-transfer plan payments (R-95), payment proofs sent before P9c, a legacy package plan (P9c) | [billing-channels.md](billing-channels.md) |
 | A tenant approved but not ACTIVE: provisioning stopped or stalled (FLOW-02, NEW-34) | [provisioning-failure.md](provisioning-failure.md) |
 | Production and staging on one server: separate databases, no copied `.env`, checks after every deploy (NEW-127, NEW-131, NEW-134) | [production-environments.md](production-environments.md) |
+| ZKTeco access devices: the sync engine, the four device jobs and their Task Scheduler entries, where to look (Phase 2) | [devices.md](devices.md) |
 | ZKTeco Push devices, Phase 0 spike: capture server on a Mac, device tests (a) to (g), restoring the device (spec `ZKTECO_PUSH_DEVICE_SYNC.md` §15) | [zkteco-phase0-checklist.md](zkteco-phase0-checklist.md) |
 
 ## How alerts arrive

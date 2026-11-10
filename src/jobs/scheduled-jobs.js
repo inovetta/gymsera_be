@@ -18,7 +18,19 @@ const JOBS = {
     await billingEvents.processPendingEvents();
     await billingEvents.sweepBillingAlerts();
   },
+  // ZKTeco access devices (docs/runbooks/devices.md, spec ZKTECO_PUSH_DEVICE_SYNC.md §8.3). Each under its own lock.
+  'device-watchdog': () => deviceJob('device-watchdog', 55000, (j) => j.runWatchdog()), // every minute
+  'device-sync': () => deviceJob('device-sync', 280000, (j) => j.runSync()), // every 5 minutes
+  'device-audit': () => deviceJob('device-audit', 3500000, (j) => j.runAudit()), // hourly
+  'device-retention': () => deviceJob('device-retention', 3500000, (j) => j.runRetention()), // daily
 };
+
+async function deviceJob(name, ttlMs, fn) {
+  const { withDistributedLock } = require('../utils/distributed-lock');
+  const res = await withDistributedLock(`cron:${name}`, ttlMs, () => fn(require('./device-jobs')));
+  if (res && !res.skipped) console.log(`[ScheduledJob] ${name}: ${JSON.stringify(res.result || {})}`);
+  return res;
+}
 
 const runScheduledJob = async (name) => {
   const job = JOBS[name];

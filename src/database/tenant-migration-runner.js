@@ -871,6 +871,265 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // ZKTeco Push devices, Phase 2: the sync engine (docs/ZKTECO_PUSH_DEVICE_SYNC.md §6.2, §6.3, §7, §8).
+    // New tables, plus three additive changes to tables of their own feature:
+    //   device_commands.batch_id (+ index), access_device_details.last_sweep_at / offline_since /
+    //   offline_notified_at, gym_staff.device_access (D-8; default 0 = nobody changes).
+    // Templates are AES-256-GCM (BIOMETRIC_DATA_KEY, utils/biometric-crypto.js), never plain.
+    // ROLLBACK (previous build first): DROP TABLE `device_audit_pins`, `device_audits`,
+    //   `device_unlinked_users`, `device_error_logs`, `device_state`, `device_access_events`,
+    //   `device_member_sync`, `member_biometric_consents`, `member_biometric_photos`,
+    //   `member_biometrics`, `member_device_identity`, `device_pin_sequence`;
+    //   ALTER TABLE `device_commands` DROP INDEX `device_commands_member`, DROP COLUMN `batch_id`;
+    //   ALTER TABLE `access_device_details` DROP COLUMN `last_sweep_at`, DROP COLUMN `offline_since`,
+    //     DROP COLUMN `offline_notified_at`;
+    //   ALTER TABLE `gym_staff` DROP COLUMN `device_access`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 23;
+    // Dropping member_biometrics deletes every stored template: export nothing, there is no copy.
+    version: 23,
+    name: '023_device_sync_tables',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const T = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+      const create = (sql) => sequelize.query(sql);
+      const hasColumn = async (table, column) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: [table, column], type: QueryTypes.SELECT }
+        )).length > 0;
+      const hasIndex = async (table, index) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+          { replacements: [table, index], type: QueryTypes.SELECT }
+        )).length > 0;
+
+      // §6.3: one row; PINs from 1001, never reused (a retired PIN stays reserved).
+      await create(`CREATE TABLE IF NOT EXISTS \`device_pin_sequence\` (
+        \`id\` TINYINT UNSIGNED NOT NULL,
+        \`next_pin\` INT UNSIGNED NOT NULL,
+        PRIMARY KEY (\`id\`)
+      ) ${T}`);
+      await sequelize.query('INSERT IGNORE INTO `device_pin_sequence` (`id`, `next_pin`) VALUES (1, 1001)');
+
+      await create(`CREATE TABLE IF NOT EXISTS \`member_device_identity\` (
+        \`member_id\` CHAR(36) NOT NULL,
+        \`pin\` INT UNSIGNED NOT NULL,
+        \`card_no\` VARCHAR(32) NULL,
+        \`retired_at\` DATETIME NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`member_id\`),
+        UNIQUE KEY \`member_device_identity_pin\` (\`pin\`),
+        KEY \`member_device_identity_retired_at\` (\`retired_at\`)
+      ) ${T}`);
+
+      await create(`CREATE TABLE IF NOT EXISTS \`member_biometrics\` (
+        \`id\` CHAR(36) NOT NULL,
+        \`member_id\` CHAR(36) NOT NULL,
+        \`bio_type\` TINYINT UNSIGNED NOT NULL,
+        \`bio_no\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`bio_index\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`major_ver\` VARCHAR(8) NOT NULL,
+        \`minor_ver\` VARCHAR(8) NOT NULL DEFAULT '0',
+        \`format\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`duress\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`valid\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`template_enc\` MEDIUMBLOB NOT NULL,
+        \`key_version\` SMALLINT UNSIGNED NOT NULL,
+        \`template_sha256\` CHAR(64) NOT NULL,
+        \`template_size\` INT UNSIGNED NOT NULL,
+        \`source_device_id\` CHAR(36) NULL,
+        \`consent_pending\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`pending_until\` DATETIME NULL,
+        \`enrolled_at\` DATETIME NOT NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`member_biometrics_slot\` (\`member_id\`, \`bio_type\`, \`bio_no\`, \`bio_index\`),
+        KEY \`member_biometrics_pending\` (\`consent_pending\`, \`pending_until\`),
+        KEY \`member_biometrics_key_version\` (\`key_version\`)
+      ) ${T}`);
+
+      await create(`CREATE TABLE IF NOT EXISTS \`member_biometric_photos\` (
+        \`id\` CHAR(36) NOT NULL,
+        \`member_id\` CHAR(36) NOT NULL,
+        \`kind\` VARCHAR(10) NOT NULL,
+        \`bio_type\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`storage_key\` VARCHAR(255) NOT NULL,
+        \`key_version\` SMALLINT UNSIGNED NOT NULL,
+        \`sha256\` CHAR(64) NOT NULL,
+        \`size\` INT UNSIGNED NOT NULL,
+        \`source_device_id\` CHAR(36) NULL,
+        \`consent_pending\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`pending_until\` DATETIME NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`member_biometric_photos_slot\` (\`member_id\`, \`kind\`, \`bio_type\`),
+        KEY \`member_biometric_photos_pending\` (\`consent_pending\`, \`pending_until\`)
+      ) ${T}`);
+
+      await create(`CREATE TABLE IF NOT EXISTS \`member_biometric_consents\` (
+        \`id\` CHAR(36) NOT NULL,
+        \`member_id\` CHAR(36) NOT NULL,
+        \`consented_at\` DATETIME NOT NULL,
+        \`consented_by_user_id\` CHAR(36) NULL,
+        \`method\` VARCHAR(16) NOT NULL,
+        \`revoked_at\` DATETIME NULL,
+        \`revoked_by_user_id\` CHAR(36) NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`member_biometric_consents_member\` (\`member_id\`, \`revoked_at\`)
+      ) ${T}`);
+
+      await create(`CREATE TABLE IF NOT EXISTS \`device_member_sync\` (
+        \`device_id\` CHAR(36) NOT NULL,
+        \`member_id\` CHAR(36) NOT NULL,
+        \`pin\` INT UNSIGNED NOT NULL,
+        \`desired\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`desired_hash\` CHAR(64) NULL,
+        \`desired_json\` TEXT NULL,
+        \`applied_hash\` CHAR(64) NULL,
+        \`applied_json\` TEXT NULL,
+        \`pending_batch_id\` CHAR(26) NULL,
+        \`pending_hash\` CHAR(64) NULL,
+        \`state\` VARCHAR(16) NOT NULL DEFAULT 'removed',
+        \`attempts\` INT UNSIGNED NOT NULL DEFAULT 0,
+        \`last_return_code\` INT NULL,
+        \`last_error_at\` DATETIME NULL,
+        \`undesired_since\` DATETIME NULL,
+        \`incompatible_json\` TEXT NULL,
+        \`retry_day\` DATE NULL,
+        \`retry_count\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`device_id\`, \`member_id\`),
+        KEY \`device_member_sync_member\` (\`member_id\`),
+        KEY \`device_member_sync_state\` (\`device_id\`, \`state\`),
+        KEY \`device_member_sync_pin\` (\`device_id\`, \`pin\`)
+      ) ${T}`);
+
+      if (!(await hasColumn('device_commands', 'batch_id'))) {
+        await sequelize.query('ALTER TABLE `device_commands` ADD COLUMN `batch_id` CHAR(26) NULL AFTER `push_request_id`');
+      }
+      if (!(await hasIndex('device_commands', 'device_commands_member'))) {
+        await sequelize.query('ALTER TABLE `device_commands` ADD INDEX `device_commands_member` (`device_id`, `member_id`, `status`)');
+      }
+      if (!(await hasIndex('device_commands', 'device_commands_batch'))) {
+        await sequelize.query('ALTER TABLE `device_commands` ADD INDEX `device_commands_batch` (`batch_id`)');
+      }
+      for (const [col, ddl] of [
+        ['last_sweep_at', '`last_sweep_at` DATETIME NULL'],
+        ['offline_since', '`offline_since` DATETIME NULL'],
+        ['offline_notified_at', '`offline_notified_at` DATETIME NULL'],
+      ]) {
+        if (!(await hasColumn('access_device_details', col))) await sequelize.query(`ALTER TABLE \`access_device_details\` ADD COLUMN ${ddl}`);
+      }
+
+      // Every scan, granted or denied (§6.2). device_record_index: the device's `index`; a line without
+      // one (ATTLOG) gets minus its PIN, so the same person in the same second is still one row.
+      await create(`CREATE TABLE IF NOT EXISTS \`device_access_events\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`device_id\` CHAR(36) NOT NULL,
+        \`branch_id\` CHAR(36) NOT NULL,
+        \`device_record_index\` BIGINT NOT NULL,
+        \`device_time\` DATETIME NOT NULL,
+        \`utc_time\` DATETIME NOT NULL,
+        \`pin\` VARCHAR(16) NULL,
+        \`member_id\` CHAR(36) NULL,
+        \`card_no\` VARCHAR(32) NULL,
+        \`event_code\` INT NOT NULL,
+        \`verify_type\` INT NULL,
+        \`inout_status\` INT NULL,
+        \`result\` VARCHAR(8) NOT NULL,
+        \`reason\` VARCHAR(24) NULL,
+        \`attendance_id\` CHAR(36) NULL,
+        \`attendance_note\` VARCHAR(40) NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`device_access_events_record\` (\`device_id\`, \`device_record_index\`, \`device_time\`),
+        KEY \`device_access_events_device_time\` (\`device_id\`, \`utc_time\`),
+        KEY \`device_access_events_branch_time\` (\`branch_id\`, \`utc_time\`),
+        KEY \`device_access_events_member_time\` (\`member_id\`, \`utc_time\`)
+      ) ${T}`);
+
+      await create(`CREATE TABLE IF NOT EXISTS \`device_state\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`device_id\` CHAR(36) NOT NULL,
+        \`state_json\` TEXT NOT NULL,
+        \`received_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`device_state_device_time\` (\`device_id\`, \`received_at\`)
+      ) ${T}`);
+
+      // source 'device' = table=errorlog uploads (Appendix 17); 'server' = what we saw (storage full,
+      // a refused command, granted-but-not-desired). Never a body or a template.
+      await create(`CREATE TABLE IF NOT EXISTS \`device_error_logs\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`device_id\` CHAR(36) NOT NULL,
+        \`source\` VARCHAR(8) NOT NULL,
+        \`kind\` VARCHAR(32) NOT NULL,
+        \`code\` INT NULL,
+        \`message\` VARCHAR(255) NULL,
+        \`data_json\` TEXT NULL,
+        \`occurred_at\` DATETIME NOT NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`device_error_logs_device_time\` (\`device_id\`, \`created_at\`),
+        KEY \`device_error_logs_kind_time\` (\`kind\`, \`created_at\`)
+      ) ${T}`);
+
+      // §7.5: PINs a device knows that match no member. Never auto-created as members.
+      await create(`CREATE TABLE IF NOT EXISTS \`device_unlinked_users\` (
+        \`device_id\` CHAR(36) NOT NULL,
+        \`pin\` VARCHAR(16) NOT NULL,
+        \`name\` VARCHAR(24) NULL,
+        \`card_no\` VARCHAR(32) NULL,
+        \`source\` VARCHAR(8) NOT NULL,
+        \`first_seen_at\` DATETIME NOT NULL,
+        \`last_seen_at\` DATETIME NOT NULL,
+        \`hits\` INT UNSIGNED NOT NULL DEFAULT 1,
+        PRIMARY KEY (\`device_id\`, \`pin\`)
+      ) ${T}`);
+
+      // §8.3 layer 3: one row per nightly audit; the PINs the device reported in its query packs.
+      await create(`CREATE TABLE IF NOT EXISTS \`device_audits\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`device_id\` CHAR(36) NOT NULL,
+        \`status\` VARCHAR(12) NOT NULL,
+        \`query_cmd_id\` BIGINT UNSIGNED NULL,
+        \`count_cmd_id\` BIGINT UNSIGNED NULL,
+        \`packs_expected\` INT UNSIGNED NULL,
+        \`packs_received\` INT UNSIGNED NOT NULL DEFAULT 0,
+        \`device_user_count\` INT NULL,
+        \`desired_count\` INT NULL,
+        \`extra_count\` INT NULL,
+        \`missing_count\` INT NULL,
+        \`unlinked_count\` INT NULL,
+        \`report_json\` TEXT NULL,
+        \`started_at\` DATETIME NOT NULL,
+        \`finished_at\` DATETIME NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`device_audits_device_time\` (\`device_id\`, \`started_at\`),
+        KEY \`device_audits_query_cmd\` (\`query_cmd_id\`)
+      ) ${T}`);
+      await create(`CREATE TABLE IF NOT EXISTS \`device_audit_pins\` (
+        \`audit_id\` BIGINT UNSIGNED NOT NULL,
+        \`pin\` VARCHAR(16) NOT NULL,
+        PRIMARY KEY (\`audit_id\`, \`pin\`)
+      ) ${T}`);
+
+      // D-8: staff on devices, privilege 0 only, when this flag is on. Default off: nobody changes.
+      if (await sequelize.query('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gym_staff\'', { type: QueryTypes.SELECT }).then((r) => r.length > 0)) {
+        if (!(await hasColumn('gym_staff', 'device_access'))) {
+          await sequelize.query('ALTER TABLE `gym_staff` ADD COLUMN `device_access` TINYINT(1) NOT NULL DEFAULT 0');
+        }
+      }
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

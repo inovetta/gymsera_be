@@ -8,6 +8,10 @@
  * Usage (from the API folder, with its .env):
  *   node src/scripts/run-scheduled-job.js daily           (01:00 every day)
  *   node src/scripts/run-scheduled-job.js billing-inbox   (every minute)
+ *   node src/scripts/run-scheduled-job.js device-watchdog (every minute)     ZKTeco devices, docs/runbooks/devices.md
+ *   node src/scripts/run-scheduled-job.js device-sync     (every 5 minutes)
+ *   node src/scripts/run-scheduled-job.js device-audit    (hourly)
+ *   node src/scripts/run-scheduled-job.js device-retention (daily, 03:30)
  * Exit code 0 = done, 1 = failed (Task Scheduler shows it as the last run result).
  */
 require('dotenv').config();
