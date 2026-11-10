@@ -211,16 +211,31 @@ async function photoForDelivery(db, id) {
 }
 
 // ── Deletion and retention ────────────────────────────────────────────────────
-async function deleteRows(db, where, replacements) {
-  const photos = await select(db, `SELECT id, storage_key FROM member_biometric_photos WHERE ${where}`, replacements);
+// Fixed statements only (SEC-16): every member's data, or only what waited for consent too long.
+const DELETE_SQL = {
+  all: {
+    photos: 'SELECT id, storage_key FROM member_biometric_photos WHERE member_id = ?',
+    deletePhotos: 'DELETE FROM member_biometric_photos WHERE member_id = ?',
+    deleteTemplates: 'DELETE FROM member_biometrics WHERE member_id = ?',
+  },
+  pendingExpired: {
+    photos: 'SELECT id, storage_key FROM member_biometric_photos WHERE member_id = ? AND consent_pending = 1 AND pending_until < ?',
+    deletePhotos: 'DELETE FROM member_biometric_photos WHERE member_id = ? AND consent_pending = 1 AND pending_until < ?',
+    deleteTemplates: 'DELETE FROM member_biometrics WHERE member_id = ? AND consent_pending = 1 AND pending_until < ?',
+  },
+};
+
+async function deleteRows(db, which, replacements) {
+  const sql = DELETE_SQL[which];
+  const photos = await select(db, sql.photos, replacements);
   for (const p of photos) await storage().deleteKycFile(p.storage_key).catch(() => {});
-  const [, m1] = await db.sequelize.query(`DELETE FROM member_biometric_photos WHERE ${where}`, { replacements: utc(replacements) });
-  const [, m2] = await db.sequelize.query(`DELETE FROM member_biometrics WHERE ${where}`, { replacements: utc(replacements) });
+  const [, m1] = await db.sequelize.query(sql.deletePhotos, { replacements: utc(replacements) });
+  const [, m2] = await db.sequelize.query(sql.deleteTemplates, { replacements: utc(replacements) });
   return { templatesDeleted: affected(m2), photosDeleted: affected(m1) };
 }
 
 /** Every template and photo of a member (deletion, withdrawal, retention). */
-const deleteMemberBiometrics = (db, memberId) => deleteRows(db, 'member_id = ?', [memberId]);
+const deleteMemberBiometrics = (db, memberId) => deleteRows(db, 'all', [memberId]);
 
 /**
  * The retention rules of one tenant (D-4, §7.5). → { pendingExpired: [memberIds], retained: [memberIds] }
@@ -238,7 +253,7 @@ async function retentionSweep(db, now = new Date()) {
     [now, now]
   )).map((r) => r.member_id);
   for (const m of pendingMembers) {
-    await deleteRows(db, 'member_id = ? AND consent_pending = 1 AND pending_until < ?', [m, now]);
+    await deleteRows(db, 'pendingExpired', [m, now]);
   }
 
   const cutoff = new Date(now.getTime() - cfg.bioRetentionDays * 86400000).toISOString().slice(0, 10);
