@@ -21,6 +21,7 @@ const DEVICE_TABLES = [
   'access_device_details', 'device_commands', 'device_member_sync', 'member_device_identity', 'member_biometrics', 'member_biometric_photos',
   'member_biometric_consents', 'device_access_events', 'device_state', 'device_error_logs', 'device_unlinked_users', 'device_audits', 'device_audit_pins',
   'device_push_requests', 'device_capture_photos', 'device_branch_settings',
+  'device_imports', 'device_import_users', 'device_import_templates', 'device_import_packs',
 ];
 
 // A test-only biometric key, made fresh per run (never a real key).
@@ -90,10 +91,13 @@ async function createWorld() {
       return sub;
     },
 
-    /** A device on `branch`, registered by a simulator (capabilities known), with the first reconcile done. */
-    async device(db, { branch, direction = 'in', name = 'Door', registryBody, tenantId, ...simOpts } = {}) {
+    /**
+     * A device on `branch`, registered by a simulator (capabilities known), with the first reconcile done.
+     * importFirst: added in import hold (Phase 4: a device that already has another system's users).
+     */
+    async device(db, { branch, direction = 'in', name = 'Door', registryBody, tenantId, importFirst = false, ...simOpts } = {}) {
       const tid = tenantId || db.tenantId;
-      const { device } = await registry.createDevice({ tenantId: tid, tenantDb: db, branchId: branch.id, organizationId: branch.gymId || null, name, direction, createdBy: personas.owner.user.id });
+      const { device } = await registry.createDevice({ tenantId: tid, tenantDb: db, branchId: branch.id, organizationId: branch.gymId || null, name, direction, importFirst, createdBy: personas.owner.user.id });
       const sim = new ZkDeviceSimulator({ baseUrl, sn: `SIM${RUN}${String(++serial).padStart(4, '0')}`, key: device.deviceKey, mode: 'host', registryBody, ...simOpts });
       const c = await sim.connect();
       if (!c.ok) throw new Error(`simulator did not connect: ${c.step} ${c.res.status}`);
