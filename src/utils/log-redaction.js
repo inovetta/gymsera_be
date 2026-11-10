@@ -31,6 +31,9 @@ const SECRET_KEYS = new Set([
   'cardnumber', 'cardno', 'pan', 'cvv', 'cvc', 'cardexpiry', 'expirydate',
   'iban', 'accountnumber', 'bankaccount', 'bankaccountnumber', 'accountno',
   'cnic', 'cnicnumber', 'nationalid', 'nationalidnumber', 'nic', 'passportnumber',
+  // ZKTeco devices (spec ZKTECO_PUSH_DEVICE_SYNC.md §13, §14 point 3): templates, photos, device secrets.
+  'tmp', 'template', 'templateenc', 'biophoto', 'userpic',
+  'registrycode', 'sessionid', 'commkey', 'authkey', 'biometricdatakey',
 ]);
 const EMAIL_KEYS = new Set(['email', 'useremail', 'owneremail', 'to', 'from', 'replyto']);
 const PHONE_KEYS = new Set(['phone', 'phonenumber', 'mobile', 'mobilenumber', 'contactphone', 'whatsapp']);
@@ -67,6 +70,13 @@ const STRING_RULES = [
   [/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g, '[REDACTED_JWT]'],
   // Secret query / form parameters
   [/([?&;](?:token|access_token|id_token|refresh_token|code|otp|password|key|api_key|apikey|signature|sig|secret)=)[^&\s"'#]*/gi, `$1${REDACTED}`],
+  // ZKTeco: a template or photo in a device line (Tmp=, Content=, …) and device secrets (key=value or key: value)
+  [/\b(tmp|template|content|photo|biophoto|userpic)(\s*[=:]\s*)[A-Za-z0-9+/=_-]{16,}/gi, `$1$2${REDACTED}`],
+  [/\b(RegistryCode|SessionID|CommKey|authKey|registry_code|session_id|comm_key)(\s*[=:]\s*)[A-Za-z0-9+/=_-]{4,}/gi, `$1$2${REDACTED}`],
+  // A biometric key (BIOMETRIC_DATA_KEY: <version>:<64 hex>) or any 64-hex secret
+  [/\b(?:\d{1,5}:)?[0-9a-fA-F]{64}\b/g, REDACTED],
+  // Any long base64 run (a template or photo without its field name): 200+ characters
+  [/[A-Za-z0-9+/]{200,}={0,2}/g, '[REDACTED_BLOB]'],
   // Pakistani CNIC 12345-1234567-1
   [/(?<![\w-])\d{5}-\d{7}-\d(?![\w-])/g, '[REDACTED_CNIC]'],
   // IBAN (country + check digits + bank code + account) — PK, GB and similar
