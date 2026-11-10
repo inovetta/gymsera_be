@@ -79,6 +79,13 @@ const ADDS = {
       access_device_details: ['alerts_json'],
     },
   },
+  25: {
+    tables: ['device_imports', 'device_import_users', 'device_import_templates', 'device_import_packs'],
+    columns: {
+      access_device_details: ['import_hold', 'import_hold_since', 'live_at', 'gbs_stopped_at'],
+      member_biometrics: ['import_id', 'import_hold'],
+    },
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -273,6 +280,18 @@ const PROBES = {
     const linked = columnOfType(s, 'device_unlinked_users', 'linked_member_id', (c) => ['char', 'varchar'].includes(type(c)));
     if (linked.state !== 'present') return linked;
     return columnOfType(s, 'access_device_details', 'alerts_json', (c) => TEXT_TYPES.includes(type(c)));
+  },
+  // 025 creates four tables, then adds columns; the last step is member_biometrics.import_hold.
+  25: async (s) => {
+    for (const [table, column] of [
+      ['device_imports', 'status'], ['device_import_users', 'remove_at_go_live'], ['device_import_templates', 'template_enc'], ['device_import_packs', 'pack_idx'],
+    ]) {
+      const r = tableWithColumn(s, table, column);
+      if (r.state !== 'present') return r;
+    }
+    const hold = columnOfType(s, 'access_device_details', 'import_hold', (c) => INT_TYPES.includes(type(c)));
+    if (hold.state !== 'present') return hold;
+    return columnOfType(s, 'member_biometrics', 'import_hold', (c) => INT_TYPES.includes(type(c)));
   },
 };
 
