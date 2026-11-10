@@ -21,3 +21,6 @@ iisnode/
 
 # 5xx error journal (NEW-123)
 logs/
+
+# ZKTeco Phase 0 capture server output (scripts/zk-capture-server.js): device traffic, never committed
+captures/

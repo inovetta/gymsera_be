@@ -30,6 +30,7 @@ missing **What it means**, **First checks** or **Rollback**.
 | One host plan across Apple, Google Play and bank transfer: the channel matrix, `duplicate_billing` support steps, approving bank-transfer plan payments (R-95), payment proofs sent before P9c, a legacy package plan (P9c) | [billing-channels.md](billing-channels.md) |
 | A tenant approved but not ACTIVE: provisioning stopped or stalled (FLOW-02, NEW-34) | [provisioning-failure.md](provisioning-failure.md) |
 | Production and staging on one server: separate databases, no copied `.env`, checks after every deploy (NEW-127, NEW-131, NEW-134) | [production-environments.md](production-environments.md) |
+| ZKTeco Push devices, Phase 0 spike: capture server on a Mac, device tests (a) to (g), restoring the device (spec `ZKTECO_PUSH_DEVICE_SYNC.md` §15) | [zkteco-phase0-checklist.md](zkteco-phase0-checklist.md) |
 
 ## How alerts arrive
 
