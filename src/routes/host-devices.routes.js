@@ -93,4 +93,58 @@ router.delete(
   ctrl.unpairDevice
 );
 
+// ── Phase 2 (sync engine): consent, remote enrolment, staff device access ─────────────────
+const memberParam = param('memberId').isUUID().withMessage('Unknown member');
+
+router.get(
+  '/members/:memberId/biometric-consent',
+  authenticate,
+  tenantContext.forTeamRoutes,
+  validate([memberParam]),
+  can.atAnyBranch('devices.view'),
+  ctrl.getConsent
+);
+
+router.post(
+  '/members/:memberId/biometric-consent',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([memberParam, body('method').optional().isIn(['in_person', 'app']).withMessage('method is in_person or app.')], { stage: 2 }),
+  can.atAnyBranch('devices.manage'),
+  ctrl.giveConsent
+);
+
+router.delete(
+  '/members/:memberId/biometric-consent',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([memberParam], { stage: 2 }),
+  can.atAnyBranch('devices.manage'),
+  ctrl.withdrawConsent
+);
+
+router.patch(
+  '/staff/:staffId/device-access',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([param('staffId').isUUID().withMessage('Unknown staff member'), body('deviceAccess').isBoolean().withMessage('deviceAccess is true or false.')], { stage: 2 }),
+  ctrl.loadStaff,
+  can('devices.manage', { branch: 'staffBranchId' }),
+  ctrl.setStaffDeviceAccess
+);
+
+router.post(
+  '/:id/enroll',
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([idParam, body('memberId').isUUID().withMessage('Choose a member.'), body('type').optional().isInt({ min: 1, max: 10 }).withMessage('Unknown biometric type.')], { stage: 2 }),
+  ctrl.loadDevice,
+  can('devices.manage', { branch: 'deviceBranchId' }),
+  ctrl.enroll
+);
+
 module.exports = router;

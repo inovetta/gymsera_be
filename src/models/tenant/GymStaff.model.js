@@ -36,6 +36,13 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'pending',
       },
+      // ZKTeco D-8 (tenant migration 023): on the branch's access devices with privilege 0.
+      deviceAccess: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'device_access',
+      },
       inviteTokenHash: {
         type: DataTypes.STRING(64),
         allowNull: true,

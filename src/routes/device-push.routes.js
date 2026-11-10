@@ -14,13 +14,21 @@
  *   anything else → unclaimed: OK on cdata, 406 on registry, recorded for support.
  *
  * Unexpected errors answer OK (a device retries an error at once) and are logged with the device id,
- * never the body. Phase 1 stores what the device says about itself; scans and enrolments are
- * answered but not stored yet (Phase 2).
+ * never the body. Phase 2 stores scans, uploads, error logs, state history and audit packs
+ * (services/devices/device-ingest.service.js).
  */
 const express = require('express');
 const { getDeviceConfig } = require('../config/devices.config');
 const protocol = require('../services/devices/push-protocol');
 const registry = require('../services/devices/device-registry.service');
+const ingest = require('../services/devices/device-ingest.service');
+const triggers = require('../services/devices/device-triggers');
+
+/** The device as the sync engine sees it (details + branch time zone), or null. */
+const syncDeviceOf = async (tenantDb, id) => {
+  const [d] = await require('../services/devices/device-sync.service').devicesOf(tenantDb, { deviceId: id });
+  return d || null;
+};
 
 const DEVICE_PATH = /^\/(?:d\/([A-Za-z0-9]{8})\/)?iclock(?:\/|$)/;
 const isDevicePath = (path) => DEVICE_PATH.test(path);
@@ -183,19 +191,35 @@ async function handleDevice(c, { device, tenantDb }) {
         return [200, OK];
       }
       const table = String(c.query.table || '').toLowerCase();
-      if (String(c.query.type || '').toLowerCase() === 'biodata') return [200, OK]; // ENROLL_BIO result: Phase 2/3
-      if (table === 'tabledata') {
-        const name = String(c.query.tablename || '');
+      const sdev = await syncDeviceOf(tenantDb, device.id);
+      if (String(c.query.type || '').toLowerCase() === 'biodata') {
+        // ENROLL_BIO result (§7.6): the same as a template upload.
+        c.logTable = 'BioData';
+        c.logCount = sdev ? await ingest.ingestTemplates(tenantDb, device.tenant_id, sdev, 'BioData', c.body) : 0;
+        return [200, OK];
+      }
+      if (table === 'tabledata' || table === 'errorlog') {
+        const name = table === 'errorlog' ? 'errorlog' : String(c.query.tablename || '');
+        const lower = name.toLowerCase();
         c.logTable = name;
         c.logCount = protocol.recordCount(c.body, c.query.count);
-        return [200, lines(`${name}=${c.logCount}`)];
+        if (sdev) {
+          if (lower === 'user') await ingest.ingestUsers(tenantDb, sdev, c.body);
+          else if (lower === 'biodata' || lower === 'templatev10') await ingest.ingestTemplates(tenantDb, device.tenant_id, sdev, lower, c.body);
+          else if (lower === 'biophoto' || lower === 'userpic' || lower === 'attphoto') await ingest.ingestPhotos(tenantDb, device.tenant_id, sdev, lower, c.body);
+          else if (lower === 'errorlog') await ingest.ingestErrorlog(tenantDb, sdev, c.body);
+        }
+        return [200, table === 'errorlog' ? OK : lines(`${name}=${c.logCount}`)];
       }
       c.logTable = table;
       if (table === 'options') await registry.applyOptions(tenantDb, device.id, protocol.parseRegistry(c.body));
       else if (table === 'rtstate') {
-        const rows = protocol.parseRecords(c.body);
+        const rows = sdev ? await ingest.ingestState(tenantDb, sdev, c.body) : protocol.parseRecords(c.body);
         if (rows.length) await registry.applyState(tenantDb, device.id, rows[rows.length - 1]);
-      } else c.logCount = protocol.recordCount(c.body); // rtlog / ATTLOG / errorlog: stored from Phase 2
+      } else if (table === 'rtlog' || table === 'attlog') {
+        const res = sdev ? await ingest.ingestScans(tenantDb, sdev, c.body, { attlog: table === 'attlog' }) : { received: protocol.recordCount(c.body) };
+        c.logCount = res.received;
+      } else c.logCount = protocol.recordCount(c.body);
       return [200, OK];
     }
     case 'registry': {
@@ -205,6 +229,8 @@ async function handleDevice(c, { device, tenantDb }) {
       }
       await registry.applyRegistry(tenantDb, device.id, reg);
       await registry.markRegistered(device, { pushver: reg.PushVersion || c.query.pushver });
+      // Capabilities are known now: who belongs on it, with which templates (§8.2 "device created").
+      triggers.reconcileDeviceSoon(tenantDb, device.id, 'device_registered');
       return [200, lines(`RegistryCode=${device.registry_code}`)];
     }
     case 'push':
@@ -224,7 +250,9 @@ async function handleDevice(c, { device, tenantDb }) {
       const name = String(c.query.tablename || '');
       c.logTable = name;
       c.logCount = protocol.recordCount(c.body, c.query.count);
-      return [200, lines(`${name}=${c.logCount}`)]; // stored by the nightly audit (Phase 2)
+      const sdev = await syncDeviceOf(tenantDb, device.id);
+      if (sdev) await ingest.ingestQuery(tenantDb, sdev, c.query, c.body);
+      return [200, lines(`${name}=${c.logCount}`)];
     }
     default:
       return [200, OK];

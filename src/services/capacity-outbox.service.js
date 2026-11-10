@@ -18,6 +18,10 @@ const subscriptionQuotaService = require('./subscription-quota.service');
  * 4. A background sweep inside the daily cron processes any pending outbox rows that were interrupted.
  */
 
+// ZKTeco device triggers share this table (devices/device-triggers.js) and run their own sweep
+// (the device-sync job). They are never capacity steps.
+const DEVICE_EVENT_TYPE = 'DEVICE_RECONCILE';
+
 const createOutboxEntry = async (tenantDb, entry, { transaction } = {}) => {
   const { CapacityOutbox, Outbox } = tenantDb.models;
   const Model = CapacityOutbox || Outbox;
@@ -43,6 +47,7 @@ const processOutboxEntry = async (tenantDb, outboxId) => {
 
   const entry = await Model.findByPk(outboxId);
   if (!entry) return { processed: false, reason: 'entry_not_found' };
+  if (entry.eventType === DEVICE_EVENT_TYPE) return { processed: false, reason: 'not_a_capacity_event' };
   if (entry.status === 'PROCESSED') return { processed: true, alreadyProcessed: true };
 
   const payload = typeof entry.payloadJson === 'string' ? JSON.parse(entry.payloadJson) : entry.payloadJson;
@@ -112,6 +117,7 @@ const sweepTenantOutbox = async (tenantId, tenantDb) => {
   const pendingEntries = await Model.findAll({
     where: {
       status: { [Op.in]: ['PENDING', 'FAILED'] },
+      eventType: { [Op.ne]: DEVICE_EVENT_TYPE },
       attempts: { [Op.lt]: 10 },
     },
     order: [['createdAt', 'ASC']],
@@ -139,7 +145,7 @@ const getOutboxStats = async (tenantDb) => {
   const { CapacityOutbox, Outbox } = tenantDb.models;
   const Model = CapacityOutbox || Outbox;
   if (!Model) return { unprocessed: 0, oldestCreatedAt: null };
-  const where = { status: { [Op.in]: ['PENDING', 'FAILED'] } };
+  const where = { status: { [Op.in]: ['PENDING', 'FAILED'] }, eventType: { [Op.ne]: DEVICE_EVENT_TYPE } };
   const [unprocessed, oldest] = await Promise.all([
     Model.count({ where }),
     Model.findOne({ where, order: [['createdAt', 'ASC']], attributes: ['createdAt'] }),

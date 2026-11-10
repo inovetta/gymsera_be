@@ -8,6 +8,7 @@
  * All state is in MySQL (iisnode runs several processes). Times are written from JS (UTC), never
  * NOW(), so a MySQL server in another time zone cannot shift them.
  */
+const { utc } = require('./sql-time');
 const crypto = require('crypto');
 const { QueryTypes } = require('sequelize');
 const { sequelize: platformDb } = require('../../database/platform');
@@ -47,7 +48,7 @@ const formatKey = (key) => `${key.slice(0, 4)}-${key.slice(4)}`;
 const newCommKey = () => String(crypto.randomInt(100000, 1000000));
 const newClaimToken = () => crypto.randomBytes(13).toString('hex').toUpperCase(); // 26 chars
 
-const q = (db, sql, replacements, type = QueryTypes.SELECT) => db.query(sql, { replacements, type });
+const q = (db, sql, replacements, type = QueryTypes.SELECT) => db.query(sql, { replacements: utc(replacements), type });
 
 const isUniqueError = (err) => err && (err.name === 'SequelizeUniqueConstraintError' || err.original?.code === 'ER_DUP_ENTRY');
 
@@ -76,7 +77,7 @@ async function bindSerial(device, sn) {
   try {
     const [, meta] = await platformDb.query(
       'UPDATE access_devices SET serial_number = ?, updated_at = ? WHERE id = ? AND serial_number IS NULL',
-      { replacements: [sn, new Date(), device.id] }
+      { replacements: utc([sn, new Date(), device.id]) }
     );
     const affected = typeof meta === 'number' ? meta : meta?.affectedRows;
     if (affected === 1) {
@@ -95,7 +96,7 @@ async function bindSerial(device, sn) {
 async function recordSerialMismatch(device, sn) {
   await platformDb.query(
     'UPDATE access_devices SET serial_mismatch_at = ?, serial_mismatch_value = ?, updated_at = ? WHERE id = ?',
-    { replacements: [new Date(), String(sn || '').slice(0, 32), new Date(), device.id] }
+    { replacements: utc([new Date(), String(sn || '').slice(0, 32), new Date(), device.id]) }
   );
 }
 
@@ -113,10 +114,10 @@ async function markSeen(device, { ip, pushver, host, scheme, tokenState }) {
      WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ? OR NOT (last_ip <=> ?) OR NOT (last_host <=> ?)
        OR (? IS NOT NULL AND NOT (last_token_state <=> ?)) OR (? IS NOT NULL AND NOT (last_pushver <=> ?)))`,
     {
-      replacements: [
+      replacements: utc([
         now, ip, pushver || null, host, scheme, tokenState || null,
         device.id, due, ip, host, tokenState || null, tokenState || null, pushver || null, pushver || null,
-      ],
+      ]),
     }
   );
 }
@@ -125,7 +126,7 @@ async function markRegistered(device, { pushver }) {
   const now = new Date();
   await platformDb.query(
     'UPDATE access_devices SET status = \'active\', registered_at = ?, last_pushver = COALESCE(?, last_pushver), updated_at = ? WHERE id = ? AND status IN (\'awaiting_connection\', \'active\')',
-    { replacements: [now, pushver || null, now, device.id] }
+    { replacements: utc([now, pushver || null, now, device.id]) }
   );
   device.status = 'active';
 }
@@ -145,15 +146,15 @@ async function recordUnclaimed({ sn, host, pathKey, ip, reason }) {
      WHERE (SELECT COUNT(*) FROM unclaimed_device_contacts) < ?
      ON DUPLICATE KEY UPDATE hits = IF(last_seen_at < ?, hits + 1, hits), last_seen_at = IF(last_seen_at < ?, ?, last_seen_at)`,
     {
-      replacements: [
+      replacements: utc([
         hash, sn ? String(sn).slice(0, 64) : null, host ? String(host).slice(0, 255) : null, pathKey || null,
         ip ? String(ip).slice(0, 45) : null, reason, now, now, cfg.unclaimedMaxRows, due, due, now,
-      ],
+      ]),
     }
   );
   if (crypto.randomInt(50) === 0) {
     await platformDb.query('DELETE FROM unclaimed_device_contacts WHERE last_seen_at < ?', {
-      replacements: [new Date(now.getTime() - cfg.unclaimedDays * 86400000)],
+      replacements: utc([new Date(now.getTime() - cfg.unclaimedDays * 86400000)]),
     });
   }
 }
@@ -180,7 +181,7 @@ async function applyRegistry(tenantDb, deviceId, reg) {
     `UPDATE access_device_details SET model = ?, firmware = ?, push_version = ?, mac = ?, comm_type = ?, device_type = ?,
        capabilities_json = ?, updated_at = ? WHERE id = ?`,
     {
-      replacements: [
+      replacements: utc([
         caps.DeviceName ? String(caps.DeviceName).slice(0, 100) : null,
         caps.FirmVer ? String(caps.FirmVer).slice(0, 100) : null,
         caps.PushVersion ? String(caps.PushVersion).slice(0, 16) : null,
@@ -188,7 +189,7 @@ async function applyRegistry(tenantDb, deviceId, reg) {
         caps.CommType ? String(caps.CommType).slice(0, 32) : null,
         caps.DeviceType ? String(caps.DeviceType).slice(0, 8) : null,
         JSON.stringify(caps), new Date(), deviceId,
-      ],
+      ]),
     }
   );
 }
@@ -199,18 +200,18 @@ async function applyOptions(tenantDb, deviceId, options) {
   if (!det) return;
   const counts = { ...parseJson(det.counts_json), ...options };
   await tenantDb.sequelize.query('UPDATE access_device_details SET counts_json = ?, updated_at = ? WHERE id = ?', {
-    replacements: [JSON.stringify(counts), new Date(), deviceId],
+    replacements: utc([JSON.stringify(counts), new Date(), deviceId]),
   });
 }
 
 async function applyState(tenantDb, deviceId, state) {
   await tenantDb.sequelize.query('UPDATE access_device_details SET state_json = ?, updated_at = ? WHERE id = ?', {
-    replacements: [JSON.stringify(state), new Date(), deviceId],
+    replacements: utc([JSON.stringify(state), new Date(), deviceId]),
   });
 }
 
 // ── Command queue (§8.1) ──────────────────────────────────────────────────────
-/** The command text for a row. Phase 1 renders only kinds that carry no member data. */
+/** The command text for a row that carries no member data (Phase 1 kinds). Member kinds: device-sync.service. */
 function renderCommand(row) {
   const args = parseJson(row.args_json);
   switch (row.kind) {
@@ -225,62 +226,46 @@ function renderCommand(row) {
 
 /**
  * Claims up to `commandsPerPoll` due commands with one UPDATE (MySQL 5.7 has no SKIP LOCKED), so two
- * processes can never hand out the same command, then packs them under the size cap. What does not
- * fit goes back to `queued`.
+ * processes can never hand out the same command, then renders them (device-sync.service: templates
+ * decrypted in memory only) and packs them under min(MaxPackageSize, 1 MB). What does not fit, and
+ * photos over DEVICE_PHOTOS_PER_POLL, go back to `queued`; a command of a replaced batch is
+ * superseded; one that cannot be built is failed and its pair re-planned.
  */
 async function claimCommands(tenantDb, device, { maxPackageSize } = {}) {
   const cfg = getDeviceConfig();
+  const sync = require('./device-sync.service');
   const now = new Date();
   const token = newClaimToken();
   await tenantDb.sequelize.query(
     `UPDATE device_commands SET status = 'sent', sent_at = ?, attempts = attempts + 1, claim_token = ?, updated_at = ?
      WHERE device_id = ? AND status = 'queued' AND not_before <= ? AND (expires_at IS NULL OR expires_at > ?)
      ORDER BY priority, id LIMIT ?`,
-    { replacements: [now, token, now, device.id, now, now, Number(cfg.commandsPerPoll)] }
+    { replacements: utc([now, token, now, device.id, now, now, Number(cfg.commandsPerPoll)]) }
   );
   const rows = await q(tenantDb.sequelize, 'SELECT * FROM device_commands WHERE claim_token = ? ORDER BY priority, id', [token]);
   if (!rows.length) return '';
 
-  const renderable = [];
-  const unsupported = [];
-  for (const row of rows) {
-    let text = null;
-    try {
-      text = renderCommand(row);
-    } catch (_) {
-      text = null;
-    }
-    if (text) renderable.push({ id: Number(row.id), text });
-    else unsupported.push(Number(row.id));
-  }
-  if (unsupported.length) {
-    await tenantDb.sequelize.query(
-      'UPDATE device_commands SET status = \'failed\', updated_at = ? WHERE id IN (?)',
-      { replacements: [now, unsupported] }
-    );
-  }
+  const rendered = await sync.renderCommands(tenantDb, device, rows);
+  const renderable = rendered.filter((r) => r.text);
+  const putBack = rendered.filter((r) => r.held).map((r) => r.id);
+  await sync.supersede(tenantDb, device, rendered.filter((r) => r.superseded).map((r) => r.id), now);
   const limit = Math.min(Number(maxPackageSize) > 0 ? Number(maxPackageSize) : cfg.maxPackageBytes, cfg.maxPackageBytes);
   const packed = protocol.packCommands(renderable, limit);
-  if (packed.heldIds.length) {
+  putBack.push(...packed.heldIds);
+  if (putBack.length) {
     await tenantDb.sequelize.query(
       `UPDATE device_commands SET status = 'queued', claim_token = NULL, sent_at = NULL, attempts = attempts - 1, updated_at = ?
        WHERE claim_token = ? AND id IN (?)`,
-      { replacements: [now, token, packed.heldIds] }
+      { replacements: utc([now, token, putBack]) }
     );
   }
+  await sync.failUnrenderable(tenantDb, device, rendered.filter((r) => r.failed).map((r) => r.id), now);
   return packed.body;
 }
 
-/** devicecmd results. Return ≥ 0, and -7 ("repeated command"), mean done (§8.1). Only this device's commands. */
+/** devicecmd results: the §8.1 return-code table (device-sync.service#recordResults). Only this device's commands. */
 async function recordResults(tenantDb, device, results) {
-  const now = new Date();
-  for (const r of results) {
-    const status = r.returnCode >= 0 || r.returnCode === -7 ? 'acked' : 'failed';
-    await tenantDb.sequelize.query(
-      'UPDATE device_commands SET status = ?, return_code = ?, acked_at = ?, updated_at = ? WHERE id = ? AND device_id = ? AND status = \'sent\'',
-      { replacements: [status, r.returnCode, now, now, r.id, device.id] }
-    );
-  }
+  return require('./device-sync.service').recordResults(tenantDb, device, results);
 }
 
 // ── Host-facing operations ────────────────────────────────────────────────────
@@ -392,10 +377,10 @@ async function createDevice({ tenantId, tenantDb, branchId, organizationId, name
            registry_code, session_id, token_mode, status, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_connection', ?, ?, ?)`,
         {
-          replacements: [
+          replacements: utc([
             id, key, sn, tenantId, organizationId || branch.gym_id || null, branchId, mode, commKey,
             protocol.newRegistryCode(), protocol.newSessionId(), cfg.tokenMode, createdBy, now, now,
-          ],
+          ]),
         }
       );
       row = await findById(id);
@@ -410,10 +395,10 @@ async function createDevice({ tenantId, tenantDb, branchId, organizationId, name
     await tenantDb.sequelize.query(
       `INSERT INTO access_device_details (id, branch_id, name, direction, enabled, created_by, created_at, updated_at)
        VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
-      { replacements: [id, branchId, cleanName, direction, createdBy, now, now] }
+      { replacements: utc([id, branchId, cleanName, direction, createdBy, now, now]) }
     );
   } catch (err) {
-    await platformDb.query('DELETE FROM access_devices WHERE id = ?', { replacements: [id] }).catch(() => {});
+    await platformDb.query('DELETE FROM access_devices WHERE id = ?', { replacements: utc([id]) }).catch(() => {});
     throw err;
   }
   return { device: viewOf(row, await detailsOf(tenantDb, id), branch.branch_name), setup: setupFor(row) };
@@ -458,9 +443,10 @@ async function updateDevice({ tenantId, tenantDb, deviceId, name, direction }) {
     // One fixed statement: a field left out keeps its value.
     await tenantDb.sequelize.query(
       'UPDATE access_device_details SET name = COALESCE(?, name), direction = COALESCE(?, direction), updated_at = ? WHERE id = ?',
-      { replacements: [clean, direction ?? null, new Date(), deviceId] }
+      { replacements: utc([clean, direction ?? null, new Date(), deviceId]) }
     );
   }
+  if (direction !== undefined) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'direction_changed');
   return getDevice({ tenantId, tenantDb, deviceId });
 }
 
@@ -468,12 +454,13 @@ async function updateDevice({ tenantId, tenantDb, deviceId, name, direction }) {
 async function setEnabled({ tenantId, tenantDb, deviceId, enabled }) {
   const now = new Date();
   await tenantDb.sequelize.query('UPDATE access_device_details SET enabled = ?, updated_at = ? WHERE id = ?', {
-    replacements: [enabled ? 1 : 0, now, deviceId],
+    replacements: utc([enabled ? 1 : 0, now, deviceId]),
   });
   const sql = enabled
     ? 'UPDATE access_devices SET status = IF(registered_at IS NULL, \'awaiting_connection\', \'active\'), updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\''
     : 'UPDATE access_devices SET status = \'disabled\', updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\'';
-  await platformDb.query(sql, { replacements: [now, deviceId, tenantId] });
+  await platformDb.query(sql, { replacements: utc([now, deviceId, tenantId]) });
+  if (enabled) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'device_enabled');
   return getDevice({ tenantId, tenantDb, deviceId });
 }
 
@@ -491,7 +478,7 @@ async function repairDevice({ tenantId, tenantDb = null, deviceId }) {
            status = IF(status = 'disabled', 'disabled', 'awaiting_connection'), registered_at = NULL,
            serial_mismatch_at = NULL, serial_mismatch_value = NULL, last_token_state = NULL, updated_at = ?
          WHERE id = ? AND tenant_id = ? AND status <> 'removed' AND link_mode <> 'serial'`,
-        { replacements: [newDeviceKey(), protocol.newRegistryCode(), protocol.newSessionId(), now, deviceId, tenantId] }
+        { replacements: utc([newDeviceKey(), protocol.newRegistryCode(), protocol.newSessionId(), now, deviceId, tenantId]) }
       );
       break;
     } catch (err) {
@@ -510,14 +497,14 @@ async function unpairDevice({ tenantId, tenantDb, deviceId }) {
   await platformDb.query(
     `UPDATE access_devices SET status = 'removed', previous_serial_number = COALESCE(serial_number, previous_serial_number),
        serial_number = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-    { replacements: [now, deviceId, tenantId] }
+    { replacements: utc([now, deviceId, tenantId]) }
   );
   await tenantDb.sequelize.query('UPDATE access_device_details SET enabled = 0, removed_at = ?, updated_at = ? WHERE id = ?', {
-    replacements: [now, now, deviceId],
+    replacements: utc([now, now, deviceId]),
   });
   // Commands still queued for it can never be delivered.
   await tenantDb.sequelize.query('UPDATE device_commands SET status = \'expired\', updated_at = ? WHERE device_id = ? AND status = \'queued\'', {
-    replacements: [now, deviceId],
+    replacements: utc([now, deviceId]),
   });
 }
 

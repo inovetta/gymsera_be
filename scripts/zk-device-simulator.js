@@ -18,6 +18,14 @@
  *   --once        connect, poll once, print, exit
  *   --return N    the Return code it answers for every command (default 0)
  * It polls every RequestDelay seconds and answers each command. Ctrl+C to stop.
+ *
+ * Phase 2: the simulator keeps a device's own tables (users, userauthorize, templates per type,
+ * comparison photos, userpic) and runs commands on them with the firmware's return codes: -27 for
+ * an unknown PIN, -30 when a template's major version differs from its MultiBioVersion, -708 for a
+ * photo type it does not support or ENROLL_BIO when `enrollSupported: false`. DATA QUERY user
+ * answers through querydata in packs; DATA COUNT returns the count; ENROLL_BIO posts a BioData
+ * result. scan() decides like the device (offline too: unknown 27, past EndTime 29, else 0) and
+ * posts the rtlog line. step() acks every command of a poll in ONE devicecmd body.
  */
 'use strict';
 
@@ -51,6 +59,32 @@ function parseConfig(body) {
   return out;
 }
 
+// ── The device's own data (Phase 2): users, authorizations, templates, photos ────────────────────
+const fieldsOf = (text) => {
+  const out = {};
+  for (const part of String(text).split('\t')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim().toLowerCase()] = part.slice(i + 1);
+  }
+  return out;
+};
+const zkSeconds = (y, mo, d, h = 0, mi = 0, s = 0) => ((y - 2000) * 12 * 31 + (mo - 1) * 31 + d - 1) * 86400 + (h * 60 + mi) * 60 + s;
+/** 'YYYY-MM-DD HH:MM:SS' → ZK seconds (Appendix 5); monotonic, so it compares with EndTime. */
+const zkOf = (local) => {
+  const [date, time = '00:00:00'] = String(local).split(' ');
+  const [y, mo, d] = date.split('-').map(Number);
+  const [h, mi, s] = time.split(':').map(Number);
+  return zkSeconds(y, mo, d, h, mi, s);
+};
+/** EndTime in either format → the last ZK second it allows. */
+const endOf = (v) => {
+  const t = String(v || '');
+  if (!t || t === '0') return null;
+  if (/^\d{8}$/.test(t)) return zkSeconds(Number(t.slice(0, 4)), Number(t.slice(4, 6)), Number(t.slice(6, 8)), 23, 59, 59);
+  return Number(t);
+};
+const majorOf = (v) => String(Number(String(v).split('.')[0]));
+
 class ZkDeviceSimulator {
   /**
    * @param {object} o
@@ -76,6 +110,182 @@ class ZkDeviceSimulator {
     this.registryCode = null;
     this.sessionId = null;
     this.config = {};
+    // Phase 2: a device with its own tables.
+    const reg = Object.fromEntries(this.registryBody.split(',').map((p) => p.replace(/^~/, '').split('=')).filter((kv) => kv.length === 2));
+    this.versions = String(reg.MultiBioVersion || '').split(':');
+    this.photoSupport = String(reg.MultiBioPhotoSupport || '').split(':');
+    this.users = new Map(); // pin → { pin, name, cardNo, startTime, endTime, privilege }
+    this.auth = new Map(); // pin → fields
+    this.bio = new Map(); // `${pin}:${type}:${no}:${index}` → { pin, type, no, index, majorVer, tmp }
+    this.photos = new Map(); // `${pin}:${type}` → content
+    this.userpics = new Map(); // pin → content
+    this.executed = []; // every command text received, in order
+    this.uploads = []; // { path, body } posted while executing (querydata, BioData)
+    this.recordIndex = 0;
+    this.queryPackSize = o.queryPackSize || 2;
+    this.enrollSupported = o.enrollSupported !== false;
+    this.forceReturn = o.forceReturn || null; // (text) → a return code to answer instead, or null
+    this.lowerCaseReturn = Boolean(o.lowerCaseReturn);
+  }
+
+  /** Runs one command on the device's tables like the firmware would. → return code */
+  execute(text) {
+    this.executed.push(text);
+    if (this.forceReturn) {
+      const forced = this.forceReturn(text);
+      if (forced !== null && forced !== undefined) return forced;
+    }
+    const [head, ...rest] = text.split('\n');
+    const m = /^(DATA (UPDATE|DELETE|QUERY|COUNT) (\w+)|ENROLL_BIO|INFO|CHECK)\s?(.*)$/.exec(head);
+    if (!m) return -1;
+    if (head.startsWith('INFO') || head.startsWith('CHECK')) return 0;
+    if (head.startsWith('ENROLL_BIO')) {
+      if (!this.enrollSupported) return -708;
+      const f = Object.fromEntries(head.slice(11).split(/[ \t]/).map((kv) => kv.split('=')));
+      this.pendingEnroll = { pin: f.PIN, type: Number(f.TYPE), no: Number(f.NO || 0) };
+      return 0;
+    }
+    const verb = m[2];
+    const table = m[3].toLowerCase();
+    const first = fieldsOf(m[4]);
+    const pinOf = (f) => String(f.pin ?? '');
+    if (verb === 'UPDATE' && table === 'user') {
+      this.users.set(pinOf(first), { pin: pinOf(first), name: first.name, cardNo: first.cardno, startTime: first.starttime, endTime: first.endtime, privilege: first.privilege });
+      return 0;
+    }
+    if (verb === 'UPDATE' && table === 'userauthorize') {
+      if (!this.users.has(pinOf(first))) return -27;
+      this.auth.set(pinOf(first), first);
+      return 0;
+    }
+    if (verb === 'UPDATE' && table === 'biodata') {
+      const records = [first, ...rest.map(fieldsOf)];
+      for (const r of records) {
+        if (!this.users.has(pinOf(r))) return -27;
+        if (!r.tmp) return -26;
+        const want = this.versions[Number(r.type)];
+        if (want && want !== '0' && majorOf(want) !== majorOf(r.majorver)) return -30;
+      }
+      for (const r of records) this.bio.set(`${pinOf(r)}:${r.type}:${r.no}:${r.index}`, { pin: pinOf(r), type: Number(r.type), no: Number(r.no), index: Number(r.index), majorVer: r.majorver, tmp: r.tmp });
+      return 0;
+    }
+    if (verb === 'UPDATE' && table === 'biophoto') {
+      if (!this.users.has(pinOf(first))) return -27;
+      if (this.photoSupport[Number(first.type)] !== '1') return -708;
+      this.photos.set(`${pinOf(first)}:${first.type}`, first.content);
+      return 0;
+    }
+    if (verb === 'UPDATE' && table === 'userpic') {
+      if (!this.users.has(pinOf(first))) return -27;
+      this.userpics.set(pinOf(first), first.content);
+      return 0;
+    }
+    if (verb === 'DELETE') {
+      const pin = pinOf(first);
+      if (table === 'user') {
+        this.users.delete(pin);
+        this.auth.delete(pin);
+        for (const k of [...this.bio.keys()]) if (k.startsWith(`${pin}:`)) this.bio.delete(k);
+        for (const k of [...this.photos.keys()]) if (k.startsWith(`${pin}:`)) this.photos.delete(k);
+        this.userpics.delete(pin);
+      } else if (table === 'userauthorize') this.auth.delete(pin);
+      else if (table === 'biodata') {
+        for (const [k, v] of [...this.bio.entries()]) if (v.pin === pin && (first.type === undefined || v.type === Number(first.type))) this.bio.delete(k);
+      } else if (table === 'biophoto') {
+        for (const k of [...this.photos.keys()]) if (k.startsWith(`${pin}:`)) this.photos.delete(k);
+      } else if (table === 'userpic') this.userpics.delete(pin);
+      return 0;
+    }
+    if (verb === 'COUNT') {
+      if (table === 'user') return this.users.size;
+      if (table === 'biodata') return [...this.bio.values()].filter((b) => first.type === undefined || b.type === Number(first.type)).length;
+      return 0;
+    }
+    if (verb === 'QUERY') {
+      this.pendingQuery = m[4];
+      return 0;
+    }
+    return -1;
+  }
+
+  /** One device poll cycle: get commands, run them, post query packs / enrol results, then ONE devicecmd body. */
+  async step() {
+    const r = await this.poll();
+    if (!r.commands.length) return { commands: [], results: [], poll: r };
+    const results = [];
+    for (const cmd of r.commands) {
+      this.pendingQuery = null;
+      this.pendingEnroll = null;
+      const code = this.execute(cmd.text);
+      if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=user')) await this.sendUserQuery(cmd.id);
+      if (this.pendingEnroll) await this.sendEnroll(this.pendingEnroll);
+      results.push({ id: cmd.id, returnCode: code, cmd: cmd.text.split(' ').slice(0, 2).join(' ') });
+    }
+    const body = results.map((x) => `ID=${x.id}&${this.lowerCaseReturn ? 'return' : 'Return'}=${x.returnCode}&CMD=${x.cmd}`).join('\n');
+    const ack = await this.request('POST', `/iclock/devicecmd?${this.q()}`, body);
+    return { commands: r.commands, results, poll: r, ack };
+  }
+
+  /** Polls until the server has nothing more (or `max` cycles). → every command handled */
+  async drain(max = 50) {
+    const all = [];
+    for (let i = 0; i < max; i++) {
+      const s = await this.step();
+      if (!s.commands.length) break;
+      all.push(...s.results.map((x, j) => ({ ...x, text: s.commands[j].text })));
+    }
+    return all;
+  }
+
+  async sendUserQuery(cmdid) {
+    const users = [...this.users.values()];
+    const packs = [];
+    for (let i = 0; i < users.length; i += this.queryPackSize) packs.push(users.slice(i, i + this.queryPackSize));
+    if (!packs.length) packs.push([]);
+    for (let i = 0; i < packs.length; i++) {
+      const body = packs[i].map((u) => `user uid=${u.pin}\tcardno=${u.cardNo || ''}\tpin=${u.pin}\tname=${u.name || ''}\tprivilege=0`).join('\n');
+      const res = await this.querydata({ cmdid, tablename: 'user', count: packs[i].length, packcnt: packs.length, packidx: i + 1 }, body);
+      this.uploads.push({ path: 'querydata', status: res.status, text: res.text });
+    }
+  }
+
+  async sendEnroll({ pin, type, no }) {
+    const tmp = `ENROLLED${crypto.randomBytes(30).toString('base64').replace(/[^A-Za-z0-9]/g, 'A')}`;
+    const major = majorOf(this.versions[type] || '0');
+    this.bio.set(`${pin}:${type}:${no}:0`, { pin, type, no, index: 0, majorVer: major, tmp });
+    const body = `TYPE=${type}\tPIN=${pin}\tNO=${no}\tINDEX=0\tMAJOR_VER=${major}\tMINOR_VER=1\tTMP=${tmp}`;
+    const res = await this.request('POST', `/iclock/cdata?${this.q('&type=BioData')}`, body);
+    this.uploads.push({ path: 'BioData', status: res.status, text: res.text });
+  }
+
+  /**
+   * Someone presents a face, finger or card. The device decides alone, from its own tables (works
+   * offline): unknown PIN → 27, past EndTime → 29, else 0 (door opens). Then posts the rtlog line.
+   * `at` is device local time 'YYYY-MM-DD HH:MM:SS'. → { event, res }
+   */
+  async scan(pin, at, { inoutstatus = 0, send = true, index } = {}) {
+    const u = this.users.get(String(pin));
+    let event = 0;
+    if (!u) event = 27;
+    else {
+      const end = endOf(u.endTime);
+      if (end !== null && zkOf(at) > end) event = 29;
+    }
+    const idx = index ?? ++this.recordIndex;
+    const line = `time=${at}\tpin=${pin}\tcardno=0\teventaddr=1\tevent=${event}\tinoutstatus=${inoutstatus}\tverifytype=15\tindex=${idx}`;
+    const res = send ? await this.upload('rtlog', line) : null;
+    return { event, res, line, index: idx };
+  }
+
+  /** What this device holds for a PIN (tests). */
+  holds(pin) {
+    const p = String(pin);
+    return {
+      user: this.users.get(p) || null,
+      auth: this.auth.get(p) || null,
+      bioTypes: [...new Set([...this.bio.values()].filter((b) => b.pin === p).map((b) => b.type))].sort(),
+      photoTypes: [...this.photos.keys()].filter((k) => k.startsWith(`${p}:`)).map((k) => Number(k.split(':')[1])),
+    };
   }
 
   token() {
@@ -229,4 +439,4 @@ if (require.main === module) {
   main().catch((err) => { console.error(err.message); process.exitCode = 1; });
 }
 
-module.exports = { ZkDeviceSimulator, parseCommands, parseConfig, DEFAULT_REGISTRY };
+module.exports = { ZkDeviceSimulator, parseCommands, parseConfig, DEFAULT_REGISTRY, zkOf };

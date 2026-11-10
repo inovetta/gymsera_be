@@ -32,6 +32,14 @@ const isCheckinValid = (subscription, today = new Date().toISOString().split('T'
   && today <= subscription.endDate
   && (subscription.remainingVisits === null || subscription.remainingVisits > 0);
 
+// The branch rule of a check-in, shared by the QR scan and the access devices (ZKTeco spec §7.1):
+// the subscription's own branch, or another branch of the same organization (gym).
+const subscriptionCoversBranch = async (models, subscription, branch) => {
+  if (!subscription.branchId || subscription.branchId === branch.id) return true;
+  const subBranch = await models.Branch.findByPk(subscription.branchId);
+  return Boolean(subBranch && (!subBranch.gymId || subBranch.gymId === branch.gymId));
+};
+
 // ── POST /attendance/qr-scan ──────────────────────────────────────────────────
 const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
   const { MemberSubscription, AttendanceLog, Branch, MembershipPlan } = tenantDb.models;
@@ -136,11 +144,8 @@ const qrScan = async (tenantDb, { qrCode, branchId, deviceId }) => {
   await _validateSubscription(tenantDb.models, subscription);
 
   // Ensure subscription belongs to this branch (or is gym-wide / belongs to same gym)
-  if (subscription.branchId && subscription.branchId !== branchId) {
-    const subBranch = await Branch.findByPk(subscription.branchId);
-    if (!subBranch || (subBranch.gymId && subBranch.gymId !== branch.gymId)) {
-      throw createError('QR code is not valid for this branch', 403);
-    }
+  if (!(await subscriptionCoversBranch(tenantDb.models, subscription, branch))) {
+    throw createError('QR code is not valid for this branch', 403);
   }
 
   const log = await AttendanceLog.create({
@@ -256,6 +261,73 @@ const deviceNotify = async (tenantDb, { deviceId, userId, eventTime, branchId })
   });
 
   return log;
+};
+
+// ── Access device scan (ZKTeco Push, spec docs/ZKTECO_PUSH_DEVICE_SYNC.md §7.3) ──
+/**
+ * A scan the device already let through (it opened the door): recorded, never refused for the
+ * subscription (the person is inside). Same rules as the QR scan where they still apply:
+ *   - the branch billing lock (assertBranchCheckinAllowed) refuses past the members' grace (403);
+ *   - a second check-in inside the branch's duplicate window is not recorded (`duplicate: true`);
+ *   - a visit is counted on a visit-limited subscription (never below 0).
+ * direction 'out' closes the member's open check-in at this branch (or records a CHECK_OUT).
+ * → { log, duplicate }
+ */
+const deviceScan = async (tenantDb, { deviceId, userId, branchId, eventTime, direction = 'in' }) => {
+  const { AttendanceLog, Branch, MemberSubscription } = tenantDb.models;
+  const branch = await Branch.findByPk(branchId);
+  if (!branch) throw createError('Branch not found', 404);
+  const { assertBranchCheckinAllowed } = require('./branch-billing-lock.service');
+  assertBranchCheckinAllowed(branch);
+  const at = eventTime ? new Date(eventTime) : new Date();
+
+  if (direction === 'out') {
+    const open = await AttendanceLog.findOne({
+      where: { userId, branchId, attendanceType: 'CHECK_IN', checkOutAt: null, checkInAt: { [Op.lte]: at, [Op.gte]: new Date(at.getTime() - 24 * 3600000) } },
+      order: [['checkInAt', 'DESC']],
+    });
+    if (open) {
+      await open.update({ checkOutAt: at, attendanceType: 'CHECK_OUT' });
+      return { log: open, duplicate: false };
+    }
+    const log = await AttendanceLog.create({
+      branchId, userId, attendanceType: 'CHECK_OUT', checkInAt: at, checkOutAt: at, entryMethod: 'DEVICE', deviceId: deviceId || null,
+    });
+    return { log, duplicate: false };
+  }
+
+  const windowMinutes = branch.duplicateCheckinWindowMinutes !== undefined && branch.duplicateCheckinWindowMinutes !== null
+    ? branch.duplicateCheckinWindowMinutes
+    : (parseInt(process.env.DUPLICATE_CHECKIN_WINDOW_MINUTES, 10) || 5);
+  const recent = await AttendanceLog.findOne({
+    where: { userId, branchId, checkInAt: { [Op.gte]: new Date(at.getTime() - windowMinutes * 60000), [Op.lte]: new Date(at.getTime() + windowMinutes * 60000) } },
+    order: [['checkInAt', 'DESC']],
+  });
+  if (recent) return { log: recent, duplicate: true };
+
+  const candidates = await MemberSubscription.findAll({
+    where: { userId, status: SubscriptionStatus.ACTIVE },
+    order: [['endDate', 'DESC']],
+  });
+  let subscription = null;
+  for (const sub of candidates) {
+    if (await subscriptionCoversBranch(tenantDb.models, sub, branch)) { subscription = sub; break; }
+  }
+  let visitsLeft = null;
+  if (subscription && subscription.remainingVisits !== null && subscription.remainingVisits > 0) {
+    await subscription.decrement('remainingVisits', { by: 1 });
+    visitsLeft = subscription.remainingVisits - 1;
+  }
+  const log = await AttendanceLog.create({
+    branchId,
+    userId,
+    memberSubscriptionId: subscription ? subscription.id : null,
+    attendanceType: 'CHECK_IN',
+    checkInAt: at,
+    entryMethod: 'DEVICE',
+    deviceId: deviceId || null,
+  });
+  return { log, duplicate: false, visitsLeft };
 };
 
 // ── GET /attendance/today ─────────────────────────────────────────────────────
@@ -394,5 +466,5 @@ const checkOut = async (tenantDb, logId) => {
   return log;
 };
 
-module.exports = { isCheckinValid, qrScan, manual, list, deviceNotify, today, range, memberHistory, aggregateReport, checkOut };
+module.exports = { isCheckinValid, subscriptionCoversBranch, qrScan, manual, list, deviceNotify, deviceScan, today, range, memberHistory, aggregateReport, checkOut };
 

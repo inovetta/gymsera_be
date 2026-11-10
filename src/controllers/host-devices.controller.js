@@ -2,6 +2,7 @@
  * Host access devices (ZKTeco spec §10, §11): add, list, detail (status only), edit, re-pair, unpair.
  * Permission checks are in the routes; every handler here is already tenant-scoped (req.tenantDb).
  */
+const { utc } = require('../services/devices/sql-time');
 const devices = require('../services/devices/device-registry.service');
 const { sendSuccess, createError } = require('../utils/response.utils');
 
@@ -87,4 +88,83 @@ const unpairDevice = async (req, res, next) => {
   }
 };
 
-module.exports = { loadDevice, listDevices, createDevice, getDevice, updateDevice, repairDevice, unpairDevice };
+// ── Phase 2: consent, enrolment, staff device access (ZKTeco spec §6.2, §7.6, D-8) ──────────
+const privacy = () => require('../services/devices/device-privacy.service');
+
+/** 404 unless the person is a member (or staff) of this tenant. */
+const assertMember = async (tenantDb, userId) => {
+  const { MemberSubscription, MemberProfile, GymStaff } = tenantDb.models;
+  const found = (await MemberSubscription.count({ where: { userId } })) || (await MemberProfile.count({ where: { userId } })) || (await GymStaff.count({ where: { userId } }));
+  if (!found) throw createError('Member not found.', 404, 'member_not_found');
+};
+
+const getConsent = async (req, res, next) => {
+  try {
+    await assertMember(req.tenantDb, req.params.memberId);
+    const status = await require('../services/devices/biometric.service').consentStatus(req.tenantDb, req.params.memberId);
+    return sendSuccess(res, { consent: status });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const giveConsent = async (req, res, next) => {
+  try {
+    await assertMember(req.tenantDb, req.params.memberId);
+    await privacy().giveConsent(req.tenantDb, { memberId: req.params.memberId, byUserId: userIdOf(req), method: req.body.method || 'in_person' });
+    const status = await require('../services/devices/biometric.service').consentStatus(req.tenantDb, req.params.memberId);
+    return sendSuccess(res, { consent: status }, 'Biometric consent recorded.');
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const withdrawConsent = async (req, res, next) => {
+  try {
+    await assertMember(req.tenantDb, req.params.memberId);
+    const result = await privacy().withdrawConsent(req.tenantDb, { memberId: req.params.memberId, byUserId: userIdOf(req) });
+    return sendSuccess(res, { templatesDeleted: result.templatesDeleted, photosDeleted: result.photosDeleted },
+      'Consent withdrawn. The member\'s face, fingerprint and palm data is deleted here and from every device.');
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const enroll = async (req, res, next) => {
+  try {
+    await assertMember(req.tenantDb, req.body.memberId);
+    const result = await privacy().requestEnrollment(req.tenantDb, { deviceId: req.params.id, memberId: req.body.memberId, type: req.body.type ?? 9 });
+    return sendSuccess(res, result, 'Ask the member to stand in front of the device.', 202);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/** Loads :staffId (a gym_staff row of this tenant) and exposes its branch to can(). */
+const loadStaff = async (req, _res, next) => {
+  try {
+    const staff = await req.tenantDb.models.GymStaff.findByPk(req.params.staffId, { attributes: ['id', 'branchId', 'userId'] });
+    if (!staff) return next(createError('Staff member not found.', 404, 'staff_not_found'));
+    req.staffRow = staff;
+    req.staffBranchId = staff.branchId;
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+};
+
+const setStaffDeviceAccess = async (req, res, next) => {
+  try {
+    const on = Boolean(req.body.deviceAccess);
+    await req.tenantDb.sequelize.query('UPDATE gym_staff SET device_access = ?, updated_at = ? WHERE id = ?', { replacements: utc([on ? 1 : 0, new Date(), req.staffRow.id]) });
+    await require('../services/devices/device-triggers').enqueue(req.tenantDb.sequelize, { memberIds: [req.staffRow.userId], reason: 'staff_device_access' });
+    return sendSuccess(res, { staffId: req.staffRow.id, deviceAccess: on });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = {
+  loadDevice, listDevices, createDevice, getDevice, updateDevice, repairDevice, unpairDevice,
+  getConsent, giveConsent, withdrawConsent, enroll, loadStaff, setStaffDeviceAccess,
+};

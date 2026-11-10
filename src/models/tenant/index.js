@@ -146,6 +146,10 @@ const registerTenantModels = (sequelize) => {
   // from drops the cached snapshot immediately.
   require('../../services/discovery-cache.service').watchModels([Gym, Branch, MembershipPlan]);
 
+  // ZKTeco devices (docs/ZKTECO_PUSH_DEVICE_SYNC.md §8.2): a membership, member or staff change
+  // queues a device reconcile through the outbox. Nothing is written for a tenant without devices.
+  require('../../services/devices/device-triggers').attachHooks({ MemberSubscription, MemberProfile, GymStaff });
+
   return {
     Gym,
     Branch,

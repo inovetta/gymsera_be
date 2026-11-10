@@ -136,6 +136,12 @@ async function bootstrap() {
           // OBS-05: alert on stuck / failing events and duplicate billing (never throws; one alert per code per hour)
           .then(() => sweepBillingAlerts());
       });
+
+      // 4b'. ZKTeco access devices (docs/runbooks/devices.md): watchdog, sweep, audit, retention.
+      const { runScheduledJob } = require('./src/jobs/scheduled-jobs');
+      for (const [expr, name] of [['* * * * *', 'device-watchdog'], ['*/5 * * * *', 'device-sync'], ['7 * * * *', 'device-audit'], ['30 3 * * *', 'device-retention']]) {
+        cron.schedule(expr, () => runScheduledJob(name).catch((err) => console.error(`[Cron] ${name} error:`, err.message)));
+      }
     } else {
       console.log('[Cron] SCHEDULED_JOBS=external: the daily job and the billing inbox retry run from Task Scheduler');
     }
