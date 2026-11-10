@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-07 (P11 done locally, not pushed) |
+| Last updated | 2026-11-10 (ZKTeco Phase 2 started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Phase 7 Prompt P11** (owner text 2026-11-07: app release candidate build 22; Step 0 open mobile items, A NEW-218, B NEW-227, C NEW-221, D build-22 device checklist, E NEW-220 removal plan) |
-| Prompt status | `DONE` (local, not pushed) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (not started) |
+| Current prompt | **ZKTeco Push devices Phase 2: sync engine** (owner text 2026-11-10: items 1 to 8, open Phase 0 points stay `DEVICE_*` settings; no deploy, no production) |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | ZKTeco Phase 2 (branch `feat/zkteco-phase2` in be, from `feat/zkteco-phase1` `04f911b`; do not merge to main) |
+| Step within issue | Baseline full suite running; design read (spec §6-8, §14, §15). Next: tenant migration 023, biometric crypto, identity/PIN, reconciler, ingest, triggers, jobs, simulator, tests. |
 
 **ZKTeco Push devices, Phase 1 (protocol and device registry), `DONE` (local, not pushed), 2026-11-10.** Branch `feat/zkteco-phase1` in be (from `origin/main` `549cc9b`: `b6f0d1a` protocol, settings, migrations p029 / 022; `37b8c0b` device router, push-host guard, simulator; `235cf5d` host routes, `devices.view` / `devices.manage`; `2c8894a` SEC-16 / NEW-206 fixes; plus the docs commit) and CMS (from `origin/main` `4bb5169`: `2315404` Access devices screens). Phase 0 device results are still NOT in: every open point is a `DEVICE_*` setting with the spec default (list: ZKTeco spec §15 "Phase 1 as built"). Spec §13 "ZKTeco Push devices, Phase 1". Results: be full suite 315 / 318 (failures fixed in `2c8894a` and re-run green, except `staging-script`, no `mysqldump` on this Mac); CMS 654 / 654, tsc, lint, build, Playwright 33, security 9. The CMS checkout keeps an unrelated uncommitted `tsconfig.tsbuildinfo`. **Owner next:** review and open the two PRs (be before CMS); run the Phase 0 checklist and send the captures; deploy only after that (order in spec §13: p029, then 022, then API, then CMS; `SELECT COUNT(*) FROM devices` first). **Agent next:** when the captures arrive, record (a) to (g), set the `DEVICE_*` defaults from them, add sanitized fixtures; then Phase 2 (sync engine). Not before.
 
@@ -725,3 +725,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 132 | 2026-11-07 | Claude Code (Opus 5.5) | Phase 7 P11 (app release candidate: A NEW-218, B NEW-227, C NEW-221, D build-22 checklist, E NEW-220 removal plan) | app `1bb7a8d` (red 5 / 5), CMS `d13f53b` (red 1), be `8d1b588` (red 5 / 11); be 309 / 2950, app 447 x3, analyze 159, CMS 619 + PW 29 + sec 9; new NEW-228 (P1 security, owner), NEW-229, NEW-230 | task complete | yes |
 | 133 | 2026-11-10 | Claude Code (Opus 5.5) | ZKTeco Push devices Phase 0 spike (capture server, device checklist; spec on `docs/zkteco-push-spec`) | be `spike/zkteco-phase0`: capture server + 54 tests, checklist; nothing deployed, no database | blocked (owner runs the device checklist) | yes |
 | 134 | 2026-11-10 | Claude Code (Opus 5.5) | ZKTeco Push devices Phase 1 (protocol, device registry, host routes, CMS screens) | be 5 commits, CMS 1; every test red first; be full 315 / 318 then fixes re-run green (staging-script: no mysqldump locally); CMS 654 + PW 33 + sec 9 | task complete (not pushed) | yes |
+| 135 | 2026-11-10 | Claude Code (Opus 5.5) | ZKTeco Push devices Phase 2 (sync engine) | (in progress) | (open) | (open) |
