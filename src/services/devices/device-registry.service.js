@@ -235,8 +235,8 @@ async function claimCommands(tenantDb, device, { maxPackageSize } = {}) {
   await tenantDb.sequelize.query(
     `UPDATE device_commands SET status = 'sent', sent_at = ?, attempts = attempts + 1, claim_token = ?, updated_at = ?
      WHERE device_id = ? AND status = 'queued' AND not_before <= ? AND (expires_at IS NULL OR expires_at > ?)
-     ORDER BY priority, id LIMIT ${Number(cfg.commandsPerPoll)}`,
-    { replacements: [now, token, now, device.id, now, now] }
+     ORDER BY priority, id LIMIT ?`,
+    { replacements: [now, token, now, device.id, now, now, Number(cfg.commandsPerPoll)] }
   );
   const rows = await q(tenantDb.sequelize, 'SELECT * FROM device_commands WHERE claim_token = ? ORDER BY priority, id', [token]);
   if (!rows.length) return '';
@@ -255,8 +255,8 @@ async function claimCommands(tenantDb, device, { maxPackageSize } = {}) {
   }
   if (unsupported.length) {
     await tenantDb.sequelize.query(
-      `UPDATE device_commands SET status = 'failed', updated_at = ? WHERE id IN (${unsupported.map(() => '?').join(',')})`,
-      { replacements: [now, ...unsupported] }
+      'UPDATE device_commands SET status = \'failed\', updated_at = ? WHERE id IN (?)',
+      { replacements: [now, unsupported] }
     );
   }
   const limit = Math.min(Number(maxPackageSize) > 0 ? Number(maxPackageSize) : cfg.maxPackageBytes, cfg.maxPackageBytes);
@@ -264,8 +264,8 @@ async function claimCommands(tenantDb, device, { maxPackageSize } = {}) {
   if (packed.heldIds.length) {
     await tenantDb.sequelize.query(
       `UPDATE device_commands SET status = 'queued', claim_token = NULL, sent_at = NULL, attempts = attempts - 1, updated_at = ?
-       WHERE claim_token = ? AND id IN (${packed.heldIds.map(() => '?').join(',')})`,
-      { replacements: [now, token, ...packed.heldIds] }
+       WHERE claim_token = ? AND id IN (?)`,
+      { replacements: [now, token, packed.heldIds] }
     );
   }
   return packed.body;
@@ -432,41 +432,34 @@ async function getDevice({ tenantId, tenantDb, deviceId }) {
 /** branchIds null = every branch the tenant has. */
 async function listDevices({ tenantId, tenantDb, branchIds = null }) {
   if (Array.isArray(branchIds) && branchIds.length === 0) return [];
-  const where = ['tenant_id = ?', 'status <> \'removed\''];
-  const params = [tenantId];
-  if (Array.isArray(branchIds)) {
-    where.push(`branch_id IN (${branchIds.map(() => '?').join(',')})`);
-    params.push(...branchIds);
-  }
-  const rows = await q(platformDb, `SELECT * FROM access_devices WHERE ${where.join(' AND ')} ORDER BY created_at`, params);
+  const rows = Array.isArray(branchIds)
+    ? await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' AND branch_id IN (?) ORDER BY created_at', [tenantId, branchIds])
+    : await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' ORDER BY created_at', [tenantId]);
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
-  const dets = await q(tenantDb.sequelize, `SELECT * FROM access_device_details WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+  const dets = await q(tenantDb.sequelize, 'SELECT * FROM access_device_details WHERE id IN (?)', [ids]);
   const byId = new Map(dets.map((d) => [d.id, d]));
   const bids = [...new Set(rows.map((r) => r.branch_id))];
-  const branches = await q(tenantDb.sequelize, `SELECT id, branch_name FROM branches WHERE id IN (${bids.map(() => '?').join(',')})`, bids);
+  const branches = await q(tenantDb.sequelize, 'SELECT id, branch_name FROM branches WHERE id IN (?)', [bids]);
   const names = new Map(branches.map((b) => [b.id, b.branch_name]));
   return rows.filter((r) => byId.has(r.id)).map((r) => viewOf(r, byId.get(r.id), names.get(r.branch_id)));
 }
 
 async function updateDevice({ tenantId, tenantDb, deviceId, name, direction }) {
-  const sets = [];
-  const params = [];
+  let clean = null;
   if (name !== undefined) {
-    const clean = String(name || '').trim().slice(0, 100);
+    clean = String(name || '').trim().slice(0, 100);
     if (!clean) throw createError('Give the device a name.', 422, 'name_required');
-    sets.push('name = ?');
-    params.push(clean);
   }
-  if (direction !== undefined) {
-    if (!DIRECTIONS.includes(direction)) throw createError('Direction must be in, out or both.', 422, 'invalid_direction');
-    sets.push('direction = ?');
-    params.push(direction);
+  if (direction !== undefined && !DIRECTIONS.includes(direction)) {
+    throw createError('Direction must be in, out or both.', 422, 'invalid_direction');
   }
-  if (sets.length) {
-    await tenantDb.sequelize.query(`UPDATE access_device_details SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`, {
-      replacements: [...params, new Date(), deviceId],
-    });
+  if (clean !== null || direction !== undefined) {
+    // One fixed statement: a field left out keeps its value.
+    await tenantDb.sequelize.query(
+      'UPDATE access_device_details SET name = COALESCE(?, name), direction = COALESCE(?, direction), updated_at = ? WHERE id = ?',
+      { replacements: [clean, direction ?? null, new Date(), deviceId] }
+    );
   }
   return getDevice({ tenantId, tenantDb, deviceId });
 }
@@ -477,11 +470,10 @@ async function setEnabled({ tenantId, tenantDb, deviceId, enabled }) {
   await tenantDb.sequelize.query('UPDATE access_device_details SET enabled = ?, updated_at = ? WHERE id = ?', {
     replacements: [enabled ? 1 : 0, now, deviceId],
   });
-  await platformDb.query(
-    `UPDATE access_devices SET status = ${enabled ? 'IF(registered_at IS NULL, \'awaiting_connection\', \'active\')' : '\'disabled\''},
-       updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> 'removed'`,
-    { replacements: [now, deviceId, tenantId] }
-  );
+  const sql = enabled
+    ? 'UPDATE access_devices SET status = IF(registered_at IS NULL, \'awaiting_connection\', \'active\'), updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\''
+    : 'UPDATE access_devices SET status = \'disabled\', updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\'';
+  await platformDb.query(sql, { replacements: [now, deviceId, tenantId] });
   return getDevice({ tenantId, tenantDb, deviceId });
 }
 
