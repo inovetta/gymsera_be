@@ -59,6 +59,18 @@ const ADDS = {
   20: { columns: { branches: ['google_place_id'] } },
   21: { columns: { branches: ['paused_at', 'paused_by'] } },
   22: { tables: ['access_device_details', 'device_commands'] },
+  23: {
+    tables: [
+      'device_pin_sequence', 'member_device_identity', 'member_biometrics', 'member_biometric_photos', 'member_biometric_consents',
+      'device_member_sync', 'device_access_events', 'device_state', 'device_error_logs', 'device_unlinked_users', 'device_audits',
+      'device_audit_pins',
+    ],
+    columns: {
+      device_commands: ['batch_id'],
+      access_device_details: ['last_sweep_at', 'offline_since', 'offline_notified_at'],
+      gym_staff: ['device_access'],
+    },
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -225,6 +237,20 @@ const PROBES = {
     const details = tableWithColumn(s, 'access_device_details', 'direction');
     if (details.state !== 'present') return details;
     return tableWithColumn(s, 'device_commands', 'claim_token');
+  },
+  // 023 creates its tables and adds columns to 022's tables and gym_staff; the last step is
+  // gym_staff.device_access, so present means every step ran.
+  23: async (s) => {
+    for (const [table, column] of [
+      ['device_member_sync', 'pending_batch_id'], ['member_biometrics', 'template_enc'], ['member_device_identity', 'pin'],
+      ['device_access_events', 'device_record_index'], ['device_audit_pins', 'pin'],
+    ]) {
+      const r = tableWithColumn(s, table, column);
+      if (r.state !== 'present') return r;
+    }
+    const batch = columnOfType(s, 'device_commands', 'batch_id', (c) => ['char', 'varchar'].includes(type(c)));
+    if (batch.state !== 'present') return batch;
+    return columnOfType(s, 'gym_staff', 'device_access', (c) => INT_TYPES.includes(type(c)), { tableOptional: true });
   },
 };
 

@@ -243,6 +243,10 @@ const cmd = {
       'Format=0', `PostBackTmpFlag=${postBack ? 1 : 0}`,
     ].join(T),
 
+  /** Profile photo (§7.1, optional). Content is base64 JPEG. */
+  userPic: ({ pin, content }) =>
+    'DATA UPDATE userpic ' + [`pin=${pinOf(pin)}`, `size=${String(content).length}`, `content=${content}`].join(T),
+
   userDelete: (pin) => `DATA DELETE user Pin=${pinOf(pin)}`,
   authDelete: (pin) => `DATA DELETE userauthorize Pin=${pinOf(pin)}`,
   bioDelete: (pin, type) =>
