@@ -1130,6 +1130,109 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // ZKTeco Phase 3 (spec docs/ZKTECO_PUSH_DEVICE_SYNC.md §9, §10, §13, owner decision D-6):
+    //   device_push_requests   the manual "Push now" / "Sync now" / remote-enrol requests (15 s / 60 s answer)
+    //   device_capture_photos  ATTPHOTO capture photos, only for a branch that opted in; 30-day retention
+    //   device_branch_settings per-branch device settings (capture photos off, owner alerts on)
+    //   device_commands.merged_into          a biodata command sent inside another one (several members)
+    //   device_unlinked_users dismissed / linked   the Unlinked users screen
+    //   access_device_details.alerts_json    when each owner alert last went out (one per incident)
+    // ROLLBACK (previous build first): DROP TABLE `device_branch_settings`, `device_capture_photos`,
+    //   `device_push_requests`;
+    //   ALTER TABLE `device_commands` DROP INDEX `device_commands_merged`, DROP COLUMN `merged_into`;
+    //   ALTER TABLE `device_unlinked_users` DROP COLUMN `dismissed_at`, DROP COLUMN `linked_member_id`,
+    //     DROP COLUMN `linked_at`;
+    //   ALTER TABLE `access_device_details` DROP COLUMN `alerts_json`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 24;
+    // Capture photo files stay in the private store after a rollback: delete the prefix
+    // `device-captures/<tenant id>/` there too.
+    version: 24,
+    name: '024_device_push_and_settings',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const T = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+      const hasColumn = async (table, column) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: [table, column], type: QueryTypes.SELECT }
+        )).length > 0;
+      const hasIndex = async (table, index) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+          { replacements: [table, index], type: QueryTypes.SELECT }
+        )).length > 0;
+
+      // §9.2. kind: member (push one member), remove (remove one member now), device / branch (every
+      // pending change), enroll (remote ENROLL_BIO). dedupe_key: requester + target + 10 s or 60 s
+      // window, so a double click or a second tab gets the same request (the rate limit).
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_push_requests\` (
+        \`id\` CHAR(26) NOT NULL,
+        \`kind\` VARCHAR(8) NOT NULL,
+        \`requested_by\` CHAR(36) NULL,
+        \`member_id\` CHAR(36) NULL,
+        \`branch_id\` CHAR(36) NULL,
+        \`device_ids_json\` TEXT NOT NULL,
+        \`plan_json\` TEXT NULL,
+        \`dedupe_key\` VARCHAR(160) NOT NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`deadline_at\` DATETIME NOT NULL,
+        \`finished_at\` DATETIME NULL,
+        \`result_json\` TEXT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`device_push_requests_dedupe\` (\`dedupe_key\`),
+        KEY \`device_push_requests_requester\` (\`requested_by\`, \`created_at\`),
+        KEY \`device_push_requests_open\` (\`finished_at\`, \`deadline_at\`)
+      ) ${T}`);
+
+      // D-6: encrypted in the private store; the row holds the key, never the image.
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_capture_photos\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`device_id\` CHAR(36) NOT NULL,
+        \`branch_id\` CHAR(36) NOT NULL,
+        \`event_id\` BIGINT UNSIGNED NULL,
+        \`pin\` VARCHAR(16) NULL,
+        \`device_time\` DATETIME NULL,
+        \`storage_key\` VARCHAR(255) NOT NULL,
+        \`key_version\` SMALLINT UNSIGNED NOT NULL,
+        \`sha256\` CHAR(64) NOT NULL,
+        \`size\` INT UNSIGNED NOT NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`device_capture_photos_branch_time\` (\`branch_id\`, \`created_at\`),
+        KEY \`device_capture_photos_event\` (\`event_id\`),
+        KEY \`device_capture_photos_created\` (\`created_at\`)
+      ) ${T}`);
+
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_branch_settings\` (
+        \`branch_id\` CHAR(36) NOT NULL,
+        \`capture_photos\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`alerts_enabled\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`updated_by\` CHAR(36) NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`branch_id\`)
+      ) ${T}`);
+
+      if (!(await hasColumn('device_commands', 'merged_into'))) {
+        await sequelize.query('ALTER TABLE `device_commands` ADD COLUMN `merged_into` BIGINT UNSIGNED NULL AFTER `batch_id`');
+      }
+      if (!(await hasIndex('device_commands', 'device_commands_merged'))) {
+        await sequelize.query('ALTER TABLE `device_commands` ADD INDEX `device_commands_merged` (`merged_into`)');
+      }
+      for (const [col, ddl] of [
+        ['dismissed_at', '`dismissed_at` DATETIME NULL'],
+        ['linked_member_id', '`linked_member_id` CHAR(36) NULL'],
+        ['linked_at', '`linked_at` DATETIME NULL'],
+      ]) {
+        if (!(await hasColumn('device_unlinked_users', col))) await sequelize.query(`ALTER TABLE \`device_unlinked_users\` ADD COLUMN ${ddl}`);
+      }
+      if (!(await hasColumn('access_device_details', 'alerts_json'))) {
+        await sequelize.query('ALTER TABLE `access_device_details` ADD COLUMN `alerts_json` TEXT NULL');
+      }
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
