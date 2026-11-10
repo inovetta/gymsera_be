@@ -291,7 +291,7 @@ describe('unlinked device users (§7.5)', () => {
     expect(one.body.data.users.map((u) => u.pin).sort()).toEqual(['7', '8']);
     const all = await owner().get(`/host/devices/unlinked-users?branchId=${branch.id}`);
     expect(all.body.data.users.length).toBe(2);
-    expect(all.body.data.users[0]).toMatchObject({ deviceName: 'Old Door' });
+    expect(all.body.data.users[0]).toMatchObject({ deviceName: 'Old Door', branchId: branch.id });
   });
 
   test('link: a member with no PIN takes the device PIN; entitled → sent with the window; gone from the list', async () => {

@@ -162,5 +162,11 @@ describe('manage (devices.manage) and biometrics', () => {
     expect((await asPersona('frontDesk').patch(`/host/devices/staff/${staff.id}/device-access`, { deviceAccess: true })).status).toBe(403);
     expect((await asPersona('manager').patch(`/host/devices/staff/${staff.id}/device-access`, { deviceAccess: true })).status).toBe(200);
     expect((await asPersona('manager').patch(`/host/devices/staff/${staff.id}/device-access`, { deviceAccess: false })).status).toBe(200);
+    // The Team panel reads the person's rows: the branch, the switch; another tenant sees none.
+    const rows = await asPersona('frontDesk').get(`/host/devices/staff/by-user/${person.id}`);
+    expect(rows.status).toBe(200);
+    expect(rows.body.data.staff).toEqual([expect.objectContaining({ staffId: staff.id, branchId: home.id, deviceAccess: false, active: true })]);
+    expect((await asPersona('otherTenantOwner').get(`/host/devices/staff/by-user/${person.id}`)).body.data.staff).toEqual([]);
+    expect((await asPersona('trainer').get(`/host/devices/staff/by-user/${person.id}`)).status).toBe(403);
   });
 });

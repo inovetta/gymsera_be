@@ -180,10 +180,11 @@ async function unlinkedUsers(db, { deviceIds }) {
   if (!deviceIds.length) return { users: [] };
   const rows = await select(db, `SELECT device_id, pin, name, card_no, source, first_seen_at, last_seen_at, hits FROM device_unlinked_users
     WHERE device_id IN (?) AND dismissed_at IS NULL AND linked_member_id IS NULL ORDER BY last_seen_at DESC LIMIT 500`, [deviceIds]);
-  const devs = await deviceNames(db, rows.map((r) => r.device_id));
+  const ids = [...new Set(rows.map((r) => r.device_id))];
+  const devs = new Map((ids.length ? await select(db, 'SELECT id, name, branch_id FROM access_device_details WHERE id IN (?)', [ids]) : []).map((d) => [d.id, d]));
   return {
     users: rows.map((r) => ({
-      deviceId: r.device_id, deviceName: devs.get(r.device_id) || null, pin: r.pin, name: r.name, cardNo: r.card_no, source: r.source,
+      deviceId: r.device_id, deviceName: devs.get(r.device_id)?.name || null, branchId: devs.get(r.device_id)?.branch_id || null, pin: r.pin, name: r.name, cardNo: r.card_no, source: r.source,
       firstSeenAt: r.first_seen_at, lastSeenAt: r.last_seen_at, hits: Number(r.hits),
     })),
   };

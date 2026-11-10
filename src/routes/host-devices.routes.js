@@ -177,6 +177,16 @@ router.delete(
   ctrl.withdrawConsent
 );
 
+// The Team panel's "Door access" switches: one gym_staff row per branch of this person (D-8).
+router.get(
+  '/staff/by-user/:userId',
+  authenticate,
+  tenantContext.forTeamRoutes,
+  validate([param('userId').isUUID().withMessage('Unknown staff member')]),
+  can.atAnyBranch('devices.view'),
+  ctrl.staffDeviceAccess
+);
+
 router.patch(
   '/staff/:staffId/device-access',
   authenticate,

@@ -22,7 +22,7 @@ async function gymsOf(userId) {
   const out = [];
   for (const t of await tenantsWithDevices()) {
     const [seen] = await t.db.sequelize.query(
-      `SELECT (SELECT COUNT(*) FROM member_biometric_consents WHERE member_id = ?) + (SELECT COUNT(*) FROM member_biometrics WHERE member_id = ?) AS n`,
+      'SELECT (SELECT COUNT(*) FROM member_biometric_consents WHERE member_id = ?) + (SELECT COUNT(*) FROM member_biometrics WHERE member_id = ?) AS n',
       { replacements: [userId, userId], type: QueryTypes.SELECT }
     ).catch(() => [{ n: 0 }]);
     if (!Number(seen?.n)) continue;
