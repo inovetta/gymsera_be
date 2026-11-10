@@ -2,7 +2,7 @@
 
 > **AUTOMATICALLY GENERATED — DO NOT EDIT DIRECTLY**
 > Source of truth: `src/constants/permissions.js` and `src/constants/roles.js`.
-> Generated on: 2026-09-29
+> Generated on: 2026-11-10
 
 This document describes the unified Role-Based Access Control (RBAC) model implemented in GymsEra, specifying exactly what each staff persona, gym member, and platform admin can do across all functional modules.
 
@@ -169,15 +169,23 @@ Every permission follows a 3-choice or 5-tier evaluation model:
 | **Manage the public listing** | `listing.manage` | Direct | Direct | — | — | — | — | — | No |
 | **View the audit log** | `audit.view` | Full | Full | View | — | — | — | — | No |
 | **View payouts** | `payouts.view` | Full | — | — | — | — | — | — | No |
+| **Request payout** | `payouts.request` | Direct | Request | Request | — | — | — | — | Yes |
 | **Manage bank details** | `payouts.bank.manage` | Direct | — | — | — | — | — | — | No |
 | **Manage the GymsEra subscription** | `billing.manage` | Direct | — | — | — | — | — | — | No |
 
-### 3.12 Module: Collection ledger (`ledger`)
+### 3.12 Module: Access devices (`devices`)
+
+| Permission | Key | Owner | Org Admin | Manager | Branch Admin | Front Desk | Trainer | Support | Approvable |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **View access devices** | `devices.view` | Full | Full | Full | View | View | — | — | No |
+| **Add and manage access devices** | `devices.manage` | Direct | Direct | Direct | — | — | — | — | No |
+
+### 3.13 Module: Collection ledger (`ledger`)
 
 | Permission | Key | Owner | Org Admin | Manager | Branch Admin | Front Desk | Trainer | Support | Approvable |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **View Today's Ledger** | `ledger.today.view` | Full | Full | Full | Full | View | — | — | No |
-| **Verify / reconcile ledger** | `ledger.verify` | Approve | Approve | Approve | — | — | — | — | No |
+| **Verify / reconcile ledger** | `ledger.verify` | Direct | Direct | Direct | Request | — | — | — | Yes |
 | **Close Today's Ledger** | `ledger.close` | Direct | Direct | Request | — | — | — | — | Yes |
 | **View Weekly Ledger** | `ledger.weekly.view` | Full | Full | Full | — | — | — | — | No |
 | **View Monthly Ledger** | `ledger.monthly.view` | Full | Full | Full | — | — | — | — | No |

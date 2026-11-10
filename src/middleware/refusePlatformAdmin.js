@@ -24,4 +24,10 @@ refusePlatformAdmin.payoutRequest = refusePlatformAdmin(
   'Platform admins cannot request a payout for a gym. Payouts are requested by the gym\'s own team.'
 );
 
+// ZKTeco spec §12: platform admins read device health for support; they never add, change or remove a device.
+refusePlatformAdmin.deviceWrite = refusePlatformAdmin(
+  'devices_read_only_for_platform_admins',
+  'Platform admins can see a gym\'s devices but not change them.'
+);
+
 module.exports = refusePlatformAdmin;
