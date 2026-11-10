@@ -347,14 +347,19 @@ describe('security (§14)', () => {
     expect(tenant1.map((r) => Number(r.pin))).toContain(1001);
   });
 
-  test('consent routes: devices.manage records and withdraws; front desk (view) reads only; never any template', async () => {
+  // Phase 3 (spec §12): recording consent is biometrics.enroll (front desk ✓), withdrawing it is
+  // biometrics.delete (front desk –). Phase 2 used devices.manage for both, which kept front desk out of
+  // the in-person consent capture the spec gives them.
+  test('consent routes: biometrics.enroll records (front desk too), biometrics.delete withdraws (not front desk); trainer neither; never any template', async () => {
     const branch = w.ctx.branch1;
     const u = await w.member('Route Member');
     await w.subscribe(w.db1, { user: u, branch });
     const read = await asPersona('frontDesk').get(`/host/devices/members/${u.id}/biometric-consent`);
     expect(read.status).toBe(200);
     expect(read.body.data.consent).toEqual({ consented: false, consentedAt: null, method: null, templates: 0, waitingForConsent: 0 });
-    expect((await asPersona('frontDesk').post(`/host/devices/members/${u.id}/biometric-consent`, { method: 'in_person' })).status).toBe(403);
+    expect((await asPersona('trainer').post(`/host/devices/members/${u.id}/biometric-consent`, { method: 'in_person' })).status).toBe(403);
+    expect((await asPersona('frontDesk').post(`/host/devices/members/${u.id}/biometric-consent`, { method: 'in_person' })).status).toBe(200);
+    expect((await asPersona('frontDesk').delete(`/host/devices/members/${u.id}/biometric-consent`)).status).toBe(403);
     const give = await asPersona('owner').post(`/host/devices/members/${u.id}/biometric-consent`, { method: 'in_person' });
     expect(give.status).toBe(200);
     expect(give.body.data.consent).toMatchObject({ consented: true, method: 'in_person' });
