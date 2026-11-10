@@ -966,7 +966,7 @@ rotation `src/scripts/rotate-biometric-key.js`, runbook `secrets-rotation.md` se
    `last_seen_at`), the offline watchdog never fired, grace and backoff were off. All device SQL now passes dates
    through `src/services/devices/sql-time.js` `utc()`; test `zkteco-p2-utc-times` is red without it. **The rest of
    the backend uses the same pattern** (NEW-237 in the master spec §13): its effect depends on the production
-   server's time zone, which nobody has checked.
+   server's time zone. Checked 2026-11-10: the server runs US Central time, the app stores UTC (verified on production with `refresh_tokens`), device code uses UTC (master spec §13, NEW-237 outcome).
 3. *`utc_time` is a MySQL function name* (`UTC_TIME`): the column is always written quoted.
 4. *Pending templates (§7.5) stay only on the device that enrolled them.* "Keep it pending" would otherwise either
    delete it from that device at once or send it everywhere without consent. When the 7 days end it is deleted here
