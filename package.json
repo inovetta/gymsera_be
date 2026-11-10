@@ -12,6 +12,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "test": "jest --testTimeout=30000 --runInBand --forceExit",
+    "test:zk-load": "ZK_LOAD_MAX_MS=2000 ZK_LOAD_P95_MS=1000 jest --testTimeout=30000 --runInBand --forceExit tests/integration/zkteco-p2-load.test.js",
     "test:watch": "jest --watch --testTimeout=30000 --runInBand"
   },
   "engines": {

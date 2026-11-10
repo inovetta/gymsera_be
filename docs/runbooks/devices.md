@@ -96,3 +96,17 @@ Nothing to roll back: the removal is already queued. If the same person keeps ge
 - **Device offline**: the owner got one notification. Commands wait in the queue and are delivered when it polls again.
 - **"Enrol on the device menu with PIN …"**: the device answered `-708` to `ENROLL_BIO`; enrol there with the PIN shown.
 - **Unlinked users**: link or delete them on the device (CMS screen in Phase 3). They are never made members automatically.
+
+## Pre-release check: 50-device load test
+
+Before a release that touches the device engine, run on a developer machine with the local MySQL:
+
+```
+npm run test:zk-load
+```
+
+It runs `tests/integration/zkteco-p2-load.test.js` with the strict timing limits (slowest poll under 2000 ms,
+95th percentile under 1000 ms). Normal CI runs the same test with the same correctness checks but generous timing
+limits (`ZK_LOAD_MAX_MS=10000`, `ZK_LOAD_P95_MS=5000` in `.github/workflows/ci.yml`), so a few ms of runner noise
+does not fail the build. If this check fails locally, treat it as a real slowdown: find the slow poll in the
+`[zkteco-p2-load]` log line before releasing, do not raise the limits.
