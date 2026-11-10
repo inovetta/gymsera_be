@@ -965,7 +965,7 @@ rotation `src/scripts/rotate-biometric-key.js`, runbook `secrets-rotation.md` se
    shifted (5 hours ahead on a Pakistan-time machine): a silent device looked online for hours (Phase 1
    `last_seen_at`), the offline watchdog never fired, grace and backoff were off. All device SQL now passes dates
    through `src/services/devices/sql-time.js` `utc()`; test `zkteco-p2-utc-times` is red without it. **The rest of
-   the backend uses the same pattern** (NEW-233 in the master spec §13): its effect depends on the production
+   the backend uses the same pattern** (NEW-237 in the master spec §13): its effect depends on the production
    server's time zone, which nobody has checked.
 3. *`utc_time` is a MySQL function name* (`UTC_TIME`): the column is always written quoted.
 4. *Pending templates (§7.5) stay only on the device that enrolled them.* "Keep it pending" would otherwise either
