@@ -44,6 +44,33 @@ start it). Both paths use the same database locks (REL-03), so an overlap is ski
 
 Rollback: delete the two tasks and remove `SCHEDULED_JOBS` (or set `in-process`), then `iisreset`.
 
+## ZKTeco access devices (Phase 2)
+
+Four more tasks, only once tenant migration 023 has run and `BIOMETRIC_DATA_KEY` is set
+([devices.md](devices.md) has what each does and where to look):
+
+| Task | When | Command |
+|---|---|---|
+| `GymsEra\device-watchdog` | every minute | `node src\scripts\run-scheduled-job.js device-watchdog` |
+| `GymsEra\device-sync` | every 5 minutes | `node src\scripts\run-scheduled-job.js device-sync` |
+| `GymsEra\device-audit` | hourly (:07) | `node src\scripts\run-scheduled-job.js device-audit` |
+| `GymsEra\device-retention` | daily 03:30 | `node src\scripts\run-scheduled-job.js device-retention` |
+
+```
+schtasks /Create /TN "GymsEra\device-watchdog" /SC MINUTE /MO 1 /RU "<service account>" /RP * ^
+  /TR "cmd /c cd /d C:\inetpub\gymsera_be && node src\scripts\run-scheduled-job.js device-watchdog >> logs\scheduled-devices.log 2>&1"
+schtasks /Create /TN "GymsEra\device-sync" /SC MINUTE /MO 5 /RU "<service account>" /RP * ^
+  /TR "cmd /c cd /d C:\inetpub\gymsera_be && node src\scripts\run-scheduled-job.js device-sync >> logs\scheduled-devices.log 2>&1"
+schtasks /Create /TN "GymsEra\device-audit" /SC HOURLY /MO 1 /ST 00:07 /RU "<service account>" /RP * ^
+  /TR "cmd /c cd /d C:\inetpub\gymsera_be && node src\scripts\run-scheduled-job.js device-audit >> logs\scheduled-devices.log 2>&1"
+schtasks /Create /TN "GymsEra\device-retention" /SC DAILY /ST 03:30 /RU "<service account>" /RP * ^
+  /TR "cmd /c cd /d C:\inetpub\gymsera_be && node src\scripts\run-scheduled-job.js device-retention >> logs\scheduled-devices.log 2>&1"
+```
+
+Same settings as the two tasks above ("Do not start a new instance"). With `SCHEDULED_JOBS` not `external`, the API
+runs the same four on the same cadence in process (`server.js`). Rollback: delete the four tasks; the real-time
+path keeps working, only the backup layers stop.
+
 ## Redis (P10 item 4, R-88)
 
 The jobs lock through MySQL when there is no Redis; production runs without it (`DISABLE_REDIS=true`). Since P10 the CLI prints nothing about Redis then. If the task output shows `[Redis] not reachable at ...`, `REDIS_HOST` is set but nothing listens: set `DISABLE_REDIS=true` ([redis.md](redis.md)).
