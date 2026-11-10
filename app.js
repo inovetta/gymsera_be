@@ -47,6 +47,13 @@ app.use(metrics.httpMiddleware);
 // ── Request timeout: 15s (spec §4.1 / API-02) ───────────────────────────────
 app.use(requestTimeout(15000));
 
+// ── ZKTeco Push devices (docs/ZKTECO_PUSH_DEVICE_SYNC.md §4.5, §5) ────────────
+// Before helmet, CORS and the JSON / urlencoded parsers: device bodies are `application/push`
+// text, and answers carry no cookies, CORS headers or HTML. push.gymsera.com carries device
+// paths only (second copy of the IIS rule). Serves /iclock/* and /d/<key>/iclock/*.
+app.use(require('./src/middleware/pushHostGuard'));
+app.use(require('./src/routes/device-push.routes'));
+
 // ── Trust proxy (required on Vercel / any reverse-proxy host) ─────────────────
 // Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
 // and req.ip returns the proxy IP instead of the real client IP.
@@ -232,12 +239,6 @@ app.get(['/api/docs', '/api/docs/'], (_req, res) => {
 </body>
 </html>`);
 });
-
-// ── ZKTeco ADMS protocol — mounted at /iclock (no /api/v1 prefix) ────────────
-// ZKTeco devices are configured with server URL: https://your-domain.com
-// and ADMS path: /iclock  — the device appends /getrequest and /cdata itself.
-// No rate-limiting or auth middleware here — the service validates by SN.
-app.use('/iclock', require('./src/routes/iclock.routes'));
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api', require('./src/middleware/cachePolicy'));

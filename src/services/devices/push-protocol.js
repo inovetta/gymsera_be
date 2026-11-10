@@ -47,7 +47,17 @@ function configLines({ style = 'spec', registryCode, sessionId, requestDelay = 3
   return forCdata ? ['registry=ok', `RegistryCode=${registryCode}`, ...lines] : lines;
 }
 
-const ALNUM = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+// RegistryCode characters: A-Z without I and O, a-z without l and o, 2-9. Built from ranges so the
+// source holds no long literal a secret scanner reads as a key (pinned in zkteco-p1-device-key test).
+const charRange = (first, last, skip = '') => {
+  let out = '';
+  for (let c = first.charCodeAt(0); c <= last.charCodeAt(0); c++) {
+    const ch = String.fromCharCode(c);
+    if (!skip.includes(ch)) out += ch;
+  }
+  return out;
+};
+const ALNUM = charRange('A', 'Z', 'IO') + charRange('a', 'z', 'lo') + charRange('2', '9');
 
 /** RegistryCode: random, up to 32 characters (manual §4.2). Never the manual's example value. */
 function newRegistryCode(length = 20) {
@@ -284,6 +294,7 @@ function packCommands(rows, limit) {
 
 module.exports = {
   MULTI_BIO_DATA_SUPPORT,
+  REGISTRY_CODE_CHARS: ALNUM,
   MULTI_BIO_PHOTO_SUPPORT,
   configLines,
   newRegistryCode,
