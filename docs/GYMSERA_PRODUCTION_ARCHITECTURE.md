@@ -3827,6 +3827,26 @@ Tests: baseline before any change, be full suite at Phase 1 `04f911b`: green (in
 
 ---
 
+### ZKTeco Push devices, Phase 3: manual push and member screens (backend + CMS), 2026-11-10 (Claude Code Opus 5.5)
+
+Scope given by the owner (2026-11-10, prompt): spec `ZKTECO_PUSH_DEVICE_SYNC.md` §9 to §12 and the Phase 2 "left for Phase 3" list, items 1 to 4 of the prompt, Prompt G rules, tests first; backend and CMS only (the app after the 2026-12-05 store release); branches `feat/zkteco-phase3` (be from `feat/zkteco-phase2`, CMS from `feat/zkteco-phase1`); nothing merged, pushed or deployed. Full "as built" record (routes, settings, 11 corrections, what is left): ZKTeco spec §15 "Phase 3 as built". Runbook `docs/runbooks/devices.md` (Phase 3 section).
+
+| Item | Result | Root cause / existing code (file:line) | Pattern reused | Fix | Test | Red / green, commit |
+|---|---|---|---|---|---|---|
+| Migration 024 | DONE | — | 023's additive, idempotent shape and baseline probe | `device_push_requests`, `device_capture_photos`, `device_branch_settings`, 4 additive columns; 46 tables on a fresh tenant | `zkteco-p3-migrations` (4), `new-127` count 43 → 46 | red 4 / 4, green; be `ebc690a` |
+| 1 Manual push (§9) | DONE | `device-sync.service.js` `applyOne` returns `unchanged` for a pair it thinks is in sync (correction 1) | `applyOne` / `reconcileDevice` (one reconciler), tenant `audit.service#record` | `device-push.service.js`: member push (forced), remove now, branch / device sync, 1 s poll, 15 s deadline, offline at once, commands stay queued, dedupe window in MySQL (double click + rate limit), audit `devices.push` / `devices.push_result`, watchdog close | `zkteco-p3-manual-push` (19, simulator end to end) | suite did not load before; green; `19f9ac1`, `f215d43` |
+| 2 Consent, enrol, unlinked, feed, staff, audit, photos, alerts, wipe, batching, suspension | DONE | Phase 2 left list (spec §15); consent on `devices.manage` (correction 11); no tenant hook on user suspension (Phase 2 correction 12) | `kyc-storage` private store + `biometric-crypto` (photos), `notifications.service` (alerts), `capacity_outbox` triggers (suspension), Phase 1 unpair | `device-screens.service.js`, wipe in `device-registry.service.js` + router, `mergeBiodata` / `expandMerged`, `attachUserHook`, `deviceAlerts`, `/me/biometric-consents`, `GET /host/devices/staff/by-user/:userId` | `zkteco-p3-engine` (21), `zkteco-p3-permissions` (19) | red 36 / 40 at `ebc690a` (4 already true), green; `19f9ac1`, `f215d43`, `3e1067a` |
+| 3 Permissions per role | DONE | §12 | `can`, `can.atAnyBranch`, `refusePlatformAdmin.deviceWrite` | `devices.push`, `biometrics.enroll`, `biometrics.delete` | `zkteco-p3-permissions` (owner, org admin, manager own branch, front desk, trainer, member, other tenant, platform admin) | found: double-click key ignored the chosen devices (fixed before commit) |
+| 4 CMS | DONE | Phase 1 screens (status only) | Phase 1 device page, `describeRequestError`, `holdsAtBranch` | member Devices tab, device page tabs + Sync now / Full audit / wipe, Unlinked users, Device settings, Team "Door access", plain copy for every code | `e2e/devices-phase3.spec.ts` (10), `tests/api/devices.test.ts` (+3), `device-copy.test.ts` (3) | CMS `f3ac486` |
+
+**Spec corrections** (ZKTeco spec §15 Phase 3, 11 items): forced re-send on Push now; the §9.2 rate limit as "same request back" in MySQL (iisnode processes); offline = last seen > 30 s; result audited by the first poll or the watchdog; merged biodata after the users, refused pack re-sent one by one; wipe with `DATA DELETE … *` (+ `biophoto *`) and a `wiping` state; suspension in real time; capture photo deleted when the branch opts out; alerts per device behind a branch switch; unlinked link only for a member with no PIN; consent permissions per §12.
+
+Tests: be full suite at `f215d43` (local Docker MySQL 5.7, `DISABLE_REDIS=true`, Node 20.17): **331 / 332 suites, 3345 / 3347 tests** (2273 s); the one failing suite is `staging-script` (2 tests: `spawn mysqldump ENOENT`, no `mysqldump` on this Mac, as in Phase 1), not a code failure. Phase 3 suites after the last change: at `3e1067a`, the four Phase 3 suites + `zkteco-p2-jobs-privacy` + SEC-16 + NEW-127: 105 / 105; the earlier device suites (Phase 1 and 2, 17 files) were 296 / 297 until the Phase 2 consent test moved to the §12 matrix (front desk may record consent), then green in the full run; lint 0 errors. CMS (Node 22): Vitest 660 / 660, tsc, lint (no new findings), build, Playwright 43 / 43, security 9 / 9.
+
+**Deploy (owner, only after Phase 0 and approval; not now).** Order: (1) Phase 1 and 2 first (their own order). (2) Tenant migration 024: `node src/scripts/run-tenant-migrations.js --dry-run` (lists `024_device_push_and_settings` per tenant), then without the flag. (3) API (no new required env var; the optional `DEVICE_*` settings are in `.env.example`). (4) CMS. Nothing changes for a tenant without devices.
+
+---
+
 ## 14. Remaining risks and open decisions
 
 > **Decisions recorded 2026-09-26.** The owner delegated these to the architect (Claude Code) and they are now **final for agents**. Agents apply them and do **not** stop to ask about them again. The owner may override any row at any time by editing it.
