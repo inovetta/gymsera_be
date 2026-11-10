@@ -186,14 +186,14 @@ async function syncRow(db, deviceId, memberId) {
   return row || null;
 }
 
-async function queueBatch(db, device, memberId, plan, { priority, now }) {
+async function queueBatch(db, device, memberId, plan, { priority, now, pushRequestId = null }) {
   const batchId = newBatchId();
   for (const c of plan) {
     await exec(
       db,
-      `INSERT INTO device_commands (device_id, member_id, batch_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)`,
-      [device.id, memberId, batchId, c.kind, JSON.stringify(c.args), priority, new Date(Math.min(now.getTime(), Date.now()) - 1000), now, now]
+      `INSERT INTO device_commands (device_id, member_id, push_request_id, batch_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)`,
+      [device.id, memberId, pushRequestId, batchId, c.kind, JSON.stringify(c.args), priority, new Date(Math.min(now.getTime(), Date.now()) - 1000), now, now]
     );
   }
   return batchId;
@@ -204,8 +204,9 @@ async function queueBatch(db, device, memberId, plan, { priority, now }) {
  * opts.force: send even when the stored state says it is already there (audit drift, safety layer 4).
  * opts.noGrace: removal now, even on an OUT device (member deleted, consent withdrawn).
  * opts.retry: a failed row may be retried (the 1-hour rule is the sweep's).
+ * opts.pushRequestId: the manual push (§9) the queued commands answer to.
  */
-async function applyOne(db, device, memberId, want, { priority = 5, force = false, noGrace = false, retry = false, now = new Date() } = {}) {
+async function applyOne(db, device, memberId, want, { priority = 5, force = false, noGrace = false, retry = false, pushRequestId = null, now = new Date() } = {}) {
   const cfg = getDeviceConfig();
   let row = await syncRow(db, device.id, memberId);
   let target = want.desired ? want.record : null;
@@ -267,7 +268,7 @@ async function applyOne(db, device, memberId, want, { priority = 5, force = fals
     }, now);
     return 'unchanged';
   }
-  const batchId = await queueBatch(db, device, memberId, plan, { priority, now });
+  const batchId = await queueBatch(db, device, memberId, plan, { priority, now, pushRequestId });
   const state = !target ? 'pending_remove' : onDevice && applied ? 'pending_update' : 'pending_add';
   const retryCols = retry ? retryCounter(row, now) : {};
   await upsertRow(db, device.id, memberId, {
@@ -328,7 +329,8 @@ async function reconcileDevice(db, deviceId, reason, opts = {}) {
   for (const [memberId, want] of wants) {
     const f = failed.get(memberId);
     const day = now.toISOString().slice(0, 10);
-    const retry = Boolean(f && (!f.last_error_at || new Date(f.last_error_at) <= failedDue)
+    // A manual Sync now (§9.1) retries every failed row at once; the sweep keeps the 1-hour, 3-a-day rule.
+    const retry = opts.retryFailed ? Boolean(f) : Boolean(f && (!f.last_error_at || new Date(f.last_error_at) <= failedDue)
       && !(f.retry_day && dateStr(f.retry_day) === day && Number(f.retry_count) >= getDeviceConfig().failedRetriesPerDay));
     counts[await applyOne(db, device, memberId, want, { priority: 9, ...opts, retry, now })] += 1;
   }
@@ -338,24 +340,24 @@ async function reconcileDevice(db, deviceId, reason, opts = {}) {
 }
 
 /** Re-sends a member to one device from scratch (drift: the device does not have what we think). */
-async function forceResend(db, deviceId, memberId, { priority = 5, now = new Date() } = {}) {
+async function forceResend(db, deviceId, memberId, { priority = 5, pushRequestId = null, now = new Date() } = {}) {
   const [device] = await devicesOf(db, { deviceId });
   if (!device) return 'skipped';
   await exec(db, 'UPDATE device_member_sync SET applied_hash = NULL, applied_json = NULL, state = \'removed\', pending_batch_id = NULL, pending_hash = NULL, updated_at = ? WHERE device_id = ? AND member_id = ?', [now, deviceId, memberId]);
   const want = (await desiredFor(db, device, [memberId], { now })).get(memberId) || { desired: false };
-  return applyOne(db, device, memberId, want, { priority, now });
+  return applyOne(db, device, memberId, want, { priority, pushRequestId, now });
 }
 
 /** Removes a member from one device now, whatever the stored state says (safety layer 4, audit extras). */
-async function forceRemove(db, deviceId, memberId, pin, { priority = 5, now = new Date() } = {}) {
+async function forceRemove(db, deviceId, memberId, pin, { priority = 5, pushRequestId = null, now = new Date() } = {}) {
   const [device] = await devicesOf(db, { deviceId });
   if (!device) return 'skipped';
   const want = (await desiredFor(db, device, [memberId], { now })).get(memberId) || { desired: false };
-  if (want.desired) return forceResend(db, deviceId, memberId, { priority, now });
+  if (want.desired) return forceResend(db, deviceId, memberId, { priority, pushRequestId, now });
   const row = await syncRow(db, deviceId, memberId);
   if (!row) await upsertRow(db, deviceId, memberId, { pin: Number(pin), desired: 0, state: 'in_sync' }, now);
   else await exec(db, 'UPDATE device_member_sync SET state = \'in_sync\', desired = 0, undesired_since = NULL, updated_at = ? WHERE device_id = ? AND member_id = ?', [now, deviceId, memberId]);
-  return applyOne(db, device, memberId, { desired: false, pin }, { priority, noGrace: true, force: true, now });
+  return applyOne(db, device, memberId, { desired: false, pin }, { priority, noGrace: true, force: true, pushRequestId, now });
 }
 
 /**
@@ -445,6 +447,7 @@ async function renderOne(db, kind, args, record, { cfg }) {
     case 'auth_delete': return c.authDelete(args.pin);
     case 'user_delete': return c.userDelete(args.pin);
     case 'enroll_bio': return c.enrollBio({ pin: args.pin, type: args.type ?? 9, no: args.no ?? 0, separator: cfg.enrollSeparator });
+    case 'wipe': return c.wipe(args.table, args.type);
     case 'info': return c.info();
     case 'check': return c.check();
     case 'count': return c.count(args.table || 'user', args.type);
@@ -452,6 +455,56 @@ async function renderOne(db, kind, args, record, { cfg }) {
     case 'query_bio': return c.queryBio(args.type ?? 9, args.pin);
     default: return null;
   }
+}
+
+// ── First-sync batching (§13) ─────────────────────────────────────────────────
+const BIODATA_HEAD = 'DATA UPDATE biodata ';
+const typeOfBiodata = (text) => {
+  const m = /(?:^|\t)Type=(\d+)/.exec(String(text).split('\n')[0]);
+  return m ? Number(m[1]) : null;
+};
+
+/**
+ * Templates of several members, same type, in ONE `DATA UPDATE biodata` command (§13: a first sync
+ * of 1,000 members in minutes, not quarter hours). Runs on the commands of one poll, in order. The
+ * merged text takes the place of the LAST command of its group, so every member's user record,
+ * which comes before that member's templates, is on the device before the templates arrive.
+ * Commands marked `solo` (a pack that failed once) and groups of one stay as they are.
+ * → { list: [{ id, text }], followers: Map(leaderId → [ids carried inside it]) }
+ */
+function mergeBiodata(renderable, rows, batchSize) {
+  const followers = new Map();
+  if (!(batchSize > 1)) return { list: renderable, followers };
+  const byId = new Map(rows.map((r) => [Number(r.id), r]));
+  const mergeable = (r) => {
+    const row = byId.get(Number(r.id));
+    if (!row || row.kind !== 'bio_upsert' || !row.member_id) return false;
+    if ((parse(row.args_json, {}) || {}).solo) return false;
+    return r.text.startsWith(BIODATA_HEAD) && typeOfBiodata(r.text) !== null;
+  };
+  const groups = new Map(); // type → [[r, …], …] in order
+  for (const r of renderable) {
+    if (!mergeable(r)) continue;
+    const t = typeOfBiodata(r.text);
+    const open = groups.get(t) || [[]];
+    if (open[open.length - 1].length >= batchSize) open.push([]);
+    open[open.length - 1].push(r);
+    groups.set(t, open);
+  }
+  const replaced = new Map(); // leader id → merged text
+  const dropped = new Set();
+  for (const list of groups.values()) {
+    for (const g of list) {
+      if (g.length < 2) continue;
+      const leader = g[g.length - 1];
+      const body = g.map((r) => r.text.slice(BIODATA_HEAD.length)).join('\n');
+      replaced.set(leader.id, `${BIODATA_HEAD}${body}`);
+      followers.set(leader.id, g.slice(0, -1).map((r) => r.id));
+      for (const r of g.slice(0, -1)) dropped.add(r.id);
+    }
+  }
+  const list = renderable.filter((r) => !dropped.has(r.id)).map((r) => (replaced.has(r.id) ? { id: r.id, text: replaced.get(r.id) } : r));
+  return { list, followers };
 }
 
 // ── Results (§8.1 return-code table) ──────────────────────────────────────────
@@ -499,7 +552,7 @@ async function recordResults(db, device, results, now = new Date()) {
   const cfg = getDeviceConfig();
   const counts = { acked: 0, failed: 0, retried: 0, ignored: 0 };
   const toReconcile = new Set();
-  for (const r of results) {
+  for (const r of await expandMerged(db, device, results, now, counts)) {
     const [cmd] = await select(db, 'SELECT * FROM device_commands WHERE id = ? AND device_id = ?', [r.id, device.id]);
     if (!cmd || cmd.status !== 'sent') { counts.ignored += 1; continue; }
     const action = rules.returnAction(r.returnCode);
@@ -528,8 +581,8 @@ async function recordResults(db, device, results, now = new Date()) {
       // -27: the device does not know the PIN yet. Send the user again, then this command.
       await setStatus('failed');
       for (const k of [{ kind: 'user_upsert', args: { pin: args.pin } }, { kind: cmd.kind, args: { ...args, requeued: true } }]) {
-        await exec(db, `INSERT INTO device_commands (device_id, member_id, batch_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)`, [device.id, cmd.member_id, cmd.batch_id, k.kind, JSON.stringify(k.args), cmd.priority, new Date(now.getTime() - 1000), now, now]);
+        await exec(db, `INSERT INTO device_commands (device_id, member_id, push_request_id, batch_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)`, [device.id, cmd.member_id, cmd.push_request_id || null, cmd.batch_id, k.kind, JSON.stringify(k.args), cmd.priority, new Date(now.getTime() - 1000), now, now]);
       }
       // The failed copy no longer blocks the batch: it was replaced.
       await exec(db, 'UPDATE device_commands SET status = \'superseded\' WHERE id = ?', [cmd.id]);
@@ -573,6 +626,33 @@ async function recordResults(db, device, results, now = new Date()) {
   }
   for (const memberId of toReconcile) await reconcileMember(db, memberId, 'device_result', { deviceIds: [device.id], now });
   return counts;
+}
+
+/**
+ * A result for a merged biodata command (mergeBiodata) stands for every member carried inside it.
+ * Success, or a transient code, applies to all of them. Any other failure cannot say WHICH member's
+ * record the device refused, so nobody is blamed: they all go back to the queue, each sent alone
+ * (`solo`) next time, and their own results decide.
+ */
+async function expandMerged(db, device, results, now, counts) {
+  const out = [];
+  for (const r of results) {
+    const carried = await select(db, 'SELECT id, args_json FROM device_commands WHERE merged_into = ? AND device_id = ? AND status = \'sent\'', [r.id, device.id]);
+    if (!carried.length) { out.push(r); continue; }
+    const action = rules.returnAction(r.returnCode);
+    if (action === 'ok' || action === 'transient') {
+      out.push(r, ...carried.map((c) => ({ id: Number(c.id), returnCode: r.returnCode, cmd: r.cmd })));
+      continue;
+    }
+    const [leader] = await select(db, 'SELECT id, args_json, status FROM device_commands WHERE id = ? AND device_id = ?', [r.id, device.id]);
+    for (const c of [...(leader && leader.status === 'sent' ? [leader] : []), ...carried]) {
+      const args = { ...(parse(c.args_json, {}) || {}), solo: true };
+      await exec(db, `UPDATE device_commands SET status = 'queued', claim_token = NULL, merged_into = NULL, args_json = ?, attempts = GREATEST(attempts - 1, 0),
+        updated_at = ? WHERE id = ?`, [JSON.stringify(args), now, c.id]);
+      counts.retried += 1;
+    }
+  }
+  return out;
 }
 
 /** A command the server could not build (template gone, photo missing): failed, and the pair re-planned. */
@@ -644,6 +724,7 @@ async function noteUnlinked(db, deviceId, { pin, name = null, cardNo = null, sou
 }
 
 module.exports = {
+  mergeBiodata,
   settleBatch,
   devicesOf,
   hasDevices,

@@ -408,6 +408,25 @@ const CATALOGUE = [
         tiers: ['D', 'D', 'D', 'x', 'x', 'x', 'x'],
         note: 'Add, rename, disable, unpair. A branch manager only at their own branch; re-pair needs the whole organization.',
       },
+      {
+        key: 'devices.push',
+        label: 'Push members to access devices',
+        tiers: ['D', 'D', 'D', 'D', 'D', 'x', 'x'],
+        note: 'Push now, Remove from device now, Sync now, Push to branch (ZKTeco spec §9, §12).',
+      },
+      {
+        key: 'biometrics.enroll',
+        label: 'Record biometric consent and enrol members',
+        tiers: ['D', 'D', 'D', 'D', 'D', 'x', 'x'],
+        note: 'Record a member\'s consent in person, then enrol their face, finger or palm on a device (§7.6, §14).',
+      },
+      {
+        key: 'biometrics.delete',
+        label: 'Withdraw consent and delete biometrics',
+        dangerous: true,
+        tiers: ['D', 'D', 'D', 'x', 'x', 'x', 'x'],
+        note: 'Deletes the member\'s templates and photos here and from every device. The member can also withdraw it themselves.',
+      },
     ],
   },
 

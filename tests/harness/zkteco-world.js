@@ -20,6 +20,7 @@ const { sequelize: platformDb } = require('../../src/database/platform');
 const DEVICE_TABLES = [
   'access_device_details', 'device_commands', 'device_member_sync', 'member_device_identity', 'member_biometrics', 'member_biometric_photos',
   'member_biometric_consents', 'device_access_events', 'device_state', 'device_error_logs', 'device_unlinked_users', 'device_audits', 'device_audit_pins',
+  'device_push_requests', 'device_capture_photos', 'device_branch_settings',
 ];
 
 // A test-only biometric key, made fresh per run (never a real key).
@@ -48,6 +49,7 @@ async function createWorld() {
     for (const t of DEVICE_TABLES) await db.sequelize.query(`DELETE FROM \`${t}\``);
     await db.sequelize.query('UPDATE device_pin_sequence SET next_pin = 1001 WHERE id = 1');
     await db.sequelize.query('DELETE FROM capacity_outbox WHERE event_type = \'DEVICE_RECONCILE\'');
+    await db.sequelize.query('DELETE FROM audit_logs WHERE action LIKE \'devices.%\' OR action LIKE \'biometrics.%\'');
     if (db.tenantId === undefined) db.tenantId = db === ctx.tenant1Db ? ctx.tenant1.id : ctx.tenant2.id;
   }
   const server = await startTestServer();

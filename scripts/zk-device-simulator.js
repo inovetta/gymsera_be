@@ -26,6 +26,9 @@
  * answers through querydata in packs; DATA COUNT returns the count; ENROLL_BIO posts a BioData
  * result. scan() decides like the device (offline too: unknown 27, past EndTime 29, else 0) and
  * posts the rtlog line. step() acks every command of a poll in ONE devicecmd body.
+ *
+ * Phase 3: `DATA DELETE <table> *` empties the table (remove with wipe), `DATA DELETE biodata Type=<t>`
+ * deletes every template of that type.
  */
 'use strict';
 
@@ -181,6 +184,17 @@ class ZkDeviceSimulator {
       return 0;
     }
     if (verb === 'DELETE') {
+      // Phase 3 wipe: `DATA DELETE <table> *`, and biodata by type alone.
+      if (m[4].trim() === '*' || (table === 'biodata' && first.pin === undefined)) {
+        if (table === 'user') {
+          this.users.clear(); this.auth.clear(); this.bio.clear(); this.photos.clear(); this.userpics.clear();
+        } else if (table === 'userauthorize') this.auth.clear();
+        else if (table === 'biodata') {
+          for (const [k, v] of [...this.bio.entries()]) if (first.type === undefined || v.type === Number(first.type)) this.bio.delete(k);
+        } else if (table === 'biophoto') this.photos.clear();
+        else if (table === 'userpic') this.userpics.clear();
+        return 0;
+      }
       const pin = pinOf(first);
       if (table === 'user') {
         this.users.delete(pin);

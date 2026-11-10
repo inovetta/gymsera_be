@@ -17,6 +17,7 @@
  *   member_profiles       created (member created)
  *   gym_staff             device_access or employment changes (D-8)
  * and explicit calls: consent given or withdrawn, member deleted (device-privacy.service.js).
+ * Platform: users.status (suspended, unsuspended) through attachUserHook (Phase 3).
  * A tenant with no enabled device writes nothing (one indexed read).
  */
 const { utc } = require('./sql-time');
@@ -120,6 +121,42 @@ function reconcileDeviceSoon(db, deviceId, reason) {
   })());
 }
 
+// ── Platform user status (blocked / unblocked) ────────────────────────────────
+const BLOCKED_STATUSES = new Set(['SUSPENDED', 'PENDING_DELETION', 'DELETED']);
+
+/**
+ * A user's platform status changed (§8.2 "member blocked"). Suspension is a platform change with
+ * no tenant hook, so every tenant where the user has a device identity reconciles them now: a
+ * blocked user leaves every device at once (no exit grace), an unblocked one comes back. Runs in
+ * the background after commit; never throws. The sweep stays the backup (Phase 2 correction 12).
+ */
+function userStatusChanged(userId, status, { transaction = null } = {}) {
+  if (!userId || !status) return null;
+  const run = () => track((async () => {
+    const { tenantsWithDevices } = require('../../jobs/device-jobs');
+    for (const t of await tenantsWithDevices()) {
+      const rows = await t.db.sequelize.query('SELECT 1 AS x FROM member_device_identity WHERE member_id = ? LIMIT 1', {
+        replacements: [userId], type: QueryTypes.SELECT,
+      }).catch(() => []);
+      if (!rows.length) continue;
+      await enqueue(t.db.sequelize, { memberIds: [userId], reason: `user_${String(status).toLowerCase()}`, noGrace: BLOCKED_STATUSES.has(status) });
+    }
+  })());
+  if (transaction && typeof transaction.afterCommit === 'function') transaction.afterCommit(run);
+  else run();
+  return true;
+}
+
+/** Platform `User` hook (src/models/platform/index.js): only when `status` changed. */
+function attachUserHook(User) {
+  if (!User || User.__deviceHooks) return;
+  User.__deviceHooks = true;
+  User.addHook('afterUpdate', 'deviceSync', (user, options) => {
+    if (!(user.changed() || []).includes('status')) return null;
+    return userStatusChanged(user.id, user.status, { transaction: options.transaction });
+  });
+}
+
 /** Tests: wait until every background reconcile started so far has finished. */
 async function settled() {
   while (inFlight.size) await Promise.allSettled([...inFlight]);
@@ -167,4 +204,4 @@ function attachHooks(models) {
   }
 }
 
-module.exports = { EVENT_TYPE, enqueue, reconcileDeviceSoon, processRow, sweepOutbox, settled, attachHooks, hasDevices };
+module.exports = { EVENT_TYPE, enqueue, reconcileDeviceSoon, processRow, sweepOutbox, settled, attachHooks, attachUserHook, userStatusChanged, hasDevices };

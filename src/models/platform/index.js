@@ -206,6 +206,9 @@ AuditLog.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: 
 // TenantSubscription: a subscription that stops (or starts) entitling a tenant changes who is live (R-77, BUG-26).
 require('../../services/discovery-cache.service').watchModels([GymListing, Tenant, TenantSubscription, GymReview, City, Area]);
 
+// ZKTeco Phase 3: a suspended user leaves every access device at once (device-triggers.js).
+require('../../services/devices/device-triggers').attachUserHook(User);
+
 module.exports = {
   sequelize,
   User,

@@ -236,8 +236,9 @@ async function claimCommands(tenantDb, device, { maxPackageSize } = {}) {
   const sync = require('./device-sync.service');
   const now = new Date();
   const token = newClaimToken();
+  // merged_into is cleared on every claim: a command is merged (or not) afresh each time it is handed out.
   await tenantDb.sequelize.query(
-    `UPDATE device_commands SET status = 'sent', sent_at = ?, attempts = attempts + 1, claim_token = ?, updated_at = ?
+    `UPDATE device_commands SET status = 'sent', sent_at = ?, attempts = attempts + 1, claim_token = ?, merged_into = NULL, updated_at = ?
      WHERE device_id = ? AND status = 'queued' AND not_before <= ? AND (expires_at IS NULL OR expires_at > ?)
      ORDER BY priority, id LIMIT ?`,
     { replacements: utc([now, token, now, device.id, now, now, Number(cfg.commandsPerPoll)]) }
@@ -246,12 +247,20 @@ async function claimCommands(tenantDb, device, { maxPackageSize } = {}) {
   if (!rows.length) return '';
 
   const rendered = await sync.renderCommands(tenantDb, device, rows);
-  const renderable = rendered.filter((r) => r.text);
   const putBack = rendered.filter((r) => r.held).map((r) => r.id);
   await sync.supersede(tenantDb, device, rendered.filter((r) => r.superseded).map((r) => r.id), now);
+  const { list: renderable, followers } = sync.mergeBiodata(rendered.filter((r) => r.text), rows, cfg.bioBatchSize);
   const limit = Math.min(Number(maxPackageSize) > 0 ? Number(maxPackageSize) : cfg.maxPackageBytes, cfg.maxPackageBytes);
   const packed = protocol.packCommands(renderable, limit);
   putBack.push(...packed.heldIds);
+  // A merged command that waits takes its members with it; one that goes marks them as carried inside it.
+  for (const id of packed.heldIds) putBack.push(...(followers.get(id) || []));
+  for (const id of packed.sentIds) {
+    const carried = followers.get(id);
+    if (carried && carried.length) {
+      await tenantDb.sequelize.query('UPDATE device_commands SET merged_into = ? WHERE claim_token = ? AND id IN (?)', { replacements: utc([id, token, carried]) });
+    }
+  }
   if (putBack.length) {
     await tenantDb.sequelize.query(
       `UPDATE device_commands SET status = 'queued', claim_token = NULL, sent_at = NULL, attempts = attempts - 1, updated_at = ?
@@ -288,6 +297,7 @@ function viewOf(row, det, branchName) {
   const seenAgo = row.last_seen_at ? Math.max(0, Math.round((Date.now() - new Date(row.last_seen_at).getTime()) / 1000)) : null;
   let connection;
   if (row.status === 'removed') connection = 'removed';
+  else if (row.status === 'wiping') connection = 'wiping';
   else if (row.status === 'disabled') connection = 'disabled';
   else if (row.status === 'awaiting_connection') connection = 'awaiting_connection';
   else connection = seenAgo !== null && seenAgo <= cfg.onlineWindowSeconds ? 'online' : 'offline';
@@ -491,9 +501,45 @@ async function repairDevice({ tenantId, tenantDb = null, deviceId }) {
   return { device: found.view, setup: found.setup };
 }
 
-/** Unpair (remove from GymsEra): the key stops working, the serial is free to be added again. */
-async function unpairDevice({ tenantId, tenantDb, deviceId }) {
+/**
+ * Unpair (remove from GymsEra): the key stops working, the serial is free to be added again.
+ *
+ * wipe (§10.3, explicit confirmation in the route, never automatic): the device first deletes every
+ * user, authorization and template (DATA DELETE … *). Until it has answered those commands the device
+ * is `wiping`: it still reaches GymsEra, but gets only the deletes and nothing it sends is stored.
+ * finishWipe() removes it when the deletes are answered, or after DEVICE_WIPE_WAIT_DAYS (watchdog).
+ * A device that never connected has nothing of ours: it is removed at once.
+ * → { status: 'removed' | 'wiping', wipe: boolean, wipeCommands? , wipeSkipped? }
+ */
+async function unpairDevice({ tenantId, tenantDb, deviceId, wipe = false }) {
   const now = new Date();
+  const row = await findById(deviceId);
+  if (wipe && row && row.registered_at && row.serial_number) {
+    const det = await detailsOf(tenantDb, deviceId);
+    const caps = parseJson(det?.capabilities_json);
+    const types = [...require('./sync-rules').bioSupport(caps).types];
+    await tenantDb.sequelize.query('UPDATE access_device_details SET enabled = 0, updated_at = ? WHERE id = ?', { replacements: utc([now, deviceId]) });
+    await tenantDb.sequelize.query('UPDATE device_commands SET status = \'superseded\', updated_at = ? WHERE device_id = ? AND status = \'queued\'', {
+      replacements: utc([now, deviceId]),
+    });
+    const plan = [{ table: 'userauthorize' }, ...types.map((t) => ({ table: 'biodata', type: t })), { table: 'biophoto' }, { table: 'user' }];
+    for (const args of plan) {
+      await tenantDb.sequelize.query(
+        `INSERT INTO device_commands (device_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
+         VALUES (?, 'wipe', ?, 0, 'queued', 0, ?, ?, ?)`,
+        { replacements: utc([deviceId, JSON.stringify(args), new Date(now.getTime() - 1000), now, now]) }
+      );
+    }
+    await platformDb.query('UPDATE access_devices SET status = \'wiping\', updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\'', {
+      replacements: utc([now, deviceId, tenantId]),
+    });
+    return { status: 'wiping', wipe: true, wipeCommands: plan.length };
+  }
+  await markRemoved({ tenantId, tenantDb, deviceId, now });
+  return wipe ? { status: 'removed', wipe: false, wipeSkipped: 'never_connected' } : { status: 'removed', wipe: false };
+}
+
+async function markRemoved({ tenantId, tenantDb, deviceId, now = new Date() }) {
   await platformDb.query(
     `UPDATE access_devices SET status = 'removed', previous_serial_number = COALESCE(serial_number, previous_serial_number),
        serial_number = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?`,
@@ -503,9 +549,23 @@ async function unpairDevice({ tenantId, tenantDb, deviceId }) {
     replacements: utc([now, now, deviceId]),
   });
   // Commands still queued for it can never be delivered.
-  await tenantDb.sequelize.query('UPDATE device_commands SET status = \'expired\', updated_at = ? WHERE device_id = ? AND status = \'queued\'', {
+  await tenantDb.sequelize.query('UPDATE device_commands SET status = \'expired\', updated_at = ? WHERE device_id = ? AND status IN (\'queued\', \'sent\')', {
     replacements: utc([now, deviceId]),
   });
+}
+
+/**
+ * A wiping device whose deletes are all answered (or `force`: the wait is over) is removed; what
+ * GymsEra knew about it (sync rows) goes with it. → true when removed now
+ */
+async function finishWipe({ tenantId, tenantDb, deviceId, force = false, now = new Date() }) {
+  const row = await findById(deviceId);
+  if (!row || row.status !== 'wiping') return false;
+  const [open] = await q(tenantDb.sequelize, 'SELECT COUNT(*) AS n FROM device_commands WHERE device_id = ? AND kind = \'wipe\' AND status IN (\'queued\', \'sent\')', [deviceId]);
+  if (Number(open.n) && !force) return false;
+  await markRemoved({ tenantId, tenantDb, deviceId, now });
+  await tenantDb.sequelize.query('DELETE FROM device_member_sync WHERE device_id = ?', { replacements: utc([deviceId]) });
+  return true;
 }
 
 module.exports = {
@@ -537,4 +597,5 @@ module.exports = {
   setEnabled,
   repairDevice,
   unpairDevice,
+  finishWipe,
 };

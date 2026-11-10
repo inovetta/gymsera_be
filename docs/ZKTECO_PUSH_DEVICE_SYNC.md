@@ -966,7 +966,7 @@ rotation `src/scripts/rotate-biometric-key.js`, runbook `secrets-rotation.md` se
    `last_seen_at`), the offline watchdog never fired, grace and backoff were off. All device SQL now passes dates
    through `src/services/devices/sql-time.js` `utc()`; test `zkteco-p2-utc-times` is red without it. **The rest of
    the backend uses the same pattern** (NEW-237 in the master spec §13): its effect depends on the production
-   server's time zone, which nobody has checked.
+   server's time zone. Checked 2026-11-10: the server runs US Central time, the app stores UTC (verified on production with `refresh_tokens`), device code uses UTC (master spec §13, NEW-237 outcome).
 3. *`utc_time` is a MySQL function name* (`UTC_TIME`): the column is always written quoted.
 4. *Pending templates (§7.5) stay only on the device that enrolled them.* "Keep it pending" would otherwise either
    delete it from that device at once or send it everywhere without consent. When the 7 days end it is deleted here
@@ -1005,6 +1005,94 @@ and the Phase 0 fixtures and defaults.
 **Phase 3: manual push and member screens (CMS, then app)**
 - Push button with 15 s polling, member device status, live feed, unlinked users, remote enrol.
 
+#### Phase 3 as built (2026-11-10, backend and CMS; branches `feat/zkteco-phase3` from `feat/zkteco-phase2` in be and from `feat/zkteco-phase1` in CMS; the app comes after the 2026-12-05 store release)
+
+Owner instruction (2026-11-10): Phase 3 for the backend and the CMS only, tests first, nothing merged, pushed or
+deployed. Every Phase 0 open point is still a `DEVICE_*` setting.
+
+**Names and routes (spec proposal → real).**
+
+| Spec | Built | Notes |
+|---|---|---|
+| tenant `device_push_requests` | migration `024_device_push_and_settings` | + `kind` (`member`, `remove`, `device`, `branch`, `enroll`), `plan_json`, `dedupe_key` (unique; the double-click / rate-limit window); a fresh tenant has 46 tables |
+| — | `device_capture_photos`, `device_branch_settings` (024) | D-6 photos (key in the private store, never the image) and per-branch `capture_photos` (0) / `alerts_enabled` (1) |
+| — | `device_commands.merged_into`, `device_unlinked_users.dismissed_at / linked_member_id / linked_at`, `access_device_details.alerts_json` (024) | batching, the Unlinked users screen, one owner alert per incident |
+| `POST /host/members/:id/device-push` `{deviceIds?}` | same → 202 `{requestId, deadlineAt, reused, devices[]}` | each device: `outcome` `pushing` or `not_entitled` + `reason`, `offline`, `lastSeenSecondsAgo` |
+| `GET /host/device-push-requests/:requestId` | same | `status` `running` / `done` / `timed_out`; per device `state` `queued` → `delivered` → `applied` / `failed` (`returnCode`, `reason`), `offline`, `no_answer`, `not_entitled`, `waiting_for_member` (enrol); branch / device kinds add `progress {total, done, failed}` |
+| "Remove from device now" (§9.2) | `POST /host/members/:id/device-remove` `{deviceIds?}` | only where the member is not entitled (409 `member_entitled` otherwise); tracked like a push |
+| `GET /host/members/:id/device-status` | same | per device `entitled`, `reason`, `onDevice`, `state`, `pending`, `lastSyncedAt`, `failedReason`; member `pin`, `consent`, enrolled types (never template data) |
+| `POST /host/devices/:id/sync {mode}` | same | `quick` → a push request (devices.push), `audit` → `{auditId}` (devices.manage) |
+| "push to branch" | `POST /host/branches/:branchId/device-push` | |
+| `POST /host/members/:id/biometrics/enroll` | same → 202 `{requestId, pin}`, 60 s answer | applied when a template of that type arrives from that device |
+| `POST /host/members/:id/biometric-consent` | kept at Phase 2's `/host/devices/members/:memberId/biometric-consent` (GET, POST, DELETE) | permissions moved to `biometrics.enroll` (record) and `biometrics.delete` (withdraw) |
+| member self-withdrawal | `GET /me/biometric-consents`, `DELETE /me/biometric-consents/:tenantId` | API only; the app screen comes with the app phase |
+| `GET /host/branches/:id/access-events?since=` | `GET /host/branches/:branchId/access-events?afterId=&limit=` and `GET /host/devices/:id/access-events` | `afterId` (event id) instead of a time; D-5 scans stored without a check-in carry `attendanceNote` |
+| `GET /host/devices/:id/commands?status=` | same (last 200, no command text) | CMS tab not built (not in the Phase 3 list) |
+| `GET /host/devices/:id/unlinked-users`, `POST …/:pin/link` | same, plus `GET /host/devices/unlinked-users?branchId=` and `POST …/:pin/dismiss {removeFromDevice}` | |
+| device tabs | `GET /host/devices/:id/members`, `/errors`, `/audits` (reports + the device's audit-log activity) | |
+| settings | `GET / PUT /host/devices/branch-settings/:branchId {capturePhotos, alertsEnabled}`, `GET /host/devices/capture-photos/:photoId` (JPEG) | |
+| `DELETE /host/devices/:id {wipeDevice}` | `{wipeDevice: true, confirmName: '<device name>'}` | platform status `wiping` until the device answers the deletes |
+| staff device access (D-8) | Phase 2 `PATCH /host/devices/staff/:staffId/device-access` + `GET /host/devices/staff/by-user/:userId` | the Team panel needs the person's `gym_staff` rows |
+| permissions §12 | `devices.push` (D for owner, org admin, manager, branch admin, front desk), `biometrics.enroll` (same), `biometrics.delete` (owner, org admin, manager) | platform admins read, never write (`devices_read_only_for_platform_admins`) |
+
+**Settings added** (`src/config/devices.config.js`, `.env.example`, all optional): `DEVICE_PUSH_TIMEOUT_SECONDS=15`,
+`DEVICE_ENROLL_TIMEOUT_SECONDS=60`, `DEVICE_PUSH_OFFLINE_SECONDS=30`, `DEVICE_PUSH_BRANCH_WINDOW_SECONDS=60`,
+`DEVICE_BIO_BATCH_SIZE=10` (Phase 0 point; 1 = off), `DEVICE_ALERT_ERRORS_PER_HOUR=20`, `DEVICE_WIPE_WAIT_DAYS=7`.
+Fixed by the spec: 10 s member window, 30-day capture photos, 90% capacity.
+
+**Spec corrections found while building.**
+1. *Push now must re-send.* `reconcileMember` queues nothing when the stored state says the device already has the
+   member, which is exactly when a person presses Push now ("the device does not let her in"). Push now therefore
+   sends the member's full record again (forced, priority 0). Branch / device Sync now is the normal reconcile at
+   priority 1 with failed rows retried at once, plus every command already waiting for those devices moved up.
+2. *The §9.2 rate limit is "the same request back", in MySQL.* `express-rate-limit` keeps its counts per iisnode
+   process, so two processes would each allow a push. The request row has a unique dedupe key (person, target,
+   window); a second press inside 10 s (member) or 60 s (branch, device) gets the first request with `reused: true`,
+   which is also the double-click protection. The key includes the chosen devices: the same member pushed to another
+   device is another request (found by the permission test).
+3. *Offline at once* means "last seen more than 30 s ago" (`last_seen_at` is written at most every 10 s, Phase 1);
+   an offline device is a finished state for the 15-second wait, and turns `applied` on a later poll if it lands.
+4. *The push result in the audit log* is written by the first poll that sees the request finished or past its
+   deadline, or by the watchdog (`closeExpired`) when nobody polls to the end: `devices.push` (asked) and
+   `devices.push_result` (per-device states).
+5. *Batching templates (§13)* must put the merged `DATA UPDATE biodata` at the place of the LAST member of the group:
+   every member's user record is sent before it, otherwise the device answers -27. One code comes back for the whole
+   command, so a refused pack (any code except success or a transient one) blames nobody: every member in it goes
+   back to the queue and is sent alone (`solo`) next time. Phase 0 must confirm multi-member biodata on the real
+   firmware (`DEVICE_BIO_BATCH_SIZE=1` turns it off).
+6. *Wipe* sends `DATA DELETE userauthorize *`, `DATA DELETE biodata Type=<each supported type>`,
+   `DATA DELETE biophoto *` (comparison photos; not in §10.3's list) and `DATA DELETE user *`. The `*` form is the
+   spec's; Phase 0 to confirm. While wiping the device gets only these commands and nothing it uploads is stored. It
+   is removed when it has answered them, or after `DEVICE_WIPE_WAIT_DAYS`. A device that never connected is removed at
+   once (nothing of ours is on it).
+7. *Suspension in real time.* A platform `User` hook on `status`: every tenant where the user has a device PIN
+   reconciles them at once, with no exit grace for SUSPENDED / PENDING_DELETION / DELETED; reactivation puts them
+   back. The sweep stays the backup (Phase 2 correction 12 closed).
+8. *Capture photos (D-6)* are matched to the scan by device, PIN and the device time in the ATTPHOTO file name. Turning
+   the branch switch off deletes the photos already stored (the spec only had the 30-day retention).
+9. *Owner alerts per device*: offline (Phase 2, now behind the branch switch; the incident is still recorded), error
+   rate (`device_error_logs` rows in the last hour, again after 24 h), capacity (users or templates GymsEra wants on
+   the device against `MaxUserCount` / `MaxMultiBioDataCount`; again only after it fell below 85%). Recipient: the
+   tenant owner, as for offline.
+10. *Linking an unlinked device user* gives the member the device's PIN only when the member has none; a member with a
+    PIN gets 409 `member_has_pin` (dismiss the device user and enrol again: two PINs per member would break §6.3).
+    The PIN sequence is moved past a linked PIN. After linking, the member is sent (entitled) or removed (not
+    entitled) like anyone else.
+11. *Consent permissions (§12).* Phase 2 used `devices.manage` for recording and withdrawing consent, which kept front
+    desk out of the in-person capture §12 gives them. Recording is `biometrics.enroll`, withdrawing
+    `biometrics.delete`.
+
+**Left for the app phase (after 2026-12-05).** The Flutter screens: 10.1, 10.3 without the command log, 10.4 (member
+card, Push now, consent, enrol), 10.5, the add-device wizard on the phone, and the member's own consent screen
+(`/me/biometric-consents` is ready; `method: 'app'` when the member consents in the app). Device alerts open
+`/host/devices` (the deep link the app must handle).
+
+**Left for Phase 4.** Import from device (GymBioSync migration, including templates of linked device users), token
+enforce, the Phase 0 defaults and sanitized fixtures (`DEVICE_*`, the `*` delete and multi-member biodata), the
+command log tab in the CMS, `DELETE /host/members/:id/biometrics/:bioId` (one template; today withdrawal deletes
+all), Move device to another branch (`POST /host/devices/:id/move`), a push load test with 50 devices, and the D-5
+attendance decision (Phase 2 correction 10; the live feed shows those scans as "let in, not counted").
+
 **Phase 4: migration from GymBioSync and hardening**
 - "Import from device": query users and biodata from an existing device, match PINs to GymsEra
   members (CSV mapping upload or manual), store the templates (with consent), then switch the
@@ -1040,7 +1128,7 @@ and the Phase 0 fixtures and defaults.
 | D-3 | Allow plain HTTP for devices without HTTPS | Allow, but show an "unencrypted" badge and prefer HTTPS models for new installs |
 | D-4 | Biometric retention after a member leaves | Delete 90 days after the last active package; immediately on deletion or consent withdrawal **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
 | D-5 | Branch locked by platform-plan lapse (R-82): do devices keep admitting members? | Keep admitting during the 7-day grace, then freeze sync (no new adds; expiries still removed). Members paid the gym, not us. **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
-| D-6 | Store capture photos (`ATTPHOTO`) from scans | Off by default, branch opt-in, 30-day retention **Applied in part (2026-11-10): off, never stored in Phase 2; branch opt-in with retention is Phase 3.** |
+| D-6 | Store capture photos (`ATTPHOTO`) from scans | Off by default, branch opt-in, 30-day retention **Applied (2026-11-10): off in Phase 2; branch opt-in with 30-day retention built in Phase 3 (Device settings).** |
 | D-7 | Check-out grace on OUT devices | 24 hours **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
 | D-8 | Staff on devices | Yes, privilege 0 only, via a "device access" flag on the staff member **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
 | D-9 | Attendance-protocol (`DeviceType=att`) devices | Out of scope for v1 (security/acc protocol only); add an adapter later if needed |

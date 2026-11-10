@@ -110,3 +110,21 @@ It runs `tests/integration/zkteco-p2-load.test.js` with the strict timing limits
 limits (`ZK_LOAD_MAX_MS=10000`, `ZK_LOAD_P95_MS=5000` in `.github/workflows/ci.yml`), so a few ms of runner noise
 does not fail the build. If this check fails locally, treat it as a real slowdown: find the slow poll in the
 `[zkteco-p2-load]` log line before releasing, do not raise the limits.
+
+## Phase 3: manual push, wipe, owner alerts, capture photos
+
+- **Push now does not land in 15 s.** The CMS says "No answer in 15 seconds"; the commands stay queued. Check the
+  device page: Online? Last seen? If offline, the change lands when it reconnects. `device_push_requests` holds every
+  request (`result_json` once it ended); the tenant audit log has `devices.push` and `devices.push_result`.
+- **A second press does nothing new.** By design: the same person pushing the same member inside 10 s (a branch or
+  a device inside `DEVICE_PUSH_BRANCH_WINDOW_SECONDS`, 60) gets the first request back.
+- **A device stuck on "Wiping".** It deletes its users the next time it connects; the watchdog removes it anyway
+  after `DEVICE_WIPE_WAIT_DAYS` (7). If it never comes back, delete the users on the device menu.
+- **Owner alerts** (`device_offline`, `device_error_rate`, `device_capacity` notifications) go to the tenant owner,
+  once per incident, only for branches whose Device settings keep "Send device alerts" on. The threshold for errors
+  is `DEVICE_ALERT_ERRORS_PER_HOUR` (20).
+- **Capture photos (D-6)** are stored only for a branch with "Keep capture photos" on, under
+  `device-captures/<tenant>/<branch>/` in the private store (encrypted with `BIOMETRIC_DATA_KEY`), deleted after
+  30 days by `device-retention`, and at once when the branch turns the switch off.
+- **First sync slow, or many -27 after enabling batching.** `DEVICE_BIO_BATCH_SIZE=1` sends one member per biodata
+  command (Phase 0 confirms multi-member biodata on the real firmware).

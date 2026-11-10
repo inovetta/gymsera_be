@@ -79,14 +79,6 @@ const repairDevice = async (req, res, next) => {
   }
 };
 
-const unpairDevice = async (req, res, next) => {
-  try {
-    await devices.unpairDevice({ tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, deviceId: req.params.id });
-    return sendSuccess(res, { id: req.params.id }, 'Device removed from GymsEra.');
-  } catch (err) {
-    return next(err);
-  }
-};
 
 // ── Phase 2: consent, enrolment, staff device access (ZKTeco spec §6.2, §7.6, D-8) ──────────
 const privacy = () => require('../services/devices/device-privacy.service');
@@ -153,6 +145,27 @@ const loadStaff = async (req, _res, next) => {
   }
 };
 
+/** This person's staff rows (branch, device access) in the branches the caller may see. */
+const staffDeviceAccess = async (req, res, next) => {
+  try {
+    const permitted = req.permittedBranchIds ?? null;
+    const rows = await req.tenantDb.sequelize.query(
+      `SELECT s.id, s.branch_id, s.device_access, s.employment_status, s.status, b.branch_name FROM gym_staff s
+         JOIN branches b ON b.id = s.branch_id WHERE s.user_id = ? ORDER BY b.branch_name`,
+      { replacements: [req.params.userId], type: 'SELECT' }
+    );
+    const staff = rows
+      .filter((r) => permitted === null || permitted.includes(r.branch_id))
+      .map((r) => ({
+        staffId: r.id, branchId: r.branch_id, branchName: r.branch_name, deviceAccess: Boolean(Number(r.device_access)),
+        active: r.employment_status === 'ACTIVE' && r.status === 'active',
+      }));
+    return sendSuccess(res, { staff });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 const setStaffDeviceAccess = async (req, res, next) => {
   try {
     const on = Boolean(req.body.deviceAccess);
@@ -164,7 +177,18 @@ const setStaffDeviceAccess = async (req, res, next) => {
   }
 };
 
+/** 404 unless req.body.memberId is a member (or staff) of this tenant. */
+const assertBodyMember = async (req, _res, next) => {
+  try {
+    await assertMember(req.tenantDb, req.body.memberId);
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
-  loadDevice, listDevices, createDevice, getDevice, updateDevice, repairDevice, unpairDevice,
-  getConsent, giveConsent, withdrawConsent, enroll, loadStaff, setStaffDeviceAccess,
+  assertBodyMember,
+  loadDevice, listDevices, createDevice, getDevice, updateDevice, repairDevice,
+  getConsent, giveConsent, withdrawConsent, enroll, loadStaff, setStaffDeviceAccess, staffDeviceAccess,
 };

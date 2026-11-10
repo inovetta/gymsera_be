@@ -270,6 +270,15 @@ const cmd = {
       `OVERWRITE=${Number(overwrite)}`, `MODE=${Number(mode)}`,
     ].join(separator === 'tab' ? T : ' '),
 
+  /**
+   * Remove with wipe (§10.3): every record of a table. `DATA DELETE <table> *` per the spec;
+   * biodata one type at a time (the manual: biodata conditions include Type). Phase 0 to confirm.
+   */
+  wipe: (table, type) => {
+    if (!['user', 'userauthorize', 'biodata', 'biophoto', 'userpic'].includes(table)) throw new Error(`wipe: unknown table ${table}`);
+    return table === 'biodata' ? `DATA DELETE biodata Type=${Number(type)}` : `DATA DELETE ${table} *`;
+  },
+
   info: () => 'INFO',
   check: () => 'CHECK',
 };

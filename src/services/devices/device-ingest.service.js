@@ -7,7 +7,8 @@
  *   errorlog           device_error_logs (source 'device'): codes and messages, never a body
  *   user               card numbers adopted when GymsEra has none; unknown PINs → unlinked list
  *   biodata / templatev10 / BioData   templates → member_biometrics (encrypted, consent rules)
- *   biophoto / userpic photos → private store; ATTPHOTO capture photos never stored (D-6)
+ *   biophoto / userpic photos → private store; ATTPHOTO capture photos only for a branch that opted
+ *                       in (D-6, device-screens.service#storeCapturePhotos, 30 days)
  *   querydata user     the nightly audit's user list, in packs
  *
  * Nothing here logs a body, a template or a photo. `db` = { sequelize, models }; `device` = a row
@@ -200,7 +201,11 @@ async function ingestTemplates(db, tenantId, device, table, body, now = new Date
 
 async function ingestPhotos(db, tenantId, device, table, body, now = new Date()) {
   const name = String(table).toLowerCase();
-  if (name === 'attphoto') return protocol.recordCount(body); // D-6: capture photos are not stored
+  if (name === 'attphoto') {
+    // D-6: stored only when the branch opted in; otherwise counted and dropped.
+    await require('./device-screens.service').storeCapturePhotos(db, tenantId, device, body, now);
+    return protocol.recordCount(body);
+  }
   const photos = rules.photosFrom(name, body);
   for (const p of photos) {
     const owner = await identity.ownerOfPin(db, p.pin);

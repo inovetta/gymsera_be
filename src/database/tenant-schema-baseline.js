@@ -71,6 +71,14 @@ const ADDS = {
       gym_staff: ['device_access'],
     },
   },
+  24: {
+    tables: ['device_push_requests', 'device_capture_photos', 'device_branch_settings'],
+    columns: {
+      device_commands: ['merged_into'],
+      device_unlinked_users: ['dismissed_at', 'linked_member_id', 'linked_at'],
+      access_device_details: ['alerts_json'],
+    },
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -251,6 +259,20 @@ const PROBES = {
     const batch = columnOfType(s, 'device_commands', 'batch_id', (c) => ['char', 'varchar'].includes(type(c)));
     if (batch.state !== 'present') return batch;
     return columnOfType(s, 'gym_staff', 'device_access', (c) => INT_TYPES.includes(type(c)), { tableOptional: true });
+  },
+  // 024 creates three tables, then adds columns; the last step is access_device_details.alerts_json.
+  24: async (s) => {
+    for (const [table, column] of [
+      ['device_push_requests', 'dedupe_key'], ['device_capture_photos', 'storage_key'], ['device_branch_settings', 'capture_photos'],
+    ]) {
+      const r = tableWithColumn(s, table, column);
+      if (r.state !== 'present') return r;
+    }
+    const merged = columnOfType(s, 'device_commands', 'merged_into', (c) => INT_TYPES.includes(type(c)));
+    if (merged.state !== 'present') return merged;
+    const linked = columnOfType(s, 'device_unlinked_users', 'linked_member_id', (c) => ['char', 'varchar'].includes(type(c)));
+    if (linked.state !== 'present') return linked;
+    return columnOfType(s, 'access_device_details', 'alerts_json', (c) => TEXT_TYPES.includes(type(c)));
   },
 };
 

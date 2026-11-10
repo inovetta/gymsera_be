@@ -71,7 +71,7 @@ async function watchdogTenant({ tenantId, db }, now = new Date()) {
   for (const cmd of stale) {
     const wait = rules.backoffSeconds(Number(cmd.attempts));
     if (wait !== null && Number(cmd.attempts) < cfg.maxAttempts) {
-      await exec(db, 'UPDATE device_commands SET status = \'queued\', claim_token = NULL, not_before = ?, updated_at = ? WHERE id = ? AND status = \'sent\'',
+      await exec(db, 'UPDATE device_commands SET status = \'queued\', claim_token = NULL, merged_into = NULL, not_before = ?, updated_at = ? WHERE id = ? AND status = \'sent\'',
         [new Date(now.getTime() + wait * 1000), now, cmd.id]);
       counts.requeued += 1;
     } else {
@@ -102,7 +102,8 @@ async function watchdogTenant({ tenantId, db }, now = new Date()) {
       await exec(db, 'UPDATE access_device_details SET offline_since = ? WHERE id = ?', [d.last_seen_at || now, d.id]);
     }
     if (silent && !det.offline_notified_at) {
-      await notifyOwnerOffline(tenantId, det, d.last_seen_at);
+      // The incident is recorded either way; the owner is told only when the branch keeps alerts on.
+      if (await alertsOn(db, d.id)) await notifyOwnerOffline(tenantId, det, d.last_seen_at);
       await exec(db, 'UPDATE access_device_details SET offline_notified_at = ? WHERE id = ?', [now, d.id]);
       counts.offline += 1;
     }
@@ -111,7 +112,124 @@ async function watchdogTenant({ tenantId, db }, now = new Date()) {
       counts.online += 1;
     }
   }
+
+  // Phase 3: manual push requests nobody polled to the end, wipes, per-device owner alerts.
+  counts.pushClosed = await require('../services/devices/device-push.service').closeExpired(db, now)
+    .catch((err) => { console.warn(`[device-jobs] push requests: ${err.message}`); return 0; });
+  counts.wipesFinished = await finishWipes({ tenantId, db }, now);
+  const alerted = await deviceAlerts({ tenantId, db }, now);
+  counts.errorAlerts = alerted.errors;
+  counts.capacityAlerts = alerted.capacity;
   return counts;
+}
+
+/** Wiping devices (§10.3): removed when the deletes are answered, or when the wait is over. */
+async function finishWipes({ tenantId, db }, now = new Date()) {
+  const cfg = getDeviceConfig();
+  const registry = require('../services/devices/device-registry.service');
+  const rows = await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'wiping\'', { replacements: utc([tenantId]), type: QueryTypes.SELECT });
+  let n = 0;
+  for (const { id } of rows) {
+    const [first] = await select(db, 'SELECT MIN(created_at) AS at FROM device_commands WHERE device_id = ? AND kind = \'wipe\'', [id]);
+    const waited = !first?.at || new Date(first.at).getTime() < now.getTime() - cfg.wipeWaitDays * 86400000;
+    if (await registry.finishWipe({ tenantId, tenantDb: db, deviceId: id, force: waited, now })) n += 1;
+  }
+  return n;
+}
+
+/** The branch's "owner alerts" switch (device_branch_settings, default on). */
+async function alertsOn(db, deviceId) {
+  const [row] = await select(db, `SELECT s.alerts_enabled FROM access_device_details d LEFT JOIN device_branch_settings s ON s.branch_id = d.branch_id
+    WHERE d.id = ?`, [deviceId]).catch(() => []);
+  return !row || row.alerts_enabled === null || Number(row.alerts_enabled) === 1;
+}
+
+const parseJson = (text) => {
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+/**
+ * Per-device owner alerts (spec §13), one notification per incident, only where the branch keeps
+ * alerts on:
+ *   error rate  DEVICE_ALERT_ERRORS_PER_HOUR failures or device errors in the last hour (again after 24 h)
+ *   capacity    users or templates GymsEra wants on it reach 90% of MaxUserCount / MaxMultiBioDataCount
+ *               (again once it has dropped below 85%)
+ * When each went out is kept in access_device_details.alerts_json.
+ */
+async function deviceAlerts({ tenantId, db }, now = new Date()) {
+  const cfg = getDeviceConfig();
+  const out = { errors: 0, capacity: 0 };
+  const active = await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([tenantId]), type: QueryTypes.SELECT });
+  for (const { id } of active) {
+    const [det] = await select(db, 'SELECT id, name, enabled, capabilities_json, alerts_json FROM access_device_details WHERE id = ?', [id]);
+    if (!det || !Number(det.enabled)) continue;
+    const state = parseJson(det.alerts_json);
+    const before = JSON.stringify(state);
+    const on = await alertsOn(db, id);
+
+    const [errs] = await select(db, 'SELECT COUNT(*) AS n FROM device_error_logs WHERE device_id = ? AND created_at >= ?', [id, new Date(now.getTime() - 3600000)]);
+    const errorCount = Number(errs.n);
+    const lastErr = state.errorRateAt ? new Date(state.errorRateAt).getTime() : 0;
+    if (errorCount >= cfg.alertErrorsPerHour && now.getTime() - lastErr >= 86400000) {
+      if (on) {
+        await notifyOwner(tenantId, det, 'device_error_rate', 'Access device reporting errors',
+          `${det.name} reported ${errorCount} errors in the last hour. Open the device's Errors tab to see what failed.`);
+        out.errors += 1;
+      }
+      state.errorRateAt = now.toISOString();
+    }
+
+    const use = await capacityUse(db, id, parseJson(det.capabilities_json));
+    const percent = use ? Math.round(use.ratio * 100) : null;
+    if (use && use.ratio >= cfg.capacityAlertPercent / 100 && !state.capacityAt) {
+      if (on) {
+        await notifyOwner(tenantId, det, 'device_capacity', 'Access device almost full',
+          `${det.name} is at ${percent}% of its ${use.what} capacity (${use.used} of ${use.max}). Remove old users or add a device.`);
+        out.capacity += 1;
+      }
+      state.capacityAt = now.toISOString();
+    } else if (state.capacityAt && (!use || use.ratio < (cfg.capacityAlertPercent - 5) / 100)) {
+      delete state.capacityAt;
+    }
+    if (JSON.stringify(state) !== before) await exec(db, 'UPDATE access_device_details SET alerts_json = ? WHERE id = ?', [JSON.stringify(state), id]);
+  }
+  return out;
+}
+
+/** The fullest of users (MaxUserCount) and each template type (MaxMultiBioDataCount). null when unknown. */
+async function capacityUse(db, deviceId, caps) {
+  const candidates = [];
+  const maxUsers = Number(caps.MaxUserCount);
+  const [u] = await select(db, 'SELECT COUNT(*) AS n FROM device_member_sync WHERE device_id = ? AND desired = 1', [deviceId]);
+  if (maxUsers > 0) candidates.push({ what: 'user', used: Number(u.n), max: maxUsers });
+  const maxBio = String(caps.MaxMultiBioDataCount || '').split(':').map(Number);
+  if (maxBio.some((v) => v > 0)) {
+    const rows = await select(db, `SELECT b.bio_type, COUNT(*) AS n FROM member_biometrics b JOIN device_member_sync s ON s.member_id = b.member_id
+      WHERE s.device_id = ? AND s.desired = 1 AND b.consent_pending = 0 GROUP BY b.bio_type`, [deviceId]);
+    for (const r of rows) {
+      const max = maxBio[Number(r.bio_type)];
+      if (max > 0) candidates.push({ what: Number(r.bio_type) === 9 || Number(r.bio_type) === 2 ? 'face' : Number(r.bio_type) === 1 ? 'fingerprint' : 'template', used: Number(r.n), max });
+    }
+  }
+  if (!candidates.length) return null;
+  return candidates.map((c) => ({ ...c, ratio: c.used / c.max })).sort((a, b) => b.ratio - a.ratio)[0];
+}
+
+async function notifyOwner(tenantId, det, type, title, message) {
+  try {
+    const { Tenant } = require('../models/platform');
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId'] });
+    if (!tenant?.ownerUserId) return;
+    await require('../services/notifications.service').createNotification({
+      userId: tenant.ownerUserId, role: 'host', type, title, message, deepLink: '/host/devices', metadataJson: { deviceId: det.id },
+    });
+  } catch (err) {
+    console.warn(`[device-jobs] ${type} notification failed: ${err.message}`);
+  }
 }
 
 async function notifyOwnerOffline(tenantId, det, lastSeenAt) {
@@ -229,10 +347,13 @@ async function retentionTenant({ db }, now = new Date()) {
   const r = await biometrics.retentionSweep(db, now);
   for (const m of new Set([...r.pendingExpired, ...r.retained])) await sync.reconcileMember(db, m, 'retention', { now });
   const purged = await identity.purgeRetired(db, cfg.pinRetireDays, now);
+  // D-6: capture photos are kept 30 days.
+  const photos = await require('../services/devices/device-screens.service').deleteCapturePhotos(db, { olderThan: new Date(now.getTime() - cfg.capturePhotoDays * 86400000) })
+    .catch((err) => { console.warn(`[device-jobs] capture photo retention: ${err.message}`); return 0; });
   const week = new Date(now.getTime() - 7 * 86400000);
   await exec(db, 'DELETE FROM device_state WHERE received_at < ?', [week]);
   await exec(db, 'DELETE FROM capacity_outbox WHERE event_type = \'DEVICE_RECONCILE\' AND status = \'PROCESSED\' AND processed_at < ?', [week]);
-  return { pendingExpired: r.pendingExpired.length, retained: r.retained.length, pinsPurged: purged };
+  return { pendingExpired: r.pendingExpired.length, retained: r.retained.length, pinsPurged: purged, capturePhotosDeleted: photos };
 }
 
 const runRetention = (now = new Date()) => eachTenant('device-retention', (t) => retentionTenant(t, now));
@@ -249,4 +370,6 @@ module.exports = {
   retentionTenant,
   requestAudit,
   staggerOf,
+  deviceAlerts,
+  finishWipes,
 };
