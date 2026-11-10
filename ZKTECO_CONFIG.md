@@ -1,5 +1,7 @@
 # ZKTeco Quick Configuration Card — GymsEra
 
+> **Superseded (2026-11-10).** This describes the old attendance-only `/iclock` router. Devices are now added in the CMS (Access devices) and connect with a device key: see `docs/ZKTECO_PUSH_DEVICE_SYNC.md` (§4.4 setup card, §15 "Phase 1 as built"). Serials still registered in the old platform `devices` table keep working until they are moved over.
+
 > Print this page and keep it at the gym. It covers everything needed to connect a new device.
 
 ---

@@ -53,8 +53,12 @@ describe('declared fields per route (fixture)', () => {
       'POST /api/v1/billing/webhooks/apple', // provider payloads, authenticated by signature (SEC-03)
       'POST /api/v1/billing/webhooks/google',
       'POST /api/v1/billing/webhooks/stripe',
-      'POST /iclock/cdata', // ZKTeco device protocol
+      'POST /iclock/cdata', // ZKTeco device protocol: text bodies, read before the JSON parser (ZKTECO_PUSH_DEVICE_SYNC.md §5)
       'POST /iclock/devicecmd',
+      'POST /iclock/ping',
+      'POST /iclock/push',
+      'POST /iclock/querydata',
+      'POST /iclock/registry',
     ]);
   });
 });

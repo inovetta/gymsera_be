@@ -393,6 +393,25 @@ const CATALOGUE = [
   },
 
   {
+    module: 'devices',
+    label: 'Access devices',
+    permissions: [
+      {
+        key: 'devices.view',
+        label: 'View access devices',
+        tiers: ['F', 'F', 'F', 'V', 'V', 'x', 'x'],
+        note: 'Face / fingerprint / card terminals of the branch: status, model, what is on them (ZKTeco spec §12).',
+      },
+      {
+        key: 'devices.manage',
+        label: 'Add and manage access devices',
+        tiers: ['D', 'D', 'D', 'x', 'x', 'x', 'x'],
+        note: 'Add, rename, disable, unpair. A branch manager only at their own branch; re-pair needs the whole organization.',
+      },
+    ],
+  },
+
+  {
     module: 'ledger',
     label: 'Collection ledger',
     permissions: [

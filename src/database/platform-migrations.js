@@ -1139,6 +1139,73 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 29,
+    name: 'p029_access_devices',
+    description:
+      'ZKTeco Push devices, Phase 1 (docs/ZKTECO_PUSH_DEVICE_SYNC.md §6.1): access_devices (device key, bound serial, per-device RegistryCode and SessionID, status) and unclaimed_device_contacts (unknown serials and keys, 7-day rows). New tables only; the old router\'s `devices` / `device_members` are not touched. Safe to re-run.',
+    // ROLLBACK (deploy the previous API build FIRST: it never reads these tables):
+    //   DROP TABLE `access_devices`;  DROP TABLE `unclaimed_device_contacts`;  DELETE FROM `schema_migrations` WHERE `version` = 29;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      // Routing happens before the tenant is known (spec §6), so this lives in the platform DB.
+      // status: awaiting_connection → active (registered) ; disabled (host switched it off) ; removed (unpaired).
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`access_devices\` (
+          \`id\` CHAR(36) BINARY NOT NULL,
+          \`device_key\` CHAR(8) NOT NULL,
+          \`serial_number\` VARCHAR(32) NULL,
+          \`previous_serial_number\` VARCHAR(32) NULL,
+          \`tenant_id\` CHAR(36) BINARY NOT NULL,
+          \`organization_id\` CHAR(36) BINARY NULL,
+          \`branch_id\` CHAR(36) BINARY NOT NULL,
+          \`link_mode\` VARCHAR(8) NOT NULL,
+          \`comm_key\` VARCHAR(8) NULL,
+          \`registry_code\` VARCHAR(32) NOT NULL,
+          \`session_id\` VARCHAR(32) NOT NULL,
+          \`token_mode\` VARCHAR(8) NOT NULL DEFAULT 'log',
+          \`status\` VARCHAR(24) NOT NULL DEFAULT 'awaiting_connection',
+          \`registered_at\` DATETIME NULL,
+          \`last_seen_at\` DATETIME NULL,
+          \`last_ip\` VARCHAR(45) NULL,
+          \`last_pushver\` VARCHAR(16) NULL,
+          \`last_host\` VARCHAR(255) NULL,
+          \`last_scheme\` VARCHAR(8) NULL,
+          \`last_token_state\` VARCHAR(16) NULL,
+          \`serial_mismatch_at\` DATETIME NULL,
+          \`serial_mismatch_value\` VARCHAR(32) NULL,
+          \`created_by\` CHAR(36) BINARY NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`access_devices_device_key\` (\`device_key\`),
+          UNIQUE KEY \`access_devices_serial_number\` (\`serial_number\`),
+          KEY \`access_devices_tenant_branch\` (\`tenant_id\`, \`branch_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      // Unknown serials and keys (spec §4.2 rule 1), so support can help a host who mistyped.
+      // One row per (serial, host, key, ip), written at most every 10 s, capped, 7-day expiry.
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`unclaimed_device_contacts\` (
+          \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          \`contact_hash\` CHAR(64) NOT NULL,
+          \`serial_number\` VARCHAR(64) NULL,
+          \`host\` VARCHAR(255) NULL,
+          \`path_key\` VARCHAR(32) NULL,
+          \`ip\` VARCHAR(45) NULL,
+          \`reason\` VARCHAR(32) NOT NULL,
+          \`first_seen_at\` DATETIME NOT NULL,
+          \`last_seen_at\` DATETIME NOT NULL,
+          \`hits\` INT UNSIGNED NOT NULL DEFAULT 1,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`unclaimed_device_contacts_contact_hash\` (\`contact_hash\`),
+          KEY \`unclaimed_device_contacts_last_seen_at\` (\`last_seen_at\`),
+          KEY \`unclaimed_device_contacts_serial_number\` (\`serial_number\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

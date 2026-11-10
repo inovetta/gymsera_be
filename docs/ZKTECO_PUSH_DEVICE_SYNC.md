@@ -841,6 +841,66 @@ Record the results in the spec and close decisions D-1 to D-3.
 - A **device simulator** script (`scripts/zk-device-simulator.js`) that speaks the protocol, used
   by integration tests and CI.
 
+#### Phase 1 as built (2026-11-10, branch `feat/zkteco-phase1`, before the Phase 0 device results)
+
+**Names (spec proposal → real).**
+
+| Spec | Built | Notes |
+|---|---|---|
+| platform `access_devices`, `unclaimed_device_contacts` | same names, migration `p029_access_devices` | ids `CHAR(36)` UUIDs like every platform table (not BIGINT); enums are `VARCHAR`; status `awaiting_connection` / `active` / `disabled` / `removed` (unpaired; spec had `replaced`) |
+| tenant `devices` | `access_device_details` (migration `022_access_device_tables`) | so it never reads like the old platform `devices` table; `id` = `access_devices.id` |
+| tenant `device_commands` | same, in 022 | id = CmdID, starts at a random offset ≥ 1,000,000 per tenant (see "spec corrections") |
+| `device_state` | column `access_device_details.state_json` | latest `rtstate` only; a table when Phase 2 needs history |
+| `device_error_logs`, member, biometric, sync, push-request, access-event tables | not built | Phase 2 and 3 |
+| old router (`src/routes/iclock.routes.js`, platform `devices` / `device_members`) | mount removed; tables, models, `/devices` and `/admin/devices` routes untouched | a serial in the old `devices` table (no key) keeps the old heartbeat and ATTLOG handling (`iclock.service.js`) through the new router, until Phase 4 moves it |
+| permissions | `devices.view` (owner, org admin, manager F; branch admin, front desk V), `devices.manage` (owner, org admin, manager D) | the §12 table has no branch admin or support column: branch admin view only, support none |
+| routes | `GET/POST /host/devices`, `GET/PATCH/DELETE /host/devices/:id`, `POST /host/devices/:id/repair` | PATCH takes `name`, `direction`, `enabled`; DELETE = unpair (no wipe yet) |
+
+**Settings** (`src/config/devices.config.js`; every Phase 0 open point, spec default):
+`DEVICE_REGISTRATION_STYLE=spec` (or `gbs`: answer cdata like GymBioSync, skipping registration),
+`DEVICE_TOKEN_MODE=log` (`off`, `enforce`; stored per device when it is added),
+`DEVICE_ENDTIME_FORMAT=auto` (`seconds`, `yyyymmdd`; auto follows `DateFmtFunOn`),
+`DEVICE_ENROLL_SEPARATOR=space` (`tab`), `DEVICE_LINK_MODE=host` (D-1; `path`, `serial`),
+`DEVICE_SERIAL_PAIRING=off` (D-2; `authkey`, `open`), `DEVICE_ALLOW_HTTP=true` (D-3),
+`DEVICE_REQUEST_DELAY=3`, `DEVICE_PUSH_HOST=push.gymsera.com`,
+`DEVICE_HOST_KEY_SUFFIXES=.push.gymsera.com` (comma list; e.g. `-push.gymsera.com` for the
+first-level wildcard in §4.3), `DEVICE_PUSH_PORT=443`, `DEVICE_PUSH_HTTPS=true`,
+`DEVICE_PROXY_LOCAL_HOSTS=127.0.0.1:8085`. Unknown values log a warning and use the default.
+
+**Router decision.** The device router replaces the `/iclock` mount and is mounted in `app.js`
+right after the request timeout, before `trust proxy`, helmet, CORS, the static files and the JSON
+/ urlencoded parsers, with its own `express.text` (10 MB). It answers `/iclock/*` and
+`/d/<key>/iclock/*`; mode B reads the key from `X-Original-Host`, else `Host`. A guard in front
+of everything answers 404 for any non-device path on `push.gymsera.com`, on a key host, or on the
+local proxy binding without `X-Original-Host` (fail closed). The app-wide `trust proxy` setting is
+unchanged.
+
+**Spec corrections found while building.**
+1. *"Trust the proxy headers only from 127.0.0.1" cannot be implemented on iisnode*: every request
+   reaches Node through a named pipe, with no socket address, whether it came through the push site
+   or straight to `api.gymsera.com`. So `CF-Connecting-IP` / `X-Forwarded-For` / `X-Original-Host`
+   are used for logs, support and finding the key only, never to grant anything. Forging
+   `X-Original-Host` gains nothing: the key in it is the secret, as in the path. Appendix A.3 point 2
+   has the same problem for the CMS and website.
+2. *Token enforce must exempt `push` as well as `cdata` and `registry`*: the device learns the
+   SessionID from the `push` answer, so it cannot send a valid token on `push` itself.
+3. *`-7` ("repeated command") treated as success* is only safe while a device never sees a CmdID
+   twice. CmdIDs are per tenant database, so a device moved to another tenant could. Each tenant's
+   `device_commands` therefore starts at a random id ≥ 1,000,000. Phase 0 should still check what
+   the device does with an id it has seen.
+4. *The 30 s lookup cache with an `updated_at` check* costs the same query it saves. Device rows
+   are read on every request (one unique-index lookup); only the tenant connection string is cached
+   (60 s). Re-pair, disable and unpair act on the next request.
+5. *Mode C with `authKey` is still weak*: the Comm Key is checked at registration only; after that
+   the serial number alone identifies the device until token enforce is on. Keep D-2 at "off".
+6. *Serial uniqueness*: one physical device can belong to one GymsEra device at a time
+   (`UNIQUE(serial_number)`); unpair and re-pair free it.
+7. ARR may keep the original `Host` instead of rewriting it to the local binding (it depends on
+   `preserveHostHeader`); the guard and the key lookup handle both.
+
+**Phase 1 does not store** scans, uploaded users, templates, photos or query results: the router
+answers them per the protocol (`OK`, `<table>=N`) and logs counts only. That is Phase 2.
+
 **Phase 2: sync engine**
 - Identity and PIN, biometrics storage and encryption, consent, reconciler, command queue and
   return codes.

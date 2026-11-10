@@ -800,6 +800,77 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // ZKTeco Push devices, Phase 1 (docs/ZKTECO_PUSH_DEVICE_SYNC.md §6.2). New tables only.
+    // access_device_details: the tenant's copy of a device (id = platform access_devices.id): name,
+    //   direction, what the device reports. Not called `devices`, so it never reads like the
+    //   platform table of the old /iclock router.
+    // device_commands: the queue; id is the protocol CmdID, claimed by claim_token (§8.1).
+    //   AUTO_INCREMENT starts at a random offset ≥ 1,000,000 so a device moved between tenants never
+    //   sees a CmdID twice (the device answers -7 "repeated command" to an id it already ran).
+    // ROLLBACK (previous build first): DROP TABLE `device_commands`; DROP TABLE `access_device_details`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 22;
+    version: 22,
+    name: '022_access_device_tables',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`access_device_details\` (
+          \`id\` CHAR(36) NOT NULL,
+          \`branch_id\` CHAR(36) NOT NULL,
+          \`name\` VARCHAR(100) NOT NULL,
+          \`direction\` VARCHAR(8) NOT NULL DEFAULT 'in',
+          \`enabled\` TINYINT(1) NOT NULL DEFAULT 1,
+          \`model\` VARCHAR(100) NULL,
+          \`firmware\` VARCHAR(100) NULL,
+          \`push_version\` VARCHAR(16) NULL,
+          \`mac\` VARCHAR(32) NULL,
+          \`comm_type\` VARCHAR(32) NULL,
+          \`device_type\` VARCHAR(8) NULL,
+          \`capabilities_json\` TEXT NULL,
+          \`counts_json\` TEXT NULL,
+          \`state_json\` TEXT NULL,
+          \`door_mask\` TINYINT UNSIGNED NOT NULL DEFAULT 1,
+          \`timezone_id\` INT NOT NULL DEFAULT 1,
+          \`last_full_audit_at\` DATETIME NULL,
+          \`last_error_code\` INT NULL,
+          \`last_error_at\` DATETIME NULL,
+          \`removed_at\` DATETIME NULL,
+          \`created_by\` CHAR(36) NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          KEY \`access_device_details_branch_id\` (\`branch_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+      );
+      const start = require('crypto').randomInt(1000000, 50000000);
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`device_commands\` (
+          \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          \`device_id\` CHAR(36) NOT NULL,
+          \`member_id\` CHAR(36) NULL,
+          \`push_request_id\` CHAR(26) NULL,
+          \`kind\` VARCHAR(24) NOT NULL,
+          \`args_json\` TEXT NULL,
+          \`priority\` TINYINT UNSIGNED NOT NULL DEFAULT 5,
+          \`status\` VARCHAR(12) NOT NULL DEFAULT 'queued',
+          \`claim_token\` CHAR(26) NULL,
+          \`attempts\` INT UNSIGNED NOT NULL DEFAULT 0,
+          \`sent_at\` DATETIME NULL,
+          \`acked_at\` DATETIME NULL,
+          \`return_code\` INT NULL,
+          \`not_before\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`expires_at\` DATETIME NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          KEY \`device_commands_poll\` (\`device_id\`, \`status\`, \`priority\`, \`id\`),
+          KEY \`device_commands_claim_token\` (\`claim_token\`)
+        ) ENGINE=InnoDB AUTO_INCREMENT=${start} DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+      );
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

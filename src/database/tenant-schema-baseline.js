@@ -58,6 +58,7 @@ const ADDS = {
   19: { columns: { branches: ['currency'] } },
   20: { columns: { branches: ['google_place_id'] } },
   21: { columns: { branches: ['paused_at', 'paused_by'] } },
+  22: { tables: ['access_device_details', 'device_commands'] },
 };
 
 /** One read of information_schema for the current database. */
@@ -219,6 +220,11 @@ const PROBES = {
     const at = await columnOfType(s, 'branches', 'paused_at', (c) => ['datetime', 'timestamp'].includes(type(c)));
     if (at.state !== 'present') return at;
     return columnOfType(s, 'branches', 'paused_by', (c) => ['char', 'varchar'].includes(type(c)) && Number(c.CHARACTER_MAXIMUM_LENGTH) >= 36);
+  },
+  22: async (s) => {
+    const details = tableWithColumn(s, 'access_device_details', 'direction');
+    if (details.state !== 'present') return details;
+    return tableWithColumn(s, 'device_commands', 'claim_token');
   },
 };
 
