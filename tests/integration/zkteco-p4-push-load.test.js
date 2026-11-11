@@ -73,6 +73,9 @@ test(`${DEVICES} devices, ${MEMBERS} members, ${PUSHES} pushes at once during th
   const polls = [];
   const seen = new Map();
   let running = true;
+  let pollError = null;
+  // NEW-240: a failure below must stop these loops before afterAll closes the server under them; otherwise
+  // the report ends with their "socket hang up" / ECONNRESET instead of the failure that stopped the test.
   const pollAll = Promise.all(devices.map(async (d) => {
     // Every device keeps polling (like a real one every RequestDelay) until the test has seen all in sync.
     const stopAt = Date.now() + 300000;
@@ -85,42 +88,46 @@ test(`${DEVICES} devices, ${MEMBERS} members, ${PUSHES} pushes at once during th
       }
       if (!s.commands.length) await new Promise((r) => setTimeout(r, IDLE_MS));
     }
-  }));
+  })).catch((err) => { pollError = err; running = false; });
 
   // Staff press Push now for PUSHES members at once, each from the owner's session, twice (double click).
   const owner = asPersona('owner');
   const targets = all.slice(0, PUSHES);
   const pushTimes = [];
-  // Waves of ZK_PUSH_LOAD_WAVE members (default 5: 10 requests) while all devices poll: the local test client
-  // shares one listen backlog with the devices (macOS caps it at 128), a real front desk does not.
-  const WAVE = positive('ZK_PUSH_LOAD_WAVE', 5);
-  const pushed = [];
-  for (let i = 0; i < targets.length; i += WAVE) {
-    pushed.push(...await Promise.all(targets.slice(i, i + WAVE).flatMap(({ user }) => [0, 1].map(async () => {
-      const t0 = Date.now();
-      const res = await owner.post(`/host/members/${user.id}/device-push`, {});
-      pushTimes.push(Date.now() - t0);
-      return { user, res };
-    }))));
-  }
-  for (const { res } of pushed) expect(res.status).toBe(202);
   const byMember = new Map();
-  for (const { user, res } of pushed) {
-    if (!byMember.has(user.id)) byMember.set(user.id, new Set());
-    byMember.get(user.id).add(res.body.data.requestId);
-  }
-  for (const ids of byMember.values()) expect(ids.size).toBe(1); // the double click got the same request
+  try {
+    // Waves of ZK_PUSH_LOAD_WAVE members (default 5: 10 requests) while all devices poll: the local test client
+    // shares one listen backlog with the devices (macOS caps it at 128), a real front desk does not.
+    const WAVE = positive('ZK_PUSH_LOAD_WAVE', 5);
+    const pushed = [];
+    for (let i = 0; i < targets.length; i += WAVE) {
+      pushed.push(...await Promise.all(targets.slice(i, i + WAVE).flatMap(({ user }) => [0, 1].map(async () => {
+        const t0 = Date.now();
+        const res = await owner.post(`/host/members/${user.id}/device-push`, {});
+        pushTimes.push(Date.now() - t0);
+        return { user, res };
+      }))));
+    }
+    for (const { res } of pushed) expect(res.status).toBe(202);
+    for (const { user, res } of pushed) {
+      if (!byMember.has(user.id)) byMember.set(user.id, new Set());
+      byMember.get(user.id).add(res.body.data.requestId);
+    }
+    for (const ids of byMember.values()) expect(ids.size).toBe(1); // the double click got the same request
 
-  // Wait until every device is in sync (the poll loops above keep running meanwhile).
-  const deadline = Date.now() + 240000;
-  for (;;) {
-    const [p] = await w.q(w.db1, 'SELECT COUNT(*) AS n FROM device_member_sync WHERE desired = 1 AND state <> \'in_sync\'');
-    const [q] = await w.q(w.db1, 'SELECT COUNT(*) AS n FROM device_commands WHERE status IN (\'queued\', \'sent\')');
-    if ((Number(p.n) === 0 && Number(q.n) === 0) || Date.now() > deadline) break;
-    await new Promise((r) => setTimeout(r, 200));
+    // Wait until every device is in sync (the poll loops above keep running meanwhile).
+    const deadline = Date.now() + 240000;
+    for (;;) {
+      const [p] = await w.q(w.db1, 'SELECT COUNT(*) AS n FROM device_member_sync WHERE desired = 1 AND state <> \'in_sync\'');
+      const [q] = await w.q(w.db1, 'SELECT COUNT(*) AS n FROM device_commands WHERE status IN (\'queued\', \'sent\')');
+      if ((Number(p.n) === 0 && Number(q.n) === 0) || Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  } finally {
+    running = false;
+    await pollAll;
   }
-  running = false;
-  await pollAll;
+  expect(pollError).toBeNull();
 
   expect([...seen.values()].every((n) => n === 1)).toBe(true);
   const foreignPin = await w.pinOf(w.db2, foreign.id);
