@@ -1,4 +1,5 @@
 const { sendError } = require('../utils/response.utils');
+const { isDevicePath } = require('../routes/device-paths');
 
 /**
  * Check if the request URL is an upload route:
@@ -47,6 +48,13 @@ function requestTimeout(defaultTimeoutMs = 15000, uploadTimeoutMs = 120000) {
 
     // Exempt long-running provisioning requests or testing bypasses
     if (isProvisioningRoute(url) || req.headers['x-skip-timeout'] === 'true') {
+      return next();
+    }
+    // NEW-240: ZKTeco device paths answer only in the device protocol (text/plain, from the device router).
+    // A JSON 408 sent while the handler runs loses commands it already claimed, and the handler's own answer
+    // then throws ERR_HTTP_HEADERS_SENT. Device work is bounded by the tenant pool's acquire time (20 s; an
+    // error answers OK) and, in production, by the proxy in front of the push site.
+    if (isDevicePath(req.path || url.split('?')[0])) {
       return next();
     }
 
