@@ -598,15 +598,20 @@ async function updateDevice({ tenantId, tenantDb, deviceId, name, direction, att
     if (pollDelaySeconds !== undefined && pollDelaySeconds !== null && !(Number.isInteger(pollDelaySeconds) && pollDelaySeconds >= 1 && pollDelaySeconds <= 5)) {
       throw createError('The poll delay is 1 to 5 seconds.', 422, 'invalid_poll_delay');
     }
-    const sets = [];
-    const rep = [];
-    const put = (col, v) => { sets.push(`${col} = ?`); rep.push(v); };
-    if (o.userAuthorize !== undefined) put('send_userauthorize', o.userAuthorize === null ? null : (o.userAuthorize ? 1 : 0));
-    if (o.validityMode !== undefined) put('validity_mode', o.validityMode);
-    if (o.userCommandForm !== undefined) put('user_command_form', o.userCommandForm);
-    if (pollDelaySeconds !== undefined) put('poll_delay_seconds', pollDelaySeconds);
-    if (sets.length) {
-      await tenantDb.sequelize.query(`UPDATE access_device_details SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`, { replacements: utc([...rep, new Date(), deviceId]) });
+    // One fixed statement (SEC-16): a field left out keeps its value; null puts it back to the default.
+    const given = (v) => (v === undefined ? 0 : 1);
+    const auth = o.userAuthorize === undefined || o.userAuthorize === null ? null : (o.userAuthorize ? 1 : 0);
+    if (given(o.userAuthorize) || given(o.validityMode) || given(o.userCommandForm) || given(pollDelaySeconds)) {
+      await tenantDb.sequelize.query(
+        `UPDATE access_device_details SET send_userauthorize = IF(?, ?, send_userauthorize), validity_mode = IF(?, ?, validity_mode),
+           user_command_form = IF(?, ?, user_command_form), poll_delay_seconds = IF(?, ?, poll_delay_seconds), updated_at = ? WHERE id = ?`,
+        {
+          replacements: utc([
+            given(o.userAuthorize), auth, given(o.validityMode), o.validityMode ?? null, given(o.userCommandForm), o.userCommandForm ?? null,
+            given(pollDelaySeconds), pollDelaySeconds ?? null, new Date(), deviceId,
+          ]),
+        }
+      );
       // What the device gets changed: every member is planned again (the record holds the form and validity).
       if (attOptions !== undefined) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'att_options_changed');
     }

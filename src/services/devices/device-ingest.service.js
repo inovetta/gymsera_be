@@ -57,20 +57,28 @@ function historyCutoff(device, platformRow, cfg = require('../../config/devices.
 
 /**
  * Scans older than the cut-off: device events only (attendance_note 'history'), never a check-in, an unlinked
- * user or a drift action; one multi-row statement per post, duplicates ignored (a re-sent history is a no-op).
+ * user or a drift action; one fixed statement per row (SEC-16: no SQL built from text) in one transaction per
+ * post, duplicates ignored (a re-sent history is a no-op).
  */
 async function storeHistory(db, device, rows, now) {
   if (!rows.length) return 0;
-  const values = rows.map(() => '(?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, \'history\', ?)').join(', ');
-  const rep = rows.flatMap((r) => [device.id, device.branch_id, r.index, r.local, r.utc, r.pin ? r.pin.slice(0, 16) : null, r.cardNo, r.event,
-    r.verify, r.inout, r.result, r.result === 'denied' ? rules.deniedReason(r.event) : null, now]);
-  const [, meta] = await db.sequelize.query(
-    `INSERT INTO device_access_events (device_id, branch_id, device_record_index, device_time, \`utc_time\`, pin, member_id, card_no, event_code,
-       verify_type, inout_status, result, reason, attendance_id, attendance_note, created_at)
-     VALUES ${values} ON DUPLICATE KEY UPDATE id = id`,
-    { replacements: utc(rep) }
-  );
-  return affected(meta);
+  let stored = 0;
+  await db.sequelize.transaction(async (transaction) => {
+    for (const r of rows) {
+      const [, meta] = await db.sequelize.query(
+        `INSERT INTO device_access_events (device_id, branch_id, device_record_index, device_time, \`utc_time\`, pin, member_id, card_no, event_code,
+           verify_type, inout_status, result, reason, attendance_id, attendance_note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, 'history', ?) ON DUPLICATE KEY UPDATE id = id`,
+        {
+          replacements: utc([device.id, device.branch_id, r.index, r.local, r.utc, r.pin ? r.pin.slice(0, 16) : null, r.cardNo, r.event,
+            r.verify, r.inout, r.result, r.result === 'denied' ? rules.deniedReason(r.event) : null, now]),
+          transaction,
+        }
+      );
+      stored += affected(meta);
+    }
+  });
+  return stored;
 }
 
 /** → { received, stored, duplicates, checkIns, checkOuts, history } */
