@@ -13,12 +13,27 @@
  *   node scripts/zk-capture-server.js kinds     (list command kinds)
  *
  * Options: --port 8088  --host 0.0.0.0  --captures <dir>  --only-sn <SN[,SN]>
- *          --style spec|gbs  (gbs = answer cdata/push like GymBioSync, with random codes)
+ *          --style auto|spec|gbs|att  (default auto)
+ *              spec = answer an unregistered device OK and wait for POST /iclock/registry
+ *              gbs  = answer cdata/push like GymBioSync, with random codes, for every device
+ *              att  = like gbs on cdata (GET OPTION FROM, stamps), without waiting for registry
+ *              auto = att for a device whose cdata query says DeviceType=att, spec otherwise
+ *          --stamps 9999    (ATTLOGStamp / OPERLOGStamp / ATTPHOTOStamp / BIODATAStamp sent in
+ *                            the att answer until the device reports its own; 0 = GymBioSync,
+ *                            which asks for the whole history again)
  *          --batch 10       (max commands per getrequest)
+ *          --test-pin 9001  (uploads of this PIN are logged line by line; others only counted)
+ *
+ * First real capture (SpeedFace-V5L ZAM180 Ver3.4.9, Push 2.0.33S, Device Type "T&A PUSH",
+ * 2026-11-11): the device never POSTs /iclock/registry. It sends GET cdata?options=all with
+ * DeviceType=att and pushver=2.4.1, POSTs table=options, polls getrequest (the first poll carries
+ * INFO=...), then uploads its history: OPERLOG (USER / FP lines), BIODATA, ATTLOG (positional),
+ * OPERLOG (OPLOG lines). No Cookie token. See docs/runbooks/zkteco-phase0-checklist.md.
  *
  * Privacy: template and photo values are cut to their first 40 characters plus
  * the length before anything is written or printed. Wipes (`DELETE ... *`) are refused.
- * Enrol only a test person.
+ * Enrol only a test person. A T&A PUSH device uploads every user's PIN and name in OPERLOG on
+ * first contact: the capture file then holds real member names. Keep it on this Mac.
  */
 'use strict';
 
@@ -92,6 +107,75 @@ function buildConfigLines({ sessionId, registryCode, forCdata, style = 'spec', s
   return lines;
 }
 
+const STAMP_TABLES = ['ATTLOG', 'OPERLOG', 'BIODATA', 'ATTPHOTO'];
+
+/**
+ * The cdata answer for an attendance (T&A PUSH) device: GymBioSync's cdata lines with this run's
+ * random codes, and the stamps this server knows for the device (else `defaultStamp`).
+ * `stamps` maps ATTLOG / OPERLOG / BIODATA / ATTPHOTO → the last Stamp / OpStamp the device sent.
+ */
+function buildAttOptionLines({ sessionId, registryCode, sn = '', stamps = {}, defaultStamp = '9999' }) {
+  const stampOf = (t) => String(stamps[t] ?? defaultStamp);
+  return buildConfigLines({ sessionId, registryCode, forCdata: true, style: 'gbs', sn })
+    .map((line) => {
+      const m = /^(ATTLOG|OPERLOG|BIODATA|ATTPHOTO)Stamp=/.exec(line);
+      return m ? `${m[1]}Stamp=${stampOf(m[1])}` : line;
+    });
+}
+
+/** Which answer a cdata?options=all gets: 'spec', 'gbs' or 'att'. */
+function answerStyleFor(style, query = {}) {
+  if (style === 'auto') return String(query.DeviceType || '').toLowerCase() === 'att' ? 'att' : 'spec';
+  return style;
+}
+
+// ── Attendance protocol uploads (T&A PUSH, first capture 2026-11-11) ───────────
+/** ATTLOG lines are positional, tab separated (10 values and a trailing tab on ZAM180 Ver3.4.9). */
+const ATTLOG_FIELDS = ['pin', 'time', 'status', 'verify', 'workcode', 'reserved1', 'reserved2', 'col7', 'col8', 'col9'];
+const ATT_VERIFY = { 1: 'fingerprint', 4: 'card', 15: 'face' }; // the codes seen in the first capture
+
+function parseAttlog(body) {
+  return String(body || '').split(/\r?\n/).filter((l) => l.trim()).map((line) => {
+    const cols = line.split('\t');
+    const row = Object.fromEntries(ATTLOG_FIELDS.map((f, i) => [f, (cols[i] ?? '').trim()]));
+    row.columns = cols.length;
+    return row;
+  });
+}
+
+/** Records in the same second for the same PIN (test (l)): [{ pin, time, verify: [..] }]. */
+function sameSecond(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = `${r.pin}|${r.time}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r.verify);
+  }
+  return [...groups].filter(([, v]) => v.length > 1).map(([k, verify]) => {
+    const [pin, time] = k.split('|');
+    return { pin, time, verify };
+  });
+}
+
+/** OPERLOG / BIODATA bodies: one record per line, `<TYPE> key=value⇥…` (OPLOG is positional). */
+function parseOperlog(body) {
+  return String(body || '').split(/\r?\n/).filter((l) => l.trim()).map((line) => {
+    const sp = line.indexOf(' ');
+    const type = (sp > 0 ? line.slice(0, sp) : line).toUpperCase();
+    const rest = sp > 0 ? line.slice(sp + 1) : '';
+    const fields = type === 'OPLOG' ? { cols: rest.split('\t') } : parseKv(rest, /\t+/);
+    const pin = type === 'OPLOG' ? null : (fields.PIN ?? fields.Pin ?? fields.pin ?? null);
+    return { type, pin, fields, line };
+  });
+}
+
+/** Counts per record type: { USER: 128, FP: 3 }. */
+function countTypes(records) {
+  const out = {};
+  for (const r of records) out[r.type] = (out[r.type] || 0) + 1;
+  return out;
+}
+
 // ── ZKTeco time encoding (protocol Appendix 5 / 6) ─────────────────────────────
 function encodeZkTime(y, mo, d, h = 0, mi = 0, s = 0) {
   return ((y - 2000) * 12 * 31 + (mo - 1) * 31 + d - 1) * 86400 + (h * 60 + mi) * 60 + s;
@@ -127,9 +211,12 @@ function parseWhen(value, now = new Date()) {
 function formatZkTime(date, datefmt) {
   const p = [date.getFullYear(), date.getMonth() + 1, date.getDate(),
     date.getHours(), date.getMinutes(), date.getSeconds()];
-  if (datefmt === 'yyyymmdd') return `${p[0]}${String(p[1]).padStart(2, '0')}${String(p[2]).padStart(2, '0')}`;
+  const two = (n) => String(n).padStart(2, '0');
+  if (datefmt === 'yyyymmdd') return `${p[0]}${two(p[1])}${two(p[2])}`;
   if (datefmt === 'seconds') return String(encodeZkTime(...p));
-  throw new Error(`datefmt must be seconds or yyyymmdd, got "${datefmt}"`);
+  // The form ATTLOG uses for its own times; a candidate for StartDatetime / EndDatetime (test (j)).
+  if (datefmt === 'datetime') return `${p[0]}-${two(p[1])}-${two(p[2])} ${two(p[3])}:${two(p[4])}:${two(p[5])}`;
+  throw new Error(`datefmt must be seconds, yyyymmdd or datetime, got "${datefmt}"`);
 }
 
 // ── Redaction: templates and photos never written in full ──────────────────────
@@ -244,6 +331,11 @@ const KINDS = {
   'count-biodata': 'DATA COUNT biodata [Type=<type>]',
   'enroll-bio': 'ENROLL_BIO: pin, type=9, no=0, retry=3, overwrite=1, mode=1, sep=tab|space',
   biophoto: 'DATA UPDATE biophoto: pin, file=<jpg on this Mac>, type=9, format=base64|url, postback=1',
+  // Attendance-protocol forms (T&A PUSH), to compare with the security forms above (tests (i), (j)).
+  // Field names are the ones the device itself uploads in OPERLOG USER lines.
+  userinfo: 'DATA UPDATE USERINFO: pin, name, card, window=none|zero|set, start, end, datefmt (StartDatetime / EndDatetime)',
+  'delete-userinfo': 'DATA DELETE USERINFO PIN=<pin>',
+  'query-userinfo': 'DATA QUERY USERINFO PIN=<pin>',
   info: 'INFO',
   check: 'CHECK',
   raw: 'any command text: text="..." (wipes refused)',
@@ -262,16 +354,16 @@ function pinOf(params) {
   return pin;
 }
 
-function windowFields(params, ctx) {
+function windowFields(params, ctx, names = ['StartTime', 'EndTime']) {
   const mode = params.window || (params.start || params.end ? 'set' : 'none');
   if (mode === 'none') return [];
-  if (mode === 'zero') return ['StartTime=0', 'EndTime=0'];
+  if (mode === 'zero') return [`${names[0]}=0`, `${names[1]}=0`];
   if (mode !== 'set') throw new Error('window must be none, zero or set');
   const datefmt = params.datefmt || ctx.datefmt || 'seconds';
   const now = ctx.now ? ctx.now() : new Date();
   const start = formatZkTime(parseWhen(params.start || 'now', now), datefmt);
   const end = formatZkTime(parseWhen(req(params, 'end'), now), datefmt);
-  return [`StartTime=${start}`, `EndTime=${end}`];
+  return [`${names[0]}=${start}`, `${names[1]}=${end}`];
 }
 
 function buildCommand(kind, params = {}, ctx = {}) {
@@ -338,6 +430,17 @@ function buildCommand(kind, params = {}, ctx = {}) {
       return 'DATA UPDATE biophoto ' + [`PIN=${pin}`, `Type=${type}`, `Size=${b64.length}`,
         `Content=${b64}`, 'Format=0', `PostBackTmpFlag=${postback}`].join(tab);
     }
+    case 'userinfo': {
+      // The order of the device's own OPERLOG USER lines; Pri always 0 (never an admin).
+      const name = String(params.name ?? 'ZK Test').slice(0, 24);
+      return 'DATA UPDATE USERINFO ' + [
+        `PIN=${pinOf(params)}`, `Name=${name}`, 'Pri=0', 'Passwd=', `Card=${params.card ?? ''}`, 'Grp=1',
+        'TZ=0000000000000000', 'Verify=0', 'ViceCard=',
+        ...windowFields(params, ctx, ['StartDatetime', 'EndDatetime']),
+      ].join(tab);
+    }
+    case 'delete-userinfo': return `DATA DELETE USERINFO PIN=${pinOf(params)}`;
+    case 'query-userinfo': return `DATA QUERY USERINFO PIN=${pinOf(params)}`;
     case 'info': return 'INFO';
     case 'check': return 'CHECK';
     case 'raw': {
@@ -374,10 +477,14 @@ function createCaptureServer(opts = {}) {
   const state = {
     registryCode: opts.registryCode || generateRegistryCode(),
     sessionId: opts.sessionId || generateSessionId(),
-    style: opts.style || 'spec',
+    style: opts.style || 'auto',
+    defaultStamp: opts.stamps === undefined ? '9999' : String(opts.stamps),
+    testPin: String(opts.testPin || '9001'),
     onlySn: opts.onlySn ? new Set(opts.onlySn) : null,
     batch: opts.batch || 10,
-    devices: new Map(), // SN → { registered, registry, options, host, pathKey, ip, lastSeen, lastToken }
+    // SN → { registered, registry, options, host, pathKey, ip, lastSeen, lastToken,
+    //        deviceType, flow, answered, stamps, info, polls, uploads }
+    devices: new Map(),
     queue: [], // { id, sn, kind, text, status, createdAt, sentAt, returnCode, cmd }
     scans: [],
     photos: new Map(), // name → absolute path (served for biophoto Format=1)
@@ -395,8 +502,30 @@ function createCaptureServer(opts = {}) {
     `# RegistryCode=${state.registryCode} SessionID=${state.sessionId} (random for this run)\n`);
 
   function device(sn) {
-    if (!state.devices.has(sn)) state.devices.set(sn, { registered: false, registry: null, options: {} });
+    if (!state.devices.has(sn)) {
+      state.devices.set(sn, { registered: false, registry: null, options: {}, flow: null, stamps: {}, polls: 0, uploads: {} });
+    }
     return state.devices.get(sn);
+  }
+
+  /** Test (h): which handshake this device follows. Logged once per change. */
+  function setFlow(sn, dev, flow, why) {
+    if (dev.flow === flow) return;
+    dev.flow = flow;
+    log(`FLOW ${sn}: ${flow} (${why})`);
+  }
+
+  function countUpload(dev, table, n) {
+    dev.uploads[table] = (dev.uploads[table] || 0) + n;
+  }
+
+  /** Log the test person's records in full (redacted); everyone else only as counts. */
+  function logTestPinLines(table, records) {
+    for (const r of records) {
+      if (r.pin !== null && r.pin !== undefined && String(r.pin) === state.testPin) {
+        log(`  ${table} test PIN ${state.testPin}: ${redactText(r.line).slice(0, 300)}`);
+      }
+    }
   }
 
   function datefmtFor(sn) {
@@ -447,18 +576,52 @@ function createCaptureServer(opts = {}) {
       dev.host = ctx.host;
       if (ctx.pathKey) dev.pathKey = ctx.pathKey;
       if (q.pushver) dev.pushver = q.pushver;
+      if (q.DeviceType) dev.deviceType = q.DeviceType;
+      if (q.Stamp !== undefined && /^attlog$/i.test(q.table || '')) dev.stamps.ATTLOG = q.Stamp;
+      if (q.OpStamp !== undefined && /^(operlog|biodata)$/i.test(q.table || '')) dev.stamps[String(q.table).toUpperCase()] = q.OpStamp;
+      if (q.Stamp !== undefined && /^attphoto$/i.test(q.table || '')) dev.stamps.ATTPHOTO = q.Stamp;
     }
     const table = q.tablename || q.table || '';
     switch (route) {
       case 'cdata':
         if (ctx.method === 'GET') {
-          if (dev && dev.registered) {
-            return buildConfigLines({ ...state, sn, forCdata: true });
-          }
-          if (dev && state.style === 'gbs') {
+          if (!dev) return ['OK'];
+          const answer = answerStyleFor(state.style, q);
+          if (answer === 'att') {
+            // T&A PUSH: the device never registers (first capture); it gets the option lines directly.
             dev.registered = true;
-            return buildConfigLines({ ...state, sn, forCdata: true });
+            dev.answered = 'att';
+            setFlow(sn, dev, 'att options (no registry expected)', `DeviceType=${q.DeviceType || '?'} pushver=${q.pushver || '?'}`);
+            return buildAttOptionLines({ ...state, sn, stamps: dev.stamps, defaultStamp: state.defaultStamp });
           }
+          if (dev.registered) {
+            dev.answered = answer === 'gbs' ? 'gbs' : 'spec';
+            return buildConfigLines({ ...state, sn, forCdata: true, style: answer === 'gbs' ? 'gbs' : 'spec' });
+          }
+          if (answer === 'gbs') {
+            dev.registered = true;
+            dev.answered = 'gbs';
+            setFlow(sn, dev, 'gbs options (registry skipped)', '--style gbs');
+            return buildConfigLines({ ...state, sn, forCdata: true, style: 'gbs' });
+          }
+          dev.answered = 'OK';
+          setFlow(sn, dev, 'waiting for registry', `answered OK; DeviceType=${q.DeviceType || '?'} pushver=${q.pushver || '?'}`);
+          return ['OK'];
+        }
+        if (/^(operlog|biodata)$/i.test(q.table || '')) {
+          // T&A PUSH: users (USER), fingerprints (FP), faces (FACE / BIODATA), photos (USERPIC /
+          // BIOPHOTO) and operation records (OPLOG) arrive here, not as tabledata (test (k)).
+          const name = String(q.table).toUpperCase();
+          const records = parseOperlog(body);
+          const types = countTypes(records);
+          if (dev) for (const [t, n] of Object.entries(types)) countUpload(dev, `${name}:${t}`, n);
+          log(`UPLOAD table=${name} records=${records.length} ${JSON.stringify(types)} bytes=${Buffer.byteLength(body || '')}`);
+          logTestPinLines(name, records);
+          return ['OK'];
+        }
+        if (/^attphoto$/i.test(q.table || '')) {
+          if (dev) countUpload(dev, 'ATTPHOTO', 1);
+          log(`UPLOAD table=ATTPHOTO bytes=${Buffer.byteLength(body || '')}`);
           return ['OK'];
         }
         if ((q.type || '').toLowerCase() === 'biodata') {
@@ -467,10 +630,35 @@ function createCaptureServer(opts = {}) {
         }
         if ((q.table || '').toLowerCase() === 'tabledata') {
           const n = Number(q.count) || countRecords(body);
+          if (dev) countUpload(dev, `tabledata:${table}`, n);
           log(`UPLOAD tablename=${table} records=${n} bytes=${Buffer.byteLength(body || '')}`);
           return [`${table}=${n}`];
         }
-        if (/^(rtlog|attlog)$/i.test(table)) {
+        if (/^attlog$/i.test(q.table || '')) {
+          // Positional, one punch per line (test (l)). History arrives in packs of 128 on first contact.
+          const rows = parseAttlog(body);
+          if (dev) countUpload(dev, 'ATTLOG', rows.length);
+          const times = rows.map((r) => r.time).filter(Boolean).sort();
+          const verify = {};
+          for (const r of rows) {
+            const label = ATT_VERIFY[r.verify] ? `${r.verify}=${ATT_VERIFY[r.verify]}` : r.verify;
+            verify[label] = (verify[label] || 0) + 1;
+          }
+          log(`UPLOAD table=ATTLOG Stamp=${q.Stamp ?? '-'} records=${rows.length} columns=${[...new Set(rows.map((r) => r.columns))].join('/')} ` +
+            `verify ${JSON.stringify(verify)} from ${times[0] || '-'} to ${times[times.length - 1] || '-'}`);
+          for (const r of rows) {
+            if (r.pin !== state.testPin && rows.length > 3) continue;
+            const scan = { at: new Date().toISOString(), time: r.time, pin: r.pin, status: r.status, verifytype: r.verify,
+              meaning: ATT_VERIFY[r.verify] || '', table: 'ATTLOG' };
+            state.scans.push(scan);
+            log(`SCAN (ATTLOG) pin=${r.pin} time=${r.time} status=${r.status} verify=${r.verify} ${scan.meaning} workcode=${r.workcode} columns=${r.columns}`);
+          }
+          for (const s of sameSecond(rows)) {
+            log(`SAME SECOND (ATTLOG) pin=${s.pin === state.testPin ? s.pin : 'other'} time=${s.time} verify=${s.verify.join(',')} (${s.verify.length} rows)`);
+          }
+          return ['OK'];
+        }
+        if (/^rtlog$/i.test(table)) {
           for (const line of String(body).split(/\r?\n/).filter((l) => l.trim())) {
             const r = parseKv(line, /\t+/);
             const ev = Number(r.event);
@@ -493,6 +681,7 @@ function createCaptureServer(opts = {}) {
         dev.registry = parseRegistry(body);
         dev.registryRaw = body;
         dev.registered = true;
+        setFlow(sn, dev, 'registry', 'POST /iclock/registry');
         const r = dev.registry;
         log(`REGISTERED ${sn}: DeviceType=${r.DeviceType} FirmVer=${r.FirmVer} DeviceName=${r.DeviceName} ` +
           `DateFmtFunOn=${r.DateFmtFunOn} authKey=${'authKey' in r ? 'sent' : 'not sent'} ` +
@@ -500,8 +689,20 @@ function createCaptureServer(opts = {}) {
         return [`RegistryCode=${state.registryCode}`];
       }
       case 'push':
-        return buildConfigLines({ ...state, sn, forCdata: false });
+        if (dev) setFlow(sn, dev, dev.registry ? 'registry' : 'push without registry', 'POST /iclock/push');
+        return buildConfigLines({ ...state, sn, forCdata: false, style: state.style === 'gbs' ? 'gbs' : 'spec' });
       case 'getrequest': {
+        if (dev) {
+          dev.polls += 1;
+          if (q.INFO && q.INFO !== dev.info) {
+            dev.info = q.INFO;
+            // Positional: firmware, then counts and versions (users, fingerprints, scans, IP, ...).
+            log(`DEVICE INFO ${sn}: ${q.INFO}`);
+          }
+          if (!dev.registry && dev.answered === 'OK') {
+            setFlow(sn, dev, 'polling without registry', 'getrequest after an OK cdata answer (T&A PUSH flow)');
+          }
+        }
         const cmds = sn ? takeCommands(sn) : [];
         if (cmds.length) log(`SENT ${cmds.length} command(s) to ${sn}: ${cmds.map((c) => redactText(c).slice(0, 120)).join(' | ')}`);
         return cmds.length ? cmds : ['OK'];
@@ -647,7 +848,7 @@ const CONTROL_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>ZK
 <style>body{font:14px system-ui;margin:16px;max-width:900px}input,select,button{font:inherit;margin:2px}
 pre{background:#f4f4f4;padding:8px;overflow:auto;max-height:420px}label{display:inline-block;margin-right:8px}</style>
 </head><body><h1>ZK capture server</h1>
-<p>Enrol only a test person. Commands are delivered on the device's next poll (about 3 s).</p>
+<p>Enrol only a test person. Commands are delivered on the device's next poll (3 to 10 s; not while a T&amp;A PUSH device is still uploading its history).</p>
 <form id="f"><select id="kind"></select>
 <label>pin <input name="pin" size="7" value="9001"></label>
 <label>name <input name="name" value="ZK Test"></label>
@@ -655,7 +856,7 @@ pre{background:#f4f4f4;padding:8px;overflow:auto;max-height:420px}label{display:
 <label>window <select name="window"><option>none</option><option>zero</option><option>set</option></select></label>
 <label>start <input name="start" size="16" placeholder="now"></label>
 <label>end <input name="end" size="16" placeholder="+2m"></label>
-<label>datefmt <select name="datefmt"><option value="">auto</option><option>seconds</option><option>yyyymmdd</option></select></label>
+<label>datefmt <select name="datefmt"><option value="">auto</option><option>seconds</option><option>yyyymmdd</option><option>datetime</option></select></label>
 <label>type <input name="type" size="3"></label>
 <label>sep <select name="sep"><option>tab</option><option>space</option></select></label>
 <label>file <input name="file" size="30" placeholder="/Users/you/test-face.jpg"></label>
@@ -674,6 +875,8 @@ load();setInterval(load,3000);
 </script></body></html>`;
 
 // ── CLI ────────────────────────────────────────────────────────────────────────
+const STYLES = ['auto', 'spec', 'gbs', 'att'];
+
 function parseArgs(argv) {
   const flags = {};
   const rest = [];
@@ -720,14 +923,17 @@ async function main() {
     port, host: flags.host || '0.0.0.0',
     capturesDir: flags.captures ? path.resolve(flags.captures) : path.join(__dirname, '..', 'captures'),
     onlySn: typeof flags['only-sn'] === 'string' ? flags['only-sn'].split(',') : null,
-    style: flags.style === 'gbs' ? 'gbs' : 'spec',
+    style: STYLES.includes(flags.style) ? flags.style : 'auto',
+    stamps: typeof flags.stamps === 'string' && /^\d{1,10}$/.test(flags.stamps) ? flags.stamps : '9999',
+    testPin: typeof flags['test-pin'] === 'string' && /^\d{1,9}$/.test(flags['test-pin']) ? flags['test-pin'] : '9001',
     batch: Number(flags.batch || 10),
   });
+  if (flags.style && !STYLES.includes(flags.style)) console.log(`Unknown --style "${flags.style}": using auto.`);
   const p = await cap.listen(port, flags.host || '0.0.0.0');
   const ip = lanAddress();
   console.log([
     '',
-    `ZK capture server listening on port ${p} (style ${cap.state.style})`,
+    `ZK capture server listening on port ${p} (style ${cap.state.style}, stamps ${cap.state.defaultStamp}, test PIN ${cap.state.testPin})`,
     `  Device settings:  Server address ${ip}   Port ${p}   HTTPS off   Domain name off   Proxy off`,
     `  Control page:     http://127.0.0.1:${p}/zkcap  (this Mac only)`,
     `  Capture file:     ${cap.captureFile}`,
@@ -742,8 +948,9 @@ if (require.main === module) {
 }
 
 module.exports = {
-  SPEC_CONFIG, MANUAL_EXAMPLE, KINDS,
-  generateRegistryCode, generateSessionId, buildConfigLines,
+  SPEC_CONFIG, MANUAL_EXAMPLE, KINDS, STYLES, STAMP_TABLES,
+  generateRegistryCode, generateSessionId, buildConfigLines, buildAttOptionLines, answerStyleFor,
+  parseAttlog, sameSecond, parseOperlog, countTypes,
   encodeZkTime, decodeZkTime, parseWhen, formatZkTime,
   redactText, parseKv, parseRegistry, parseDevicecmd, tokenCandidates, checkToken,
   buildCommand, isLoopback, createCaptureServer,

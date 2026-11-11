@@ -1,6 +1,6 @@
 # ZKTeco Phase 0: device checklist (spike, one real device)
 
-What this is for: answering the Phase 0 questions (a) to (g) in
+What this is for: answering the Phase 0 questions (a) to (l) in
 [`ZKTECO_PUSH_DEVICE_SYNC.md` §15](../ZKTECO_PUSH_DEVICE_SYNC.md) on a real SpeedFace, using the
 throw-away capture server `scripts/zk-capture-server.js` on a Mac. No production server, no
 production data, nothing is deployed.
@@ -8,6 +8,45 @@ production data, nothing is deployed.
 Time needed: about 2 hours on site. Fill in every **Result:** line. Afterwards, send the agent:
 the files in `captures/`, this checklist with the results filled in, and photos of the Cloud Server
 screen.
+
+Questions (a) to (g) are for a device in **Access Control PUSH** mode (`DeviceType=acc`). Questions
+(h) to (l) in section 5b are for a device in **T&A PUSH** mode (`DeviceType=att`), which is what the
+first real device turned out to be.
+
+---
+
+## What the first capture showed (2026-11-11, `captures/20261111-155035.txt`)
+
+Device: SpeedFace-V5L, firmware ZAM180-NF50VA-Ver3.4.9, Push Service `Ver 2.0.33S-20220623`, Device
+Type **T&A PUSH**, a live gym device (GymBioSync's) with about 356 users. The server ran with
+`--style spec`.
+
+- **No registration.** The device sent `GET /iclock/cdata?SN=…&options=all&language=69&pushver=2.4.1&DeviceType=att&PushOptionsFlag=1`,
+  got `OK`, and never sent `POST /iclock/registry` or `POST /iclock/push`. It went on anyway:
+  `POST cdata?table=options` (its parameters), `GET getrequest?INFO=<firmware>,<counts>…`, then its
+  whole history.
+- **History upload on first contact, about 2.5 minutes, with no polls in between** (so no command
+  can reach the device during that time): `OPERLOG` with `USER` lines (all users, with names) and
+  `FP` lines (fingerprint templates), one `BIODATA` post (faces, `Type=9 MajorVer=39 MinorVer=3`),
+  58 `ATTLOG` posts (7,172 punches from 2026-07-09 on), then `OPERLOG` with 14,783 `OPLOG` lines.
+  Each post holds up to 128 records. Every upload got `OK`, and no body was sent twice.
+- **Formats.** `ATTLOG` is positional, tab-separated, 10 values plus a trailing tab: PIN, time,
+  status (always 255), verify (1 fingerprint, 15 face, 4 card), workcode, then 0, 0, 255, 0, 0.
+  `USER PIN=⇥Name=⇥Pri=⇥Passwd=⇥Card=⇥Grp=⇥TZ=⇥Verify=⇥ViceCard=⇥StartDatetime=⇥EndDatetime=`.
+  `FP PIN=⇥FID=⇥Size=⇥Valid=⇥TMP=`. Uploads use `Stamp=9999` / `OpStamp=9999` (we never sent stamps).
+- **Headers.** `User-Agent: iClock Proxy/1.09`, `Connection: close`, `Content-Type: text/plain`, `Host`
+  = the IP and port typed on the device. **No `Cookie` / token at all.**
+- **Polling.** After the upload, the `getrequest` interval grew by 1 to 3 seconds each time,
+  from 3 s to over 30 s within 6 minutes (we never sent `Delay` / `RequestDelay`). A live fingerprint
+  punch arrived as a 1-record `ATTLOG` post within a few seconds.
+- **Parameters** (`table=options`): `FPVersion=10`, `FaceVersion=39`, `PvVersion=12` (palm),
+  `MultiBioDataSupport=0:1:0:0:0:0:0:0:1:1`, `MultiBioPhotoSupport=0:0:0:0:0:0:0:0:0:1`,
+  `UserPicURLFunOn=1`, `VisilightFun=1`. Not sent: `DeviceType` (only in the query), `DateFmtFunOn`,
+  `MultiBioVersion`, `MaxPackageSize`, `authKey`.
+
+The capture server now answers this flow itself (`--style auto`, the default): a device that says
+`DeviceType=att` gets GymBioSync's option lines with this run's random codes, and every upload is
+logged by table and record type.
 
 ---
 
@@ -23,7 +62,12 @@ screen.
 - [ ] **Photograph the device's current Cloud Server Setting screen** (every field) before
   changing anything. You need it to restore the device in step 9.
 - [ ] Don't change **Device Type** (T&A PUSH / Access Control PUSH) or run any "clear data" menu.
-  On some models switching the type wipes users.
+  On some models switching the type wipes users. Only **write down** the options it offers (section 3).
+- [ ] **A T&A PUSH device sends every user's PIN and name, all fingerprint and face templates (cut
+  to 40 characters) and its whole punch history the first time it reaches the Mac.** The capture
+  file then holds real member data. Keep it on this Mac, and send it to the agent only through the
+  same private channel as before. If you can, use the spare device.
+- [ ] If the device serves GymBioSync today, read section 9b before you start.
 - [ ] The capture server refuses wipes (`DELETE … *`) and asks for `all=1` before any whole-table
   query. Don't use `all=1` on a device that holds real members, because their names would land in
   the capture file.
@@ -57,6 +101,14 @@ Firmware version: ______________________
 
    It prints the server address to type on the device, the control page link and the capture
    file name. Leave this window open: it shows every request as it arrives.
+
+   The default style is `auto`: a T&A PUSH device (`DeviceType=att`) gets the option lines at once,
+   any other device gets the spec handshake. Other choices: `--style spec` (answers `OK` and waits
+   for registration, as in the first capture), `--style gbs` (GymBioSync's answers for every
+   device), `--style att` (the T&A answer for every device). `--stamps 9999` (default) is the stamp
+   value sent until the device reports its own. `--stamps 0` is what GymBioSync sends; it may make
+   the device send its whole history again. Uploads of PIN 9001 are shown line by line; use
+   `--test-pin <pin>` for another test PIN.
 6. **Firewall prompt:** the first time, macOS asks "Do you want the application node to accept
    incoming network connections?" Click **Allow**. If you missed it: System Settings › Network ›
    Firewall › Options, find `node`, set it to "Allow incoming connections".
@@ -91,14 +143,20 @@ Setting**. Write down the real path you used: ______________________
 | Enable Proxy Server | OFF |
 | HTTPS (if present) | OFF |
 
-Save. Within about 30 seconds the Terminal window should show `GET /iclock/cdata`, then
-`REGISTERED <serial>`, then `POST /iclock/push`, then polls. The device's cloud icon should turn on.
+Save. Within about 30 seconds the Terminal window should show `GET /iclock/cdata`, then one
+`FLOW <serial>: …` line, then polls. The device's cloud icon should turn on.
 
-Result (connected? how long did it take?): ______________________
+- Access Control PUSH device: `FLOW …: waiting for registry`, then `REGISTERED <serial>` and
+  `FLOW …: registry`, then `POST /iclock/push`.
+- T&A PUSH device: `FLOW …: att options (no registry expected)`, then `POST cdata table=options`,
+  `DEVICE INFO …`, and `UPLOAD table=OPERLOG / BIODATA / ATTLOG …` lines for a few minutes (its
+  history). Commands queued during the upload wait until it ends.
 
-> If you see `cdata` and polls but never `REGISTERED` within 2 minutes, stop the server (Ctrl+C),
-> start it again with `--style gbs` (answers the way GymBioSync does, which skips registration)
-> and note it here: ______________________
+Result (connected? how long did it take? which FLOW line?): ______________________
+
+> If you see `cdata` and polls but neither `REGISTERED` nor a T&A `FLOW` line within 2 minutes,
+> stop the server (Ctrl+C), start it again with `--style gbs` (answers the way GymBioSync does,
+> which skips registration) and note it here: ______________________
 
 **Clock check:** our replies set the device clock (the `Date` header). After it connects, compare
 the device's time with the Mac's time. They should match to the minute. If the device shows a
@@ -112,6 +170,12 @@ Device time vs Mac time: ______________________ Device time zone setting: ______
 like `COUNT user=12`.
 
 Users before: ________ Faces (type 9) before: ________ Fingerprints (type 1) before: ________
+
+On a T&A PUSH device `DATA COUNT` may not be supported (note its Return code). Use the counts the
+device reports itself instead: the `DEVICE INFO` line (firmware, then users, fingerprints, punches,
+…) and `UserCount` / `FPCount` / `FaceCount` in `devices › options` on the control page.
+
+INFO line before: ______________________ UserCount / FPCount / FaceCount before: ______________________
 
 ---
 
@@ -132,6 +196,18 @@ mode A, B or C (spec §4.2):
 | Is there a Comm Key (often COMM. › PC Connection › Comm Key)? Is it set? (don't change it) | |
 | Any other fields (for example "Server path", "Device ID")? | |
 
+**Device Type options (write down only, do not change).** Usually Main Menu › System › Device Type
+Settings (or COMM. › Cloud Server Setting). Photograph the screen and any warning it shows when you
+open the list, then press Back without saving.
+
+| Question | Answer |
+|---|---|
+| Menu path to the setting | |
+| Current value (first device: "T&A PUSH") | |
+| Every option offered (exact text) | |
+| Does the screen warn that changing it clears data or restarts? (exact text) | |
+| Is the option locked or password-protected? | |
+
 **Optional path test on the LAN (mode A).** Only if the address field accepts `/`: set Server
 Address to `<Mac IP>/d/TESTKEY1` (try with Enable Domain Name OFF, then ON) and save. In the
 Terminal, look for `[path key TESTKEY1]` on the request lines. If you see it, the firmware keeps a
@@ -146,7 +222,9 @@ Result (path kept? with which switch setting?): ______________________
 Nothing to do on the device: both were captured when it connected in step 2.
 
 **(b)** In the capture file, find `POST /iclock/registry`. Its body lists the device's
-capabilities. The control page shows the same fields under `devices › registry`. Copy these
+capabilities. The control page shows the same fields under `devices › registry`. A T&A PUSH device
+sends no registry: take `DeviceType` and `pushver` from the `GET /iclock/cdata` query, the rest
+from `POST /iclock/cdata?table=options` (`devices › options` on the control page). Copy these
 values:
 
 | Field | Value |
@@ -170,6 +248,9 @@ the documented formula and its variants with this run's codes, and the manual's 
 Token check line (copy it): ______________________
 
 Does the token change between requests? ______ Is there a `timestamp=` in the cookie? ______
+
+(The first T&A PUSH capture had **no** `cookie:` header on any request. If that stays true with
+the option lines from `--style auto`, write "no cookie".)
 
 ---
 
@@ -284,6 +365,119 @@ Result: ______________________
 
 ---
 
+## 5b. T&A PUSH device tests (h) to (l)
+
+For a device whose `FLOW` line says `att options` (or whose cdata query has `DeviceType=att`).
+Wait until the history upload has finished (no more `UPLOAD` lines for a minute, polls again)
+before you queue anything. Use PIN 9001 only. Each test names both command forms: the security
+form our backend sends today (`user`, `userauthorize`) and the attendance form the device uses in
+its own uploads (`userinfo` = `DATA UPDATE USERINFO`).
+
+### (h) Which flow, and does the option answer change the device's behaviour?
+
+1. Start the server with the default `--style auto`. Point the device at it (section 2) and copy
+   the `FLOW` line.
+2. Watch the poll interval: in the control page `devices › polls`, or the times of the
+   `getrequest` lines in the capture file. In the first capture (plain `OK`) it grew from 3 s to
+   over 30 s. The option lines send `Delay=3` and `Realtime=1`.
+3. Note whether the device now sends `POST /iclock/registry` or `POST /iclock/push` (the `FLOW`
+   line changes to `registry` / `push without registry`), and whether it sends a `cookie:` header.
+4. Did it upload its history again? (`UPLOAD table=ATTLOG Stamp=…` lines; compare the `from … to …`
+   dates with the first capture.)
+
+| Question | Answer |
+|---|---|
+| FLOW line(s) | |
+| Poll interval after 5 minutes idle (seconds) | |
+| registry or push requests seen? | |
+| Cookie header present? | |
+| History sent again? Which Stamp / OpStamp values did the device send? | |
+
+### (i) What does `DATA UPDATE userauthorize` return on a T&A PUSH device?
+
+1. Queue `user` pin 9001, name `ZK Test`, window `none`. Note the Return code.
+2. Queue `userauthorize` pin 9001 (tz 1, door 1, no window). Note the Return code.
+3. Queue `delete-userauthorize` pin 9001. Note the Return code.
+4. Queue `userinfo` pin 9001, name `ZK Test`, window `none` (the attendance form). Note the Return
+   code, and whether an `UPLOAD table=OPERLOG` with a `USER` line for 9001 follows.
+5. Queue `query-user` pin 9001 and `query-userinfo` pin 9001. Note the Return codes and where the
+   answer arrives (`QUERYDATA …` line, or `UPLOAD table=OPERLOG` with a 9001 line).
+
+| Command | Return | Upload that followed (table, record type) |
+|---|---|---|
+| `user` | | |
+| `userauthorize` | | |
+| `delete-userauthorize` | | |
+| `userinfo` | | |
+| `query-user` | | |
+| `query-userinfo` | | |
+
+### (j) Does an end time stop the test person, and in which format?
+
+The device's own `USER` lines carry `StartDatetime=0⇥EndDatetime=0`, so the attendance form has a
+validity window. Its format is unknown: try `seconds` first, then `datetime`
+(`2026-11-11 16:00:00`, the form `ATTLOG` uses), then `yyyymmdd`. Check the device clock first
+(section 2). After each command, queue `query-userinfo` pin 9001 and copy the `StartDatetime` /
+`EndDatetime` the device reports back: that shows which format it stored.
+
+1. **j1, already expired:** queue `userinfo` pin 9001, window `set`, start `-2d`, end `-1d`,
+   datefmt `seconds`. The test person scans. Refused? Screen message?
+2. **j2, near future:** queue `userinfo` pin 9001, window `set`, start `now`, end `+3m`. Scan within
+   3 minutes, then again after 4 minutes.
+3. Repeat j1 and j2 with datefmt `datetime`, then `yyyymmdd` (with `yyyymmdd` use whole days:
+   end `-1d` expired, end `+1d` valid).
+4. Repeat j1 with the security form: `user` pin 9001, window `set`, start `-2d`, end `-1d`.
+5. Afterwards: `userinfo` pin 9001 with window `zero`, so the test person has no limit again.
+
+| Test | Format | Return | Stored value (query) | Before end: entered? | After end: entered? Screen message |
+|---|---|---|---|---|---|
+| j1 userinfo expired | seconds | | | n/a | |
+| j2 userinfo +3m | seconds | | | | |
+| j1 userinfo expired | datetime | | | n/a | |
+| j2 userinfo +3m | datetime | | | | |
+| j1 userinfo expired | yyyymmdd | | | n/a | |
+| j2 userinfo +1d | yyyymmdd | | | | |
+| j1 user expired | seconds | | | n/a | |
+
+### (k) Do uploads arrive as `tabledata` or inside `OPERLOG`?
+
+1. On the device, enrol a fingerprint for user 9001, then a face (Main Menu › User Mgt. › 9001 ›
+   Edit). Change the name of 9001 on the device.
+2. Watch the Terminal: `UPLOAD table=OPERLOG records=… {"USER":…,"FP":…,"FACE":…}` or
+   `UPLOAD table=BIODATA …` (attendance form), or `UPLOAD tablename=user / biodata …` (tabledata,
+   security form). Lines for PIN 9001 are shown in full, with templates and photos cut to 40
+   characters.
+3. Enrol or take a profile photo if the device offers it, and note how it arrives (`USERPIC`,
+   `BIOPHOTO`, `table=ATTPHOTO`).
+
+| Action | Table and record type that arrived | Fields (copy the 9001 line) |
+|---|---|---|
+| Fingerprint enrolled | | |
+| Face enrolled | | |
+| Name changed | | |
+| Photo | | |
+
+### (l) Punch records (`ATTLOG`)
+
+1. The test person punches with a **face**, then with a **fingerprint** (and a card, if they have
+   one). Each punch shows `SCAN (ATTLOG) pin=9001 time=… status=… verify=…`.
+2. **Two punches in the same second:** punch face and fingerprint as close together as you can,
+   or twice quickly with the same finger. A `SAME SECOND (ATTLOG)` line appears when two records
+   share PIN and second. Note whether the device keeps both or refuses the second ("already
+   punched", "duplicate").
+3. Copy the `ATTLOG` line for each punch from the capture file (PIN 9001 only).
+
+| Punch | verify | status | columns | ATTLOG line (9001) |
+|---|---|---|---|---|
+| Face | | | | |
+| Fingerprint | | | | |
+| Card | | | | |
+| Two in one second | | | | |
+
+Result (h) to (l): ______________________
+
+---
+
 ## 6. Optional extras (only if there's time)
 
 - [ ] Queue `query-user` pin 9001 and look at the fields the device returns for a user.
@@ -312,6 +506,12 @@ ______________________
 
 Users after: ________ Faces after: ________ Fingerprints after: ________ (equal to before? ____)
 
+On a T&A PUSH device also queue `delete-userinfo` pin 9001 if `delete-user` did not return 0, and
+compare the next `DEVICE INFO` line (or `UserCount` / `FPCount` / `FaceCount`) with the one from
+section 2. 9001 must be gone before the device goes back to GymBioSync.
+
+INFO line after: ______________________ (equal to before, apart from the punch count? ____)
+
 ---
 
 ## 9. Restore the device's original server settings
@@ -329,11 +529,46 @@ Device back on its original server? ______ Time: ______
 
 ---
 
+## 9b. Device currently serves GymBioSync: how to restore
+
+GymBioSync runs as a Windows service on the gym's PC (`GymBioSyncService`, with the GymBioSync UI).
+While the device points at the Mac, GymBioSync gets nothing: no punches, and the members it adds or
+removes stay queued on the PC.
+
+**Before you start**
+1. Photograph the device's Cloud Server Setting screen (server address = the PC's IP, port,
+   domain name, HTTPS, proxy). You type it back from this photo.
+2. On the PC, check the GymBioSync UI shows the device online, and note the PC's IP and port.
+   Don't stop or uninstall the service.
+3. Note the time. Pick a quiet hour, and tell the gym that scans during the test won't show in
+   GymBioSync until it is restored.
+
+**Restore**
+1. Finish section 8: PIN 9001 deleted (user, fingerprints, face), counts back to the baseline.
+   GymBioSync doesn't know PIN 9001; don't leave it on the device.
+2. Type back every Cloud Server field from the photo and save. Don't touch Device Type.
+3. On the PC, wait for the GymBioSync UI to show the device online (it answers `cdata` and the
+   device polls again). If it doesn't within 2 minutes, restart the device from its menu (not the
+   service).
+4. Make a test punch with an existing person who agrees, and check it appears in GymBioSync.
+5. **Punches made during the test.** Our capture server answered every `ATTLOG` upload with `OK`,
+   so the device may treat them as delivered and not send them to GymBioSync. GymBioSync asks for
+   everything again (`ATTLOGStamp=0`), so they may come back on their own. Check GymBioSync for
+   punches between the start and end times of the test: present ______, missing ______. If they are
+   missing, tell the gym which time window to fix by hand, and tell the agent.
+6. Members GymBioSync added or removed during the test: check one change in GymBioSync arrived on
+   the device after the restore.
+
+GymBioSync back online? ______ Test punch seen? ______ Punches during the test present in GymBioSync? ______
+
+---
+
 ## 10. What to send back
 
-- Every file in `gymsera_be/captures/` from today. They hold the test person's name and the first
-  40 characters of templates and photos, never a full template or photo. Don't send them anywhere
-  public.
+- Every file in `gymsera_be/captures/` from today. On an Access Control PUSH device they hold the
+  test person's name and the first 40 characters of templates and photos, never a full template
+  or photo. **On a T&A PUSH device they also hold every member's PIN and name and the gym's punch
+  history** (section 0). Send them only through the private channel, never anywhere public.
 - This checklist with the results filled in.
 - Photos of the Cloud Server screen (before, and with each option you tried).
 
