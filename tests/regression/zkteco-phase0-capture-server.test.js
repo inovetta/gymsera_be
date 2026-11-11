@@ -337,3 +337,236 @@ describe('zk-capture-server: helpers', () => {
     expect(zk.isLoopback('192.168.1.50')).toBe(false);
   });
 });
+
+// ── T&A PUSH (attendance) devices: shapes from the first real capture, 2026-11-11 ──────────────
+// SpeedFace-V5L ZAM180-NF50VA-Ver3.4.9, Push 2.0.33S, Device Type "T&A PUSH". Synthetic values only.
+const ATT_SN = 'TESTATT001';
+const ATT_QUERY = `SN=${ATT_SN}&options=all&language=69&pushver=2.4.1&DeviceType=att&PushOptionsFlag=1`;
+const ATT_OPTIONS_BODY = '~DeviceName=SpeedFace-V5L,MAC=00:00:00:00:00:00,TransactionCount=3,UserCount=2,FPVersion=10,'
+  + 'FaceVersion=39,~OEMVendor=ZKTECO CO., LTD.,FWVersion=ZAM180-NF50VA-Ver3.4.9,PushVersion=Ver 2.0.33S-20220623,'
+  + 'RegDeviceType=,MultiBioDataSupport=0:1:0:0:0:0:0:0:1:1,MultiBioPhotoSupport=0:0:0:0:0:0:0:0:0:1,UserPicURLFunOn=1';
+const ATT_USERS = [
+  'USER PIN=9001\tName=ZK Test \tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000\tVerify=0\tViceCard=\tStartDatetime=0\tEndDatetime=0',
+  'USER PIN=9002\tName=Other Person \tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000\tVerify=0\tViceCard=\tStartDatetime=0\tEndDatetime=0',
+  `FP PIN=9001\tFID=6\tSize=1500\tValid=1\tTMP=${TEMPLATE}`,
+].join('\n');
+const ATT_BIODATA = `BIODATA Pin=9001\tNo=0\tIndex=0\tValid=1\tDuress=0\tType=9\tMajorVer=39\tMinorVer=3\tFormat=0\tTmp=${TEMPLATE}`;
+// PIN, time, status, verify, workcode, then five more values and a trailing tab (11 columns).
+const attlogLine = (pin, time, verify) => `${pin}\t${time}\t255\t${verify}\t0\t0\t0\t255\t0\t0\t`;
+
+describe('zk-capture-server: T&A PUSH handshake (tests (h) to (l))', () => {
+  it('answerStyleFor: auto answers att only when the cdata query says DeviceType=att', () => {
+    expect(zk.answerStyleFor('auto', { DeviceType: 'att' })).toBe('att');
+    expect(zk.answerStyleFor('auto', { DeviceType: 'ATT' })).toBe('att');
+    expect(zk.answerStyleFor('auto', { DeviceType: 'acc' })).toBe('spec');
+    expect(zk.answerStyleFor('auto', {})).toBe('spec');
+    expect(zk.answerStyleFor('spec', { DeviceType: 'att' })).toBe('spec');
+    expect(zk.answerStyleFor('gbs', {})).toBe('gbs');
+    expect(zk.STYLES).toEqual(['auto', 'spec', 'gbs', 'att']);
+  });
+
+  it('the att option lines are GymBioSync\'s cdata lines with this run\'s random codes and the known stamps', () => {
+    const lines = zk.buildAttOptionLines({ sessionId: 'S'.repeat(32), registryCode: 'RandomCode1', sn: ATT_SN, stamps: { ATTLOG: '120' } });
+    const gbs = zk.buildConfigLines({ sessionId: 'S'.repeat(32), registryCode: 'RandomCode1', sn: ATT_SN, forCdata: true, style: 'gbs' });
+    expect(lines[0]).toBe(`GET OPTION FROM: ${ATT_SN}`);
+    expect(lines).toHaveLength(gbs.length);
+    expect(lines).toContain('ATTLOGStamp=120');
+    expect(lines).toContain('OPERLOGStamp=9999');
+    expect(lines).toContain('BIODATAStamp=9999');
+    expect(lines).toContain('ATTPHOTOStamp=9999');
+    expect(lines).toContain('RegistryCode=RandomCode1');
+    expect(lines).toContain(`SessionID=${'S'.repeat(32)}`);
+    expect(lines.filter((l) => !/Stamp=/.test(l))).toEqual(gbs.filter((l) => !/Stamp=/.test(l)));
+    expect(lines.join('\n')).not.toContain(zk.MANUAL_EXAMPLE.registryCode);
+    expect(zk.buildAttOptionLines({ sessionId: 'x', registryCode: 'y', defaultStamp: '0' })).toContain('OPERLOGStamp=0');
+  });
+
+  it('ATTLOG lines are positional (pin, time, status, verify, workcode, ...) with a trailing tab', () => {
+    const rows = zk.parseAttlog(`${attlogLine('9001', '2026-11-11 16:04:24', '15')}\n${attlogLine('9002', '2026-11-11 16:05:00', '1')}\n`);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ pin: '9001', time: '2026-11-11 16:04:24', status: '255', verify: '15', workcode: '0', columns: 11 });
+    expect(rows[1]).toMatchObject({ pin: '9002', verify: '1' });
+  });
+
+  it('two punches by one PIN in the same second are reported with both verify codes', () => {
+    const rows = zk.parseAttlog([
+      attlogLine('9001', '2026-11-11 16:04:24', '1'), attlogLine('9001', '2026-11-11 16:04:24', '15'),
+      attlogLine('9002', '2026-11-11 16:04:24', '4'),
+    ].join('\n'));
+    expect(zk.sameSecond(rows)).toEqual([{ pin: '9001', time: '2026-11-11 16:04:24', verify: ['1', '15'] }]);
+  });
+
+  it('OPERLOG / BIODATA records are typed by their first word; OPLOG stays positional', () => {
+    const recs = zk.parseOperlog(`${ATT_USERS}\nOPLOG 4\t0\t2026-11-11 16:00:00\t0\t0\t0\t0\n${ATT_BIODATA}`);
+    expect(zk.countTypes(recs)).toEqual({ USER: 2, FP: 1, OPLOG: 1, BIODATA: 1 });
+    expect(recs[0]).toMatchObject({ type: 'USER', pin: '9001' });
+    expect(recs[0].fields).toMatchObject({ Name: 'ZK Test', Pri: '0', StartDatetime: '0', EndDatetime: '0' });
+    expect(recs[3]).toMatchObject({ type: 'OPLOG', pin: null });
+    expect(recs[3].fields.cols).toHaveLength(7);
+    expect(recs[4]).toMatchObject({ type: 'BIODATA', pin: '9001' });
+    expect(recs[4].fields).toMatchObject({ Type: '9', MajorVer: '39', MinorVer: '3' });
+  });
+});
+
+describe('zk-capture-server: T&A PUSH flow over HTTP, style auto (the default)', () => {
+  let cap;
+  let port;
+  let dir;
+  const logs = [];
+
+  beforeAll(async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zkcap-att-'));
+    cap = zk.createCaptureServer({ capturesDir: dir, log: (l) => logs.push(l) });
+    port = await cap.listen(0, '127.0.0.1');
+  });
+
+  afterAll(async () => {
+    await cap.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('the default style is auto with stamps 9999 and test PIN 9001', () => {
+    expect(cap.state).toMatchObject({ style: 'auto', defaultStamp: '9999', testPin: '9001' });
+  });
+
+  it('cdata options=all with DeviceType=att gets the option lines at once (no registry) and logs the flow', async () => {
+    const r = await request(port, 'GET', `/iclock/cdata?${ATT_QUERY}`);
+    const lines = r.text.split('\n');
+    expect(lines[0]).toBe(`GET OPTION FROM: ${ATT_SN}`);
+    expect(lines).toContain('ATTLOGStamp=9999');
+    expect(lines).toContain(`RegistryCode=${cap.state.registryCode}`);
+    expect(lines).toContain(`SessionID=${cap.state.sessionId}`);
+    expect(r.headers.date).toMatch(/ GMT$/);
+    const dev = cap.state.devices.get(ATT_SN);
+    expect(dev).toMatchObject({ deviceType: 'att', pushver: '2.4.1', answered: 'att', flow: 'att options (no registry expected)' });
+    expect(logs.some((l) => l.startsWith(`FLOW ${ATT_SN}: att options`))).toBe(true);
+  });
+
+  it('table=options is stored (a comma inside a value does not break the other keys)', async () => {
+    const r = await request(port, 'POST', `/iclock/cdata?SN=${ATT_SN}&table=options`, { body: ATT_OPTIONS_BODY });
+    expect(r.text).toBe('OK\n');
+    expect(cap.state.devices.get(ATT_SN).options).toMatchObject({
+      DeviceName: 'SpeedFace-V5L', FWVersion: 'ZAM180-NF50VA-Ver3.4.9', PushVersion: 'Ver 2.0.33S-20220623',
+      MultiBioDataSupport: '0:1:0:0:0:0:0:0:1:1', FaceVersion: '39', UserPicURLFunOn: '1',
+    });
+  });
+
+  it('getrequest with INFO answers OK and logs the INFO once', async () => {
+    const info = 'ZAM180-NF50VA-Ver3.4.9,2,1,3,192.168.1.50,10,39,12,1,11110,1,0,7';
+    expect((await request(port, 'GET', `/iclock/getrequest?SN=${ATT_SN}&INFO=${encodeURIComponent(info)}`)).text).toBe('OK\n');
+    await request(port, 'GET', `/iclock/getrequest?SN=${ATT_SN}&INFO=${encodeURIComponent(info)}`);
+    expect(logs.filter((l) => l.startsWith(`DEVICE INFO ${ATT_SN}`))).toHaveLength(1);
+    expect(cap.state.devices.get(ATT_SN)).toMatchObject({ info, polls: 2 });
+  });
+
+  it('OPERLOG and BIODATA uploads answer OK, are counted by record type, and log only the test PIN\'s lines', async () => {
+    logs.length = 0;
+    const r = await request(port, 'POST', `/iclock/cdata?SN=${ATT_SN}&table=OPERLOG&OpStamp=9999`, { body: ATT_USERS });
+    expect(r.text).toBe('OK\n');
+    const b = await request(port, 'POST', `/iclock/cdata?SN=${ATT_SN}&table=BIODATA&OpStamp=9999`, { body: ATT_BIODATA });
+    expect(b.text).toBe('OK\n');
+    const dev = cap.state.devices.get(ATT_SN);
+    expect(dev.uploads).toMatchObject({ 'OPERLOG:USER': 2, 'OPERLOG:FP': 1, 'BIODATA:BIODATA': 1 });
+    expect(dev.stamps).toMatchObject({ OPERLOG: '9999', BIODATA: '9999' });
+    expect(logs).toContain('UPLOAD table=OPERLOG records=3 {"USER":2,"FP":1} bytes=' + Buffer.byteLength(ATT_USERS));
+    expect(logs.filter((l) => l.includes('test PIN 9001'))).toHaveLength(3);
+    expect(logs.join('\n')).not.toContain('Other Person');
+    expect(logs.join('\n')).not.toContain('A'.repeat(41));
+  });
+
+  it('ATTLOG uploads answer OK, record the stamp, log the test PIN\'s punches and same-second pairs', async () => {
+    logs.length = 0;
+    const body = [
+      attlogLine('9001', '2026-11-11 16:04:24', '1'), attlogLine('9001', '2026-11-11 16:04:24', '15'),
+      attlogLine('9002', '2026-11-11 16:05:00', '4'), attlogLine('9002', '2026-11-11 16:06:00', '1'),
+    ].join('\n');
+    const r = await request(port, 'POST', `/iclock/cdata?SN=${ATT_SN}&table=ATTLOG&Stamp=120`, { body });
+    expect(r.text).toBe('OK\n');
+    expect(cap.state.devices.get(ATT_SN).stamps.ATTLOG).toBe('120');
+    expect(cap.state.devices.get(ATT_SN).uploads.ATTLOG).toBe(4);
+    expect(logs[0]).toMatch(/^UPLOAD table=ATTLOG Stamp=120 records=4 columns=11 verify .*"15=face":1.* from 2026-11-11 16:04:24 to 2026-11-11 16:06:00$/);
+    expect(logs.filter((l) => l.startsWith('SCAN (ATTLOG) pin=9001'))).toHaveLength(2);
+    expect(logs.filter((l) => l.startsWith('SCAN (ATTLOG) pin=9002'))).toHaveLength(0);
+    expect(logs).toContain('SAME SECOND (ATTLOG) pin=9001 time=2026-11-11 16:04:24 verify=1,15 (2 rows)');
+  });
+
+  it('the next cdata options=all sends back the stamps the device reported', async () => {
+    const r = await request(port, 'GET', `/iclock/cdata?${ATT_QUERY}`);
+    expect(r.text.split('\n')).toEqual(expect.arrayContaining(['ATTLOGStamp=120', 'OPERLOGStamp=9999']));
+  });
+
+  it('the capture file keeps the OPERLOG and BIODATA bodies with templates cut to 40 characters', () => {
+    const text = fs.readFileSync(cap.captureFile, 'utf8');
+    expect(text).toContain('table=OPERLOG');
+    expect(text).toContain(`TMP=${'A'.repeat(40)}…[len=1500]`);
+    expect(text).toContain(`Tmp=${'A'.repeat(40)}…[len=1500]`);
+    expect(text).not.toContain('A'.repeat(41));
+  });
+});
+
+describe('zk-capture-server: style spec with a T&A PUSH device reproduces the first capture', () => {
+  it('answers OK, logs "waiting for registry", then "polling without registry" on getrequest', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zkcap-spec-'));
+    const logs = [];
+    const cap = zk.createCaptureServer({ capturesDir: dir, style: 'spec', log: (l) => logs.push(l) });
+    const port = await cap.listen(0, '127.0.0.1');
+    try {
+      expect((await request(port, 'GET', `/iclock/cdata?${ATT_QUERY}`)).text).toBe('OK\n');
+      expect(cap.state.devices.get(ATT_SN).flow).toBe('waiting for registry');
+      expect((await request(port, 'GET', `/iclock/getrequest?SN=${ATT_SN}`)).text).toBe('OK\n');
+      expect(cap.state.devices.get(ATT_SN).flow).toBe('polling without registry');
+      expect(logs.filter((l) => l.startsWith('FLOW '))).toHaveLength(2);
+      // A later registry still works and is logged as its own flow.
+      const reg = await request(port, 'POST', `/iclock/registry?SN=${ATT_SN}`, { body: 'DeviceType=att' });
+      expect(reg.text).toBe(`RegistryCode=${cap.state.registryCode}\n`);
+      expect(cap.state.devices.get(ATT_SN).flow).toBe('registry');
+    } finally {
+      await cap.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('style gbs still answers cdata and push like GymBioSync for any device', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zkcap-gbs-'));
+    const cap = zk.createCaptureServer({ capturesDir: dir, style: 'gbs', log: () => {} });
+    const port = await cap.listen(0, '127.0.0.1');
+    try {
+      const c = await request(port, 'GET', `/iclock/cdata?SN=${SN}&options=all`);
+      expect(c.text.split('\n')[0]).toBe(`GET OPTION FROM: ${SN}`);
+      expect(c.text).toContain('ATTLOGStamp=0');
+      const p = await request(port, 'POST', `/iclock/push?SN=${SN}`);
+      expect(p.text.split('\n')[0]).toBe('ServerVersion=3.0.1');
+    } finally {
+      await cap.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('zk-capture-server: attendance-protocol commands (tests (i), (j))', () => {
+  const now = () => new Date(2026, 10, 11, 16, 0, 0);
+
+  it.each([
+    ['userinfo', { pin: '9001', name: 'ZK Test' },
+      'DATA UPDATE USERINFO PIN=9001\tName=ZK Test\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000\tVerify=0\tViceCard='],
+    ['userinfo', { pin: '9001', name: 'ZK Test', window: 'zero' },
+      'DATA UPDATE USERINFO PIN=9001\tName=ZK Test\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000\tVerify=0\tViceCard=\tStartDatetime=0\tEndDatetime=0'],
+    ['userinfo', { pin: '9001', name: 'ZK Test', end: '+3m', datefmt: 'datetime' },
+      'DATA UPDATE USERINFO PIN=9001\tName=ZK Test\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000\tVerify=0\tViceCard=\tStartDatetime=2026-11-11 16:00:00\tEndDatetime=2026-11-11 16:03:00'],
+    ['userinfo', { pin: '9001', end: '-1d', datefmt: 'seconds' },
+      `DATA UPDATE USERINFO PIN=9001\tName=ZK Test\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000\tVerify=0\tViceCard=\tStartDatetime=${zk.encodeZkTime(2026, 11, 11, 16)}\tEndDatetime=${zk.encodeZkTime(2026, 11, 10, 16)}`],
+    ['delete-userinfo', { pin: '9001' }, 'DATA DELETE USERINFO PIN=9001'],
+    ['query-userinfo', { pin: '9001' }, 'DATA QUERY USERINFO PIN=9001'],
+    ['user', { pin: '9001', name: 'ZK Test', end: '+3m', datefmt: 'datetime' },
+      'DATA UPDATE user CardNo=\tPin=9001\tPassword=\tGroup=1\tStartTime=2026-11-11 16:00:00\tEndTime=2026-11-11 16:03:00\tName=ZK Test\tPrivilege=0'],
+  ])('%s %j', (kind, params, expected) => {
+    expect(zk.buildCommand(kind, params, { now })).toBe(expected);
+  });
+
+  it('the attendance forms never wipe and never send an admin privilege', () => {
+    expect(() => zk.buildCommand('delete-userinfo', { pin: '*' })).toThrow(/refused/);
+    expect(() => zk.buildCommand('raw', { text: 'DATA DELETE USERINFO *' })).toThrow(/refused/);
+    expect(zk.buildCommand('userinfo', { pin: '1', pri: '14' })).toContain('\tPri=0\t');
+    expect(() => zk.buildCommand('userinfo', { pin: '1', end: '+1m', datefmt: 'iso' })).toThrow(/datefmt/);
+  });
+});
