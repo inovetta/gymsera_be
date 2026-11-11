@@ -50,9 +50,12 @@ const SETTINGS = () => {
 /**
  * The tenant's devices that can take commands (enabled, not removed), with their branch.
  * Read from the tenant table, so it works from a model hook that knows only the tenant database.
+ * A device in import hold (Phase 4) is left out: no reconcile, sweep, audit or push reaches it until the
+ * host goes live. includeHeld: the device endpoints (it still reports scans and query answers).
  */
-async function devicesOf(db, { deviceId = null, branchId = null } = {}) {
+async function devicesOf(db, { deviceId = null, branchId = null, includeHeld = false } = {}) {
   const where = ['d.enabled = 1', 'd.removed_at IS NULL'];
+  if (!includeHeld) where.push('d.import_hold = 0');
   const rep = [];
   if (deviceId) { where.push('d.id = ?'); rep.push(deviceId); }
   if (branchId) { where.push('d.branch_id = ?'); rep.push(branchId); }
@@ -93,7 +96,7 @@ const dateStr = (v) => (v ? (v instanceof Date ? v.toISOString() : String(v)).sl
  * memberIds null = every member who could be on the device (a full sweep).
  * → Map(memberId → { desired: boolean, record?, pin?, staff?, reason })
  */
-async function desiredFor(db, device, memberIds, { now = new Date() } = {}) {
+async function desiredFor(db, device, memberIds, { now = new Date(), noPins = false } = {}) {
   const cfg = getDeviceConfig();
   const { computeBusinessDate } = require('../ledger.service');
   const { isCheckinValid } = require('../attendance.service');
@@ -148,6 +151,12 @@ async function desiredFor(db, device, memberIds, { now = new Date() } = {}) {
     else qualifying.push(m);
   }
 
+  // noPins (Phase 4 import preview): who qualifies, without giving anyone a PIN (an import may still
+  // give them the device's own PIN). No record is built.
+  if (noPins) {
+    for (const m of qualifying) out.set(m, { desired: true, pin: ids.get(m) ? Number(ids.get(m).pin) : null, staff: staff.has(m), reason: staff.has(m) ? 'staff' : 'valid_package' });
+    return out;
+  }
   const newcomers = qualifying.filter((m) => !ids.get(m));
   for (const m of newcomers) await identity.ensurePin(db, m);
   const fresh = newcomers.length ? await identity.identitiesOf(db, qualifying) : ids;

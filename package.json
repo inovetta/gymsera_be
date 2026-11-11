@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "test": "jest --testTimeout=30000 --runInBand --forceExit",
     "test:zk-load": "ZK_LOAD_MAX_MS=2000 ZK_LOAD_P95_MS=1000 jest --testTimeout=30000 --runInBand --forceExit tests/integration/zkteco-p2-load.test.js",
+    "test:zk-push-load": "ZK_PUSH_LOAD_MAX_MS=3000 ZK_PUSH_LOAD_P95_MS=1500 ZK_PUSH_LOAD_PUSH_MS=5000 jest --testTimeout=600000 --runInBand --forceExit tests/integration/zkteco-p4-push-load.test.js",
     "test:watch": "jest --watch --testTimeout=30000 --runInBand"
   },
   "engines": {

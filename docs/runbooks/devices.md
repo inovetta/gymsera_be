@@ -128,3 +128,78 @@ does not fail the build. If this check fails locally, treat it as a real slowdow
   30 days by `device-retention`, and at once when the branch turns the switch off.
 - **First sync slow, or many -27 after enabling batching.** `DEVICE_BIO_BATCH_SIZE=1` sends one member per biodata
   command (Phase 0 confirms multi-member biodata on the real firmware).
+
+## Phase 4: leaving GymBioSync, token enforce, move, hardening
+
+### Leaving GymBioSync without a gap (per device)
+
+GymBioSync puts the old system's customer number on the device as the PIN, with no end date. Those numbers can
+equal a GymsEra PIN of somebody else, so the device must be **imported before GymsEra manages it**.
+
+1. CMS › Access devices › Add device, tick **"This device already has members on it from GymBioSync"** (or, for a
+   device already added: device page › Import from device). The device is now in **import hold**: it keeps its
+   users exactly as GymBioSync left them and gets only read commands (DATA QUERY / COUNT / INFO / CHECK).
+2. Type the GymsEra server address on the device (setup card). It connects; GymBioSync stops reaching it.
+3. Import page › **Start import**. Users and templates arrive in 1 to 3 minutes (status "Ready to match").
+4. Match: upload a CSV (`pin` plus `member_id`, `email` or `phone`; export it from the old system), then fix the
+   rest one by one. Every red line ("This PIN belongs to another GymsEra member") needs **Remove** (deleted from
+   the device at go-live; the member, if matched, gets a new PIN and keeps the face) or a different match.
+5. **Apply**. Nothing changes on the device. Wrong? **Roll back** (only before go-live) and match again.
+6. Cut-over page: check the counts. Record consent for members listed under "Biometric consent" (their faces stay
+   on this device only, 7 days after go-live). **Go live**. The audit right after removes matched members with no
+   active package and lists unmatched device users under Unlinked users.
+7. "Verified" turns done when the device has confirmed the members and the audit finished. Stop the GymBioSync
+   Windows service on the gym PC, then press **GymBioSync is stopped**.
+
+An import whose answers never arrive fails after `DEVICE_IMPORT_QUERY_HOURS` (2); a ready import untouched for
+7 days is cancelled by `device-retention` (the device **stays** in hold: start again). Staging templates are
+emptied when the import is applied, rolled back, cancelled or fails.
+
+### Token enforce (from log)
+
+`DEVICE_TOKEN_MODE` only sets the mode of devices added after the change. Existing devices:
+
+1. `node src/scripts/device-token-mode.js --to enforce` (dry run). It lists devices that would switch (sent a
+   matching token and were seen within `DEVICE_TOKEN_SEEN_HOURS`) and skips the rest with a reason
+   (`token_absent`, `token_mismatch`, `token_unknown`, `not_seen_recently`, `not_active`).
+2. Same with `--apply` (optionally `--tenant <id>` / `--device <id>`).
+3. Watch the device page (Status, last seen) for 10 minutes. A device that goes offline: `--to log --device <id> --apply`.
+
+cdata GET, registry and push never need the token (the device learns its SessionID from push); everything else
+without the right token answers 401 and is not stored. Set `DEVICE_TOKEN_MODE=enforce` for new devices only after
+Phase 0 (c) confirmed the formula on the real firmware.
+
+### Key rotation drill (`BIOMETRIC_DATA_KEY`, twice a year and before go-live)
+
+On a staging copy (never production data in a test): enrol two test templates, then follow
+`secrets-rotation.md` section 3c with a new key version: dry run (0 unreadable), `--apply`, dry run again
+(0 on an older key), remove the old key, restart, Push now a test member and check the device holds the face.
+**Finish or cancel every import first**: staging templates (`device_import_templates`) are not rewritten by the
+script. Record the date and the result in spec §13.
+
+### Backup and restore of biometric tables
+
+- Templates live only in tenant tables `member_biometrics` and `device_import_templates` (AES-256-GCM); photos in
+  the private store under `biometrics/<tenant>/…` and `device-captures/<tenant>/…`. A tenant dump contains them
+  encrypted: it is useless without `BIOMETRIC_DATA_KEY`, and the key must **never** be stored with the dump.
+- Keep every key version that encrypted data in a backup still kept (the rotation's old entry goes to the password
+  manager, not away).
+- After a restore: run `node src/scripts/rotate-biometric-key.js` (dry run) — every tenant must show 0 unreadable.
+  Then Sync now on each device (the devices still hold what they had; the reconcile fixes the difference) and a
+  Full audit.
+- A member who withdrew consent or was deleted after the backup was taken must be deleted again after a restore
+  (check `audit_logs` for `biometrics.*` and `devices.*` actions since the backup time).
+
+### Rate limits, sizes, alerts
+
+Per device and per iisnode process: `DEVICE_RATE_PER_SECOND` (2) and `DEVICE_RATE_BURST` (20); over it the device
+gets 429 and retries after ErrorDelay. An unknown serial or key is answered from memory for
+`DEVICE_UNCLAIMED_RATE_SECONDS` (10). registry, push, getrequest, devicecmd and ping take at most
+`DEVICE_MAX_SMALL_BODY` (64 KB); uploads 10 MB. Add a Cloudflare rate rule on the push host as the outer limit.
+New owner alert: **"Access device key used by another device"** (`device_serial_mismatch`, once per incident):
+re-pair the device unless it was just replaced. Capacity (90%) now counts users GymsEra did not put there.
+
+### Move a device
+
+Device page › Manage › Move to another branch (devices.manage at both branches). The old branch's members are
+removed at once (no exit grace), the new branch's sent. Not possible during an import or a wipe.

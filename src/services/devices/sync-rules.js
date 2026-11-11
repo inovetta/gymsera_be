@@ -193,7 +193,13 @@ function planCommands({ desired, applied, pin, supportedTypes = [], photoTypes =
 
   const appliedBio = new Map((applied?.bio || []).map((b) => [b.type, b]));
   for (const b of desired.bio) {
-    if (applied && same(b, appliedBio.get(b.type))) continue;
+    const had = appliedBio.get(b.type);
+    if (applied && same(b, had)) continue;
+    // A slot the device holds that is no longer wanted (one template deleted): `DATA UPDATE biodata` only
+    // writes slots, so the type is deleted first and the rest sent again (Phase 4, one-template delete).
+    const slot = (i) => `${i.no}:${i.index}`;
+    const keep = new Set(b.items.map(slot));
+    if (had && had.items.some((i) => !keep.has(slot(i)))) out.push({ kind: 'bio_delete', args: { pin: p, type: b.type } });
     out.push({ kind: 'bio_upsert', args: { pin: p, type: b.type, ids: b.items.map((i) => i.id) } });
   }
   for (const [type] of appliedBio) {

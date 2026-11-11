@@ -1233,6 +1233,141 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // ZKTeco Phase 4 (spec docs/ZKTECO_PUSH_DEVICE_SYNC.md §15 Phase 4: import from a device GymBioSync
+    // managed, and the cut-over):
+    //   device_imports            one import of one device (query, match, apply, go-live, rollback)
+    //   device_import_users       the users the device reported (PIN kept as the device has it), the
+    //                             member each is matched to, and "remove at go-live"
+    //   device_import_templates   templates the device reported, AES-256-GCM like member_biometrics; the
+    //                             encrypted copy is emptied once applied, rolled back or cancelled
+    //   device_import_packs       query packs received (a replayed pack is not stored twice)
+    //   access_device_details.import_hold / import_hold_since   the device gets only queries while held
+    //   access_device_details.live_at / gbs_stopped_at          the cut-over checklist
+    //   member_biometrics.import_id / import_hold   which import stored a template; held ones reach no
+    //                             device until go-live (default 0: every existing template stays usable)
+    // ROLLBACK (previous build first): DROP TABLE `device_import_packs`, `device_import_templates`, `device_import_users`, `device_imports`;
+    //   ALTER TABLE `access_device_details` DROP COLUMN `import_hold`, DROP COLUMN `import_hold_since`,
+    //     DROP COLUMN `live_at`, DROP COLUMN `gbs_stopped_at`;
+    //   ALTER TABLE `member_biometrics` DROP INDEX `member_biometrics_import`, DROP COLUMN `import_id`,
+    //     DROP COLUMN `import_hold`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 25;
+    // Before a rollback, finish or roll back every open import: a template still held (import_hold = 1)
+    // would become usable at once when the column goes.
+    version: 25,
+    name: '025_device_import_and_cutover',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const T = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+      const hasColumn = async (table, column) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: [table, column], type: QueryTypes.SELECT }
+        )).length > 0;
+      const hasIndex = async (table, index) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+          { replacements: [table, index], type: QueryTypes.SELECT }
+        )).length > 0;
+
+      // status: querying → ready → applied → live; or rolled_back, cancelled, failed.
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_imports\` (
+        \`id\` CHAR(26) NOT NULL,
+        \`device_id\` CHAR(36) NOT NULL,
+        \`status\` VARCHAR(12) NOT NULL,
+        \`requested_by\` CHAR(36) NULL,
+        \`query_cmd_ids_json\` TEXT NULL,
+        \`users_count\` INT UNSIGNED NOT NULL DEFAULT 0,
+        \`templates_count\` INT UNSIGNED NOT NULL DEFAULT 0,
+        \`templates_too_large\` INT UNSIGNED NOT NULL DEFAULT 0,
+        \`truncated\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`result_json\` TEXT NULL,
+        \`started_at\` DATETIME NOT NULL,
+        \`ready_at\` DATETIME NULL,
+        \`applied_at\` DATETIME NULL,
+        \`applied_by\` CHAR(36) NULL,
+        \`live_at\` DATETIME NULL,
+        \`live_by\` CHAR(36) NULL,
+        \`finished_at\` DATETIME NULL,
+        \`finished_by\` CHAR(36) NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        KEY \`device_imports_device\` (\`device_id\`, \`started_at\`),
+        KEY \`device_imports_status\` (\`status\`, \`started_at\`)
+      ) ${T}`);
+
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_import_users\` (
+        \`import_id\` CHAR(26) NOT NULL,
+        \`pin\` VARCHAR(16) NOT NULL,
+        \`name\` VARCHAR(24) NULL,
+        \`card_no\` VARCHAR(32) NULL,
+        \`privilege\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`member_id\` CHAR(36) NULL,
+        \`match_source\` VARCHAR(8) NULL,
+        \`remove_at_go_live\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`identity_created\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`card_adopted\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`applied_at\` DATETIME NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`import_id\`, \`pin\`),
+        KEY \`device_import_users_member\` (\`import_id\`, \`member_id\`)
+      ) ${T}`);
+
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_import_templates\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`import_id\` CHAR(26) NOT NULL,
+        \`pin\` VARCHAR(16) NOT NULL,
+        \`bio_type\` TINYINT UNSIGNED NOT NULL,
+        \`bio_no\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`bio_index\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`major_ver\` VARCHAR(8) NOT NULL,
+        \`minor_ver\` VARCHAR(8) NOT NULL DEFAULT '0',
+        \`format\` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        \`duress\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`valid\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`template_enc\` MEDIUMBLOB NULL,
+        \`key_version\` SMALLINT UNSIGNED NULL,
+        \`template_sha256\` CHAR(64) NOT NULL,
+        \`template_size\` INT UNSIGNED NOT NULL,
+        \`outcome\` VARCHAR(16) NULL,
+        \`biometric_id\` CHAR(36) NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`device_import_templates_slot\` (\`import_id\`, \`pin\`, \`bio_type\`, \`bio_no\`, \`bio_index\`)
+      ) ${T}`);
+
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_import_packs\` (
+        \`import_id\` CHAR(26) NOT NULL,
+        \`cmd_id\` BIGINT UNSIGNED NOT NULL,
+        \`pack_idx\` INT UNSIGNED NOT NULL,
+        \`pack_cnt\` INT UNSIGNED NOT NULL,
+        \`records\` INT UNSIGNED NOT NULL DEFAULT 0,
+        \`received_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`import_id\`, \`cmd_id\`, \`pack_idx\`)
+      ) ${T}`);
+
+      for (const [col, ddl] of [
+        ['import_hold', '`import_hold` TINYINT(1) NOT NULL DEFAULT 0'],
+        ['import_hold_since', '`import_hold_since` DATETIME NULL'],
+        ['live_at', '`live_at` DATETIME NULL'],
+        ['gbs_stopped_at', '`gbs_stopped_at` DATETIME NULL'],
+      ]) {
+        if (!(await hasColumn('access_device_details', col))) await sequelize.query(`ALTER TABLE \`access_device_details\` ADD COLUMN ${ddl}`);
+      }
+      if (!(await hasColumn('member_biometrics', 'import_id'))) {
+        await sequelize.query('ALTER TABLE `member_biometrics` ADD COLUMN `import_id` CHAR(26) NULL');
+      }
+      if (!(await hasIndex('member_biometrics', 'member_biometrics_import'))) {
+        await sequelize.query('ALTER TABLE `member_biometrics` ADD INDEX `member_biometrics_import` (`import_id`)');
+      }
+      // Last step (the baseline probe looks for it): held templates reach no device until go-live.
+      if (!(await hasColumn('member_biometrics', 'import_hold'))) {
+        await sequelize.query('ALTER TABLE `member_biometrics` ADD COLUMN `import_hold` TINYINT(1) NOT NULL DEFAULT 0');
+      }
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

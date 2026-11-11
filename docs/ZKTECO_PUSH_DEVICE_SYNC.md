@@ -1087,7 +1087,7 @@ card, Push now, consent, enrol), 10.5, the add-device wizard on the phone, and t
 (`/me/biometric-consents` is ready; `method: 'app'` when the member consents in the app). Device alerts open
 `/host/devices` (the deep link the app must handle).
 
-**Left for Phase 4.** Import from device (GymBioSync migration, including templates of linked device users), token
+**Left for Phase 4** (done 2026-11-11, see "Phase 4 as built" below, except the Phase 0 defaults and fixtures and the D-5 decision). Import from device (GymBioSync migration, including templates of linked device users), token
 enforce, the Phase 0 defaults and sanitized fixtures (`DEVICE_*`, the `*` delete and multi-member biodata), the
 command log tab in the CMS, `DELETE /host/members/:id/biometrics/:bioId` (one template; today withdrawal deletes
 all), Move device to another branch (`POST /host/devices/:id/move`), a push load test with 50 devices, and the D-5
@@ -1098,6 +1098,71 @@ attendance decision (Phase 2 correction 10; the live feed shows those scans as "
   members (CSV mapping upload or manual), store the templates (with consent), then switch the
   device over.
 - Token enforce mode, capacity warnings, alerts, load test with 50 simulated devices.
+
+#### Phase 4 as built (2026-11-11, backend and CMS; branches `feat/zkteco-phase4` from `feat/zkteco-phase3` in be and CMS; not merged, not pushed, not deployed)
+
+Owner instruction (2026-11-10): import from device (GymBioSync), cut-over helper keeping GymBioSync's PINs, token
+enforce with its migration path, move device, delete one template, capacity / alert / error-rate rules checked, a
+push load test, hardening; CMS import wizard, cut-over page, command log, move, delete template. Tests first.
+
+**Found before building (verify first).**
+1. *GymBioSync PINs are another system's numbers.* GymBioSync sends the old system's `CustomerID` as `Pin`
+   (`GymBiosyncService/MyServiceApp/BioMetric.cs:246`, `PushProtocol/ZkPushManager.cs:355`) with
+   `StartTime=0 EndTime=0`. GymsEra PINs start at 1001. On a device GymsEra simply took over, a device PIN equal to a
+   GymsEra member's PIN is treated as that member: the nightly audit removes or overwrites the device user
+   (`device-sync.service.js` `compareAudit`), and an uploaded face is stored under the member and pushed to their
+   other doors (`device-ingest.service.js` `ingestTemplates`). Phase 4 adds the import hold; NEW-239 records the risk
+   for a GymBioSync device added **without** "import first".
+2. *One deleted template stayed on the device.* `planCommands` (`sync-rules.js`) re-sent a type with fewer templates
+   with `DATA UPDATE biodata`, which writes slots and deletes nothing. Fixed: the type is deleted first.
+3. *Logs.* The app-wide console redaction had no rule for `Tmp=` / `Content=` values, long base64, `RegistryCode`,
+   `SessionID`, Comm Key or a `BIOMETRIC_DATA_KEY`-shaped value; the device router logged database error messages raw.
+4. *Capacity* counted only the members GymsEra wants on a device, not users already there (GymBioSync's, unlinked).
+5. *Push now under load* computed desired state on every device of the tenant (50 in the test) and twice per target:
+   11.2 s for one answer in a burst. Now only devices that could hold the member, once: 3.8 s for the slowest of a
+   burst of 10 on the 3-connection tenant pool (NEW-238).
+
+**Names and routes (spec proposal → real).**
+
+| Spec / prompt | Built | Notes |
+|---|---|---|
+| import tables | tenant migration `025_device_import_and_cutover`: `device_imports`, `device_import_users`, `device_import_templates`, `device_import_packs`; `access_device_details.import_hold / import_hold_since / live_at / gbs_stopped_at`; `member_biometrics.import_id / import_hold` | a fresh tenant has 50 tables; baseline probe 25 |
+| import hold | `import_hold = 1`: claim only `query_users`, `query_bio`, `count`, `info`, `check` (`device-registry#READ_ONLY_KINDS`); `devicesOf` leaves the device out (reconcile, sweep, audit, Push now, enrol); wipe, audit, link and "dismiss and remove" answer 409 `device_in_import`; member uploads (user, biodata, templatev10, biophoto, userpic, BioData) counted and dropped; a scan is a member only through the applied import (`heldOwnerOfPin`), no drift actions | add with `importFirst: true` (`POST /host/devices`) or start an import on an existing device |
+| "Import from device" | `POST /host/devices/:id/imports` (202, or 200 `reused`), `GET …/imports`, `GET …/imports/:importId`, `GET …/imports/:importId/users?filter=&limit=&offset=` | queries: DATA QUERY user, then biodata per type the device reported (or `DEVICE_IMPORT_BIO_TYPES` 1,2,9), Type in every filter; packs stored once per (command, pack); caps `DEVICE_IMPORT_MAX_USERS` 20000, `…_MAX_TEMPLATES` 60000, `…_MAX_TEMPLATE_BYTES` 16384 (counted as too large); ready when every query is answered, failed on the device, or acked with no pack for 60 s; failed after `DEVICE_IMPORT_QUERY_HOURS` |
+| match | `PUT …/users/:pin {memberId|null, removeAtGoLive}`, `POST …/mapping {csv}` | CSV: header `pin` + `member_id` / `email` / `phone`; only members of the gym; 1 MB / 20000 lines; per-line errors `invalid_pin`, `pin_not_on_device`, `device_admin`, `member_missing`, `member_not_found`, `ambiguous_member`, `member_already_matched`; matches carry over to the next import of the device |
+| conflicts | `pin_taken` (the PIN is another GymsEra member's), `member_has_pin` (the member already has another PIN; "remove at go-live" set by default, the member is sent under their own PIN) | blocking until "remove at go-live" or another match; device admins (privilege > 0) never imported or removed |
+| preview | `GET …/preview` | will store (identities, templates, waiting for consent, already enrolled), skipped, at go-live (removals, not entitled), blocking, capacity |
+| apply | `POST …/apply` | one transaction; identity only when the member has none and nobody owns the PIN (the device PIN is kept); card adopted when GymsEra has none; templates copied encrypted with `import_hold = 1`, `pending_until` NULL; a slot the member already has is kept; sequence `next_pin` past every device PIN; staging emptied; a second apply answers `alreadyApplied` |
+| rollback / cancel | `POST …/rollback` (applied only; 409 `import_live` after go-live), `POST …/cancel` (not applied; ends the hold) | rollback removes held templates, PINs the import gave (unless a device holds the member) and adopted cards; the hold stays |
+| cut-over helper | `GET /host/devices/:id/cutover`, `POST …/cutover/go-live {removeUnmatched}`, `POST …/cutover/gymbiosync-stopped` | steps connected, imported, matched, conflicts, applied, consent, capacity, live, verified, gymbiosync_stopped; counts deviceUsers, imported, matched, unmatched, admins, conflicts, templates, consentNeeded, verified; first 100 unmatched PINs |
+| go-live | | templates released (pending ones get 7 days from now); queued commands superseded and the device's sync rows dropped (planned afresh); deletes only for rows marked (per type, comparison photo, authorization, user); unmatched users kept go to Unlinked users (`source: 'import'`); hold ends; every matched member reconciled on all devices, then the device; an audit asked |
+| token enforce | `src/scripts/device-token-mode.js --to enforce|log [--apply] [--tenant] [--device]` | switches only devices with `last_token_state = 'match'` seen within `DEVICE_TOKEN_SEEN_HOURS` (24); push stays exempt with cdata GET and registry |
+| move (§11) | `PUT /host/devices/:id/branch {branchId}` | not `…/move`: no route may end in `/move` (R-81, guard `p5b-08`); devices.manage at both branches; platform and tenant rows follow; queued member commands superseded; reconcile with no exit grace; 422 `same_branch`, 409 `device_in_import` / `device_wiping` |
+| delete one template (§11) | `DELETE /host/members/:id/biometrics/:bioId` | `biometrics.delete`; the member is reconciled on every device; `GET /host/members/:id/device-status` lists `templates` (ids and slots, never data) |
+| command log | `GET /host/devices/:id/commands?status=` (Phase 3) | CMS Commands tab |
+| alerts | owner `device_serial_mismatch` (once per incident); capacity 90% counts max(wanted + unlinked, device UserCount) | error rate and capacity rules re-checked by the Phase 3 tests |
+| hardening | per-device token bucket `DEVICE_RATE_PER_SECOND` 2 / `DEVICE_RATE_BURST` 20 (429, nothing stored; per iisnode process); unknown callers answered from memory `DEVICE_UNCLAIMED_RATE_SECONDS` 10; `DEVICE_MAX_SMALL_BODY` 64 KB for registry, push, getrequest, devicecmd, ping (413); redaction rules; router error lines redacted and cut | runbook `devices.md` "Phase 4"; checklist `docs/security/zkteco-devices-security-checklist.md` |
+
+**Spec corrections found while building.**
+1. *"Import" is a hold, not a one-shot copy.* The device must take nothing from GymsEra between the first contact
+   and go-live, or collisions (above) and the nightly audit change it. The hold also means the device keeps
+   GymBioSync's rules (no end dates) until go-live: "no gap" in both directions.
+2. *Imported templates are held,* not usable at once: otherwise a sweep of another device sends them before the
+   host goes live, and rollback could not take them back.
+3. *The 7 consent days start at go-live,* not at apply (a long import would delete faces from the device before it
+   is even managed).
+4. *Matched but not entitled* members are removed by the audit right after go-live, not by go-live itself (go-live
+   removes only what the host marked).
+5. *An empty answer.* Whether a device sends a querydata pack for a query with no records is a Phase 0 question; a
+   query acked with no pack for 60 s counts as empty.
+6. *Rate limits live in process memory* (the spec says no state in process memory; these are protective, not
+   state): each iisnode process enforces its share. Cloudflare is the outer limit.
+7. *IP-change alerts (§14 point 4) are not built:* a 4G or DHCP device changes IP often; the IP is on the device page.
+8. *The rotation script does not rewrite staging templates:* finish or cancel imports before a rotation.
+
+**Left (needs the device or the owner).** Phase 0 defaults and sanitized fixtures (`DEVICE_*`, the `*` delete,
+multi-member biodata, empty query answers, token formula before enforce); the D-5 attendance decision (Phase 2
+correction 10); the app screens (after the 2026-12-05 store release); NEW-238 and NEW-239.
 
 ### Tests required (minimum)
 

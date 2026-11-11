@@ -9,6 +9,8 @@ module.exports = {
     '<rootDir>/tests/harness/fake-now.js',
     // R-99: payouts on for the existing payout suites (off by default in production).
     '<rootDir>/tests/harness/payouts-enabled.js',
+    // ZKTeco Phase 4: the simulator polls far faster than a device; the hardening suite checks the limit.
+    '<rootDir>/tests/harness/device-rate-limit.js',
   ],
   // Releases what outlives a test file and keeps its module graph in memory (rate limiter timers, the
   // Redis client); see tests/regression/test-hygiene-rate-limit-stores.test.js.

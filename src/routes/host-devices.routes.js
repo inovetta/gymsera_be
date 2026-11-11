@@ -19,6 +19,7 @@ const validate = require('../middleware/validate');
 const refusePlatformAdmin = require('../middleware/refusePlatformAdmin');
 const ctrl = require('../controllers/host-devices.controller');
 const screens = require('../controllers/host-device-screens.controller');
+const imports = require('../controllers/host-device-import.controller');
 
 const router = Router();
 const idParam = param('id').isUUID().withMessage('Unknown device');
@@ -46,6 +47,10 @@ router.post(
     direction,
     body('linkMode').optional().isIn(['host', 'path', 'serial']).withMessage('Link mode must be host, path or serial.'),
     body('serialNumber').optional({ nullable: true }).isString().isLength({ max: 32 }),
+    // Phase 4 (owner, 2026-11-11): required, no default. true = the device already has GymBioSync members:
+    // added in import hold (nothing sent to it until go-live). NEW-239.
+    body('importFirst').exists({ values: 'null' }).withMessage('Say whether this device already has members from GymBioSync.')
+      .bail().isBoolean({ strict: true }).withMessage('Say whether this device already has members from GymBioSync: true or false.'),
   ], { stage: 2 }),
   can('devices.manage', { branch: 'body.branchId' }),
   ctrl.createDevice
@@ -262,5 +267,53 @@ router.post(
   can('devices.manage', { branch: 'deviceBranchId' }),
   screens.dismissUnlinked
 );
+
+// ── Phase 4: import from device (GymBioSync), cut-over, move (§11, §15 Phase 4) ─────────────────────
+const importParam = param('importId').matches(/^[0-9A-Z]{26}$/).withMessage('Unknown import');
+const importPin = param('pin').matches(/^\d{1,9}$/).withMessage('Unknown device user');
+const manage = (path, method, handler, checks = [], extra = []) => router[method](
+  path,
+  authenticate,
+  refusePlatformAdmin.deviceWrite,
+  tenantContext.forTeamRoutes,
+  validate.strict([idParam, ...checks], { stage: 2 }),
+  ctrl.loadDevice,
+  can('devices.manage', { branch: 'deviceBranchId' }),
+  ...extra,
+  handler
+);
+
+view('/:id/imports', imports.listImports);
+view('/:id/imports/:importId', imports.getImport, [importParam]);
+view('/:id/imports/:importId/users', imports.listUsers, [
+  importParam,
+  query('filter').optional().isIn(['all', 'matched', 'unmatched', 'conflict', 'admin', 'remove']).withMessage('Unknown filter.'),
+  query('limit').optional().isInt({ min: 1, max: 500 }),
+  query('offset').optional().isInt({ min: 0 }),
+]);
+view('/:id/imports/:importId/preview', imports.preview, [importParam]);
+view('/:id/cutover', imports.getCutover);
+
+manage('/:id/imports', 'post', imports.startImport);
+manage('/:id/imports/:importId/users/:pin', 'put', imports.matchUser, [
+  importParam,
+  importPin,
+  body('memberId').optional({ nullable: true }).isUUID().withMessage('Choose a member.'),
+  body('removeAtGoLive').optional().isBoolean().withMessage('removeAtGoLive is true or false.'),
+]);
+manage('/:id/imports/:importId/mapping', 'post', imports.mapCsv, [
+  importParam,
+  body('csv').isString().isLength({ min: 1, max: 1048576 }).withMessage('Upload a CSV file of at most 1 MB.'),
+]);
+manage('/:id/imports/:importId/apply', 'post', imports.apply, [importParam]);
+manage('/:id/imports/:importId/rollback', 'post', imports.rollback, [importParam]);
+manage('/:id/imports/:importId/cancel', 'post', imports.cancel, [importParam]);
+manage('/:id/cutover/go-live', 'post', imports.goLive, [body('removeUnmatched').optional().isBoolean().withMessage('removeUnmatched is true or false.')]);
+manage('/:id/cutover/gymbiosync-stopped', 'post', imports.gbsStopped);
+// Move to another branch: devices.manage at the device's branch AND at the new one. Named /branch, not /move:
+// no route may end in /move (R-81, Move branch removed; guard p5b-08). Spec §11's `POST …/move`.
+manage('/:id/branch', 'put', imports.moveDevice, [body('branchId').isUUID().withMessage('Choose a branch.')], [
+  (req, res, next) => can('devices.manage', { branch: 'body.branchId' })(req, res, next),
+]);
 
 module.exports = router;

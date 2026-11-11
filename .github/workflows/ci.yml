@@ -78,3 +78,7 @@ jobs:
           # seconds fails CI. The strict limits (2000 / 1000 ms) run with `npm run test:zk-load` before a release.
           ZK_LOAD_MAX_MS: '10000'
           ZK_LOAD_P95_MS: '5000'
+          # ZKTeco Phase 4 push load test: same idea; strict limits (3000 / 1500 ms) with `npm run test:zk-push-load`.
+          ZK_PUSH_LOAD_MAX_MS: '15000'
+          ZK_PUSH_LOAD_P95_MS: '7500'
+          ZK_PUSH_LOAD_PUSH_MS: '15000'

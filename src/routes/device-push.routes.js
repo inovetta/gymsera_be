@@ -24,11 +24,48 @@ const registry = require('../services/devices/device-registry.service');
 const ingest = require('../services/devices/device-ingest.service');
 const triggers = require('../services/devices/device-triggers');
 
-/** The device as the sync engine sees it (details + branch time zone), or null. */
+/** The device as the sync engine sees it (details + branch time zone), or null. A device in import hold included. */
 const syncDeviceOf = async (tenantDb, id) => {
-  const [d] = await require('../services/devices/device-sync.service').devicesOf(tenantDb, { deviceId: id });
+  const [d] = await require('../services/devices/device-sync.service').devicesOf(tenantDb, { deviceId: id, includeHeld: true });
   return d || null;
 };
+
+// ── Rate limits (spec §5) ─────────────────────────────────────────────────────
+// In process memory: each iisnode process enforces its own share (the limit per device is at most the
+// number of processes times this). They protect the database from a misbehaving or forged device; a
+// Cloudflare rate rule on the push host is the outer limit (runbook devices.md).
+const MAX_TRACKED = 50000;
+const buckets = new Map(); // caller key → { tokens, at }
+const unknownSeen = new Map(); // ip|sn|key → expires (ms): an unknown caller, answered from memory
+
+/** Token bucket per caller: DEVICE_RATE_PER_SECOND refill, DEVICE_RATE_BURST size. → true when allowed. */
+function takeToken(key, cfg, now = Date.now()) {
+  let b = buckets.get(key);
+  if (!b) {
+    if (buckets.size >= MAX_TRACKED) buckets.clear(); // a flood of new keys: start again rather than grow
+    b = { tokens: cfg.rateBurst, at: now };
+    buckets.set(key, b);
+  }
+  b.tokens = Math.min(cfg.rateBurst, b.tokens + ((now - b.at) / 1000) * cfg.ratePerSecond);
+  b.at = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  return true;
+}
+
+const unknownKey = (c) => `${c.ip || ''}|${c.sn || ''}|${c.pathKey || c.hostKey || ''}`;
+function knownUnknown(c, now = Date.now()) {
+  const until = unknownSeen.get(unknownKey(c));
+  if (!until) return false;
+  if (until > now) return true;
+  unknownSeen.delete(unknownKey(c));
+  return false;
+}
+function rememberUnknown(c, seconds, now = Date.now()) {
+  if (!seconds) return;
+  if (unknownSeen.size >= MAX_TRACKED) unknownSeen.clear();
+  unknownSeen.set(unknownKey(c), now + seconds * 1000);
+}
 
 const DEVICE_PATH = /^\/(?:d\/([A-Za-z0-9]{8})\/)?iclock(?:\/|$)/;
 const isDevicePath = (path) => DEVICE_PATH.test(path);
@@ -153,7 +190,10 @@ async function withTenant(device) {
 }
 
 // ── Endpoint handlers: (c, caller) → [status, text] ───────────────────────────
+// Phase 1 correction 2: push is exempt with cdata GET and registry (the device learns the SessionID from push).
 const TOKEN_EXEMPT = new Set(['GET cdata', 'POST registry', 'POST push', 'GET push']);
+// Uploads of member data a device in import hold sends on its own (Phase 4): counted and dropped.
+const HELD_DROPS = new Set(['user', 'biodata', 'templatev10', 'biophoto', 'userpic']);
 
 async function handleLegacy(c) {
   const iclock = require('../services/iclock.service');
@@ -221,6 +261,16 @@ async function handleDevice(c, { device, tenantDb }) {
       }
       const table = String(c.query.table || '').toLowerCase();
       const sdev = await syncDeviceOf(tenantDb, device.id);
+      const held = Boolean(Number(det.import_hold));
+      if (held && (String(c.query.type || '').toLowerCase() === 'biodata'
+        || (table === 'tabledata' && HELD_DROPS.has(String(c.query.tablename || '').toLowerCase())))) {
+        // Phase 4: during an import the device's users and templates are read by the import's queries
+        // only. What it uploads on its own may sit on a PIN that is someone else's in GymsEra
+        // (GymBioSync PINs are another system's numbers): counted, never stored as member data.
+        c.logTable = String(c.query.tablename || 'BioData');
+        c.logCount = protocol.recordCount(c.body, c.query.count);
+        return [200, String(c.query.type || '').toLowerCase() === 'biodata' ? OK : lines(`${c.query.tablename}=${c.logCount}`)];
+      }
       if (String(c.query.type || '').toLowerCase() === 'biodata') {
         // ENROLL_BIO result (§7.6): the same as a template upload.
         c.logTable = 'BioData';
@@ -266,7 +316,7 @@ async function handleDevice(c, { device, tenantDb }) {
       return [200, lines(protocol.configLines({ style: cfg.registrationStyle, registryCode: device.registry_code, sessionId: device.session_id, requestDelay: cfg.requestDelay, forCdata: false }))];
     case 'getrequest': {
       if (device.status !== 'active') return [200, OK];
-      const body = await registry.claimCommands(tenantDb, device, { maxPackageSize: caps.MaxPackageSize });
+      const body = await registry.claimCommands(tenantDb, device, { maxPackageSize: caps.MaxPackageSize, held: Boolean(Number(det.import_hold)) });
       return [200, body ? `${body}\n` : OK];
     }
     case 'devicecmd': {
@@ -307,8 +357,20 @@ async function handle(req, res) {
   let status = 200;
   let text = OK;
   let caller = null;
+  if (cfg.rateLimit && !takeToken(c.pathKey || c.hostKey || c.sn || c.ip || '-', cfg)) {
+    // Over the limit: nothing is read or stored; the device retries after ErrorDelay.
+    send(res, 429, lines('Too Many Requests'));
+    if (process.env.NODE_ENV !== 'test' || process.env.LOG_DEVICES === 'true') console.warn(`[device-push] rate limited ${c.method} /iclock/${c.endpoint}`);
+    return;
+  }
+  if (cfg.unclaimedRateSeconds && knownUnknown(c)) {
+    // An unknown caller seen in the last DEVICE_UNCLAIMED_RATE_SECONDS: the same answer, no lookup.
+    send(res, c.endpoint === 'registry' ? 406 : 200, c.endpoint === 'registry' ? lines('Not Acceptable') : OK);
+    return;
+  }
   try {
     caller = await resolveCaller(c);
+    if (caller.kind === 'unknown') rememberUnknown(c, cfg.unclaimedRateSeconds);
     if (caller.kind === 'legacy') {
       [status, text] = await handleLegacy(c);
     } else if (caller.kind === 'mismatch') {
@@ -333,7 +395,8 @@ async function handle(req, res) {
       }
     }
   } catch (err) {
-    console.error(`[device-push] ${caller?.device?.id || '-'} ${c.method} /iclock/${c.endpoint} failed: ${err.message}`);
+    // The message of a database error can quote the value it refused (a template): redacted, and cut.
+    console.error(`[device-push] ${caller?.device?.id || '-'} ${c.method} /iclock/${c.endpoint} failed: ${protocol.redact(String(err.message || '')).slice(0, 300)}`);
     status = 200;
     text = OK;
   }
@@ -362,7 +425,13 @@ router.use((req, _res, next) => {
   next();
 });
 
-router.use('/iclock', (req, res, next) => express.text({ type: () => true, limit: getDeviceConfig().maxBody })(req, res, next));
+// Uploads (cdata POST, querydata) up to 10 MB (photos); every other call is small (§5, Phase 4 hardening).
+const UPLOAD_PATH = /^\/(cdata|querydata)(?:\/|$)/i;
+router.use('/iclock', (req, res, next) => {
+  const cfg = getDeviceConfig();
+  const limit = req.method === 'POST' && UPLOAD_PATH.test(req.path) ? cfg.maxBody : cfg.maxSmallBody;
+  return express.text({ type: () => true, limit })(req, res, next);
+});
 
 router.get('/iclock/cdata', handle);
 router.post('/iclock/cdata', handle);
@@ -379,7 +448,7 @@ router.all('/iclock/*', handle); // new firmware calls: OK, path logged
 // Body errors: 413 for an oversized body, OK for anything else; never HTML or JSON.
 router.use((err, req, res, _next) => {
   if (err && (err.type === 'entity.too.large' || err.status === 413)) {
-    console.warn(`[device-push] body over ${getDeviceConfig().maxBody} on ${req.method} ${req.path} (not stored)`);
+    console.warn(`[device-push] body over the limit on ${req.method} ${req.path} (not stored)`);
     return send(res, 413, lines('Payload Too Large'));
   }
   console.error(`[device-push] ${req.method} ${req.path} failed before the handler: ${err?.message}`);
@@ -391,3 +460,5 @@ module.exports.isDevicePath = isDevicePath;
 module.exports.effectiveHost = effectiveHost;
 module.exports.hostWithoutPort = hostWithoutPort;
 module.exports.send = send;
+/** Tests: forget the in-memory rate limit state. */
+module.exports.resetRateLimits = () => { buckets.clear(); unknownSeen.clear(); };

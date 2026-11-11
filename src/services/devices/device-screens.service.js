@@ -190,6 +190,14 @@ async function unlinkedUsers(db, { deviceIds }) {
   };
 }
 
+/** Phase 4: during an import the device's users are matched on the import page, and nothing is deleted. */
+async function assertNotHeld(db, deviceId) {
+  const [d] = await select(db, 'SELECT import_hold FROM access_device_details WHERE id = ?', [deviceId]);
+  if (d && Number(d.import_hold)) {
+    throw createError('This device is being imported. Match its users on the import page.', 409, 'device_in_import');
+  }
+}
+
 async function unlinkedRow(db, deviceId, pin) {
   const [row] = await select(db, 'SELECT * FROM device_unlinked_users WHERE device_id = ? AND pin = ?', [deviceId, String(pin)]);
   if (!row || row.dismissed_at || row.linked_member_id) throw createError('That device user is not in the unlinked list.', 404, 'unlinked_user_not_found');
@@ -202,6 +210,7 @@ async function unlinkedRow(db, deviceId, pin) {
  * sent (entitled) or removed (not entitled), like any other member.
  */
 async function linkUnlinked(db, { deviceId, pin, memberId, now = new Date() }) {
+  await assertNotHeld(db, deviceId);
   await unlinkedRow(db, deviceId, pin);
   const pinNum = Number(pin);
   if (!/^\d{1,9}$/.test(String(pin)) || pinNum < 1) throw createError('Only a numeric device PIN can be linked.', 422, 'pin_not_numeric');
@@ -238,6 +247,7 @@ async function linkUnlinked(db, { deviceId, pin, memberId, now = new Date() }) {
 
 /** Hidden from the list; with removeFromDevice the device deletes that user (and its data). */
 async function dismissUnlinked(db, { deviceId, pin, removeFromDevice = false, now = new Date() }) {
+  if (removeFromDevice) await assertNotHeld(db, deviceId);
   await unlinkedRow(db, deviceId, pin);
   await exec(db, 'UPDATE device_unlinked_users SET dismissed_at = ? WHERE device_id = ? AND pin = ?', [now, deviceId, String(pin)]);
   if (removeFromDevice) {

@@ -21,7 +21,8 @@ const RUN = Math.random().toString(36).slice(2, 6).toUpperCase();
 let n = 0;
 const sn = () => `HST${RUN}${++n}`;
 
-const add = (persona, body, headers = {}) => asPersona(persona, headers).post('/host/devices', { name: 'Front door IN', direction: 'in', ...body });
+// importFirst is required since Phase 4 (the GymBioSync question); these devices have no GymBioSync members.
+const add = (persona, body, headers = {}) => asPersona(persona, headers).post('/host/devices', { name: 'Front door IN', direction: 'in', importFirst: false, ...body });
 const platformRow = async (id) => (await platformDb.query('SELECT * FROM access_devices WHERE id = ?', { replacements: [id], type: QueryTypes.SELECT }))[0];
 
 beforeAll(async () => {

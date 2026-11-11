@@ -216,6 +216,8 @@ class ZkDeviceSimulator {
       return 0;
     }
     if (verb === 'QUERY') {
+      // The manual (9.1.4): a biodata query condition must include Type. A device refuses one without it.
+      if (/tablename=biodata/i.test(m[4]) && !/filter=[^,]*Type=\d+/i.test(m[4])) return -1;
       this.pendingQuery = m[4];
       return 0;
     }
@@ -232,6 +234,7 @@ class ZkDeviceSimulator {
       this.pendingEnroll = null;
       const code = this.execute(cmd.text);
       if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=user')) await this.sendUserQuery(cmd.id);
+      if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=biodata')) await this.sendBioQuery(cmd.id, this.pendingQuery);
       if (this.pendingEnroll) await this.sendEnroll(this.pendingEnroll);
       results.push({ id: cmd.id, returnCode: code, cmd: cmd.text.split(' ').slice(0, 2).join(' ') });
     }
@@ -257,10 +260,35 @@ class ZkDeviceSimulator {
     for (let i = 0; i < users.length; i += this.queryPackSize) packs.push(users.slice(i, i + this.queryPackSize));
     if (!packs.length) packs.push([]);
     for (let i = 0; i < packs.length; i++) {
-      const body = packs[i].map((u) => `user uid=${u.pin}\tcardno=${u.cardNo || ''}\tpin=${u.pin}\tname=${u.name || ''}\tprivilege=0`).join('\n');
+      const body = packs[i].map((u) => `user uid=${u.pin}\tcardno=${u.cardNo || ''}\tpin=${u.pin}\tname=${u.name || ''}\tprivilege=${u.privilege || 0}`).join('\n');
       const res = await this.querydata({ cmdid, tablename: 'user', count: packs[i].length, packcnt: packs.length, packidx: i + 1 }, body);
       this.uploads.push({ path: 'querydata', status: res.status, text: res.text });
     }
+  }
+
+  /** Phase 4: the answer to `DATA QUERY tablename=biodata,…,filter=Type=<t>[\tPin=<p>]`, in packs. */
+  async sendBioQuery(cmdid, query) {
+    const filter = fieldsOf(String(query).replace(/^.*filter=/i, ''));
+    const type = Number(filter.type);
+    const rows = [...this.bio.values()].filter((b) => b.type === type && (filter.pin === undefined || b.pin === String(filter.pin)));
+    const packs = [];
+    for (let i = 0; i < rows.length; i += this.queryPackSize) packs.push(rows.slice(i, i + this.queryPackSize));
+    if (!packs.length) packs.push([]);
+    for (let i = 0; i < packs.length; i++) {
+      const body = packs[i].map((b) => `biodata pin=${b.pin}\tno=${b.no}\tindex=${b.index}\tvalid=1\tduress=0\ttype=${b.type}\tmajorver=${b.majorVer}\tminorver=${b.minorVer ?? 0}\tformat=0\ttmp=${b.tmp}`).join('\n');
+      const res = await this.querydata({ cmdid, tablename: 'biodata', count: packs[i].length, packcnt: packs.length, packidx: i + 1 }, body);
+      this.uploads.push({ path: 'querydata', table: 'biodata', status: res.status, text: res.text });
+    }
+  }
+
+  /** Phase 4: a user put on the device by another system (GymBioSync), with no validity window. */
+  seedUser({ pin, name = '', cardNo = '', privilege = 0 }) {
+    this.users.set(String(pin), { pin: String(pin), name, cardNo, startTime: '0', endTime: '0', privilege: String(privilege) });
+  }
+
+  /** Phase 4: a template enrolled on the device before GymsEra. */
+  seedBio({ pin, type, no = 0, index = 0, majorVer, minorVer = '0', tmp }) {
+    this.bio.set(`${pin}:${type}:${no}:${index}`, { pin: String(pin), type: Number(type), no, index, majorVer: String(majorVer), minorVer: String(minorVer), tmp });
   }
 
   async sendEnroll({ pin, type, no }) {
@@ -325,7 +353,10 @@ class ZkDeviceSimulator {
     return new Promise((resolve, reject) => {
       const started = Date.now();
       const req = lib.request(
-        { host: url.hostname, port: url.port, path: url.pathname + url.search, method, headers },
+        // agent: false: a new connection per request. With Node's keep-alive agent (on by default since Node 19)
+        // a request can go out on a socket the server is just closing after its 5 s keep-alive timeout:
+        // 'read ECONNRESET' under load (Phase 4 full suite). Reusing sockets is not what is being tested.
+        { host: url.hostname, port: url.port, path: url.pathname + url.search, method, headers, agent: false },
         (res) => {
           let text = '';
           res.setEncoding('utf8');
