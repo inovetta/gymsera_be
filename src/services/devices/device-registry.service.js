@@ -584,7 +584,7 @@ async function finishWipe({ tenantId, tenantDb, deviceId, force = false, now = n
 }
 
 /**
- * Move to another branch of the tenant (spec §11 `POST /host/devices/:id/move`): the platform row (routing,
+ * Move to another branch of the tenant (spec §11 `POST /host/devices/:id/move`, built as `PUT /host/devices/:id/branch`): the platform row (routing,
  * organization) and the tenant row follow, then the device is reconciled for its new branch with no exit
  * grace: the old branch's members are removed, the new branch's sent. Not while it is wiping or imported.
  * → { device, setup, sync: counts }

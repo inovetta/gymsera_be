@@ -310,8 +310,9 @@ manage('/:id/imports/:importId/rollback', 'post', imports.rollback, [importParam
 manage('/:id/imports/:importId/cancel', 'post', imports.cancel, [importParam]);
 manage('/:id/cutover/go-live', 'post', imports.goLive, [body('removeUnmatched').optional().isBoolean().withMessage('removeUnmatched is true or false.')]);
 manage('/:id/cutover/gymbiosync-stopped', 'post', imports.gbsStopped);
-// Move: devices.manage at the device's branch AND at the new one (a manager moves only between their branches).
-manage('/:id/move', 'post', imports.moveDevice, [body('branchId').isUUID().withMessage('Choose a branch.')], [
+// Move to another branch: devices.manage at the device's branch AND at the new one. Named /branch, not /move:
+// no route may end in /move (R-81, Move branch removed; guard p5b-08). Spec §11's `POST …/move`.
+manage('/:id/branch', 'put', imports.moveDevice, [body('branchId').isUUID().withMessage('Choose a branch.')], [
   (req, res, next) => can('devices.manage', { branch: 'body.branchId' })(req, res, next),
 ]);
 

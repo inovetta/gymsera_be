@@ -50,7 +50,7 @@ const writes = (door, imp) => [
   ['post', `/host/devices/${door.id}/imports/${imp}/cancel`, {}],
   ['post', `/host/devices/${door.id}/cutover/go-live`, {}],
   ['post', `/host/devices/${door.id}/cutover/gymbiosync-stopped`, {}],
-  ['post', `/host/devices/${door.id}/move`, { branchId: away.id }],
+  ['put', `/host/devices/${door.id}/branch`, { branchId: away.id }],
 ];
 const call = (who, [method, path, body]) => (method === 'get' ? who.get(path) : who[method](path, body));
 
@@ -104,12 +104,12 @@ describe('devices.manage: import, cut-over, move', () => {
     expect((await mgr.put(`/host/devices/${homeDoor.id}/imports/${importId}/users/77`, { memberId: member.id })).status).toBe(200);
     expect((await mgr.post(`/host/devices/${homeDoor.id}/imports/${importId}/apply`, {})).status).toBe(200);
     expect((await mgr.post(`/host/devices/${homeDoor.id}/imports/${importId}/rollback`, {})).status).toBe(200);
-    const move = await mgr.post(`/host/devices/${homeDoor.id}/move`, { branchId: away.id });
+    const move = await mgr.put(`/host/devices/${homeDoor.id}/branch`, { branchId: away.id });
     expect(move.status).toBe(403);
   });
 
   test('a device in an import cannot be moved or wiped (cancel the import first)', async () => {
-    const move = await asPersona('owner').post(`/host/devices/${homeDoor.id}/move`, { branchId: away.id });
+    const move = await asPersona('owner').put(`/host/devices/${homeDoor.id}/branch`, { branchId: away.id });
     expect(move.status).toBe(409);
     expect(code(move)).toBe('device_in_import');
     const wipe = await asPersona('owner').delete(`/host/devices/${homeDoor.id}`, { wipeDevice: true, confirmName: 'Home Import Door' });
@@ -120,7 +120,7 @@ describe('devices.manage: import, cut-over, move', () => {
   test('org admin moves a device between branches of the organization', async () => {
     const extra = await w.branch(w.db1, { gymId: w.ctx.branch1.gymId, name: 'Extra P4' });
     const plain = await w.device(w.db1, { branch: away, name: 'Movable' });
-    expect((await asPersona('orgAdmin').post(`/host/devices/${plain.id}/move`, { branchId: extra.id })).status).toBe(200);
+    expect((await asPersona('orgAdmin').put(`/host/devices/${plain.id}/branch`, { branchId: extra.id })).status).toBe(200);
   });
 });
 

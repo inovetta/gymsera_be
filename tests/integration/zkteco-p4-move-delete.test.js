@@ -1,6 +1,6 @@
 /**
  * ZKTeco Phase 4: move a device to another branch, delete one template, capacity counts what the device
- * really holds (spec §11 `POST /host/devices/:id/move`, `DELETE /host/members/:id/biometrics/:bioId`, §13).
+ * really holds (spec §11 move, built as `PUT /host/devices/:id/branch`, `DELETE /host/members/:id/biometrics/:bioId`, §13).
  *
  *   move       the device's members become the new branch's: the old branch's members are removed (no exit
  *              grace, even on an OUT device), the new branch's are sent; platform and tenant rows follow
@@ -46,18 +46,18 @@ describe('move a device to another branch', () => {
   });
 
   test('to the same branch: 422', async () => {
-    const res = await owner().post(`/host/devices/${door.id}/move`, { branchId: a.id });
+    const res = await owner().put(`/host/devices/${door.id}/branch`, { branchId: a.id });
     expect(res.status).toBe(422);
     expect(code(res)).toBe('same_branch');
   });
 
   test('to an unknown branch: 404', async () => {
-    const res = await owner().post(`/host/devices/${door.id}/move`, { branchId: crypto.randomUUID() });
+    const res = await owner().put(`/host/devices/${door.id}/branch`, { branchId: crypto.randomUUID() });
     expect(res.status).toBe(404);
   });
 
   test('moved: rows follow; old members removed at once (no exit grace); new members sent', async () => {
-    const res = await owner().post(`/host/devices/${door.id}/move`, { branchId: b.id });
+    const res = await owner().put(`/host/devices/${door.id}/branch`, { branchId: b.id });
     expect(res.status).toBe(200);
     expect(res.body.data.device.branchId).toBe(b.id);
     expect(res.body.data.device.branchName).toBe('Move To');
