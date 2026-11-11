@@ -67,8 +67,7 @@ function rememberUnknown(c, seconds, now = Date.now()) {
   unknownSeen.set(unknownKey(c), now + seconds * 1000);
 }
 
-const DEVICE_PATH = /^\/(?:d\/([A-Za-z0-9]{8})\/)?iclock(?:\/|$)/;
-const isDevicePath = (path) => DEVICE_PATH.test(path);
+const { isDevicePath } = require('./device-paths');
 
 const router = express.Router();
 
