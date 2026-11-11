@@ -353,7 +353,10 @@ class ZkDeviceSimulator {
     return new Promise((resolve, reject) => {
       const started = Date.now();
       const req = lib.request(
-        { host: url.hostname, port: url.port, path: url.pathname + url.search, method, headers },
+        // agent: false: a new connection per request. With Node's keep-alive agent (on by default since Node 19)
+        // a request can go out on a socket the server is just closing after its 5 s keep-alive timeout:
+        // 'read ECONNRESET' under load (Phase 4 full suite). Reusing sockets is not what is being tested.
+        { host: url.hostname, port: url.port, path: url.pathname + url.search, method, headers, agent: false },
         (res) => {
           let text = '';
           res.setEncoding('utf8');
