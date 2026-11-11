@@ -1206,6 +1206,26 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 30,
+    name: 'p030_access_devices_att',
+    description:
+      'ZKTeco Phase 5 (docs/ZKTECO_PUSH_DEVICE_SYNC.md §15 Phase 5): access_devices.device_type (acc | att, read before the tenant is known: an att device stays in token log mode) and cookie_seen_at (the last time the device sent a Cookie token; the enforce script refuses a device that never did). Columns only, nullable. Safe to re-run.',
+    // ROLLBACK (deploy the previous API build FIRST: it never reads these columns):
+    //   ALTER TABLE `access_devices` DROP COLUMN `device_type`, DROP COLUMN `cookie_seen_at`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 30;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const has = async (column) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'access_devices\' AND COLUMN_NAME = ?',
+          { replacements: [column], type: QueryTypes.SELECT }
+        )).length > 0;
+      if (!(await has('device_type'))) await sequelize.query('ALTER TABLE `access_devices` ADD COLUMN `device_type` VARCHAR(8) NULL');
+      if (!(await has('cookie_seen_at'))) await sequelize.query('ALTER TABLE `access_devices` ADD COLUMN `cookie_seen_at` DATETIME NULL');
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

@@ -147,17 +147,63 @@ function desiredRecord({ pin, name, cardNo, window, caps = {}, device = {}, sett
   fallback.sort((a, b) => a.type - b.type);
 
   const pic = settings.sendUserPic ? photos.find((p) => p.kind === 'userpic') : null;
-  return {
+  const att = Boolean(settings.att || settings.userForm);
+  const record = {
     pin: String(pin),
     name: cleanName(name),
     cardNo: String(cardNo ?? '').replace(/\s+/g, ''),
-    dateFormat: resolveDateFormat(settings.endTimeFormat || 'auto', caps),
+    dateFormat: att && ['datetime', 'seconds'].includes(settings.validity) ? settings.validity : resolveDateFormat(settings.endTimeFormat || 'auto', caps),
     window: window || null,
     auth: settings.sendUserAuthorize === false ? null : { timezoneId: Number(device.timezone_id ?? 1), doorMask: Number(device.door_mask ?? 1) },
     bio,
     photos: fallback,
     userpic: pic ? { id: pic.id, sha: pic.sha256 } : null,
   };
+  // Phase 5: the per-device user command form and validity mode of a T&A PUSH device. Only there, so the
+  // record (and its hash) of an acc device is exactly what it was: no re-send of every member after a deploy.
+  if (att) {
+    record.form = settings.userForm === 'userinfo' ? 'userinfo' : 'user';
+    record.validity = ['datetime', 'seconds'].includes(settings.validity) ? settings.validity : 'none';
+  }
+  return record;
+}
+
+// ── Per-device options (Phase 5) ──────────────────────────────────────────────
+const VALIDITY_MODES = ['none', 'datetime', 'seconds'];
+const USER_FORMS = ['user', 'userinfo'];
+
+/**
+ * What one device is sent. acc (and a device that never said): the global settings, as before Phase 5.
+ * att (T&A PUSH): the device row's own choice, else the DEVICE_ATT_* defaults, which are the safe ones until
+ * the device test: no userauthorize, no validity window (the 15-minute sweep still removes expired members),
+ * the `DATA UPDATE user` form GymBioSync runs on these devices.
+ * @param {object} det  access_device_details row (device_type, send_userauthorize, validity_mode, user_command_form)
+ * @param {object} cfg  getDeviceConfig()
+ */
+function deviceOptions(det = {}, cfg = {}) {
+  const att = String(det.device_type || '').toLowerCase() === 'att';
+  if (!att) {
+    return { att: false, sendUserAuthorize: cfg.sendUserAuthorize !== false, validity: cfg.sendValidity === false ? 'none' : (cfg.endTimeFormat || 'auto'), userForm: 'user' };
+  }
+  const flag = det.send_userauthorize;
+  const pick = (v, list, def) => (list.includes(String(v || '').toLowerCase()) ? String(v).toLowerCase() : def);
+  return {
+    att: true,
+    sendUserAuthorize: flag === null || flag === undefined ? cfg.attUserAuthorize === true : Boolean(Number(flag)),
+    validity: pick(det.validity_mode, VALIDITY_MODES, pick(cfg.attValidity, VALIDITY_MODES, 'none')),
+    userForm: pick(det.user_command_form, USER_FORMS, pick(cfg.attUserForm, USER_FORMS, 'user')),
+  };
+}
+
+/**
+ * ATTLOG has no record index: the duplicate key is (device, this, device time). PIN and verify type together,
+ * so a fingerprint and a face punch of one person in the same second are two rows (Phase 5); always negative,
+ * so it never meets an rtlog index.
+ */
+function attlogIndex(pin, verify) {
+  const p = Number(String(pin ?? '').replace(/\D/g, '').slice(-9) || 0);
+  const v = Number.isInteger(Number(verify)) && Number(verify) >= 0 ? Number(verify) % 1000 : 999;
+  return -(p * 1000 + v + 1);
 }
 
 const hashOf = (record) => crypto.createHash('sha256').update(JSON.stringify(record)).digest('hex');
@@ -169,7 +215,7 @@ const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
  * desired null = remove. `applied` = what the device last confirmed (null = unknown: send all).
  * → [{ kind, args }] in delivery order. Templates go one command per type (protocol §9.1.1).
  */
-function planCommands({ desired, applied, pin, supportedTypes = [], photoTypes = [] }) {
+function planCommands({ desired, applied, pin, supportedTypes = [], photoTypes = [], auth = true }) {
   if (!desired) {
     const p = String(pin ?? applied?.pin);
     const types = new Set(supportedTypes.map(Number));
@@ -177,7 +223,9 @@ function planCommands({ desired, applied, pin, supportedTypes = [], photoTypes =
     const out = [...types].sort((a, b) => a - b).map((type) => ({ kind: 'bio_delete', args: { pin: p, type } }));
     if (photoTypes.length || applied?.photos?.length) out.push({ kind: 'photo_delete', args: { pin: p } });
     if (applied?.userpic) out.push({ kind: 'pic_delete', args: { pin: p } });
-    if (!applied || applied.auth) out.push({ kind: 'auth_delete', args: { pin: p } });
+    // auth false (Phase 5, a device that is never sent userauthorize): nothing to delete, and a T&A PUSH firmware
+    // may not know the table.
+    if (applied ? applied.auth : auth !== false) out.push({ kind: 'auth_delete', args: { pin: p } });
     out.push({ kind: 'user_delete', args: { pin: p } });
     return out;
   }
@@ -250,6 +298,23 @@ function templatesFrom(table, body) {
   return out;
 }
 
+/**
+ * Phase 5: OPERLOG `FP` lines of a T&A PUSH device ({ pin, fid, valid, tmp }, push-protocol#parseOperlog) →
+ * fingerprint templates (type 1, slot FID). The line has no version: the device's FPVersion (its options) is
+ * the algorithm that made it; without one the template is dropped (a version is never guessed, §3).
+ */
+function templatesFromOperlog(fingerprints, { fpVersion } = {}) {
+  const major = majorOf(fpVersion);
+  if (major === null) return [];
+  const out = [];
+  for (const r of fingerprints || []) {
+    const rec = { pin: r.pin, type: 1, no: int(r.fid), index: 0, valid: int(r.valid, 1), duress: 0, majorVer: major, minorVer: '0', format: 0, tmp: r.tmp };
+    if (!PIN.test(String(rec.pin || '')) || !rec.tmp || rec.tmp.length < 8 || !BASE64.test(rec.tmp)) continue;
+    out.push(rec);
+  }
+  return out;
+}
+
 /** Photos from `biophoto` (comparison photo, with its type) or `userpic` (profile photo, type 0). */
 function photosFrom(table, body) {
   const kind = String(table).toLowerCase() === 'userpic' ? 'userpic' : 'biophoto';
@@ -276,5 +341,8 @@ module.exports = {
   hashOf,
   planCommands,
   templatesFrom,
+  templatesFromOperlog,
   photosFrom,
+  deviceOptions,
+  attlogIndex,
 };

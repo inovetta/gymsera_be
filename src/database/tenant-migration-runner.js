@@ -1368,6 +1368,47 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // ZKTeco Phase 5 (docs/ZKTECO_PUSH_DEVICE_SYNC.md §15 Phase 5): T&A PUSH (DeviceType=att) devices.
+    // Columns only. access_device_details: per-device command options (NULL = the default for the device type),
+    // poll delay, the stamps the device reported, the getrequest INFO, poll timing; push_version widened (att
+    // devices report "Ver 2.0.33S-20220623").
+    // ROLLBACK (deploy the previous API build FIRST):
+    //   ALTER TABLE `access_device_details` DROP COLUMN `send_userauthorize`, DROP COLUMN `validity_mode`,
+    //     DROP COLUMN `poll_delay_seconds`, DROP COLUMN `att_stamps_json`, DROP COLUMN `info_json`,
+    //     DROP COLUMN `last_poll_at`, DROP COLUMN `poll_gap_seconds`, DROP COLUMN `user_command_form`;
+    //   (push_version stays VARCHAR(40): harmless.)
+    //   DELETE FROM `schema_migrations` WHERE `version` = 26;
+    version: 26,
+    name: '026_device_att_options',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const hasColumn = async (table, column) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: [table, column], type: QueryTypes.SELECT }
+        )).length > 0;
+      const [pv] = await sequelize.query(
+        'SELECT CHARACTER_MAXIMUM_LENGTH AS len FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'access_device_details\' AND COLUMN_NAME = \'push_version\'',
+        { type: QueryTypes.SELECT }
+      );
+      if (pv && Number(pv.len) < 40) await sequelize.query('ALTER TABLE `access_device_details` MODIFY COLUMN `push_version` VARCHAR(40) NULL');
+      for (const [col, ddl] of [
+        ['send_userauthorize', '`send_userauthorize` TINYINT(1) NULL'],
+        ['validity_mode', '`validity_mode` VARCHAR(10) NULL'],
+        ['poll_delay_seconds', '`poll_delay_seconds` TINYINT UNSIGNED NULL'],
+        ['att_stamps_json', '`att_stamps_json` TEXT NULL'],
+        ['info_json', '`info_json` TEXT NULL'],
+        ['last_poll_at', '`last_poll_at` DATETIME NULL'],
+        ['poll_gap_seconds', '`poll_gap_seconds` INT NULL'],
+        // Last step (the baseline probe looks for it).
+        ['user_command_form', '`user_command_form` VARCHAR(10) NULL'],
+      ]) {
+        if (!(await hasColumn('access_device_details', col))) await sequelize.query(`ALTER TABLE \`access_device_details\` ADD COLUMN ${ddl}`);
+      }
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
