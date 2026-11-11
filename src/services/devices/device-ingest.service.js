@@ -45,19 +45,63 @@ function localToUtc(text, timezone) {
 }
 
 // ── Scans (§7.3) ──────────────────────────────────────────────────────────────
-/** → { received, stored, duplicates, checkIns, checkOuts } */
-async function ingestScans(db, device, body, { attlog = false, now = new Date() } = {}) {
+/**
+ * The instant before which a scan is history (Phase 5): the device's import go-live, else its activation, minus
+ * DEVICE_HISTORY_SKEW_MINUTES (a device clock a little behind). null = no cut-off known (never activated).
+ */
+function historyCutoff(device, platformRow, cfg = require('../../config/devices.config').getDeviceConfig()) {
+  const base = device?.live_at || platformRow?.registered_at;
+  if (!base) return null;
+  return new Date(new Date(base).getTime() - cfg.historySkewMinutes * 60000);
+}
+
+/**
+ * Scans older than the cut-off: device events only (attendance_note 'history'), never a check-in, an unlinked
+ * user or a drift action; one multi-row statement per post, duplicates ignored (a re-sent history is a no-op).
+ */
+async function storeHistory(db, device, rows, now) {
+  if (!rows.length) return 0;
+  const values = rows.map(() => '(?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, \'history\', ?)').join(', ');
+  const rep = rows.flatMap((r) => [device.id, device.branch_id, r.index, r.local, r.utc, r.pin ? r.pin.slice(0, 16) : null, r.cardNo, r.event,
+    r.verify, r.inout, r.result, r.result === 'denied' ? rules.deniedReason(r.event) : null, now]);
+  const [, meta] = await db.sequelize.query(
+    `INSERT INTO device_access_events (device_id, branch_id, device_record_index, device_time, \`utc_time\`, pin, member_id, card_no, event_code,
+       verify_type, inout_status, result, reason, attendance_id, attendance_note, created_at)
+     VALUES ${values} ON DUPLICATE KEY UPDATE id = id`,
+    { replacements: utc(rep) }
+  );
+  return affected(meta);
+}
+
+/** → { received, stored, duplicates, checkIns, checkOuts, history } */
+async function ingestScans(db, device, body, { attlog = false, now = new Date(), cutoff = null } = {}) {
   const tz = device.branch_timezone || 'Asia/Karachi';
+  // ATTLOG (Phase 5): positional PIN, time, status, verify, workcode (+ reserved values and a trailing tab).
   const rows = attlog
-    ? protocol.parseRecords(body, { positional: ['pin', 'time', 'inoutstatus', 'verifytype', 'workcode'] })
+    ? protocol.parseAttlog(body).map((r) => ({ pin: r.pin, time: r.time, inoutstatus: r.status, verifytype: r.verify }))
     : protocol.parseRecords(body);
-  const counts = { received: rows.length, stored: 0, duplicates: 0, checkIns: 0, checkOuts: 0 };
+  const counts = { received: rows.length, stored: 0, duplicates: 0, checkIns: 0, checkOuts: 0, history: 0 };
+  const history = [];
+  const live = [];
   for (const r of rows) {
     const t = localToUtc(r.time, tz);
     if (!t) continue;
     const pin = String(r.pin ?? '').trim();
     const event = attlog ? 0 : int(r.event, -1);
-    const index = int(r.index) ?? -Math.max(1, int(pin, 1)); // no index (ATTLOG): one row per person per second
+    // No index (ATTLOG): one row per person, verify type and second (a finger and a face punch are two).
+    const index = attlog ? rules.attlogIndex(pin, r.verifytype) : int(r.index) ?? -Math.max(1, int(pin, 1));
+    const scan = { r, t, pin, event, index, local: t.local, utc: t.utc, cardNo: r.cardno && r.cardno !== '0' ? String(r.cardno).slice(0, 32) : null,
+      verify: int(r.verifytype), inout: int(r.inoutstatus), result: rules.classifyEvent(event) };
+    if (cutoff && t.utc.getTime() < cutoff.getTime()) history.push(scan);
+    else live.push(scan);
+  }
+  if (history.length) {
+    const n = await storeHistory(db, device, history, now);
+    counts.history = n;
+    counts.stored += n;
+    counts.duplicates += history.length - n;
+  }
+  for (const { r, t, pin, event, index } of live) {
     const result = rules.classifyEvent(event);
     const [, meta] = await db.sequelize.query(
       `INSERT INTO device_access_events (device_id, branch_id, device_record_index, device_time, \`utc_time\`, pin, member_id, card_no, event_code,
@@ -189,7 +233,10 @@ async function ingestErrorlog(db, device, body, now = new Date()) {
 
 // ── Users, templates, photos uploaded by the device (§7.5) ────────────────────
 async function ingestUsers(db, device, body, now = new Date()) {
-  const rows = protocol.parseRecords(body, { table: 'user' });
+  return ingestUserRows(db, device, protocol.parseRecords(body, { table: 'user' }), now);
+}
+
+async function ingestUserRows(db, device, rows, now = new Date()) {
   for (const r of rows) {
     const pin = String(r.pin || '');
     if (!/^\d{1,9}$/.test(pin)) continue;
@@ -205,8 +252,12 @@ async function ingestUsers(db, device, body, now = new Date()) {
 }
 
 async function ingestTemplates(db, tenantId, device, table, body, now = new Date()) {
+  return ingestTemplateRecords(db, tenantId, device, rules.templatesFrom(table, body), now);
+}
+
+async function ingestTemplateRecords(db, tenantId, device, records, now = new Date()) {
   const byPin = new Map();
-  for (const t of rules.templatesFrom(table, body)) {
+  for (const t of records) {
     if (!byPin.has(t.pin)) byPin.set(t.pin, []);
     byPin.get(t.pin).push(t);
   }
@@ -246,6 +297,54 @@ async function ingestPhotos(db, tenantId, device, table, body, now = new Date())
   return photos.length;
 }
 
+// ── T&A PUSH uploads (Phase 5) ────────────────────────────────────────────────
+/**
+ * `table=OPERLOG` (USER, FP, OPLOG lines) and `table=BIODATA` of an att device: its users and templates, sent
+ * on first contact (the whole device) and whenever something changes on it.
+ *   import hold   into the open import of the device (staging, as query packs are); none open: dropped
+ *   otherwise     users: an audit waiting for this device's user list takes the PINs; then as a `user`
+ *                 upload (card adoption, unknown PINs to Unlinked users); templates as a `biodata` upload
+ *   OPLOG         admin operations: counted only
+ * → { users, templates, oplog }
+ */
+async function ingestAttUploads(db, tenantId, device, table, body, now = new Date()) {
+  const t = String(table).toUpperCase();
+  let users = [];
+  let templates = [];
+  let oplog = 0;
+  if (t === 'OPERLOG') {
+    const p = protocol.parseOperlog(body);
+    users = p.users.filter((u) => /^\d{1,9}$/.test(u.pin));
+    templates = rules.templatesFromOperlog(p.fingerprints, { fpVersion: device.caps?.FPVersion });
+    oplog = p.oplog.length;
+  } else if (t === 'BIODATA') {
+    templates = rules.templatesFrom('biodata', body);
+  }
+  const out = { users: users.length, templates: templates.length, oplog };
+  if (!users.length && !templates.length) return out;
+  const imports = require('./device-import.service');
+  if (Number(device.import_hold)) {
+    await imports.stageUploads(db, device.id, { users, templates }, now);
+    return out;
+  }
+  if (users.length) {
+    await feedAudit(db, device.id, users.map((u) => u.pin));
+    await ingestUserRows(db, device, users.map((u) => ({ pin: u.pin, name: u.name, cardno: u.cardno })), now);
+  }
+  if (templates.length) await ingestTemplateRecords(db, tenantId, device, templates, now);
+  return out;
+}
+
+/** An audit whose user query was handed to this device and has no querydata pack yet takes these PINs. */
+async function feedAudit(db, deviceId, pins) {
+  const [audit] = await select(db, `SELECT a.id FROM device_audits a JOIN device_commands c ON c.id = a.query_cmd_id
+    WHERE a.device_id = ? AND a.status IN ('requested', 'receiving') AND a.packs_received = 0 AND c.status IN ('sent', 'acked')
+    ORDER BY a.id DESC LIMIT 1`, [deviceId]);
+  if (!audit) return;
+  for (const pin of pins) await exec(db, 'INSERT IGNORE INTO device_audit_pins (audit_id, pin) VALUES (?, ?)', [audit.id, pin]);
+  await exec(db, 'UPDATE device_audits SET status = \'receiving\' WHERE id = ?', [audit.id]);
+}
+
 // ── Audit query packs (§8.3 layer 3) ──────────────────────────────────────────
 /** querydata?cmdid=&tablename=user&packcnt=&packidx= → PINs stored; the last pack runs the compare. */
 async function ingestQuery(db, device, query, body, now = new Date()) {
@@ -270,6 +369,8 @@ async function ingestQuery(db, device, query, body, now = new Date()) {
 }
 
 module.exports = {
+  historyCutoff,
+  ingestAttUploads,
   localToUtc,
   ingestScans,
   ingestState,

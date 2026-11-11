@@ -447,6 +447,12 @@ const cmd = {
 
   info: () => 'INFO',
   check: () => 'CHECK',
+  /** Phase 5: `SET OPTION Delay=3` (attendance protocol); only the keys we set, digits only. */
+  setOption: (args = {}) => {
+    const pairs = Object.entries(args).filter(([k, v]) => /^[A-Za-z]+$/.test(k) && /^\d{1,6}$/.test(String(v)));
+    if (!pairs.length) throw new Error('setOption needs a key and a number');
+    return `SET OPTION ${pairs.map(([k, v]) => `${k}=${v}`).join('\t')}`;
+  },
 };
 
 /**

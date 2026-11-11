@@ -246,8 +246,29 @@ async function handleDevice(c, { device, tenantDb }) {
     try { return det.capabilities_json ? JSON.parse(det.capabilities_json) : {}; } catch (_) { return {}; }
   })();
 
+  const isAtt = det.device_type === 'att' || String(c.query.DeviceType || c.query.devicetype || '').toLowerCase() === 'att';
+
   switch (c.endpoint) {
     case 'cdata': {
+      if (c.method === 'GET' && isAtt) {
+        // Phase 5, T&A PUSH: the device never registers. This request (a key or serial the link rules accepted)
+        // activates it; it is answered with the attendance option lines (random codes, its stamps, the delay).
+        if (!['awaiting_connection', 'active'].includes(device.status)) return [200, OK];
+        const activated = await registry.activateAtt(tenantDb, device, { pushver: c.query.pushver });
+        det.device_type = 'att';
+        if (activated && Number(det.import_hold)) {
+          // An "import first" device uploads all its users and templates right now: an import must be open
+          // to take them (device-import.service#stageUploads), or they are dropped.
+          const imports = require('../services/devices/device-import.service');
+          if (!(await imports.latestImport(tenantDb, device.id))) {
+            await imports.startImport(tenantDb, { tenantId: device.tenant_id, deviceId: device.id, askDevice: false });
+          }
+        }
+        const stamps = cfg.attStamps === 'echo' ? (() => { try { return JSON.parse(det.att_stamps_json || '{}'); } catch (_) { return {}; } })() : {};
+        return [200, lines(protocol.attConfigLines({
+          registryCode: device.registry_code, sessionId: device.session_id, sn: c.sn, delay: registry.pollDelayOf(det, cfg), delayFields: cfg.attDelayFields, stamps,
+        }))];
+      }
       if (c.method === 'GET') {
         if (cfg.registrationStyle === 'gbs') {
           if (device.status !== 'active') await registry.markRegistered(device, { pushver: c.query.pushver });
@@ -290,12 +311,25 @@ async function handleDevice(c, { device, tenantDb }) {
         return [200, table === 'errorlog' ? OK : lines(`${name}=${c.logCount}`)];
       }
       c.logTable = table;
-      if (table === 'options') await registry.applyOptions(tenantDb, device.id, protocol.parseRegistry(c.body));
-      else if (table === 'rtstate') {
+      if (isAtt && (c.query.Stamp !== undefined || c.query.OpStamp !== undefined)) {
+        await registry.noteStamp(tenantDb, det, table, c.query.Stamp ?? c.query.OpStamp);
+      }
+      if (table === 'options' && isAtt) {
+        // Phase 5: an att device's options are its registry body (model, versions, MultiBioDataSupport) and counts.
+        const changed = await registry.applyAttOptions(tenantDb, device.id, protocol.parseRegistry(c.body));
+        if (changed && !Number(det.import_hold) && device.status === 'active') triggers.reconcileDeviceSoon(tenantDb, device.id, 'device_registered');
+      } else if (table === 'options') await registry.applyOptions(tenantDb, device.id, protocol.parseRegistry(c.body));
+      else if ((table === 'operlog' || table === 'biodata') && sdev) {
+        const res = await ingest.ingestAttUploads(tenantDb, device.tenant_id, sdev, table, c.body);
+        c.logCount = res.users + res.templates + res.oplog;
+      } else if (table === 'rtstate') {
         const rows = sdev ? await ingest.ingestState(tenantDb, sdev, c.body) : protocol.parseRecords(c.body);
         if (rows.length) await registry.applyState(tenantDb, device.id, rows[rows.length - 1]);
       } else if (table === 'rtlog' || table === 'attlog') {
-        const res = sdev ? await ingest.ingestScans(tenantDb, sdev, c.body, { attlog: table === 'attlog' }) : { received: protocol.recordCount(c.body) };
+        // Phase 5: punches from before activation (or go-live) are history: device events, never check-ins.
+        const res = sdev
+          ? await ingest.ingestScans(tenantDb, sdev, c.body, { attlog: table === 'attlog', cutoff: ingest.historyCutoff(det, device) })
+          : { received: protocol.recordCount(c.body) };
         c.logCount = res.received;
       } else c.logCount = protocol.recordCount(c.body);
       return [200, OK];
@@ -315,6 +349,11 @@ async function handleDevice(c, { device, tenantDb }) {
       return [200, lines(protocol.configLines({ style: cfg.registrationStyle, registryCode: device.registry_code, sessionId: device.session_id, requestDelay: cfg.requestDelay, forCdata: false }))];
     case 'getrequest': {
       if (device.status !== 'active') return [200, OK];
+      if (isAtt) {
+        // Phase 5: INFO (counts, versions) on some polls; every poll is timed (the interval the device keeps).
+        if (c.query.INFO) await registry.applyInfo(tenantDb, det, c.query.INFO);
+        await registry.notePoll(tenantDb, det);
+      }
       const body = await registry.claimCommands(tenantDb, device, { maxPackageSize: caps.MaxPackageSize, held: Boolean(Number(det.import_hold)) });
       return [200, body ? `${body}\n` : OK];
     }
@@ -379,15 +418,17 @@ async function handle(req, res) {
     } else {
       const { device } = caller;
       let tokenState = null;
+      const sentToken = protocol.tokenFromCookie(req.headers.cookie);
       if (device.status === 'active' && !TOKEN_EXEMPT.has(`${c.method} ${c.endpoint}`)) {
-        const sent = protocol.tokenFromCookie(req.headers.cookie);
+        const sent = sentToken;
         const want = protocol.expectedToken({ registryCode: device.registry_code, sn: c.sn, sessionId: device.session_id });
         tokenState = !sent ? 'absent' : sent === want ? 'match' : 'mismatch';
       }
-      await registry.markSeen(device, { ip: c.ip, pushver: c.query.pushver, host: c.host.slice(0, 255), scheme: c.scheme, tokenState });
+      await registry.markSeen(device, { ip: c.ip, pushver: c.query.pushver, host: c.host.slice(0, 255), scheme: c.scheme, tokenState, cookie: Boolean(sentToken) });
       if (!cfg.allowHttp && c.scheme !== 'https') {
         [status, text] = [403, lines('HTTPS required')];
-      } else if (tokenState && tokenState !== 'match' && device.token_mode === 'enforce') {
+      } else if (tokenState && tokenState !== 'match' && device.token_mode === 'enforce' && device.device_type !== 'att') {
+        // Phase 5: a T&A PUSH device sends no Cookie at all: it stays in log mode whatever its row says.
         [status, text] = [401, lines('Unauthorized')];
       } else {
         [status, text] = await handleDevice(c, caller);

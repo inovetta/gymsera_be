@@ -74,6 +74,11 @@ describe('scans → check-ins (§7.3)', () => {
     const u = await w.member('In And Out');
     await w.subscribe(w.db1, { user: u, branch });
     for (const d of [din, dout, both]) await d.sim.drain();
+    // These scans are an hour and half an hour old: the doors must have been running then. Since Phase 5 a scan
+    // from before a device's activation is history (a device event, never a check-in), so the activation of
+    // these just-added doors is put two hours back. The assertions are unchanged.
+    await require('../../src/database/platform').sequelize.query('UPDATE access_devices SET registered_at = DATE_SUB(registered_at, INTERVAL 2 HOUR) WHERE id IN (?)',
+      { replacements: [[din.id, dout.id, both.id]] });
     const pin = await w.pinOf(w.db1, u.id);
     await din.sim.scan(pin, localNow(-60));
     await dout.sim.scan(pin, localNow(-30));

@@ -5,6 +5,9 @@
  * devices are moved with this script, and only when they have proved the formula: the device sent a
  * token that matched (`last_token_state = 'match'`) and was seen within DEVICE_TOKEN_SEEN_HOURS (24).
  * A device that sends no token, or a wrong one, would be locked out by enforce: it is listed and skipped.
+ * Phase 5: never a T&A PUSH device (`device_type = 'att'`: it sends no Cookie at all; reason `att_device`),
+ * and never a device that has not sent a Cookie token (`cookie_seen_at` NULL; reason `never_sent_cookie`),
+ * whatever its last token state says.
  *
  *   node src/scripts/device-token-mode.js --to enforce                 dry run: what would change
  *   node src/scripts/device-token-mode.js --to enforce --apply         switch the devices that qualify
@@ -33,7 +36,7 @@ async function planTokenMode({ to, apply = false, tenantId = null, deviceIds = n
   if (tenantId) { where.push('tenant_id = ?'); rep.push(tenantId); }
   if (deviceIds && deviceIds.length) { where.push('id IN (?)'); rep.push(deviceIds); }
   const rows = await platformDb.query(
-    `SELECT id, tenant_id, status, token_mode, last_token_state, last_seen_at FROM access_devices WHERE ${where.join(' AND ')} ORDER BY created_at`,
+    `SELECT id, tenant_id, status, token_mode, last_token_state, last_seen_at, device_type, cookie_seen_at FROM access_devices WHERE ${where.join(' AND ')} ORDER BY created_at`,
     { replacements: utc(rep), type: QueryTypes.SELECT }
   );
   const seenSince = now.getTime() - getDeviceConfig().tokenSeenHours * 3600000;
@@ -41,15 +44,18 @@ async function planTokenMode({ to, apply = false, tenantId = null, deviceIds = n
   for (const r of rows) {
     if (r.token_mode === to) { out.skip.push({ id: r.id, reason: 'already' }); continue; }
     if (to === 'enforce') {
+      if (r.device_type === 'att') { out.skip.push({ id: r.id, reason: 'att_device' }); continue; }
       if (r.status !== 'active') { out.skip.push({ id: r.id, reason: 'not_active' }); continue; }
       if (r.last_token_state !== 'match') { out.skip.push({ id: r.id, reason: REASON_OF_STATE[r.last_token_state] || 'token_unknown' }); continue; }
+      // A 'match' state with no Cookie ever recorded (set by hand, or before p030): never trusted.
+      if (!r.cookie_seen_at) { out.skip.push({ id: r.id, reason: 'never_sent_cookie' }); continue; }
       if (!r.last_seen_at || new Date(r.last_seen_at).getTime() < seenSince) { out.skip.push({ id: r.id, reason: 'not_seen_recently' }); continue; }
     }
     out.switch.push({ id: r.id, tenantId: r.tenant_id });
   }
   if (apply && out.switch.length) {
     // Only rows still in the state that qualified them (a device that sent a bad token since is left alone).
-    const guard = to === 'enforce' ? ' AND last_token_state = \'match\' AND status = \'active\'' : '';
+    const guard = to === 'enforce' ? ' AND last_token_state = \'match\' AND status = \'active\' AND cookie_seen_at IS NOT NULL AND NOT (device_type <=> \'att\')' : '';
     await platformDb.query(`UPDATE access_devices SET token_mode = ?, updated_at = ? WHERE id IN (?)${guard}`, {
       replacements: utc([to, now, out.switch.map((s) => s.id)]),
     });

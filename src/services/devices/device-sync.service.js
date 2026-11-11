@@ -41,9 +41,16 @@ const parse = (text, fallback = null) => {
 const newBatchId = () => crypto.randomBytes(13).toString('hex').toUpperCase(); // 26 chars
 const BLOCKED_USER_STATUSES = new Set(['SUSPENDED', 'PENDING_DELETION', 'DELETED']);
 const REMOVED = 'REMOVED';
-const SETTINGS = () => {
+/**
+ * The record settings for one device. acc: the global settings, exactly as before Phase 5. att (T&A PUSH):
+ * its per-device options (sync-rules#deviceOptions): userauthorize, validity mode and user command form.
+ */
+const SETTINGS = (device = {}) => {
   const c = getDeviceConfig();
-  return { endTimeFormat: c.endTimeFormat, sendUserAuthorize: c.sendUserAuthorize, photoFallback: c.photoFallback, sendUserPic: c.sendUserPic };
+  const base = { endTimeFormat: c.endTimeFormat, sendUserAuthorize: c.sendUserAuthorize, photoFallback: c.photoFallback, sendUserPic: c.sendUserPic };
+  const o = rules.deviceOptions(device, c);
+  if (!o.att) return base;
+  return { ...base, att: true, sendUserAuthorize: o.sendUserAuthorize, validity: o.validity, userForm: o.userForm };
 };
 
 // ── Devices ───────────────────────────────────────────────────────────────────
@@ -165,10 +172,12 @@ async function desiredFor(db, device, memberIds, { now = new Date(), noPins = fa
     ? select(db, 'SELECT member_id, incompatible_json FROM device_member_sync WHERE device_id = ? AND member_id IN (?)', [device.id, qualifying])
     : Promise.resolve([]))).map((r) => [r.member_id, parse(r.incompatible_json, [])]));
 
+  const settings = SETTINGS(device);
+  const sendWindow = settings.att ? settings.validity !== 'none' : cfg.sendValidity;
   for (const m of qualifying) {
     const isStaff = staff.has(m);
     const pkg = best.get(m);
-    const window = isStaff || !cfg.sendValidity ? null : rules.packageWindow({
+    const window = isStaff || !sendWindow ? null : rules.packageWindow({
       startDate: pkg.startDate, endDate: pkg.endDate, timezone: tz, direction: device.direction, exitGraceHours: cfg.exitGraceHours,
     });
     const idRow = fresh.get(m) || ids.get(m);
@@ -179,7 +188,7 @@ async function desiredFor(db, device, memberIds, { now = new Date(), noPins = fa
       window,
       caps: device.caps,
       device,
-      settings: SETTINGS(),
+      settings,
       biometrics: usable.biometrics.get(m) || [],
       photos: usable.photos.get(m) || [],
       incompatible: incompat.get(m) || [],
@@ -264,6 +273,8 @@ async function applyOne(db, device, memberId, want, { priority = 5, force = fals
     pin,
     supportedTypes: [...support.types],
     photoTypes: [...support.photoTypes],
+    // Phase 5: a T&A PUSH device that is never sent userauthorize gets no DATA DELETE userauthorize either.
+    auth: SETTINGS(device).sendUserAuthorize !== false || !SETTINGS(device).att,
   });
 
   // §7.2 point 3: older queued commands of this pair are superseded.
@@ -405,8 +416,9 @@ async function renderCommands(db, device, rows) {
   const syncByMember = new Map(pairs.length
     ? (await select(db, 'SELECT member_id, pending_batch_id, desired_json FROM device_member_sync WHERE device_id = ? AND member_id IN (?)', [device.id, pairs])).map((r) => [r.member_id, r])
     : []);
-  const caps = parse((await select(db, 'SELECT capabilities_json FROM access_device_details WHERE id = ?', [device.id]))[0]?.capabilities_json, {}) || {};
-  const settings = SETTINGS();
+  const [det] = await select(db, 'SELECT * FROM access_device_details WHERE id = ?', [device.id]);
+  const caps = parse(det?.capabilities_json, {}) || {};
+  const settings = SETTINGS(det || {});
   let photos = 0;
   const out = [];
   for (const row of rows) {
@@ -419,7 +431,7 @@ async function renderCommands(db, device, rows) {
       }
       if (PHOTO_KINDS.has(row.kind) && ++photos > cfg.photosPerPoll) { out.push({ id, held: true }); continue; }
       const record = row.member_id ? parse(syncByMember.get(row.member_id)?.desired_json) : null;
-      const text = await renderOne(db, row.kind, args, record, { caps, settings, cfg });
+      const text = await renderOne(db, row.kind, args, record, { caps, settings, cfg, det: det || {} });
       out.push(text ? { id, text } : { id, failed: true });
     } catch (err) {
       console.warn(`[device-sync] command ${id} (${row.kind}) for device ${device.id} could not be built: ${err.message}`);
@@ -429,12 +441,19 @@ async function renderCommands(db, device, rows) {
   return out;
 }
 
-async function renderOne(db, kind, args, record, { cfg }) {
+async function renderOne(db, kind, args, record, { cfg, settings = {} }) {
   const c = protocol.cmd;
-  const win = record?.window && cfg.sendValidity ? { start: record.window.start, end: record.window.end, dateFormat: record.dateFormat } : {};
+  // Phase 5: a T&A PUSH record carries its form and validity mode; "none" clears any window on the device.
+  const att = Boolean(record?.form);
+  const sendWindow = att ? record.validity !== 'none' : cfg.sendValidity;
+  const win = record?.window && sendWindow ? { start: record.window.start, end: record.window.end, dateFormat: record.dateFormat } : {};
+  if (att && !win.start) win.clearWindow = true;
   switch (kind) {
     case 'user_upsert':
-      return record ? c.userUpsert({ pin: record.pin, name: record.name, cardNo: record.cardNo, ...win }) : null;
+      if (!record) return null;
+      return record.form === 'userinfo'
+        ? c.userInfoUpsert({ pin: record.pin, name: record.name, cardNo: record.cardNo, ...win })
+        : c.userUpsert({ pin: record.pin, name: record.name, cardNo: record.cardNo, ...win });
     case 'user_authorize':
       return record?.auth ? c.userAuthorize({ pin: record.pin, timezoneId: record.auth.timezoneId, doorMask: record.auth.doorMask, ...win }) : null;
     case 'bio_upsert': {
@@ -454,7 +473,8 @@ async function renderOne(db, kind, args, record, { cfg }) {
     case 'photo_delete': return c.bioPhotoDelete(args.pin);
     case 'pic_delete': return c.picDelete(args.pin);
     case 'auth_delete': return c.authDelete(args.pin);
-    case 'user_delete': return c.userDelete(args.pin);
+    case 'user_delete': return settings.userForm === 'userinfo' ? c.userInfoDelete(args.pin) : c.userDelete(args.pin);
+    case 'options': return c.setOption(args);
     case 'enroll_bio': return c.enrollBio({ pin: args.pin, type: args.type ?? 9, no: args.no ?? 0, separator: cfg.enrollSeparator });
     case 'wipe': return c.wipe(args.table, args.type);
     case 'info': return c.info();
@@ -574,6 +594,13 @@ async function recordResults(db, device, results, now = new Date()) {
       counts.acked += 1;
       if (args.audit && cmd.kind === 'count' && cfg.countResult === 'return') {
         await exec(db, 'UPDATE device_audits SET device_user_count = ? WHERE count_cmd_id = ?', [r.returnCode, cmd.id]);
+      }
+      if (args.audit && cmd.kind === 'query_users') {
+        // Phase 5: a T&A PUSH firmware may answer the user query with OPERLOG USER uploads (ingest#feedAudit)
+        // instead of querydata packs; it acks after uploading. Those PINs are the answer: compare now. An audit
+        // that got neither stays open (a missing answer must never look like an empty device).
+        const [audit] = await select(db, 'SELECT id FROM device_audits WHERE query_cmd_id = ? AND device_id = ? AND status = \'receiving\' AND packs_received = 0', [cmd.id, device.id]);
+        if (audit) await compareAudit(db, device.id, audit.id, now);
       }
     } else if (action === 'transient') {
       const wait = rules.backoffSeconds(Number(cmd.attempts));

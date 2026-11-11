@@ -93,7 +93,7 @@ async function queueQuery(db, deviceId, kind, args, now) {
  * Starts (or returns the open) import of a device: puts it in hold, queues the queries.
  * → { import, reused }
  */
-async function startImport(db, { tenantId, deviceId, byUserId = null, now = new Date() }) {
+async function startImport(db, { tenantId, deviceId, byUserId = null, now = new Date(), ...opts }) {
   const registry = require('./device-registry.service');
   const platform = await registry.findById(deviceId);
   if (!platform || platform.tenant_id !== tenantId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
@@ -123,12 +123,24 @@ async function startImport(db, { tenantId, deviceId, byUserId = null, now = new 
   const caps = parse(det.capabilities_json, {}) || {};
   const reported = [...rules.bioSupport(caps).types].sort((a, b) => a - b);
   const types = reported.length ? reported : getDeviceConfig().importBioTypes;
-  const cmdIds = [await queueQuery(db, deviceId, 'query_users', { importId: id }, now)];
-  for (const type of types) cmdIds.push(await queueQuery(db, deviceId, 'query_bio', { importId: id, type }, now));
   // Matches of the previous import of this device are carried over (a re-run keeps the work done).
   const carryFrom = last && last.status !== 'querying' ? last.id : null;
+  let cmdIds;
+  let result;
+  if (String(det.device_type || '').toLowerCase() === 'att') {
+    // Phase 5, T&A PUSH: the device uploads its users (OPERLOG USER), fingerprints (OPERLOG FP) and faces
+    // (BIODATA) on its own, on first contact; DATA QUERY is not known to work on that firmware. The import is fed
+    // by those uploads (stageUploads). CHECK (read-only) asks a device that already sent them to send again.
+    cmdIds = [];
+    if (opts.askDevice !== false) await queueQuery(db, deviceId, 'check', { importId: id }, now);
+    result = { carryFrom, types, mode: 'upload', uploads: { users: 0, templates: 0, lastAt: null } };
+  } else {
+    cmdIds = [await queueQuery(db, deviceId, 'query_users', { importId: id }, now)];
+    for (const type of types) cmdIds.push(await queueQuery(db, deviceId, 'query_bio', { importId: id, type }, now));
+    result = { carryFrom, types };
+  }
   await exec(db, `INSERT INTO device_imports (id, device_id, status, requested_by, query_cmd_ids_json, result_json, started_at, updated_at)
-    VALUES (?, ?, 'querying', ?, ?, ?, ?, ?)`, [id, deviceId, byUserId, JSON.stringify(cmdIds), JSON.stringify({ carryFrom, types }), now, now]);
+    VALUES (?, ?, 'querying', ?, ?, ?, ?, ?)`, [id, deviceId, byUserId, JSON.stringify(cmdIds), JSON.stringify(result), now, now]);
   if (carryFrom) {
     // Mark the old one superseded so only one import of the device is open.
     if (OPEN.includes(last.status)) await exec(db, 'UPDATE device_imports SET status = \'cancelled\', finished_at = ?, updated_at = ? WHERE id = ?', [now, now, last.id]);
@@ -140,7 +152,6 @@ async function startImport(db, { tenantId, deviceId, byUserId = null, now = new 
 // ── Query answers (packs) ─────────────────────────────────────────────────────
 /** One querydata pack of an import's query. Replays are ignored. → { stored } */
 async function ingestPack(db, device, { cmdId, table, query, body, now = new Date() }) {
-  const cfg = getDeviceConfig();
   const importId = await isImportCommand(db, device.id, cmdId);
   const [imp] = await select(db, 'SELECT * FROM device_imports WHERE id = ? AND device_id = ?', [importId, device.id]);
   if (!imp || imp.status !== 'querying') return { stored: 0 };
@@ -151,45 +162,79 @@ async function ingestPack(db, device, { cmdId, table, query, body, now = new Dat
     [imp.id, cmdId, packidx, packcnt, now]);
   if (affected(meta) !== 1) return { stored: 0 }; // the same pack again
 
+  let res = { stored: 0, truncated: false };
+  if (table === 'user') res = await stageUsers(db, imp, protocol.parseRecords(body, { table: 'user' }), now);
+  else if (table === 'biodata') res = await stageTemplates(db, imp, rules.templatesFrom('biodata', body), now);
+  await exec(db, 'UPDATE device_import_packs SET records = ? WHERE import_id = ? AND cmd_id = ? AND pack_idx = ?', [res.stored, imp.id, cmdId, packidx]);
+  await refresh(db, { ...imp }, now);
+  return { stored: res.stored };
+}
+
+/** Device users into an import's staging (a query pack or an att upload). rows: { pin, name, cardno, privilege } */
+async function stageUsers(db, imp, rows, now) {
+  const cfg = getDeviceConfig();
+  const carry = parse(imp.result_json, {})?.carryFrom || null;
+  const [{ n }] = await select(db, 'SELECT COUNT(*) AS n FROM device_import_users WHERE import_id = ?', [imp.id]);
+  let count = Number(n);
   let stored = 0;
   let truncated = false;
-  if (table === 'user') {
-    const carry = parse(imp.result_json, {})?.carryFrom || null;
-    const [{ n }] = await select(db, 'SELECT COUNT(*) AS n FROM device_import_users WHERE import_id = ?', [imp.id]);
-    let count = Number(n);
-    for (const r of protocol.parseRecords(body, { table: 'user' })) {
-      const pin = String(r.pin || '').trim();
-      if (!PIN.test(pin)) continue;
-      if (count >= cfg.importMaxUsers) { truncated = true; break; }
-      const [prev] = carry ? await select(db, 'SELECT member_id, remove_at_go_live FROM device_import_users WHERE import_id = ? AND pin = ?', [carry, pin]) : [];
-      const [, m] = await exec(db, `INSERT IGNORE INTO device_import_users (import_id, pin, name, card_no, privilege, member_id, match_source, remove_at_go_live, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-        imp.id, pin, r.name ? String(r.name).slice(0, 24) : null, r.cardno && r.cardno !== '0' ? String(r.cardno).replace(/\s+/g, '').slice(0, 32) : null,
-        Math.min(255, Math.max(0, Number(r.privilege) || 0)), prev?.member_id || null, prev?.member_id ? 'carried' : null, prev ? Number(prev.remove_at_go_live) : 0, now, now,
-      ]);
-      if (affected(m) === 1) { stored += 1; count += 1; }
-    }
-  } else if (table === 'biodata') {
-    const [{ n }] = await select(db, 'SELECT COUNT(*) AS n FROM device_import_templates WHERE import_id = ?', [imp.id]);
-    let count = Number(n);
-    let tooLarge = 0;
-    for (const t of rules.templatesFrom('biodata', body)) {
-      if (t.tmp.length > cfg.importMaxTemplateBytes) { tooLarge += 1; continue; }
-      if (count >= cfg.importMaxTemplates) { truncated = true; break; }
-      const enc = bioCrypto.encrypt(t.tmp);
-      const [, m] = await exec(db, `INSERT IGNORE INTO device_import_templates (import_id, pin, bio_type, bio_no, bio_index, major_ver, minor_ver, format, duress, valid,
-          template_enc, key_version, template_sha256, template_size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-        imp.id, String(t.pin), t.type, t.no || 0, t.index || 0, String(t.majorVer).slice(0, 8), String(t.minorVer).slice(0, 8), t.format || 0,
-        t.duress ? 1 : 0, t.valid === 0 ? 0 : 1, enc, bioCrypto.versionOf(enc), bioCrypto.sha256(t.tmp), t.tmp.length, now,
-      ]);
-      if (affected(m) === 1) { stored += 1; count += 1; }
-    }
-    if (tooLarge) await exec(db, 'UPDATE device_imports SET templates_too_large = templates_too_large + ? WHERE id = ?', [tooLarge, imp.id]);
+  for (const r of rows) {
+    const pin = String(r.pin || '').trim();
+    if (!PIN.test(pin)) continue;
+    if (count >= cfg.importMaxUsers) { truncated = true; break; }
+    const [prev] = carry ? await select(db, 'SELECT member_id, remove_at_go_live FROM device_import_users WHERE import_id = ? AND pin = ?', [carry, pin]) : [];
+    const [, m] = await exec(db, `INSERT IGNORE INTO device_import_users (import_id, pin, name, card_no, privilege, member_id, match_source, remove_at_go_live, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      imp.id, pin, r.name ? String(r.name).slice(0, 24) : null, r.cardno && r.cardno !== '0' ? String(r.cardno).replace(/\s+/g, '').slice(0, 32) : null,
+      Math.min(255, Math.max(0, Number(r.privilege) || 0)), prev?.member_id || null, prev?.member_id ? 'carried' : null, prev ? Number(prev.remove_at_go_live) : 0, now, now,
+    ]);
+    if (affected(m) === 1) { stored += 1; count += 1; }
   }
-  await exec(db, 'UPDATE device_import_packs SET records = ? WHERE import_id = ? AND cmd_id = ? AND pack_idx = ?', [stored, imp.id, cmdId, packidx]);
   if (truncated) await exec(db, 'UPDATE device_imports SET truncated = 1 WHERE id = ?', [imp.id]);
-  await refresh(db, { ...imp }, now);
-  return { stored };
+  return { stored, truncated };
+}
+
+/** Templates (rules.templatesFrom / templatesFromOperlog records) into an import's staging, encrypted. */
+async function stageTemplates(db, imp, records, now) {
+  const cfg = getDeviceConfig();
+  const [{ n }] = await select(db, 'SELECT COUNT(*) AS n FROM device_import_templates WHERE import_id = ?', [imp.id]);
+  let count = Number(n);
+  let stored = 0;
+  let tooLarge = 0;
+  let truncated = false;
+  for (const t of records) {
+    if (t.tmp.length > cfg.importMaxTemplateBytes) { tooLarge += 1; continue; }
+    if (count >= cfg.importMaxTemplates) { truncated = true; break; }
+    const enc = bioCrypto.encrypt(t.tmp);
+    const [, m] = await exec(db, `INSERT IGNORE INTO device_import_templates (import_id, pin, bio_type, bio_no, bio_index, major_ver, minor_ver, format, duress, valid,
+        template_enc, key_version, template_sha256, template_size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      imp.id, String(t.pin), t.type, t.no || 0, t.index || 0, String(t.majorVer).slice(0, 8), String(t.minorVer).slice(0, 8), t.format || 0,
+      t.duress ? 1 : 0, t.valid === 0 ? 0 : 1, enc, bioCrypto.versionOf(enc), bioCrypto.sha256(t.tmp), t.tmp.length, now,
+    ]);
+    if (affected(m) === 1) { stored += 1; count += 1; }
+  }
+  if (tooLarge) await exec(db, 'UPDATE device_imports SET templates_too_large = templates_too_large + ? WHERE id = ?', [tooLarge, imp.id]);
+  if (truncated) await exec(db, 'UPDATE device_imports SET truncated = 1 WHERE id = ?', [imp.id]);
+  return { stored, truncated };
+}
+
+/**
+ * Phase 5: users and templates a T&A PUSH device in import hold uploaded on its own (OPERLOG / BIODATA), into
+ * its open import (querying, or ready and not applied yet). No open import: dropped, as in Phase 4. Replays
+ * add nothing. → { stored } or null
+ */
+async function stageUploads(db, deviceId, { users = [], templates = [] }, now = new Date()) {
+  const [imp] = await select(db, 'SELECT * FROM device_imports WHERE device_id = ? AND status IN (?) ORDER BY started_at DESC LIMIT 1', [deviceId, OPEN]);
+  if (!imp) return null;
+  const u = users.length ? await stageUsers(db, imp, users, now) : { stored: 0 };
+  const t = templates.length ? await stageTemplates(db, imp, templates, now) : { stored: 0 };
+  const result = parse(imp.result_json, {}) || {};
+  const up = result.uploads || { users: 0, templates: 0, lastAt: null };
+  result.uploads = { users: up.users + u.stored, templates: up.templates + t.stored, lastAt: now.toISOString() };
+  const [{ users: nu }] = await select(db, 'SELECT COUNT(*) AS users FROM device_import_users WHERE import_id = ?', [imp.id]);
+  const [{ templates: nt }] = await select(db, 'SELECT COUNT(*) AS templates FROM device_import_templates WHERE import_id = ?', [imp.id]);
+  await exec(db, 'UPDATE device_imports SET result_json = ?, users_count = ?, templates_count = ?, updated_at = ? WHERE id = ?', [JSON.stringify(result), nu, nt, now, imp.id]);
+  return { stored: u.stored + t.stored };
 }
 
 /**
@@ -199,6 +244,8 @@ async function ingestPack(db, device, { cmdId, table, query, body, now = new Dat
  */
 async function refresh(db, row, now = new Date()) {
   if (row.status !== 'querying') return row;
+  const mode = parse(row.result_json, {})?.mode;
+  if (mode === 'upload') return refreshUpload(db, row, now);
   const cmdIds = parse(row.query_cmd_ids_json, []) || [];
   const cmds = cmdIds.length ? await select(db, 'SELECT id, kind, status, args_json, acked_at FROM device_commands WHERE id IN (?) AND device_id = ?', [cmdIds, row.device_id]) : [];
   const packs = await select(db, 'SELECT cmd_id, COUNT(*) AS got, MAX(pack_cnt) AS want FROM device_import_packs WHERE import_id = ? GROUP BY cmd_id', [row.id]);
@@ -229,6 +276,31 @@ async function refresh(db, row, now = new Date()) {
       [JSON.stringify({ ...result, reason: 'no_answer' }), now, now, row.id]);
   } else {
     await exec(db, 'UPDATE device_imports SET users_count = ?, templates_count = ? WHERE id = ?', [users, templates, row.id]);
+  }
+  const [fresh] = await select(db, 'SELECT * FROM device_imports WHERE id = ?', [row.id]);
+  return fresh;
+}
+
+/**
+ * Phase 5, an import fed by a T&A PUSH device's uploads: ready once users arrived, nothing more came for
+ * ATT_QUIET_SECONDS and the device polled since (it polls only when its upload is done: the capture showed
+ * no poll during the 2.5-minute history upload). Failed when no user arrived within DEVICE_IMPORT_QUERY_HOURS.
+ */
+const ATT_QUIET_SECONDS = 60;
+async function refreshUpload(db, row, now) {
+  const result = parse(row.result_json, {}) || {};
+  const lastAt = result.uploads?.lastAt ? new Date(result.uploads.lastAt) : null;
+  const [{ users }] = await select(db, 'SELECT COUNT(*) AS users FROM device_import_users WHERE import_id = ?', [row.id]);
+  const [{ templates }] = await select(db, 'SELECT COUNT(*) AS templates FROM device_import_templates WHERE import_id = ?', [row.id]);
+  const [det] = await select(db, 'SELECT last_poll_at FROM access_device_details WHERE id = ?', [row.device_id]);
+  // last_poll_at is a DATETIME (whole seconds): compare against the second of the last upload.
+  const polled = det?.last_poll_at && lastAt && new Date(det.last_poll_at).getTime() >= Math.floor(lastAt.getTime() / 1000) * 1000;
+  if (Number(users) > 0 && lastAt && polled && now.getTime() - lastAt.getTime() >= ATT_QUIET_SECONDS * 1000) {
+    await exec(db, 'UPDATE device_imports SET status = \'ready\', users_count = ?, templates_count = ?, ready_at = ?, updated_at = ? WHERE id = ? AND status = \'querying\'',
+      [users, templates, now, now, row.id]);
+  } else if (!Number(users) && new Date(row.started_at).getTime() < now.getTime() - getDeviceConfig().importQueryHours * 3600000) {
+    await exec(db, 'UPDATE device_imports SET status = \'failed\', result_json = ?, finished_at = ?, updated_at = ? WHERE id = ? AND status = \'querying\'',
+      [JSON.stringify({ ...result, reason: 'no_upload' }), now, now, row.id]);
   }
   const [fresh] = await select(db, 'SELECT * FROM device_imports WHERE id = ?', [row.id]);
   return fresh;
@@ -739,6 +811,8 @@ async function goLive(db, { tenantId, deviceId, byUserId = null, removeUnmatched
   const caps = parse(det?.capabilities_json, {}) || {};
   const reported = [...rules.bioSupport(caps).types];
   const types = reported.length ? reported : getDeviceConfig().importBioTypes;
+  // Phase 5: a T&A PUSH device that is never sent userauthorize gets no DATA DELETE userauthorize.
+  const opts = rules.deviceOptions(det || {}, getDeviceConfig());
   const removePins = users.filter((u) => !u.isAdmin && (u.removeAtGoLive || (removeUnmatched && !u.memberId))).map((u) => u.pin);
   const keptUnmatched = users.filter((u) => !u.isAdmin && !u.memberId && !removePins.includes(u.pin));
 
@@ -753,7 +827,7 @@ async function goLive(db, { tenantId, deviceId, byUserId = null, removeUnmatched
     await exec(db, 'DELETE FROM device_member_sync WHERE device_id = ?', [deviceId], transaction);
     // Only the device users the host marked: their templates, comparison photo, authorization, then the user.
     for (const pin of removePins) {
-      const plan = [...types.map((type) => ['bio_delete', { pin, type }]), ['photo_delete', { pin }], ['auth_delete', { pin }], ['user_delete', { pin }]];
+      const plan = [...types.map((type) => ['bio_delete', { pin, type }]), ['photo_delete', { pin }], ...(opts.sendUserAuthorize || !opts.att ? [['auth_delete', { pin }]] : []), ['user_delete', { pin }]];
       for (const [kind, args] of plan) {
         await exec(db, `INSERT INTO device_commands (device_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
           VALUES (?, ?, ?, 1, 'queued', 0, ?, ?, ?)`, [deviceId, kind, JSON.stringify({ ...args, importId: imp.id }), new Date(now.getTime() - 1000), now, now], transaction);
@@ -804,6 +878,8 @@ async function housekeeping(db, now = new Date()) {
 }
 
 module.exports = {
+  stageUploads,
+  latestImport,
   startImport,
   importOf,
   listImports,
