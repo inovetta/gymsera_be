@@ -203,3 +203,31 @@ re-pair the device unless it was just replaced. Capacity (90%) now counts users 
 
 Device page › Manage › Move to another branch (devices.manage at both branches). The old branch's members are
 removed at once (no exit grace), the new branch's sent. Not possible during an import or a wipe.
+
+## Phase 5: T&A PUSH (attendance protocol) devices
+
+A device whose Cloud Server menu says **Device Type: T&A PUSH** (the first real SpeedFace-V5L, ZAM180 Ver3.4.9) is
+supported as well as Access Control PUSH (spec §15 "Phase 5 as built", D-9). What is different for support:
+
+- **Connecting.** It never registers: the first `GET /iclock/cdata?…DeviceType=att` from its key (or serial, when serial
+  pairing is on) activates it. The device page shows **Device type: T&A PUSH (attendance)**. A device that stays
+  "Waiting for the device" has the wrong key or serial: check Unclaimed contacts as before.
+- **First contact uploads everything** (users with names, fingerprints, faces, months of punches) for a few minutes
+  without polling: commands wait until it is done. Old punches are stored as **history** (live feed: "From the device
+  history … not counted"), never as visits. Users it uploads go to **Unlinked users**, unless it was added with
+  "already has members from GymBioSync": then they fill the import (Import from device opens by itself).
+- **What it is sent** (until the device test settles the defaults): no `userauthorize`, no end date on the device
+  (`StartTime=0 EndTime=0`), members as `DATA UPDATE user`. So an expired member is removed by the real-time triggers or
+  the 15-minute sweep **while the device is online**; an offline T&A PUSH device keeps admitting them until it reconnects.
+  Per device: `PATCH /host/devices/:id {"attOptions": {"userAuthorize": true|false|null, "validityMode": "none"|"datetime"|"seconds"|null, "userCommandForm": "user"|"userinfo"|null}}` (null = default).
+- **Polling.** It polls every `Delay` seconds of our answer (`DEVICE_REQUEST_DELAY`, or the device's `pollDelaySeconds`, 1 to 5).
+  "Polls every" on the device page is the last measured gap. If it drifts to 30 s: power-cycle the device first; then try
+  `DEVICE_ATT_DELAY_FIELDS=Delay,RequestDelay`, then `DEVICE_ATT_SET_OPTION_DELAY=true`.
+- **Token.** It sends no Cookie: it stays in log mode. `device-token-mode.js --to enforce` lists it as `att_device` and
+  never switches it.
+- **Time zone.** Punches older than activation minus `DEVICE_HISTORY_SKEW_MINUTES` (10) are history. A device whose own
+  time zone differs from the branch's makes live punches look old: set the device's time zone to the branch's.
+
+Settings (all optional): `DEVICE_ATT_DELAY_FIELDS`, `DEVICE_ATT_SET_OPTION_DELAY`, `DEVICE_ATT_STAMPS`,
+`DEVICE_ATT_USERAUTHORIZE`, `DEVICE_ATT_VALIDITY`, `DEVICE_ATT_USER_FORM`, `DEVICE_HISTORY_SKEW_MINUTES` (`.env.example`).
+Migrations before the code: platform `p030_access_devices_att`, tenant `026_device_att_options`.
