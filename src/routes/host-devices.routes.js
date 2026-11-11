@@ -47,8 +47,10 @@ router.post(
     direction,
     body('linkMode').optional().isIn(['host', 'path', 'serial']).withMessage('Link mode must be host, path or serial.'),
     body('serialNumber').optional({ nullable: true }).isString().isLength({ max: 32 }),
-    // Phase 4: the device already has another system's users (GymBioSync): add it in import hold.
-    body('importFirst').optional().isBoolean().withMessage('importFirst is true or false.'),
+    // Phase 4 (owner, 2026-11-11): required, no default. true = the device already has GymBioSync members:
+    // added in import hold (nothing sent to it until go-live). NEW-239.
+    body('importFirst').exists({ values: 'null' }).withMessage('Say whether this device already has members from GymBioSync.')
+      .bail().isBoolean({ strict: true }).withMessage('Say whether this device already has members from GymBioSync: true or false.'),
   ], { stage: 2 }),
   can('devices.manage', { branch: 'body.branchId' }),
   ctrl.createDevice
