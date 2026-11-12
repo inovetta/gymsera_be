@@ -30,6 +30,7 @@ const registry = require('../../src/services/devices/device-registry.service');
 const imports = require('../../src/services/devices/device-import.service');
 const { planTokenMode } = require('../../src/scripts/device-token-mode');
 const { sequelize: platformDb } = require('../../src/database/platform');
+const { utc } = require('../../src/services/devices/sql-time');
 
 const owner = () => asPersona('owner');
 const data = (res) => res.body.data;
@@ -227,10 +228,17 @@ describe('ATTLOG: history, bulk, same second', () => {
   });
 
   test('history before go-live of an imported device is history too', async () => {
-    await w.db1.sequelize.query('UPDATE access_device_details SET live_at = ? WHERE id = ?', { replacements: [new Date(Date.now() + 5 * 60000), dev.id] });
+    // Go-live 30 minutes after this punch: the punch is before go-live minus DEVICE_HISTORY_SKEW_MINUTES (10).
+    // live_at goes through utc() like every device write: a raw Date in replacements is formatted in the test
+    // machine's zone and read back as UTC (spec Phase 2 correction 2), which moved go-live by the machine's offset
+    // (+5 h on a Pakistan-time Mac hid that 5 minutes was inside the skew; on CI in UTC the punch was live).
+    const before = (await attendance()).length;
+    await w.db1.sequelize.query('UPDATE access_device_details SET live_at = ? WHERE id = ?', { replacements: utc([new Date(Date.now() + 29 * 60000), dev.id]) });
     await dev.sim.punch(pin, localNow(-1), 4);
     const [row] = await events('pin = ? AND verify_type = 4', [pin]);
     expect(row.attendance_note).toBe('history');
+    expect(row.attendance_id).toBeNull();
+    expect((await attendance()).length).toBe(before);
     await w.db1.sequelize.query('UPDATE access_device_details SET live_at = NULL WHERE id = ?', { replacements: [dev.id] });
   });
 });
