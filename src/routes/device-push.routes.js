@@ -17,6 +17,7 @@
  * never the body. Phase 2 stores scans, uploads, error logs, state history and audit packs
  * (services/devices/device-ingest.service.js).
  */
+const crypto = require('crypto');
 const express = require('express');
 const { getDeviceConfig } = require('../config/devices.config');
 const protocol = require('../services/devices/push-protocol');
@@ -51,6 +52,20 @@ function takeToken(key, cfg, now = Date.now()) {
   if (b.tokens < 1) return false;
   b.tokens -= 1;
   return true;
+}
+
+// NEW-242: upload bodies whose import staging failed, per process (like the rate limits): device|table|sha256 →
+// { n, at }. Forgotten after an hour, or all at once past MAX_STAGE_FAILURES (a retry then starts at 1 again).
+const MAX_STAGE_FAILURES = 1000;
+const STAGE_FAILURE_TTL_MS = 3600000;
+const stageFailures = new Map();
+const stageKey = (deviceId, table, body) => `${deviceId}|${String(table).toUpperCase()}|${crypto.createHash('sha256').update(String(body || '')).digest('hex')}`;
+function rememberStageFailure(key, n, now = Date.now()) {
+  if (stageFailures.size >= MAX_STAGE_FAILURES) {
+    for (const [k, v] of stageFailures) if (now - v.at > STAGE_FAILURE_TTL_MS) stageFailures.delete(k);
+    if (stageFailures.size >= MAX_STAGE_FAILURES) stageFailures.clear();
+  }
+  stageFailures.set(key, { n, at: now });
 }
 
 const unknownKey = (c) => `${c.ip || ''}|${c.sn || ''}|${c.pathKey || c.hostKey || ''}`;
@@ -264,7 +279,8 @@ async function handleDevice(c, { device, tenantDb }) {
             await imports.startImport(tenantDb, { tenantId: device.tenant_id, deviceId: device.id, askDevice: false });
           }
         }
-        const stamps = cfg.attStamps === 'echo' ? (() => { try { return JSON.parse(det.att_stamps_json || '{}'); } catch (_) { return {}; } })() : {};
+        // Echo (or zero), then a re-read's forced OPERLOG / BIODATA 0 while the device is in import hold (NEW-242).
+        const stamps = await registry.attAnswerStamps(tenantDb, det, cfg);
         return [200, lines(protocol.attConfigLines({
           registryCode: device.registry_code, sessionId: device.session_id, sn: c.sn, delay: registry.pollDelayOf(det, cfg), delayFields: cfg.attDelayFields, stamps,
         }))];
@@ -319,7 +335,29 @@ async function handleDevice(c, { device, tenantDb }) {
         const changed = await registry.applyAttOptions(tenantDb, device.id, protocol.parseRegistry(c.body));
         if (changed && !Number(det.import_hold) && device.status === 'active') triggers.reconcileDeviceSoon(tenantDb, device.id, 'device_registered');
       } else if (table === 'options') await registry.applyOptions(tenantDb, device.id, protocol.parseRegistry(c.body));
-      else if ((table === 'operlog' || table === 'biodata') && sdev) {
+      else if ((table === 'operlog' || table === 'biodata') && sdev && held) {
+        // NEW-242: in import hold these posts ARE the import. An OK makes the device drop them for good, so a
+        // staging failure is answered 503 (the device sends the post again), at most attStageRetries times.
+        const key = stageKey(device.id, table, c.body);
+        try {
+          const res = await ingest.ingestAttUploads(tenantDb, device.tenant_id, sdev, table, c.body);
+          stageFailures.delete(key);
+          c.logCount = res.users + res.templates + res.oplog;
+        } catch (err) {
+          const attempts = (stageFailures.get(key)?.n || 0) + 1;
+          c.logCount = protocol.recordCount(c.body);
+          console.error(`[device-push] ${device.id} staging ${table.toUpperCase()} failed (attempt ${attempts}): ${protocol.redact(String(err.message || '')).slice(0, 200)}`);
+          if (attempts <= cfg.attStageRetries) {
+            rememberStageFailure(key, attempts);
+            return [503, lines('Retry')];
+          }
+          stageFailures.delete(key);
+          await require('../services/devices/device-sync.service').logError(tenantDb, device.id, {
+            kind: 'import_upload_dropped', message: 'An upload could not be stored in the import after retries.',
+            data: { table: table.toUpperCase(), attempts, records: c.logCount },
+          }).catch(() => {});
+        }
+      } else if ((table === 'operlog' || table === 'biodata') && sdev) {
         const res = await ingest.ingestAttUploads(tenantDb, device.tenant_id, sdev, table, c.body);
         c.logCount = res.users + res.templates + res.oplog;
       } else if (table === 'rtstate') {
@@ -501,4 +539,4 @@ module.exports.effectiveHost = effectiveHost;
 module.exports.hostWithoutPort = hostWithoutPort;
 module.exports.send = send;
 /** Tests: forget the in-memory rate limit state. */
-module.exports.resetRateLimits = () => { buckets.clear(); unknownSeen.clear(); };
+module.exports.resetRateLimits = () => { buckets.clear(); unknownSeen.clear(); stageFailures.clear(); };

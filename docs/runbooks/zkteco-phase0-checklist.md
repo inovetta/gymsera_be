@@ -109,6 +109,12 @@ Firmware version: ______________________
    value sent until the device reports its own. `--stamps 0` is what GymBioSync sends; it may make
    the device send its whole history again. Uploads of PIN 9001 are shown line by line; use
    `--test-pin <pin>` for another test PIN.
+
+   > **The device keeps the stamp you give it (NEW-242).** After a session with `--stamps 9999` it uploads nothing older
+   > to the next server either: pointed at GymsEra, an import then gets only the users added since. Before you point
+   > the device anywhere else, end the session with `--stamps 0` (restart the server with it and let the device
+   > connect once), or reset it in GymsEra afterwards: device in import hold › Import page › **Read all users again**
+   > (runbook `devices.md`, "The import has fewer users than the device").
 6. **Firewall prompt:** the first time, macOS asks "Do you want the application node to accept
    incoming network connections?" Click **Allow**. If you missed it: System Settings › Network ›
    Firewall › Options, find `node`, set it to "Allow incoming connections".
@@ -558,6 +564,9 @@ removes stay queued on the PC.
    missing, tell the gym which time window to fix by hand, and tell the agent.
 6. Members GymBioSync added or removed during the test: check one change in GymBioSync arrived on
    the device after the restore.
+7. **Stamps.** GymBioSync answers stamp 0, so it gets everything again. If the device goes to **GymsEra** next instead,
+   it still holds the capture server's stamp (9999 by default) and sends GymsEra only part of its users: use
+   **Read all users again** on its import page (runbook `devices.md`), or end this session with `--stamps 0`.
 
 GymBioSync back online? ______ Test punch seen? ______ Punches during the test present in GymBioSync? ______
 

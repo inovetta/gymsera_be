@@ -210,6 +210,9 @@ function getDeviceConfig() {
     attDelayFields: attDelayFieldsOf(),
     attSetOptionDelay: boolOf('DEVICE_ATT_SET_OPTION_DELAY', false),
     attStamps: pickOf('DEVICE_ATT_STAMPS', ['echo', 'zero'], 'echo'),
+    // NEW-242: in import hold, an OPERLOG / BIODATA post whose staging failed is answered 503 (the device sends it
+    // again) this many times per body and process, then OK with an error log row (no endless loop).
+    attStageRetries: intOf('DEVICE_ATT_STAGE_RETRIES', 5, 0, 50),
     attUserAuthorize: boolOf('DEVICE_ATT_USERAUTHORIZE', false),
     attValidity: pickOf('DEVICE_ATT_VALIDITY', ['none', 'datetime', 'seconds'], 'none'),
     attUserForm: pickOf('DEVICE_ATT_USER_FORM', ['user', 'userinfo'], 'user'),

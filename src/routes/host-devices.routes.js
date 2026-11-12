@@ -316,6 +316,7 @@ manage('/:id/imports/:importId/mapping', 'post', imports.mapCsv, [
 manage('/:id/imports/:importId/apply', 'post', imports.apply, [importParam]);
 manage('/:id/imports/:importId/rollback', 'post', imports.rollback, [importParam]);
 manage('/:id/imports/:importId/cancel', 'post', imports.cancel, [importParam]);
+manage('/:id/imports/:importId/reread', 'post', imports.reread, [importParam]); // NEW-242
 manage('/:id/cutover/go-live', 'post', imports.goLive, [body('removeUnmatched').optional().isBoolean().withMessage('removeUnmatched is true or false.')]);
 manage('/:id/cutover/gymbiosync-stopped', 'post', imports.gbsStopped);
 // Move to another branch: devices.manage at the device's branch AND at the new one. Named /branch, not /move:

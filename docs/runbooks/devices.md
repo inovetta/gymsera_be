@@ -228,6 +228,34 @@ supported as well as Access Control PUSH (spec §15 "Phase 5 as built", D-9). Wh
 - **Time zone.** Punches older than activation minus `DEVICE_HISTORY_SKEW_MINUTES` (10) are history. A device whose own
   time zone differs from the branch's makes live punches look old: set the device's time zone to the branch's.
 
+- **Stamps (NEW-242).** A T&A device uploads only records newer than the stamp GymsEra answers, and GymsEra echoes the
+  stamp the device last reported. The device page shows them under **Upload stamps** (users and templates = OPERLOG,
+  faces = BIODATA, punches = ATTLOG). **After any capture-server test with `--stamps N` (default 9999) the device keeps
+  that stamp**: pointed at GymsEra it sends nothing older, so an import gets only part of its users.
+
+### The import has fewer users than the device (T&A PUSH)
+
+Compare the import page ("N users") with **Users on device**. Fewer, and Upload stamps not 0: the device kept an old stamp.
+
+1. Import page › **Read all users again** › Read again (devices.manage; only while the device is in import hold and the
+   import is reading or ready). Nothing on the device changes; punches are not sent again; the users already read stay.
+2. Watch **Read all users again** on the device page (refreshes every 5 s):
+   - *Waiting for the device*: GymsEra queued one `CHECK` (Commands tab: Check, Waiting → Done). If it stays more than
+     2 minutes, **restart the device** (it asks for its options when it starts and gets the 0 then).
+   - *Device asked to send everything*: it was answered `OPERLOGStamp=0` and `BIODATAStamp=0` (Upload stamps show "(0 sent)").
+   - *Reading users*: it reported a stamp, the upload is running; the import counts rise (about 2.5 minutes for 358 users).
+   - *Done*: the import is ready again. Compare the counts again. *Nothing sent*: no upload in 2 hours; restart the device
+     and press the button again.
+3. API log: `POST /iclock/cdata table=OPERLOG count=…` / `table=BIODATA` lines answered `200`. A line answered `503`
+   means staging failed and the device was asked to send that post again (at most `DEVICE_ATT_STAGE_RETRIES`, 5);
+   after that the Errors tab shows **An upload could not be stored in the import** (`import_upload_dropped`): find the
+   `[device-push] … staging … failed` line, fix the cause, then Read all users again.
+
+Not in import hold, there is no button. To reset a device's stamp outside an import: point it at GymBioSync (which
+answers 0), or set `DEVICE_ATT_STAMPS=zero` on the API for the time it takes (every T&A device on that server then
+uploads its history again; punches older than activation stay history, never visits) and restart the device.
+
 Settings (all optional): `DEVICE_ATT_DELAY_FIELDS`, `DEVICE_ATT_SET_OPTION_DELAY`, `DEVICE_ATT_STAMPS`,
-`DEVICE_ATT_USERAUTHORIZE`, `DEVICE_ATT_VALIDITY`, `DEVICE_ATT_USER_FORM`, `DEVICE_HISTORY_SKEW_MINUTES` (`.env.example`).
+`DEVICE_ATT_STAGE_RETRIES`, `DEVICE_ATT_USERAUTHORIZE`, `DEVICE_ATT_VALIDITY`, `DEVICE_ATT_USER_FORM`,
+`DEVICE_HISTORY_SKEW_MINUTES` (`.env.example`).
 Migrations before the code: platform `p030_access_devices_att`, tenant `026_device_att_options`.
