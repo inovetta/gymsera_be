@@ -29,6 +29,15 @@
  *
  * Phase 3: `DATA DELETE <table> *` empties the table (remove with wipe), `DATA DELETE biodata Type=<t>`
  * deletes every template of that type.
+ *
+ * Phase 5, `--att` (`{ att: true }`): a T&A PUSH device as in the first real capture (SpeedFace-V5L,
+ * ZAM180 Ver3.4.9, tests/fixtures/zkteco/att-speedface-v5l.js): `connectAtt()` sends
+ * `GET cdata?options=all&…&DeviceType=att&PushOptionsFlag=1` and never registers, then POSTs
+ * `table=options` and polls once with `INFO=`; `uploadHistory()` posts OPERLOG USER / FP, BIODATA, ATTLOG
+ * (positional, Stamp=9999) and OPLOG like the device; `punch()` posts one live ATTLOG row. No Cookie, ever.
+ * It runs `DATA UPDATE / DELETE USERINFO` and `SET OPTION Delay=` too. Poll interval like the firmware:
+ * the `Delay` of the option answer when there is one, else it grows by 1 to 3 s a poll up to 30 s
+ * (`nextInterval()`; what the capture showed after a bare `OK`).
  */
 'use strict';
 
@@ -129,6 +138,67 @@ class ZkDeviceSimulator {
     this.enrollSupported = o.enrollSupported !== false;
     this.forceReturn = o.forceReturn || null; // (text) → a return code to answer instead, or null
     this.lowerCaseReturn = Boolean(o.lowerCaseReturn);
+    // Phase 5: T&A PUSH.
+    this.att = Boolean(o.att);
+    if (this.att) {
+      this.sendToken = false; // the capture: no Cookie header at all
+      this.fixture = o.fixture || require('../tests/fixtures/zkteco/att-speedface-v5l').build({ timezone: o.timezone || 'Asia/Karachi' });
+      this.versions = '0:10:0:0:0:0:0:0:12:39'.split(':');
+      this.photoSupport = '0:0:0:0:0:0:0:0:0:1'.split(':');
+      this.interval = 3;
+      this.stamps = { ATTLOG: '9999', OPERLOG: '9999', BIODATA: '9999' };
+      // A firmware that answers DATA QUERY user by uploading OPERLOG USER lines instead of querydata packs.
+      this.attQueryByUpload = Boolean(o.attQueryByUpload);
+    }
+  }
+
+  /** Phase 5: the next getrequest interval in seconds, as the firmware picks it. */
+  nextInterval() {
+    const d = Number(this.config.Delay);
+    if (Number.isFinite(d) && d > 0) this.interval = d;
+    else {
+      this.slowPolls = (this.slowPolls || 0) + 1;
+      this.interval = Math.min(30, this.interval + 1 + (this.slowPolls % 3)); // +1 to +3 s a poll
+    }
+    return this.interval;
+  }
+
+  /** Phase 5: the T&A PUSH first contact: cdata options (no registry, no push), table=options, a poll with INFO. */
+  async connectAtt({ info = true } = {}) {
+    const f = this.fixture;
+    const cdata = await this.request('GET', `/iclock/cdata?${this.q(`&${f.cdataQuery}`)}`);
+    if (cdata.status !== 200) return { ok: false, step: 'cdata', res: cdata };
+    Object.assign(this.config, parseConfig(cdata.text));
+    if (this.config.RegistryCode) this.registryCode = this.config.RegistryCode;
+    if (this.config.SessionID) this.sessionId = this.config.SessionID;
+    const options = await this.upload('options', f.optionsBody);
+    const poll = info ? await this.request('GET', `/iclock/getrequest?${this.q(`&INFO=${encodeURIComponent(f.info)}`)}`) : null;
+    return { ok: true, registeredBy: 'att', cdata, options, poll, config: this.config, commands: poll ? parseCommands(poll.text) : [] };
+  }
+
+  /** Phase 5: OPERLOG / BIODATA / ATTLOG uploads with the device's stamps. */
+  uploadAtt(table, body) {
+    const key = table === 'ATTLOG' ? 'Stamp' : 'OpStamp';
+    return this.request('POST', `/iclock/cdata?${this.q(`&table=${table}&${key}=${this.stamps[table] || '9999'}`)}`, body);
+  }
+
+  /** Phase 5: the history upload of the first contact, in the capture's order. → responses */
+  async uploadHistory({ users = true, templates = true, attlog = true, oplog = true } = {}) {
+    const f = this.fixture;
+    const out = [];
+    if (users) for (const b of f.userPosts) out.push(await this.uploadAtt('OPERLOG', b));
+    if (templates) {
+      for (const b of f.fpPosts) out.push(await this.uploadAtt('OPERLOG', b));
+      out.push(await this.uploadAtt('BIODATA', f.biodataPost));
+    }
+    if (attlog) for (const b of f.attlogPosts) out.push(await this.uploadAtt('ATTLOG', b));
+    if (oplog) out.push(await this.uploadAtt('OPERLOG', f.oplogPost));
+    return out;
+  }
+
+  /** Phase 5: one live punch (verify 1 fingerprint, 15 face, 4 card) at device local time `at`. */
+  punch(pin, at, verify = 15) {
+    return this.uploadAtt('ATTLOG', this.fixture.attRow({ pin, time: at, verify }));
   }
 
   /** Runs one command on the device's tables like the firmware would. → return code */
@@ -139,6 +209,21 @@ class ZkDeviceSimulator {
       if (forced !== null && forced !== undefined) return forced;
     }
     const [head, ...rest] = text.split('\n');
+    if (head.startsWith('SET OPTION ')) {
+      Object.assign(this.config, parseConfig(head.slice(11).replace(/\t/g, '\n')));
+      return 0;
+    }
+    const ui = /^DATA (UPDATE|DELETE) USERINFO (.*)$/.exec(head);
+    if (ui) {
+      const f = fieldsOf(ui[2]);
+      if (ui[1] === 'DELETE') {
+        this.users.delete(String(f.pin));
+        for (const k of [...this.bio.keys()]) if (k.startsWith(`${f.pin}:`)) this.bio.delete(k);
+        return 0;
+      }
+      this.users.set(String(f.pin), { pin: String(f.pin), name: f.name, cardNo: f.card, startTime: f.startdatetime, endTime: f.enddatetime, privilege: f.pri });
+      return 0;
+    }
     const m = /^(DATA (UPDATE|DELETE|QUERY|COUNT) (\w+)|ENROLL_BIO|INFO|CHECK)\s?(.*)$/.exec(head);
     if (!m) return -1;
     if (head.startsWith('INFO') || head.startsWith('CHECK')) return 0;
@@ -233,7 +318,13 @@ class ZkDeviceSimulator {
       this.pendingQuery = null;
       this.pendingEnroll = null;
       const code = this.execute(cmd.text);
-      if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=user')) await this.sendUserQuery(cmd.id);
+      if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=user')) {
+        if (this.attQueryByUpload) {
+          const { userLine } = require('../tests/fixtures/zkteco/att-speedface-v5l');
+          const users = [...this.users.values()].map((u) => userLine({ pin: u.pin, name: u.name || '', privilege: Number(u.privilege) || 0, card: u.cardNo || '' }));
+          if (users.length) await this.uploadAtt('OPERLOG', users.join('\n'));
+        } else await this.sendUserQuery(cmd.id);
+      }
       if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=biodata')) await this.sendBioQuery(cmd.id, this.pendingQuery);
       if (this.pendingEnroll) await this.sendEnroll(this.pendingEnroll);
       results.push({ id: cmd.id, returnCode: code, cmd: cmd.text.split(' ').slice(0, 2).join(' ') });
@@ -454,14 +545,29 @@ function parseArgs(argv) {
 async function main() {
   const f = parseArgs(process.argv.slice(2));
   if (!f.url || !f.sn) {
-    console.log('Usage: node scripts/zk-device-simulator.js --url http://127.0.0.1:3000 --sn SIM00001 [--key K7QM3XRT --mode host|path] [--auth-key 123456] [--once] [--return 0]');
+    console.log('Usage: node scripts/zk-device-simulator.js --url http://127.0.0.1:3000 --sn SIM00001 [--key K7QM3XRT --mode host|path] [--auth-key 123456] [--att [--no-history]] [--once] [--return 0]');
     process.exitCode = 1;
     return;
   }
   const dev = new ZkDeviceSimulator({
     baseUrl: f.url, sn: f.sn, key: f.key ? String(f.key).replace(/-/g, '') : undefined, mode: f.mode,
-    hostSuffix: f['host-suffix'], authKey: f['auth-key'],
+    hostSuffix: f['host-suffix'], authKey: f['auth-key'], att: Boolean(f.att),
   });
+  if (f.att) {
+    // T&A PUSH: the capture's flow, then polls at the interval the firmware would pick, with a live punch per minute.
+    const c = await dev.connectAtt();
+    console.log(`Connected (att): Delay=${dev.config.Delay ?? '(none)'} RequestDelay=${dev.config.RequestDelay ?? '(none)'}`);
+    if (!c.ok) { process.exitCode = 1; return; }
+    if (!f['no-history']) for (const r of await dev.uploadHistory()) if (r.status !== 200) console.log(`upload answered ${r.status}`);
+    for (let n = 0; ; n++) {
+      const s = await dev.step();
+      for (const cmd of s.commands) console.log(`  C:${cmd.id}: ${cmd.text.slice(0, 120)}`);
+      if (f.once) return;
+      const wait = dev.nextInterval();
+      console.log(`  next poll in ${wait}s`);
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+    }
+  }
   const c = await dev.connect();
   if (!c.ok) {
     console.log(`Not connected: ${c.step} answered ${c.res.status} ${c.res.text.trim()}`);

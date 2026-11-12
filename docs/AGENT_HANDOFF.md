@@ -17,12 +17,18 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-11 (NEW-240: push load test "socket hang up" in CI; cause found, fixed, full be suite run; local commit, not pushed)<br>2026-11-11 (ZKTeco Phase 0: first real-device capture analysed; capture server and checklist for T&A PUSH; not pushed) |
+| Last updated | 2026-11-12 (ZKTeco Phase 5 `DONE`: T&A PUSH devices, be + CMS, local commits, not pushed) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **NEW-240: CI "socket hang up" in `zkteco-p4-push-load`; find the real cause without loosening limits, fix it, report what a gym sees** (owner text 2026-11-11; be branch `fix/zkteco-push-load-hang` from `main` `c6891c1`; no push until the owner says so)<br>**ZKTeco Phase 0: analyse the first real-device capture (SpeedFace-V5L, T&A PUSH), then add tests (h) to (l) to the capture server and the checklist** (owner text 2026-11-11; be branch `chore/zkteco-phase0-att-capture` from `main` `c6891c1`; read-only on the device and production; no push) |
-| Prompt status | `DONE` (local commit only; push waits for the owner) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Current prompt | **ZKTeco Phase 5: first-class support for `DeviceType=att` (T&A PUSH) devices** (owner text 2026-11-11: activation without registry, poll Delay, OPERLOG / BIODATA / positional ATTLOG parsers into the import and the audit, ATTLOG history and same-second rules, per-device att command options, token log mode, CMS fields, simulator `--att` and integration tests; D-9 changed: att and acc supported, classic USERINFO/FINGERTMP-only firmware out of scope). be branch `feat/zkteco-phase5` from `main` `da51689` (PR #225 capture server and #226 NEW-240 merged). CMS branch `feat/zkteco-phase5` from CMS main. No deploy, no production, no device, no push. |
+| Prompt status | `DONE` (local commits only; push waits for the owner) <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | (none) |
 | Step within issue | (none) |
+
+**ZKTeco Phase 5, T&A PUSH (`DeviceType=att`) devices (owner, 2026-11-11), `DONE`, local only.** be `feat/zkteco-phase5` from `main` `da51689`: `d0c0cba` protocol parts, settings, migrations p030 / 026, sanitized fixture; `6ad3447` activation without registry, poll Delay, OPERLOG / BIODATA into the import and the audit, ATTLOG key with verify and history rule, per-device att command options, token, view, simulator `--att`; `493df11` SQL as fixed statements (SEC-16 guard); the docs commit after it (ZKTeco spec D-9 decided, §2 note, §15 "Phase 5 as built" with the device-test list; master §13; runbook `devices.md` "Phase 5"). CMS `feat/zkteco-phase5` from `main` `6a24b77`: `68335d8` device page (type, push version, palms, attendance records, poll interval, T&A PUSH note), live-feed history copy. Tests: be `zkteco-p5-att-protocol` 22 (red 19), `zkteco-p5-att-device` 26 (red 25), `zkteco-p5-migrations` 4; zkteco + migration suites 706 green; full be suite 341 / 343 suites, 3497 / 3500 tests (2077 s): `staging-script` 2 (no `mysqldump` on this Mac, as before) and `sec-16-sql-guard` 1 (two new statements built SQL from text; rewritten as fixed statements, guard and all 31 zkteco suites, 509 tests, green after). CMS Vitest 688, tsc, lint, build, Playwright device specs 9 / 9. `captures/` stays gitignored; no real member data committed. CMS `tsconfig.tsbuildinfo` was already modified before this session (build cache): left as it was, not committed.
+
+**Phase 5 CI fix (owner, 2026-11-12), `DONE`, pushed.** CI (UTC, MySQL 5.7) failed `history before go-live of an imported device is history too`. Cause in the test only: `live_at` written with a raw `Date` (machine-zone formatting, Phase 2 correction 2) and 5 min ahead, inside the 10-minute skew. Fix `54c11b9` (utc(), 29 min ahead, assertion kept). All zkteco suites green under UTC and America/Chicago. The local test MySQL runs in Docker (`gymsera-test-mysql57`, port 3308): start Docker Desktop and that container before running tests.
+
+**Next action:** **Owner:** (1) review and say if be and CMS `feat/zkteco-phase5` were pushed 2026-11-12 (done) (PRs into `main`). (2) Run the device tests in ZKTeco spec §15 "Phase 5 as built" (nine items, checklist 5b) on the SpeedFace with PIN 9001, and send the results. **Agent, next:** set the `DEVICE_ATT_*` defaults from those results (one commit, tests updated), then whatever the owner gives next.
 
 **NEW-240 (owner, 2026-11-11), `DONE`, local only.** be `fix/zkteco-push-load-hang` from `main` `c6891c1`, one commit (code, test, spec §13 "NEW-240"). Cause: `app.js:48` runs the API's 15-second `requestTimeout` before the device router; on a slow server a device request past 15 s got a JSON 408, then the handler's own answer threw `ERR_HTTP_HEADERS_SENT` (`device-push.routes.js:116` from `:403`, the CI frame); the load test then left 50 poll loops running and the harness closed the server under them ("socket hang up"; `38783ff` was not the cause). Fix: device paths skip the API timeout (`src/middleware/timeout.js`, `isDevicePath` moved to the dependency-free `src/routes/device-paths.js`); the load test stops its loops in `finally` (limits unchanged). Test `zkteco-new240-device-timeout` red 2 / 2 on `main`, green. Full be suite 339 / 340, 3423 / 3425 (only `staging-script`, no `mysqldump`). Not fixed, measured, to the owner with NEW-238: the slowness itself (Push now 163 queries; two queue designs built, measured and dropped, numbers in §13).
 
@@ -215,6 +221,20 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 ---
 
 ## 2. Done in the current prompt (checklist)
+
+**ZKTeco Phase 5 (`feat/zkteco-phase5` in be and CMS; not pushed):**
+- [x] Sanitized fixture from the capture's structure; pure tests red first (19 / 22)
+- [x] Migrations p030 / 026 with dry run, re-run, rollback test
+- [x] Activation without registry, att option answer, options / INFO stored, units
+- [x] Polling: Delay fields, per-device delay, poll gap, optional SET OPTION
+- [x] OPERLOG USER / FP / OPLOG, BIODATA, positional ATTLOG; uploads into the import and the audit
+- [x] ATTLOG: verify in the duplicate key; history never check-ins, bulk, idempotent
+- [x] att commands per device (no userauthorize, validity none, user form); acc unchanged
+- [x] Token: att in log mode; enforce script refuses att and never-sent-cookie
+- [x] CMS device page and live-feed copy; Vitest, tsc, lint, build, Playwright
+- [x] Simulator `--att`; integration tests (activation, history, 356 import, same second, polling, push between polls)
+- [x] Spec D-9, §15 Phase 5 as built, device-test list; master §13; runbook; handoff
+- [ ] Owner: push / PRs; device tests; then defaults
 
 **Phase 7 Prompt P11 (`fix/p11-app-release-candidate` in be, CMS, app; not pushed):**
 - [x] Step 0 list of open mobile / MIN_APP_VERSION items (ledger "P11 status")
@@ -750,3 +770,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 139 | 2026-11-11 | Claude Code (Opus 5.5) | ZKTeco Phase 4 follow-up: required GymBioSync question, full be suite, lint | be `b64c624`, `ad751c2`, `38783ff`; CMS `f583264`, `d0fe607`; full be 3419 / 3423, then fixes; device + guards 43 / 43 (651) | task complete (not pushed) | yes |
 | 140 | 2026-11-11 | Claude Code (Opus 5.5) | ZKTeco Phase 0: first real-device capture analysed (T&A PUSH, no registry); capture server + checklist tests (h) to (l) | be `chore/zkteco-phase0-att-capture` 1 commit; capture-server test 77 / 77 (red 20 / 77 first); lint clean | task complete (not pushed) | yes |
 | 141 | 2026-11-11 | Claude Code (Opus 5.5) | NEW-240: push load test "socket hang up" in CI (cause, fix, gym impact) | reproduced on efficiency cores and docker --cpus 1 / 0.25; red 2 / 2 on main; full be 339 / 340, 3423 / 3425 (staging-script only) | task complete (not pushed) | yes |
+| 142 | 2026-11-12 | Claude Code (Opus 5.5) | ZKTeco Phase 5: T&A PUSH (`DeviceType=att`) devices, be + CMS | be `d0c0cba`, `6ad3447`, `493df11` + docs commit; CMS `68335d8`; red first (19 / 22, 25 / 26, CMS 6 / 6); zkteco + migration 706 green; full be suite 341 / 343 suites, 3497 / 3500 tests (2077 s): `staging-script` 2 (no `mysqldump` on this Mac, as before) and `sec-16-sql-guard` 1 (two new statements built SQL from text; rewritten as fixed statements, guard and all 31 zkteco suites, 509 tests, green after); CMS 688 + PW 9 | task complete (not pushed) | yes |

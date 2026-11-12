@@ -63,7 +63,9 @@ const getDevice = (req, res) => sendSuccess(res, { device: req.device.view, setu
 const updateDevice = async (req, res, next) => {
   try {
     const args = { tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, deviceId: req.params.id };
-    let found = await devices.updateDevice({ ...args, name: req.body.name, direction: req.body.direction });
+    let found = await devices.updateDevice({
+      ...args, name: req.body.name, direction: req.body.direction, attOptions: req.body.attOptions, pollDelaySeconds: req.body.pollDelaySeconds,
+    });
     if (req.body.enabled !== undefined) found = await devices.setEnabled({ ...args, enabled: Boolean(req.body.enabled) });
     return sendSuccess(res, { device: found.view, setup: found.setup });
   } catch (err) {

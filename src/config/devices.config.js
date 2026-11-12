@@ -51,6 +51,16 @@
  * | DEVICE_UNCLAIMED_RATE_SECONDS  | 10             | 0 to 3600                  | §5: an unknown caller answered from memory |
  * | DEVICE_MAX_SMALL_BODY          | 65536          | 1024 to 1048576 (bytes)    | registry, push, heartbeat, devicecmd, ping |
  * | DEVICE_TOKEN_SEEN_HOURS        | 24             | 1 to 720                   | token enforce migration: seen with a match since |
+ *
+ * Phase 5 (T&A PUSH, DeviceType=att). The device defaults are the safe ones until the device test; each att
+ * device can override userauthorize, validity and the user form on its own row (PATCH /host/devices/:id).
+ * | DEVICE_ATT_DELAY_FIELDS        | Delay          | Delay, RequestDelay (list) | the option line(s) that carry the poll delay |
+ * | DEVICE_ATT_SET_OPTION_DELAY    | false          | true, false                | a slow-polling att device is sent SET OPTION Delay=… |
+ * | DEVICE_ATT_STAMPS              | echo           | echo, zero                 | stamps in the option answer: the device's last, or 0 (GymBioSync) |
+ * | DEVICE_ATT_USERAUTHORIZE       | false          | true, false                | default for att devices (checklist (i)) |
+ * | DEVICE_ATT_VALIDITY            | none           | none, datetime, seconds    | default for att devices (checklist (j)) |
+ * | DEVICE_ATT_USER_FORM           | user           | user, userinfo             | default for att devices (checklist (i)) |
+ * | DEVICE_HISTORY_SKEW_MINUTES    | 10             | 0 to 1440                  | punches older than activation (or go-live) minus this are history |
  */
 const ENUMS = {
   DEVICE_REGISTRATION_STYLE: { def: 'spec', values: ['spec', 'gbs'] },
@@ -124,6 +134,23 @@ const bioTypesOf = () => {
   return [1, 2, 9];
 };
 
+const pickOf = (name, values, def) => {
+  const raw = String(process.env[name] || '').trim().toLowerCase();
+  if (!raw) return def;
+  if (values.includes(raw)) return raw;
+  warnOnce(name, raw, def);
+  return def;
+};
+
+const ATT_DELAY_FIELDS = ['Delay', 'RequestDelay'];
+const attDelayFieldsOf = () => {
+  const raw = String(process.env.DEVICE_ATT_DELAY_FIELDS || 'Delay');
+  const list = raw.split(',').map((v) => ATT_DELAY_FIELDS.find((f) => f.toLowerCase() === v.trim().toLowerCase())).filter(Boolean);
+  if (list.length) return [...new Set(list)];
+  warnOnce('DEVICE_ATT_DELAY_FIELDS', raw, 'Delay');
+  return ['Delay'];
+};
+
 const listOf = (name, def) =>
   String(process.env[name] || def).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
@@ -179,6 +206,14 @@ function getDeviceConfig() {
     unclaimedRateSeconds: intOf('DEVICE_UNCLAIMED_RATE_SECONDS', 10, 0, 3600),
     maxSmallBody: intOf('DEVICE_MAX_SMALL_BODY', 65536, 1024, 1048576),
     tokenSeenHours: intOf('DEVICE_TOKEN_SEEN_HOURS', 24, 1, 720),
+    // Phase 5: T&A PUSH (DeviceType=att) devices.
+    attDelayFields: attDelayFieldsOf(),
+    attSetOptionDelay: boolOf('DEVICE_ATT_SET_OPTION_DELAY', false),
+    attStamps: pickOf('DEVICE_ATT_STAMPS', ['echo', 'zero'], 'echo'),
+    attUserAuthorize: boolOf('DEVICE_ATT_USERAUTHORIZE', false),
+    attValidity: pickOf('DEVICE_ATT_VALIDITY', ['none', 'datetime', 'seconds'], 'none'),
+    attUserForm: pickOf('DEVICE_ATT_USER_FORM', ['user', 'userinfo'], 'user'),
+    historySkewMinutes: intOf('DEVICE_HISTORY_SKEW_MINUTES', 10, 0, 1440),
     // Not Phase 0 questions: fixed by the spec.
     pushMemberWindowSeconds: 10, // §9.2: 1 push per member per 10 s per user
     capturePhotoDays: 30, // D-6

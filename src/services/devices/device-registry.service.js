@@ -104,9 +104,15 @@ async function recordSerialMismatch(device, sn) {
  * last_seen_at, IP, pushver, host, scheme and token state. Written at most every
  * `seenWriteSeconds`, or at once when one of the values changes (one statement, a no-op when not due).
  */
-async function markSeen(device, { ip, pushver, host, scheme, tokenState }) {
+async function markSeen(device, { ip, pushver, host, scheme, tokenState, cookie = false }) {
   const cfg = getDeviceConfig();
   const now = new Date();
+  if (cookie) {
+    // Phase 5: the enforce script refuses a device that never sent a Cookie token (cookie_seen_at NULL).
+    await platformDb.query('UPDATE access_devices SET cookie_seen_at = ? WHERE id = ? AND (cookie_seen_at IS NULL OR cookie_seen_at < ?)', {
+      replacements: utc([now, device.id, new Date(now.getTime() - 3600000)]),
+    });
+  }
   const due = new Date(now.getTime() - cfg.seenWriteSeconds * 1000);
   await platformDb.query(
     `UPDATE access_devices SET last_seen_at = ?, last_ip = ?, last_pushver = COALESCE(?, last_pushver),
@@ -129,6 +135,29 @@ async function markRegistered(device, { pushver }) {
     { replacements: utc([now, pushver || null, now, device.id]) }
   );
   device.status = 'active';
+}
+
+/**
+ * Phase 5: a T&A PUSH device never registers. Its first `GET cdata?options=all&DeviceType=att` (from a key or
+ * serial the link rules accept) activates it: status active, device type att, token mode log (it sends no
+ * Cookie; enforce would lock it out). → true when this call activated it (it was awaiting_connection).
+ */
+async function activateAtt(tenantDb, device, { pushver }) {
+  const now = new Date();
+  const was = device.status;
+  await platformDb.query(
+    `UPDATE access_devices SET status = 'active', registered_at = COALESCE(registered_at, ?), device_type = 'att', token_mode = 'log',
+       last_pushver = COALESCE(?, last_pushver), updated_at = ? WHERE id = ? AND status IN ('awaiting_connection', 'active')`,
+    { replacements: utc([now, pushver || null, now, device.id]) }
+  );
+  if (!device.registered_at) device.registered_at = now;
+  device.status = 'active';
+  device.device_type = 'att';
+  device.token_mode = 'log';
+  await tenantDb.sequelize.query('UPDATE access_device_details SET device_type = \'att\', updated_at = ? WHERE id = ? AND NOT (device_type <=> \'att\')', {
+    replacements: utc([now, device.id]),
+  });
+  return was === 'awaiting_connection';
 }
 
 /**
@@ -194,6 +223,90 @@ async function applyRegistry(tenantDb, deviceId, reg) {
   );
 }
 
+/**
+ * Phase 5, table=options of a T&A PUSH device: what a registry body says on an acc device (model, firmware,
+ * push version, MAC, capabilities in registry units) plus its counts. → true when the capabilities changed
+ * (a reconcile then plans its templates).
+ */
+async function applyAttOptions(tenantDb, deviceId, options) {
+  const det = await detailsOf(tenantDb, deviceId);
+  if (!det) return false;
+  const { capabilities, counts } = protocol.normalizeAttOptions(options);
+  const before = parseJson(det.capabilities_json);
+  const caps = { ...before, ...capabilities };
+  const same = (k) => JSON.stringify(before[k] ?? null) === JSON.stringify(caps[k] ?? null);
+  const changed = !['MultiBioDataSupport', 'MultiBioPhotoSupport', 'MultiBioVersion'].every(same);
+  await tenantDb.sequelize.query(
+    `UPDATE access_device_details SET model = COALESCE(?, model), firmware = COALESCE(?, firmware), push_version = COALESCE(?, push_version),
+       mac = COALESCE(?, mac), device_type = 'att', capabilities_json = ?, counts_json = ?, updated_at = ? WHERE id = ?`,
+    {
+      replacements: utc([
+        caps.DeviceName ? String(caps.DeviceName).slice(0, 100) : null, caps.FirmVer ? String(caps.FirmVer).slice(0, 100) : null,
+        caps.PushVersion ? String(caps.PushVersion).slice(0, 40) : null, caps.MAC ? String(caps.MAC).slice(0, 32) : null,
+        JSON.stringify(caps), JSON.stringify({ ...parseJson(det.counts_json), ...counts }), new Date(), deviceId,
+      ]),
+    }
+  );
+  return changed;
+}
+
+/** Phase 5: getrequest?INFO= (T&A PUSH): stored as sent (parsed) and its counts merged into the device's counts. */
+async function applyInfo(tenantDb, det, info) {
+  const parsed = protocol.parseInfo(info);
+  if (!parsed) return;
+  const old = parseJson(det.info_json);
+  if (old.raw === parsed.raw) return;
+  const counts = { ...parseJson(det.counts_json) };
+  for (const k of ['UserCount', 'FPCount', 'FaceCount', 'TransactionCount']) if (parsed[k] !== undefined) counts[k] = parsed[k];
+  await tenantDb.sequelize.query('UPDATE access_device_details SET info_json = ?, counts_json = ?, updated_at = ? WHERE id = ?', {
+    replacements: utc([JSON.stringify(parsed), JSON.stringify(counts), new Date(), det.id]),
+  });
+}
+
+/** The poll delay of one device: its own setting, else DEVICE_REQUEST_DELAY. */
+const pollDelayOf = (det, cfg = getDeviceConfig()) => {
+  const own = Number(det?.poll_delay_seconds);
+  return Number.isInteger(own) && own >= 1 && own <= 30 ? own : cfg.requestDelay;
+};
+
+/**
+ * Phase 5: one getrequest of an att device. Records the time and the gap since the last poll. With
+ * DEVICE_ATT_SET_OPTION_DELAY, a device polling more than twice as slowly as its delay is sent
+ * `SET OPTION Delay=<n>` (kind `options`), at most once every 10 minutes. → gap in seconds or null
+ */
+async function notePoll(tenantDb, det, now = new Date()) {
+  const cfg = getDeviceConfig();
+  const last = det.last_poll_at ? new Date(det.last_poll_at) : null;
+  const gap = last ? Math.max(0, Math.round((now.getTime() - last.getTime()) / 1000)) : null;
+  await tenantDb.sequelize.query('UPDATE access_device_details SET last_poll_at = ?, poll_gap_seconds = ? WHERE id = ?', {
+    replacements: utc([now, gap, det.id]),
+  });
+  const delay = pollDelayOf(det, cfg);
+  if (cfg.attSetOptionDelay && gap !== null && gap > Math.max(2 * delay, delay + 5) && !Number(det.import_hold)) {
+    const [recent] = await q(tenantDb.sequelize, 'SELECT id FROM device_commands WHERE device_id = ? AND kind = \'options\' AND created_at > ? LIMIT 1',
+      [det.id, new Date(now.getTime() - 600000)]);
+    if (!recent) {
+      await tenantDb.sequelize.query(
+        `INSERT INTO device_commands (device_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
+         VALUES (?, 'options', ?, 1, 'queued', 0, ?, ?, ?)`,
+        { replacements: utc([det.id, JSON.stringify({ Delay: delay }), new Date(now.getTime() - 1000), now, now]) }
+      );
+    }
+  }
+  return gap;
+}
+
+/** Phase 5: the Stamp / OpStamp an att device sent with an upload, kept to answer its next cdata. */
+async function noteStamp(tenantDb, det, table, stamp) {
+  const t = String(table || '').toUpperCase();
+  if (!['ATTLOG', 'OPERLOG', 'BIODATA', 'ATTPHOTO'].includes(t) || !/^\d{1,12}$/.test(String(stamp ?? ''))) return;
+  const stamps = parseJson(det.att_stamps_json);
+  if (stamps[t] === String(stamp)) return;
+  stamps[t] = String(stamp);
+  det.att_stamps_json = JSON.stringify(stamps);
+  await tenantDb.sequelize.query('UPDATE access_device_details SET att_stamps_json = ? WHERE id = ?', { replacements: utc([det.att_stamps_json, det.id]) });
+}
+
 /** table=options: counts and parameters, merged over what we had. */
 async function applyOptions(tenantDb, deviceId, options) {
   const det = await detailsOf(tenantDb, deviceId);
@@ -223,6 +336,7 @@ function renderCommand(row) {
     case 'count': return protocol.cmd.count(args.table || 'user', args.type);
     case 'query_users': return protocol.cmd.queryUsers(args.pin);
     case 'query_bio': return protocol.cmd.queryBio(args.type ?? 9, args.pin);
+    case 'options': return protocol.cmd.setOption(args);
     default: return null;
   }
 }
@@ -345,8 +459,18 @@ function viewOf(row, det, branchName) {
       users: num(counts.UserCount),
       faces: num(counts.FaceCount),
       fingerprints: num(counts.FPCount),
+      palms: num(counts.PvCount),
+      attendanceRecords: num(counts.TransactionCount),
       maxUsers: num(caps.MaxUserCount),
     },
+    // Phase 5: what a T&A PUSH device is sent (its own choice, else the DEVICE_ATT_* defaults); null on acc.
+    attOptions: det?.device_type === 'att'
+      ? (() => {
+        const o = require('./sync-rules').deviceOptions(det, cfg);
+        return { userAuthorize: o.sendUserAuthorize, validityMode: o.validity, userCommandForm: o.userForm };
+      })()
+      : null,
+    poll: { delaySeconds: pollDelayOf(det, cfg), ownDelay: det?.poll_delay_seconds ?? null, gapSeconds: det?.poll_gap_seconds ?? null, lastPollAt: det?.last_poll_at || null },
     importHold: Boolean(Number(det?.import_hold || 0)),
     importHoldSince: det?.import_hold_since || null,
     liveAt: det?.live_at || null,
@@ -451,7 +575,48 @@ async function listDevices({ tenantId, tenantDb, branchIds = null }) {
   return rows.filter((r) => byId.has(r.id)).map((r) => viewOf(r, byId.get(r.id), names.get(r.branch_id)));
 }
 
-async function updateDevice({ tenantId, tenantDb, deviceId, name, direction }) {
+const VALIDITY_MODES = ['none', 'datetime', 'seconds'];
+const USER_FORMS = ['user', 'userinfo'];
+
+async function updateDevice({ tenantId, tenantDb, deviceId, name, direction, attOptions, pollDelaySeconds }) {
+  if (attOptions !== undefined || pollDelaySeconds !== undefined) {
+    // Phase 5: per-device options of a T&A PUSH device (null = back to the default).
+    const det = await detailsOf(tenantDb, deviceId);
+    if (attOptions !== undefined && det?.device_type !== 'att') {
+      throw createError('These options are for T&A PUSH devices only.', 422, 'not_att_device');
+    }
+    const o = attOptions || {};
+    if (o.validityMode !== undefined && o.validityMode !== null && !VALIDITY_MODES.includes(o.validityMode)) {
+      throw createError('Validity must be none, datetime or seconds.', 422, 'invalid_validity_mode');
+    }
+    if (o.userCommandForm !== undefined && o.userCommandForm !== null && !USER_FORMS.includes(o.userCommandForm)) {
+      throw createError('The user command form must be user or userinfo.', 422, 'invalid_user_command_form');
+    }
+    if (o.userAuthorize !== undefined && o.userAuthorize !== null && typeof o.userAuthorize !== 'boolean') {
+      throw createError('userAuthorize is true or false.', 422, 'invalid_user_authorize');
+    }
+    if (pollDelaySeconds !== undefined && pollDelaySeconds !== null && !(Number.isInteger(pollDelaySeconds) && pollDelaySeconds >= 1 && pollDelaySeconds <= 5)) {
+      throw createError('The poll delay is 1 to 5 seconds.', 422, 'invalid_poll_delay');
+    }
+    // One fixed statement (SEC-16): a field left out keeps its value; null puts it back to the default.
+    const given = (v) => (v === undefined ? 0 : 1);
+    const auth = o.userAuthorize === undefined || o.userAuthorize === null ? null : (o.userAuthorize ? 1 : 0);
+    if (given(o.userAuthorize) || given(o.validityMode) || given(o.userCommandForm) || given(pollDelaySeconds)) {
+      await tenantDb.sequelize.query(
+        `UPDATE access_device_details SET send_userauthorize = IF(?, ?, send_userauthorize), validity_mode = IF(?, ?, validity_mode),
+           user_command_form = IF(?, ?, user_command_form), poll_delay_seconds = IF(?, ?, poll_delay_seconds), updated_at = ? WHERE id = ?`,
+        {
+          replacements: utc([
+            given(o.userAuthorize), auth, given(o.validityMode), o.validityMode ?? null, given(o.userCommandForm), o.userCommandForm ?? null,
+            given(pollDelaySeconds), pollDelaySeconds ?? null, new Date(), deviceId,
+          ]),
+        }
+      );
+      // What the device gets changed: every member is planned again (the record holds the form and validity).
+      if (attOptions !== undefined) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'att_options_changed');
+    }
+  }
+  if (name === undefined && direction === undefined) return getDevice({ tenantId, tenantDb, deviceId });
   let clean = null;
   if (name !== undefined) {
     clean = String(name || '').trim().slice(0, 100);
@@ -537,7 +702,9 @@ async function unpairDevice({ tenantId, tenantDb, deviceId, wipe = false }) {
     await tenantDb.sequelize.query('UPDATE device_commands SET status = \'superseded\', updated_at = ? WHERE device_id = ? AND status = \'queued\'', {
       replacements: utc([now, deviceId]),
     });
-    const plan = [{ table: 'userauthorize' }, ...types.map((t) => ({ table: 'biodata', type: t })), { table: 'biophoto' }, { table: 'user' }];
+    // Phase 5: a device that is never sent userauthorize (att default) gets no DATA DELETE userauthorize.
+    const auth = require('./sync-rules').deviceOptions(det || {}, getDeviceConfig()).sendUserAuthorize || det?.device_type !== 'att';
+    const plan = [...(auth ? [{ table: 'userauthorize' }] : []), ...types.map((t) => ({ table: 'biodata', type: t })), { table: 'biophoto' }, { table: 'user' }];
     for (const args of plan) {
       await tenantDb.sequelize.query(
         `INSERT INTO device_commands (device_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
@@ -622,6 +789,12 @@ async function moveDevice({ tenantId, tenantDb, deviceId, branchId }) {
 }
 
 module.exports = {
+  activateAtt,
+  applyAttOptions,
+  applyInfo,
+  notePoll,
+  noteStamp,
+  pollDelayOf,
   moveDevice,
   READ_ONLY_KINDS,
   KEY_ALPHABET,

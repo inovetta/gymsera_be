@@ -86,6 +86,11 @@ const ADDS = {
       member_biometrics: ['import_id', 'import_hold'],
     },
   },
+  26: {
+    columns: {
+      access_device_details: ['send_userauthorize', 'validity_mode', 'poll_delay_seconds', 'att_stamps_json', 'info_json', 'last_poll_at', 'poll_gap_seconds', 'user_command_form'],
+    },
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -293,6 +298,8 @@ const PROBES = {
     if (hold.state !== 'present') return hold;
     return columnOfType(s, 'member_biometrics', 'import_hold', (c) => INT_TYPES.includes(type(c)));
   },
+  // 026 adds columns only; the last step is access_device_details.user_command_form.
+  26: async (s) => columnOfType(s, 'access_device_details', 'user_command_form', (c) => ['char', 'varchar'].includes(type(c))),
 };
 
 /** Tables and columns the tenant models read (Sequelize field names, no VIRTUAL attributes). */

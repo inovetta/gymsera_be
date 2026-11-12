@@ -116,7 +116,15 @@ router.patch(
   authenticate,
   refusePlatformAdmin.deviceWrite,
   tenantContext.forTeamRoutes,
-  validate.strict([idParam, name(true), direction, body('enabled').optional().isBoolean().withMessage('enabled is true or false.')], { stage: 2 }),
+  validate.strict([
+    idParam, name(true), direction, body('enabled').optional().isBoolean().withMessage('enabled is true or false.'),
+    // Phase 5: per-device options of a T&A PUSH device (null = back to the default) and its poll delay.
+    body('attOptions').optional().isObject().withMessage('attOptions is an object.'),
+    body('attOptions.userAuthorize').optional({ nullable: true }).isBoolean({ strict: true }).withMessage('userAuthorize is true or false.'),
+    body('attOptions.validityMode').optional({ nullable: true }).isIn(['none', 'datetime', 'seconds']).withMessage('Validity must be none, datetime or seconds.'),
+    body('attOptions.userCommandForm').optional({ nullable: true }).isIn(['user', 'userinfo']).withMessage('The user command form must be user or userinfo.'),
+    body('pollDelaySeconds').optional({ nullable: true }).isInt({ min: 1, max: 5 }).withMessage('The poll delay is 1 to 5 seconds.').toInt(),
+  ], { stage: 2 }),
   ctrl.loadDevice,
   can('devices.manage', { branch: 'deviceBranchId' }),
   ctrl.updateDevice

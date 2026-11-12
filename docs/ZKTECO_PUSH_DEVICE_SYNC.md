@@ -88,6 +88,17 @@ Facts from the document that shape the design:
   (Appendix 19).
 - **Each access record has a device-unique `index`**, which we use to drop duplicates.
 
+**T&A PUSH (`DeviceType=att`) devices (Phase 0 capture 2026-11-11, built in Phase 5).** The same `/iclock`
+endpoints, a different flow: the device never sends `registry` or `push`. Its first request is
+`GET cdata?options=all&pushver=2.4.1&DeviceType=att&PushOptionsFlag=1`; it then posts `table=options`
+(comma-separated parameters, units of hundreds for `~MaxUserCount` / `~MaxFingerCount`), polls
+`getrequest?INFO=<firmware>,<users>,<fingerprints>,<records>,<ip>,<fp ver>,<face ver>,…`, and uploads its
+whole data on first contact without polling: `table=OPERLOG` (`USER` lines with names, `FP` fingerprint
+lines without a version, `OPLOG` admin operations), `table=BIODATA` (faces) and `table=ATTLOG` (positional
+rows, tab separated, trailing tab, no record index). It sends no `Cookie`. The poll interval is the `Delay`
+of the cdata answer (GymBioSync sends it); without one the firmware slowed from 3 s to over 30 s. See
+§15 "Phase 5 as built".
+
 ---
 
 ## 3. What we keep from GymBioSync and what we change
@@ -1164,6 +1175,95 @@ push load test, hardening; CMS import wizard, cut-over page, command log, move, 
 multi-member biodata, empty query answers, token formula before enforce); the D-5 attendance decision (Phase 2
 correction 10); the app screens (after the 2026-12-05 store release); NEW-238 and NEW-239.
 
+#### Phase 5 as built (2026-11-12, backend and CMS; branches `feat/zkteco-phase5` from `main` in be (`da51689`) and CMS (`6a24b77`); not pushed, not deployed)
+
+Owner instruction (2026-11-11): first-class support for `DeviceType=att` (T&A PUSH) devices; tests first; use the real
+capture (`captures/20261111-155035.txt`, gitignored) only for sanitized fixtures; D-9 changed (above); no deploy,
+no production, no device.
+
+**Verified before building (the code at `da51689`, against the capture).**
+1. *An att device never becomes active.* `device-push.routes.js:259` answers `OK` to `GET cdata` of a device that is not
+   `active`, and only `POST registry` activates; an att device never registers. `:317` gives a non-active device no
+   commands. With the default `DEVICE_REGISTRATION_STYLE=spec` the owner's device would stay `awaiting_connection`
+   forever and never receive a member.
+2. *Its users and templates are dropped.* `table=OPERLOG` and `table=BIODATA` fell to `:300` (count only).
+3. *ATTLOG collisions.* `device-ingest.service.js:52` read ATTLOG positionally but `:60` made the duplicate key `-PIN`: a
+   fingerprint punch and a face punch of one person in the same second (seen in the capture) kept only one.
+4. *History became check-ins.* Every ATTLOG row went through `afterScan` (check-in, unlinked users, drift actions): the
+   first contact uploads months of punches (7,172 in the capture).
+5. *`~OEMVendor=ZKTECO CO., LTD.`* was cut at its comma (`push-protocol.js:88`).
+6. *Units.* `~MaxUserCount=100` means 10,000 users; read raw, `device-jobs.js:223` would raise the 90% capacity alert at
+   once (356 users of "100").
+7. *userauthorize.* `sync-rules.js:180` sends `DATA DELETE userauthorize` on every removal; never sent to an att
+   device by default now, so it is not deleted either.
+8. *Poll interval.* The router never sends `Delay` (the attendance protocol's interval, GymBioSync
+   `ZkPushController.cs:57`); the capture's interval grew from 3 s to over 30 s.
+
+**Built.**
+
+| Item | Built | Notes |
+|---|---|---|
+| migrations | platform `p030_access_devices_att` (`access_devices.device_type`, `cookie_seen_at`); tenant `026_device_att_options` (`access_device_details.send_userauthorize`, `validity_mode`, `user_command_form`, `poll_delay_seconds`, `att_stamps_json`, `info_json`, `last_poll_at`, `poll_gap_seconds`; `push_version` widened to 40) | columns only, all nullable; NULL = the default for the device type (an acc device behaves exactly as before); baseline probe 26; no new table (a fresh tenant still has 50) |
+| activation | the first `GET cdata?…DeviceType=att` from a key (path or host) or a serial the link rules accept (`DEVICE_SERIAL_PAIRING`); never an unknown serial (no auto-join); a key with another serial is 406 | status `active`, `registered_at` = activation, `device_type = 'att'` on both rows, `token_mode = 'log'`; works with either `DEVICE_REGISTRATION_STYLE` |
+| answer | `push-protocol#attConfigLines`: GymBioSync's lines with the device's random RegistryCode / SessionID (never the manual's example), `ServerName=GymsEra`, stamps, the delay in `DEVICE_ATT_DELAY_FIELDS` | delay = `access_device_details.poll_delay_seconds` (1 to 5, per device) else `DEVICE_REQUEST_DELAY` |
+| stored | `table=options` → model, firmware, push version, MAC, capabilities in registry terms (`normalizeAttOptions`: `MaxUserCount` in users, `MultiBioVersion` and `MaxMultiBioDataCount` by `MultiBioDataSupport` position from `FPVersion` / `FaceVersion` / `PvVersion`; the raw options under `capabilities_json.options`), counts; `getrequest?INFO=` → `info_json` and counts | first options (capabilities changed) of a device not in import hold → full reconcile |
+| polling | each att poll writes `last_poll_at` and `poll_gap_seconds`; `DEVICE_ATT_SET_OPTION_DELAY=true`: a gap over max(2 × delay, delay + 5) queues `SET OPTION Delay=<n>` (kind `options`), at most every 10 minutes, delivered in the same poll | which field the firmware obeys is a device test (below) |
+| parsers | `parseOperlog` (USER, FP, OPLOG; other types counted), BIODATA by the biodata parser, `parseAttlog` (PIN, time, status, verify, workcode; tab, space or keyed; trailing tab), `parseInfo`, comma rule in `parseRegistry` | FP lines carry no version: `templatesFromOperlog` uses the device's `FPVersion`, never a guess |
+| uploads | `device-ingest#ingestAttUploads`: import hold → the open import's staging (`device-import#stageUploads`); else users feed an audit waiting for its user list (`feedAudit`; compared on the query's ack) and the user ingest (card adoption, Unlinked users), templates the template ingest (consent rules) | OPLOG counted only |
+| import | an att device's import is fed by its uploads (`result_json.mode = 'upload'`): no DATA QUERY; an "import first" att device opens one at activation (its first upload comes before any poll); a manual import queues `CHECK` (read-only); ready when users arrived, a minute passed with no upload and the device polled since | match, preview, apply, go-live, rollback unchanged; go-live sends no `DATA DELETE userauthorize` to a device without userauthorize |
+| ATTLOG | duplicate key `sync-rules#attlogIndex(PIN, verify)` (negative, never an rtlog index); scans before `live_at` (go-live) or else `registered_at` (activation) minus `DEVICE_HISTORY_SKEW_MINUTES` are stored in one multi-row insert per post with `attendance_note = 'history'`: no check-in, no unlinked user, no drift action; re-sent history is a no-op | applies to rtlog of acc devices as well (a scan from before activation cannot be a visit) |
+| commands | `sync-rules#deviceOptions`: acc = the global settings; att = the device row, else `DEVICE_ATT_USERAUTHORIZE` (false), `DEVICE_ATT_VALIDITY` (none), `DEVICE_ATT_USER_FORM` (user). Validity none sends `StartTime=0⇥EndTime=0` (GymBioSync's exact string; clears an old window); `datetime` / `seconds` send the package window; the `userinfo` form sends `DATA UPDATE USERINFO PIN=…⇥Name=…⇥Pri=0⇥Passwd=⇥Card=…⇥Grp=1[⇥StartDatetime=…⇥EndDatetime=…]` and deletes with `DATA DELETE USERINFO PIN=…` | the desired record of an acc device is unchanged (no `form` / `validity` keys), so no acc member is re-sent after the deploy; biodata, biophoto and their deletes keep the security form (GymBioSync's) |
+| per device | `PATCH /host/devices/:id {attOptions: {userAuthorize, validityMode, userCommandForm}, pollDelaySeconds}` (devices.manage; null = default; 422 `not_att_device` for attOptions on an acc device) | a change reconciles the device |
+| token | an att device is never enforced (router, whatever its row says); `device-token-mode.js` refuses `att_device` and `never_sent_cookie` (`cookie_seen_at` NULL with a `match` state) | `cookie_seen_at` written when a Cookie token arrives (at most hourly) |
+| view | `deviceType`, `pushVersion`, `counts.palms`, `counts.attendanceRecords`, `attOptions` (null on acc), `poll {delaySeconds, ownDelay, gapSeconds, lastPollAt}` | CMS device page: Device type, Push version, Palms, Attendance records, Polls every, and the T&A PUSH note; live feed "From the device history … not counted" |
+| simulator | `scripts/zk-device-simulator.js --att` / `{ att: true }`: the capture's flow (cdata options, table=options, getrequest INFO, OPERLOG USER / FP, BIODATA, ATTLOG history, OPLOG, live punches), no Cookie, `USERINFO` and `SET OPTION` commands, firmware-like poll interval (`nextInterval`), `attQueryByUpload` | fixture `tests/fixtures/zkteco/att-speedface-v5l.js` (sanitized: fake PINs, names, templates, MAC, IP, serial; times relative to now) |
+
+**Settings added** (all optional; `.env.example`): `DEVICE_ATT_DELAY_FIELDS=Delay` (`Delay`, `RequestDelay`, or both),
+`DEVICE_ATT_SET_OPTION_DELAY=false`, `DEVICE_ATT_STAMPS=echo` (`zero` = GymBioSync's 0), `DEVICE_ATT_USERAUTHORIZE=false`,
+`DEVICE_ATT_VALIDITY=none` (`datetime`, `seconds`), `DEVICE_ATT_USER_FORM=user` (`userinfo`), `DEVICE_HISTORY_SKEW_MINUTES=10`.
+
+**Spec corrections found while building.**
+1. *§2 "the device registers".* T&A PUSH devices never do; activation is the first accepted `cdata` with `DeviceType=att`.
+   The link rules (key, serial pairing) are the only gate, as for registration.
+2. *§5.1 `RequestDelay`* is the security protocol's field; the attendance protocol's is `Delay`. Both can be sent.
+3. *§6.2 `counts_json` and capacity.* att options use units (hundreds of users and fingerprints, ten-thousands of
+   records); stored converted, so the capacity alert and the import preview read real numbers.
+4. *§7.3 point 1, ATTLOG has no index*: the duplicate key needs the verify type, and a re-sent history (stamps) must be a
+   no-op.
+5. *§7.3, history.* "Every scan becomes a check-in" holds only after activation; older scans are events.
+6. *§7.4 layer 3 for att.* No validity window by default until the device test: the 15-minute sweep (layer 2) and the
+   real-time triggers remove expired members while the device is online; an offline att device keeps admitting a member
+   whose package ended until it reconnects.
+7. *Phase 4 import for att.* The device's own first-contact upload is the import's data; DATA QUERY is not relied on.
+8. *The audit for att* takes OPERLOG USER uploads as the answer to its user query when no querydata pack comes; an audit
+   with neither stays open and is marked incomplete after 6 hours (unchanged rule: a missing answer is never an empty
+   device).
+9. *`push_version`* (16 characters) could not hold `Ver 2.0.33S-20220623`: widened to 40.
+
+**Device tests still needed for the final settings** (checklist `docs/runbooks/zkteco-phase0-checklist.md` section 5b,
+with the capture server or the API; one test person, PIN 9001):
+1. **Poll field** (h): with `Delay=3` only, then `RequestDelay=3` only, then both: the getrequest interval after 5 minutes
+   idle. Sets `DEVICE_ATT_DELAY_FIELDS`. If neither holds, try `DEVICE_ATT_SET_OPTION_DELAY=true` and confirm the
+   device answers `SET OPTION Delay=3` with a code ≥ 0 and keeps the interval.
+2. **User form** (i): `DATA UPDATE user` and `DATA UPDATE USERINFO` each: Return code, and the user appears on the device
+   with the right name. Sets `DEVICE_ATT_USER_FORM`. `DATA DELETE user` and `DATA DELETE USERINFO` likewise.
+3. **userauthorize** (i): Return code of `DATA UPDATE userauthorize` on this firmware, and whether a user without one is
+   let in (expected: yes on T&A PUSH). Sets `DEVICE_ATT_USERAUTHORIZE`.
+4. **Validity** (j): a user with an end time 5 minutes ahead in `datetime` form, then in `seconds` form: is the person
+   refused after it, offline too? Sets `DEVICE_ATT_VALIDITY` (none stays the default if neither works).
+5. **Templates** (k): `DATA UPDATE biodata` Type=1 (Majorver 10) and Type=9 (Majorver 39; and 40, what GymBioSync sends)
+   on this device: Return codes; whether a 40 face works on a FaceVersion 39 device (today GymsEra sends only templates
+   whose major version matches the device's and otherwise the comparison photo).
+6. **Stamps** (l): after a reboot, does the device upload its history again with `DEVICE_ATT_STAMPS=echo` and with `zero`?
+7. **CHECK and DATA QUERY**: does `CHECK` make the device upload its users again (manual re-import)? Does
+   `DATA QUERY tablename=user,…` answer through querydata or through OPERLOG uploads (the audit takes both)?
+8. **Clock and time zone**: the device's local time against the branch's (a wrong zone would turn live punches into
+   history for hours, `DEVICE_HISTORY_SKEW_MINUTES`).
+9. **Token**: confirm the device never sends a Cookie, also after the `registry=ok` answer (stays in log mode either way).
+
+**Left.** The device tests above and the settings they decide; the app screens (after the 2026-12-05 store release);
+CMS controls for the per-device att options (the API takes them; the page shows them read-only).
+
 ### Tests required (minimum)
 
 - **Parsers:** every table format in §2, using fixtures from the protocol document and from
@@ -1196,7 +1296,7 @@ correction 10); the app screens (after the 2026-12-05 store release); NEW-238 an
 | D-6 | Store capture photos (`ATTPHOTO`) from scans | Off by default, branch opt-in, 30-day retention **Applied (2026-11-10): off in Phase 2; branch opt-in with 30-day retention built in Phase 3 (Device settings).** |
 | D-7 | Check-out grace on OUT devices | 24 hours **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
 | D-8 | Staff on devices | Yes, privilege 0 only, via a "device access" flag on the staff member **Applied (owner instruction 2026-11-10, Phase 2; master spec R-100).** |
-| D-9 | Attendance-protocol (`DeviceType=att`) devices | Out of scope for v1 (security/acc protocol only); add an adapter later if needed |
+| D-9 | Attendance-protocol (`DeviceType=att`) devices | **DECIDED (owner, 2026-11-11; built in Phase 5):** T&A PUSH (`DeviceType=att`) devices are supported, and Access Control PUSH (`acc`) devices stay supported. Classic attendance firmware that only speaks the old `USERINFO` / `FINGERTMP` tables (no `pushver`, no `MultiBioDataSupport`, no OPERLOG `USER` / `FP` uploads) is out of scope. The first real device (SpeedFace-V5L, ZAM180 Ver3.4.9, Push 2.0.33S) is T&A PUSH. |
 | D-10 | Release timing versus the 2026-11-30 app freeze | Backend and CMS can ship any time after Phases 0–2. The app screens go into the first post-launch build, unless a launch gym needs them on day one. |
 | D-11 | Device hostname routing on IIS (§4.5) | **Decided by owner:** option 1, a separate `push.gymsera.com` site with URL Rewrite + ARR to a local-only API binding, device paths only. Option 2 is the fallback. |
 | D-12 | Put the CMS and website API calls behind their own domains (Appendix A) | Yes, but as its own change after the 2026-12-05 store release, not mixed into launch week |
