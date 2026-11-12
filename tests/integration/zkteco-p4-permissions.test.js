@@ -48,6 +48,8 @@ const writes = (door, imp) => [
   ['post', `/host/devices/${door.id}/imports/${imp}/apply`, {}],
   ['post', `/host/devices/${door.id}/imports/${imp}/rollback`, {}],
   ['post', `/host/devices/${door.id}/imports/${imp}/cancel`, {}],
+  ['post', `/host/devices/${door.id}/imports/${imp}/reread`, {}], // NEW-242
+
   ['post', `/host/devices/${door.id}/cutover/go-live`, {}],
   ['post', `/host/devices/${door.id}/cutover/gymbiosync-stopped`, {}],
   ['put', `/host/devices/${door.id}/branch`, { branchId: away.id }],

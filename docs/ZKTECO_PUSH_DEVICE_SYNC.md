@@ -1264,6 +1264,40 @@ with the capture server or the API; one test person, PIN 9001):
 **Left.** The device tests above and the settings they decide; the app screens (after the 2026-12-05 store release);
 CMS controls for the per-device att options (the API takes them; the page shows them read-only).
 
+#### NEW-242 as built (2026-11-12, be and CMS, branches `fix/zkteco-att-import-reread` from `main`)
+
+**Found on the first real import.** The SpeedFace (import hold) sent 32 of 358 users. It kept the upload stamp 9999 that
+the Phase 0 capture server gave it (`--stamps 9999`, the default); GymsEra echoes the stamp a T&A device reports, so it
+was told 9999 on every cdata and sent nothing older. Nothing could ask it again without ending the hold.
+
+**Stamps, as GymsEra uses them now.** A T&A device uploads a table's records newer than the `<TABLE>Stamp` in the
+cdata answer (`ATTLOGStamp`, `OPERLOGStamp` = users, fingerprints, operation log, `BIODATAStamp` = faces). Answer =
+the stamp the device last reported for that table (`DEVICE_ATT_STAMPS=echo`, 0 before the first report), or always 0
+(`zero`). **A device keeps the last stamp it was given** across servers: after a capture-server session with
+`--stamps N` it uploads nothing older to the next server until something answers it a lower stamp.
+
+**Read all users again** (`POST /host/devices/:id/imports/:importId/reread`, devices.manage; CMS import page): only a
+T&A device in import hold whose import is querying or ready.
+1. One read-only `CHECK` is queued (a queued one is replaced); nothing that changes the device.
+2. `att_stamps_json._reread = { importId, requestedAt, servedAt, startedAt, doneAt, outcome, tables: [OPERLOG, BIODATA] }`.
+   While the device is in hold, every cdata answer carries `OPERLOGStamp=0` and `BIODATAStamp=0` whatever it reported;
+   `ATTLOGStamp` keeps the echo (punch history is not sent again). The first such answer sets `servedAt`.
+3. A stamp the device reports for a forced table after `servedAt` ends the force for that table (`startedAt`); from
+   then on the echo is back. The forced 0 is never sent outside the hold (go-live or cancel end it).
+4. The import is `querying` again; it is ready once an upload arrived after the request, the device was quiet for a
+   minute and polled. No upload within `DEVICE_IMPORT_QUERY_HOURS` (2): ready as before, `outcome: no_upload`.
+5. State (device view `attStamps.reread.state`, import view `reread.state`): `waiting` (the device has not fetched the 0),
+   `queried` (it was sent the 0), `reading` (it reported a stamp: the upload is under way), `done`, `no_upload`, `ended`
+   (the hold ended first).
+
+**Staging errors in hold.** These posts are the import, and an `OK` makes the device drop them. A post whose staging
+throws is answered `503` (the device sends it again), at most `DEVICE_ATT_STAGE_RETRIES` (5) times per body and API
+process, then `OK` with a `device_error_logs` row `import_upload_dropped`. Outside the hold: unchanged (`OK`).
+
+**Assumed, to confirm on the device** (tests 6 and 7 above): the firmware takes stamp 0 as "send everything" and fetches
+the options again after `CHECK`. If it does not fetch them, a restart does (the device always fetches options on boot).
+The simulator's `stampAware` mode models exactly this.
+
 ### Tests required (minimum)
 
 - **Parsers:** every table format in §2, using fixtures from the protocol document and from

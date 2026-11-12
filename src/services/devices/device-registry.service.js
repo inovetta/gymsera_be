@@ -296,15 +296,77 @@ async function notePoll(tenantDb, det, now = new Date()) {
   return gap;
 }
 
-/** Phase 5: the Stamp / OpStamp an att device sent with an upload, kept to answer its next cdata. */
-async function noteStamp(tenantDb, det, table, stamp) {
-  const t = String(table || '').toUpperCase();
-  if (!['ATTLOG', 'OPERLOG', 'BIODATA', 'ATTPHOTO'].includes(t) || !/^\d{1,12}$/.test(String(stamp ?? ''))) return;
-  const stamps = parseJson(det.att_stamps_json);
-  if (stamps[t] === String(stamp)) return;
-  stamps[t] = String(stamp);
-  det.att_stamps_json = JSON.stringify(stamps);
+// NEW-242: a re-read of a T&A import (device-import#reread) forces OPERLOGStamp and BIODATAStamp to 0 in the
+// cdata answer, whatever the device reported before, until the device reports a stamp for that table AFTER it was
+// sent the 0; then the echo is back. The state sits beside the stamps in att_stamps_json under `_reread`:
+// { importId, requestedAt, servedAt, startedAt, doneAt, outcome, tables }. Only while the device is in import hold.
+const STAMP_TABLES = ['ATTLOG', 'OPERLOG', 'BIODATA', 'ATTPHOTO'];
+
+async function saveStamps(tenantDb, det, all) {
+  det.att_stamps_json = JSON.stringify(all);
   await tenantDb.sequelize.query('UPDATE access_device_details SET att_stamps_json = ? WHERE id = ?', { replacements: utc([det.att_stamps_json, det.id]) });
+}
+
+/** Phase 5: the Stamp / OpStamp an att device sent with an upload, kept to answer its next cdata. */
+async function noteStamp(tenantDb, det, table, stamp, now = new Date()) {
+  const t = String(table || '').toUpperCase();
+  if (!STAMP_TABLES.includes(t) || !/^\d{1,12}$/.test(String(stamp ?? ''))) return;
+  const all = parseJson(det.att_stamps_json);
+  let changed = all[t] !== String(stamp);
+  all[t] = String(stamp);
+  const rr = all._reread;
+  if (rr && Array.isArray(rr.tables) && rr.tables.includes(t) && rr.servedAt && now.getTime() >= new Date(rr.servedAt).getTime()) {
+    // The device was sent the forced 0 and now uploads that table: the re-read has started; echo again from here.
+    rr.tables = rr.tables.filter((x) => x !== t);
+    if (!rr.startedAt) rr.startedAt = now.toISOString();
+    changed = true;
+  }
+  if (changed) await saveStamps(tenantDb, det, all);
+}
+
+/** Phase 5 / NEW-242: the stamps of an att device's cdata answer (echo or zero, then the re-read's forced 0). */
+async function attAnswerStamps(tenantDb, det, cfg, now = new Date()) {
+  const all = parseJson(det.att_stamps_json);
+  const stamps = {};
+  if (cfg.attStamps === 'echo') for (const t of STAMP_TABLES) if (all[t] !== undefined) stamps[t] = all[t];
+  const rr = all._reread;
+  if (!rr || !Number(det.import_hold) || !Array.isArray(rr.tables) || !rr.tables.length) return stamps;
+  for (const t of rr.tables) stamps[t] = '0';
+  if (!rr.servedAt) {
+    rr.servedAt = now.toISOString();
+    await saveStamps(tenantDb, det, all);
+  }
+  return stamps;
+}
+
+/**
+ * NEW-242: where a re-read stands. waiting = asked, the device has not fetched the forced 0 yet; queried = it was
+ * sent the 0, its upload has not started; reading = it uploads; done = the import is ready again; no_upload = it sent
+ * nothing in DEVICE_IMPORT_QUERY_HOURS; ended = the hold ended first.
+ */
+function rereadState(rr, held) {
+  if (!rr) return null;
+  if (rr.doneAt) return rr.outcome === 'no_upload' ? 'no_upload' : 'done';
+  if (!held) return 'ended';
+  if (Array.isArray(rr.tables) && rr.tables.length) return rr.servedAt ? 'queried' : 'waiting';
+  return 'reading';
+}
+
+/** The stamps an att device holds and the re-read state, for the device page. null on acc. */
+function attStampsOf(det) {
+  if (det?.device_type !== 'att') return null;
+  const all = parseJson(det.att_stamps_json);
+  const held = Boolean(Number(det.import_hold || 0));
+  const rr = all._reread || null;
+  return {
+    ATTLOG: all.ATTLOG ?? null,
+    OPERLOG: all.OPERLOG ?? null,
+    BIODATA: all.BIODATA ?? null,
+    forced: rr && held && Array.isArray(rr.tables) ? rr.tables : [],
+    reread: rr
+      ? { importId: rr.importId || null, state: rereadState(rr, held), requestedAt: rr.requestedAt || null, servedAt: rr.servedAt || null, startedAt: rr.startedAt || null, doneAt: rr.doneAt || null }
+      : null,
+  };
 }
 
 /** table=options: counts and parameters, merged over what we had. */
@@ -471,6 +533,7 @@ function viewOf(row, det, branchName) {
       })()
       : null,
     poll: { delaySeconds: pollDelayOf(det, cfg), ownDelay: det?.poll_delay_seconds ?? null, gapSeconds: det?.poll_gap_seconds ?? null, lastPollAt: det?.last_poll_at || null },
+    attStamps: attStampsOf(det), // NEW-242
     importHold: Boolean(Number(det?.import_hold || 0)),
     importHoldSince: det?.import_hold_since || null,
     liveAt: det?.live_at || null,
@@ -794,6 +857,10 @@ module.exports = {
   applyInfo,
   notePoll,
   noteStamp,
+  attAnswerStamps,
+  attStampsOf,
+  rereadState,
+  saveStamps,
   pollDelayOf,
   moveDevice,
   READ_ONLY_KINDS,

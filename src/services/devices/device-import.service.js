@@ -295,15 +295,68 @@ async function refreshUpload(db, row, now) {
   const [det] = await select(db, 'SELECT last_poll_at FROM access_device_details WHERE id = ?', [row.device_id]);
   // last_poll_at is a DATETIME (whole seconds): compare against the second of the last upload.
   const polled = det?.last_poll_at && lastAt && new Date(det.last_poll_at).getTime() >= Math.floor(lastAt.getTime() / 1000) * 1000;
-  if (Number(users) > 0 && lastAt && polled && now.getTime() - lastAt.getTime() >= ATT_QUIET_SECONDS * 1000) {
-    await exec(db, 'UPDATE device_imports SET status = \'ready\', users_count = ?, templates_count = ?, ready_at = ?, updated_at = ? WHERE id = ? AND status = \'querying\'',
+  // NEW-242: after a re-read, ready only once the device has uploaded again; nothing within
+  // DEVICE_IMPORT_QUERY_HOURS → ready as it was, marked no_upload (the users it already sent stay).
+  const rereadAt = result.reread?.requestedAt ? new Date(result.reread.requestedAt) : null;
+  const uploadedSince = !rereadAt || (lastAt && lastAt.getTime() >= rereadAt.getTime());
+  if (Number(users) > 0 && lastAt && polled && uploadedSince && now.getTime() - lastAt.getTime() >= ATT_QUIET_SECONDS * 1000) {
+    const [, m] = await exec(db, 'UPDATE device_imports SET status = \'ready\', users_count = ?, templates_count = ?, ready_at = ?, updated_at = ? WHERE id = ? AND status = \'querying\'',
       [users, templates, now, now, row.id]);
+    if (rereadAt && affected(m) === 1) await rereadDone(db, row, now, 'uploaded');
+  } else if (rereadAt && !uploadedSince && Number(users) > 0 && rereadAt.getTime() < now.getTime() - getDeviceConfig().importQueryHours * 3600000) {
+    result.reread = { ...result.reread, outcome: 'no_upload' };
+    const [, m] = await exec(db, 'UPDATE device_imports SET status = \'ready\', users_count = ?, templates_count = ?, result_json = ?, ready_at = ?, updated_at = ? WHERE id = ? AND status = \'querying\'',
+      [users, templates, JSON.stringify(result), now, now, row.id]);
+    if (affected(m) === 1) await rereadDone(db, row, now, 'no_upload');
   } else if (!Number(users) && new Date(row.started_at).getTime() < now.getTime() - getDeviceConfig().importQueryHours * 3600000) {
     await exec(db, 'UPDATE device_imports SET status = \'failed\', result_json = ?, finished_at = ?, updated_at = ? WHERE id = ? AND status = \'querying\'',
       [JSON.stringify({ ...result, reason: 'no_upload' }), now, now, row.id]);
   }
   const [fresh] = await select(db, 'SELECT * FROM device_imports WHERE id = ?', [row.id]);
   return fresh;
+}
+
+/** NEW-242: the device's re-read of this import has ended (uploaded, or no_upload); its forced 0 stops. */
+async function rereadDone(db, imp, now, outcome) {
+  const det = await detailsOf(db, imp.device_id);
+  const all = parse(det?.att_stamps_json, {}) || {};
+  if (!all._reread || all._reread.importId !== imp.id || all._reread.doneAt) return;
+  all._reread = { ...all._reread, doneAt: now.toISOString(), outcome, tables: [] };
+  await require('./device-registry.service').saveStamps(db, det, all);
+}
+
+/**
+ * NEW-242: "Read all users again" for a T&A PUSH device in import hold (its import querying or ready). The next
+ * cdata answers carry OPERLOGStamp=0 and BIODATAStamp=0 (ATTLOG echoed) until the device reports a stamp again,
+ * one read-only CHECK asks it to fetch them, and the import waits for the new upload. Nothing that changes the
+ * device is queued. → { import }
+ */
+async function reread(db, { tenantId, deviceId, importId, byUserId = null, now = new Date() }) {
+  const registry = require('./device-registry.service');
+  const platform = await registry.findById(deviceId);
+  if (!platform || platform.tenant_id !== tenantId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
+  const det = await detailsOf(db, deviceId);
+  if (String(det?.device_type || '').toLowerCase() !== 'att') {
+    throw createError('Only a T&A PUSH device is read again this way.', 422, 'not_att_device');
+  }
+  const imp = await importOf(db, deviceId, importId);
+  if (imp.status === 'applied') throw createError('This import is applied. Roll it back first, then read the device again.', 409, 'import_applied');
+  if (imp.status === 'live') throw createError('This import is live.', 409, 'import_live');
+  if (!Number(det.import_hold)) throw createError('This device is not in an import any more.', 409, 'device_not_in_import');
+  if (!OPEN.includes(imp.status)) throw createError('This import is closed. Start a new one.', 409, 'import_closed');
+  if (platform.status !== 'active') throw createError('The device has not connected yet.', 409, 'device_not_connected');
+
+  // One CHECK at a time; a second press replaces the one still queued.
+  await exec(db, 'UPDATE device_commands SET status = \'superseded\', updated_at = ? WHERE device_id = ? AND kind = \'check\' AND status = \'queued\'', [now, deviceId]);
+  await queueQuery(db, deviceId, 'check', { importId: imp.id, reread: true }, now);
+  const all = parse(det.att_stamps_json, {}) || {};
+  all._reread = { importId: imp.id, requestedAt: now.toISOString(), servedAt: null, startedAt: null, doneAt: null, outcome: null, tables: ['OPERLOG', 'BIODATA'] };
+  await registry.saveStamps(db, det, all);
+  const result = parse(imp.result_json, {}) || {};
+  result.reread = { requestedAt: now.toISOString(), count: (result.reread?.count || 0) + 1, by: byUserId, outcome: null };
+  await exec(db, 'UPDATE device_imports SET status = \'querying\', ready_at = NULL, result_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(result), now, imp.id]);
+  const [fresh] = await select(db, 'SELECT * FROM device_imports WHERE id = ?', [imp.id]);
+  return { import: await viewOf(db, fresh) };
 }
 
 // ── Users and conflicts ───────────────────────────────────────────────────────
@@ -382,6 +435,17 @@ async function listUsers(db, imp, { filter = 'all', limit = 100, offset = 0 } = 
 async function viewOf(db, imp) {
   const users = await classified(db, imp);
   const res = parse(imp.result_json, {}) || {};
+  let reread = null;
+  if (res.reread?.requestedAt) {
+    // NEW-242: the device's side (stamps) when this import is the one being re-read, else what the import kept.
+    const det = await detailsOf(db, imp.device_id);
+    const rr = (parse(det?.att_stamps_json, {}) || {})._reread;
+    const mine = rr && rr.importId === imp.id ? rr : null;
+    const state = mine
+      ? require('./device-registry.service').rereadState(mine, Boolean(Number(det.import_hold)))
+      : (res.reread.outcome === 'no_upload' ? 'no_upload' : 'done');
+    reread = { state, requestedAt: res.reread.requestedAt, servedAt: mine?.servedAt || null, startedAt: mine?.startedAt || null, doneAt: mine?.doneAt || null, count: res.reread.count || 1 };
+  }
   return {
     id: imp.id,
     deviceId: imp.device_id,
@@ -396,6 +460,7 @@ async function viewOf(db, imp) {
     failedQueries: res.failedQueries || [],
     failedReason: res.reason || null,
     result: res.applied || null,
+    reread,
     counts: {
       users: users.length,
       templates: Number(imp.templates_count),
@@ -895,6 +960,7 @@ module.exports = {
   apply,
   rollback,
   cancel,
+  reread,
   heldOwnerOfPin,
   cutover,
   goLive,

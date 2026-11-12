@@ -149,6 +149,12 @@ class ZkDeviceSimulator {
       this.stamps = { ATTLOG: '9999', OPERLOG: '9999', BIODATA: '9999' };
       // A firmware that answers DATA QUERY user by uploading OPERLOG USER lines instead of querydata packs.
       this.attQueryByUpload = Boolean(o.attQueryByUpload);
+      // Stamps decide what the device uploads (opt-in; NEW-242): after each cdata answer it uploads a table's
+      // records only when the server's <TABLE>Stamp is below its own stamp (9999, kept from the Phase 0 capture
+      // server). CHECK makes it fetch the options again and do the same. Without it, uploads are only what a
+      // test posts by hand (uploadHistory), as before.
+      this.stampAware = Boolean(o.stampAware);
+      this.attUploads = []; // { table, stamp } of every OPERLOG / BIODATA / ATTLOG post, in order
     }
   }
 
@@ -173,24 +179,42 @@ class ZkDeviceSimulator {
     if (this.config.SessionID) this.sessionId = this.config.SessionID;
     const options = await this.upload('options', f.optionsBody);
     const poll = info ? await this.request('GET', `/iclock/getrequest?${this.q(`&INFO=${encodeURIComponent(f.info)}`)}`) : null;
-    return { ok: true, registeredBy: 'att', cdata, options, poll, config: this.config, commands: poll ? parseCommands(poll.text) : [] };
+    const uploads = this.stampAware ? await this.uploadPending() : [];
+    return { ok: true, registeredBy: 'att', cdata, options, poll, uploads, config: this.config, commands: poll ? parseCommands(poll.text) : [] };
+  }
+
+  /** NEW-242: what the firmware does after CHECK (stampAware): fetch the options again, then upload by stamps. */
+  async refetchOptions() {
+    const cdata = await this.request('GET', `/iclock/cdata?${this.q(`&${this.fixture.cdataQuery}`)}`);
+    if (cdata.status === 200) Object.assign(this.config, parseConfig(cdata.text));
+    return { cdata, uploads: await this.uploadPending() };
+  }
+
+  /** NEW-242 (stampAware): every table whose server stamp is below the device's own is uploaded again. → responses */
+  uploadPending() {
+    const below = (t) => {
+      const server = this.config[`${t}Stamp`];
+      return server !== undefined && Number(server) < Number(this.stamps[t] || 0);
+    };
+    const operlog = below('OPERLOG');
+    return this.uploadHistory({ users: operlog, fps: operlog, faces: below('BIODATA'), attlog: below('ATTLOG'), oplog: operlog });
   }
 
   /** Phase 5: OPERLOG / BIODATA / ATTLOG uploads with the device's stamps. */
   uploadAtt(table, body) {
     const key = table === 'ATTLOG' ? 'Stamp' : 'OpStamp';
-    return this.request('POST', `/iclock/cdata?${this.q(`&table=${table}&${key}=${this.stamps[table] || '9999'}`)}`, body);
+    const stamp = this.stamps[table] || '9999';
+    if (this.attUploads) this.attUploads.push({ table, stamp });
+    return this.request('POST', `/iclock/cdata?${this.q(`&table=${table}&${key}=${stamp}`)}`, body);
   }
 
   /** Phase 5: the history upload of the first contact, in the capture's order. → responses */
-  async uploadHistory({ users = true, templates = true, attlog = true, oplog = true } = {}) {
+  async uploadHistory({ users = true, templates = true, fps = templates, faces = templates, attlog = true, oplog = true } = {}) {
     const f = this.fixture;
     const out = [];
     if (users) for (const b of f.userPosts) out.push(await this.uploadAtt('OPERLOG', b));
-    if (templates) {
-      for (const b of f.fpPosts) out.push(await this.uploadAtt('OPERLOG', b));
-      out.push(await this.uploadAtt('BIODATA', f.biodataPost));
-    }
+    if (fps) for (const b of f.fpPosts) out.push(await this.uploadAtt('OPERLOG', b));
+    if (faces) out.push(await this.uploadAtt('BIODATA', f.biodataPost));
     if (attlog) for (const b of f.attlogPosts) out.push(await this.uploadAtt('ATTLOG', b));
     if (oplog) out.push(await this.uploadAtt('OPERLOG', f.oplogPost));
     return out;
@@ -226,6 +250,7 @@ class ZkDeviceSimulator {
     }
     const m = /^(DATA (UPDATE|DELETE|QUERY|COUNT) (\w+)|ENROLL_BIO|INFO|CHECK)\s?(.*)$/.exec(head);
     if (!m) return -1;
+    if (head.startsWith('CHECK') && this.stampAware) this.pendingCheck = true;
     if (head.startsWith('INFO') || head.startsWith('CHECK')) return 0;
     if (head.startsWith('ENROLL_BIO')) {
       if (!this.enrollSupported) return -708;
@@ -331,6 +356,10 @@ class ZkDeviceSimulator {
     }
     const body = results.map((x) => `ID=${x.id}&${this.lowerCaseReturn ? 'return' : 'Return'}=${x.returnCode}&CMD=${x.cmd}`).join('\n');
     const ack = await this.request('POST', `/iclock/devicecmd?${this.q()}`, body);
+    if (this.pendingCheck) {
+      this.pendingCheck = false;
+      await this.refetchOptions();
+    }
     return { commands: r.commands, results, poll: r, ack };
   }
 

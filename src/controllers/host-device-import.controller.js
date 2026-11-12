@@ -72,6 +72,13 @@ const rollback = wrap(async (req, res) => {
   return sendSuccess(res, out, 'Rolled back. The device was not changed.');
 });
 
+// NEW-242: "Read all users again" (T&A PUSH device in hold): one read-only CHECK, OPERLOG / BIODATA stamps 0.
+const reread = wrap(async (req, res) => {
+  const out = await imports.reread(req.tenantDb, { tenantId: tenantIdOf(req), deviceId: req.params.id, importId: req.params.importId, byUserId: userIdOf(req) });
+  await record(req, 'devices.import_reread', { importId: out.import.id });
+  return sendSuccess(res, out, 'Asked the device to send all its users again. Nothing on the device changes. This takes a few minutes.', 202);
+});
+
 const cancel = wrap(async (req, res) => {
   const out = await imports.cancel(req.tenantDb, await importOf(req), { byUserId: userIdOf(req) });
   await record(req, 'devices.import_cancelled', { importId: out.import.id });
@@ -118,6 +125,6 @@ const deleteTemplate = wrap(async (req, res) => {
 });
 
 module.exports = {
-  startImport, listImports, getImport, listUsers, matchUser, mapCsv, preview, apply, rollback, cancel,
+  startImport, listImports, getImport, listUsers, matchUser, mapCsv, preview, apply, rollback, cancel, reread,
   getCutover, goLive, gbsStopped, moveDevice, deleteTemplate,
 };
