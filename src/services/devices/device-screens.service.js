@@ -17,7 +17,7 @@
  */
 const crypto = require('crypto');
 const { QueryTypes } = require('sequelize');
-const { utc } = require('./sql-time');
+const { utc, utcString } = require('./sql-time');
 const { getDeviceConfig } = require('../../config/devices.config');
 const { createError } = require('../../utils/response.utils');
 const protocol = require('./push-protocol');
@@ -51,6 +51,16 @@ async function deviceNames(db, ids) {
   return new Map((await select(db, 'SELECT id, name FROM access_device_details WHERE id IN (?)', [list])).map((d) => [d.id, d.name]));
 }
 
+/**
+ * A device wall time (DATETIME holding the device's local clock, e.g. device_access_events.device_time) as the
+ * plain text 'YYYY-MM-DD HH:mm:ss'. The connection reads every DATETIME as UTC, so returning the Date itself
+ * serialised the branch's local time with a 'Z' (PKT 17:22 shown as 17:22Z).
+ */
+const wallTime = (v) => {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : utcString(v).slice(0, 19);
+  return v ? String(v).replace('T', ' ').slice(0, 19) : null;
+};
+
 // ── Live feed (§10.3, §10.5) ──────────────────────────────────────────────────
 /** Newest first. afterId: only events after it (the 3-second poll). → { events, latestId } */
 async function accessEvents(db, { branchId = null, deviceId = null, afterId = null, limit = 50 }) {
@@ -74,7 +84,7 @@ async function accessEvents(db, { branchId = null, deviceId = null, afterId = nu
     deviceName: devs.get(r.device_id) || null,
     branchId: r.branch_id,
     time: r.utc_time,
-    localTime: r.device_time,
+    localTime: wallTime(r.device_time),
     pin: r.pin,
     memberId: r.member_id,
     memberName: r.member_id ? names.get(r.member_id) || null : null,
