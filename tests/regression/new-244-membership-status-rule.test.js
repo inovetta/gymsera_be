@@ -8,6 +8,7 @@ const {
   isBetterMembership,
   EXPIRING_SOON_DAYS,
 } = require('../../src/utils/membership-status.utils');
+const { daysFromToday } = require('../harness/dates');
 
 const today = '2026-11-13';
 
@@ -36,8 +37,8 @@ describe('NEW-244: membershipDisplayStatus', () => {
   });
 
   test('a current subscription beats an expired one, then the later end date wins', () => {
-    const active = { displayStatus: 'ACTIVE', endDate: '2026-12-01' };
-    const expired = { displayStatus: 'EXPIRED', endDate: '2027-01-01' };
+    const active = { displayStatus: 'ACTIVE', endDate: daysFromToday(18) };
+    const expired = { displayStatus: 'EXPIRED', endDate: daysFromToday(49) };
     expect(isBetterMembership(active, expired)).toBe(true);
     expect(isBetterMembership(expired, active)).toBe(false);
     expect(isBetterMembership({ displayStatus: 'EXPIRED', endDate: '2026-11-01' }, { displayStatus: 'EXPIRED', endDate: '2026-10-01' })).toBe(true);
