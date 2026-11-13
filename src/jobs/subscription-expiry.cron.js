@@ -27,7 +27,8 @@ const { safeRedisDel } = require('../config/redis.config');
 const { withDistributedLock } = require('../utils/distributed-lock');
 
 const EXPIRY_CRON = '0 1 * * *'; // 01:00 every day
-const WARNING_DAYS = 3;
+const { EXPIRING_SOON_DAYS } = require('../utils/membership-status.utils');
+const WARNING_DAYS = EXPIRING_SOON_DAYS; // NEW-244: the same window the host lists show as "Expiring"
 
 /**
  * Process one tenant's member_subscriptions table.

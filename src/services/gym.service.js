@@ -1635,18 +1635,31 @@ const removeBranchImage = async (tenantDb, branchId, imageUrl) => {
  * Returns platform users who have a subscription record in this gym's tenant DB.
  * Gym hosts only ever see their own gym's members.
  */
-const listMembers = async (tenantDb, tenantId, { q, status, branchId, branchIds, page, limit, offset }) => {
-  const { MemberSubscription, Branch } = tenantDb.models;
+// NEW-244: every member with a subscription at a permitted branch, including expired ones, each
+// with the plan status the app shows (`membershipStatus`, utils/membership-status.utils.js).
+// `status` stays the platform account status; `?status=` filters on it, `?membershipStatus=` on
+// the plan status.
+const listMembers = async (tenantDb, tenantId, { q, status, membershipStatus, branchId, branchIds, page, limit, offset }) => {
+  const { MemberSubscription, Branch, MembershipPlan } = tenantDb.models;
+  const { MembershipDisplayStatus, membershipDisplayStatus, isBetterMembership } = require('../utils/membership-status.utils');
+  const { computeBusinessDate } = require('./ledger.service');
 
-  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
+  const wantedPlanStatus = membershipStatus ? String(membershipStatus).toUpperCase() : null;
+  if (wantedPlanStatus && !Object.values(MembershipDisplayStatus).includes(wantedPlanStatus)) {
+    throw createError(
+      `membershipStatus must be one of ${Object.values(MembershipDisplayStatus).join(', ')}`,
+      422,
+      'invalid_membership_status'
+    );
+  }
+
+  const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id', 'branchName', 'timezone'] });
   const activeBranchIds = activeBranches.map((b) => b.id);
   if (activeBranchIds.length === 0) {
     return { members: [], pagination: buildPagination(0, page, limit) };
   }
 
-  const subWhere = {
-    status: ['ACTIVE', 'PENDING', 'FROZEN'],
-  };
+  const subWhere = {};
   if (branchId) {
     if (!activeBranchIds.includes(branchId)) {
       return { members: [], pagination: buildPagination(0, page, limit) };
@@ -1662,13 +1675,29 @@ const listMembers = async (tenantDb, tenantId, { q, status, branchId, branchIds,
     subWhere.branchId = { [Op.in]: activeBranchIds };
   }
 
-  // Get distinct userIds from active tenant subscriptions
   const subscriptions = await MemberSubscription.findAll({
     where: subWhere,
-    attributes: ['userId'],
-    group: ['userId'],
+    attributes: ['userId', 'branchId', 'membershipPlanId', 'status', 'endDate'],
+    raw: true,
   });
-  const userIds = subscriptions.map((s) => s.userId);
+
+  // One subscription speaks for each member: the best current one at a permitted branch.
+  const branchById = new Map(activeBranches.map((b) => [b.id, b]));
+  const todayByBranch = new Map();
+  const todayAt = (id) => {
+    if (!todayByBranch.has(id)) todayByBranch.set(id, computeBusinessDate(new Date(), branchById.get(id)?.timezone));
+    return todayByBranch.get(id);
+  };
+  const shown = new Map();
+  for (const s of subscriptions) {
+    const candidate = { ...s, displayStatus: membershipDisplayStatus(s, todayAt(s.branchId)) };
+    const current = shown.get(s.userId);
+    if (!current || isBetterMembership(candidate, current)) shown.set(s.userId, candidate);
+  }
+
+  const userIds = [...shown.values()]
+    .filter((s) => !wantedPlanStatus || s.displayStatus === wantedPlanStatus)
+    .map((s) => s.userId);
 
   if (userIds.length === 0) {
     return { members: [], pagination: buildPagination(0, page, limit) };
@@ -1692,7 +1721,25 @@ const listMembers = async (tenantDb, tenantId, { q, status, branchId, branchIds,
     offset,
   });
 
-  return { members: rows, pagination: buildPagination(count, page, limit) };
+  const planIds = [...new Set(rows.map((u) => shown.get(u.id)?.membershipPlanId).filter(Boolean))];
+  const plans = planIds.length
+    ? await MembershipPlan.findAll({ where: { id: { [Op.in]: planIds } }, attributes: ['id', 'name'], paranoid: false })
+    : [];
+  const planName = new Map(plans.map((p) => [p.id, p.name]));
+
+  const members = rows.map((u) => {
+    const s = shown.get(u.id);
+    return {
+      ...u.toJSON(),
+      membershipStatus: s.displayStatus,
+      subscriptionStatus: s.status,
+      planName: planName.get(s.membershipPlanId) || null, // NEW-187: never an invented plan
+      endDate: s.endDate || null,
+      branchName: branchById.get(s.branchId)?.branchName || null,
+    };
+  });
+
+  return { members, pagination: buildPagination(count, page, limit) };
 };
 
 // ── Member search (by email) ──────────────────────────────────────────────────

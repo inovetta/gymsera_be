@@ -285,7 +285,7 @@ const deleteBranchImage = async (req, res, next) => {
 const listMembers = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { q, status } = req.query;
+    const { q, status, membershipStatus } = req.query;
     const branchId = req.query.branchId || null;
     let branchIds = null;
 
@@ -302,6 +302,7 @@ const listMembers = async (req, res, next) => {
     const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, {
       q,
       status,
+      membershipStatus,
       branchId,
       branchIds,
       page,
