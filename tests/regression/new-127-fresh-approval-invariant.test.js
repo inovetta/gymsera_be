@@ -105,12 +105,12 @@ describe('NEW-127: the production check after a deploy (docs/sql/new-127-fresh-a
     return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
   };
 
-  test('on the gym just approved: PASS, 50 tables (022 added 2 ZKTeco device tables, 023 added 12, 024 added 3, 025 added 4), and every migration recorded from 1 to the target', () => {
+  test('on the gym just approved: PASS, 51 tables (022 added 2 ZKTeco device tables, 023 added 12, 024 added 3, 025 added 4, 027 added 1), and every migration recorded from 1 to the target', () => {
     const { TARGET_SCHEMA_VERSION } = require('../../src/database/tenant-migration-runner');
     const { status, out } = cli();
     const grid1 = out.slice(out.indexOf('Grid 1'), out.indexOf('Grid 2'));
     expect(grid1).toMatch(new RegExp(`\\|\\s*${tenant.tenantCode}\\s*\\|`));
-    expect(grid1).toMatch(/\|\s*ACTIVE\s*\|\s*ACTIVE\s*\|\s*NULL\s*\|\s*50\s*\|\s*1\s*\|\s*1\s*\|\s*4\s*\|\s*PASS\s*\|/);
+    expect(grid1).toMatch(/\|\s*ACTIVE\s*\|\s*ACTIVE\s*\|\s*NULL\s*\|\s*51\s*\|\s*1\s*\|\s*1\s*\|\s*4\s*\|\s*PASS\s*\|/);
     const t = TARGET_SCHEMA_VERSION;
     expect(out.slice(out.indexOf('Grid 2'))).toMatch(new RegExp(`\\|\\s*${t}\\s*\\|\\s*1\\s*\\|\\s*${t}\\s*\\|`));
     expect(out).toMatch(/^Done: 2 grids\./m);

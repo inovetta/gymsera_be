@@ -1409,6 +1409,29 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // NEW-248d (owner decision R-101): the device users that are administrators on the device itself (privilege
+    // above 0), so GymsEra never sends them a user record (always Pri=0 / Privilege=0) or deletes them. Filled at
+    // go-live from the import's admins and from every user record a device uploads (Pri above 0 adds, Pri 0 clears).
+    // New table only; nothing existing changes.
+    // ROLLBACK (deploy the previous API build FIRST):
+    //   DROP TABLE `device_admin_pins`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 27;
+    version: 27,
+    name: '027_device_admin_pins',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`device_admin_pins\` (
+        \`device_id\` CHAR(36) NOT NULL,
+        \`pin\` VARCHAR(16) NOT NULL,
+        \`privilege\` TINYINT UNSIGNED NOT NULL,
+        \`source\` VARCHAR(10) NOT NULL,
+        \`seen_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`device_id\`, \`pin\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

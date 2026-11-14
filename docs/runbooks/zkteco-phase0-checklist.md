@@ -411,12 +411,29 @@ its own uploads (`userinfo` = `DATA UPDATE USERINFO`).
 
 | Command | Return | Upload that followed (table, record type) |
 |---|---|---|
-| `user` | | |
-| `userauthorize` | | |
-| `delete-userauthorize` | | |
-| `userinfo` | | |
-| `query-user` | | |
-| `query-userinfo` | | |
+| `user` | -1004 (`CMD=DATA`) | none |
+| `userauthorize` | not run (2026-11-14) | |
+| `delete-userauthorize` | not run (2026-11-14) | |
+| `userinfo` | 0 (`CMD=DATA`); DEVICE INFO users 344 → 345 | none on its own |
+| `query-user` | -1004 (`CMD=DATA`) | none |
+| `query-userinfo` | 0 (`CMD=DATA`) | `UPLOAD table=OPERLOG`, one `USER` line for 9001 (before the RESULT line); no `QUERYDATA` |
+
+Run 2026-11-14, SpeedFace-V5L ZAM180-NF50VA-Ver3.4.9, Push 2.0.33S, T&A PUSH, capture server `--style auto
+--stamps 9999 --test-pin 9001` (capture `captures/20261114-123238.txt`, gitignored). Extra commands in the same run:
+
+| Command | Return | Upload that followed (table, record type) |
+|---|---|---|
+| `INFO` | 0 (`CMD=INFO`) | none |
+| `CHECK` | 0 (`CMD=CHECK`) | device fetched `GET cdata` options again |
+| `count-user` (`DATA COUNT user`) | -1002 (`CMD=DATA`), twice | none |
+| backend form (`raw`): `DATA UPDATE USERINFO PIN= Name= Pri=0 Passwd= Card= Grp=1 StartDatetime=0 EndDatetime=0` | 0 (`CMD=DATA`) | none on its own; read back with `query-userinfo`: stored, but `Verify=-1` (the `userinfo` form with `Verify=0` stored 0) |
+| `delete-user` | -1004 (`CMD=DATA`) | none |
+| `delete-userinfo` | 0 (`CMD=DATA`); DEVICE INFO users 345 → 344 (baseline) | none; `query-userinfo` after it returned no `USER` line |
+
+Findings: this firmware takes only the USERINFO forms (update, delete, query); the security forms return -1004 and
+`DATA COUNT` -1002. The device echoes only `CMD=DATA` for every `DATA …` command, so results match on the command id
+only. Reads arrive as `OPERLOG USER` uploads. Writes produce no `OPERLOG USER` line on their own. Clean-up: 9001 gone,
+DEVICE INFO 344 users / 434 fingerprints, equal to the baseline; device restored to GymsEra, stamps left at 9999.
 
 ### (j) Does an end time stop the test person, and in which format?
 

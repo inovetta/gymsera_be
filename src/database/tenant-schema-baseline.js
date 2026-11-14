@@ -91,6 +91,9 @@ const ADDS = {
       access_device_details: ['send_userauthorize', 'validity_mode', 'poll_delay_seconds', 'att_stamps_json', 'info_json', 'last_poll_at', 'poll_gap_seconds', 'user_command_form'],
     },
   },
+  27: {
+    tables: ['device_admin_pins'],
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -300,6 +303,8 @@ const PROBES = {
   },
   // 026 adds columns only; the last step is access_device_details.user_command_form.
   26: async (s) => columnOfType(s, 'access_device_details', 'user_command_form', (c) => ['char', 'varchar'].includes(type(c))),
+  // 027 creates one table (NEW-248d).
+  27: async (s) => tableWithColumn(s, 'device_admin_pins', 'privilege'),
 };
 
 /** Tables and columns the tenant models read (Sequelize field names, no VIRTUAL attributes). */

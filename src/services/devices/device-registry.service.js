@@ -397,6 +397,7 @@ function renderCommand(row) {
     case 'check': return protocol.cmd.check();
     case 'count': return protocol.cmd.count(args.table || 'user', args.type);
     case 'query_users': return protocol.cmd.queryUsers(args.pin);
+    case 'query_userinfo': return protocol.cmd.queryUserInfo(args.pin);
     case 'query_bio': return protocol.cmd.queryBio(args.type ?? 9, args.pin);
     case 'options': return protocol.cmd.setOption(args);
     default: return null;

@@ -371,8 +371,8 @@ const cmd = {
 
   /**
    * Phase 5: the attendance-protocol form (T&A PUSH firmware), the field names the device uses in its own
-   * OPERLOG USER uploads. Pri is always 0. Per device (`user_command_form`); which one the firmware takes is a
-   * device test (checklist (i)).
+   * OPERLOG USER uploads. Pri is always 0. Per device (`user_command_form`); the default for att devices since
+   * checklist (i) (2026-11-14: Return 0 on the SpeedFace-V5L T&A PUSH firmware, where `DATA UPDATE user` is -1004).
    */
   userInfoUpsert: ({ pin, name, cardNo = '', start, end, dateFormat = 'datetime', clearWindow = false }) =>
     'DATA UPDATE USERINFO ' + [
@@ -380,6 +380,8 @@ const cmd = {
       ...windowFields({ start, end, dateFormat, clearWindow }, ['StartDatetime', 'EndDatetime']),
     ].join(T),
   userInfoDelete: (pin) => `DATA DELETE USERINFO PIN=${pinOf(pin)}`,
+  /** The read a T&A PUSH device answers (checklist (i), #4065): Return 0, the user arrives as an OPERLOG USER upload. */
+  queryUserInfo: (pin) => `DATA QUERY USERINFO PIN=${pinOf(pin)}`,
 
   userAuthorize: ({ pin, timezoneId = 1, doorMask = 1, devId, start, end, dateFormat = 'seconds' }) =>
     'DATA UPDATE userauthorize ' + [

@@ -898,6 +898,10 @@ async function goLive(db, { tenantId, deviceId, byUserId = null, removeUnmatched
           VALUES (?, ?, ?, 1, 'queued', 0, ?, ?, ?)`, [deviceId, kind, JSON.stringify({ ...args, importId: imp.id }), new Date(now.getTime() - 1000), now, now], transaction);
       }
     }
+    // NEW-248d: the device's own administrators stay as they are: remembered, so nothing is ever sent to them.
+    await exec(db, `INSERT INTO device_admin_pins (device_id, pin, privilege, source, seen_at)
+      SELECT ?, pin, LEAST(privilege, 255), 'import', ? FROM device_import_users WHERE import_id = ? AND privilege > 0
+      ON DUPLICATE KEY UPDATE privilege = VALUES(privilege), seen_at = VALUES(seen_at)`, [deviceId, now, imp.id], transaction);
     await exec(db, 'UPDATE access_device_details SET import_hold = 0, import_hold_since = NULL, live_at = ?, updated_at = ? WHERE id = ?', [now, now, deviceId], transaction);
   });
   for (const u of keptUnmatched) await sync.noteUnlinked(db, deviceId, { pin: u.pin, name: u.name, cardNo: u.cardNo, source: 'import' }, now);

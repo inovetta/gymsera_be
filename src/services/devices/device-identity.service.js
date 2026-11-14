@@ -99,4 +99,53 @@ async function purgeRetired(db, days, now = new Date()) {
   return typeof meta === 'number' ? meta : meta?.affectedRows || 0;
 }
 
-module.exports = { identityOf, identitiesOf, ensurePin, ownerOfPin, retire, adoptCardFromDevice, purgeRetired };
+// ── Device administrators (NEW-248d, R-101, tenant migration 027) ─────────────
+/**
+ * A device user with privilege above 0 is an administrator ON THAT DEVICE (set at its own menu, or found by an
+ * import). GymsEra always sends Privilege=0 / Pri=0 and never gives admin rights (spec §7.1 point 5), so it must
+ * never write such a user (that would demote them) nor delete them (import rule: admins stay as they are).
+ */
+const PIN_RE = /^\d{1,9}$/;
+
+/**
+ * The privilege of each user record the device uploaded: above 0 → remembered; 0 → forgotten (demoted on the
+ * device). rows: [{ pin, privilege }] (OPERLOG USER `Pri`, user table `Privilege`); rows without one are skipped.
+ * → PINs that became admins
+ */
+async function noteDevicePrivileges(db, deviceId, rows, { source = 'upload', now = new Date() } = {}) {
+  const promoted = [];
+  for (const r of rows || []) {
+    const pin = String(r.pin ?? '').trim();
+    if (!PIN_RE.test(pin) || r.privilege === undefined || r.privilege === null || r.privilege === '') continue;
+    const privilege = Number(r.privilege);
+    if (!Number.isInteger(privilege) || privilege < 0) continue;
+    if (privilege === 0) {
+      await db.sequelize.query('DELETE FROM device_admin_pins WHERE device_id = ? AND pin = ?', { replacements: utc([deviceId, pin]) });
+      continue;
+    }
+    const [, meta] = await db.sequelize.query(
+      `INSERT INTO device_admin_pins (device_id, pin, privilege, source, seen_at) VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE privilege = VALUES(privilege), seen_at = VALUES(seen_at)`,
+      { replacements: utc([deviceId, pin, Math.min(255, privilege), String(source).slice(0, 10), now]) }
+    );
+    if ((typeof meta === 'number' ? meta : meta?.affectedRows) === 1) promoted.push(pin);
+  }
+  return promoted;
+}
+
+/** The PINs that are administrators on this device. → Set of PIN strings */
+async function deviceAdminPins(db, deviceId) {
+  const rows = await select(db, 'SELECT pin FROM device_admin_pins WHERE device_id = ?', [deviceId]);
+  return new Set(rows.map((r) => String(r.pin)));
+}
+
+async function isDeviceAdmin(db, deviceId, pin) {
+  if (!PIN_RE.test(String(pin ?? ''))) return false;
+  const [row] = await select(db, 'SELECT 1 AS x FROM device_admin_pins WHERE device_id = ? AND pin = ?', [deviceId, String(pin)]);
+  return Boolean(row);
+}
+
+module.exports = {
+  identityOf, identitiesOf, ensurePin, ownerOfPin, retire, adoptCardFromDevice, purgeRetired,
+  noteDevicePrivileges, deviceAdminPins, isDeviceAdmin,
+};

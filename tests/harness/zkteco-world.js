@@ -22,6 +22,7 @@ const DEVICE_TABLES = [
   'member_biometric_consents', 'device_access_events', 'device_state', 'device_error_logs', 'device_unlinked_users', 'device_audits', 'device_audit_pins',
   'device_push_requests', 'device_capture_photos', 'device_branch_settings',
   'device_imports', 'device_import_users', 'device_import_templates', 'device_import_packs',
+  'device_admin_pins',
 ];
 
 // A test-only biometric key, made fresh per run (never a real key).

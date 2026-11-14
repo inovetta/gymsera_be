@@ -14,7 +14,9 @@
  *                                    device outbox rows a crash left behind
  *   device-audit      hourly         once a local day per device, from DEVICE_AUDIT_HOUR (02:00)
  *                                    branch time, staggered by device: DATA COUNT user and DATA
- *                                    QUERY user; the packs are compared in device-ingest
+ *                                    QUERY user; the packs are compared in device-ingest. A T&A
+ *                                    PUSH device: DATA QUERY USERINFO per PIN, compared by the
+ *                                    watchdog once answered (requestAttAudit, finishAttAudits)
  *   device-retention  daily          biometric retention, consent-pending expiry, retired PINs,
  *                                    state history and processed device outbox rows
  *
@@ -117,6 +119,9 @@ async function watchdogTenant({ tenantId, db }, now = new Date()) {
   counts.pushClosed = await require('../services/devices/device-push.service').closeExpired(db, now)
     .catch((err) => { console.warn(`[device-jobs] push requests: ${err.message}`); return 0; });
   counts.wipesFinished = await finishWipes({ tenantId, db }, now);
+  // T&A PUSH audits (requestAttAudit): compared once every query is answered.
+  const att = await finishAttAudits(db, now).catch((err) => { console.warn(`[device-jobs] att audits: ${err.message}`); return { compared: 0, incomplete: 0 }; });
+  counts.attAuditsCompared = att.compared;
   const alerted = await deviceAlerts({ tenantId, db }, now);
   counts.errorAlerts = alerted.errors;
   counts.capacityAlerts = alerted.capacity;
@@ -342,8 +347,18 @@ async function auditTenant({ tenantId, db }, now = new Date()) {
   return counts;
 }
 
-/** Queues DATA COUNT user and DATA QUERY user for one device, and the audit row they report into. */
+/**
+ * Queues the audit of one device and the audit row it reports into.
+ *   acc   DATA COUNT user and DATA QUERY user (querydata packs, compared at the last pack).
+ *   att   (T&A PUSH) checklist (i), 2026-11-14: that firmware answers DATA COUNT -1002 and DATA QUERY user -1004.
+ *         One DATA QUERY USERINFO PIN=<pin> per PIN GymsEra has a sync row for on this device (answered with
+ *         Return 0 and, when the device has the user, an OPERLOG USER upload: ingest#feedAudit); the device's
+ *         own user count is the one in its DEVICE INFO. The row has no count / query command (that marks it as
+ *         an att audit) and its queries share one batch id (report_json.batchId). finishAttAudits compares it.
+ */
 async function requestAudit(db, deviceId, now = new Date()) {
+  const [det] = await select(db, 'SELECT device_type, counts_json FROM access_device_details WHERE id = ?', [deviceId]);
+  if (String(det?.device_type || '').toLowerCase() === 'att') return requestAttAudit(db, deviceId, det, now);
   const ids = [];
   for (const [kind, args] of [['count', { table: 'user', audit: true }], ['query_users', { audit: true }]]) {
     await exec(db, `INSERT INTO device_commands (device_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
@@ -354,6 +369,61 @@ async function requestAudit(db, deviceId, now = new Date()) {
   await exec(db, 'INSERT INTO device_audits (device_id, status, count_cmd_id, query_cmd_id, started_at) VALUES (?, \'requested\', ?, ?, ?)', [deviceId, ids[0], ids[1], now]);
   const [audit] = await select(db, 'SELECT MAX(id) AS id FROM device_audits WHERE device_id = ?', [deviceId]);
   return { auditId: Number(audit.id), countCmdId: ids[0], queryCmdId: ids[1] };
+}
+
+const ATT_AUDIT_SETTLE_SECONDS = 30; // after the last answer, before the compare (an upload may trail its result)
+
+/** DEVICE INFO user count of an att device (access_device_details.counts_json, registry#applyInfo), or null. */
+const infoUserCount = (det) => {
+  const n = Number(parseJson(det?.counts_json).UserCount);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+};
+
+async function requestAttAudit(db, deviceId, det, now) {
+  const batchId = crypto.randomBytes(13).toString('hex').toUpperCase();
+  const pins = (await select(db, 'SELECT DISTINCT pin FROM device_member_sync WHERE device_id = ? AND pin IS NOT NULL ORDER BY pin', [deviceId]))
+    .map((r) => String(r.pin)).filter((p) => /^\d{1,9}$/.test(p));
+  await exec(db, `INSERT INTO device_audits (device_id, status, count_cmd_id, query_cmd_id, packs_expected, device_user_count, report_json, started_at)
+    VALUES (?, 'requested', NULL, NULL, ?, ?, ?, ?)`, [deviceId, pins.length, infoUserCount(det), JSON.stringify({ mode: 'userinfo', batchId }), now]);
+  const [audit] = await select(db, 'SELECT MAX(id) AS id FROM device_audits WHERE device_id = ?', [deviceId]);
+  const auditId = Number(audit.id);
+  const due = new Date(Math.min(now.getTime(), Date.now()) - 1000);
+  for (const pin of pins) {
+    await exec(db, `INSERT INTO device_commands (device_id, batch_id, kind, args_json, priority, status, attempts, not_before, created_at, updated_at)
+      VALUES (?, ?, 'query_userinfo', ?, 9, 'queued', 0, ?, ?, ?)`, [deviceId, batchId, JSON.stringify({ pin, audit: true, auditId }), due, now, now]);
+  }
+  // Nothing to ask: compared at once (nothing GymsEra placed there; uploads of unknown users still list them).
+  if (!pins.length) await require('../services/devices/device-sync.service').compareAudit(db, deviceId, auditId, now);
+  return { auditId, countCmdId: null, queryCmdId: null, queries: pins.length };
+}
+
+/**
+ * Att audits whose queries are all answered (requestAttAudit). Compared ATT_AUDIT_SETTLE_SECONDS after the last
+ * answer, with the PINs the device uploaded; any query that failed, expired or was superseded makes the audit
+ * incomplete (a missing answer must never look like a missing user). The DEVICE INFO count is taken again.
+ */
+async function finishAttAudits(db, now = new Date()) {
+  const sync = require('../services/devices/device-sync.service');
+  const out = { compared: 0, incomplete: 0 };
+  const open = await select(db, `SELECT a.id, a.device_id, a.report_json, d.counts_json FROM device_audits a JOIN access_device_details d ON d.id = a.device_id
+    WHERE a.status IN ('requested', 'receiving') AND a.query_cmd_id IS NULL AND a.count_cmd_id IS NULL`, []);
+  for (const a of open) {
+    const batchId = parseJson(a.report_json).batchId;
+    if (!batchId) continue;
+    const cmds = await select(db, 'SELECT status, acked_at FROM device_commands WHERE device_id = ? AND batch_id = ? AND kind = \'query_userinfo\'', [a.device_id, batchId]);
+    if (cmds.some((c) => c.status === 'queued' || c.status === 'sent')) continue;
+    if (cmds.some((c) => c.status !== 'acked')) {
+      await exec(db, 'UPDATE device_audits SET status = \'incomplete\', finished_at = ? WHERE id = ? AND status IN (\'requested\', \'receiving\')', [now, a.id]);
+      out.incomplete += 1;
+      continue;
+    }
+    const last = Math.max(0, ...cmds.map((c) => (c.acked_at ? new Date(c.acked_at).getTime() : 0)));
+    if (now.getTime() - last < ATT_AUDIT_SETTLE_SECONDS * 1000) continue;
+    await exec(db, 'UPDATE device_audits SET device_user_count = COALESCE(?, device_user_count), packs_received = ? WHERE id = ?', [infoUserCount(a), cmds.length, a.id]);
+    await sync.compareAudit(db, a.device_id, a.id, now);
+    out.compared += 1;
+  }
+  return out;
 }
 
 const runAudit = (now = new Date()) => eachTenant('device-audit', (t) => auditTenant(t, now));
@@ -393,6 +463,7 @@ module.exports = {
   auditTenant,
   retentionTenant,
   requestAudit,
+  finishAttAudits,
   staggerOf,
   deviceAlerts,
   finishWipes,
