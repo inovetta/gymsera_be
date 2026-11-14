@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-14 (NEW-250: staff Cancel / Freeze 404, be + CMS + app; NEW-251 CMS Renew recorded) |
+| Last updated | 2026-11-14 (NEW-252 / NEW-253: refunds on subscription cancellation, started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **NEW-250: staff Cancel and Freeze answered 404 "Subscription not found" (CMS and app), Renew missing in the CMS** (owner, 2026-11-14, Task A only). Branches `fix/staff-subscription-cancel-freeze` in be (from `main` `83308c7`), CMS (from `main` `fc754b2`), app worktree `../gyms_era_subs404` (from `master` `b4b0f05`). Push on the owner's instruction; no PR. |
-| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | (none) |
-| Step within issue | (none) |
+| Current prompt | **NEW-253: refunds on subscription cancellation** (owner, 2026-11-14): A staff cancel asks "Return the payment?", B member "Ask for refund" after cancelling, C per-gym policy. Decisions R-103. NEW-252 (refund counted twice in the payout balance, revenue reports) fixed first in its own commit. Branches `feat/subscription-refunds` in be (from `main` `11f57f2`), CMS (from `main` `e7db9dc`), app worktree `../gyms_era_refunds` (from `master` `3edeefd`; the main app checkout has the owner's uncommitted pubspec / Podfile changes, not touched). Push when done; **no PRs**. |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | NEW-252 then NEW-253 (be, then CMS, then app) |
+| Step within issue | be: R-103 recorded; next NEW-252 test + fix (`payout.service.js` balance, revenue sums in `reports.service.js`, `host.controller.js`, `expenses.controller.js`) |
 
 **NEW-250 (owner, 2026-11-14), `DONE`, pushed, no PR.** Cause: CMS and app sent staff Cancel / Freeze (and app host Renew) to the member routes `/subscriptions/:id/*`, which since NEW-08 find only the caller's own subscription (`_resolveBySubscriptionId`), so 404. Fix: be `af50fcd` `POST /subscriptions/staff/:id/freeze|cancel` (tenant row, branch check, approval commands `subscriptions.pause` / `subscriptions.cancel`, R-102; freeze / cancel rules shared with the member routes under a row lock; device sync by the model hook, tested); CMS `55196bf`; app `80aa5b5` (worktree `../gyms_era_subs404`; host Renew via `/actions/subscriptions.create`). Spec §13 "NEW-250 / NEW-251" (with the confirm SQL). Tests: be `new-250-*` 19 (red 14), CMS 4 (red 4), app 4. Full be 352 / 353 (only `staging-script`), CMS 707, app 476. NEW-251 (CMS has no Renew) recorded with a fix plan, open question: is the payment step required for a CMS renewal.
 
@@ -794,3 +794,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 145 | 2026-11-13 | Claude Code (Opus 5.5) | NEW-244: CMS Members Status showed the account, not the plan (read first, then fix be + CMS) | be + CMS `fix/cms-member-plan-status`; red first (be 10 / 13, CMS 4 / 4); be related suites + guards 29 / 29, 255 / 255; CMS 703, tsc, lint, build, PW devices 10 / 10 | task complete (pushed, no PR) | yes |
 | 146 | 2026-11-14 | Claude Code (Opus 5.5) | NEW-248: checklist (i) on the SpeedFace with the owner (capture server, PIN 9001), then the fixes | be `fix/zkteco-att-userinfo-form`: USERINFO default (a), att audit by USERINFO query (b), results by ID guard (c), device admins never written + tenant migration 027 (d, R-101); red first (2 / 5, 3 / 5, 6 / 7); full suite 3563 / 3566 (staging-script 2, no mysqldump; new-127 1, fixed); lint:src 0 errors; pushed, no PR | task complete | yes |
 | 147 | 2026-11-14 | Claude Code (Opus 5.5) | NEW-250: staff Cancel / Freeze 404 in CMS and app (read-only diagnosis, then fix be + CMS + app); NEW-251 CMS Renew recorded | be `af50fcd`, CMS `55196bf`, app `80aa5b5` + be docs commit; red first (be 14 / 19, CMS 4 / 4, app does not compile); R-102 | task complete | yes |
+| 148 | 2026-11-14 | Claude Code (Opus 5.5) | NEW-253: refunds on subscription cancellation (investigate, R-103 decisions, then be + CMS + app); NEW-252 refund money math | (in progress) | (in progress) | (in progress) |
