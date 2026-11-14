@@ -343,10 +343,15 @@ async function ingestAttUploads(db, tenantId, device, table, body, now = new Dat
   return out;
 }
 
-/** An audit whose user query was handed to this device and has no querydata pack yet takes these PINs. */
+/**
+ * An audit whose user query was handed to this device and has no querydata pack yet takes these PINs. A T&A PUSH
+ * audit (device-jobs#requestAttAudit: no query command, one DATA QUERY USERINFO per PIN) takes every USER line the
+ * device uploads while it is open: the answers to its queries, and any user the device reports on its own.
+ */
 async function feedAudit(db, deviceId, pins) {
-  const [audit] = await select(db, `SELECT a.id FROM device_audits a JOIN device_commands c ON c.id = a.query_cmd_id
-    WHERE a.device_id = ? AND a.status IN ('requested', 'receiving') AND a.packs_received = 0 AND c.status IN ('sent', 'acked')
+  const [audit] = await select(db, `SELECT a.id FROM device_audits a LEFT JOIN device_commands c ON c.id = a.query_cmd_id
+    WHERE a.device_id = ? AND a.status IN ('requested', 'receiving')
+      AND ((a.query_cmd_id IS NOT NULL AND a.packs_received = 0 AND c.status IN ('sent', 'acked')) OR (a.query_cmd_id IS NULL AND a.count_cmd_id IS NULL))
     ORDER BY a.id DESC LIMIT 1`, [deviceId]);
   if (!audit) return;
   for (const pin of pins) await exec(db, 'INSERT IGNORE INTO device_audit_pins (audit_id, pin) VALUES (?, ?)', [audit.id, pin]);

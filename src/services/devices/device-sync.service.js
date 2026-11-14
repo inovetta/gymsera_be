@@ -481,6 +481,7 @@ async function renderOne(db, kind, args, record, { cfg, settings = {} }) {
     case 'check': return c.check();
     case 'count': return c.count(args.table || 'user', args.type);
     case 'query_users': return c.queryUsers(args.pin);
+    case 'query_userinfo': return c.queryUserInfo(args.pin);
     case 'query_bio': return c.queryBio(args.type ?? 9, args.pin);
     default: return null;
   }

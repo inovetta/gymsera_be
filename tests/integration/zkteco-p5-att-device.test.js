@@ -14,7 +14,7 @@
  *   same second   a fingerprint and a face punch of one person in the same second are two events
  *   import        an "import first" att device fills its import from the history upload (356-style data:
  *                 users with admins, FP lines and BIODATA faces); the import becomes ready, matches, applies
- *   audit         OPERLOG USER lines uploaded for an audit's query count as its answer
+ *   audit         DATA QUERY USERINFO per PIN (NEW-248b); OPERLOG USER lines uploaded while it is open are its answer
  *   commands      delivered at the next poll in the per-device form: no userauthorize, validity none
  *                 (StartDatetime=0 EndDatetime=0), `USERINFO` form by default (checklist (i), 2026-11-14: the
  *                 firmware answers -1004 to `DATA … user`), `user` per device; removal without userauthorize
@@ -310,17 +310,29 @@ describe('import of 356-style data (an "import first" att device)', () => {
 });
 
 describe('audit fed by OPERLOG USER uploads', () => {
-  test('the users the device uploads for the audit query are its answer; the ack compares', async () => {
-    const dev = await attDevice({ name: 'Audit Door', simOpts: { attQueryByUpload: true } });
-    dev.sim.seedUser({ pin: '777777', name: 'Stranger' });
-    const { requestAudit } = require('../../src/jobs/device-jobs');
-    const { auditId } = await requestAudit(w.db1, dev.id);
-    await dev.sim.drain();
+  // NEW-248b: an att audit asks DATA QUERY USERINFO per PIN (not DATA QUERY user) and takes every USER line the
+  // device uploads while it is open; a PIN of nobody in GymsEra is listed as unlinked at the compare.
+  test('the users the device uploads during the audit are its answer; compared once answered', async () => {
+    const own = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Att Audit Upload Branch' });
+    const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: own.id, organizationId: own.gymId, name: 'Audit Door', direction: 'in', importFirst: false, createdBy: w.owner.user.id });
+    const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true });
+    await sim.connectAtt();
+    const member = await w.member('Audit Upload Member', { email: `p5-audit-${crypto.randomBytes(3).toString('hex')}@gymseratest.com` });
+    await w.subscribe(w.db1, { user: member, branch: own });
+    await sim.drain();
+    const { requestAudit, finishAttAudits } = require('../../src/jobs/device-jobs');
+    const { auditId, queries } = await requestAudit(w.db1, device.id);
+    expect(queries).toBe(1);
+    const { userLine } = require('../fixtures/zkteco/att-speedface-v5l');
+    await sim.uploadAtt('OPERLOG', userLine({ pin: '777777', name: 'Stranger', privilege: 0, card: '' }));
+    const asked = await sim.drain();
+    expect(asked.map((d) => d.text)).toEqual([`DATA QUERY USERINFO PIN=${await w.pinOf(w.db1, member.id)}`]);
+    await finishAttAudits(w.db1, new Date(Date.now() + 31000));
     const [audit] = await w.q(w.db1, 'SELECT * FROM device_audits WHERE id = ?', [auditId]);
     expect(audit.status).toBe('compared');
     const pins = (await w.q(w.db1, 'SELECT pin FROM device_audit_pins WHERE audit_id = ?', [auditId])).map((r) => String(r.pin));
     expect(pins).toContain('777777');
-    expect((await w.q(w.db1, 'SELECT * FROM device_unlinked_users WHERE device_id = ? AND pin = ?', [dev.id, '777777']))).toHaveLength(1);
+    expect((await w.q(w.db1, 'SELECT * FROM device_unlinked_users WHERE device_id = ? AND pin = ?', [device.id, '777777']))).toHaveLength(1);
   });
 });
 

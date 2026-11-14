@@ -38,6 +38,12 @@
  * It runs `DATA UPDATE / DELETE USERINFO` and `SET OPTION Delay=` too. Poll interval like the firmware:
  * the `Delay` of the option answer when there is one, else it grows by 1 to 3 s a poll up to 30 s
  * (`nextInterval()`; what the capture showed after a bare `OK`).
+ *
+ * `{ att: true, realFirmware: true }`: the return codes the real device gave in checklist (i) (2026-11-14,
+ * SpeedFace-V5L ZAM180-NF50VA-Ver3.4.9): `DATA UPDATE / DELETE / QUERY user …` -1004, `DATA COUNT …` -1002,
+ * `DATA QUERY USERINFO PIN=<pin>` 0 with the user (if it has it) uploaded as one OPERLOG USER line before the
+ * result, and the result echoes only the first word of the command (`CMD=DATA`). Off by default: the earlier
+ * att tests keep the forgiving device.
  */
 'use strict';
 
@@ -149,6 +155,7 @@ class ZkDeviceSimulator {
       this.stamps = { ATTLOG: '9999', OPERLOG: '9999', BIODATA: '9999' };
       // A firmware that answers DATA QUERY user by uploading OPERLOG USER lines instead of querydata packs.
       this.attQueryByUpload = Boolean(o.attQueryByUpload);
+      this.realFirmware = Boolean(o.realFirmware);
       // Stamps decide what the device uploads (opt-in; NEW-242): after each cdata answer it uploads a table's
       // records only when the server's <TABLE>Stamp is below its own stamp (9999, kept from the Phase 0 capture
       // server). CHECK makes it fetch the options again and do the same. Without it, uploads are only what a
@@ -236,6 +243,15 @@ class ZkDeviceSimulator {
     if (head.startsWith('SET OPTION ')) {
       Object.assign(this.config, parseConfig(head.slice(11).replace(/\t/g, '\n')));
       return 0;
+    }
+    if (this.realFirmware) {
+      if (/^DATA (UPDATE|DELETE|QUERY) user\b/.test(head) || /^DATA QUERY tablename=user,/.test(head)) return -1004;
+      if (/^DATA COUNT /.test(head)) return -1002;
+      const q = /^DATA QUERY USERINFO (.*)$/.exec(head);
+      if (q) {
+        this.pendingUserInfo = String(fieldsOf(q[1]).pin ?? '');
+        return 0;
+      }
     }
     const ui = /^DATA (UPDATE|DELETE) USERINFO (.*)$/.exec(head);
     if (ui) {
@@ -342,7 +358,13 @@ class ZkDeviceSimulator {
     for (const cmd of r.commands) {
       this.pendingQuery = null;
       this.pendingEnroll = null;
+      this.pendingUserInfo = null;
       const code = this.execute(cmd.text);
+      const asked = this.pendingUserInfo ? this.users.get(this.pendingUserInfo) : null;
+      if (asked) {
+        const { userLine } = require('../tests/fixtures/zkteco/att-speedface-v5l');
+        await this.uploadAtt('OPERLOG', userLine({ pin: asked.pin, name: asked.name || '', privilege: Number(asked.privilege) || 0, card: asked.cardNo || '' }));
+      }
       if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=user')) {
         if (this.attQueryByUpload) {
           const { userLine } = require('../tests/fixtures/zkteco/att-speedface-v5l');
@@ -352,7 +374,7 @@ class ZkDeviceSimulator {
       }
       if (this.pendingQuery !== null && this.pendingQuery !== undefined && cmd.text.includes('tablename=biodata')) await this.sendBioQuery(cmd.id, this.pendingQuery);
       if (this.pendingEnroll) await this.sendEnroll(this.pendingEnroll);
-      results.push({ id: cmd.id, returnCode: code, cmd: cmd.text.split(' ').slice(0, 2).join(' ') });
+      results.push({ id: cmd.id, returnCode: code, cmd: cmd.text.split(' ').slice(0, this.realFirmware ? 1 : 2).join(' ') });
     }
     const body = results.map((x) => `ID=${x.id}&${this.lowerCaseReturn ? 'return' : 'Return'}=${x.returnCode}&CMD=${x.cmd}`).join('\n');
     const ack = await this.request('POST', `/iclock/devicecmd?${this.q()}`, body);
