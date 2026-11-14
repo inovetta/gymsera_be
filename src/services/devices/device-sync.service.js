@@ -264,9 +264,15 @@ async function applyOne(db, device, memberId, want, { priority = 5, force = fals
     if (row.state === 'failed' && row.desired_hash === (target ? targetHash : null) && !retry) return 'unchanged';
   }
 
+  const pin = target ? target.pin : String(row?.pin ?? want.pin);
+  // NEW-248d: an administrator on this device (privilege above 0) is never written (we only send Pri=0) nor deleted.
+  if (await identity.isDeviceAdmin(db, device.id, pin)) {
+    await exec(db, 'UPDATE device_commands SET status = \'superseded\', updated_at = ? WHERE device_id = ? AND member_id = ? AND status = \'queued\'', [now, device.id, memberId]);
+    await noteAdminProtected(db, device.id, { pin, memberId }, now);
+    return 'skipped';
+  }
   const support = rules.bioSupport(device.caps);
   const applied = onDevice && !force ? parse(row.applied_json) : null;
-  const pin = target ? target.pin : String(row?.pin ?? want.pin);
   const plan = rules.planCommands({
     desired: target,
     applied: target ? applied : parse(row?.applied_json),
@@ -298,6 +304,14 @@ async function applyOne(db, device, memberId, want, { priority = 5, force = fals
     ...retryCols,
   }, now);
   return 'queued';
+}
+
+/** One error-log row per device, PIN and day: GymsEra left a device administrator alone (NEW-248d). */
+async function noteAdminProtected(db, deviceId, { pin, memberId = null }, now = new Date()) {
+  const [seen] = await select(db, `SELECT 1 AS x FROM device_error_logs WHERE device_id = ? AND kind = 'device_admin_protected' AND occurred_at >= ?
+    AND data_json LIKE ? LIMIT 1`, [deviceId, new Date(now.getTime() - 86400000), `%"pin":"${String(pin).replace(/[^0-9]/g, '')}"%`]);
+  if (seen) return;
+  await logError(db, deviceId, { kind: 'device_admin_protected', message: 'Device administrator: GymsEra does not change or remove this user', data: { pin: String(pin), memberId } }, now);
 }
 
 function retryCounter(row, now) {
@@ -419,6 +433,8 @@ async function renderCommands(db, device, rows) {
   const [det] = await select(db, 'SELECT * FROM access_device_details WHERE id = ?', [device.id]);
   const caps = parse(det?.capabilities_json, {}) || {};
   const settings = SETTINGS(det || {});
+  // NEW-248d: a member command for a PIN that became a device administrator after it was queued is not sent.
+  const admins = pairs.length ? await identity.deviceAdminPins(db, device.id) : new Set();
   let photos = 0;
   const out = [];
   for (const row of rows) {
@@ -428,6 +444,10 @@ async function renderCommands(db, device, rows) {
       if (row.batch_id && row.member_id) {
         const s = syncByMember.get(row.member_id);
         if (!s || s.pending_batch_id !== row.batch_id) { out.push({ id, superseded: true }); continue; }
+      }
+      if (row.member_id && admins.size) {
+        const pin = String(args.pin ?? parse(syncByMember.get(row.member_id)?.desired_json)?.pin ?? '');
+        if (admins.has(pin)) { out.push({ id, superseded: true }); continue; }
       }
       if (PHOTO_KINDS.has(row.kind) && ++photos > cfg.photosPerPoll) { out.push({ id, held: true }); continue; }
       const record = row.member_id ? parse(syncByMember.get(row.member_id)?.desired_json) : null;
@@ -721,7 +741,10 @@ async function compareAudit(db, deviceId, auditId, now = new Date()) {
   const devicePins = new Set((await select(db, 'SELECT pin FROM device_audit_pins WHERE audit_id = ?', [auditId])).map((r) => String(r.pin)));
   const rows = await select(db, 'SELECT member_id, pin, desired, state FROM device_member_sync WHERE device_id = ?', [deviceId]);
   const byPin = new Map(rows.map((r) => [String(r.pin), r]));
-  const report = { extraRemoved: 0, missingResent: 0, unlinked: 0, retiredRemoved: 0 };
+  const report = { extraRemoved: 0, missingResent: 0, unlinked: 0, retiredRemoved: 0, adminsLeft: 0 };
+  // NEW-248d: the device's own administrators are neither removed nor re-sent (one with no member: unlinked, as before).
+  const admins = await identity.deviceAdminPins(db, deviceId);
+  report.adminsLeft = [...devicePins].filter((p) => admins.has(p)).length;
 
   for (const pin of devicePins) {
     const row = byPin.get(pin);
@@ -733,12 +756,14 @@ async function compareAudit(db, deviceId, auditId, now = new Date()) {
       report.unlinked += 1;
       continue;
     }
+    // A member's PIN that is an administrator on the device: left as it is (listed in the report only).
+    if (admins.has(pin)) continue;
     await forceRemove(db, deviceId, owner.memberId, pin, { priority: 9, now });
     if (owner.retired) report.retiredRemoved += 1;
     else report.extraRemoved += 1;
   }
   for (const row of rows) {
-    if (Number(row.desired) !== 1 || row.state !== 'in_sync' || devicePins.has(String(row.pin))) continue;
+    if (Number(row.desired) !== 1 || row.state !== 'in_sync' || devicePins.has(String(row.pin)) || admins.has(String(row.pin))) continue;
     await forceResend(db, deviceId, row.member_id, { priority: 9, now });
     report.missingResent += 1;
   }

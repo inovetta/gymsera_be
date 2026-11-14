@@ -245,6 +245,8 @@ async function ingestUsers(db, device, body, now = new Date()) {
 }
 
 async function ingestUserRows(db, device, rows, now = new Date()) {
+  // NEW-248d: who is an administrator on this device (privilege above 0) is remembered; GymsEra never writes them.
+  await identity.noteDevicePrivileges(db, device.id, rows, { source: 'upload', now });
   for (const r of rows) {
     const pin = String(r.pin || '');
     if (!/^\d{1,9}$/.test(pin)) continue;
@@ -337,7 +339,7 @@ async function ingestAttUploads(db, tenantId, device, table, body, now = new Dat
   }
   if (users.length) {
     await feedAudit(db, device.id, users.map((u) => u.pin));
-    await ingestUserRows(db, device, users.map((u) => ({ pin: u.pin, name: u.name, cardno: u.cardno })), now);
+    await ingestUserRows(db, device, users.map((u) => ({ pin: u.pin, name: u.name, cardno: u.cardno, privilege: u.privilege })), now);
   }
   if (templates.length) await ingestTemplateRecords(db, tenantId, device, templates, now);
   return out;
