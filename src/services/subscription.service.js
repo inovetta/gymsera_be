@@ -380,16 +380,19 @@ const freeze = async (userId, subscriptionId, optsOrFrom, maybeTo) => {
   const freezeTo = typeof optsOrFrom === 'object' && optsOrFrom !== null ? optsOrFrom.freezeTo : maybeTo;
 
   const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
-  const { MemberSubscription } = models;
+  return _freezeRow(models, resolvedSubscriptionId, freezeFrom, freezeTo, { index, notFound: 'Subscription not found in tenant database' });
+};
 
-  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
-  if (!sub) throw createError('Subscription not found in tenant database', 404);
+/**
+ * The freeze rule (FLOW-06, spec §12.3): only an ACTIVE subscription, only on a plan that allows
+ * freezing, at most the plan's freezeLimitDays. Returns the frozen days. Shared by the member route
+ * and the staff command `subscriptions.pause` (NEW-250), so there is one rule.
+ */
+const assertFreezable = async (models, sub, freezeFrom, freezeTo, transaction = null) => {
   if (sub.status !== SubscriptionStatus.ACTIVE) {
     throw createError(`Cannot freeze a subscription with status: ${sub.status}`, 409);
   }
-
-  // Check freeze allowance (freezeLimitDays on the plan)
-  const plan = await models.MembershipPlan.findByPk(sub.membershipPlanId);
+  const plan = await models.MembershipPlan.findByPk(sub.membershipPlanId, { transaction });
   if (plan && plan.freezeLimitDays === 0) {
     throw createError('This plan does not allow freezing', 400);
   }
@@ -399,27 +402,70 @@ const freeze = async (userId, subscriptionId, optsOrFrom, maybeTo) => {
   if (plan && freezeDays > plan.freezeLimitDays) {
     throw createError(`Freeze duration exceeds the plan limit of ${plan.freezeLimitDays} days`, 400);
   }
+  return freezeDays;
+};
 
-  // Extend endDate by the frozen days (spec §12.3, FLOW-06)
-  const curEndDate = new Date(sub.endDate);
-  curEndDate.setDate(curEndDate.getDate() + freezeDays);
-  const extendedEndDate = curEndDate.toISOString().split('T')[0];
+/** The cancel rule: anything not already CANCELLED or EXPIRED, at once. Shared like assertFreezable. */
+const assertCancellable = (sub) => {
+  if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status)) {
+    throw createError(`Subscription is already ${sub.status.toLowerCase()}`, 409);
+  }
+};
 
-  await sub.update({
-    status: SubscriptionStatus.FROZEN,
-    freezeFrom,
-    freezeTo,
-    endDate: extendedEndDate,
+/** Platform index (UserGymMembership) follows the tenant row: the given index row, else by subscriptionId. */
+const _syncIndex = async (subscriptionId, fields, index = null) => {
+  if (index) return index.update(fields);
+  return UserGymMembership.update(fields, { where: { subscriptionId } });
+};
+
+/**
+ * Freeze one tenant row under a row lock, so two identical requests cannot both pass the ACTIVE
+ * check and extend the end date twice. The device sync runs from the model hook after commit.
+ */
+const _freezeRow = async (models, subscriptionId, freezeFrom, freezeTo, { index = null, notFound = 'Subscription not found' } = {}) => {
+  const { MemberSubscription } = models;
+  const sub = await MemberSubscription.sequelize.transaction(async (transaction) => {
+    const row = await MemberSubscription.findByPk(subscriptionId, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!row) throw createError(notFound, 404);
+    const freezeDays = await assertFreezable(models, row, freezeFrom, freezeTo, transaction);
+
+    // Extend endDate by the frozen days (spec §12.3, FLOW-06)
+    const curEndDate = new Date(row.endDate);
+    curEndDate.setDate(curEndDate.getDate() + freezeDays);
+    const extendedEndDate = curEndDate.toISOString().split('T')[0];
+
+    await row.update({ status: SubscriptionStatus.FROZEN, freezeFrom, freezeTo, endDate: extendedEndDate }, { transaction });
+    return row;
   });
 
-  // Sync status and extended endDate in Platform index
-  await index.update({
-    status: SubscriptionStatus.FROZEN,
-    endDate: extendedEndDate,
-  });
-
+  await _syncIndex(sub.id, { status: SubscriptionStatus.FROZEN, endDate: sub.endDate }, index);
   return sub.reload();
 };
+
+/** Cancel one tenant row under a row lock (see _freezeRow). */
+const _cancelRow = async (models, subscriptionId, { index = null, notFound = 'Subscription not found' } = {}) => {
+  const { MemberSubscription } = models;
+  const sub = await MemberSubscription.sequelize.transaction(async (transaction) => {
+    const row = await MemberSubscription.findByPk(subscriptionId, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!row) throw createError(notFound, 404);
+    assertCancellable(row);
+    await row.update({ status: SubscriptionStatus.CANCELLED, cancelledAt: new Date() }, { transaction });
+    return row;
+  });
+
+  await _syncIndex(sub.id, { status: SubscriptionStatus.CANCELLED }, index);
+  return sub.reload();
+};
+
+/**
+ * NEW-250: staff freeze / cancel, from the caller's own tenant database (tenantContext), never
+ * through the platform index the member routes use (NEW-08: those only find the caller's own
+ * subscriptions). Run by the approval commands `subscriptions.pause` / `subscriptions.cancel`.
+ */
+const staffFreeze = (tenantDb, subscriptionId, { freezeFrom, freezeTo }) =>
+  _freezeRow(tenantDb.models, subscriptionId, freezeFrom, freezeTo);
+
+const staffCancel = (tenantDb, subscriptionId) => _cancelRow(tenantDb.models, subscriptionId);
 
 // ── POST /subscriptions/:id/unfreeze ──────────────────────────────────────────
 const unfreeze = async (userId, subscriptionId) => {
@@ -457,18 +503,7 @@ const unfreeze = async (userId, subscriptionId) => {
 // ── POST /subscriptions/:id/cancel ────────────────────────────────────────────
 const cancel = async (userId, subscriptionId) => {
   const { models, index, resolvedSubscriptionId } = await _resolveBySubscriptionId(subscriptionId, userId);
-  const { MemberSubscription } = models;
-
-  const sub = await MemberSubscription.findOne({ where: { id: resolvedSubscriptionId } });
-  if (!sub) throw createError('Subscription not found in tenant database', 404);
-  if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status)) {
-    throw createError(`Subscription is already ${sub.status.toLowerCase()}`, 409);
-  }
-
-  await sub.update({ status: SubscriptionStatus.CANCELLED, cancelledAt: new Date() });
-  await index.update({ status: SubscriptionStatus.CANCELLED });
-
-  return sub.reload();
+  return _cancelRow(models, resolvedSubscriptionId, { index, notFound: 'Subscription not found in tenant database' });
 };
 
 /**
@@ -1148,4 +1183,5 @@ module.exports = {
   getMemberBranchSubscriptionStatus, getUpgradeOptions, upgradeSubscription,
   getSubscriptionQrToken, applyUpgrade, applyRenewal, parsePendingChange: _parsePendingChange, priceFirstPayment,
   quoteFirstPayment, datesOnApproval,
+  staffFreeze, staffCancel, assertFreezable, assertCancellable,
 };

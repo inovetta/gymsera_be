@@ -61,3 +61,44 @@ register({
       : subscriptionService.changePlan(payload.memberUserId, payload.subscriptionId, payload.newPlanId);
   },
 });
+
+// NEW-250: staff freeze and cancel. Before these, the CMS and the app sent staff to the member
+// routes /subscriptions/:id/freeze|cancel, which only find the caller's own subscription (NEW-08),
+// so every staff Freeze / Cancel answered 404. The rules are the member routes' rules
+// (assertFreezable / assertCancellable), checked here and again under the row lock.
+const requireSubscriptionAtBranch = async (ctx, payload) => {
+  const sub = await requireSubscription(ctx, payload);
+  // The grants were resolved for ctx.branchId: the row must be at that branch.
+  if (ctx.branchId && sub.branchId && sub.branchId !== ctx.branchId) {
+    throw createError('That subscription belongs to another branch', 409);
+  }
+  return sub;
+};
+
+register({
+  actionKey: 'subscriptions.pause',
+  summarize: (p) => `Freeze — ${p.memberName || 'member'} (${p.freezeFrom} to ${p.freezeTo})`,
+  validate: async (ctx, payload) => {
+    if (!payload.freezeFrom || !payload.freezeTo) throw createError('freezeFrom and freezeTo are required', 400);
+    const sub = await requireSubscriptionAtBranch(ctx, payload);
+    const subscriptionService = require('../subscription.service');
+    await subscriptionService.assertFreezable(ctx.tenantDb.models, sub, payload.freezeFrom, payload.freezeTo);
+  },
+  execute: async (ctx, payload) => {
+    const subscriptionService = require('../subscription.service');
+    return subscriptionService.staffFreeze(ctx.tenantDb, payload.subscriptionId, payload);
+  },
+});
+
+register({
+  actionKey: 'subscriptions.cancel',
+  summarize: (p) => `Cancel subscription — ${p.memberName || 'member'}`,
+  validate: async (ctx, payload) => {
+    const sub = await requireSubscriptionAtBranch(ctx, payload);
+    require('../subscription.service').assertCancellable(sub);
+  },
+  execute: async (ctx, payload) => {
+    const subscriptionService = require('../subscription.service');
+    return subscriptionService.staffCancel(ctx.tenantDb, payload.subscriptionId);
+  },
+});

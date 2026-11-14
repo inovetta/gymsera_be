@@ -277,4 +277,35 @@ router.get('/staff/:id', tenantContext, authorize(...staffRoles), controller.get
 router.post('/staff/:id/activate', tenantContext, authorize(...staffRoles), validate.allowBody([]), controller.activateSubscription);
 router.post('/staff', tenantContext, authorize(...staffRoles), validate.allowBody(['branchId', 'notes', 'paymentMethod', 'planId', 'startDate', 'userId']), controller.createStaffSubscription);
 
+/**
+ * @swagger
+ * /subscriptions/staff/{id}/freeze:
+ *   post:
+ *     summary: Staff — freeze a member's ACTIVE subscription (approval command subscriptions.pause, NEW-250)
+ *     description: The end date moves by the frozen days, up to the plan's freeze limit. Optional Idempotency-Key header.
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: "Frozen: { status: EXECUTED, subscription }" }
+ *       202: { description: "Sent for approval: { status: PENDING, requestId }" }
+ *       403: { description: No subscriptions.pause at the subscription's branch }
+ *       404: { description: No such subscription in the caller's tenant, or a branch the caller cannot see }
+ *       409: { description: Not ACTIVE }
+ * /subscriptions/staff/{id}/cancel:
+ *   post:
+ *     summary: Staff — cancel a member's subscription at once (approval command subscriptions.cancel, NEW-250)
+ *     tags: [Subscriptions]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: "Cancelled: { status: EXECUTED, subscription }" }
+ *       202: { description: "Sent for approval: { status: PENDING, requestId }" }
+ *       403: { description: No subscriptions.cancel at the subscription's branch }
+ *       404: { description: No such subscription in the caller's tenant, or a branch the caller cannot see }
+ *       409: { description: Already cancelled or expired }
+ */
+router.post('/staff/:id/freeze', tenantContext, authorize(...staffRoles), validate.strict(validators.freeze), controller.staffFreeze);
+router.post('/staff/:id/cancel', tenantContext, authorize(...staffRoles), validate.strict(validators.cancel), controller.staffCancel);
+
 module.exports = router;
