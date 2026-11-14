@@ -83,4 +83,30 @@ const changePlan = [
   body('planId').isUUID(4).withMessage('planId must be a valid UUID'),
 ];
 
-module.exports = { subscribe, quote, listMySubscriptions, freeze, cancel, renew, changePlan };
+// ── NEW-253 (R-103): refunds on cancellation ──────────────────────────────────
+const staffCancel = [
+  param('id').isUUID(4).withMessage('id must be a valid UUID'),
+  body('refund').optional().isBoolean({ strict: true }).withMessage('refund must be true or false'),
+  body('refundAmount').optional({ values: 'null' }).isFloat({ gt: 0 }).withMessage('refundAmount must be greater than zero'),
+  body('refundReason').optional({ values: 'null' }).isString().isLength({ max: 500 }).withMessage('refundReason is at most 500 characters'),
+];
+
+const refundRequest = [
+  param('id').isUUID(4).withMessage('id must be a valid UUID'),
+  body('reason').optional({ values: 'null' }).isString().isLength({ max: 500 }).withMessage('reason is at most 500 characters'),
+];
+
+const decideRefund = [
+  param('requestId').isUUID(4).withMessage('requestId must be a valid UUID'),
+  body('decision').isIn(['APPROVE', 'REJECT']).withMessage('decision must be APPROVE or REJECT'),
+  body('amount').optional({ values: 'null' }).isFloat({ gt: 0 }).withMessage('amount must be greater than zero'),
+  body('reason').optional({ values: 'null' }).isString().isLength({ max: 500 }).withMessage('reason is at most 500 characters'),
+];
+
+const refundPolicy = [
+  body('branchId').optional({ values: 'null' }).isUUID().withMessage('branchId must be a valid UUID'),
+  body('refundsAllowed').optional().isBoolean({ strict: true }).withMessage('refundsAllowed must be true or false'),
+  body('refundWindowDays').optional({ values: 'null' }).isInt({ min: 1, max: 3650 }).toInt().withMessage('refundWindowDays must be 1 to 3650, or empty for no limit'),
+];
+
+module.exports = { subscribe, quote, listMySubscriptions, freeze, cancel, renew, changePlan, staffCancel, refundRequest, decideRefund, refundPolicy };

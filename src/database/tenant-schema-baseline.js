@@ -94,6 +94,10 @@ const ADDS = {
   27: {
     tables: ['device_admin_pins'],
   },
+  28: {
+    tables: ['refund_requests'],
+    columns: { gyms: ['refunds_allowed', 'refund_window_days'] },
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -305,6 +309,14 @@ const PROBES = {
   26: async (s) => columnOfType(s, 'access_device_details', 'user_command_form', (c) => ['char', 'varchar'].includes(type(c))),
   // 027 creates one table (NEW-248d).
   27: async (s) => tableWithColumn(s, 'device_admin_pins', 'privilege'),
+  // 028 adds two gyms columns, then creates refund_requests (NEW-253); the last step is the table.
+  28: async (s) => {
+    for (const column of ['refunds_allowed', 'refund_window_days']) {
+      const r = columnOfType(s, 'gyms', column, (c) => INT_TYPES.includes(type(c)), { tableOptional: true });
+      if (r.state !== 'present') return r;
+    }
+    return tableWithColumn(s, 'refund_requests', 'ledger_adjustment_id');
+  },
 };
 
 /** Tables and columns the tenant models read (Sequelize field names, no VIRTUAL attributes). */
