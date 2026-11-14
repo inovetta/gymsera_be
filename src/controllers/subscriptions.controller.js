@@ -269,7 +269,56 @@ const createStaffSubscription = async (req, res, next) => {
   }
 };
 
+// ── POST /subscriptions/staff/:id/freeze | /cancel (NEW-250) ─────────────────
+// The subscription is read from the caller's own tenant (tenantContext), the grants are resolved at
+// its branch, and the approval engine runs it now (DIRECT) or queues a request (REQUEST, 202).
+const staffSubscriptionAction = (actionKey, doneMessage, bodyFields = []) => async (req, res, next) => {
+  try {
+    const { MemberSubscription } = req.tenantDb.models;
+    const sub = await MemberSubscription.findByPk(req.params.id, { attributes: ['id', 'branchId', 'userId'] });
+    if (!sub) throw createError('Subscription not found', 404);
+    // A branch the caller cannot see answers like a wrong id.
+    if (!(await hasBranchAccess(req, sub.branchId, 'subscriptions.view'))) {
+      throw createError('Subscription not found', 404);
+    }
+
+    const accessService = require('../services/access.service');
+    const approvalService = require('../services/approval.service');
+    const { User } = require('../models/platform');
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const userId = req.user.id || req.user.sub;
+    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, sub.branchId);
+    const member = await User.findByPk(sub.userId, { attributes: ['fullName'] });
+
+    const payload = { subscriptionId: sub.id, memberName: member?.fullName || null };
+    for (const field of bodyFields) payload[field] = req.body[field];
+
+    const outcome = await approvalService.perform(
+      { tenantDb: req.tenantDb, tenantId, userId, branchId: sub.branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req },
+      actionKey,
+      payload,
+      { idempotencyKey: req.headers['idempotency-key'] || null }
+    );
+
+    if (outcome.status === 'EXECUTED') {
+      return sendSuccess(res, { status: 'EXECUTED', subscription: outcome.result }, doneMessage, 200);
+    }
+    return sendSuccess(
+      res,
+      { status: 'PENDING', requestId: outcome.request.id, summary: outcome.request.summary, duplicate: outcome.duplicate || false },
+      'Sent for approval. You will be notified once it is decided.',
+      202
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+const staffFreeze = staffSubscriptionAction('subscriptions.pause', 'Subscription frozen', ['freezeFrom', 'freezeTo']);
+const staffCancel = staffSubscriptionAction('subscriptions.cancel', 'Subscription cancelled');
+
 module.exports = {
+  staffFreeze, staffCancel,
   subscribe, quote, listMySubscriptions, freeze, cancel, renew, changePlan,
   listForStaff, getForStaff, preview, createStaffSubscription,
   getMySubscriptionDetail, uploadSubscriptionProof, activateSubscription,
