@@ -13,6 +13,7 @@ const { toMinorUnits, fromMinorUnits } = require('../utils/money.utils');
 const { createError } = require('../utils/response.utils');
 const { Tenant, User } = require('../models/platform');
 const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
+const { COLLECTED_REVENUE_STATUSES } = require('./revenue.service');
 
 const COOLING_PERIOD_HOURS = 24;
 const COOLING_PERIOD_MS = COOLING_PERIOD_HOURS * 60 * 60 * 1000;
@@ -44,10 +45,11 @@ const getPayoutBalance = async (tenantDb, branchId = null, options = {}) => {
   }
   const currency = currencies[0] || DEFAULT_CURRENCY;
 
-  // 1. Total completed payments
+  // 1. Total collected payments. NEW-252: a refunded payment was collected too; its refund is the
+  // REVERSAL subtracted in step 2, once (counting only COMPLETED here deducted a full refund twice).
   const payments = await Payment.findAll({
     where: {
-      status: 'COMPLETED',
+      status: { [Op.in]: COLLECTED_REVENUE_STATUSES },
       ...(branchId ? { branchId } : {}),
     },
     attributes: ['amount'],

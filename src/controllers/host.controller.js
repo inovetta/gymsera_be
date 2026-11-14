@@ -141,7 +141,7 @@ const getTodaySummary = async (req, res, next) => {
       throw unavailable;
     }
 
-    const { Branch, AttendanceLog, Payment, MemberSubscription, MembershipPlan, Expense } = tenantDb.models;
+    const { Branch, AttendanceLog, MemberSubscription, MembershipPlan, Expense } = tenantDb.models;
 
     const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id', 'timezone'] });
     const activeBranchIds = activeBranches.map((b) => b.id);
@@ -192,14 +192,11 @@ const getTodaySummary = async (req, res, next) => {
     const startOfMonth = startOfBusinessDay(startOfMonthStr, primaryTz);
 
     // 2. This Month Revenue & Expenses
-    const revenueSum = await Payment.sum('amount', {
-      where: {
-        ...branchFilter,
-        status: 'COMPLETED',
-        paidAt: { [Op.gte]: startOfMonth }
-      }
+    // NEW-252: collected (COMPLETED or REFUNDED) minus refunds recorded this month, counted once.
+    const monthlyRevenue = await require('../services/revenue.service').netRevenue(tenantDb, {
+      branchIds: activeBranchIds,
+      window: { [Op.gte]: startOfMonth },
     });
-    const monthlyRevenue = parseFloat(revenueSum || 0);
     const grossRevenue = monthlyRevenue;
 
     let totalExpenses = 0;
@@ -1031,7 +1028,7 @@ const upgradeSubscription = async (req, res, next) => {
 const getBranchDashboard = async (req, res, next) => {
   try {
     const { branchId } = req.params;
-    const { Branch, AttendanceLog, Payment, MemberSubscription, Expense } = req.tenantDb.models;
+    const { Branch, AttendanceLog, MemberSubscription, Expense } = req.tenantDb.models;
 
     const branch = await Branch.findOne({ where: { id: branchId, status: 'ACTIVE' } });
     if (!branch) {
@@ -1052,14 +1049,11 @@ const getBranchDashboard = async (req, res, next) => {
 
     const startOfMonthStr = monthStartOf(todayStr);
     const startOfMonth = startOfBusinessDay(startOfMonthStr, branch.timezone);
-    const revenueSum = await Payment.sum('amount', {
-      where: {
-        branchId,
-        status: 'COMPLETED',
-        paidAt: { [Op.gte]: startOfMonth }
-      }
+    // NEW-252: collected (COMPLETED or REFUNDED) minus refunds recorded this month, counted once.
+    const monthlyRevenue = await require('../services/revenue.service').netRevenue(req.tenantDb, {
+      branchIds: [branchId],
+      window: { [Op.gte]: startOfMonth },
     });
-    const monthlyRevenue = parseFloat(revenueSum || 0);
     const grossRevenue = monthlyRevenue;
 
     let totalExpenses = 0;

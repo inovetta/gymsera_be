@@ -9,6 +9,120 @@ const { UserGymMembership } = require('../../models/platform');
 const ledgerService = require('../ledger.service');
 const { moneyText } = require('../../utils/currency.utils');
 
+/** PAY-07: the part of a payment not refunded yet, in minor units (every REVERSAL against it subtracted). */
+const remainingRefundableMinorOf = async (LedgerAdjustment, payment, transaction = null) => {
+  const reversals = await LedgerAdjustment.findAll({
+    where: { relatedPaymentId: payment.id, type: 'REVERSAL' },
+    transaction,
+  });
+  const alreadyRefundedMinor = reversals.reduce((acc, a) => acc + Math.abs(toMinorUnits(a.amount)), 0);
+  return Math.max(0, toMinorUnits(payment.amount) - alreadyRefundedMinor);
+};
+
+/**
+ * PAY-07 refund inside the caller's transaction `tx`. NEW-253: a staff cancel with refund and a member
+ * refund approval run it together with their own write. Locks the payment row, so two refunds of the
+ * same payment run one after the other and the second sees the first's REVERSAL.
+ */
+const refundPaymentInTransaction = async (ctx, payload, tx) => {
+  const { Payment, LedgerAdjustment, MemberSubscription } = ctx.tenantDb.models;
+  // Row-level lock to prevent concurrent double-refunds
+  const payment = await Payment.findByPk(payload.paymentId, {
+    transaction: tx,
+    lock: tx.LOCK.UPDATE,
+  });
+  if (!payment) throw createError('Payment not found', 404);
+
+  if (payment.status === PaymentStatus.REFUNDED) {
+    const err = createError('Payment has already been fully refunded', 422);
+    err.code = 'payment_already_refunded';
+    throw err;
+  }
+
+  if (payment.status !== PaymentStatus.COMPLETED) {
+    const err = createError(`Only completed payments can be refunded (current status: ${payment.status})`, 422);
+    err.code = 'payment_not_refundable';
+    throw err;
+  }
+
+  const remainingRefundableMinor = await remainingRefundableMinorOf(LedgerAdjustment, payment, tx);
+
+  if (remainingRefundableMinor <= 0) {
+    const err = createError('Payment has already been fully refunded', 422);
+    err.code = 'payment_already_refunded';
+    throw err;
+  }
+
+  const refundMinor = payload.amount != null ? toMinorUnits(payload.amount) : remainingRefundableMinor;
+  if (refundMinor <= 0) {
+    const err = createError('Refund amount must be strictly greater than zero', 422);
+    err.code = 'invalid_refund_amount';
+    throw err;
+  }
+  if (refundMinor > remainingRefundableMinor) {
+    const err = createError(
+      `Refund amount exceeds remaining refundable balance of ${moneyText(fromMinorUnits(remainingRefundableMinor), payment.currency)}`,
+      422
+    );
+    err.code = 'refund_exceeds_refundable';
+    throw err;
+  }
+
+  const isFullRefund = refundMinor === remainingRefundableMinor;
+
+  // 1. Post reversing entry in LedgerAdjustment to today's open ledger day
+  const todayBusinessDate = await ledgerService.todayBusinessDate(ctx.tenantDb, payment.branchId);
+  const openDay = await ledgerService.getOrCreateLedgerDay(ctx.tenantDb, payment.branchId, todayBusinessDate);
+
+  const reversalAdjustment = await LedgerAdjustment.create(
+    {
+      ledgerDayId: openDay.id,
+      type: 'REVERSAL',
+      relatedPaymentId: payment.id,
+      amount: -Math.abs(toMajorUnitsNumber(refundMinor)),
+      reason: payload.reason || 'Member payment refund',
+      createdBy: ctx.requestedBy || ctx.userId,
+    },
+    { transaction: tx }
+  );
+
+  // 2. Update payment status if full refund, and append audit note
+  const refundNote = `Refunded ${moneyText(fromMinorUnits(refundMinor), payment.currency)}: ${payload.reason || 'Member refund'}`;
+  const newNotes = payment.notes ? `${payment.notes}\n${refundNote}` : refundNote;
+
+  const updateData = { notes: newNotes };
+  if (isFullRefund) {
+    updateData.status = PaymentStatus.REFUNDED;
+  }
+  await payment.update(updateData, { transaction: tx });
+
+  // 3. Adjust membership if full refund
+  if (isFullRefund && payment.paymentFor === 'MEMBERSHIP' && payment.referenceEntityId && MemberSubscription) {
+    await MemberSubscription.update(
+      { status: 'CANCELLED' },
+      { where: { id: payment.referenceEntityId }, transaction: tx }
+    );
+
+    tx.afterCommit(async () => {
+      await UserGymMembership.update(
+        { status: 'CANCELLED' },
+        { where: { subscriptionId: payment.referenceEntityId } }
+      ).catch((err) => {
+        console.warn('[Refund] Failed to sync UserGymMembership cancellation:', err.message);
+      });
+    });
+  }
+
+  return {
+    paymentId: payment.id,
+    refundedAmount: fromMinorUnits(refundMinor),
+    remainingRefundable: fromMinorUnits(remainingRefundableMinor - refundMinor),
+    isFullRefund,
+    status: isFullRefund ? PaymentStatus.REFUNDED : PaymentStatus.COMPLETED,
+    adjustmentId: reversalAdjustment.id,
+  };
+};
+
 register({
   actionKey: 'payments.refund',
 
@@ -73,114 +187,8 @@ register({
     }
   },
 
-  execute: async (ctx, payload) => {
-    const { Payment, LedgerAdjustment, MemberSubscription } = ctx.tenantDb.models;
-
-    return ctx.tenantDb.sequelize.transaction(async (tx) => {
-      // Row-level lock to prevent concurrent double-refunds
-      const payment = await Payment.findByPk(payload.paymentId, {
-        transaction: tx,
-        lock: tx.LOCK.UPDATE,
-      });
-      if (!payment) throw createError('Payment not found', 404);
-
-      if (payment.status === PaymentStatus.REFUNDED) {
-        const err = createError('Payment has already been fully refunded', 422);
-        err.code = 'payment_already_refunded';
-        throw err;
-      }
-
-      if (payment.status !== PaymentStatus.COMPLETED) {
-        const err = createError(`Only completed payments can be refunded (current status: ${payment.status})`, 422);
-        err.code = 'payment_not_refundable';
-        throw err;
-      }
-
-      const existingReversals = await LedgerAdjustment.findAll({
-        where: { relatedPaymentId: payment.id, type: 'REVERSAL' },
-        transaction: tx,
-      });
-      const alreadyRefundedMinor = existingReversals.reduce(
-        (acc, a) => acc + Math.abs(toMinorUnits(a.amount)),
-        0
-      );
-      const paymentAmountMinor = toMinorUnits(payment.amount);
-      const remainingRefundableMinor = Math.max(0, paymentAmountMinor - alreadyRefundedMinor);
-
-      if (remainingRefundableMinor <= 0) {
-        const err = createError('Payment has already been fully refunded', 422);
-        err.code = 'payment_already_refunded';
-        throw err;
-      }
-
-      const refundMinor = payload.amount != null ? toMinorUnits(payload.amount) : remainingRefundableMinor;
-      if (refundMinor <= 0) {
-        const err = createError('Refund amount must be strictly greater than zero', 422);
-        err.code = 'invalid_refund_amount';
-        throw err;
-      }
-      if (refundMinor > remainingRefundableMinor) {
-        const err = createError(
-          `Refund amount exceeds remaining refundable balance of ${moneyText(fromMinorUnits(remainingRefundableMinor), payment.currency)}`,
-          422
-        );
-        err.code = 'refund_exceeds_refundable';
-        throw err;
-      }
-
-      const isFullRefund = refundMinor === remainingRefundableMinor;
-
-      // 1. Post reversing entry in LedgerAdjustment to today's open ledger day
-      const todayBusinessDate = await ledgerService.todayBusinessDate(ctx.tenantDb, payment.branchId);
-      const openDay = await ledgerService.getOrCreateLedgerDay(ctx.tenantDb, payment.branchId, todayBusinessDate);
-
-      const reversalAdjustment = await LedgerAdjustment.create(
-        {
-          ledgerDayId: openDay.id,
-          type: 'REVERSAL',
-          relatedPaymentId: payment.id,
-          amount: -Math.abs(toMajorUnitsNumber(refundMinor)),
-          reason: payload.reason || 'Member payment refund',
-          createdBy: ctx.requestedBy || ctx.userId,
-        },
-        { transaction: tx }
-      );
-
-      // 2. Update payment status if full refund, and append audit note
-      const refundNote = `Refunded ${moneyText(fromMinorUnits(refundMinor), payment.currency)}: ${payload.reason || 'Member refund'}`;
-      const newNotes = payment.notes ? `${payment.notes}\n${refundNote}` : refundNote;
-
-      const updateData = { notes: newNotes };
-      if (isFullRefund) {
-        updateData.status = PaymentStatus.REFUNDED;
-      }
-      await payment.update(updateData, { transaction: tx });
-
-      // 3. Adjust membership if full refund
-      if (isFullRefund && payment.paymentFor === 'MEMBERSHIP' && payment.referenceEntityId && MemberSubscription) {
-        await MemberSubscription.update(
-          { status: 'CANCELLED' },
-          { where: { id: payment.referenceEntityId }, transaction: tx }
-        );
-
-        tx.afterCommit(async () => {
-          await UserGymMembership.update(
-            { status: 'CANCELLED' },
-            { where: { subscriptionId: payment.referenceEntityId } }
-          ).catch((err) => {
-            console.warn('[Refund] Failed to sync UserGymMembership cancellation:', err.message);
-          });
-        });
-      }
-
-      return {
-        paymentId: payment.id,
-        refundedAmount: fromMinorUnits(refundMinor),
-        remainingRefundable: fromMinorUnits(remainingRefundableMinor - refundMinor),
-        isFullRefund,
-        status: isFullRefund ? PaymentStatus.REFUNDED : PaymentStatus.COMPLETED,
-        adjustmentId: reversalAdjustment.id,
-      };
-    });
-  },
+  execute: async (ctx, payload) =>
+    ctx.tenantDb.sequelize.transaction((tx) => refundPaymentInTransaction(ctx, payload, tx)),
 });
+
+module.exports = { refundPaymentInTransaction, remainingRefundableMinorOf };

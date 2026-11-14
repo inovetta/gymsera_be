@@ -121,11 +121,11 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
   });
   if (!tenant) throw createError('Gym tenant is not available', 503);
 
-  const { models } = await TenantDbManager.getConnection(
+  const tenantDb = await TenantDbManager.getConnection(
     tenant.id,
     tenant.connectionStringEncrypted
   );
-  return { models, index, resolvedSubscriptionId };
+  return { models: tenantDb.models, index, resolvedSubscriptionId, tenantDb, tenantId: tenant.id };
 };
 
 /**
@@ -442,14 +442,18 @@ const _freezeRow = async (models, subscriptionId, freezeFrom, freezeTo, { index 
   return sub.reload();
 };
 
-/** Cancel one tenant row under a row lock (see _freezeRow). */
-const _cancelRow = async (models, subscriptionId, { index = null, notFound = 'Subscription not found' } = {}) => {
+/**
+ * Cancel one tenant row under a row lock (see _freezeRow). `withinTransaction(transaction, row)` runs
+ * after the cancel in the same transaction (NEW-253: the refund); if it throws, nothing is cancelled.
+ */
+const _cancelRow = async (models, subscriptionId, { index = null, notFound = 'Subscription not found', withinTransaction = null } = {}) => {
   const { MemberSubscription } = models;
   const sub = await MemberSubscription.sequelize.transaction(async (transaction) => {
     const row = await MemberSubscription.findByPk(subscriptionId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!row) throw createError(notFound, 404);
     assertCancellable(row);
     await row.update({ status: SubscriptionStatus.CANCELLED, cancelledAt: new Date() }, { transaction });
+    if (withinTransaction) await withinTransaction(transaction, row);
     return row;
   });
 
@@ -465,7 +469,8 @@ const _cancelRow = async (models, subscriptionId, { index = null, notFound = 'Su
 const staffFreeze = (tenantDb, subscriptionId, { freezeFrom, freezeTo }) =>
   _freezeRow(tenantDb.models, subscriptionId, freezeFrom, freezeTo);
 
-const staffCancel = (tenantDb, subscriptionId) => _cancelRow(tenantDb.models, subscriptionId);
+const staffCancel = (tenantDb, subscriptionId, { withinTransaction = null } = {}) =>
+  _cancelRow(tenantDb.models, subscriptionId, { withinTransaction });
 
 // ── POST /subscriptions/:id/unfreeze ──────────────────────────────────────────
 const unfreeze = async (userId, subscriptionId) => {
@@ -1184,4 +1189,6 @@ module.exports = {
   getSubscriptionQrToken, applyUpgrade, applyRenewal, parsePendingChange: _parsePendingChange, priceFirstPayment,
   quoteFirstPayment, datesOnApproval,
   staffFreeze, staffCancel, assertFreezable, assertCancellable,
+  // NEW-253: the member's own subscription (the NEW-08 ownership lookup) with its tenant connection.
+  resolveOwnSubscription: _resolveBySubscriptionId,
 };

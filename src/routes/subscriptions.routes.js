@@ -169,6 +169,30 @@ router.post('/:id/change-plan', validate.strict(validators.changePlan), controll
 
 // ── Member: subscription detail with invoice + payment ────────────────────────
 router.get('/:id/detail', controller.getMySubscriptionDetail);
+
+/**
+ * @swagger
+ * /subscriptions/{id}/refund-request:
+ *   get:
+ *     summary: Member — may I ask for a refund of this subscription, and my request if any (NEW-253)
+ *     tags: [Subscriptions]
+ *     responses:
+ *       200: { description: "{ refundsAllowed, canRequest, reasonCode, suggestedAmount, currency, windowEndsAt, request }" }
+ *   post:
+ *     summary: Member — ask for a refund of my cancelled subscription (one per subscription; the gym decides)
+ *     tags: [Subscriptions]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema: { type: object, properties: { reason: { type: string, maxLength: 500 } } }
+ *     responses:
+ *       201: { description: Requested }
+ *       200: { description: "Same pending request (duplicate: true)" }
+ *       409: { description: "not_cancelled / refund_already_requested" }
+ *       422: { description: "refunds_disabled / no_refundable_payment / already_refunded / refund_window_closed" }
+ */
+router.get('/:id/refund-request', validate(validators.cancel), controller.myRefundStatus);
+router.post('/:id/refund-request', validate.strict(validators.refundRequest), controller.requestMyRefund);
 router.get('/:id/qr-token', controller.getSubscriptionQrToken);
 
 // ── Member: upload payment proof for a pending subscription ───────────────────
@@ -253,6 +277,31 @@ router.get('/staff', tenantContext, authorize(...staffRoles), can.atAnyBranch('s
  *       404:
  *         description: Subscription not found
  */
+/**
+ * @swagger
+ * /subscriptions/staff/refund-requests:
+ *   get:
+ *     summary: Staff — members' refund requests at the branches the caller sees (NEW-253); ?status=PENDING&branchId=
+ *     tags: [Subscriptions]
+ * /subscriptions/staff/refund-requests/{requestId}/decide:
+ *   post:
+ *     summary: Staff with a direct payments.refund — APPROVE (the refund, optional lower amount) or REJECT
+ *     tags: [Subscriptions]
+ *     responses:
+ *       403: { description: refund_not_permitted }
+ *       409: { description: refund_request_decided }
+ * /subscriptions/staff/refund-policy:
+ *   get:
+ *     summary: The gym's refund policy { refundsAllowed, refundWindowDays } (?branchId= picks the gym)
+ *     tags: [Subscriptions]
+ *   put:
+ *     summary: Change it (direct payments.refund; Owner / Org admin by default)
+ *     tags: [Subscriptions]
+ */
+router.get('/staff/refund-requests', tenantContext, authorize(...staffRoles), can.atAnyBranch('subscriptions.view'), controller.listRefundRequests);
+router.post('/staff/refund-requests/:requestId/decide', tenantContext, authorize(...staffRoles), validate.strict(validators.decideRefund), controller.decideRefundRequest);
+router.get('/staff/refund-policy', tenantContext, authorize(...staffRoles), controller.getRefundPolicy);
+router.put('/staff/refund-policy', tenantContext, authorize(...staffRoles), validate.strict(validators.refundPolicy), controller.updateRefundPolicy);
 router.get('/staff/:id', tenantContext, authorize(...staffRoles), controller.getForStaff);
 
 /**
@@ -298,14 +347,25 @@ router.post('/staff', tenantContext, authorize(...staffRoles), validate.allowBod
  *     tags: [Subscriptions]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               refund: { type: boolean, description: "NEW-253: also return the payment (needs payments.refund and the gym's refund policy on)" }
+ *               refundAmount: { type: number, description: "Default: the suggested prorated amount; at most the refundable balance" }
+ *               refundReason: { type: string, maxLength: 500 }
  *     responses:
- *       200: { description: "Cancelled: { status: EXECUTED, subscription }" }
+ *       200: { description: "Cancelled: { status: EXECUTED, subscription, refund?: { status: EXECUTED | PENDING } }" }
  *       202: { description: "Sent for approval: { status: PENDING, requestId }" }
  *       403: { description: No subscriptions.cancel at the subscription's branch }
  *       404: { description: No such subscription in the caller's tenant, or a branch the caller cannot see }
  *       409: { description: Already cancelled or expired }
  */
 router.post('/staff/:id/freeze', tenantContext, authorize(...staffRoles), validate.strict(validators.freeze), controller.staffFreeze);
-router.post('/staff/:id/cancel', tenantContext, authorize(...staffRoles), validate.strict(validators.cancel), controller.staffCancel);
+router.post('/staff/:id/cancel', tenantContext, authorize(...staffRoles), validate.strict(validators.staffCancel), controller.staffCancel);
+// NEW-253: what the cancel dialog may offer (policy, suggested and maximum refund, the caller's refund tier).
+router.get('/staff/:id/refund-quote', tenantContext, authorize(...staffRoles), validate(validators.cancel), controller.staffRefundQuote);
 
 module.exports = router;
