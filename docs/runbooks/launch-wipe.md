@@ -1,78 +1,490 @@
 # Launch-day wipe: removing test data before real customers
 
-> **P10 check (2026-11-03):** ready for a dry run. `reset-platform-data.js` defaults to a dry run, the real run needs `--confirm --db --host` and `--keep-admin`, tenant drops use only `tenants.db_name` (R-79; `docs/sql/tenant-db-name-before-drop.sql`, `run-sql-check.js`), and `tests/regression/reset-platform-data.test.js` passes in the full suite. Not run (owner).
+> **Status (2026-11-15):** runbook prepared from the code on `main` (`54fc742`), read-only. Nothing has been run on
+> production. The real run is the owner's.
+> **P10 check (2026-11-03):** `reset-platform-data.js` defaults to a dry run, the real run needs `--confirm --db --host`
+> and `--keep-admin`, tenant drops use only `tenants.db_name` (R-79), and `tests/regression/reset-platform-data.test.js`
+> passes in the full suite.
 
 Owner: Amir. Script: `src/scripts/reset-platform-data.js` (service `src/services/platform-reset.service.js`).
-The database holds TEST data only (R-19), but the wipe is still irreversible. Do the steps in order and tick them.
+Target: the Windows / IIS API server with MySQL 5.7. The database holds TEST data only (R-19), but the wipe cannot be
+undone except from the dumps in section 4. Do the steps in order and tick them.
 
-## What the script does
+All commands are for **Command Prompt (cmd.exe)**, run as an administrator, in the API folder (the one with
+`server.js` and `.env`; below `C:\inetpub\gymsera_be`, use yours). Do not use PowerShell for the `mysqldump` and
+`mysql` lines: PowerShell's `>` writes UTF-16 and it has no `<`.
 
-- **Keeps:** `schema_migrations`, `billing_plans`, `billing_plan_prices`, `platform_packages`, `cities`, `areas`, and the platform admins you name with `--keep-admin`.
-- **Empties:** every other platform table (including `billing_offers` and `billing_plan_price_checks`; see "Decide before the day").
-- **Tenant databases:** untouched unless you pass `--drop-tenant-databases`; then only the names held in `tenants.db_name` are dropped, one log line each. A tenant with no `db_name` is skipped. The script never works a name out from `tenant_code`.
-- **Does not touch:** object storage (R2 images/documents), Redis, Firebase push tokens, Stripe/Apple/Google sandbox data. Steps below cover them.
-- Dry run is the default. A real run needs `--confirm --db <name> --host <host>` matching the environment. `--keep-admin a@x.com,b@y.com` is always required.
+Contents: [1 Where test data lives](#1-where-test-data-lives-and-what-to-keep) ·
+[2 Decide before the day](#2-decide-before-the-day) · [3 Preconditions](#3-preconditions) ·
+[4 Backup and restore proof](#4-backup-and-restore-proof) · [5 The wipe](#5-the-wipe) ·
+[6 Object storage](#6-object-storage-r2) · [7 Everything else](#7-everything-else) ·
+[8 Verify](#8-verify-after-the-wipe) · [9 First day](#9-first-day-after-the-wipe) ·
+[10 Old users on the access device](#10-clearing-the-old-users-from-the-access-device) ·
+[Rollback](#rollback) · [Escalate](#escalate)
 
-## Database names: read them, never infer them (R-79)
+---
 
-A tenant database name is **never inferred**: not from the `gymsera_<tenant code>` naming rule, not from this runbook, not from memory. Before any drop (this script, `drop-orphan-tenant-database.js`, or a drop by hand), read the name from the platform `tenants` table for that `tenant_code`, **immediately before the drop**, with this read-only query:
+## 1. Where test data lives, and what to keep
 
+| Place | What is there | Removed by | Keep |
+|---|---|---|---|
+| Platform database (`PLATFORM_DB_NAME`) | users, tenants, subscriptions, listings, reviews, messages, notifications, OTPs, refresh tokens, push tokens (`device_tokens`), access devices, billing events, payout accounts, audit logs, idempotency rows, … | the script (section 5): every table not in the keep list is emptied | `schema_migrations`, `billing_plans`, `billing_plan_prices`, `platform_packages` (plans catalogue), `cities`, `areas`, and the platform admins named with `--keep-admin` |
+| Tenant databases (one per tenant, name in `tenants.db_name`) | members' subscriptions, payments, invoices, ledger, staff, roles, device commands, biometric templates (encrypted), import staging, attendance | the script with `--drop-tenant-databases` | nothing |
+| Databases on the server that no tenant names (orphans, half-provisioned, scratch copies) | anything | **not** the script | owner decides each one (2.4) |
+| R2 public bucket (`R2_BUCKET`) | gym / tenant / listing / branch photos, plan posters, profile photos | by hand (section 6) | `cities/`, `areas/`, `profiles/<kept admin id>.*` |
+| R2 private bucket (`R2_KYC_BUCKET`, else `<R2_BUCKET>-kyc`) | KYC documents, payment proofs, plan-payment proofs, biometric photos, door capture photos | by hand (section 6) | nothing |
+| API server disk | `logs\` (error journal `errors-*.jsonl`, `scheduled-*.log`), `iisnode\` stdout/stderr logs, `%TEMP%\gymsera-logs\`; local fallbacks `public\uploads\` and `storage\private\kyc\` (must be empty in production, SEC-08) | by hand (section 7) | `logs\reset-*.jsonl` from this wipe; `.env` |
+| Redis | not used in production (R-88, `DISABLE_REDIS=true`) | nothing to do | n/a |
+| Scheduled jobs | Task Scheduler tasks `GymsEra\*`. Job locks are MySQL `GET_LOCK` (held only while a job runs, nothing stored); job work rows live in the databases above | disabled before, enabled after | the tasks themselves |
+| Push / Firebase | FCM tokens are stored only in platform `device_tokens` (emptied). Firebase holds **no user accounts**: the app uses `firebase_messaging` only, and Google sign-in is verified by the API, not Firebase Auth | the script | the Firebase project and its keys |
+| QR codes | none stored: attendance QR codes are signed tokens valid 60 s, made on request (`src/utils/qr.utils.js`); replay nonces are in process memory | n/a | n/a |
+| Store / Stripe sandbox | test subscriptions in Stripe test mode, Apple sandbox, Google Play license testers | by hand (section 7) | production keys and products |
+| Access devices (ZKTeco) | old device users (test members, fingerprints, faces), attendance punches, device administrators | on the device (section 10) | at least one device administrator |
+| Settings | there is no platform settings table: settings are the API `.env` and the IIS / Task Scheduler setup | not touched | all of it |
+
+---
+
+## 2. Decide before the day
+
+- [ ] **2.1** Keep `billing_offers` and `billing_plan_price_checks`? Default: emptied. To keep them, add them to
+  `KEEP_TABLES` in `platform-reset.service.js` (with a test) before the day.
+- [ ] **2.2** Which platform admins stay: at least two, so one can recover the other. Not the seeded accounts from
+  `src/seeders/seed.js` (spec §16 "Before adding real data"); a seeded admin that is not named is removed by the wipe.
+- [ ] **2.3** Are the R2 buckets used by this production API only, or shared with staging or a developer machine?
+  Compare `R2_BUCKET` and `R2_KYC_BUCKET` in the production and staging `.env`. Shared means section 6 deletes **per
+  tenant id**, never whole top-level folders.
+- [ ] **2.4** Every database that inventory list (3) shows ("no tenant names it"): drop by hand, keep, or leave.
+  Decide while the tenant rows still exist; after the wipe nothing links a database to a tenant.
+- [ ] **2.5** How to clear the old users from the access device: section 10 (recommended: A, the device menu).
+- [ ] **2.6** The `noreply@gymsera.com` mailbox password has been changed (spec §16).
+
+---
+
+## 3. Preconditions
+
+- [ ] **3.1** Release freeze: no mobile / CMS / web release is rolling out. The API on the server is a build that
+  holds this runbook's script (`src\scripts\reset-platform-data.js` and `docs\sql\launch-wipe-inventory.sql` exist).
+- [ ] **3.2** Every platform and tenant migration has run (new tenants are provisioned at the latest schema):
+  ```
+  node src\scripts\run-platform-migrations.js --dry-run
+  node src\scripts\run-tenant-migrations.js --check
+  ```
+  Expected: the first lists nothing pending; the second exits 0 (`echo %ERRORLEVEL%`).
+- [ ] **3.3** The configuration points where you think (prints names and hosts only, no secrets):
+  ```
+  node -e "require('dotenv').config();const c=require('./src/config/database.config');console.log('platform', c.platform.database, '@', c.platform.host, '| tenant server', c.tenantServer.host)"
+  ```
+  Write down the platform database name and host exactly as printed: they are `--db` and `--host` in 5.2.
+- [ ] **3.4** The tenant admin account can drop databases. The dry run does **not** open this connection, so a wrong
+  `TENANT_DB_ADMIN_USER` / `TENANT_DB_ADMIN_PASS` would only show in the real run, **after** the platform rows are
+  gone (see [Escalate](#escalate)). Prove it now:
+  ```
+  node -e "require('dotenv').config();const c=require('./src/config/database.config').tenantServer;require('mysql2/promise').createConnection({host:c.host,port:c.port,user:c.adminUser,password:c.adminPass}).then(async x=>{const [r]=await x.query('SHOW GRANTS');r.forEach(o=>console.log(Object.values(o)[0]));await x.end()}).catch(e=>{console.error('FAILED',e.code);process.exit(1)})"
+  ```
+  Expected: `GRANT … DROP … ON …` lines that cover every tenant database (for example `ON *.*`, or a pattern that
+  matches each `db_name` from 3.6). `FAILED`, or no `DROP`: stop and fix the account first.
+- [ ] **3.5** Disk space: free space on the backup drive is at least twice the total size of the databases.
+- [ ] **3.6** Inventory (read-only), saved next to the backup:
+  ```
+  mkdir D:\gymsera-wipe\2026-MM-DD
+  node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > D:\gymsera-wipe\2026-MM-DD\inventory-before.txt
+  type D:\gymsera-wipe\2026-MM-DD\inventory-before.txt
+  ```
+  It prints (1) every tenant: `id` (a UUID, the R2 folder name), `tenant_code`, `status`, `provisioning_state`,
+  `db_name`; (2) tenants with no `db_name`; (3) databases on this MySQL server that no tenant names; (4) the platform
+  admins' ids; (5) exact row counts. Exit code 0. Keep this file: sections 4, 6 and 8 use it.
+- [ ] **3.7** Copy the `db_name` column of list (1) into `D:\gymsera-wipe\2026-MM-DD\tenant-dbs.txt`, one name per
+  line, exactly as printed (R-79: copy, never type). Leave out rows where it is `NULL`.
+- [ ] **3.8** Stop everything that writes (the API, the device endpoints, the jobs):
+  ```
+  %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
+  %windir%\system32\inetsrv\appcmd stop apppool /apppool.name:"<GymsEra API pool>"
+  schtasks /Query /FO TABLE | findstr /I GymsEra
+  ```
+  Then for each task listed (`daily`, `billing-inbox`, `device-watchdog`, `device-sync`, `device-audit`,
+  `device-retention`): `schtasks /Change /TN "GymsEra\<name>" /DISABLE`. Expected: `"<site>" successfully stopped`,
+  `"<pool>" successfully stopped`, and `SUCCESS: The parameters of scheduled task … have been changed.` for each task.
+  The node scripts below still run: they are separate processes. Devices keep their punches while the API is down.
+
+---
+
+## 4. Backup and restore proof
+
+Taken after 3.8 (nothing writes), before section 5.
+
+> **Never store `BIOMETRIC_DATA_KEY` with the dumps**, nor `ENCRYPTION_KEY` or anything else from `.env`. A dump
+> holds the biometric templates and the tenant connection strings encrypted; a dump plus its key is the cleartext.
+> Do not copy `.env` into the backup folder. Keep the key versions in the password manager, in a different entry from
+> the archive password.
+
+**4.1 Credentials file** (keeps the password off the command line). `C:\gymsera-secure\dump.cnf`, readable only by
+you (`icacls C:\gymsera-secure /inheritance:r /grant:r "%USERNAME%":F`):
+```
+[client]
+host=<platform DB host from 3.3>
+user=<an account with SELECT, LOCK TABLES, SHOW VIEW, TRIGGER, EVENT on every GymsEra database>
+password=YOUR_PASSWORD_HERE
+default-character-set=utf8mb4
+```
+If the tenant server (3.3) is another host, make a second file for it. Delete the file(s) at the end of the day.
+
+**4.2 Dump the platform database and every tenant database.** Use the MySQL 5.7 client tools
+(`C:\Program Files\MySQL\MySQL Server 5.7\bin`). With an 8.0 `mysqldump` against 5.7, add `--column-statistics=0`.
+`--databases` is left out on purpose: the files then restore into any database name, which the restore drill needs.
+```
+set MYSQL_BIN=C:\Program Files\MySQL\MySQL Server 5.7\bin
+set BK=D:\gymsera-wipe\2026-MM-DD
+set OPTS=--single-transaction --quick --routines --triggers --events --hex-blob --set-gtid-purged=OFF
+
+"%MYSQL_BIN%\mysqldump.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf %OPTS% <platform db name from 3.3> --result-file="%BK%\platform.sql"
+
+for /f "usebackq delims=" %D in ("%BK%\tenant-dbs.txt") do "%MYSQL_BIN%\mysqldump.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf %OPTS% %D --result-file="%BK%\tenant-%D.sql"
+```
+(`%D` at the prompt, `%%D` inside a `.bat`. `--defaults-extra-file` must stay the first option.)
+Expected: no output and exit code 0. Any `mysqldump: Got error`: stop.
+
+**4.3 Check the files.**
+```
+dir "%BK%\*.sql"
+findstr /M /C:"-- Dump completed on" "%BK%\*.sql"
+for %F in ("%BK%\*.sql") do certutil -hashfile "%F" SHA256 >> "%BK%\SHA256SUMS.txt"
+```
+Expected: one `platform.sql` plus one `tenant-<db_name>.sql` per line of `tenant-dbs.txt`, none of size 0, and
+`findstr` lists **every** file (a dump cut short has no "Dump completed" line).
+
+**4.4 Store them off the server, encrypted.** With 7-Zip (AES-256, file names hidden):
+```
+"C:\Program Files\7-Zip\7z.exe" a -t7z -mhe=on -p "D:\gymsera-wipe\gymsera-wipe-2026-MM-DD.7z" "%BK%\*"
+```
+It asks for a password: a new one, kept in the password manager (not in the `BIOMETRIC_DATA_KEY` entry). Copy the
+`.7z` to two places off the server (for example the owner's encrypted drive and a private cloud folder). Keep it at
+least until the first real month is closed. The plain `.sql` files stay on the server only until the drill passes; then
+`del "%BK%\*.sql"`, keeping `inventory-before.txt`, `SHA256SUMS.txt` and the `.7z`.
+
+**4.5 Restore proof on staging** (never on production). Copy the `.7z` to the staging MySQL 5.7 machine, extract it,
+check a checksum (`certutil -hashfile platform.sql SHA256` equals its line in `SHA256SUMS.txt`), then, with a
+`staging.cnf` made like 4.1 for the staging server:
+```
+mysql --defaults-extra-file=C:\gymsera-secure\staging.cnf -e "CREATE DATABASE wipe_restore_platform CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql --defaults-extra-file=C:\gymsera-secure\staging.cnf wipe_restore_platform -e "source D:/restore/platform.sql"
+mysql --defaults-extra-file=C:\gymsera-secure\staging.cnf -e "CREATE DATABASE wipe_restore_tenant CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql --defaults-extra-file=C:\gymsera-secure\staging.cnf wipe_restore_tenant -e "source D:/restore/tenant-<the largest db_name>.sql"
+```
+(`source` takes forward slashes.) Then compare:
+- Query 5 of `docs/sql/launch-wipe-inventory.sql`, pasted into `mysql … wipe_restore_platform`: every count equals
+  the one in `inventory-before.txt`.
+- `SELECT COUNT(*) FROM tenants;` equals the number of rows in list (1).
+- On `wipe_restore_tenant`: `SELECT MAX(version) FROM schema_migrations; SELECT COUNT(*) FROM member_subscriptions;
+  SELECT COUNT(*) FROM payments;` all return numbers, not errors.
+
+Pass = every count matches. Record "launch-wipe restore drill passed, <date>, counts match" in spec §13 (it is also
+§17 item 12). Then, on staging only, `DROP DATABASE wipe_restore_platform; DROP DATABASE wipe_restore_tenant;` and
+delete the extracted files there.
+
+**4.6 Object storage is not in the dumps.** R2 deletions (section 6) cannot be undone. If anything there might be
+wanted later, copy it first (`rclone copy gymsera-r2:<bucket> D:\gymsera-wipe\r2-<bucket>`, rclone set up as in 6.1)
+and add it to the encrypted archive.
+
+---
+
+## 5. The wipe
+
+### Database names: read them, never infer them (R-79)
+
+A tenant database name is **never inferred**: not from the `gymsera_<tenant code>` naming rule, not from this
+runbook, not from memory. The only source is `tenants.db_name` for that `tenant_code`, read **immediately before the
+drop**:
 ```sql
--- Read-only. On the platform database.
-SELECT tenant_code, status, provisioning_state, db_name
-FROM tenants
-WHERE tenant_code = 'GYM-XXXXXXXX';
+-- Read-only. On the platform database. The same query: docs/sql/tenant-db-name-before-drop.sql
+SELECT tenant_code, status, provisioning_state, db_name FROM tenants WHERE tenant_code = 'GYM-XXXXXXXX';
+```
+On the server: `node src\scripts\run-sql-check.js docs\sql\tenant-db-name-before-drop.sql` after setting the code in
+its `SET` line. Stop, do not drop, if no row or more than one row comes back, or `db_name` is NULL (the owner decides
+by hand).
+
+### 5.1 Dry run
+
+```
+node src\scripts\reset-platform-data.js --keep-admin <admin1@…>,<admin2@…> --drop-tenant-databases
+```
+Expected (one JSON line each, prefixed `[reset]`):
+```
+[reset] {"at":"…","event":"start","mode":"DRY_RUN","database":"<platform db>","host":"<host>","dropTenantDatabases":true}
+[reset] {"at":"…","event":"plan","tables":[{"name":"areas","rows":N,"action":"KEEP"}, …],"users":{"total":N,"keep":2,"remove":N},"adminIdsKept":["…","…"],"tenantDatabases":[{"tenantId":"…","tenantCode":"GYM-…","status":"…","dbName":"…","droppable":true}, …]}
+[reset] {"at":"…","event":"dry_run_done","note":"nothing was changed; …"}
+
+DRY_RUN: log written to C:\inetpub\gymsera_be\logs\reset-<time>.jsonl
+Nothing was changed.
+```
+Tick:
+- [ ] The six keep tables say `KEEP`, `users` says `KEEP_ADMINS_ONLY`, every other table `EMPTY`.
+- [ ] `users.keep` = the number of admins you named; `adminIdsKept` are ids from inventory list (4).
+- [ ] `tenantDatabases` holds exactly the non-NULL rows of list (1), each `tenantCode` with the same `dbName`, all
+  `droppable: true` (a `droppable: false` name is left in place and logged `tenant_database_refused`).
+- [ ] It includes the production-check test gym **GYM-16516973** (approved 2026-10-28, NEW-127), with the `db_name`
+  the R-79 query prints for it. Its name is not written here on purpose.
+
+`REFUSED/FAILED: …` instead (exit code 2): nothing changed. The message names the problem (`--keep-admin is required`,
+`N named admin(s) were not found in users`, `… are not PLATFORM_ADMIN`).
+
+### 5.2 Real run
+
+Only after section 4 passed. Run the R-79 query again for any tenant if anything changed since the dry run (nothing
+should: the API is stopped). Then, **in one command** (the script reads the names from `tenants.db_name` before it
+deletes the rows, so a second run cannot find them):
+```
+node src\scripts\reset-platform-data.js --keep-admin <admin1@…>,<admin2@…> --drop-tenant-databases --confirm --db <platform db from 3.3> --host <host from 3.3>
+```
+Expected:
+```
+[reset] {"event":"start","mode":"APPLY", …}
+[reset] {"event":"plan", …}                                              the same as the dry run
+[reset] {"event":"emptied","table":"<name>","rows":N}                     one per EMPTY table
+[reset] {"event":"users_removed","rows":N,"kept":2}
+[reset] {"event":"tenant_database_dropped","tenantId":"…","dbName":"…"}   one per tenant database
+[reset] {"event":"done","mode":"APPLY","removed":N,"droppedDatabases":N}
+
+APPLY: log written to C:\inetpub\gymsera_be\logs\reset-<time>.jsonl
+```
+- [ ] The last `[reset]` line is `done`, `droppedDatabases` = the number of lines in `tenant-dbs.txt`, exit code 0.
+- [ ] Copy both `logs\reset-<time>.jsonl` files (dry run and real run) into the backup folder. They hold ids, names
+  and counts, no e-mails.
+
+`REFUSED/FAILED: --db … does not match …` or `--host …` (exit 2): nothing changed; use the values 3.3 printed.
+Any other `REFUSED/FAILED` (exit 1): [Escalate](#escalate).
+
+### 5.3 Leftover databases
+
+For each database from inventory list (3) that the owner decided to drop (2.4): there is no tenant row for it, so
+`drop-orphan-tenant-database.js` refuses it ("no tenant row maps to"). Drop it by hand in the mysql client, the name
+copied from `inventory-before.txt`, and only once its dump is in the archive (dump it like 4.2 first if it is not):
+```sql
+DROP DATABASE `<name copied from inventory list 3>`;
 ```
 
-The same query is in `docs/sql/tenant-db-name-before-drop.sql`. On the API server, which has no mysql client, run it from the app folder with `node src/scripts/run-sql-check.js docs/sql/tenant-db-name-before-drop.sql` after you set the tenant code in its `SET` line.
+---
 
-- Use `db_name` exactly as printed. Do not type it from memory or copy it from a doc.
-- **Stop, do not drop** if no row comes back, more than one row comes back, or `db_name` is NULL. NULL means provisioning never recorded a database, and the owner decides by hand.
-- The dry run's `plan` line lists each tenant as `tenantCode` and `dbName`. Each pair must match what the query printed.
+## 6. Object storage (R2)
 
-## Decide before the day
+The script does not touch R2. Folder names use the tenant **id** (`tenants.id`, a UUID from inventory list (1)), not
+the `GYM-…` code. Check that before deleting anything: the folder names under `biometrics/` must be ids from list (1).
 
-- [ ] Should `billing_offers` and `billing_plan_price_checks` be kept? Default: emptied. Ask for them to be added to the allow-list if wanted.
-- [ ] Which platform admins stay (at least two, so one can recover the other).
+**6.1 Tool.** rclone for Windows, with a **temporary** R2 API token (Cloudflare › R2 › Manage API tokens: Object Read
+& Write, limited to the two buckets). `rclone config` › new remote `gymsera-r2`, type `s3`, provider `Cloudflare`,
+endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`. Delete the token at the end of the day.
 
-## Before
+**6.2 Look first.**
+```
+rclone lsf gymsera-r2:<R2_BUCKET> --dirs-only
+rclone lsf gymsera-r2:<R2_KYC_BUCKET> --dirs-only
+rclone lsf gymsera-r2:<R2_KYC_BUCKET>/biometrics --dirs-only
+```
 
-- [ ] Release freeze is in effect; no mobile/CMS/web release is rolling out.
-- [ ] Take a backup of the platform database and every tenant database named in `tenants.db_name` (`mysqldump`), and store it off the server. Read the names with the R-79 query; never infer them. Check the file sizes are not zero.
-- [ ] Restore the platform dump into a scratch database on the staging MySQL and spot-check row counts (this doubles as the restore drill).
-- [ ] Stop the API, workers and cron (`/cron/subscription-expiry`) so nothing writes during the wipe.
-- [ ] Confirm `PLATFORM_DB_NAME`, `PLATFORM_DB_HOST` in the shell are the target you mean (`echo` them; no secrets).
+**6.3 Private bucket** (`R2_KYC_BUCKET`, else `<R2_BUCKET>-kyc`): **everything is tenant-owned; nothing is kept.**
+`<T>` = each tenant id from list (1).
 
-## Run
+| Prefix | What | Written by |
+|---|---|---|
+| `biometrics/<T>/` | members' comparison and profile photos from devices (encrypted) | `services/devices/biometric.service.js` |
+| `device-captures/<T>/` | door capture photos, per branch (encrypted) | `services/devices/device-screens.service.js` |
+| `tenants/<T>/kyc/` | KYC documents | `services/kyc-storage.service.js` |
+| `tenants/<T>/payment-proofs/` | member payment proofs | `services/payment-proof.service.js` |
+| `tenants/<T>/plan-payment-proofs/` | host plan bank-transfer receipts | `services/plan-payment.service.js` |
 
-1. Dry run, read the plan: `node src/scripts/reset-platform-data.js --keep-admin <emails>`
-   - [ ] Every table you expect is `KEEP` or `EMPTY`; the user counts say `keep` = the admins you named.
-   - [ ] The tenant database list is exactly the databases you expect to lose.
-   - [ ] It includes the test gyms made for production checks: **GYM-16516973** (approved 2026-10-28 for the NEW-127 check). Its database name is the `db_name` the R-79 query prints for `tenant_code = 'GYM-16516973'`. It is not written here on purpose. If the wipe keeps tenant databases, remove that tenant and its database anyway, by the R-79 rule.
-   - [ ] For every tenant whose database must go, run the R-79 query now and check that its `db_name` matches the plan's `dbName` for that `tenantCode`. Any difference, a missing row or a NULL `db_name`: stop.
-2. Real run:
-   `node src/scripts/reset-platform-data.js --keep-admin <emails> --confirm --db <name> --host <host>`
-   Add `--drop-tenant-databases` in the same command if the tenant databases must go. The script reads the names from
-   `tenants.db_name` in the same run, before it deletes the rows, so the flag cannot be used in a second run. Run the R-79 query
-   again just before this command if anything changed since the dry run.
-3. Check the last log line says `done`.
-4. Keep `logs/reset-<time>.jsonl`; it lists what was removed (no e-mails).
+Every delete first with `--dry-run`, then without, then `rclone lsf` the same path (expected: nothing):
+```
+rclone delete gymsera-r2:<R2_KYC_BUCKET>/biometrics/<T>/ --dry-run
+rclone delete gymsera-r2:<R2_KYC_BUCKET>/biometrics/<T>/
+rclone delete gymsera-r2:<R2_KYC_BUCKET>/device-captures/<T>/
+rclone delete gymsera-r2:<R2_KYC_BUCKET>/tenants/<T>/
+```
+If the bucket is production-only (2.3), delete the whole folders instead (`…/biometrics/`, `…/device-captures/`,
+`…/tenants/`). Expected at the end: `rclone lsf gymsera-r2:<R2_KYC_BUCKET> -R` prints nothing.
 
-## After
+**6.4 Public bucket** (`R2_BUCKET`):
 
-- [ ] Empty the R2 bucket prefixes for test uploads (gym images, documents) by hand.
-- [ ] Redis: nothing to do while production runs without it (R-88, `DISABLE_REDIS=true`). If Redis was added since, `FLUSHDB` on the app's database only.
-- [ ] Remove test device tokens in Firebase if any were registered.
-- [ ] Revoke sandbox keys that must not reach production; confirm production keys (not sandbox) are set for Apple, Google Play, Stripe, per §16.
-- [ ] Start the API. Log in as a kept admin. `GET /api/v1/billing/plans` returns the plans; cities and areas load.
-- [ ] Run `auditCapacity` (see `capacity-audit.md`): zero findings on an empty platform. (The "ledger says -2" drift on 8 test tenants, P10 item 3, is pre-ledger test data; the wipe removes it.)
-- [ ] Register a fresh test host account in the app, run one sandbox purchase, delete it afterwards by hand. Expected since R-87 (P10, NEW-179): the purchase entitles the host (plan Active, branches open) but the gym is **not** listed for travellers; `why-not-live.js --branch <name>` says "only a test purchase (Sandbox) entitles". Do not set `SANDBOX_PURCHASES_GO_LIVE` on production.
-- [ ] Re-enable cron and workers (Task Scheduler `run-scheduled-job.js daily` and `billing-inbox`, `SCHEDULED_JOBS=external`; `scheduled-jobs.md`).
+| Prefix | What | Action |
+|---|---|---|
+| `gyms/logos/gym-<T>.*`, `gyms/covers/gym-<T>.*`, `gyms/<T>/images/` | gym logo, cover, photos | delete |
+| `tenants/logos/tenant-<T>.*`, `tenants/covers/tenant-<T>.*`, `tenants/<T>/onboarding-images/` | onboarding logo, cover, photos | delete |
+| `hosts/<T>/organizations/staging/` | photos of an additional organization before approval | delete |
+| `gym-listings/logos/`, `gym-listings/covers/`, `gym-listings/<listing id>/images/` | listing images | delete the folders |
+| `branches/<branch id>/images/` | branch photos | delete the folder |
+| `plans/posters/` | membership plan posters | delete the folder |
+| `profiles/<user id>.*` | every user's profile photo | delete all **except** `profiles/<kept admin id>.*` (ids from the dry run's `adminIdsKept`) |
+| `cities/`, `areas/` | city and area images (their tables are kept) | **keep** |
+
+Listing, branch and plan ids are in no kept table, so on a production-only bucket delete these folders whole:
+```
+rclone delete gymsera-r2:<R2_BUCKET>/gyms/ --dry-run
+rclone delete gymsera-r2:<R2_BUCKET>/gyms/
+rclone delete gymsera-r2:<R2_BUCKET>/tenants/
+rclone delete gymsera-r2:<R2_BUCKET>/hosts/
+rclone delete gymsera-r2:<R2_BUCKET>/gym-listings/
+rclone delete gymsera-r2:<R2_BUCKET>/branches/
+rclone delete gymsera-r2:<R2_BUCKET>/plans/
+rclone delete gymsera-r2:<R2_BUCKET>/profiles/ --exclude "<kept admin id 1>.*" --exclude "<kept admin id 2>.*" --dry-run
+```
+Read the `profiles/` dry run carefully: only the kept admins' files may remain; then run it without `--dry-run`.
+Expected at the end: `rclone lsf gymsera-r2:<R2_BUCKET> --dirs-only` shows `areas/`, `cities/`, `profiles/` only.
+If the bucket is shared (2.3), stop after the `<T>` rows for the public bucket and ask: listing, branch and plan ids
+then have to come from the dumps, one tenant at a time.
+
+---
+
+## 7. Everything else
+
+- [ ] **Server disk.** Add `logs\errors-*.jsonl`, `logs\scheduled-*.log`, the `iisnode\` folder's logs and
+  `%TEMP%\gymsera-logs\` to the encrypted archive, then delete them so day one starts clean. Keep `logs\reset-*.jsonl`.
+  `public\uploads\` and `storage\private\kyc\` must be empty on production (SEC-08); if not, archive them, then empty.
+- [ ] **Redis.** Nothing (R-88). If Redis was added since: `FLUSHDB` on the app's database number only, never
+  `FLUSHALL`.
+- [ ] **Push / Firebase.** Nothing in Firebase: the tokens were only in `device_tokens` (emptied). Test phones get no
+  push until someone logs in again and the app registers a new token.
+- [ ] **Stripe test mode:** cancel the active test subscriptions (Dashboard in test mode › Subscriptions). **Google
+  Play:** cancel license-tester subscriptions (Order management). **Apple sandbox:** they stop renewing by themselves.
+  Store notifications for deleted tenants may still arrive for a while; if the billing inbox shows failures for them,
+  see `billing-events.md`.
+- [ ] **Keys.** Production (not sandbox) keys for Apple, Google Play and Stripe are set, per spec §16. Do not set
+  `SANDBOX_PURCHASES_GO_LIVE` on production.
+- [ ] **Start again.**
+  ```
+  %windir%\system32\inetsrv\appcmd start apppool /apppool.name:"<GymsEra API pool>"
+  %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
+  ```
+  then `schtasks /Change /TN "GymsEra\<name>" /ENABLE` for each task disabled in 3.8, and
+  `node src\scripts\run-scheduled-job.js daily` once by hand (expected `[ScheduledJob] daily finished in N ms`, exit 0).
+
+---
+
+## 8. Verify after the wipe
+
+- [ ] `node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql`: list (1) empty; list (4) = the kept
+  admins; counts: `users` = the kept admins, `tenants`, `tenant_subscriptions`, `gym_listings`, `device_tokens` 0;
+  `billing_plans`, `billing_plan_prices`, `platform_packages`, `cities`, `areas`, `schema_migrations` unchanged from
+  `inventory-before.txt`.
+- [ ] Inventory list (3) no longer shows the tenant databases, nor any leftover you decided to drop (5.3).
+- [ ] Log in to the CMS as a kept admin. `GET /api/v1/billing/plans` returns the plans; cities and areas load in the app.
+- [ ] `auditCapacity` (`capacity-audit.md`): zero findings on an empty platform.
+- [ ] The traveller app shows no gyms.
+- [ ] R2 as at the end of section 6.
+- [ ] The next morning: Task Scheduler "Last Run Result" is `0x0` for `GymsEra\daily`.
+
+---
+
+## 9. First day after the wipe
+
+In this order. Mobile is the reference; the CMS can do the same steps where noted.
+
+1. **The real host signs up** in the GymsEra app (production build): account, gym (organization) and main branch
+   details, photos, KYC documents. Use a real store account, not a phone signed into a sandbox tester.
+2. **Approve the gym** as a platform admin in the CMS: check the photos (NEW-158), approve. Provisioning creates the
+   tenant database. Check: the R-79 query for the new `tenant_code` returns one row with `provisioning_state = ACTIVE`
+   and a `db_name`; `node src\scripts\run-tenant-migrations.js --check` exits 0.
+3. **Activate the gym plan.** The host buys the plan in the app (App Store / Google Play, production), or pays by bank
+   transfer and a platform admin approves it in the CMS (Plan payments). Check: the plan shows Active in the host app.
+4. **Membership plans.** The host creates them (app, or CMS), at least one public plan with **Show to Travellers** on.
+   Check: `node src\scripts\why-not-live.js --branch <branch name>` passes every condition; the gym appears in the
+   traveller app.
+5. **Refund policy.** CMS › Subscriptions › Refund policy, or app › Profile › Refund policy. It is off by default
+   (`refunds_allowed = 0`); turn it on with the window the gym wants, or leave it off on purpose.
+6. **Clear the old users from the access device** (section 10, method A), **before** it is added.
+7. **Add the access device fresh, no import.** CMS › Access devices › Add device; do **not** tick "This device already
+   has members on it from GymBioSync". Type the server address and key from the setup card on the device. Check: the
+   device page says Online, the device type is right (T&A PUSH for the SpeedFace-V5L), Users on device = the device
+   administrators only, Unlinked users empty.
+8. **First real member** at the desk: create, record the payment, enrol the face or finger with consent, scan at the
+   door. Check: one visit in Today; the member is listed on the device page.
+
+**Final check list (end of day one)**
+- [ ] Platform: only the kept admins plus the real host, staff and members; inventory list (1) holds only the real
+  tenant.
+- [ ] Tenant: plan Active; `why-not-live.js` passes; refund policy as the gym wants it.
+- [ ] Device: Online; no Unlinked users after its first audit (from 02:00 branch time, or Full audit on the device
+  page); no failed commands on the Commands tab.
+- [ ] Jobs: all six `GymsEra\*` tasks enabled, last result `0x0`.
+- [ ] Billing: no failed events in the billing inbox; the real purchase entitles (not "only a test purchase").
+- [ ] Push: the host got the approval notification on their phone.
+- [ ] Backup: the `.7z` is in two places off the server; the restore drill is recorded in §13; the `.sql` files,
+  `dump.cnf` / `staging.cnf` and the temporary R2 token are deleted.
+
+---
+
+## 10. Clearing the old users from the access device
+
+After the wipe GymsEra has no members, so every non-administrator user on the device is an old test user: still able
+to open the door (a device user has no end date unless GymsEra set one), and holding a PIN that a new member may get.
+
+### A. Device menu "Delete all data"
+
+On the device: Main menu › Data Mgt. › Delete Data › **Delete All Data** (the wording differs a little by firmware).
+
+- Removes, per the ZKTeco manuals for this family: every user **including administrators**, their fingerprints,
+  faces, cards and passwords, **attendance logs**, and attendance / blacklist photos. ("Delete Admin Role" is the
+  separate item that only takes the role away.) Communication settings (server address, network) stay.
+- Afterwards the device menu is open to anyone until an administrator is enrolled again: enrol the gym owner as
+  administrator at once, before the device is left alone.
+- Done before the device is added (9.7), the device uploads nothing old: no old users in Unlinked users, no old punches
+  stored as history.
+- **Proven by tests:** nothing. It is the device's own function; GymsEra has no test of it, and it has not been tried
+  on the gym's SpeedFace-V5L. Confirm on the screen: after the delete the device shows 0 users and 0 attendance
+  records.
+
+### B. GymsEra import, go-live, "remove unmatched device users"
+
+Add the device with "already has members from GymBioSync" ticked (import hold), Start import, Apply with nothing
+matched, then Go live with **"Also remove the N device users not matched to a member (device administrators stay)"**
+ticked. CMS only: the app has no cut-over screen.
+
+- Removes: every non-administrator device user, each by template deletes per type, photo delete, authorization delete
+  (where used) and user delete (`goLive` in `src/services/devices/device-import.service.js`).
+- Keeps: device administrators (`privilege > 0`) are never removed, and are remembered in `device_admin_pins` so
+  GymsEra never sends them anything later (NEW-248d).
+- Does **not** remove attendance logs on the device: GymsEra has no "clear log" command. A T&A PUSH device uploads its
+  old punches on first contact; they are stored as history (not visits), but they are old test data in the new tenant.
+- More steps and more waiting (import, apply, go-live, the deletes), and it relies on the device reporting each user's
+  privilege correctly.
+- **Proven by tests** (device simulator, not the real device):
+  - `tests/integration/zkteco-p4-import.test.js` "go-live: only the marked users are deleted; members sent; admin and
+    unmatched untouched": with the box **not** ticked, unmatched users and the device admin stay.
+  - `tests/integration/zkteco-att-device-admins.test.js` "the import's admins are remembered at go-live and never
+    sent anything".
+  - `zkteco-p4-import.test.js` "users list is paged; the admin is flagged and cannot be matched".
+- **Not proven by tests:** the ticked box itself (`removeUnmatched: true`): no test sends it. The code excludes
+  administrators (`removePins` keeps only `!u.isAdmin`), but that is code reading, not evidence. Also untested: apply
+  and go-live with **zero** matched users, and the whole path on the real SpeedFace-V5L.
+
+### Recommendation: A
+
+A clears everything the wipe is meant to clear (users and punches), uses no untested GymsEra path, and is done before
+GymsEra talks to the device. Its one cost, losing the device administrators, is fixed by enrolling the gym owner as
+administrator straight after. Use B only if the device administrators must survive and nobody can re-enrol one; then
+first add a test for `removeUnmatched: true` (admins stay, every unmatched user gets a user delete, zero matches works)
+and accept that old punches arrive as history.
+
+---
 
 ## Rollback
 
-Restore the dumps taken in "Before" into the same database names, the ones the R-79 query printed before the wipe (stop the API first). If only part of the wipe ran, the platform-row delete is one transaction and is rolled back on error; tenant database drops are not, so restore those from the dumps.
+Stop the API (3.8). Restore the dumps from section 4 into the **same** database names, the ones
+`inventory-before.txt` lists (the R-79 read before the wipe):
+```
+mysql --defaults-extra-file=C:\gymsera-secure\dump.cnf -e "CREATE DATABASE `<name>` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql --defaults-extra-file=C:\gymsera-secure\dump.cnf <name> -e "source D:/gymsera-wipe/2026-MM-DD/tenant-<name>.sql"
+```
+The platform database still exists after the wipe (only its rows went): restore `platform.sql` into it the same way
+(the dump drops and re-creates each table). R2 deletions cannot be undone unless they were copied in 4.6. If only part
+of the wipe ran: the platform-row delete is one transaction and is rolled back on error; tenant database drops are
+not, so restore those from the dumps. After a restore with biometric data: `node src\scripts\rotate-biometric-key.js`
+(dry run) must show 0 unreadable (`devices.md` "Backup and restore of biometric tables").
 
 ## Escalate
 
-If the script prints `REFUSED` it changed nothing; fix the flag it names. If it prints `FAILED` during a tenant database drop, stop, note the last log line, and restore that database from the dump before starting the API.
+- `REFUSED/FAILED` with exit code 2: refused, nothing changed; fix the flag it names.
+- `FAILED` with `"where":"platform_rows"` in the log: the platform transaction was rolled back; nothing changed. Note
+  the error, fix it, start again at 5.1.
+- `FAILED` with `"where":"drop_tenant_database"`: **the platform rows are already gone**, the databases after that one
+  were not dropped, and a second run cannot find their names. Stop; do not start the API. The plan line of this run's
+  `logs\reset-<time>.jsonl` is the record of what `tenants.db_name` held; the owner decides whether to drop the rest by
+  hand from it (R-79 has no tenant row left to read) or to restore everything from the dumps. Step 3.4 is there to
+  prevent this.
