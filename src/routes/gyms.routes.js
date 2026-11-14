@@ -318,6 +318,9 @@ router.delete(
 router.get('/members/search', can.atAnyBranch('members.create'), gymsController.searchMember);
 router.post('/members/enroll', validate.allowBody(['email', 'fullName', 'phone', 'planId', 'startDate', 'notes', 'paymentMethod', 'branchId', 'idempotencyKey']), gymsController.enrollMember);
 // NEW-48: listing members requires members.view at one or more branches.
+// NEW-244: each row carries membershipStatus (ACTIVE | EXPIRING | EXPIRED | FROZEN | PENDING, the app's
+// plan badge), subscriptionStatus, planName, endDate, branchName; ?membershipStatus= filters on it,
+// ?status= stays the account status.
 router.get('/members', can.atAnyBranch('members.view'), gymsController.listMembers);
 
 // ── Gym-wide staff management (GYM_HOST only) ─────────────────────────────────
