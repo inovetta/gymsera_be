@@ -7,9 +7,35 @@ on:
     branches: [ main, master ]
 
 jobs:
-  test:
+  # Lint once, not per shard (NEW-254).
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      # NEW-204: errors fail the build, warnings do not. tests/, scripts/ and the root one-off
+      # scripts are linted after launch (spec §13 P10b).
+      - name: Lint (src/)
+        run: npm run lint:src
+
+  # NEW-254: the suite runs in 3 shards at once, one runner each, so each shard has its own MySQL and
+  # Redis (the harness uses fixed gymsera_test_* database names, so shards cannot share a server). Every
+  # test file runs in exactly one shard (jest --shard); nothing is skipped.
+  test-shard:
+    name: test (shard ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       mysql:
         image: mysql:5.7
@@ -33,17 +59,13 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
-      # NEW-204: errors fail the build, warnings do not. tests/, scripts/ and the root one-off
-      # scripts are linted after launch (spec §13 P10b).
-      - name: Lint (src/)
-        run: npm run lint:src
       # Throwaway keys for this run only — generated, never committed.
       - name: Generate test-only keys
         run: |
           echo "TENANT_CONN_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
           echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-      - name: Run test suites
-        run: npm test
+      - name: Run test suites (shard ${{ matrix.shard }}/3)
+        run: npm test -- --shard=${{ matrix.shard }}/3
         env:
           # Production runs without Redis (R-88); default CI environment matches it.
           DISABLE_REDIS: 'true'
@@ -82,3 +104,21 @@ jobs:
           ZK_PUSH_LOAD_MAX_MS: '15000'
           ZK_PUSH_LOAD_P95_MS: '7500'
           ZK_PUSH_LOAD_PUSH_MS: '15000'
+
+  # The required check keeps its name: `test` passes only when lint and every shard passed.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, test-shard]
+    if: always()
+    steps:
+      - name: Every shard and lint passed
+        env:
+          LINT: ${{ needs.lint.result }}
+          SHARDS: ${{ needs.test-shard.result }}
+        run: |
+          echo "lint: $LINT, test shards: $SHARDS"
+          if [ "$LINT" != "success" ] || [ "$SHARDS" != "success" ]; then
+            echo "::error::lint or a test shard did not succeed"
+            exit 1
+          fi
