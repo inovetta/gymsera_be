@@ -525,6 +525,7 @@ module.exports = {
   markCollected,
   COLLECTIBLE_ACTION_KEYS,
   policyFor,
+  notifyApprovers,
   listForApprover,
   listMine,
   pendingCountFor,

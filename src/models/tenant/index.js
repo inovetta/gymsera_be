@@ -48,6 +48,8 @@ const registerTenantModels = (sequelize) => {
 
   // ── Invoice Sequences (see spec §12.4, PAY-05) ──────────────────────────────
   const InvoiceSequence = require('./InvoiceSequence.model')(sequelize);
+  // NEW-253: members' refund requests (tenant migration 028).
+  const RefundRequest = require('./RefundRequest.model')(sequelize);
 
   // ── Associations ─────────────────────────────────────────────────────────────
 
@@ -180,6 +182,7 @@ const registerTenantModels = (sequelize) => {
     IdempotencyRecord,
     Payout,
     InvoiceSequence,
+    RefundRequest,
   };
 };
 

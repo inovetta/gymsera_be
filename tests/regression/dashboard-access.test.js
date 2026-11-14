@@ -32,6 +32,9 @@ const fakeTenantDb = () => {
       MemberSubscription: zeroCount,
       MembershipPlan: {},
       Expense: { sum: jest.fn().mockResolvedValue(10000) },
+      // NEW-252: revenue subtracts refunds (REVERSAL adjustments); none here.
+      LedgerAdjustment: { findAll: jest.fn().mockResolvedValue([]) },
+      LedgerDay: {},
     },
   };
 };

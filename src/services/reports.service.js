@@ -2,6 +2,8 @@ const { Op } = require('sequelize');
 const { GymListing, Tenant, UserGymMembership } = require('../models/platform');
 const { SubscriptionStatus } = require('../constants/subscription-status');
 const { PaymentStatus } = require('../constants/payment-status');
+const revenueService = require('./revenue.service');
+const { toMinorUnits, fromMinorUnits, toMajorUnitsNumber } = require('../utils/money.utils');
 
 // ── Host dashboard KPIs ────────────────────────────────────────────────────────
 /**
@@ -72,18 +74,13 @@ const hostDashboard = async (tenantDb, { branchIds = null } = {}) => {
       },
     }),
 
-    // All-time completed revenue
-    Payment.sum('amount', { where: { ...branchFilter, status: PaymentStatus.COMPLETED } }),
+    // All-time revenue, refunds deducted once (NEW-252)
+    revenueService.netRevenue(tenantDb, { branchIds: activeBranchIds }),
 
-    // Revenue this calendar month
-    Payment.sum('amount', {
-      where: {
-        ...branchFilter,
-        status: PaymentStatus.COMPLETED,
-        paidAt: {
-          [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-        },
-      },
+    // Revenue this calendar month (NEW-252: refunds recorded this month deducted)
+    revenueService.netRevenue(tenantDb, {
+      branchIds: activeBranchIds,
+      window: { [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
     }),
 
     // Pending payments count
@@ -197,7 +194,7 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
   const payWhere = { ...scope, paidAt: { [Op.between]: [periodStart, periodEnd] } };
   if (paymentMethod) payWhere.method = paymentMethod;
   if (paymentStatus) payWhere.status = paymentStatus;
-  else payWhere.status = PaymentStatus.COMPLETED;
+  else payWhere.status = { [Op.in]: revenueService.COLLECTED_REVENUE_STATUSES };
 
   const [newSubscriptions, periodRevenue, activeMembers, checkIns] = await Promise.all([
     MemberSubscription.count({ where: subWhere }),
@@ -212,10 +209,20 @@ const hostDashboardFiltered = async (tenantDb, { year, month, packageId, payment
     }),
   ]);
 
+  // NEW-252: without a status filter this is revenue, so refunds recorded in the period come off once.
+  let periodRevenueMinor = toMinorUnits(periodRevenue || 0);
+  if (!paymentStatus) {
+    periodRevenueMinor -= await revenueService.refundedMinor(tenantDb, {
+      branchIds,
+      window: { [Op.between]: [periodStart, periodEnd] },
+      method: paymentMethod || null,
+    });
+  }
+
   return {
     period: { year: y, month: m + 1 },
     newSubscriptions: newSubscriptions || 0,
-    periodRevenue: parseFloat(periodRevenue || 0),
+    periodRevenue: toMajorUnitsNumber(periodRevenueMinor),
     activeMembers: activeMembers || 0,
     checkIns: checkIns || 0,
   };
@@ -249,7 +256,7 @@ const monthlyBreakdown = async (tenantDb, { year, month, branchId, branchIds } =
         [seq.fn('COUNT', seq.col('id')), 'count'],
       ],
       where: {
-        status: PaymentStatus.COMPLETED,
+        status: { [Op.in]: revenueService.COLLECTED_REVENUE_STATUSES },
         paidAt: { [Op.between]: [periodStart, periodEnd] },
         ...branchWhere,
       },
@@ -284,9 +291,15 @@ const monthlyBreakdown = async (tenantDb, { year, month, branchId, branchIds } =
     }),
   ]);
 
+  // NEW-252: a refund comes off the day it was recorded.
+  const refunds = await revenueService.refundRows(tenantDb, {
+    branchIds: branchId ? [branchId] : Array.isArray(branchIds) ? branchIds : null,
+    window: { [Op.between]: [periodStart, periodEnd] },
+  });
+
   return {
     period: { year: y, month: m },
-    revenueByDay,
+    revenueByDay: revenueService.subtractRefunds(revenueByDay, refunds, { keyField: 'day', sumField: 'totalRevenue', keyOf: revenueService.utcDay }),
     subscriptionsByDay,
     checkInsByDay,
   };
@@ -305,13 +318,25 @@ const yearlyRevenue = async (tenantDb, year, { branchIds = null } = {}) => {
     where: {
       // NEW-44: null = every branch; otherwise only the branches the caller holds revenue at.
       ...(branchIds ? { branchId: { [Op.in]: branchIds } } : {}),
-      status: PaymentStatus.COMPLETED,
+      status: { [Op.in]: revenueService.COLLECTED_REVENUE_STATUSES },
       paidAt: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31, 23, 59, 59)] },
     },
     group: [seq.fn('MONTH', seq.col('paid_at'))],
     order: [[seq.fn('MONTH', seq.col('paid_at')), 'ASC']],
     raw: true,
   });
+
+  // NEW-252: refunds come off the month they were recorded (MONTH(paid_at) reads UTC, so does this).
+  const refunds = await revenueService.refundRows(tenantDb, {
+    branchIds,
+    window: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31, 23, 59, 59)] },
+  });
+  for (const ref of refunds) {
+    const monthNo = new Date(ref.at).getUTCMonth() + 1;
+    const row = rows.find((r) => parseInt(r.month) === monthNo);
+    if (row) row.revenue = fromMinorUnits(toMinorUnits(row.revenue || 0) - ref.amountMinor);
+    else rows.push({ month: monthNo, revenue: fromMinorUnits(-ref.amountMinor) });
+  }
 
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const data = MONTHS.map((month, i) => {
@@ -399,8 +424,8 @@ const branchReport = async (tenantDb, branchId) => {
         endDate: { [Op.gte]: monthStart.toISOString().split('T')[0] },
       },
     }),
-    Payment.sum('amount', { where: { branchId, status: PaymentStatus.COMPLETED } }),
-    Payment.sum('amount', { where: { branchId, status: PaymentStatus.COMPLETED, paidAt: { [Op.gte]: monthStart } } }),
+    revenueService.netRevenue(tenantDb, { branchIds: [branchId] }),
+    revenueService.netRevenue(tenantDb, { branchIds: [branchId], window: { [Op.gte]: monthStart } }),
     Payment.count({ where: { branchId, status: PaymentStatus.STAFF_COLLECTED } }),
     Payment.count({ where: { branchId, status: PaymentStatus.PENDING } }),
     AttendanceLog.count({
@@ -432,7 +457,7 @@ const branchReport = async (tenantDb, branchId) => {
       ],
       where: {
         branchId,
-        status: PaymentStatus.COMPLETED,
+        status: { [Op.in]: revenueService.COLLECTED_REVENUE_STATUSES },
         paidAt: { [Op.gte]: monthStart },
       },
       group: [seq.fn('DATE', seq.col('paid_at'))],
@@ -474,7 +499,12 @@ const branchReport = async (tenantDb, branchId) => {
       planName: planMap[p.membershipPlanId] || 'Unknown',
       count: parseInt(p.count || 0),
     })),
-    revenueByDay,
+    // NEW-252: a refund comes off the day it was recorded.
+    revenueByDay: revenueService.subtractRefunds(
+      revenueByDay,
+      await revenueService.refundRows(tenantDb, { branchIds: [branchId], window: { [Op.gte]: monthStart } }),
+      { keyField: 'day', sumField: 'totalRevenue', keyOf: revenueService.utcDay }
+    ),
   };
 };
 

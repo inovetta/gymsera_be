@@ -587,7 +587,7 @@ const getExpenseSummary = async (req, res, next) => {
       throw createError('Access denied: Financial totals and summaries are host and admin only.', 403);
     }
     const { from, to, period = 'month' } = req.query;
-    const { Expense, ExpenseCategory, Payment } = req.tenantDb.models;
+    const { Expense, ExpenseCategory } = req.tenantDb.models;
 
     // GLB-01: the period is a range of the branch's business dates; the revenue window is the same days cut at
     // the branch's local midnight, so a payment at 23:30 local time lands on its own day.
@@ -611,14 +611,11 @@ const getExpenseSummary = async (req, res, next) => {
     const totalExpenses = parseFloat(expenseSum || 0);
 
     // Gross Revenue for period
-    const revenueSum = await Payment.sum('amount', {
-      where: {
-        branchId,
-        status: 'COMPLETED',
-        paidAt: { [Op.gte]: startDate, [Op.lt]: endDate },
-      },
+    // NEW-252: collected (COMPLETED or REFUNDED) minus refunds recorded in the period, counted once.
+    const grossRevenue = await require('../services/revenue.service').netRevenue(req.tenantDb, {
+      branchIds: [branchId],
+      window: { [Op.gte]: startDate, [Op.lt]: endDate },
     });
-    const grossRevenue = parseFloat(revenueSum || 0);
     const netProfit = grossRevenue - totalExpenses;
 
     // Expenses breakdown by Category

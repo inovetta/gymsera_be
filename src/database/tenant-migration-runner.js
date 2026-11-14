@@ -1432,6 +1432,59 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // NEW-253 (R-103): refunds on subscription cancellation. Per-gym policy, off by default (no behaviour
+    // change until a host turns it on), and the members' refund requests. Two columns on `gyms` and one new
+    // table; nothing existing changes.
+    // ROLLBACK (deploy the previous API build FIRST):
+    //   DROP TABLE `refund_requests`;
+    //   ALTER TABLE `gyms` DROP COLUMN `refund_window_days`, DROP COLUMN `refunds_allowed`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 28;
+    version: 28,
+    name: '028_refund_policy_and_requests',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const hasColumn = async (table, column) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: [table, column], type: QueryTypes.SELECT }
+        )).length > 0;
+      // As 023 does for gym_staff: a database without `gyms` (a partial test schema) gets the table only.
+      const hasGyms = (await sequelize.query(
+        'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gyms\'',
+        { type: QueryTypes.SELECT }
+      )).length > 0;
+      if (hasGyms && !(await hasColumn('gyms', 'refunds_allowed'))) {
+        await sequelize.query('ALTER TABLE `gyms` ADD COLUMN `refunds_allowed` TINYINT(1) NOT NULL DEFAULT 0');
+      }
+      if (hasGyms && !(await hasColumn('gyms', 'refund_window_days'))) {
+        await sequelize.query('ALTER TABLE `gyms` ADD COLUMN `refund_window_days` SMALLINT UNSIGNED NULL');
+      }
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS \`refund_requests\` (
+        \`id\` CHAR(36) NOT NULL,
+        \`subscription_id\` CHAR(36) NOT NULL,
+        \`payment_id\` CHAR(36) NOT NULL,
+        \`user_id\` CHAR(36) NOT NULL,
+        \`branch_id\` CHAR(36) NOT NULL,
+        \`status\` VARCHAR(10) NOT NULL DEFAULT 'PENDING',
+        \`currency\` VARCHAR(3) NOT NULL,
+        \`suggested_amount\` DECIMAL(10,2) NOT NULL,
+        \`approved_amount\` DECIMAL(10,2) NULL,
+        \`reason\` VARCHAR(500) NULL,
+        \`decided_by\` CHAR(36) NULL,
+        \`decided_at\` DATETIME NULL,
+        \`decision_reason\` VARCHAR(500) NULL,
+        \`ledger_adjustment_id\` CHAR(36) NULL,
+        \`created_at\` DATETIME NOT NULL,
+        \`updated_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`refund_requests_subscription_unique\` (\`subscription_id\`),
+        KEY \`refund_requests_status_branch_id\` (\`status\`, \`branch_id\`),
+        KEY \`refund_requests_user_id\` (\`user_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
