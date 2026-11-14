@@ -59,7 +59,8 @@
  * | DEVICE_ATT_STAMPS              | echo           | echo, zero                 | stamps in the option answer: the device's last, or 0 (GymBioSync) |
  * | DEVICE_ATT_USERAUTHORIZE       | false          | true, false                | default for att devices (checklist (i)) |
  * | DEVICE_ATT_VALIDITY            | none           | none, datetime, seconds    | default for att devices (checklist (j)) |
- * | DEVICE_ATT_USER_FORM           | user           | user, userinfo             | default for att devices (checklist (i)) |
+ * | DEVICE_ATT_USER_FORM           | userinfo       | user, userinfo             | default for att devices; checklist (i) 2026-11-14: the
+ *   SpeedFace-V5L (ZAM180 Ver3.4.9) answers -1004 to every `DATA … user` command and 0 to the USERINFO forms |
  * | DEVICE_HISTORY_SKEW_MINUTES    | 10             | 0 to 1440                  | punches older than activation (or go-live) minus this are history |
  */
 const ENUMS = {
@@ -215,7 +216,7 @@ function getDeviceConfig() {
     attStageRetries: intOf('DEVICE_ATT_STAGE_RETRIES', 5, 0, 50),
     attUserAuthorize: boolOf('DEVICE_ATT_USERAUTHORIZE', false),
     attValidity: pickOf('DEVICE_ATT_VALIDITY', ['none', 'datetime', 'seconds'], 'none'),
-    attUserForm: pickOf('DEVICE_ATT_USER_FORM', ['user', 'userinfo'], 'user'),
+    attUserForm: pickOf('DEVICE_ATT_USER_FORM', ['user', 'userinfo'], 'userinfo'),
     historySkewMinutes: intOf('DEVICE_HISTORY_SKEW_MINUTES', 10, 0, 1440),
     // Not Phase 0 questions: fixed by the spec.
     pushMemberWindowSeconds: 10, // §9.2: 1 push per member per 10 s per user

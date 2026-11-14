@@ -174,9 +174,9 @@ const USER_FORMS = ['user', 'userinfo'];
 
 /**
  * What one device is sent. acc (and a device that never said): the global settings, as before Phase 5.
- * att (T&A PUSH): the device row's own choice, else the DEVICE_ATT_* defaults, which are the safe ones until
- * the device test: no userauthorize, no validity window (the 15-minute sweep still removes expired members),
- * the `DATA UPDATE user` form GymBioSync runs on these devices.
+ * att (T&A PUSH): the device row's own choice, else the DEVICE_ATT_* defaults: no userauthorize, no validity
+ * window (the 15-minute sweep still removes expired members), and the USERINFO form (`DATA UPDATE USERINFO` /
+ * `DATA DELETE USERINFO`): checklist (i), 2026-11-14, the T&A PUSH firmware answers -1004 to `DATA … user`.
  * @param {object} det  access_device_details row (device_type, send_userauthorize, validity_mode, user_command_form)
  * @param {object} cfg  getDeviceConfig()
  */
@@ -191,7 +191,7 @@ function deviceOptions(det = {}, cfg = {}) {
     att: true,
     sendUserAuthorize: flag === null || flag === undefined ? cfg.attUserAuthorize === true : Boolean(Number(flag)),
     validity: pick(det.validity_mode, VALIDITY_MODES, pick(cfg.attValidity, VALIDITY_MODES, 'none')),
-    userForm: pick(det.user_command_form, USER_FORMS, pick(cfg.attUserForm, USER_FORMS, 'user')),
+    userForm: pick(det.user_command_form, USER_FORMS, pick(cfg.attUserForm, USER_FORMS, 'userinfo')),
   };
 }
 
