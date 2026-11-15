@@ -55,7 +55,8 @@ Contents: [1 Where test data lives](#1-where-test-data-lives-and-what-to-keep) ย
   tenant id**, never whole top-level folders.
 - [ ] **2.4** Every database that inventory list (3) shows ("no tenant names it"): drop by hand, keep, or leave.
   Decide while the tenant rows still exist; after the wipe nothing links a database to a tenant.
-- [ ] **2.5** How to clear the old users from the access device: section 10 (recommended: A, the device menu).
+- [x] **2.5** How to clear the old users from the access device: **decided R-104 (2026-11-15): A, the device menu**
+  (section 10).
 - [ ] **2.6** The `noreply@gymsera.com` mailbox password has been changed (spec ยง16).
 
 ---
@@ -454,13 +455,12 @@ ticked. CMS only: the app has no cut-over screen.
   administrators (`removePins` keeps only `!u.isAdmin`), but that is code reading, not evidence. Also untested: apply
   and go-live with **zero** matched users, and the whole path on the real SpeedFace-V5L.
 
-### Recommendation: A
+### Decision: A (R-104, owner, 2026-11-15)
 
-A clears everything the wipe is meant to clear (users and punches), uses no untested GymsEra path, and is done before
-GymsEra talks to the device. Its one cost, losing the device administrators, is fixed by enrolling the gym owner as
-administrator straight after. Use B only if the device administrators must survive and nobody can re-enrol one; then
-first add a test for `removeUnmatched: true` (admins stay, every unmatched user gets a user delete, zero matches works)
-and accept that old punches arrive as history.
+Use A. It clears everything the wipe is meant to clear (users and punches), uses no untested GymsEra path, and is done
+before GymsEra talks to the device. Its one cost, losing the device administrators, is fixed by enrolling the gym owner
+as administrator straight after. B is not used. Reopening B would first need a test for `removeUnmatched: true` (admins
+stay, every unmatched user gets a user delete, zero matches works), and old punches would still arrive as history.
 
 ---
 
