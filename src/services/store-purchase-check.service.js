@@ -105,9 +105,9 @@ const evaluate = async ({ tenantId, planId = null, platform, billingCycle = null
       throw refuse(
         409,
         'bank_plan_active',
-        `Your plan is paid by bank transfer until ${displayDate(endDate)} (${unusedDays} paid ${unusedDays === 1 ? 'day' : 'days'} left). ` +
-          `In the app you can only move to a plan with more than ${branches(limit)}. ` +
-          'To renew or keep this plan, pay by bank transfer in the GymsEra CMS.',
+        // Shown in the store apps: no call to action to pay outside the store (App Store 3.1.1, Play Payments).
+        `Your plan is paid until ${displayDate(endDate)} (${unusedDays} paid ${unusedDays === 1 ? 'day' : 'days'} left). ` +
+          `In the app you can only move to a plan with more than ${branches(limit)}.`,
         {
           action: 'blocked',
           mechanism: 'blocked',
