@@ -5,6 +5,8 @@ const upload = require('../middleware/upload');
 const meValidators = require('../validators/me.validator');
 const subscriptionValidators = require('../validators/subscriptions.validator');
 const meController = require('../controllers/me.controller');
+const moderationController = require('../controllers/moderation.controller');
+const moderationValidators = require('../validators/moderation.validator');
 const subscriptionsController = require('../controllers/subscriptions.controller');
 
 const router = Router();
@@ -307,6 +309,10 @@ router.get('/inbox', meController.listMyInbox);
 router.get('/inbox/:conversationId', meController.getMyConversation);
 router.post('/inbox/:conversationId/reply', validate.allowBody(['clientMessageId', 'client_message_id', 'text']), meController.replyToMyConversation);
 router.patch('/inbox/:conversationId/read', validate.allowBody([]), meController.markMyConversationRead);
+// NEW-256: the traveller blocks / unblocks the gym of a conversation; Settings › Blocked lists them.
+router.post('/inbox/:conversationId/block', validate.strict(moderationValidators.travellerConversation), moderationController.blockTraveller);
+router.delete('/inbox/:conversationId/block', validate.strict(moderationValidators.travellerConversation), moderationController.unblockTraveller);
+router.get('/blocks', moderationController.listMyBlocks);
 
 router.get('/staff-status', meController.getStaffStatus);
 

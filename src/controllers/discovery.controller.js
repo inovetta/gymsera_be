@@ -146,7 +146,8 @@ const listReviews = async (req, res, next) => {
 
     // :id may be a listing id or a branch id; scope to the branch only in the latter case.
     const branchId = listing.id === id ? undefined : id;
-    const result = await discoveryService.listReviews(listing.id, branchId, { page, limit, offset });
+    const viewerUserId = req.user ? req.user.sub || req.user.id : null; // NEW-256
+    const result = await discoveryService.listReviews(listing.id, branchId, { page, limit, offset, viewerUserId });
     return sendSuccess(res, { reviews: result.reviews }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
@@ -212,7 +213,8 @@ const getBranchReviewsSummary = async (req, res, next) => {
     const listing = await discoveryService.getGymListingByIdentifier(branchId);
     if (!listing) return res.status(404).json({ success: false, message: 'Gym listing not found' });
 
-    const summary = await discoveryService.getReviewsSummary(listing.id, branchId);
+    const viewerUserId = req.user ? req.user.sub || req.user.id : null; // NEW-256
+    const summary = await discoveryService.getReviewsSummary(listing.id, branchId, { viewerUserId });
     return sendSuccess(res, summary, 'OK');
   } catch (err) {
     next(err);
@@ -228,7 +230,8 @@ const listBranchReviews = async (req, res, next) => {
     const listing = await discoveryService.getGymListingByIdentifier(branchId);
     if (!listing) return res.status(404).json({ success: false, message: 'Gym listing not found' });
 
-    const result = await discoveryService.listReviews(listing.id, branchId, { page, limit, offset, sort, filter });
+    const viewerUserId = req.user ? req.user.sub || req.user.id : null; // NEW-256
+    const result = await discoveryService.listReviews(listing.id, branchId, { page, limit, offset, sort, filter, viewerUserId });
     return sendSuccess(res, { reviews: result.reviews }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);

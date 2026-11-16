@@ -806,7 +806,7 @@ const _recalculateAverageRating = async (gymListingId, branchId) => {
  * branchId is required to scope reviews to a specific branch.
  * If no GymListing is found (synthetic), we still return the branch-scoped summary.
  */
-const getReviewsSummary = async (gymListingId, branchId) => {
+const getReviewsSummary = async (gymListingId, branchId, { viewerUserId = null } = {}) => {
   const where = { status: 'APPROVED' };
   if (branchId) {
     where.branchId = branchId;
@@ -844,8 +844,10 @@ const getReviewsSummary = async (gymListingId, branchId) => {
 
   const averageRating = totalReviews > 0 ? parseFloat((sum / totalReviews).toFixed(2)) : 0;
 
+  // NEW-256: the preview is never a review the viewer reported (the totals are unchanged).
+  const hiddenIds = await require('./content-report.service').hiddenReviewIdsFor(viewerUserId);
   const preview = await GymReview.findOne({
-    where,
+    where: hiddenIds.length ? { ...where, id: { [Op.notIn]: hiddenIds } } : where,
     include: [
       { model: User, as: 'reviewer', attributes: ['id', 'fullName', 'profileImageUrl'] },
     ],
@@ -862,6 +864,8 @@ const getReviewsSummary = async (gymListingId, branchId) => {
 
 const submitReview = async (userId, gymListingId, branchId, { rating, title, body }) => {
   if (!branchId) throw createError('branchId is required to submit a review', 400);
+  // NEW-256: the word filter runs before anything else is looked up or stored.
+  await require('./moderation-words.service').assertClean(title, body);
 
   // Find the tenantId of this branch (fresh: this read authorizes a write)
   const branches = await _getAllActiveBranches({ fresh: true });
@@ -963,8 +967,12 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
  * Branch-scoped review listing.
  * If branchId is provided, only returns reviews for that specific branch.
  */
-const listReviews = async (gymListingId, branchId, { page, limit, offset, sort = 'recent', filter = 'all' }) => {
+const listReviews = async (gymListingId, branchId, { page, limit, offset, sort = 'recent', filter = 'all', viewerUserId = null }) => {
   const where = { status: 'APPROVED' };
+
+  // NEW-256: a review the viewer reported is hidden from them at once.
+  const hiddenIds = await require('./content-report.service').hiddenReviewIdsFor(viewerUserId);
+  if (hiddenIds.length) where.id = { [Op.notIn]: hiddenIds };
 
   // Scope to branch if provided, else fall back to listing-level
   if (branchId) {

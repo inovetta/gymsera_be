@@ -3,6 +3,7 @@ const controller  = require('../controllers/discovery.controller');
 const validators  = require('../validators/discovery.validator');
 const validate    = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
+const optionalAuthenticate = require('../middleware/optionalAuthenticate');
 const publicCache = require('../middleware/publicCache');
 const authorize    = require('../middleware/authorize');
 
@@ -294,7 +295,8 @@ router.get('/gyms/:id/payment-details', authenticate, controller.getPaymentDetai
  *       200:
  *         description: Paginated approved reviews
  */
-router.get('/gyms/:id/reviews', validate(validators.getGym), controller.listReviews);
+// NEW-256: public; with a token, the reviews the caller reported are left out.
+router.get('/gyms/:id/reviews', optionalAuthenticate, validate(validators.getGym), controller.listReviews);
 
 /**
  * @swagger
@@ -457,12 +459,14 @@ router.post(
 
 router.get(
   '/branches/:branchId/reviews/summary',
+  optionalAuthenticate, // NEW-256: public; with a token, the preview is never a review the caller reported.
   validate(validators.getBranchReviewsSummary),
   controller.getBranchReviewsSummary
 );
 
 router.get(
   '/branches/:branchId/reviews',
+  optionalAuthenticate, // NEW-256: public; with a token, the reviews the caller reported are left out.
   validate(validators.getBranchReviews),
   controller.listBranchReviews
 );

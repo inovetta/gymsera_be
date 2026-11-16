@@ -142,6 +142,9 @@ describe('P9d: purchase-intent is the server check before every store purchase (
       expect(res.body.data.action).toBe('blocked');
       expect(res.body.data.unusedDays).toBe(20);
       expect(res.body.message).toContain('20 paid days');
+      // Shown in the store apps (App Store 3.1.1, Play Payments): no call to action to pay outside the store.
+      expect(res.body.message).not.toMatch(/bank transfer/i);
+      expect(res.body.message).not.toMatch(/\bpay\b/i);
     });
 
     test('a smaller plan is refused with 409', async () => {

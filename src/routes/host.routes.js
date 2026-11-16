@@ -1,5 +1,7 @@
 const { Router } = require('express');
 const hostController = require('../controllers/host.controller');
+const moderationController = require('../controllers/moderation.controller');
+const moderationValidators = require('../validators/moderation.validator');
 const planPaymentsController = require('../controllers/plan-payments.controller');
 const gymsController = require('../controllers/gyms.controller');
 const expensesController = require('../controllers/expenses.controller');
@@ -252,5 +254,9 @@ router.post('/inbox/conversations', authenticate, authorize('GYM_HOST'), validat
 router.get('/inbox/inquiries/:inquiryId', authenticate, authorize('GYM_HOST'), hostController.getInquiryDetail);
 router.post('/inbox/inquiries/:inquiryId/reply', authenticate, authorize('GYM_HOST'), validate.allowBody(['clientMessageId', 'client_message_id', 'text']), hostController.replyToInquiry);
 router.patch('/inbox/inquiries/:inquiryId/read', authenticate, authorize('GYM_HOST'), validate.allowBody([]), hostController.markInquiryRead);
+// NEW-256: the gym blocks / unblocks the traveller of a conversation; the inbox lists the blocked.
+router.post('/inbox/inquiries/:inquiryId/block', authenticate, authorize('GYM_HOST'), validate.strict(moderationValidators.hostConversation), moderationController.blockFromHost);
+router.delete('/inbox/inquiries/:inquiryId/block', authenticate, authorize('GYM_HOST'), validate.strict(moderationValidators.hostConversation), moderationController.unblockFromHost);
+router.get('/inbox/blocks', authenticate, authorize('GYM_HOST'), moderationController.listHostBlocks);
 
 module.exports = router;

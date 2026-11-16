@@ -38,6 +38,7 @@ const DEFAULTS = {
   REVEAL_USER: [60 * 60, 300],
   DATA_EXPORT_USER: [60 * 60, 5],
   PLACES_USER: [60, 90],
+  REPORT_USER: [60 * 60, 30],
 };
 
 const intFromEnv = (name) => {
@@ -140,6 +141,11 @@ const createLimiters = () => ({
     const user = verifiedUserId(req);
     return user ? `places:u:${user}` : null;
   }),
+  // NEW-256: reporting is cheap to send and costs an admin's time to read.
+  report: build('REPORT_USER', 'You have sent many reports. Please try again later.', (req) => {
+    const user = verifiedUserId(req);
+    return user ? `report:u:${user}` : null;
+  }),
   mutation: build('MUTATION_USER', 'Too many changes in a short time. Please slow down.', (req) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return null;
     const url = (req.originalUrl || req.url || '').toLowerCase();
@@ -180,6 +186,7 @@ const mount = (app, prefix = '/api/v1') => {
   app.use(prefix, when('POST', (p) => /^\/admin\/tenants\/[^/]+\/members\/[^/]+\/reveal$/.test(p), [l.reveal]));
   app.use(prefix, when('GET', exact('/me/data-export'), [l.dataExport]));
   app.use(prefix, when('GET', (p) => p.startsWith('/places/'), [l.places]));
+  app.use(prefix, when('POST', exact('/reports'), [l.report]));
   app.use(prefix, l.mutation);
   return l;
 };
