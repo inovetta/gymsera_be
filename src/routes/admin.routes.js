@@ -4,6 +4,8 @@ const adminController     = require('../controllers/admin.controller');
 const reportsController   = require('../controllers/reports.controller');
 const discoveryController = require('../controllers/discovery.controller');
 const discoveryValidators = require('../validators/discovery.validator');
+const moderationController = require('../controllers/moderation.controller');
+const moderationValidators = require('../validators/moderation.validator');
 const gymsValidators = require('../validators/gyms.validator');
 const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
@@ -483,6 +485,14 @@ router.post(
   validate.strict(discoveryValidators.moderateReview, { stage: 2 }),
   discoveryController.moderateReview
 );
+// NEW-256: content reports (CMS: Moderation › Reports) and the word list (Moderation › Word list).
+// Platform admins only (router-level authorize above). Target response time: 24 hours.
+router.get('/reports', validate(moderationValidators.adminList), moderationController.adminListReports);
+router.get('/reports/:id', validate(moderationValidators.adminGet), moderationController.adminGetReport);
+router.patch('/reports/:id', validate.strict(moderationValidators.adminAct), moderationController.adminActOnReport);
+router.get('/moderation/words', moderationController.adminGetWords);
+router.put('/moderation/words', validate.strict(moderationValidators.replaceWords), moderationController.adminReplaceWords);
+
 // Alias: PATCH /admin/reviews/:id/moderate (CMS uses PATCH)
 router.patch(
   '/reviews/:id/moderate',

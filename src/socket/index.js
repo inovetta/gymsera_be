@@ -218,7 +218,8 @@ const init = (httpServer) => {
       } catch (err) {
         console.error('[Socket send_message error]:', err.message);
         if (typeof callback === 'function') {
-          callback({ success: false, error: err.message });
+          // NEW-256: the code tells the app a block (conversation_blocked) or the word filter (content_blocked).
+          callback({ success: false, error: err.message, code: err.code || null });
         }
       }
     });

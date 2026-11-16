@@ -40,6 +40,9 @@ const AuditLog = require('./AuditLog.model')(sequelize);
 const IdempotencyRecord = require('./IdempotencyRecord.model')(sequelize);
 const PayoutAccount = require('./PayoutAccount.model')(sequelize);
 const PlanPaymentRequest = require('./PlanPaymentRequest.model')(sequelize);
+const ContentReport = require('./ContentReport.model')(sequelize);
+const UserBlock = require('./UserBlock.model')(sequelize);
+const ModerationWord = require('./ModerationWord.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -173,6 +176,13 @@ GymReview.belongsTo(User, { foreignKey: 'userId', as: 'reviewer' });
 Tenant.hasMany(GymReview, { foreignKey: 'tenantId', as: 'gymReviews' });
 GymReview.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
 
+// NEW-256: names for the CMS report queue. No database constraints (p031 creates none).
+ContentReport.belongsTo(User, { foreignKey: 'reporterUserId', as: 'reporter', constraints: false });
+ContentReport.belongsTo(User, { foreignKey: 'targetUserId', as: 'targetUser', constraints: false });
+ContentReport.belongsTo(User, { foreignKey: 'handledByUserId', as: 'handledBy', constraints: false });
+UserBlock.belongsTo(User, { foreignKey: 'userId', as: 'user', constraints: false });
+UserBlock.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
+
 // Tenant ↔ Device
 Tenant.hasMany(Device, { foreignKey: 'tenantId', as: 'devices', onDelete: 'CASCADE' });
 Device.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
@@ -243,4 +253,7 @@ module.exports = {
   IdempotencyRecord,
   PayoutAccount,
   PlanPaymentRequest,
+  ContentReport,
+  UserBlock,
+  ModerationWord,
 };

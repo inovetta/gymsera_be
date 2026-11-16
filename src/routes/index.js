@@ -202,6 +202,7 @@ router.use('/attendance', require('./attendance.routes'));
 router.use('/trainers',   require('./trainers.routes'));
 
 // ── Sprint 7 — Reports ────────────────────────────────────────────────────────
+router.use('/reports', require('./content-reports.routes')); // NEW-256: POST /reports only
 router.use('/reports', require('./reports.routes'));
 
 // ── Access control: unified Team & Access + the approval inbox ───────────────
