@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-16 (NEW-256 report / block / word filter built in be, app, CMS, web; NEW-257 security fix; NEW-258 recorded) |
+| Last updated | 2026-11-16 (NEW-256 done in be, app, CMS, web; NEW-257 security fix; full be suite 357 / 359) |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **NEW-256: report and block** (owner, 2026-11-16), decisions R-106; NEW-257 (security) and NEW-258 found on the way. be `feat/new-256-report-block` (worktree `../gymsera_be_new256`, stacked on `fix/r96-neutral-plan-copy`), app `feat/new-256-report-block` (worktree `../gyms_era_new256`, from `chore/build-22`), CMS `feat/new-256-moderation` (worktree `../gymsera_cms_new256`), web `feat/new-256-report-review` (worktree `../gymsera_web_new256`). Local only: not pushed, no PRs, not deployed. |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | NEW-256: the clean full be suite run (everything else committed) |
-| Step within issue | Run the full be suite ALONE (no Flutter / Vitest / npm on the machine at the same time): two earlier runs were invalid (test MySQL OOM-killed; then database setup hooks timed out under parallel load) |
+| Prompt status | `DONE` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | (none) |
+| Step within issue | (none) |
 
 **NEW-256 / NEW-257 / NEW-258 (owner, 2026-11-16).** Spec §13 rows NEW-256 (DONE), NEW-257 (DONE, security), NEW-258 (OPEN); decisions R-106.
 - be `feat/new-256-report-block` on top of `fix/r96-neutral-plan-copy` (`6267eda`, `9bac2c6`, `ceb34b7`): `25188b3` NEW-256 (platform migration **p031**, report / block / word filter routes, admin queue), `3bf2710` NEW-257 (gym inbox fails closed without a tenant), plus this docs commit. Merge `fix/r96-neutral-plan-copy` first (stacked).
@@ -31,7 +31,9 @@ next agent won't know it.
 - web `feat/new-256-report-review` from `main`: `876608c` Report on each review. Vitest 42 files / 198, tsc, lint. Its `node_modules` is a real `npm ci` (the main web checkout's branch predates `@sentry/nextjs`).
 - Worktrees: be and CMS `node_modules` / `.env` are symlinks to the main checkouts (same lockfile), never commit them; `tsconfig.tsbuildinfo` changes are build cache, never commit them.
 
-**Next action (NEW-256):** **Agent:** run the full be suite alone (`npx jest --testTimeout=30000 --runInBand --forceExit` in `../gymsera_be_new256`, `PLATFORM_TEST_DB_HOST=127.0.0.1 TENANT_TEST_DB_HOST=127.0.0.1 DISABLE_REDIS=true`, Node 20.17, Docker `gymsera-test-mysql57`); record the counts here and in §13 NEW-256; if MySQL is OOM-killed or setup hooks time out, stop and tell the owner. **Owner:** review; push and open PRs (be `fix/r96-neutral-plan-copy` first, then be NEW-256 stacked on it, then CMS and web); deploy order: platform migration p031 (dry run first), API, CMS, web, then app build 24. **Next prompt:** NEW-258 if wanted.
+**Full be suite (2026-11-16, run alone):** 357 / 359 suites, 3645 / 3648 tests, 2417 s: `staging-script` 2 (no `mysqldump`), `zkteco-p4-push-load` 1 (408 under full-suite load, NEW-238 / NEW-240; green alone). Do not run Flutter / Vitest / npm installs while the be suite runs: an earlier run had the test MySQL OOM-killed. If CAP-08 fails in a full run it leaves a transaction open and every later suite's setup times out: restart `gymsera-test-mysql57` and run again (CAP-08 is green alone).
+
+**Next action (NEW-256):** **Owner:** review; push and open PRs: be `fix/r96-neutral-plan-copy` first, then be `feat/new-256-report-block` (stacked on it), then CMS `feat/new-256-moderation` and web `feat/new-256-report-review` (into `main`), app `feat/new-256-report-block` (into `master` after `chore/build-22`). Deploy order: platform migration **p031** (`node src/scripts/run-platform-migrations.js --dry-run`, then without), the API, the CMS, the website, then app build 24. Check the word list in CMS › Moderation › Word list. **Agent, next:** NEW-258 (website reviewer names) if the owner wants it.
 
 **NEW-255 / NEW-256 (owner, 2026-11-15), build 22.** Audit result and fixes in spec §13 "NEW-255 / NEW-256", decisions R-105. App `5ab0f14` on `chore/build-22`: no "pay by bank transfer" for the platform plan, "coming soon" controls removed, Boost row release-hidden, purpose strings, `fetch` / `RECEIVE_BOOT_COMPLETED` removed, `READ_EXTERNAL_STORAGE` max 32, privacy manifest data types; app suite 488 / 488. be `6267eda` R-96 refusal copy (59 / 59 affected suites). Build worktree: `ios/Flutter/MapsKey.xcconfig`, `android/local.properties`, `android/key.properties` are SYMLINKS to `../gyms_era` (never read them); the worktree's own `local.properties` was moved to `android/local.properties.worktree-orig` (untracked). This shell has a minimal PATH: use `~/fvm/versions/stable/bin`, `/opt/homebrew/bin` (CocoaPods), `~/.nvm/versions/node/v20.17.0/bin`, `/Applications/Docker.app/Contents/Resources/bin/docker`, and `LANG=en_US.UTF-8`.
 
