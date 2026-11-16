@@ -17,16 +17,16 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-16 (NEW-265 Part A: API contract written, waiting for the owner's approval; R-108) |
+| Last updated | 2026-11-16 (NEW-265 Part A: contract revision 2 after the host-flow review, R-109; waiting for the owner's approval) |
 | Updated by | Claude Code (Opus 5.5) |
 | Current prompt | **NEW-265 Part A: pending areas** (owner, 2026-11-16, approved plan), decisions R-108. be `feat/new-265-pending-areas` (worktree `../gymsera_be_new265`, from `main` `344c77f`). App (`feat/new-265-pending-areas` from `master`, version 1.0.0+25) and CMS (`feat/new-265-unmatched-areas` from `main`) not created yet. No deploy, no push to main / master, no release build |
 | Prompt status | `BLOCKED ON OWNER` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
 | Issue in progress | NEW-265 Part A |
-| Step within issue | Day 1 done: API contract in spec §13 "NEW-265 Part A" (A1 to A8), R-108 in §14. Waiting for the owner to approve the contract |
+| Step within issue | Contract revision 2 done: spec §13 "NEW-265 Part A" A1 to A9 (A9 = host-flow rules), R-109 in §14 (with four points of the agent's reading to confirm). Waiting for the owner to approve the contract |
 
 **NEW-265 Part A (owner, 2026-11-16), `BLOCKED ON OWNER` (contract approval).** Plan approved with decisions R-108 (typed area = pending request; Google neighbourhoods / sublocalities official at pick, roads / landmarks pending; limits 5 a day, 3 open per city, 3 to 60 characters; build 24 not rebuilt, Part A in build 25; Part B after launch). Contract: spec §13 "NEW-265 Part A" (A1 platform migration p032 `area_requests`, `area_request_links`, `area_aliases`, `areas` coordinates, `area_status` / `area_request_id` on `tenants` and `gym_listings`, no tenant migration; A2 name rules; A3 `/places` routes incl. `extended=true` autocomplete and details skip; A4 `areaRequestId` on 8 write routes; A5 discovery no fallback for a pending branch; A6 admin queue; A7 clients; A8 tests). Nothing built yet, only this docs commit.
 
-**Next action (NEW-265):** **Owner:** approve or correct the contract (spec §13 "NEW-265 Part A"). **Agent, after approval:** be first on `feat/new-265-pending-areas` (worktree `../gymsera_be_new265`): red tests for A1 (migration p032) and A2, then A3 to A6, full be suite, report; then the app worktree from `master` (own version commit 1.0.0+25), then CMS from `main`. Report to the owner after each part.
+**Next action (NEW-265):** **Owner:** approve or correct the contract (spec §13 "NEW-265 Part A"). **Agent, after approval:** be first on `feat/new-265-pending-areas` (worktree `../gymsera_be_new265`): red tests for A1 (migration p032) and A2, then A3 to A6, full be suite, report; then the app worktree from `origin/master` `10f8033` (never local `master`; own version commit 1.0.0+25), then CMS from `origin/main`. Include A9 (R-109) and its "What G1 adds" table. Report to the owner after each part.
 
 **NEW-259 / NEW-260 / NEW-261 (owner, 2026-11-16), `DONE`, local only (not pushed, no PRs, not deployed, no release build).** Decision R-107. Spec §13 rows NEW-259 to NEW-264 (NEW-262 traveller area filter and NEW-263 website area dropdown are OPEN follow-ups; NEW-264 intro-slides error NOT REPRODUCED, needs the message text).
 - be `fix/area-city-restriction` (worktree `../gymsera_be_areas`, from `main` `1559a1c`): `08385f1` (area search inside the city, ours first as `gymsera-area:<id>`, details city check, `assertAreaInCity` on every areaId write → 422 `area_not_listed`, `POST /places/areas` platform admins only, `GET /cities` `areaCount`) + this docs commit. Full suite 3663 / 3668: SEC-16 fixed after the run (71 / 71 green), two zkteco load tests green alone, `staging-script` 2 (no `mysqldump`).
@@ -832,3 +832,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 151 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-256 report / block / word filter (be, app, CMS, web); NEW-257 security fix; NEW-258 recorded | be `25188b3`, `3bf2710` + docs; app `58bc306`, `a9f9c3e`; CMS `01f97b9`; web `876608c`; app 502 / 502, CMS 731, web 198, be targeted 48 + chat 247 | (open) | (open) |
 | 152 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-259 / NEW-260 / NEW-261 (area restriction, password message, CMS area count), R-107 | be `08385f1`; CMS `1648473`, `3904c53`; app `88a8144`, `3893c54`; be 3663 / 3668 (see §13), CMS 733, app 510 | task complete | yes |
 | 154 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265 plan (read-only), then Part A day 1: API contract in spec §13, R-108 in §14 | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
+| 155 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265: read-only host-flow review (origin/main, origin/master), then contract revision 2 (spec §13 A1 to A9, R-109) | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
