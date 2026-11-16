@@ -1226,6 +1226,80 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 31,
+    name: 'p031_content_moderation',
+    description:
+      'NEW-256 (App Store 1.2, Google Play UGC): content_reports (a person reports a review or a chat message; platform admins act on it in the CMS), user_blocks (a traveller blocks a gym, or a gym blocks a traveller: messages refused both ways, the conversation hidden for the side that blocked), moderation_words (the word list checked on chat messages and reviews, editable in the CMS) with a short starter list. New tables and their seed rows only; nothing existing changes. Safe to re-run.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run (lists p031, writes nothing).
+    // BACKUP: none needed (new tables only; no existing row is read or changed).
+    // ROLLBACK (deploy the previous API build FIRST: it never reads these tables):
+    //   DROP TABLE `content_reports`; DROP TABLE `user_blocks`; DROP TABLE `moderation_words`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 31;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`content_reports\` (
+          \`id\` CHAR(36) BINARY NOT NULL,
+          \`reporter_user_id\` CHAR(36) BINARY NOT NULL,
+          \`target_type\` VARCHAR(16) NOT NULL,
+          \`target_id\` CHAR(36) BINARY NOT NULL,
+          \`target_user_id\` CHAR(36) BINARY NULL,
+          \`conversation_id\` CHAR(36) BINARY NULL,
+          \`tenant_id\` CHAR(36) BINARY NULL,
+          \`reason\` VARCHAR(32) NOT NULL,
+          \`note\` VARCHAR(500) NULL,
+          \`snapshot_text\` TEXT NULL,
+          \`status\` VARCHAR(16) NOT NULL DEFAULT 'OPEN',
+          \`action\` VARCHAR(32) NULL,
+          \`admin_note\` VARCHAR(500) NULL,
+          \`handled_by_user_id\` CHAR(36) BINARY NULL,
+          \`handled_at\` DATETIME NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`content_reports_reporter_target\` (\`reporter_user_id\`, \`target_type\`, \`target_id\`),
+          KEY \`content_reports_status_created_at\` (\`status\`, \`created_at\`),
+          KEY \`content_reports_target\` (\`target_type\`, \`target_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`user_blocks\` (
+          \`id\` CHAR(36) BINARY NOT NULL,
+          \`user_id\` CHAR(36) BINARY NOT NULL,
+          \`tenant_id\` CHAR(36) BINARY NOT NULL,
+          \`blocked_by\` VARCHAR(8) NOT NULL,
+          \`created_by_user_id\` CHAR(36) BINARY NOT NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`user_blocks_pair_side\` (\`user_id\`, \`tenant_id\`, \`blocked_by\`),
+          KEY \`user_blocks_tenant_id\` (\`tenant_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`moderation_words\` (
+          \`id\` CHAR(36) BINARY NOT NULL,
+          \`word\` VARCHAR(50) NOT NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`moderation_words_word\` (\`word\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      // Starter list (owner edits it in the CMS: Moderation › Word list). INSERT IGNORE keeps
+      // whatever an admin already has; a re-run adds nothing twice.
+      const { STARTER_WORDS } = require('../constants/moderation');
+      const { v4: uuidv4 } = require('uuid');
+      for (const word of STARTER_WORDS) {
+        await sequelize.query(
+          'INSERT IGNORE INTO `moderation_words` (`id`, `word`, `created_at`, `updated_at`) VALUES (?, ?, NOW(), NOW())',
+          { replacements: [uuidv4(), word] }
+        );
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
