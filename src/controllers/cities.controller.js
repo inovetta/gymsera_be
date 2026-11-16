@@ -14,7 +14,15 @@ const listCities = async (req, res, next) => {
       order: [['name', 'ASC']],
     });
 
-    return sendSuccess(res, cities);
+    // NEW-261: how many areas each city has (CMS › Cities & Areas shows it without opening the city).
+    const counts = await Area.findAll({
+      attributes: ['cityId', [Area.sequelize.fn('COUNT', Area.sequelize.col('id')), 'areaCount']],
+      group: ['cityId'],
+      raw: true,
+    });
+    const byCity = new Map(counts.map((r) => [Number(r.cityId), Number(r.areaCount)]));
+
+    return sendSuccess(res, cities.map((c) => ({ ...c.get({ plain: true }), areaCount: byCity.get(c.id) || 0 })));
   } catch (err) {
     next(err);
   }

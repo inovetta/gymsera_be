@@ -4,6 +4,7 @@ const { sendSuccess, createError, buildPagination } = require('../utils/response
 const { likeContains } = require('../utils/sql-like');
 const { Op } = require('sequelize');
 const gymService = require('../services/gym.service');
+const { assertAreaInCity } = require('../services/places.service');
 const attendanceService = require('../services/attendance.service');
 const inboxService = require('../services/inbox.service');
 const accessService = require('../services/access.service');
@@ -483,6 +484,7 @@ const createListing = async (req, res, next) => {
 
       const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
       if (!gymName) throw createError('gymName is required', 400);
+      await assertAreaInCity({ cityId, areaId }); // NEW-259
 
       // How this organization's first branch gets filled:
       //   'new'     (default) — build a real branch immediately, same as
@@ -737,6 +739,14 @@ const updateListing = async (req, res, next) => {
     // Phase 7 P5 (BUG-22): the rest of Edit Organization, for this organization only.
     // category and establishedYear live on the organization; the gym has no columns for them.
     const { category, establishedYear, contactEmail, website, imagesJson } = req.body;
+
+    // NEW-259: a new city or area must still pair up (the city sent, else the organization's own).
+    if (cityId !== undefined || areaId !== undefined) {
+      await assertAreaInCity({
+        cityId: cityId !== undefined ? cityId : listing.cityId,
+        areaId: areaId !== undefined ? areaId : listing.areaId,
+      });
+    }
 
     const updates = {};
     if (gymName !== undefined) updates.title = gymName;

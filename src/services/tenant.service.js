@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { Tenant, User, PlatformPackage, City, TenantSubscription, PlatformAuditLog } = require('../models/platform');
 const kycStorageService = require('./kyc-storage.service');
 const { createError } = require('../utils/response.utils');
+const { assertAreaInCity } = require('./places.service');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
 
@@ -38,6 +39,7 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
   // Each user may own only one tenant (prevent duplicates)
   const existing = await Tenant.findOne({ where: { ownerUserId: userId } });
   if (existing) throw createError('You have already registered a gym business', 409);
+  await assertAreaInCity({ cityId, areaId }); // NEW-259
 
   const tenantCode = await _uniqueTenantCode();
 
@@ -85,6 +87,14 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     ...(existingMainBranch || {}),
     ...mainBranchData,
   } : tenant.mainBranchDataJson;
+
+  // NEW-259: the main branch's area belongs to its city (the branch's, else the business's).
+  if (mainBranchData && (mainBranchData.areaId !== undefined || mainBranchData.cityId !== undefined)) {
+    await assertAreaInCity({
+      cityId: mergedMainBranchData.cityId || tenant.cityId,
+      areaId: mergedMainBranchData.areaId,
+    });
+  }
 
   await tenant.update({
     gymName: gymName || tenant.gymName,

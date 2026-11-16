@@ -85,7 +85,8 @@ describe('P3: autocomplete (BUG-01 city then area, BUG-04 address)', () => {
     expect(calls[0].url).not.toContain('test-server-key-not-real');
   });
 
-  test('area search is limited to areas and biased to the picked city', async () => {
+  // NEW-259 (R-107): restricted to the picked city (was a bias); see new-259-area-city-restriction.test.js.
+  test('area search is limited to areas and restricted to the picked city', async () => {
     const { City } = require('../../src/models/platform');
     const city = await City.create({ name: 'Bias City', isActive: true, latitude: 31.52, longitude: 74.35 });
     fakeGoogle({ 'places:autocomplete': () => ({ body: { suggestions: [] } }) });
@@ -94,7 +95,8 @@ describe('P3: autocomplete (BUG-01 city then area, BUG-04 address)', () => {
     expect(res.body.data.suggestions).toEqual([]);
     const sent = JSON.parse(calls[0].init.body);
     expect(sent.includedPrimaryTypes).toEqual(['sublocality', 'neighborhood']);
-    expect(sent.locationBias.circle.center).toEqual({ latitude: 31.52, longitude: 74.35 });
+    expect(sent.locationRestriction.circle.center).toEqual({ latitude: 31.52, longitude: 74.35 });
+    expect(sent.locationBias).toBeUndefined();
   });
 
   test('area search without a known city is refused before Google is called', async () => {
@@ -292,12 +294,13 @@ describe('P3: the traveller city list carries each city centre', () => {
   });
 });
 
-describe('P3: free-text area when Google has no match', () => {
+// NEW-259 (R-107): only a platform administrator adds a typed area; a host is refused (new-259 suite).
+describe('P3: free-text area when Google has no match (platform administrator)', () => {
   test('creates the area once per city, matched without case or extra spaces', async () => {
     const { City, Area } = require('../../src/models/platform');
     const city = await City.create({ name: 'Free Text City', isActive: true });
-    const a = await asPersona('owner').post('/places/areas').send({ cityId: city.id, name: '  Old   Bazaar ' });
-    const b = await asPersona('owner').post('/places/areas').send({ cityId: city.id, name: 'old bazaar' });
+    const a = await asPersona('platformAdmin').post('/places/areas').send({ cityId: city.id, name: '  Old   Bazaar ' });
+    const b = await asPersona('platformAdmin').post('/places/areas').send({ cityId: city.id, name: 'old bazaar' });
     expect(a.status).toBe(200);
     expect(a.body.data).toMatchObject({ name: 'Old Bazaar', cityId: city.id });
     expect(b.body.data.id).toBe(a.body.data.id);
@@ -305,8 +308,8 @@ describe('P3: free-text area when Google has no match', () => {
   });
 
   test('an unknown city or an empty name is refused', async () => {
-    expect((await asPersona('owner').post('/places/areas').send({ cityId: 987654, name: 'X Area' })).status).toBe(404);
-    expect((await asPersona('owner').post('/places/areas').send({ cityId: 1, name: '   ' })).status).toBe(422);
+    expect((await asPersona('platformAdmin').post('/places/areas').send({ cityId: 987654, name: 'X Area' })).status).toBe(404);
+    expect((await asPersona('platformAdmin').post('/places/areas').send({ cityId: 1, name: '   ' })).status).toBe(422);
   });
 });
 

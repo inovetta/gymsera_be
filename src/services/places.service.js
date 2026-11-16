@@ -8,16 +8,25 @@
  * Every place it resolves is upserted into `cities` / `areas` (by Google place id, else by name, so an
  * admin-made "Lahore" is reused, not duplicated). Callers get our ids back, so discovery filters,
  * tenants and branches keep using `cityId` / `areaId` as before.
+ *
+ * NEW-259 (R-107): an area is created when the host picks it (here), never typed in. Area suggestions
+ * are our own areas of the chosen city first (placeId `gymsera-area:<id>`, resolved by details() without
+ * Google, so builds that only know Google place ids keep working), then Google's, restricted to the
+ * city. details() refuses a Google area in another city, and every write that takes an areaId calls
+ * assertAreaInCity (code `area_not_listed`).
  */
 const { Op } = require('sequelize');
 const { City, Area } = require('../models/platform');
 const { sequelize } = require('../database/platform');
 const { createError } = require('../utils/response.utils');
+const { likeContains } = require('../utils/sql-like');
 
 const PLACES_BASE = 'https://places.googleapis.com/v1';
 const GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 const TIMEOUT_MS = 5000;
-const CITY_BIAS_RADIUS_M = 25000;
+const CITY_RADIUS_M = 25000; // address search: bias; area search: restriction (NEW-259)
+const OUR_AREA_PREFIX = 'gymsera-area:';
+const OUR_AREA_LIMIT = 8;
 const DEFAULT_REGION = 'pk';
 const DETAILS_FIELDS = 'id,displayName,formattedAddress,location,addressComponents,types';
 
@@ -147,10 +156,35 @@ const upsertArea = async ({ cityId, name, placeId = null }) => {
   return area;
 };
 
+/** Lower case, single spaces: how two area names are compared. */
+const nameKey = (name) => (normalizeName(name) || '').toLowerCase();
+
+const AREA_NOT_LISTED_MESSAGE = 'Pick your area from the list for the chosen city. Can\'t find your area? Contact support.';
+const areaNotListed = () => createError(AREA_NOT_LISTED_MESSAGE, 422, 'area_not_listed');
+
+/**
+ * NEW-259: every write that takes an areaId. No area (null, 0, '') is allowed; an area must exist and belong
+ * to `cityId` (the city sent with it, else the record's own city). Returns the area, or null.
+ */
+const assertAreaInCity = async ({ cityId, areaId }) => {
+  if (areaId === undefined || areaId === null || areaId === '' || areaId === 0 || areaId === '0') return null;
+  const id = Number(areaId);
+  const area = Number.isInteger(id) && id > 0 ? await Area.findByPk(id) : null;
+  if (!area || !cityId || Number(area.cityId) !== Number(cityId)) throw areaNotListed();
+  return area;
+};
+
 const findCityOr404 = async (cityId) => {
   const city = cityId ? await City.findByPk(cityId) : null;
   if (!city) throw createError('City not found', 404, 'city_not_found');
   return city;
+};
+
+/** "Peshawar" and "Peshawar District" are the same city; "Lahore" and "Peshawar" are not. */
+const sameCityName = (a, b) => {
+  const x = nameKey(a);
+  const y = nameKey(b);
+  return Boolean(x && y) && (x === y || x.includes(y) || y.includes(x));
 };
 
 const shapeCity = (city) => (city ? { id: city.id, name: city.name } : null);
@@ -181,22 +215,33 @@ const autocomplete = async ({ input, kind, sessionToken, cityId }) => {
   const hasCentre = city && city.latitude !== null && city.longitude !== null;
   if (hasCentre && kind !== 'city') {
     body.locationBias = {
-      circle: { center: { latitude: Number(city.latitude), longitude: Number(city.longitude) }, radius: CITY_BIAS_RADIUS_M },
+      circle: { center: { latitude: Number(city.latitude), longitude: Number(city.longitude) }, radius: CITY_RADIUS_M },
     };
   }
   if (kind === 'city') {
     body.includedPrimaryTypes = ['(cities)'];
   } else if (kind === 'area') {
     body.includedPrimaryTypes = ['sublocality', 'neighborhood'];
-    if (!hasCentre) body.input = `${input}, ${city.name}`; // no centre yet: the city name narrows it instead
+    if (hasCentre) {
+      // NEW-259: inside the city only, not merely near it.
+      body.locationRestriction = body.locationBias;
+      delete body.locationBias;
+    } else {
+      body.input = `${input}, ${city.name}`; // no centre yet: the city name narrows it instead
+    }
+    return areaSuggestions({ input, city, hasCentre, body });
   }
 
+  return { suggestions: await googleSuggestions(body) };
+};
+
+const googleSuggestions = async (body) => {
   const res = await callGoogle(`${PLACES_BASE}/places:autocomplete`, {
     method: 'POST',
     headers: placesHeaders(),
     body: JSON.stringify(body),
   });
-  const suggestions = (res.suggestions || [])
+  return (res.suggestions || [])
     .map((s) => s.placePrediction)
     .filter((p) => p && p.placeId)
     .map((p) => ({
@@ -204,7 +249,68 @@ const autocomplete = async ({ input, kind, sessionToken, cityId }) => {
       primaryText: p.structuredFormat?.mainText?.text || p.text?.text || '',
       secondaryText: p.structuredFormat?.secondaryText?.text || null,
     }));
-  return { suggestions };
+};
+
+const ourAreaSuggestion = (area, city) => ({ placeId: `${OUR_AREA_PREFIX}${area.id}`, primaryText: area.name, secondaryText: city.name });
+
+/**
+ * NEW-259 (R-107): our areas of the city that match the input first, then Google's areas in the city.
+ * A Google suggestion we already hold (same place id, else same name) is shown once, as ours.
+ * When Google fails, our own matches still answer; with none, the Google error stands.
+ */
+const areaSuggestions = async ({ input, city, hasCentre, body }) => {
+  const key = nameKey(input);
+  const ours = await Area.findAll({
+    where: { cityId: city.id, name: { [Op.like]: likeContains(normalizeName(input) || '') } },
+    order: [['name', 'ASC']],
+    limit: 50,
+  });
+  ours.sort((a, b) => Number(!nameKey(a.name).startsWith(key)) - Number(!nameKey(b.name).startsWith(key)));
+  const picked = ours.slice(0, OUR_AREA_LIMIT);
+
+  let google;
+  try {
+    google = await googleSuggestions(body);
+  } catch (err) {
+    if (picked.length) return { suggestions: picked.map((a) => ourAreaSuggestion(a, city)) };
+    throw err;
+  }
+  if (!hasCentre) {
+    // Searched by name only: keep what Google itself places in this city.
+    const cityKey = nameKey(city.name);
+    google = google.filter((s) => nameKey(s.secondaryText).includes(cityKey));
+  }
+
+  const known = google.length
+    ? await Area.findAll({
+      where: {
+        cityId: city.id,
+        [Op.or]: [
+          { googlePlaceId: google.map((s) => s.placeId) },
+          sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), { [Op.in]: google.map((s) => nameKey(s.primaryText)) }),
+        ],
+      },
+    })
+    : [];
+
+  const ourIds = new Set(picked.map((a) => a.id));
+  const ourList = [...picked];
+  const googleList = [];
+  const seenNames = new Set(picked.map((a) => nameKey(a.name)));
+  for (const s of google) {
+    const match = known.find((a) => a.googlePlaceId === s.placeId) || known.find((a) => nameKey(a.name) === nameKey(s.primaryText));
+    if (match) {
+      if (!ourIds.has(match.id)) {
+        ourIds.add(match.id);
+        ourList.push(match);
+        seenNames.add(nameKey(match.name));
+      }
+    } else if (!seenNames.has(nameKey(s.primaryText))) {
+      seenNames.add(nameKey(s.primaryText));
+      googleList.push(s);
+    }
+  }
+  return { suggestions: [...ourList.map((a) => ourAreaSuggestion(a, city)), ...googleList] };
 };
 
 // ── Details ───────────────────────────────────────────────────────────────────
@@ -215,6 +321,21 @@ const autocomplete = async ({ input, kind, sessionToken, cityId }) => {
  */
 const details = async ({ placeId, kind, sessionToken, cityId }) => {
   const pickedCity = kind === 'area' ? await findCityOr404(cityId) : null;
+
+  // NEW-259: one of our own areas, offered by autocomplete; Google is not asked.
+  if (String(placeId).startsWith(OUR_AREA_PREFIX)) {
+    if (kind !== 'area') throw createError('We could not find that place. Please pick another one.', 404, 'place_not_found');
+    const area = await assertAreaInCity({ cityId: pickedCity.id, areaId: String(placeId).slice(OUR_AREA_PREFIX.length) });
+    if (!area) throw areaNotListed();
+    return {
+      placeId,
+      formattedAddress: `${area.name}, ${pickedCity.name}`,
+      latitude: null,
+      longitude: null,
+      city: shapeCity(pickedCity),
+      area: shapeArea(area),
+    };
+  }
   const qs = sessionToken ? `?sessionToken=${encodeURIComponent(sessionToken)}` : '';
   const place = await callGoogle(`${PLACES_BASE}/places/${encodeURIComponent(placeId)}${qs}`, {
     method: 'GET',
@@ -233,6 +354,11 @@ const details = async ({ placeId, kind, sessionToken, cityId }) => {
     city = await upsertCity({ name: displayName || pickComponent(components, CITY_TYPES), placeId: place.id || placeId, latitude, longitude, countryCode });
   } else if (kind === 'area') {
     city = pickedCity;
+    // NEW-259: an area Google files under another city is refused, not added to this one.
+    const placeCity = pickComponent(components, CITY_TYPES);
+    if (placeCity && !sameCityName(placeCity, city.name)) {
+      throw createError(`That area is not in ${city.name}. Pick an area in ${city.name}.`, 422, 'area_outside_city');
+    }
     area = await upsertArea({ cityId: city.id, name: displayName || pickComponent(components, AREA_TYPES), placeId: place.id || placeId });
   } else {
     city = await upsertCity({ name: pickComponent(components, CITY_TYPES), countryCode });
@@ -309,6 +435,9 @@ module.exports = {
   details,
   reverseGeocode,
   findOrCreateArea,
+  assertAreaInCity,
+  AREA_NOT_LISTED_MESSAGE,
+  OUR_AREA_PREFIX,
   upsertCity,
   upsertArea,
   normalizeName,
