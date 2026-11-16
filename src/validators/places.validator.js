@@ -33,7 +33,8 @@ const placesValidators = {
   ],
 
   details: [
-    param('placeId').matches(/^[A-Za-z0-9_-]{1,255}$/).withMessage('Invalid place id'),
+    // A Google place id, or one of our areas offered by autocomplete (NEW-259: `gymsera-area:<id>`).
+    param('placeId').matches(/^(?:[A-Za-z0-9_-]{1,255}|gymsera-area:[1-9][0-9]{0,9})$/).withMessage('Invalid place id'),
     query('kind').isIn(KINDS).withMessage('kind must be city, area or address'),
     sessionToken(false),
     cityIdForArea,

@@ -9,6 +9,7 @@ const subscriptionQuotaService = require('./subscription-quota.service');
 const payoutAccountService = require('./payout-account.service');
 const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 const { normalizeCurrency, isSupportedCurrency } = require('../utils/currency.utils');
+const { assertAreaInCity } = require('./places.service');
 
 /** A valid IANA timezone, or a 400. Intl throws on an unknown zone, which would break every date in the branch. */
 const _assertTimezone = (timezone) => {
@@ -491,6 +492,10 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
     allowNoPlan = false,
   } = options;
 
+  // NEW-259: the area must be one of the city's areas. Approval (isProvisioning) copies a draft that was
+  // checked when the host saved it, and must not fail on older drafts.
+  if (!isProvisioning) await assertAreaInCity({ cityId: data.cityId, areaId: data.areaId });
+
   const isLocalTx = !callerTx;
   const platformTx = callerTx || (await sequelize.transaction());
   try {
@@ -693,6 +698,14 @@ const updateBranch = async (tenantDb, branchId, data) => {
   const { Branch, MembershipPlan } = tenantDb.models;
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
+
+  // NEW-259: a new city or area must still pair up (the city sent, else the branch's own).
+  if (data.cityId !== undefined || data.areaId !== undefined) {
+    await assertAreaInCity({
+      cityId: data.cityId !== undefined ? data.cityId : branch.cityId,
+      areaId: data.areaId !== undefined ? data.areaId : branch.areaId,
+    });
+  }
 
   // `status` is NOT an editable field, and this is the single most important
   // rule in this file.

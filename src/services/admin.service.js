@@ -19,6 +19,7 @@ const { UserRole } = require('../constants/roles');
 const { processTenantProvisioning, provisioningSummary, PROVISIONING_REQUESTED, resolveTenantCityId } = require('./tenant-provisioning.service');
 const { maskEmail, maskPhone } = require('../utils/pii-mask');
 const emailService = require('./email.service');
+const { assertAreaInCity } = require('./places.service');
 const TenantDbManager = require('../database/TenantDbManager');
 const { safeRedisDel } = require('../config/redis.config');
 const notificationsService = require('./notifications.service');
@@ -1434,6 +1435,7 @@ const createGymListing = async (tenantId, data) => {
 
   const tenant = await Tenant.findByPk(actualTenantId);
   if (!tenant) throw createError('Tenant not found', 404);
+  await assertAreaInCity({ cityId: data.cityId || tenant.cityId, areaId: data.areaId }); // NEW-259
 
   const listing = await GymListing.create({
     tenantId: actualTenantId,
@@ -1464,6 +1466,12 @@ const updateGymListing = async (tenantId, data) => {
     listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']] });
   }
   if (!listing) throw createError('Gym listing not found', 404);
+  if (data.cityId !== undefined || data.areaId !== undefined) { // NEW-259
+    await assertAreaInCity({
+      cityId: data.cityId !== undefined ? data.cityId : listing.cityId,
+      areaId: data.areaId !== undefined ? data.areaId : listing.areaId,
+    });
+  }
 
   const fields = ['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status'];
   fields.forEach((f) => { if (data[f] !== undefined) listing[f] = data[f]; });
@@ -1581,6 +1589,12 @@ const updateAdminTenantBranch = async (tenantId, branchId, data, adminUserId) =>
   const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
   const branch = await tenantDb.models.Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
+  if (data.cityId !== undefined || data.areaId !== undefined) { // NEW-259
+    await assertAreaInCity({
+      cityId: data.cityId !== undefined ? data.cityId : branch.cityId,
+      areaId: data.areaId !== undefined ? data.areaId : branch.areaId,
+    });
+  }
 
   // `status` deliberately excluded from the generic mass-assignment below —
   // found during a final capacity-path audit to be a second, independent
