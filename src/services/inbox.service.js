@@ -63,9 +63,21 @@ const listInquiries = async (tenantId) => {
   });
 };
 
+/**
+ * NEW-257: the gym side of the inbox always scopes to the caller's tenant. No tenant (a GYM_HOST
+ * token without one) used to drop the filter and reach any gym's conversation; now it finds none.
+ */
+const _gymConversationWhere = (conversationId, tenantId) => {
+  if (!tenantId) {
+    const err = new Error('Conversation not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  return { id: conversationId, tenantId };
+};
+
 const getInquiryDetail = async (conversationId, tenantId) => {
-  const whereClause = { id: conversationId };
-  if (tenantId) whereClause.tenantId = tenantId;
+  const whereClause = _gymConversationWhere(conversationId, tenantId);
   const conversation = await Conversation.findOne({
     where: whereClause,
     include: [
@@ -97,8 +109,7 @@ const getInquiryDetail = async (conversationId, tenantId) => {
 };
 
 const replyToInquiry = async (conversationId, senderId, text, tenantId, options = {}) => {
-  const whereClause = { id: conversationId };
-  if (tenantId) whereClause.tenantId = tenantId;
+  const whereClause = _gymConversationWhere(conversationId, tenantId);
   const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
@@ -171,8 +182,7 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
 };
 
 const markInquiryRead = async (conversationId, tenantId) => {
-  const whereClause = { id: conversationId };
-  if (tenantId) whereClause.tenantId = tenantId;
+  const whereClause = _gymConversationWhere(conversationId, tenantId);
   const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
