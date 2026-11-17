@@ -35,6 +35,7 @@ const { Sequelize, Op } = require('sequelize');
 
 const { Tenant, User, City, Area, GymListing, TenantSubscription, PlatformPackage } = require('../models/platform');
 const subscriptionQuotaService = require('./subscription-quota.service');
+const areaRequests = require('./area-requests.service');
 const registerTenantModels = require('../models/tenant');
 const { encrypt } = require('../utils/crypto.utils');
 const { redactString } = require('../utils/log-redaction');
@@ -411,6 +412,9 @@ const stepCreateListing = async (ctx) => {
   if (existingListing && existingListing.status !== 'ACTIVE') {
     await existingListing.update({ status: 'ACTIVE' }).catch(() => {});
   }
+  // NEW-265 (A9 rule 3): the listing takes the tenant's area (above) or its pending request (a `listing`
+  // link and marker). Idempotent, so a resumed run finishes it.
+  if (existingListing && !existingListing.areaId) await areaRequests.carryTenantLinkToListing(tenant, existingListing);
 };
 
 // ── Step 4: Gym, initial Branch and its membership plans (tenant DB) ─────────
@@ -456,6 +460,11 @@ const stepCreateBranch = async (ctx) => {
   // Branch row for them to attach to any earlier than this.
   const onboardingImages = Array.isArray(b.imagesJson) ? b.imagesJson : [];
 
+  // NEW-265 (A9 rule 3, R-109 G1): the first branch's own area or request from the draft; only for old
+  // drafts without either, the tenant's area or request, and only in the branch's city (else no area).
+  const firstBranchCityId = b.cityId || tenant.cityId || null;
+  const firstArea = await areaRequests.firstBranchArea(tenant, b, firstBranchCityId);
+
   let branch = await models.Branch.findOne({ where: { gymId } });
   if (!branch) {
     // CAP-03: Route through gymService.createBranch
@@ -471,8 +480,8 @@ const stepCreateBranch = async (ctx) => {
         branchName: b.name || tenant.gymName || 'Main Branch',
         address: b.address || tenant.address || null,
         addressLine1: b.address || tenant.address || null,
-        cityId: b.cityId || tenant.cityId || null,
-        areaId: b.areaId || tenant.areaId || null,
+        cityId: firstBranchCityId,
+        areaId: firstArea.areaId,
         latitude: safeBranchLat,
         longitude: safeBranchLng,
         googlePlaceId: b.placeId || null, // Phase 7 P3: the address the host picked from Google
@@ -513,6 +522,9 @@ const stepCreateBranch = async (ctx) => {
       await gymService.restoreBranch(tenantDb, tenant.id, branch.id, null);
     }
   }
+
+  // NEW-265 (A9 rule 3): main_branch → branch link (or the tenant's request, old drafts).
+  if (branch?.id) await areaRequests.carryLinkToFirstBranch(tenant, branch, branch.areaId ? null : firstArea.request);
 
   // Link primary branchId back to GymListing on platform DB
   if (listingId && branch?.id) {

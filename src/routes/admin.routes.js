@@ -243,6 +243,36 @@ router.get('/tenants/:id/membership-plans', adminController.getTenantMembershipP
 router.post('/tenants/:id/logo', upload.image('logo'), upload.handleMulterError, validate.allowBody([]), adminController.uploadTenantLogo);
 router.post('/tenants/:id/cover', upload.image('cover'), upload.handleMulterError, validate.allowBody([]), adminController.uploadTenantCover);
 
+// ── NEW-265 Part A (A6): area requests (CMS › Cities & Areas › Unmatched areas) ─────
+const areaRequestsController = require('../controllers/area-requests.controller');
+const areaRequestIdParam = param('id').isInt({ min: 1 }).withMessage('Invalid area request id');
+router.get('/area-requests', validate([
+  query('status').optional().isIn(['pending_review', 'approved', 'merged', 'rejected']).withMessage('Unknown status'),
+  query('cityId').optional().isInt({ min: 1 }),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 50 }).withMessage('limit must be between 1 and 50'),
+]), areaRequestsController.list);
+router.post('/area-requests/:id/approve', validate.strict([
+  areaRequestIdParam,
+  body('name').optional().isString(),
+  body('latitude').optional({ nullable: true }),
+  body('longitude').optional({ nullable: true }),
+  body('applyToGroup').optional().isBoolean(),
+]), areaRequestsController.approve);
+router.post('/area-requests/:id/merge', validate.strict([
+  areaRequestIdParam,
+  body('areaId').isInt({ min: 1 }).withMessage('areaId must be a positive integer'),
+  body('applyToGroup').optional().isBoolean(),
+]), areaRequestsController.merge);
+router.post('/area-requests/:id/reject', validate.strict([
+  areaRequestIdParam,
+  body('reason').optional().isString(),
+  body('applyToGroup').optional().isBoolean(),
+]), areaRequestsController.reject);
+router.post('/area-requests/:id/retry', validate.strict([areaRequestIdParam]), areaRequestsController.retry);
+router.get('/areas/:areaId/aliases', validate([param('areaId').isInt({ min: 1 })]), areaRequestsController.listAliases);
+router.delete('/area-aliases/:id', validate.strict([param('id').isInt({ min: 1 })]), areaRequestsController.deleteAlias);
+
 // ── Gym listing management ─────────────────────────────────────────────────────
 router.get('/tenants/:id/gym-listing', adminController.getGymListing);
 router.post('/tenants/:id/gym-listing', validate.allowBody(['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson']), adminController.createGymListing);
@@ -257,12 +287,12 @@ router.delete('/tenants/:id/gym-listing/images', validate.allowBody(['imageUrl']
 // the location fields get the host routes' range and place-id rules (gyms.validator.js branchLocation).
 router.post(
   '/tenants/:id/branches',
-  validate.strict(gymsValidators.branchLocation, { stage: 2, allow: ['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages'] }),
+  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages'] }),
   adminController.createAdminTenantBranch
 );
 router.patch(
   '/tenants/:id/branches/:branchId',
-  validate.strict(gymsValidators.branchLocation, { stage: 2, allow: ['branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'status', 'facilities'] }),
+  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'status', 'facilities'] }),
   adminController.updateAdminTenantBranch
 );
 router.post('/tenants/:id/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadAdminBranchImages);

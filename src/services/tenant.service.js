@@ -3,6 +3,7 @@ const { Tenant, User, PlatformPackage, City, TenantSubscription, PlatformAuditLo
 const kycStorageService = require('./kyc-storage.service');
 const { createError } = require('../utils/response.utils');
 const { assertAreaInCity } = require('./places.service');
+const areaRequests = require('./area-requests.service');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
 
@@ -35,11 +36,15 @@ const _uniqueTenantCode = async () => {
  * A verified user registers as a GYM_HOST.
  * Creates a Tenant record (PENDING_REVIEW) and upgrades the user's role.
  */
-const registerTenant = async ({ userId, businessName, email, phone, cityId, areaId }) => {
+const registerTenant = async ({ userId, businessName, email, phone, cityId, areaId, areaRequestId }) => {
   // Each user may own only one tenant (prevent duplicates)
   const existing = await Tenant.findOne({ where: { ownerUserId: userId } });
   if (existing) throw createError('You have already registered a gym business', 409);
-  await assertAreaInCity({ cityId, areaId }); // NEW-259
+  // NEW-259: a real area belongs to the city. NEW-265 (A4): or a pending area request of this person.
+  const choice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice({ areaId, areaRequestId }), {
+    cityId, userId, tenantId: null,
+  });
+  const area = areaRequests.rowValues(choice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
   const tenantCode = await _uniqueTenantCode();
 
@@ -49,12 +54,13 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
     email,
     phone: phone || null,
     cityId: cityId || null,
-    areaId: areaId || null,
+    ...area,
     ownerUserId: userId,
     status: TenantStatus.DRAFT,
     kycStatus: KycStatus.NOT_SUBMITTED,
     onboardingStep: 1,
   });
+  await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'tenant', targetId: tenant.id });
 
   // Upgrade user role to GYM_HOST and set isHost to true. This is an account flag
   // (the host area, onboarding routes). It grants nothing inside any tenant:
@@ -88,13 +94,30 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     ...mainBranchData,
   } : tenant.mainBranchDataJson;
 
-  // NEW-259: the main branch's area belongs to its city (the branch's, else the business's).
-  if (mainBranchData && (mainBranchData.areaId !== undefined || mainBranchData.cityId !== undefined)) {
-    await assertAreaInCity({
-      cityId: mergedMainBranchData.cityId || tenant.cityId,
-      areaId: mergedMainBranchData.areaId,
-    });
+  // NEW-265 (A4, R-109 F1): the draft first branch's area. A key not sent keeps the stored area or
+  // request; `areaId: null` / `areaRequestId: null` or a new real area clears the request.
+  const branchChoice = mainBranchData && typeof mainBranchData === 'object'
+    ? areaRequests.parseAreaChoice(mainBranchData)
+    : { kind: 'keep' };
+  const branchCityId = mergedMainBranchData && mergedMainBranchData.cityId ? mergedMainBranchData.cityId : tenant.cityId;
+  let resolvedBranchChoice = { kind: 'keep' };
+  if (branchChoice.kind !== 'keep') {
+    resolvedBranchChoice = await areaRequests.resolveAreaChoice(branchChoice, { cityId: branchCityId, userId, tenantId: tenant.id });
+    const values = areaRequests.rowValues(resolvedBranchChoice);
+    mergedMainBranchData.areaId = values.areaId;
+    if (values.areaRequestId) {
+      mergedMainBranchData.areaRequestId = values.areaRequestId;
+      mergedMainBranchData.areaStatus = values.areaStatus;
+    } else {
+      delete mergedMainBranchData.areaRequestId;
+      delete mergedMainBranchData.areaStatus;
+    }
+  } else if (mainBranchData && mainBranchData.cityId !== undefined) {
+    // NEW-259: the main branch's area belongs to its city (the branch's, else the business's).
+    await assertAreaInCity({ cityId: branchCityId, areaId: mergedMainBranchData.areaId });
+    await areaRequests.assertKeptLinkInCity({ tenantId: tenant.id, target: 'main_branch', targetId: tenant.id, cityId: branchCityId });
   }
+  if (mergedMainBranchData && typeof mergedMainBranchData === 'object') delete mergedMainBranchData.pendingArea; // a read-only view
 
   await tenant.update({
     gymName: gymName || tenant.gymName,
@@ -110,6 +133,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     kycStatus: KycStatus.PENDING,
     onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || mainBranchData !== undefined) ? 3 : 2),
   });
+  await areaRequests.applyChoiceToLink(resolvedBranchChoice, { tenantId: tenant.id, target: 'main_branch', targetId: tenant.id });
 
   return { tenant };
 };
@@ -196,6 +220,24 @@ const updateMyTenant = async (userId, updates) => {
     include: [{ model: City, as: 'city', attributes: ['id', 'name'] }],
   });
   if (!tenant) throw createError('No gym business registered for this account', 404);
+
+  // NEW-265 (A4, R-109 F3): the organisation's area while the application is a draft or in review
+  // ("Choose your area again"). After approval it only matters as a fallback (A9 rule 3): refused.
+  const sendsArea = updates.areaId !== undefined || updates.areaRequestId !== undefined;
+  if (sendsArea && tenant.status === TenantStatus.ACTIVE) {
+    throw createError('The organisation\'s area cannot be changed after approval. Change each branch\'s area instead.', 422, 'area_change_not_allowed');
+  }
+  if (sendsArea && [TenantStatus.DRAFT, TenantStatus.PENDING_REVIEW].includes(tenant.status)) {
+    const choice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(updates), {
+      cityId: tenant.cityId, userId, tenantId: tenant.id,
+    });
+    const values = areaRequests.rowValues(choice);
+    if (values) await tenant.update(values); // the other fields stay ACTIVE-only, as before
+    await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'tenant', targetId: tenant.id });
+    await tenant.reload({ include: [{ model: City, as: 'city', attributes: ['id', 'name'] }] });
+    return { tenant };
+  }
+
   if (tenant.status !== TenantStatus.ACTIVE) {
     throw createError('Tenant not found or not active', 404);
   }

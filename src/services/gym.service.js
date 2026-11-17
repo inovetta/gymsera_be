@@ -10,6 +10,7 @@ const payoutAccountService = require('./payout-account.service');
 const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 const { normalizeCurrency, isSupportedCurrency } = require('../utils/currency.utils');
 const { assertAreaInCity } = require('./places.service');
+const areaRequests = require('./area-requests.service');
 
 /** A valid IANA timezone, or a 400. Intl throws on an unknown zone, which would break every date in the branch. */
 const _assertTimezone = (timezone) => {
@@ -256,7 +257,8 @@ const listBranches = async (tenantDb, tenantId, organizationId, { includeInactiv
     return json;
   });
 
-  return { gym, branches: mappedBranches };
+  // NEW-265 (A4 reads): each branch's pending or rejected area request.
+  return { gym, branches: await areaRequests.withPendingAreas('branch', tenantId, mappedBranches) };
 };
 
 /**
@@ -493,8 +495,17 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
   } = options;
 
   // NEW-259: the area must be one of the city's areas. Approval (isProvisioning) copies a draft that was
-  // checked when the host saved it, and must not fail on older drafts.
-  if (!isProvisioning) await assertAreaInCity({ cityId: data.cityId, areaId: data.areaId });
+  // checked when the host saved it, and must not fail on older drafts (it moves the links itself, A9).
+  // NEW-265 (A4): or a pending area request of the caller / the caller's tenant → a `branch` link.
+  // Administrators pick real areas only (R-109 F7): their routes never pass areaRequestId here.
+  let areaChoice = { kind: 'keep' };
+  if (!isProvisioning) {
+    areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(data), {
+      cityId: data.cityId, userId: createdByUserId, tenantId,
+    });
+    const values = areaRequests.rowValues(areaChoice);
+    data = { ...data, areaId: values ? values.areaId : null };
+  }
 
   const isLocalTx = !callerTx;
   const platformTx = callerTx || (await sequelize.transaction());
@@ -573,6 +584,7 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
       transaction: platformTx,
       allowNoPlan,
     });
+    await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'branch', targetId: branch.id }, { transaction: platformTx });
 
     if (consumingReservedSlot) {
       // Completes the audit trail for the reverse of BRANCH_DELETED: this
@@ -694,18 +706,27 @@ const transferReservedSlots = async (tenantId, fromListingId, toListingId, count
   }
 };
 
-const updateBranch = async (tenantDb, branchId, data) => {
+const updateBranch = async (tenantDb, branchId, data, { tenantId = null, userId = null } = {}) => {
   const { Branch, MembershipPlan } = tenantDb.models;
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
 
   // NEW-259: a new city or area must still pair up (the city sent, else the branch's own).
-  if (data.cityId !== undefined || data.areaId !== undefined) {
-    await assertAreaInCity({
-      cityId: data.cityId !== undefined ? data.cityId : branch.cityId,
-      areaId: data.areaId !== undefined ? data.areaId : branch.areaId,
-    });
+  // NEW-265 (A4, R-109 F1): or a pending area request; kept when neither key is sent, cleared by null or
+  // a real area. A kept request must stay in the branch's city.
+  const nextCityId = data.cityId !== undefined ? data.cityId : branch.cityId;
+  const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(data), {
+    cityId: nextCityId, userId, tenantId,
+  });
+  if (areaChoice.kind === 'keep' && data.cityId !== undefined) {
+    await assertAreaInCity({ cityId: nextCityId, areaId: branch.areaId });
+    await areaRequests.assertKeptLinkInCity({ tenantId, target: 'branch', targetId: branch.id, cityId: nextCityId });
   }
+  const areaValues = areaRequests.rowValues(areaChoice);
+  data = { ...data };
+  delete data.areaRequestId;
+  if (areaValues) data.areaId = areaValues.areaId;
+  else delete data.areaId;
 
   // `status` is NOT an editable field, and this is the single most important
   // rule in this file.
@@ -798,6 +819,7 @@ const updateBranch = async (tenantDb, branchId, data) => {
   if (Array.isArray(data.images)) branch.imagesJson = data.images;
   if (Array.isArray(data.tags)) branch.tagsJson = data.tags;
   await branch.save();
+  await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'branch', targetId: branch.id });
 
   return { branch };
 };

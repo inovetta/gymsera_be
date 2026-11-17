@@ -23,10 +23,29 @@ const hostTenantView = (result) => {
   return { ...result, tenant };
 };
 
+/**
+ * NEW-265 (A4 reads): `pendingArea` for the organisation and, inside `mainBranchDataJson`, for the draft
+ * first branch ({ requestId, name, status, rejectReason } or null).
+ */
+const withPendingAreas = async (view) => {
+  if (!view || !view.tenant || !view.tenant.id) return view;
+  const areaRequests = require('../services/area-requests.service');
+  const tenant = { ...view.tenant };
+  tenant.pendingArea = await areaRequests.pendingAreaFor('tenant', tenant.id, tenant.id);
+  let mb = tenant.mainBranchDataJson;
+  if (typeof mb === 'string') {
+    try { mb = JSON.parse(mb); } catch { mb = null; }
+  }
+  if (mb && typeof mb === 'object') {
+    tenant.mainBranchDataJson = { ...mb, pendingArea: await areaRequests.pendingAreaFor('main_branch', tenant.id, tenant.id) };
+  }
+  return { ...view, tenant };
+};
+
 // ── POST /tenants/register ────────────────────────────────────────────────────
 const register = async (req, res, next) => {
   try {
-    const { businessName, email, phone, cityId, areaId } = req.body;
+    const { businessName, email, phone, cityId, areaId, areaRequestId } = req.body;
     const result = await tenantService.registerTenant({
       userId: req.user.sub,
       businessName,
@@ -34,8 +53,9 @@ const register = async (req, res, next) => {
       phone,
       cityId,
       areaId,
+      areaRequestId,
     });
-    return sendSuccess(res, hostTenantView(result), 'Gym business registered successfully. Your application is under review.', 201);
+    return sendSuccess(res, await withPendingAreas(hostTenantView(result)), 'Gym business registered successfully. Your application is under review.', 201);
   } catch (err) {
     next(err);
   }
@@ -45,7 +65,7 @@ const register = async (req, res, next) => {
 const submitGymProfile = async (req, res, next) => {
   try {
     const result = await tenantService.submitGymProfile(req.params.id, req.user.sub, req.body);
-    return sendSuccess(res, hostTenantView(result), 'Gym profile submitted successfully');
+    return sendSuccess(res, await withPendingAreas(hostTenantView(result)), 'Gym profile submitted successfully');
   } catch (err) {
     next(err);
   }
@@ -115,7 +135,7 @@ const finalizeApplication = async (req, res, next) => {
 const getMyTenant = async (req, res, next) => {
   try {
     const result = await tenantService.getMyTenant(req.user.sub);
-    return sendSuccess(res, hostTenantView(result));
+    return sendSuccess(res, await withPendingAreas(hostTenantView(result)));
   } catch (err) {
     next(err);
   }
@@ -125,7 +145,7 @@ const getMyTenant = async (req, res, next) => {
 const updateMyTenant = async (req, res, next) => {
   try {
     const result = await tenantService.updateMyTenant(req.user.sub, req.body);
-    return sendSuccess(res, hostTenantView(result), 'Business profile updated successfully');
+    return sendSuccess(res, await withPendingAreas(hostTenantView(result)), 'Business profile updated successfully');
   } catch (err) {
     next(err);
   }

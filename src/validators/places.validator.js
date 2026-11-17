@@ -30,6 +30,8 @@ const placesValidators = {
     sessionToken(true),
     cityIdForArea,
     optionalCityId,
+    // NEW-265: true = Google roads and landmarks too (build 25 on); absent = as builds 21 to 24.
+    query('extended').optional().isIn(['true', 'false', '1', '0']).withMessage('extended must be true or false'),
   ],
 
   details: [
@@ -51,5 +53,17 @@ const placesValidators = {
       .isLength({ max: 100 }).withMessage('Area name must be 100 characters or fewer'),
   ],
 };
+
+// NEW-265 Part A (A3): the name rules themselves live in area-requests.service.js (one function).
+placesValidators.areaRequest = [
+  body('cityId').isInt({ min: 1 }).withMessage('cityId must be a positive integer'),
+  body('name').isString().withMessage('Please enter the area name.').isLength({ max: 200 }).withMessage('Area names are 3 to 60 letters, numbers and . - \' / &'),
+  body('confirmNotListed').optional().isBoolean({ strict: true }).withMessage('confirmNotListed must be true or false'),
+];
+placesValidators.areaRequestCheck = [
+  body('cityId').isInt({ min: 1 }).withMessage('cityId must be a positive integer'),
+  body('name').isString().withMessage('Please enter the area name.').isLength({ max: 200 }).withMessage('Area names are 3 to 60 letters, numbers and . - \' / &'),
+];
+placesValidators.areaRequestId = [param('id').isInt({ min: 1 }).withMessage('Invalid area request id')];
 
 module.exports = placesValidators;

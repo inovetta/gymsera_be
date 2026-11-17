@@ -43,6 +43,9 @@ const PlanPaymentRequest = require('./PlanPaymentRequest.model')(sequelize);
 const ContentReport = require('./ContentReport.model')(sequelize);
 const UserBlock = require('./UserBlock.model')(sequelize);
 const ModerationWord = require('./ModerationWord.model')(sequelize);
+const AreaRequest = require('./AreaRequest.model')(sequelize);
+const AreaRequestLink = require('./AreaRequestLink.model')(sequelize);
+const AreaAlias = require('./AreaAlias.model')(sequelize);
 
 // ── Associations ──────────────────────────────────────────────────────────────
 
@@ -256,4 +259,7 @@ module.exports = {
   ContentReport,
   UserBlock,
   ModerationWord,
+  AreaRequest,
+  AreaRequestLink,
+  AreaAlias,
 };

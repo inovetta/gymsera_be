@@ -186,6 +186,8 @@ const mount = (app, prefix = '/api/v1') => {
   app.use(prefix, when('POST', (p) => /^\/admin\/tenants\/[^/]+\/members\/[^/]+\/reveal$/.test(p), [l.reveal]));
   app.use(prefix, when('GET', exact('/me/data-export'), [l.dataExport]));
   app.use(prefix, when('GET', (p) => p.startsWith('/places/'), [l.places]));
+  // NEW-265 (A2): creating and checking area requests counts against the same per-person budget.
+  app.use(prefix, when('POST', (p) => p.startsWith('/places/area-requests'), [l.places]));
   app.use(prefix, when('POST', exact('/reports'), [l.report]));
   app.use(prefix, l.mutation);
   return l;

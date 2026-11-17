@@ -20,6 +20,7 @@ const { processTenantProvisioning, provisioningSummary, PROVISIONING_REQUESTED, 
 const { maskEmail, maskPhone } = require('../utils/pii-mask');
 const emailService = require('./email.service');
 const { assertAreaInCity } = require('./places.service');
+const areaRequests = require('./area-requests.service');
 const TenantDbManager = require('../database/TenantDbManager');
 const { safeRedisDel } = require('../config/redis.config');
 const notificationsService = require('./notifications.service');
@@ -746,7 +747,8 @@ const getTenantBranches = async (tenantId) => {
     include: [{ model: models.Gym, as: 'gym', attributes: ['id', 'name'] }],
     order: [['createdAt', 'DESC']],
   });
-  return { branches };
+  // NEW-265 (R-109 F7): the admin sees a branch's pending or rejected request instead of an empty area.
+  return { branches: await areaRequests.withPendingAreas('branch', actualTenantId, branches) };
 };
 
 // ── updateTenantBranchStatus (admin) ─────────────────────────────────────────
@@ -1425,7 +1427,9 @@ const getGymListing = async (tenantId) => {
     listing = await GymListing.findOne({ where: { tenantId: actualTenantId }, order: [['createdAt', 'ASC']], include: _getListingIncludes() });
   }
   if (!listing) throw createError('Gym listing not found', 404);
-  return { gymListing: listing };
+  // NEW-265 (R-109 F7): the listing's pending or rejected area request.
+  const [gymListing] = await areaRequests.withPendingAreas('listing', listing.tenantId, [listing]);
+  return { gymListing };
 };
 
 const createGymListing = async (tenantId, data) => {
@@ -1475,7 +1479,13 @@ const updateGymListing = async (tenantId, data) => {
 
   const fields = ['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status'];
   fields.forEach((f) => { if (data[f] !== undefined) listing[f] = data[f]; });
+  // NEW-265 (R-109 F7): admins pick real areas only; saving one (or clearing it) drops the listing's request.
+  if (data.areaId !== undefined) {
+    listing.areaStatus = null;
+    listing.areaRequestId = null;
+  }
   await listing.save();
+  if (data.areaId !== undefined) await areaRequests.removeLink({ target: 'listing', tenantId: listing.tenantId, targetId: listing.id });
 
   const full = await GymListing.findByPk(listing.id, { include: _getListingIncludes() });
   return { gymListing: full };
@@ -1563,11 +1573,14 @@ const createAdminTenantBranch = async (tenantId, data, adminUserId) => {
   const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
   const gymService = require('./gym.service');
 
+  // NEW-265 (R-109 F7): administrators pick real areas only; an area request is never taken here.
+  const adminData = { ...data };
+  delete adminData.areaRequestId;
   const { branch } = await gymService.createBranch(
     tenantDb,
     actualTenantId,
     {
-      ...data,
+      ...adminData,
       gymListingId: listingId || data.gymListingId,
     },
     adminUserId,
@@ -1608,6 +1621,8 @@ const updateAdminTenantBranch = async (tenantId, branchId, data, adminUserId) =>
   fields.forEach((f) => { if (data[f] !== undefined) branch[f] = data[f]; });
   if (Array.isArray(data.facilities)) branch.facilitiesJson = data.facilities;
   await branch.save();
+  // NEW-265 (R-109 F7): a real area (or a clear) saved by an admin drops the branch's request.
+  if (data.areaId !== undefined) await areaRequests.removeLink({ target: 'branch', tenantId: actualTenantId, targetId: branch.id });
 
   if (data.status !== undefined && data.status !== branch.status) {
     const gymService = require('./gym.service');

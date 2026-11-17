@@ -136,7 +136,7 @@ const _firstPhoto = (images) => (Array.isArray(images) ? images.find((u) => type
 const _buildAllActiveBranches = async () => {
   let complete = true;
   const [tenants, listings, cities, areas] = await Promise.all([
-    _liveTenants(['id', 'connectionStringEncrypted', 'cityId', 'areaId']),
+    _liveTenants(['id', 'connectionStringEncrypted', 'cityId', 'areaId', 'areaStatus']),
     GymListing.findAll({
       where: { status: 'ACTIVE' },
       include: [
@@ -150,6 +150,8 @@ const _buildAllActiveBranches = async () => {
 
   const cityMap = new Map(cities.map(c => [c.id, c]));
   const areaMap = new Map(areas.map(a => [a.id, a]));
+  // NEW-265 (A5): branches whose own area request is pending or rejected show no area.
+  const waitingBranches = await require('./area-requests.service').waitingBranchKeys();
 
   // BUG-27: rating and count from approved reviews only.
   const reviewStats = await GymReview.findAll({
@@ -210,7 +212,7 @@ const _buildAllActiveBranches = async () => {
           }
 
           const finalCityId = resolveBranchCityId(b, listing, tenant);
-          const finalAreaId = b.areaId || (listing ? listing.areaId : null) || tenant.areaId || null;
+          const finalAreaId = resolveBranchAreaId(b, tenant, finalCityId, areaMap, waitingBranches.has(`${tenant.id}:${b.id}`));
 
           // Map to unified branch object
           const mappedBranch = {
@@ -252,7 +254,8 @@ const _buildAllActiveBranches = async () => {
             status: 'ACTIVE',
             createdAt: b.createdAt,
             city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
-            area: (listing && listing.area) ? listing.area : (finalAreaId ? (areaMap.get(finalAreaId) || null) : null),
+            // NEW-265 (R-109): the area of the chain above, never the listing's own.
+            area: finalAreaId ? (areaMap.get(finalAreaId) || null) : null,
           };
           branchesList.push(mappedBranch);
         }
@@ -1148,6 +1151,21 @@ const _resolveTenantId = async (id) => {
 const resolveBranchCityId = (branch, listing, tenant) =>
   branch.cityId || (listing ? listing.cityId : null) || (tenant ? tenant.cityId : null) || null;
 
+/**
+ * NEW-265 (A5, R-109 points 3 and 4): the area a traveller sees for a branch. (1) The branch's own area;
+ * a branch waiting on its own request (pending or rejected) has none, and the chain stops. (2) Else the
+ * tenant's area, only when it is in the branch's city and not pending / rejected. The listing's area is
+ * not a step (before: `branch || listing || tenant`, whatever the cities).
+ */
+const resolveBranchAreaId = (branch, tenant, branchCityId, areaMap, branchWaiting) => {
+  if (branch.areaId) return branch.areaId;
+  if (branchWaiting) return null;
+  if (!tenant || !tenant.areaId || tenant.areaStatus) return null;
+  const area = areaMap.get(tenant.areaId);
+  if (!area || !branchCityId || Number(area.cityId) !== Number(branchCityId)) return null;
+  return tenant.areaId;
+};
+
 // BUG-35: the payment details a traveller is shown. Blank values are dropped; null when
 // nothing is left, so the app can say the gym has not added them instead of "Loading".
 const TRAVELLER_PAYMENT_FIELDS = [
@@ -1259,6 +1277,7 @@ const listTopHosts = async () => {
 
 module.exports = {
   resolveBranchCityId,
+  resolveBranchAreaId,
   displayName,
   listGyms,
   getGym,
