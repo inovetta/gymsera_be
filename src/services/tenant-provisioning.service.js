@@ -459,6 +459,8 @@ const stepCreateBranch = async (ctx) => {
   // on this same mainBranchDataJson blob until now, since there was no
   // Branch row for them to attach to any earlier than this.
   const onboardingImages = Array.isArray(b.imagesJson) ? b.imagesJson : [];
+  // NEW-266: the amenities picked in Become a Host live on the same draft until now.
+  const onboardingFacilities = Array.isArray(b.facilitiesJson) && b.facilitiesJson.length > 0 ? b.facilitiesJson : null;
 
   // NEW-265 (A9 rule 3, R-109 G1): the first branch's own area or request from the draft; only for old
   // drafts without either, the tenant's area or request, and only in the branch's city (else no area).
@@ -490,6 +492,8 @@ const stepCreateBranch = async (ctx) => {
         openingTime: b.openingTime || null,
         closingTime: b.closingTime || null,
         images: onboardingImages,
+        // NEW-266: the amenities picked in Become a Host.
+        facilitiesJson: onboardingFacilities,
         packages: rawPackages,
       },
       null,
@@ -513,6 +517,10 @@ const stepCreateBranch = async (ctx) => {
     // edit-photos screen with stale onboarding-time data.
     if (onboardingImages.length > 0 && (!branch.imagesJson || branch.imagesJson.length === 0)) {
       updates.imagesJson = onboardingImages;
+    }
+    // NEW-266: same rule for the amenities (a resumed approval; never overwrite the host's own).
+    if (onboardingFacilities && (!Array.isArray(branch.facilitiesJson) || branch.facilitiesJson.length === 0)) {
+      updates.facilitiesJson = onboardingFacilities;
     }
     if (Object.keys(updates).length > 0) {
       await branch.update(updates).catch(() => {});

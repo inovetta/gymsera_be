@@ -194,6 +194,13 @@ const gymsValidators = {
     body('imagesJson').optional({ nullable: true }).isArray(),
   ],
 
+  // NEW-266: POST /host/listings, the amenities of the new organisation's first branch (names).
+  listingFacilities: [
+    body('facilitiesJson').optional({ nullable: true }).isArray({ max: 50 }).withMessage('Amenities must be a list of up to 50 names'),
+    body('facilitiesJson.*').isString().withMessage('Each amenity must be a name')
+      .bail().trim().isLength({ min: 1, max: 100 }).withMessage('Each amenity must be 1 to 100 characters'),
+  ],
+
   // Phase 7 P3: PATCH /host/branches/:branchId/listing-content (location fields only; the rest is free-form there).
   branchLocation: [
     body('latitude').optional({ nullable: true, checkFalsy: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
