@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-17 (NEW-265 Part A: server part built and tested on the local branch; waiting for the owner's approval) |
+| Last updated | 2026-11-17 (R-110: plan approved with corrections; NEW-265 server part approved, PR branch pushed; NEW-266 next) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **NEW-265 Part A: pending areas, SERVER part** (owner, 2026-11-16), decisions R-108, R-109. be `feat/new-265-pending-areas` (worktree `../gymsera_be_new265`, from `origin/main` `344c77f`), **local only: not pushed, not deployed, server not touched** |
-| Prompt status | `BLOCKED ON OWNER` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | NEW-265 Part A (server part done; approval) |
-| Step within issue | Server part committed (one commit `feat(areas)` on the branch). Spec §13 "NEW-265 Part A: server part, BUILT" has the fix, the readings applied, the migration rehearsal and the results (before 359 / 360 suites, after 363 / 364 suites, 3754 / 3756 tests; the only failure both times is `staging-script`, no `mysqldump` on the Mac). Waiting for the owner to approve the server part |
+| Current prompt | **Build 25 plan (R-110):** NEW-266 (verify, server, app) and NEW-265 A3 CMS in parallel, then NEW-265 A2 app on top of NEW-266. be NEW-265 branch `feat/new-265-pending-areas` pushed for a PR into `main` (owner opens / merges; no `gh` CLI on this Mac). No deploy, no release build, no push to `main` / `master` |
+| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
+| Issue in progress | NEW-266 (Become a Host amenities lost) |
+| Step within issue | Not started: read-only verify on `origin/main` / `origin/master` first |
 
 **Owner approval (2026-11-16):** contract revision 2 (`4c684b5`), all four readings of R-109 ((a) listing area out of the traveller chain, (b) admin routes real areas only but clear the link and show `pendingArea`, (c) `main_branch` link target and `area_status = 'rejected'`, (d) 422 `area_change_not_allowed` for `ACTIVE`), and R-109. Also approved: **NEW-266 (Become a Host amenities lost)**, to ship in build 25. Order after the server part is approved: NEW-266 server + app on a separate branch from `origin/main` / `origin/master`; then NEW-265 app part (build 1.0.0+25 from `origin/master` `10f8033`) and CMS part, which can start in parallel.
 

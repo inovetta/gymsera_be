@@ -663,12 +663,18 @@ const propagate = async (requestIds, areaId) => {
   return { propagated, failed };
 };
 
-const assertCoordinates = (latitude, longitude) => {
+/**
+ * Owner decision R-110 (2026-11-17): the pin is optional on approval. Both empty = no coordinates (the
+ * admin can add the pin later); one without the other, or out of range = 422 area_coordinates_invalid.
+ */
+const blank = (v) => v === undefined || v === null || v === '';
+const optionalCoordinates = (latitude, longitude) => {
+  if (blank(latitude) && blank(longitude)) return { lat: null, lng: null };
   const lat = Number(latitude);
   const lng = Number(longitude);
-  if (latitude === undefined || latitude === null || latitude === '' || longitude === undefined || longitude === null || longitude === ''
-    || !Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    throw createError('Place the pin on the map: latitude -90 to 90, longitude -180 to 180.', 422, 'area_coordinates_invalid');
+  if (blank(latitude) || blank(longitude) || !Number.isFinite(lat) || !Number.isFinite(lng)
+    || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw createError('Send both latitude (-90 to 90) and longitude (-180 to 180), or neither.', 422, 'area_coordinates_invalid');
   }
   return { lat, lng };
 };
@@ -683,7 +689,7 @@ const approve = async (id, { name, latitude, longitude, applyToGroup } = {}, adm
     }
     if (request.status !== 'pending_review') throw createError(DECIDED_MESSAGE, 409, 'area_request_decided');
     const clean = await validateAreaName(name === undefined || name === null || name === '' ? request.name : name);
-    const { lat, lng } = assertCoordinates(latitude, longitude);
+    const { lat, lng } = optionalCoordinates(latitude, longitude);
     const existing = await findAreaByKey(request.cityId, nameKeyOf(clean), transaction);
     if (existing) {
       const err = createError('An area with this name already exists. Merge the request into it.', 409, 'area_exists');

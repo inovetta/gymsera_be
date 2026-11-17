@@ -155,8 +155,19 @@ describe('A6: the admin queue', () => {
     expect(exists.status).toBe(409);
     expect(exists.body).toMatchObject({ code: 'area_exists', data: { areaId: hayatabad.id } });
     expect((await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/approve`).send({ name: 'x', latitude: 34, longitude: 71 })).body.code).toBe('area_name_invalid');
-    expect((await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/approve`).send({ name: 'Fine Name', latitude: 134, longitude: 71 })).status).toBe(422);
+    expect((await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/approve`).send({ name: 'Fine Name', latitude: 134, longitude: 71 })).body.code).toBe('area_coordinates_invalid');
+    // R-110: one coordinate without the other is refused; the pin as a whole is optional (next test).
+    expect((await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/approve`).send({ name: 'Fine Name', latitude: 34 })).body.code).toBe('area_coordinates_invalid');
     expect((await asPersona('platformAdmin').post('/admin/area-requests/99999999/approve').send({ name: 'Fine Name', latitude: 34, longitude: 71 })).status).toBe(404);
+  });
+
+  test('R-110: approval without a pin creates the area with no coordinates', async () => {
+    const r = await makeRequest(ownerUserId, peshawar, 'No Pin Town');
+    const res = await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/approve`).send({ name: 'No Pin Town' });
+    expect(res.status).toBe(200);
+    const area = await M.Area.findByPk(res.body.data.area.id);
+    expect(area).toMatchObject({ name: 'No Pin Town', latitude: null, longitude: null });
+    expect(await M.AreaRequest.findByPk(r.id)).toMatchObject({ status: 'approved', resolvedAreaId: area.id });
   });
 
   test('two approvals at the same time create one area', async () => {
