@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-17 (NEW-266 server + app done; NEW-265 CMS part done; all local; reported to the owner) |
+| Last updated | 2026-11-18 (NEW-265 server merged `0031df6`; NEW-266 be rebased on it; A2 app MUST + nice to have done; R-111 wording) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Build 25 plan (R-110).** Done: NEW-265 server (PR branch `feat/new-265-pending-areas` pushed, owner opens / merges), NEW-266 be `fix/new-266-onboarding-amenities` (`../gymsera_be_new266`, `11f10d4`) and app `fix/new-266-onboarding-amenities` (`../gyms_era_new266`, `75d78d0`), NEW-265 CMS `feat/new-265-unmatched-areas` (`../gymsera_cms_new265`, `ee9a601`). NEW-266 and CMS branches are local, not pushed. No deploy, no release build, no push to `main` / `master` |
+| Current prompt | **Build 25 plan (R-110, R-111).** Merged: NEW-265 server (`0031df6`). Branches (no PRs opened by the agent, no deploy, no release build): be `fix/new-266-onboarding-amenities` (rebased on `0031df6`), be `docs/r-111-first-branch-default` (this file), app `fix/new-266-onboarding-amenities` and app `feat/new-265-pending-areas` (`../gyms_era_new265`, on top of NEW-266: `cc5fabf` version 1.0.0+25, `b7e7726` MUST, `8739852` nice to have + R-111 wording), CMS `feat/new-265-unmatched-areas` |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | NEW-265 A2 app part (next) |
-| Step within issue | Not started. Worktree from the NEW-266 app branch (`75d78d0`, itself from `origin/master` `10f8033`), own version commit 1.0.0+25 first; MUST = Become a Host path (steps 1 and 3 picker, typed requests, keep / clear state F1/F2, resume, "Choose your area again" via `PATCH /tenants/me`); nice to have = Add listing / Add branch / Edit location pickers, reverse-geocode suggestion (R-110). Flutter: `~/fvm/versions/stable` (3.47.9), never 3.44.1 (it rewrites `pubspec.lock`); `flutter analyze` adds an `exclude:` block to `analysis_options.yaml`: never commit it |
+| Issue in progress | NEW-265 A2 app done; waiting for the owner's review |
+| Step within issue | App: `flutter test` 533 / 533, analyze 157 (= before). R-111 (2026-11-18, wording only): `tenants.area_id` = the **first-branch default area** (pre-fills Step 3, copied to the first listing and branch at approval, same-city fallback only); Step 1 copy "Where is your first gym located?". Tests: run one suite at a time (the local MySQL container was OOM-killed twice when the Flutter suite and the be suite ran together) |
 
 **Owner approval (2026-11-16):** contract revision 2 (`4c684b5`), all four readings of R-109 ((a) listing area out of the traveller chain, (b) admin routes real areas only but clear the link and show `pendingArea`, (c) `main_branch` link target and `area_status = 'rejected'`, (d) 422 `area_change_not_allowed` for `ACTIVE`), and R-109. Also approved: **NEW-266 (Become a Host amenities lost)**, to ship in build 25. Order after the server part is approved: NEW-266 server + app on a separate branch from `origin/main` / `origin/master`; then NEW-265 app part (build 1.0.0+25 from `origin/master` `10f8033`) and CMS part, which can start in parallel.
 

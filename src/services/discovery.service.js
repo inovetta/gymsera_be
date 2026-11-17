@@ -1154,7 +1154,7 @@ const resolveBranchCityId = (branch, listing, tenant) =>
 /**
  * NEW-265 (A5, R-109 points 3 and 4): the area a traveller sees for a branch. (1) The branch's own area;
  * a branch waiting on its own request (pending or rejected) has none, and the chain stops. (2) Else the
- * tenant's area, only when it is in the branch's city and not pending / rejected. The listing's area is
+ * tenant's first-branch default area (R-111), only when it is in the branch's city and not pending / rejected. The listing's area is
  * not a step (before: `branch || listing || tenant`, whatever the cities).
  */
 const resolveBranchAreaId = (branch, tenant, branchCityId, areaMap, branchWaiting) => {

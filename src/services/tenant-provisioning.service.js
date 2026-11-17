@@ -412,7 +412,7 @@ const stepCreateListing = async (ctx) => {
   if (existingListing && existingListing.status !== 'ACTIVE') {
     await existingListing.update({ status: 'ACTIVE' }).catch(() => {});
   }
-  // NEW-265 (A9 rule 3): the listing takes the tenant's area (above) or its pending request (a `listing`
+  // NEW-265 (A9 rule 3): the listing takes the first-branch default (R-111; above) or its pending request (a `listing`
   // link and marker). Idempotent, so a resumed run finishes it.
   if (existingListing && !existingListing.areaId) await areaRequests.carryTenantLinkToListing(tenant, existingListing);
 };
@@ -461,7 +461,7 @@ const stepCreateBranch = async (ctx) => {
   const onboardingImages = Array.isArray(b.imagesJson) ? b.imagesJson : [];
 
   // NEW-265 (A9 rule 3, R-109 G1): the first branch's own area or request from the draft; only for old
-  // drafts without either, the tenant's area or request, and only in the branch's city (else no area).
+  // drafts without either, the first-branch default (R-111) or its request, and only in the branch's city (else no area).
   const firstBranchCityId = b.cityId || tenant.cityId || null;
   const firstArea = await areaRequests.firstBranchArea(tenant, b, firstBranchCityId);
 
