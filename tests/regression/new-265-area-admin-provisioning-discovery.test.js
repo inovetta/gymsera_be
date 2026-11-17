@@ -47,6 +47,8 @@ beforeAll(async () => {
   ctx = personaManager.context;
   ownerUserId = personaManager.personas.owner.user.id;
   admin = personaManager.personas.platformAdmin.user;
+  // As in production: a provisioned tenant has its database name; approvals write only to that database.
+  await M.Tenant.update({ dbName: 'gymsera_test_tenant_1' }, { where: { id: ctx.tenant1.id } });
   peshawar = await M.City.create({ name: 'Peshawar265a', isActive: true });
   lahore = await M.City.create({ name: 'Lahore265a', isActive: true });
   hayatabad = await M.Area.create({ cityId: peshawar.id, name: 'Hayatabad' });

@@ -2,6 +2,8 @@ const { body, param } = require('express-validator');
 
 const tenantsValidators = {
   register: [
+    // NEW-265 (A4): a pending area request instead of areaId (type-checked; the service checks the rest).
+    body('areaRequestId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaRequestId must be a positive integer'),
     body('businessName')
       .trim()
       .notEmpty()

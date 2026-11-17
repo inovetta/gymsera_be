@@ -158,11 +158,11 @@ const findCityOr404 = async (cityId) => {
 };
 
 /** Why this person may not open one more request in this city now, or null (R-108 point 4). */
-const limitReason = async (userId, cityId) => {
+const limitReason = async (userId, cityId, transaction) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const today = await AreaRequest.count({ where: { requestedByUserId: userId, createdAt: { [Op.gte]: since } } });
+  const today = await AreaRequest.count({ where: { requestedByUserId: userId, createdAt: { [Op.gte]: since } }, transaction });
   if (today >= DAILY_LIMIT) return 'area_requests_daily_limit';
-  const open = await AreaRequest.count({ where: { requestedByUserId: userId, cityId, status: 'pending_review' } });
+  const open = await AreaRequest.count({ where: { requestedByUserId: userId, cityId, status: 'pending_review' }, transaction });
   if (open >= CITY_LIMIT) return 'area_requests_city_limit';
   return null;
 };
@@ -217,9 +217,6 @@ const createAreaRequest = async ({ userId, cityId, name, confirmNotListed = fals
   const own = await AreaRequest.findOne({ where: { openKey } });
   if (own) return { status: 200, body: { areaRequest: shapeRequest(own) } };
 
-  const reason = await limitReason(userId, city.id);
-  if (reason) throw createError(LIMIT_MESSAGES[reason], 429, reason);
-
   if (source === 'typed' && confirmNotListed !== true) {
     const similar = (await findSimilar(city.id, key, { excludeUserId: userId })).filter((s) => !s.exactPending);
     if (similar.length) {
@@ -229,9 +226,21 @@ const createAreaRequest = async ({ userId, cityId, name, confirmNotListed = fals
     }
   }
 
+  // Self-review (owner, 2026-11-17): the limits are counted and the request inserted while this person's
+  // user row is locked, so requests sent at the same moment are counted one after the other (before:
+  // count-then-insert, 12 at once all passed). Any spelling counts: the limits are per person, not per name.
   let request;
+  let existing = false;
   try {
     request = await sequelize.transaction(async (transaction) => {
+      await User.findByPk(userId, { attributes: ['id'], lock: transaction.LOCK.UPDATE, transaction });
+      const again = await AreaRequest.findOne({ where: { openKey }, transaction });
+      if (again) {
+        existing = true;
+        return again;
+      }
+      const reason = await limitReason(userId, city.id, transaction);
+      if (reason) throw createError(LIMIT_MESSAGES[reason], 429, reason);
       const created = await AreaRequest.create({
         cityId: city.id, name: clean, nameKey: key, source, googlePlaceId, status: 'pending_review', openKey, requestedByUserId: userId,
       }, { transaction });
@@ -241,9 +250,9 @@ const createAreaRequest = async ({ userId, cityId, name, confirmNotListed = fals
   } catch (err) {
     if (err.name !== 'SequelizeUniqueConstraintError') throw err;
     request = await AreaRequest.findOne({ where: { openKey } }); // the same person, twice at once
-    return { status: 200, body: { areaRequest: shapeRequest(request) } };
+    existing = true;
   }
-  return { status: 201, body: { areaRequest: shapeRequest(request) } };
+  return { status: existing ? 200 : 201, body: { areaRequest: shapeRequest(request) } };
 };
 
 /**
@@ -617,8 +626,25 @@ const notifyRequesters = async (requests, message) => {
  * Writes the area to every linked row of `requestIds` whose link is not propagated yet. A row that cannot
  * be written keeps `propagated_at` NULL and its error, and is listed in `failed` (retry later).
  */
+/** The database name in a stored tenant connection URL, or null. */
+const databaseOf = (encrypted) => {
+  try {
+    const { decrypt } = require('../utils/crypto.utils');
+    return decodeURIComponent(new URL(decrypt(encrypted)).pathname.replace(/^\//, '')) || null;
+  } catch {
+    return null;
+  }
+};
+
+/** A record that moved to another city since it was linked is never given this city's area. */
+const assertSameCity = (recordCityId, areaCityId) => {
+  if (recordCityId && Number(recordCityId) !== Number(areaCityId)) throw new Error('city_changed');
+};
+
 const propagate = async (requestIds, areaId) => {
   const TenantDbManager = require('../database/TenantDbManager');
+  const area = await Area.findByPk(areaId, { attributes: ['id', 'cityId'] });
+  if (!area) return { propagated: 0, failed: [{ tenantId: null, error: 'area_not_found' }] };
   const links = await AreaRequestLink.findAll({ where: { areaRequestId: { [Op.in]: requestIds }, propagatedAt: null }, order: [['id', 'ASC']] });
   let propagated = 0;
   const failed = [];
@@ -628,15 +654,19 @@ const propagate = async (requestIds, areaId) => {
       if (link.target === 'tenant') {
         const t = await Tenant.findByPk(link.targetId);
         if (!t) throw new Error('tenant_not_found');
+        assertSameCity(t.cityId, area.cityId);
         await t.update({ areaId, areaStatus: null, areaRequestId: null });
       } else if (link.target === 'listing') {
         const l = await GymListing.findByPk(link.targetId);
         if (!l) throw new Error('listing_not_found');
+        if (l.tenantId !== link.tenantId) throw new Error('listing_not_of_tenant');
+        assertSameCity(l.cityId, area.cityId);
         await l.update({ areaId, areaStatus: null, areaRequestId: null });
       } else if (link.target === 'main_branch') {
         const t = await Tenant.findByPk(link.targetId);
         if (!t) throw new Error('tenant_not_found');
         const mb = { ...parseJson(t.mainBranchDataJson) };
+        assertSameCity(mb.cityId || t.cityId, area.cityId);
         if (mb.areaRequestId === undefined || mb.areaRequestId === null || Number(mb.areaRequestId) === Number(reqId)) {
           mb.areaId = areaId;
           delete mb.areaRequestId;
@@ -645,11 +675,16 @@ const propagate = async (requestIds, areaId) => {
           await t.update({ mainBranchDataJson: mb });
         }
       } else {
-        const t = await Tenant.findByPk(link.tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
+        const t = await Tenant.findByPk(link.tenantId, { attributes: ['id', 'connectionStringEncrypted', 'dbName'] });
         if (!t || !t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') throw new Error('tenant_database_not_ready');
+        // Self-review: only the database named in tenants.db_name (the one provisioning built the
+        // stored connection from); anything else is refused and reported, never written.
+        if (!t.dbName || databaseOf(t.connectionStringEncrypted) !== t.dbName) throw new Error('tenant_database_mismatch');
         const db = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
-        const [n] = await db.models.Branch.update({ areaId }, { where: { id: link.targetId } });
-        if (!n) throw new Error('branch_not_found');
+        const branch = await db.models.Branch.findByPk(link.targetId, { attributes: ['id', 'cityId'] });
+        if (!branch) throw new Error('branch_not_found');
+        assertSameCity(branch.cityId, area.cityId);
+        await db.models.Branch.update({ areaId }, { where: { id: link.targetId } });
       }
       await link.update({ propagatedAt: new Date(), propagationError: null });
       propagated += 1;
