@@ -26,6 +26,11 @@ router.get('/details/:placeId', validate(placesValidators.details), placesContro
 
 router.get('/reverse-geocode', validate(placesValidators.reverseGeocode), placesController.reverseGeocode);
 
+// NEW-265 Part A (R-108): a typed area is a pending request (A3), checked by the same name rules.
+router.post('/area-requests/check', validate.strict(placesValidators.areaRequestCheck), placesController.checkAreaRequest);
+router.post('/area-requests', validate.strict(placesValidators.areaRequest), placesController.createAreaRequest);
+router.get('/area-requests/:id', validate(placesValidators.areaRequestId), placesController.getAreaRequest);
+
 router.post('/areas', platformAdminOnly, validate.strict(placesValidators.createArea, { stage: 2 }), placesController.createArea);
 
 module.exports = router;

@@ -100,8 +100,9 @@ describe('NEW-259: area suggestions stay in the chosen city, ours first', () => 
     const res = await areaSearch(peshawar.id, 'Haya');
     expect(res.status).toBe(200);
     expect(res.body.data.suggestions).toEqual([
-      { placeId: `gymsera-area:${hayatabad1.id}`, primaryText: 'Hayatabad Phase 1', secondaryText: 'Peshawar259' },
-      { placeId: 'pl-hay3', primaryText: 'Hayatabad Phase 3', secondaryText: 'Peshawar259, Pakistan' },
+      // NEW-265 (A3): every area suggestion also says where it comes from and what it is.
+      { placeId: `gymsera-area:${hayatabad1.id}`, primaryText: 'Hayatabad Phase 1', secondaryText: 'Peshawar259', source: 'gymsera', type: 'area' },
+      { placeId: 'pl-hay3', primaryText: 'Hayatabad Phase 3', secondaryText: 'Peshawar259, Pakistan', source: 'google', type: 'area' },
     ]);
   });
 
@@ -109,7 +110,7 @@ describe('NEW-259: area suggestions stay in the chosen city, ours first', () => 
     fakeGoogle({ 'places:autocomplete': () => ({ body: { suggestions: [prediction('pl-ring', 'Ring Road', 'Peshawar259, Pakistan')] } }) });
     const res = await areaSearch(peshawar.id, 'Ring');
     expect(res.body.data.suggestions).toEqual([
-      { placeId: `gymsera-area:${ringRoad.id}`, primaryText: 'Ring Road', secondaryText: 'Peshawar259' },
+      { placeId: `gymsera-area:${ringRoad.id}`, primaryText: 'Ring Road', secondaryText: 'Peshawar259', source: 'gymsera', type: 'area' },
     ]);
   });
 

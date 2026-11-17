@@ -85,6 +85,12 @@ const gymsValidators = {
       .isInt({ min: 1 })
       .withMessage('areaId must be a positive integer'),
 
+    // NEW-265 (A4): a pending area request instead of an area (422 area_choice_conflict with both).
+    body('areaRequestId')
+      .optional({ nullable: true, checkFalsy: true })
+      .isInt({ min: 1 })
+      .withMessage('areaRequestId must be a positive integer'),
+
     // Phase 7 P3: in range, not just any decimal (latitude 123 used to be stored).
     body('latitude')
       .optional({ nullable: true, checkFalsy: true })
@@ -177,6 +183,7 @@ const gymsValidators = {
     body('address').optional().isString(),
     body('cityId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
     body('areaId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
+    body('areaRequestId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }), // NEW-265 (A4)
     body('latitude').optional({ nullable: true, checkFalsy: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
     body('longitude').optional({ nullable: true, checkFalsy: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be between -180 and 180'),
     body('googlePlaceId').optional({ nullable: true, checkFalsy: true }).matches(/^[A-Za-z0-9_-]{1,255}$/).withMessage('googlePlaceId is not a Google place id'),
@@ -194,6 +201,7 @@ const gymsValidators = {
     body('googlePlaceId').optional({ nullable: true, checkFalsy: true }).matches(/^[A-Za-z0-9_-]{1,255}$/).withMessage('googlePlaceId is not a Google place id'),
     body('cityId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
     body('areaId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
+    body('areaRequestId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }), // NEW-265 (A4)
   ],
 
   assignStaff: [
@@ -216,5 +224,11 @@ const gymsValidators = {
     param('staffId').isUUID(4).withMessage('Invalid staff ID'),
   ],
 };
+
+
+// NEW-265 (R-109 F7): the CMS admin branch routes pick real areas only; same chain without areaRequestId.
+gymsValidators.adminBranchLocation = gymsValidators.branchLocation.filter(
+  (chain) => !(chain.builder && chain.builder.build().fields.includes('areaRequestId'))
+);
 
 module.exports = gymsValidators;

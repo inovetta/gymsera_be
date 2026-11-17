@@ -57,6 +57,8 @@ const tenantsValidators = {
     body('mainBranchData.longitude').optional({ nullable: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be between -180 and 180'),
     body('mainBranchData.placeId').optional({ nullable: true }).matches(/^[A-Za-z0-9_-]{1,255}$/).withMessage('placeId is not a Google place id'),
     body('mainBranchData.areaId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaId must be a positive integer'),
+    // NEW-265 (A4): a pending area request for the draft first branch (null clears it).
+    body('mainBranchData.areaRequestId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaRequestId must be a positive integer'),
     body('mainBranchData.plans').optional().isArray().withMessage('mainBranchData.plans must be an array'),
     body('mainBranchData.plans.*.name').optional().trim().notEmpty().withMessage('Plan name cannot be empty'),
     body('mainBranchData.plans.*.price').optional().isFloat({ min: 0 }).withMessage('Plan price must be a valid number >= 0'),
@@ -110,6 +112,10 @@ const tenantsValidators = {
       .optional({ nullable: true, checkFalsy: true })
       .isInt({ min: 1 })
       .withMessage('cityId must be a positive integer'),
+
+    // NEW-265 (A4, R-109 F3): the organisation's area while DRAFT / PENDING_REVIEW (422 when ACTIVE).
+    body('areaId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaId must be a positive integer'),
+    body('areaRequestId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaRequestId must be a positive integer'),
   ],
 };
 

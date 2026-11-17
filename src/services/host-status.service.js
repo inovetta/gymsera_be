@@ -154,7 +154,10 @@ const findOwnedTenant = (userId) =>
 const getHostStatus = async (userId) => {
   const tenant = userId ? await findOwnedTenant(userId) : null;
   const entitledSub = tenant ? await subscriptionQuotaService.getActiveSubscription(tenant.id) : null;
-  return deriveHostStatus({ tenant, entitledSub });
+  // NEW-265 (R-109 F3): the organisation's or draft first branch's area request, for "Choose your area
+  // again" (status rejected) or "under review"; null when none.
+  const area = tenant ? await require('./area-requests.service').hostStatusArea(tenant) : null;
+  return { ...deriveHostStatus({ tenant, entitledSub }), area };
 };
 
 module.exports = { HostStatus, NextAction, deriveHostStatus, getHostStatus };

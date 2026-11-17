@@ -40,6 +40,16 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      // NEW-265 (R-108, R-109, migration p032): the gym's own area marker. While an area request is
+      // pending or was rejected, area_id stays NULL; `rejected` is cleared when the host picks again.
+      areaStatus: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      areaRequestId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       address: {
         type: DataTypes.TEXT,
         allowNull: true,

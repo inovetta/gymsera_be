@@ -113,7 +113,7 @@ router.patch(
 router.post(
   '/register',
   authenticate,
-  validate.strict(tenantsValidators.register, { stage: 2, allow: ['areaId'] }),
+  validate.strict(tenantsValidators.register, { stage: 2, allow: ['areaId', 'areaRequestId'] }),
   tenantsController.register
 );
 

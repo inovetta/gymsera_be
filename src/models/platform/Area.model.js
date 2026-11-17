@@ -27,6 +27,20 @@ module.exports = (sequelize) => {
         allowNull: true,
         unique: 'areas_google_place_id',
       },
+      // NEW-265 (migration p032): set by an admin when a requested area is approved (pin on the CMS map).
+      // radiusM is unused until Part B.
+      latitude: {
+        type: DataTypes.DECIMAL(10, 8),
+        allowNull: true,
+      },
+      longitude: {
+        type: DataTypes.DECIMAL(11, 8),
+        allowNull: true,
+      },
+      radiusM: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
     },
     {
       tableName: 'areas',

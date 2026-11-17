@@ -5,6 +5,7 @@ const { likeContains } = require('../utils/sql-like');
 const { Op } = require('sequelize');
 const gymService = require('../services/gym.service');
 const { assertAreaInCity } = require('../services/places.service');
+const areaRequests = require('../services/area-requests.service');
 const attendanceService = require('../services/attendance.service');
 const inboxService = require('../services/inbox.service');
 const accessService = require('../services/access.service');
@@ -387,7 +388,8 @@ const getListings = async (req, res, next) => {
       console.log(`[FLOW-05] GET /host/listings: ${listings.length} listing(s) ${JSON.stringify(byStatus)}; X-Tenant-Id ${headerVsToken}`);
     }
 
-    return sendSuccess(res, listings);
+    // NEW-265 (A4 reads): each organization's pending or rejected area request.
+    return sendSuccess(res, await areaRequests.withPendingAreas('listing', tenantId, listings));
   } catch (err) {
     next(err);
   }
@@ -482,9 +484,16 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
+      const { gymName, gymDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
       if (!gymName) throw createError('gymName is required', 400);
-      await assertAreaInCity({ cityId, areaId }); // NEW-259
+      // NEW-259: a real area belongs to the city sent. NEW-265 (A4, R-109 F5): or a pending request of the
+      // organization's city (the one saved below), linked to the listing and to its first branch.
+      const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
+        cityId: req.body.areaRequestId ? (cityId || tenant.cityId) : cityId,
+        userId: req.user.sub || req.user.id,
+        tenantId,
+      });
+      const areaValues = areaRequests.rowValues(areaChoice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
       // How this organization's first branch gets filled:
       //   'new'     (default) — build a real branch immediately, same as
@@ -567,7 +576,7 @@ const createListing = async (req, res, next) => {
       const listing = await GymListing.create({
         tenantId,
         cityId: targetCityId,
-        areaId: areaId || null,
+        ...areaValues,
         title: gymName,
         shortDescription: gymDescription || null,
         genderType: genderType || 'MIXED',
@@ -579,6 +588,8 @@ const createListing = async (req, res, next) => {
         status: 'PENDING',
         reservedSlots: branchSource === 'reserve' ? 1 : 0,
       }, { transaction: platformTx });
+
+      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'listing', targetId: listing.id }, { transaction: platformTx });
 
       if (branchSource === 'reserve') {
         // Drawing 1 unit of already-available tenant-wide capacity (checked
@@ -657,7 +668,8 @@ const createListing = async (req, res, next) => {
             address,
             addressLine1: address,
             cityId: targetCityId,
-            areaId,
+            areaId: areaValues.areaId,
+            ...(areaValues.areaRequestId ? { areaRequestId: areaValues.areaRequestId } : {}), // NEW-265: second link
             latitude,
             longitude,
             googlePlaceId: googlePlaceId || null, // NEW-140: the address picked from Google
@@ -713,7 +725,8 @@ const getListing = async (req, res, next) => {
     const listing = await GymListing.findOne({ where: { id: req.params.id, tenantId } });
     if (!listing) throw createError('Organization not found or access denied', 404);
     const gym = await _organizationGym(req.tenantDb, listing);
-    return sendSuccess(res, { ...listing.toJSON(), gym: gym ? gym.toJSON() : null });
+    const pendingArea = await areaRequests.pendingAreaFor('listing', tenantId, listing.id); // NEW-265
+    return sendSuccess(res, { ...listing.toJSON(), pendingArea, gym: gym ? gym.toJSON() : null });
   } catch (err) {
     next(err);
   }
@@ -735,17 +748,20 @@ const updateListing = async (req, res, next) => {
       throw createError('Organization not found or access denied', 404);
     }
 
-    const { gymName, gymDescription, genderType, cityId, areaId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
+    const { gymName, gymDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
     // Phase 7 P5 (BUG-22): the rest of Edit Organization, for this organization only.
     // category and establishedYear live on the organization; the gym has no columns for them.
     const { category, establishedYear, contactEmail, website, imagesJson } = req.body;
 
     // NEW-259: a new city or area must still pair up (the city sent, else the organization's own).
-    if (cityId !== undefined || areaId !== undefined) {
-      await assertAreaInCity({
-        cityId: cityId !== undefined ? cityId : listing.cityId,
-        areaId: areaId !== undefined ? areaId : listing.areaId,
-      });
+    // NEW-265 (A4, R-109 F1): an area request, kept when neither key is sent, cleared by null or a real area.
+    const nextCityId = cityId !== undefined ? cityId : listing.cityId;
+    const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
+      cityId: nextCityId, userId: req.user.sub || req.user.id, tenantId,
+    });
+    if (areaChoice.kind === 'keep' && cityId !== undefined) {
+      await assertAreaInCity({ cityId: nextCityId, areaId: listing.areaId });
+      await areaRequests.assertKeptLinkInCity({ tenantId, target: 'listing', targetId: listing.id, cityId: nextCityId });
     }
 
     const updates = {};
@@ -753,7 +769,7 @@ const updateListing = async (req, res, next) => {
     if (gymDescription !== undefined) updates.shortDescription = gymDescription;
     if (genderType !== undefined) updates.genderType = genderType;
     if (cityId !== undefined) updates.cityId = cityId;
-    if (areaId !== undefined) updates.areaId = areaId || null;
+    Object.assign(updates, areaRequests.rowValues(areaChoice) || {});
     if (logoUrl !== undefined) updates.logoUrl = logoUrl || null;
     if (coverImageUrl !== undefined) updates.coverImageUrl = coverImageUrl || null;
     if (contactPhone !== undefined) updates.contactPhone = contactPhone || null;
@@ -766,11 +782,12 @@ const updateListing = async (req, res, next) => {
 
     // NEW-196 (R-89): every organization edit is in the platform audit log with its actor (field
     // names only, no values), in the same transaction: an edit that cannot be audited is not saved.
-    const fields = ['gymName', 'gymDescription', 'genderType', 'cityId', 'areaId', 'logoUrl', 'coverImageUrl',
+    const fields = ['gymName', 'gymDescription', 'genderType', 'cityId', 'areaId', 'areaRequestId', 'logoUrl', 'coverImageUrl',
       'contactPhone', 'latitude', 'longitude', 'category', 'establishedYear', 'contactEmail', 'website', 'imagesJson']
       .filter((f) => req.body[f] !== undefined);
     await GymListing.sequelize.transaction(async (transaction) => {
       await listing.update(updates, { transaction });
+      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'listing', targetId: listing.id }, { transaction });
       await PlatformAuditLog.create({
         actorUserId: req.user.id || req.user.sub,
         action: 'organization.profile_updated',

@@ -14,9 +14,15 @@
  * Google, so builds that only know Google place ids keep working), then Google's, restricted to the
  * city. details() refuses a Google area in another city, and every write that takes an areaId calls
  * assertAreaInCity (code `area_not_listed`).
+ *
+ * NEW-265 Part A (R-108, R-109): every area suggestion says where it comes from (`source` gymsera / google)
+ * and what it is (`type` area / road / landmark); with `extended=true` (build 25 on) Google is also asked
+ * for roads and landmarks, which details() turns into a pending area request, never an area. A place id we
+ * already hold is answered without Google. Reverse geocode returns a road / landmark as `areaSuggestion`
+ * and creates nothing. Aliases (area_aliases) match our areas.
  */
 const { Op } = require('sequelize');
-const { City, Area } = require('../models/platform');
+const { City, Area, AreaAlias } = require('../models/platform');
 const { sequelize } = require('../database/platform');
 const { createError } = require('../utils/response.utils');
 const { likeContains } = require('../utils/sql-like');
@@ -33,6 +39,19 @@ const DETAILS_FIELDS = 'id,displayName,formattedAddress,location,addressComponen
 // Places (New) types used to read a city and an area out of an address.
 const CITY_TYPES = ['locality', 'postal_town', 'administrative_area_level_3', 'administrative_area_level_2'];
 const AREA_TYPES = ['sublocality_level_1', 'sublocality', 'neighborhood'];
+// NEW-265: what Google is asked for an area search, and how its answer is read.
+const AREA_SEARCH_TYPES = ['sublocality', 'neighborhood'];
+const EXTENDED_SEARCH_TYPES = ['sublocality', 'neighborhood', 'route', 'landmark'];
+const LANDMARK_TYPES = ['landmark', 'point_of_interest', 'establishment', 'premise', 'tourist_attraction', 'natural_feature', 'park'];
+
+/** area / road / landmark from Google's types. No types (or an area type) = area, as before NEW-265. */
+const placeKind = (types) => {
+  const list = Array.isArray(types) ? types : [];
+  if (!list.length || list.some((t) => t.startsWith('sublocality') || t === 'neighborhood')) return 'area';
+  if (list.includes('route')) return 'road';
+  if (list.some((t) => LANDMARK_TYPES.includes(t))) return 'landmark';
+  return 'area';
+};
 
 const serverKey = () => {
   const key = (process.env.GOOGLE_MAPS_SERVER_KEY || '').trim();
@@ -205,7 +224,7 @@ const pickComponent = (components, types, field = 'longText') => {
  * @param {{ input: string, kind: 'city'|'area'|'address', sessionToken: string, cityId?: number }} q
  * @returns {Promise<{ suggestions: Array<{ placeId: string, primaryText: string, secondaryText: string|null }> }>}
  */
-const autocomplete = async ({ input, kind, sessionToken, cityId }) => {
+const autocomplete = async ({ input, kind, sessionToken, cityId, extended = false }) => {
   const body = { input, sessionToken };
   let city = null;
   if (kind === 'area') city = await findCityOr404(cityId);
@@ -221,7 +240,8 @@ const autocomplete = async ({ input, kind, sessionToken, cityId }) => {
   if (kind === 'city') {
     body.includedPrimaryTypes = ['(cities)'];
   } else if (kind === 'area') {
-    body.includedPrimaryTypes = ['sublocality', 'neighborhood'];
+    // NEW-265: roads and landmarks only for the builds that can handle them (extended=true).
+    body.includedPrimaryTypes = extended ? [...EXTENDED_SEARCH_TYPES] : [...AREA_SEARCH_TYPES];
     if (hasCentre) {
       // NEW-259: inside the city only, not merely near it.
       body.locationRestriction = body.locationBias;
@@ -232,7 +252,8 @@ const autocomplete = async ({ input, kind, sessionToken, cityId }) => {
     return areaSuggestions({ input, city, hasCentre, body });
   }
 
-  return { suggestions: await googleSuggestions(body) };
+  // City and address searches answer as before NEW-265 (Google's types are only read for areas).
+  return { suggestions: (await googleSuggestions(body)).map(({ types, ...rest }) => rest) };
 };
 
 const googleSuggestions = async (body) => {
@@ -248,10 +269,16 @@ const googleSuggestions = async (body) => {
       placeId: p.placeId,
       primaryText: p.structuredFormat?.mainText?.text || p.text?.text || '',
       secondaryText: p.structuredFormat?.secondaryText?.text || null,
+      types: Array.isArray(p.types) ? p.types : null,
     }));
 };
 
-const ourAreaSuggestion = (area, city) => ({ placeId: `${OUR_AREA_PREFIX}${area.id}`, primaryText: area.name, secondaryText: city.name });
+const ourAreaSuggestion = (area, city) => ({
+  placeId: `${OUR_AREA_PREFIX}${area.id}`, primaryText: area.name, secondaryText: city.name, source: 'gymsera', type: 'area',
+});
+const googleAreaSuggestion = (s) => ({
+  placeId: s.placeId, primaryText: s.primaryText, secondaryText: s.secondaryText, source: 'google', type: placeKind(s.types),
+});
 
 /**
  * NEW-259 (R-107): our areas of the city that match the input first, then Google's areas in the city.
@@ -260,8 +287,19 @@ const ourAreaSuggestion = (area, city) => ({ placeId: `${OUR_AREA_PREFIX}${area.
  */
 const areaSuggestions = async ({ input, city, hasCentre, body }) => {
   const key = nameKey(input);
+  // NEW-265: an alias (another spelling of one of our areas) matches its area.
+  const compactKey = require('./area-requests.service').nameKeyOf(input);
+  const aliasHits = compactKey
+    ? await AreaAlias.findAll({ where: { cityId: city.id, aliasKey: { [Op.like]: likeContains(compactKey) } }, attributes: ['areaId'], limit: 20 })
+    : [];
   const ours = await Area.findAll({
-    where: { cityId: city.id, name: { [Op.like]: likeContains(normalizeName(input) || '') } },
+    where: {
+      cityId: city.id,
+      [Op.or]: [
+        { name: { [Op.like]: likeContains(normalizeName(input) || '') } },
+        ...(aliasHits.length ? [{ id: { [Op.in]: aliasHits.map((a) => a.areaId) } }] : []),
+      ],
+    },
     order: [['name', 'ASC']],
     limit: 50,
   });
@@ -275,11 +313,10 @@ const areaSuggestions = async ({ input, city, hasCentre, body }) => {
     if (picked.length) return { suggestions: picked.map((a) => ourAreaSuggestion(a, city)) };
     throw err;
   }
-  if (!hasCentre) {
-    // Searched by name only: keep what Google itself places in this city.
-    const cityKey = nameKey(city.name);
-    google = google.filter((s) => nameKey(s.secondaryText).includes(cityKey));
-  }
+  // Keep what Google itself places in this city (NEW-265: also with a centre; a road of the same name in
+  // another city is never offered).
+  const cityKey = nameKey(city.name);
+  google = google.filter((s) => nameKey(s.secondaryText).includes(cityKey));
 
   const known = google.length
     ? await Area.findAll({
@@ -310,7 +347,7 @@ const areaSuggestions = async ({ input, city, hasCentre, body }) => {
       googleList.push(s);
     }
   }
-  return { suggestions: [...ourList.map((a) => ourAreaSuggestion(a, city)), ...googleList] };
+  return { suggestions: [...ourList.map((a) => ourAreaSuggestion(a, city)), ...googleList.map(googleAreaSuggestion)] };
 };
 
 // ── Details ───────────────────────────────────────────────────────────────────
@@ -319,7 +356,7 @@ const areaSuggestions = async ({ input, city, hasCentre, body }) => {
  * Resolves a picked suggestion. `kind` says what the host picked: a city, an area inside `cityId`,
  * or a full address (whose city and area come from its address components).
  */
-const details = async ({ placeId, kind, sessionToken, cityId }) => {
+const details = async ({ placeId, kind, sessionToken, cityId, userId = null }) => {
   const pickedCity = kind === 'area' ? await findCityOr404(cityId) : null;
 
   // NEW-259: one of our own areas, offered by autocomplete; Google is not asked.
@@ -335,6 +372,20 @@ const details = async ({ placeId, kind, sessionToken, cityId }) => {
       city: shapeCity(pickedCity),
       area: shapeArea(area),
     };
+  }
+  // NEW-265: a Google place id we already hold in this city is answered from `areas`, without Google.
+  if (kind === 'area') {
+    const known = await Area.findOne({ where: { googlePlaceId: String(placeId), cityId: pickedCity.id } });
+    if (known) {
+      return {
+        placeId,
+        formattedAddress: `${known.name}, ${pickedCity.name}`,
+        latitude: toNumber(known.latitude),
+        longitude: toNumber(known.longitude),
+        city: shapeCity(pickedCity),
+        area: shapeArea(known),
+      };
+    }
   }
   const qs = sessionToken ? `?sessionToken=${encodeURIComponent(sessionToken)}` : '';
   const place = await callGoogle(`${PLACES_BASE}/places/${encodeURIComponent(placeId)}${qs}`, {
@@ -358,6 +409,25 @@ const details = async ({ placeId, kind, sessionToken, cityId }) => {
     const placeCity = pickComponent(components, CITY_TYPES);
     if (placeCity && !sameCityName(placeCity, city.name)) {
       throw createError(`That area is not in ${city.name}. Pick an area in ${city.name}.`, 422, 'area_outside_city');
+    }
+    // NEW-265 (R-108 point 2): a road or a landmark is no area: a pending request (same name rules and
+    // limits as a typed area); an area or alias with that name wins.
+    const what = placeKind(place.types);
+    if (what !== 'area') {
+      const requests = require('./area-requests.service');
+      const name = displayName || pickComponent(components, what === 'road' ? ['route'] : LANDMARK_TYPES);
+      const answer = await requests.createAreaRequest({
+        userId, cityId: city.id, name, source: what === 'road' ? 'google_road' : 'google_landmark', googlePlaceId: place.id || placeId,
+      });
+      return {
+        placeId: place.id || placeId,
+        formattedAddress: place.formattedAddress || displayName || null,
+        latitude,
+        longitude,
+        city: shapeCity(city),
+        area: answer.body.area || null,
+        ...(answer.body.areaRequest ? { areaRequest: answer.body.areaRequest } : {}),
+      };
     }
     area = await upsertArea({ cityId: city.id, name: displayName || pickComponent(components, AREA_TYPES), placeId: place.id || placeId });
   } else {
@@ -406,7 +476,29 @@ const reverseGeocode = async ({ latitude, longitude }) => {
     longitude: toNumber(cityResult?.geometry?.location?.lng),
     countryCode: cleanCountryCode(legacyComponent(components, ['country'], 'short_name')),
   });
-  const area = city ? await upsertArea({ cityId: city.id, name: areaName, placeId: areaResult?.place_id || null }) : null;
+  let area = city && areaName ? await upsertArea({ cityId: city.id, name: areaName, placeId: areaResult?.place_id || null }) : null;
+
+  // NEW-265 (R-109, F6): no neighbourhood here, but a road or a landmark: a suggestion the host confirms
+  // through POST /places/area-requests. Creates nothing; an area or alias with that name answers instead.
+  let areaSuggestion = null;
+  if (city && !area) {
+    const road = legacyComponent(components, ['route']);
+    const landmark = legacyComponent(components, LANDMARK_TYPES);
+    const name = road || landmark;
+    if (name) {
+      const known = await require('./area-requests.service').findAreaByKey(city.id, require('./area-requests.service').nameKeyOf(name));
+      if (known) {
+        area = known;
+      } else {
+        const routeResult = road ? results.find((r) => (r.types || []).includes('route')) : null;
+        areaSuggestion = {
+          name: normalizeName(name),
+          source: road ? 'google_road' : 'google_landmark',
+          googlePlaceId: road ? routeResult?.place_id || null : top.place_id || null,
+        };
+      }
+    }
+  }
 
   return {
     placeId: top.place_id || null,
@@ -416,6 +508,7 @@ const reverseGeocode = async ({ latitude, longitude }) => {
     longitude: Number(longitude),
     city: shapeCity(city),
     area: shapeArea(area),
+    ...(areaSuggestion ? { areaSuggestion } : {}),
   };
 };
 

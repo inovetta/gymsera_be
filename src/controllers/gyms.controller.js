@@ -1,4 +1,5 @@
 const gymService = require('../services/gym.service');
+const areaRequests = require('../services/area-requests.service');
 const { sendSuccess, createError, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
 const { hasBranchAccess, branchIdsWithAnyGrant, branchIdsWithPermission, hasAllBranches } = require('../utils/branchAccess.utils');
@@ -60,6 +61,14 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+// NEW-265 (A4): who writes a branch's area request, and the branch read with its `pendingArea`.
+const areaCaller = (req) => ({ tenantId: req.user.tenantId || null, userId: req.user.sub || req.user.id });
+const withBranchPendingArea = async (req, result) => {
+  if (!result || !result.branch) return result;
+  const [branch] = await areaRequests.withPendingAreas('branch', req.user.tenantId, [result.branch]);
+  return { ...result, branch };
+};
+
 // ── GET /gyms/branches ────────────────────────────────────────────────────────
 const listBranches = async (req, res, next) => {
   try {
@@ -91,7 +100,7 @@ const getBranch = async (req, res, next) => {
     if (!(await hasBranchAccess(req, result.branch.id, 'branch.settings'))) {
       throw createError('Branch not found or has been deleted', 404);
     }
-    return sendSuccess(res, result);
+    return sendSuccess(res, await withBranchPendingArea(req, result));
   } catch (err) {
     next(err);
   }
@@ -103,8 +112,8 @@ const updateBranch = async (req, res, next) => {
     if (!(await hasBranchAccess(req, req.params.branchId, 'branch.settings'))) {
       throw createError('Branch not found', 404);
     }
-    const result = await gymService.updateBranch(req.tenantDb, req.params.branchId, req.body);
-    return sendSuccess(res, result, 'Branch updated successfully');
+    const result = await gymService.updateBranch(req.tenantDb, req.params.branchId, req.body, areaCaller(req));
+    return sendSuccess(res, await withBranchPendingArea(req, result), 'Branch updated successfully');
   } catch (err) {
     next(err);
   }
@@ -410,7 +419,7 @@ const getBranchListingContent = async (req, res, next) => {
   try {
     const { branchId } = req.params;
     const result = await gymService.getBranch(req.tenantDb, branchId);
-    return sendSuccess(res, result);
+    return sendSuccess(res, await withBranchPendingArea(req, result));
   } catch (err) {
     next(err);
   }
@@ -442,6 +451,7 @@ const updateBranchListingContent = async (req, res, next) => {
       country,
       cityId,
       areaId,
+      areaRequestId,
       googlePlaceId,
     } = req.body;
 
@@ -471,9 +481,10 @@ const updateBranchListingContent = async (req, res, next) => {
     if (country !== undefined) patch.country = country;
     if (cityId !== undefined) patch.cityId = cityId;
     if (areaId !== undefined) patch.areaId = areaId;
+    if (areaRequestId !== undefined) patch.areaRequestId = areaRequestId; // NEW-265 (A4)
 
-    const result = await gymService.updateBranch(req.tenantDb, branchId, patch);
-    return sendSuccess(res, result);
+    const result = await gymService.updateBranch(req.tenantDb, branchId, patch, areaCaller(req));
+    return sendSuccess(res, await withBranchPendingArea(req, result));
   } catch (err) {
     next(err);
   }

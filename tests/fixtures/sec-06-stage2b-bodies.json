@@ -220,6 +220,7 @@
     "addressLine1",
     "addressLine2",
     "areaId",
+    "areaRequestId",
     "branchName",
     "category",
     "cityId",
@@ -262,6 +263,7 @@
    "allowed": [
     "address",
     "areaId",
+    "areaRequestId",
     "branchName",
     "cityId",
     "closingTime",
@@ -353,6 +355,7 @@
     "addressLine1",
     "addressLine2",
     "areaId",
+    "areaRequestId",
     "branchName",
     "category",
     "cityId",
@@ -630,6 +633,7 @@
    "path": "/api/v1/tenants/register",
    "allowed": [
     "areaId",
+    "areaRequestId",
     "businessName",
     "cityId",
     "email",

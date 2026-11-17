@@ -1300,6 +1300,115 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 32,
+    name: 'p032_area_requests',
+    description:
+      'NEW-265 Part A (R-108, R-109): area_requests (a typed area or a Google road / landmark waiting for a platform admin), area_request_links (which tenant, draft first branch, listing or branch waits on it; one request per location), area_aliases (other spellings of an area, per city); areas.latitude / longitude / radius_m (set by an admin on approval); tenants and gym_listings area_status / area_request_id (the gym\'s own marker while an area is pending or rejected). New tables and nullable columns only; nothing existing is changed or back-filled. Safe to re-run.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run (lists p032, writes nothing).
+    // BACKUP: none needed (new tables and nullable columns only; no existing row is read or changed).
+    //   All-or-nothing: every new column is checked first; one that someone added by hand with another
+    //   type (or NOT NULL) skips the whole migration (not recorded, reported) and nothing is written.
+    // DEPLOY: run it BEFORE the API build that reads these columns (the models select them).
+    // ROLLBACK (deploy the previous API build FIRST: it never reads these tables or columns):
+    //   DROP TABLE `area_aliases`; DROP TABLE `area_request_links`; DROP TABLE `area_requests`;
+    //   ALTER TABLE `areas` DROP COLUMN `latitude`, DROP COLUMN `longitude`, DROP COLUMN `radius_m`;
+    //   ALTER TABLE `tenants` DROP COLUMN `area_status`, DROP COLUMN `area_request_id`;
+    //   ALTER TABLE `gym_listings` DROP COLUMN `area_status`, DROP COLUMN `area_request_id`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 32;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const columns = [
+        { table: 'areas', column: 'latitude', type: 'DECIMAL(10,8)', accept: ['decimal(10,8)'] },
+        { table: 'areas', column: 'longitude', type: 'DECIMAL(11,8)', accept: ['decimal(11,8)'] },
+        { table: 'areas', column: 'radius_m', type: 'INT', accept: ['int', 'int(11)'] },
+        { table: 'tenants', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
+        { table: 'tenants', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
+        { table: 'gym_listings', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
+        { table: 'gym_listings', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
+      ];
+      const toAdd = [];
+      for (const c of columns) {
+        // A table this database does not have is left alone (same rule as the older migrations).
+        const [table] = await sequelize.query(
+          'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+          { replacements: [c.table], type: QueryTypes.SELECT }
+        );
+        if (!table) continue;
+        const [col] = await sequelize.query(
+          'SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: [c.table, c.column], type: QueryTypes.SELECT }
+        );
+        if (!col) {
+          toAdd.push(c);
+        } else if (!c.accept.includes(String(col.type).toLowerCase()) || col.nullable !== 'YES') {
+          console.warn(
+            `[PlatformMigration] SKIPPING p032_area_requests: ${c.table}.${c.column} already exists as ${col.type} ` +
+              `(nullable: ${col.nullable}); expected ${c.type} NULL. Resolve it by hand, then re-run.`
+          );
+          return { skipped: true, reason: 'column_exists_with_other_type', table: c.table, column: c.column, type: col.type };
+        }
+      }
+
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`area_requests\` (
+          \`id\` INT NOT NULL AUTO_INCREMENT,
+          \`city_id\` INT NOT NULL,
+          \`name\` VARCHAR(60) NOT NULL,
+          \`name_key\` VARCHAR(60) NOT NULL,
+          \`source\` ENUM('typed','google_road','google_landmark') NOT NULL DEFAULT 'typed',
+          \`google_place_id\` VARCHAR(255) NULL,
+          \`status\` ENUM('pending_review','approved','merged','rejected') NOT NULL DEFAULT 'pending_review',
+          \`open_key\` VARCHAR(120) NULL,
+          \`resolved_area_id\` INT NULL,
+          \`requested_by_user_id\` CHAR(36) BINARY NOT NULL,
+          \`reject_reason\` VARCHAR(300) NULL,
+          \`decided_by\` CHAR(36) BINARY NULL,
+          \`decided_at\` DATETIME NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`area_requests_open_key\` (\`open_key\`),
+          KEY \`area_requests_city_id_status\` (\`city_id\`, \`status\`),
+          KEY \`area_requests_requested_by_user_id_created_at\` (\`requested_by_user_id\`, \`created_at\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`area_request_links\` (
+          \`id\` INT NOT NULL AUTO_INCREMENT,
+          \`area_request_id\` INT NOT NULL,
+          \`tenant_id\` CHAR(36) BINARY NOT NULL,
+          \`target\` ENUM('tenant','main_branch','listing','branch') NOT NULL,
+          \`target_id\` VARCHAR(36) NOT NULL,
+          \`propagated_at\` DATETIME NULL,
+          \`propagation_error\` VARCHAR(300) NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`area_request_links_target\` (\`target\`, \`tenant_id\`, \`target_id\`),
+          KEY \`area_request_links_area_request_id\` (\`area_request_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      await sequelize.query(
+        `CREATE TABLE IF NOT EXISTS \`area_aliases\` (
+          \`id\` INT NOT NULL AUTO_INCREMENT,
+          \`city_id\` INT NOT NULL,
+          \`alias_key\` VARCHAR(60) NOT NULL,
+          \`area_id\` INT NOT NULL,
+          \`created_by\` CHAR(36) BINARY NULL,
+          \`created_at\` DATETIME NOT NULL,
+          \`updated_at\` DATETIME NOT NULL,
+          PRIMARY KEY (\`id\`),
+          UNIQUE KEY \`area_aliases_city_alias\` (\`city_id\`, \`alias_key\`),
+          KEY \`area_aliases_area_id\` (\`area_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      );
+      for (const c of toAdd) {
+        await sequelize.query(`ALTER TABLE \`${c.table}\` ADD COLUMN \`${c.column}\` ${c.type} NULL`);
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
