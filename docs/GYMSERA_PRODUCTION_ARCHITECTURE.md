@@ -4234,7 +4234,7 @@ Background (verified on `origin/main` `344c77f` / `origin/master` `10f8033`): Be
 
 - **Website** gym page has no "by <brand>" (rule 9: the website copies mobile). Logged as **NEW-269**, OPEN.
 - **NEW-268**, OPEN (see NEW-267): six other `.value ??` provider reads in host screens.
-- **Deploy order:** API first (register accepts no name; gym-profile accepts `businessName`), then the CMS, then build 26. Build 26 against an old API would fail Step 1 (`businessName` required) and Step 2 (undeclared field): do not ship build 26 before the API.
+- **Deploy order:** API first (register accepts no name; gym-profile accepts `businessName`), then the CMS, then build 26. Build 26 against an old API fails Step 1 (422: `businessName` required) and, at Step 2, the brand would be dropped quietly (gym-profile is an SEC-06 stage 2 route, which by default logs an undeclared field and ignores it): do not ship build 26 before the API.
 
 ## 14. Remaining risks and open decisions
 
