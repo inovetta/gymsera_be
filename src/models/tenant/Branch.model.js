@@ -1,5 +1,8 @@
 const { DataTypes } = require('sequelize');
 
+/** NEW-273: "06:00:00" → "06:00"; null stays null. */
+const hourMinute = (v) => (v == null ? v : String(v).slice(0, 5));
+
 module.exports = (sequelize) => {
   return sequelize.define(
     'Branch',
@@ -49,13 +52,17 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(255),
         allowNull: true,
       },
+      // NEW-273: MySQL TIME reads back as "HH:MM:SS"; every client shows hours as "HH:MM", so they are
+      // read as "HH:MM" here (storage unchanged; writes take "HH:MM").
       openingTime: {
         type: DataTypes.TIME,
         allowNull: true,
+        get() { return hourMinute(this.getDataValue('openingTime')); },
       },
       closingTime: {
         type: DataTypes.TIME,
         allowNull: true,
+        get() { return hourMinute(this.getDataValue('closingTime')); },
       },
       phone: {
         type: DataTypes.STRING(25),

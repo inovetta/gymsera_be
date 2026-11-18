@@ -4237,6 +4237,12 @@ Background (verified on `origin/main` `344c77f` / `origin/master` `10f8033`): Be
 - **NEW-268**, OPEN, **log only (owner 2026-11-18: do not change those screens now)** (see NEW-267): six other `.value ??` provider reads in host screens.
 - **Deploy order:** API first (register accepts no name; gym-profile accepts `businessName`), then the CMS, then build 26. Build 26 against an old API fails Step 1 (422: `businessName` required) and, at Step 2, the brand would be dropped quietly (gym-profile is an SEC-06 stage 2 route, which by default logs an undeclared field and ignores it): do not ship build 26 before the API.
 
+### NEW-273: branch hours shown with seconds (owner 2026-11-18, R-113 D4 part: "fix the seconds now"). STATUS: FIXED (be `fix/new-273-hours-hhmm` from `origin/main` `cc887b3`, local, not pushed)
+
+| ID | Status | Issue → Root cause → Pattern reused → Fix → Test → Result |
+|---|---|---|
+| NEW-273 | DONE (server), related suites NOT re-run (see note) | **Hours read "06:00:00 - 22:00:00".** Root cause: `branches.opening_time` / `closing_time` are MySQL `TIME` (`Branch.model.js:52-59`), read back as `HH:MM:SS` and sent as is in every branch object (gym detail `discovery.service.js:523`, `/host/branches`, admin); the app (`gym_detail_screen.dart:1386-1391`), website and CMS lists print them as received. Pattern reused: a model getter (as other models shape their reads). Fix: getters on both fields return `HH:MM` (null stays null); storage and writes unchanged; old app builds get `HH:MM` too. Test `tests/regression/new-273-hours-hhmm.test.js` 4 (red 3 / 4 first: `06:00:00`; green 4 / 4 alone). **Note:** the related-suite run was started as a full suite by mistake and the local test MySQL container was OOM-killed during it (exit 137); the crash left an orphan `gymsera_test_tenant_2/trainers.ibd`, so every suite now fails at harness setup until the local test container is repaired (owner asked first, AGENTS.md). Re-run the branch / discovery suites after that. Deploy: any time, independent of R-113. |
+
 ## 14. Remaining risks and open decisions
 
 > **Decisions recorded 2026-09-26.** The owner delegated these to the architect (Claude Code) and they are now **final for agents**. Agents apply them and do **not** stop to ask about them again. The owner may override any row at any time by editing it.
