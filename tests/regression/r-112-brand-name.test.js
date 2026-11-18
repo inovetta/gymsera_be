@@ -165,4 +165,20 @@ describe('R-112: brand name', () => {
     expect(body.brandName).toBe('Status Brand');
     expect(body.gymName).toBe('Status Gym');
   });
+
+  test('C4 / C7: an old stored name sent back unchanged is not re-checked (the host can still edit the e-mail)', async () => {
+    const tenantId = personaManager.context.tenant1.id;
+    const before = await Tenant.findByPk(tenantId);
+    const legacy = 'Legacy Brand Name That Is Much Longer Than Sixty Characters Allowed Now';
+    await before.update({ businessName: legacy });
+    const audits = () => PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: tenantId } });
+    const auditsBefore = await audits();
+    const res = await asPersona('owner').patch('/tenants/me').send({ businessName: legacy, phone: '' });
+    expect(res.status).toBe(200);
+    expect(await audits()).toBe(auditsBefore);
+    // A real change to it is checked as usual.
+    const changed = await asPersona('owner').patch('/tenants/me').send({ businessName: `${legacy} 2` });
+    expect(changed.status).toBe(422);
+    await Tenant.update({ businessName: before.businessName }, { where: { id: tenantId } });
+  });
 });

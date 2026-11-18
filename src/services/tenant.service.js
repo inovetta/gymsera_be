@@ -256,8 +256,13 @@ const updateMyTenant = async (userId, updates) => {
   }
 
   const { email, phone, cityId } = updates;
-  // R-112 (C4): the brand follows the Step 2 rules (C1); a change is audited.
-  const businessName = updates.businessName !== undefined ? await validateBrandName(updates.businessName) : undefined;
+  // R-112 (C4): the brand follows the Step 2 rules (C1); a change is audited. The stored name sent back
+  // unchanged is not re-checked (C7: an older name must not block editing the other fields).
+  const unchangedBrand = typeof updates.businessName === 'string'
+    && areaRequests.cleanAreaName(updates.businessName) === (tenant.businessName || '').trim();
+  const businessName = updates.businessName !== undefined && !unchangedBrand
+    ? await validateBrandName(updates.businessName)
+    : undefined;
   const previousBusinessName = tenant.businessName;
   await tenant.update({
     ...(businessName !== undefined && { businessName }),
