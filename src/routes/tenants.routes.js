@@ -89,10 +89,11 @@ router.patch(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [businessName, email]
+ *             required: [email]
  *             properties:
  *               businessName:
  *                 type: string
+ *                 description: Optional (R-112). Build 26 sends none; the brand is saved on Step 2 (gym-profile).
  *                 example: Iron Temple Fitness
  *               email:
  *                 type: string
@@ -138,6 +139,10 @@ router.post(
  *             type: object
  *             required: [gymName]
  *             properties:
+ *               businessName:
+ *                 type: string
+ *                 description: The brand / organisation name (R-112), 3 to 60 characters; 422 brand_name_invalid / brand_name_blocked.
+ *                 example: Iron Temple
  *               gymName:
  *                 type: string
  *                 example: Iron Temple Fitness

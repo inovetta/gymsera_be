@@ -4,6 +4,7 @@ const kycStorageService = require('./kyc-storage.service');
 const { createError } = require('../utils/response.utils');
 const { assertAreaInCity } = require('./places.service');
 const areaRequests = require('./area-requests.service');
+const { validateBrandName } = require('./brand-name.service');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
 
@@ -50,7 +51,8 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
 
   const tenant = await Tenant.create({
     tenantCode,
-    businessName,
+    // R-112 (C2): build 26 sends no name here (the column is NOT NULL); Step 2 saves the brand.
+    businessName: businessName || '',
     email,
     phone: phone || null,
     cityId: cityId || null,
@@ -84,6 +86,8 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
   }
 
   const { gymName, gymDescription, genderType, address, latitude, longitude, mainBranchData, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
+  // R-112 (C1, C3): the brand the host typed on Step 2, checked before anything is saved.
+  const businessName = profileData.businessName !== undefined ? await validateBrandName(profileData.businessName) : undefined;
 
   let existingMainBranch = tenant.mainBranchDataJson;
   if (typeof existingMainBranch === 'string') {
@@ -119,14 +123,23 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
   }
   if (mergedMainBranchData && typeof mergedMainBranchData === 'object') delete mergedMainBranchData.pendingArea; // a read-only view
 
+  // R-112 (C3): the draft first branch is named after the gym; a new gym name carries over unless the host
+  // gave the branch a name of its own.
+  let mainBranchDataToSave = mergedMainBranchData;
+  if (gymName && gymName !== tenant.gymName && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
+    const branchName = typeof mergedMainBranchData.name === 'string' ? mergedMainBranchData.name.trim() : '';
+    if (!branchName || branchName === tenant.gymName) mainBranchDataToSave = { ...mergedMainBranchData, name: gymName };
+  }
+
   await tenant.update({
+    ...(businessName !== undefined && { businessName }),
     gymName: gymName || tenant.gymName,
     gymDescription: gymDescription !== undefined ? gymDescription : tenant.gymDescription,
     genderType: genderType || tenant.genderType,
     address: address !== undefined ? address : tenant.address,
     latitude: latitude !== undefined ? latitude : tenant.latitude,
     longitude: longitude !== undefined ? longitude : tenant.longitude,
-    mainBranchDataJson: mergedMainBranchData,
+    mainBranchDataJson: mainBranchDataToSave,
     kycDocumentsJson: kycDocumentsJson || tenant.kycDocumentsJson,
     logoUrl: logoUrl || tenant.logoUrl,
     coverImageUrl: coverImageUrl || tenant.coverImageUrl,
@@ -242,13 +255,26 @@ const updateMyTenant = async (userId, updates) => {
     throw createError('Tenant not found or not active', 404);
   }
 
-  const { businessName, email, phone, cityId } = updates;
+  const { email, phone, cityId } = updates;
+  // R-112 (C4): the brand follows the Step 2 rules (C1); a change is audited.
+  const businessName = updates.businessName !== undefined ? await validateBrandName(updates.businessName) : undefined;
+  const previousBusinessName = tenant.businessName;
   await tenant.update({
     ...(businessName !== undefined && { businessName }),
     ...(email !== undefined && { email }),
     ...(phone !== undefined && { phone }),
     ...(cityId !== undefined && { cityId }),
   });
+  if (businessName !== undefined && businessName !== previousBusinessName) {
+    await PlatformAuditLog.create({
+      actorUserId: userId,
+      action: 'tenant.brand_renamed',
+      targetType: 'tenant',
+      targetId: tenant.id,
+      details: { from: previousBusinessName, to: businessName },
+      createdAt: new Date(),
+    });
+  }
 
   await tenant.reload({ include: [{ model: City, as: 'city', attributes: ['id', 'name'] }] });
   return { tenant };

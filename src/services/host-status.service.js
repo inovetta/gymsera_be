@@ -130,6 +130,8 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
     nextAction,
     tenantId: tenant.id,
     gymName: tenant.gymName || tenant.businessName || null,
+    // R-112 (C5): the brand the host typed (null until Step 2 saves it).
+    brandName: tenant.businessName || null,
     applicationSubmitted: submitted && status !== HostStatus.REJECTED,
     listingComplete,
     payment: { done: paid, entitled, method: tenant.paymentMethod || null },

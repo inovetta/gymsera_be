@@ -605,6 +605,7 @@
    "path": "/api/v1/tenants/:p/gym-profile",
    "allowed": [
     "address",
+    "businessName",
     "coverImageUrl",
     "genderType",
     "gymDescription",
@@ -617,6 +618,7 @@
    ],
    "clientKeys": [
     "address",
+    "businessName",
     "coverImageUrl",
     "genderType",
     "gymDescription",
