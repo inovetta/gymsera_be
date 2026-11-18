@@ -464,7 +464,7 @@ const carryTenantLinkToListing = async (tenant, listing) => {
 
 /**
  * Provisioning step 4: the first branch's area (A9 rule 3). Own area of the draft; else the draft's own
- * link; else (old data) the tenant's area or link, only when it is in the branch's city; else none.
+ * link; else (old data) the tenant's first-branch default (R-111) or its link, only when it is in the branch's city; else none.
  * Returns { areaId, link: request | null } for the branch row about to be created.
  */
 const firstBranchArea = async (tenant, draft, branchCityId) => {

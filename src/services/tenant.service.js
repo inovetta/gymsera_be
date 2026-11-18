@@ -221,7 +221,7 @@ const updateMyTenant = async (userId, updates) => {
   });
   if (!tenant) throw createError('No gym business registered for this account', 404);
 
-  // NEW-265 (A4, R-109 F3): the organisation's area while the application is a draft or in review
+  // NEW-265 (A4, R-109 F3, R-111): the first-branch default area while the application is a draft or in review
   // ("Choose your area again"). After approval it only matters as a fallback (A9 rule 3): refused.
   const sendsArea = updates.areaId !== undefined || updates.areaRequestId !== undefined;
   if (sendsArea && tenant.status === TenantStatus.ACTIVE) {

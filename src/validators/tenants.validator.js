@@ -119,7 +119,7 @@ const tenantsValidators = {
       .isInt({ min: 1 })
       .withMessage('cityId must be a positive integer'),
 
-    // NEW-265 (A4, R-109 F3): the organisation's area while DRAFT / PENDING_REVIEW (422 when ACTIVE).
+    // NEW-265 (A4, R-109 F3, R-111): the first-branch default area while DRAFT / PENDING_REVIEW (422 when ACTIVE).
     body('areaId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaId must be a positive integer'),
     body('areaRequestId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaRequestId must be a positive integer'),
   ],
