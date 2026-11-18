@@ -17,12 +17,12 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-17 (NEW-266 server + app done; NEW-265 CMS part done; all local; reported to the owner) |
+| Last updated | 2026-11-18 (build 25 release build started) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Build 25 plan (R-110).** Done: NEW-265 server (PR branch `feat/new-265-pending-areas` pushed, owner opens / merges), NEW-266 be `fix/new-266-onboarding-amenities` (`../gymsera_be_new266`, `11f10d4`) and app `fix/new-266-onboarding-amenities` (`../gyms_era_new266`, `75d78d0`), NEW-265 CMS `feat/new-265-unmatched-areas` (`../gymsera_cms_new265`, `ee9a601`). NEW-266 and CMS branches are local, not pushed. No deploy, no release build, no push to `main` / `master` |
+| Current prompt | **Build 25 release (owner, 2026-11-18).** Server p032 / `cc887b3` deployed and verified by the owner. Build iOS and Android 1.0.0+25 from app `feat/new-265-pending-areas` `8739852` (includes NEW-266 `75d78d0` and the version commit `cc5fabf`), worktree `../gyms_era_new265`. No merge, no push to `master`, no upload |
 | Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | NEW-265 A2 app part (next) |
-| Step within issue | Not started. Worktree from the NEW-266 app branch (`75d78d0`, itself from `origin/master` `10f8033`), own version commit 1.0.0+25 first; MUST = Become a Host path (steps 1 and 3 picker, typed requests, keep / clear state F1/F2, resume, "Choose your area again" via `PATCH /tenants/me`); nice to have = Add listing / Add branch / Edit location pickers, reverse-geocode suggestion (R-110). Flutter: `~/fvm/versions/stable` (3.47.9), never 3.44.1 (it rewrites `pubspec.lock`); `flutter analyze` adds an `exclude:` block to `analysis_options.yaml`: never commit it |
+| Issue in progress | Build 25 |
+| Step within issue | Secret files symlinked from the main checkout (`android/key.properties`, `android/local.properties`, `ios/Flutter/MapsKey.xcconfig`; the worktree's own generated `local.properties` had no Maps key). Next: `flutter test`, `flutter analyze`, IPA, AAB (both `--dart-define=APP_ENV=production`), then the checks of build 24 (targetSdk 36, 16 KB, purpose strings, privacy manifest, no secret / `.p8` bundled). Toolchain: `PATH=~/fvm/default/bin:/opt/homebrew/bin:$PATH` |
 
 **Owner approval (2026-11-16):** contract revision 2 (`4c684b5`), all four readings of R-109 ((a) listing area out of the traveller chain, (b) admin routes real areas only but clear the link and show `pendingArea`, (c) `main_branch` link target and `area_status = 'rejected'`, (d) 422 `area_change_not_allowed` for `ACTIVE`), and R-109. Also approved: **NEW-266 (Become a Host amenities lost)**, to ship in build 25. Order after the server part is approved: NEW-266 server + app on a separate branch from `origin/main` / `origin/master`; then NEW-265 app part (build 1.0.0+25 from `origin/master` `10f8033`) and CMS part, which can start in parallel.
 
@@ -836,3 +836,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 154 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265 plan (read-only), then Part A day 1: API contract in spec §13, R-108 in §14 | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
 | 155 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265: read-only host-flow review (origin/main, origin/master), then contract revision 2 (spec §13 A1 to A9, R-109) | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
 | 156 | 2026-11-16/17 | Claude Code (Opus 5.5) | NEW-265 Part A server part (contract approved), then R-110: NEW-266 (be + app) and NEW-265 CMS part | NEW-265 Part A server part (p032, area requests, A4 writes / reads, admin queue, carry-over, discovery); 88 new tests | blocked on owner (server part approval) | yes |
+| 157 | 2026-11-18 | Claude Code (Opus 5.5) | Build 25 release from app `feat/new-265-pending-areas` `8739852` (tests, analyze, IPA, AAB, checks; no upload) | (in progress) | (in progress) | yes |
