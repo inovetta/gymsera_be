@@ -673,6 +673,7 @@ const createListing = async (req, res, next) => {
             latitude,
             longitude,
             googlePlaceId: googlePlaceId || null, // NEW-140: the address picked from Google
+            facilitiesJson: Array.isArray(req.body.facilitiesJson) ? req.body.facilitiesJson : null, // NEW-266
             phone: contactPhone || tenant.phone || null,
             images: Array.isArray(images) && images.length > 0
               ? images

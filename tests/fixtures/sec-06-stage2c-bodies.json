@@ -235,6 +235,7 @@
     "cityId",
     "contactPhone",
     "coverImageUrl",
+    "facilitiesJson",
     "genderType",
     "googlePlaceId",
     "gymDescription",

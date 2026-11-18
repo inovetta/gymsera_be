@@ -61,6 +61,10 @@ const tenantsValidators = {
     body('mainBranchData.areaId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaId must be a positive integer'),
     // NEW-265 (A4): a pending area request for the draft first branch (null clears it).
     body('mainBranchData.areaRequestId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaRequestId must be a positive integer'),
+    // NEW-266: the amenities picked in Become a Host (names), copied to the first branch at approval.
+    body('mainBranchData.facilitiesJson').optional({ nullable: true }).isArray({ max: 50 }).withMessage('Amenities must be a list of up to 50 names'),
+    body('mainBranchData.facilitiesJson.*').isString().withMessage('Each amenity must be a name')
+      .bail().trim().isLength({ min: 1, max: 100 }).withMessage('Each amenity must be 1 to 100 characters'),
     body('mainBranchData.plans').optional().isArray().withMessage('mainBranchData.plans must be an array'),
     body('mainBranchData.plans.*.name').optional().trim().notEmpty().withMessage('Plan name cannot be empty'),
     body('mainBranchData.plans.*.price').optional().isFloat({ min: 0 }).withMessage('Plan price must be a valid number >= 0'),
