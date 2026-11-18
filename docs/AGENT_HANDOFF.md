@@ -17,12 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-18 (NEW-267 and R-112 built: server, app, CMS; waiting for the owner) |
+| Last updated | 2026-11-18 (R-112 approved and pushed; NEW-269 web built; R-113 contract revision 1 written, waiting for the owner) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Build 26 (R-112 + NEW-267).** be `feat/r-112-brand-name` (`../gymsera_be_brand` from `origin/main` `cc887b3`: `b56e474` contract, `051f301` server, `fcad4c6` unchanged brand + results, this docs commit); app `feat/r-112-brand-name` (`../gyms_era_brand` from `8739852`: `a4eb24f` 1.0.0+26, `cc037b6` + `a69f104` NEW-267, `bfc8bd4` R-112); CMS `feat/r-112-brand-name` (`../gymsera_cms_brand` from `origin/main` `0aeef5c`: `9103362`). Not pushed, no PRs, no deploy, no release build |
-| Prompt status | `DONE` |
-| Issue in progress | (none) |
-| Step within issue | be full suite 364 / 367 suites, 3783 / 3787 (known: staging-script 2, two zkteco load tests green alone); R-112 be test 20. App 557 / 557, analyze 157. CMS Vitest 118 / 763 (Node 22) |
+| Current prompt | **R-113 opening hours (build 27)**, after R-112 (approved, pushed: be / app / CMS `feat/r-112-brand-name`). R-113 be branch `feat/r-113-hours` (worktree `../gymsera_be_hours`, from `feat/r-112-brand-name` `1609083`): this docs commit only. Web `feat/new-269-brand-byline` `23746a3` (worktree `../gymsera_web_brand`, not pushed) |
+| Prompt status | `BLOCKED ON OWNER` |
+| Issue in progress | R-113 contract revision 1 (spec §13 "R-113", H1 to H10), waiting for approval |
+| Step within issue | Nothing of R-113 built. After approval: be failing test `tests/regression/r-113-hours.test.js`, then migration 029 + schedule rules + H4 writes + H5 old-client rules + H6 reads + H7 filter; app build 27 in parallel (worktree from `feat/r-112-brand-name`, own commit 1.0.0+27). NEW-273 seconds: separate small fix |
+
+**Next action (R-113, 2026-11-18):** **Owner:** approve or correct the R-113 contract (spec §13 "R-113" H1 to H10; NEW-270 to NEW-275 = D1 to D6), open PRs for the three R-112 branches, say whether to push web `feat/new-269-brand-byline`. **Agent, after approval:** be and app build 27 in parallel against the contract (failing tests first), then website D5 and CMS read-only week + D6. No deploy, no push to main / master, no release build.
 
 **Next action (R-112, 2026-11-18):** **Owner:** review the three branches (spec §13 "R-112" server / app / CMS parts and the readings there; NEW-267 root cause), push and open PRs, merge be first. Deploy: the API first (no migration), then the CMS, then build 26 (never build 26 before the API: Step 1 and Step 2 need it). Decide NEW-268 (other `.value ??` reads) and NEW-269 (website "by <brand>"). **Agent, next:** those when asked; build 26 release build only on the owner's word.
 
@@ -840,3 +842,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 155 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265: read-only host-flow review (origin/main, origin/master), then contract revision 2 (spec §13 A1 to A9, R-109) | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
 | 156 | 2026-11-16/17 | Claude Code (Opus 5.5) | NEW-265 Part A server part (contract approved), then R-110: NEW-266 (be + app) and NEW-265 CMS part | NEW-265 Part A server part (p032, area requests, A4 writes / reads, admin queue, carry-over, discovery); 88 new tests | blocked on owner (server part approval) | yes |
 | 157 | 2026-11-18 | Claude Code (Opus 5.5) | Build 26: NEW-267 (step 6 grey overlay) and R-112 (brand name) | app `a4eb24f`, `cc037b6`, `a69f104`, `bfc8bd4` (557 / 557); be `b56e474`, `051f301`, `fcad4c6` (full 3783 / 3787, known failures only); CMS `9103362` (763) | task complete | yes |
+| 158 | 2026-11-18 | Claude Code (Opus 5.5) | R-112 approved: Gym name label, push; NEW-269 web; read-only answer on creating the real gym through the CMS; R-113 record + contract | app `93d0dab` (557 / 557); be `1609083`; web `23746a3` (202); R-113 docs commit | blocked on owner (R-113 contract) | yes |
