@@ -16,8 +16,8 @@ as written; when it does not, write what you saw (and a screenshot) in *Notes* a
 - [ ] Server deployed with migration **p032** (the dry run listed **only** `p032_area_requests`, R-110), the
       NEW-266 server change, and the API restarted.
 - [ ] CMS deployed from `feat/new-265-unmatched-areas`; you can sign in as a platform admin.
-- [ ] Build 25 installed from **TestFlight** (iPhone) and **Play internal testing** (Android). x
-      shows **1.0.0 (25)**.
+- [ ] Build 25 installed from **TestFlight** (iPhone) and **Play internal testing** (Android). The version at the
+      bottom of **Settings** shows **1.0.0**, and TestFlight / Play shows build **25**.
 - [ ] Two test host accounts that have **not** become hosts yet (call them **Host A** and **Host B**), and one
       traveller account. Use test e-mail addresses only.
 - [ ] Pick a test city that already has a few areas in CMS › Cities & Areas (for example Peshawar). Note two of
