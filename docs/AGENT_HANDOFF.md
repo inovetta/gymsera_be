@@ -17,12 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-18 (NEW-265 server merged `0031df6`; NEW-266 be rebased on it; A2 app MUST + nice to have done; R-111 wording) |
+| Last updated | 2026-11-18 (NEW-267 step 6 overlay fixed in the app; R-112 brand name: contract written, server part next) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Build 25 plan (R-110, R-111).** Merged: NEW-265 server (`0031df6`). Branches (no PRs opened by the agent, no deploy, no release build): be `fix/new-266-onboarding-amenities` (rebased on `0031df6`), be `docs/r-111-first-branch-default` (this file), app `fix/new-266-onboarding-amenities` and app `feat/new-265-pending-areas` (`../gyms_era_new265`, on top of NEW-266: `cc5fabf` version 1.0.0+25, `b7e7726` MUST, `8739852` nice to have + R-111 wording), CMS `feat/new-265-unmatched-areas` |
-| Prompt status | `IN PROGRESS` <!-- NOT STARTED / IN PROGRESS / BLOCKED ON OWNER / DONE --> |
-| Issue in progress | NEW-265 A2 app done; waiting for the owner's review |
-| Step within issue | App: `flutter test` 533 / 533, analyze 157 (= before). R-111 (2026-11-18, wording only): `tenants.area_id` = the **first-branch default area** (pre-fills Step 3, copied to the first listing and branch at approval, same-city fallback only); Step 1 copy "Where is your first gym located?". Tests: run one suite at a time (the local MySQL container was OOM-killed twice when the Flutter suite and the be suite ran together) |
+| Current prompt | **Build 26 (R-112 + NEW-267).** Branches: app `feat/r-112-brand-name` (worktree `../gyms_era_brand`, from `feat/new-265-pending-areas` `8739852`: `a4eb24f` version 1.0.0+26, `cc037b6` NEW-267); be `feat/r-112-brand-name` (worktree `../gymsera_be_brand`, from `origin/main` `cc887b3`; this docs commit = contract). CMS branch not created yet. Not pushed, no PRs, no deploy, no release build |
+| Prompt status | `IN PROGRESS` |
+| Issue in progress | R-112 server part (contract: spec §13 "R-112", C1 to C7) |
+| Step within issue | NEW-267 DONE (app, 3 tests red then green; build 24 has the bug too). R-112: contract committed; next write `tests/regression/r-112-brand-name.test.js` (red), then C1 to C5 in be |
+
+**Next action (R-112, 2026-11-18):** be: failing test `tests/regression/r-112-brand-name.test.js` for C1 to C5, then the fix (`brandNameRules` next to `validateAreaName` in `area-requests.service.js` reuse, register optional, gym-profile `businessName` + branch draft name, PATCH /tenants/me audit `tenant.brand_renamed`, `/host/status` `brandName`); report counts. Then app (Step 2 two fields, resume, status panel, Today header, gym detail "by", Edit Organization / Edit Business Profile) and CMS (tenant list / detail, Settings › Profile). Run one test suite at a time (MySQL OOM).
 
 **Owner approval (2026-11-16):** contract revision 2 (`4c684b5`), all four readings of R-109 ((a) listing area out of the traveller chain, (b) admin routes real areas only but clear the link and show `pendingArea`, (c) `main_branch` link target and `area_status = 'rejected'`, (d) 422 `area_change_not_allowed` for `ACTIVE`), and R-109. Also approved: **NEW-266 (Become a Host amenities lost)**, to ship in build 25. Order after the server part is approved: NEW-266 server + app on a separate branch from `origin/main` / `origin/master`; then NEW-265 app part (build 1.0.0+25 from `origin/master` `10f8033`) and CMS part, which can start in parallel.
 
@@ -836,3 +838,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 154 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265 plan (read-only), then Part A day 1: API contract in spec §13, R-108 in §14 | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
 | 155 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265: read-only host-flow review (origin/main, origin/master), then contract revision 2 (spec §13 A1 to A9, R-109) | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
 | 156 | 2026-11-16/17 | Claude Code (Opus 5.5) | NEW-265 Part A server part (contract approved), then R-110: NEW-266 (be + app) and NEW-265 CMS part | NEW-265 Part A server part (p032, area requests, A4 writes / reads, admin queue, carry-over, discovery); 88 new tests | blocked on owner (server part approval) | yes |
+| 157 | 2026-11-18 | Claude Code (Opus 5.5) | Build 26: NEW-267 (step 6 grey overlay) and R-112 (brand name) | app `a4eb24f` 1.0.0+26, `cc037b6` NEW-267 (3 tests); be contract docs commit | (open) | |
