@@ -849,6 +849,7 @@ const deleteAlias = async (id, adminId) => {
 
 module.exports = {
   cleanAreaName,
+  LINK, // R-112: the brand-name rules reuse it
   nameKeyOf,
   validateAreaName,
   findAreaByKey,

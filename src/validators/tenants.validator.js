@@ -4,10 +4,11 @@ const tenantsValidators = {
   register: [
     // NEW-265 (A4): a pending area request instead of areaId (type-checked; the service checks the rest).
     body('areaRequestId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('areaRequestId must be a positive integer'),
+    // R-112 (C2): optional. Build 26 types the brand on Step 2 (gym-profile); builds up to 25 still send
+    // the generated "<full name>'s Gym Business" here, checked as before.
     body('businessName')
+      .optional({ nullable: true })
       .trim()
-      .notEmpty()
-      .withMessage('Business name is required')
       .isLength({ max: 200 })
       .withMessage('Business name must be 200 characters or fewer'),
 
@@ -41,6 +42,9 @@ const tenantsValidators = {
       .withMessage('Gym name must be 200 characters or fewer'),
 
     body('gymDescription').optional().isString(),
+
+    // R-112 (C3): the brand / organisation name; the rules (C1) are in brand-name.service (422 brand_name_*).
+    body('businessName').optional().isString().withMessage('Brand name must be text'),
 
     // SEC-06: read by tenant.service#submitGymProfile
     body('latitude').optional({ nullable: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be between -90 and 90'),
@@ -94,13 +98,8 @@ const tenantsValidators = {
   ],
 
   updateMyTenant: [
-    body('businessName')
-      .optional()
-      .trim()
-      .notEmpty()
-      .withMessage('Business name cannot be blank')
-      .isLength({ max: 200 })
-      .withMessage('Business name must be 200 characters or fewer'),
+    // R-112 (C4): the brand rules (C1) are in brand-name.service (422 brand_name_*).
+    body('businessName').optional().isString().withMessage('Brand name must be text'),
 
     body('email')
       .optional()
