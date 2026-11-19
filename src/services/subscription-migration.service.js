@@ -56,7 +56,8 @@
  */
 const { URLSearchParams } = require('url');
 const { Op, UniqueConstraintError } = require('sequelize');
-const { Tenant, TenantSubscription } = require('../models/platform');
+const { Tenant, TenantSubscription, PlatformAuditLog } = require('../models/platform');
+const { TenantStatus } = require('../constants/subscription-status');
 const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
 
@@ -422,6 +423,15 @@ const applyVerifiedSubscription = async (tenantId, values, opts = {}) => {
   }
 };
 
+/**
+ * NEW-276: true when a tenant no longer exists for billing — no row (launch wipe, hard delete)
+ * or DELETED (account deletion finished). PENDING_DELETION still exists: the owner can cancel.
+ */
+const _tenantGone = async (id, transaction) => {
+  const tenant = await Tenant.findByPk(id, { attributes: ['id', 'status'], transaction });
+  return !tenant || tenant.status === TenantStatus.DELETED;
+};
+
 const _ownedByOtherAccount = () => {
   const err = createError('This subscription belongs to a different GymsEra account.', 409);
   err.code = 'subscription_owned_by_other_account';
@@ -445,7 +455,7 @@ const _applyVerifiedSubscriptionOnce = async (
 
   const platformTx = await sequelize.transaction();
   try {
-    const existing = await TenantSubscription.findOne({
+    let existing = await TenantSubscription.findOne({
       where: { platform: values.platform, externalOriginalTransactionId: values.externalOriginalTransactionId },
       transaction: platformTx,
       lock: true,
@@ -463,26 +473,53 @@ const _applyVerifiedSubscriptionOnce = async (
     // transaction id), so an admin can see which two accounts share the store account.
     const bound = boundTenantId ? String(boundTenantId).toLowerCase() : null;
     const mismatch = (text) => console.warn(`[${logLabel}] ownership mismatch: ${values.platform} ${text}`);
-    if (existing) {
-      if (existing.tenantId !== tenantId) {
+    // NEW-276: the other tenant may no longer exist (launch wipe, account deletion). Then nobody
+    // can use the plan but the caller, so the caller takes it over; the takeover is audited below.
+    let takeover = null;
+    if (existing && existing.tenantId !== tenantId) {
+      if (!(await _tenantGone(existing.tenantId, platformTx))) {
         mismatch(
           `TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}; tenant ${tenantId} tried to ` +
             'use it (same store account) and was refused (409). It stays with its owner.'
         );
         throw _ownedByOtherAccount();
       }
+      // The deleted tenant keeps its row as history, detached from the store id so the
+      // caller's new row can carry it (UNIQUE platform + external id).
+      await existing.update(
+        {
+          externalOriginalTransactionId: `released:${existing.id}`,
+          externalTransactionId: `released:${existing.id}`,
+          status: _entitling(existing.status) ? 'CANCELLED' : existing.status,
+          statusNote: `Store subscription taken over by tenant ${tenantId} on ${new Date().toISOString().split('T')[0]} (this tenant was deleted).`,
+        },
+        { transaction: platformTx }
+      );
+      takeover = { fromTenantId: existing.tenantId, reason: 'owner_tenant_deleted', releasedSubscriptionId: existing.id };
+      existing = null;
+    }
+    if (existing) {
       if (bound && bound !== String(existing.tenantId).toLowerCase()) {
         mismatch(
           `TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}, but the store says ` +
             `tenant ${bound} made the purchase (same store account). Left with its current owner; needs a human look.`
         );
       }
-    } else if (bound && bound !== String(tenantId).toLowerCase()) {
-      mismatch(
-        `purchase is bound by the store to tenant ${bound}; tenant ${tenantId} tried to use it (same store account) ` +
-          'and was refused (409). No row was written.'
+    } else if (bound && bound !== String(tenantId).toLowerCase() && !(takeover && bound === String(takeover.fromTenantId).toLowerCase())) {
+      if (!(await _tenantGone(bound, platformTx))) {
+        mismatch(
+          `purchase is bound by the store to tenant ${bound}; tenant ${tenantId} tried to use it (same store account) ` +
+            'and was refused (409). No row was written.'
+        );
+        throw _ownedByOtherAccount();
+      }
+      takeover = takeover || { fromTenantId: bound, reason: 'bound_tenant_gone' };
+    }
+    if (takeover) {
+      console.warn(
+        `[${logLabel}] ownership takeover: ${values.platform} tenant ${takeover.fromTenantId} no longer exists ` +
+          `(${takeover.reason}); tenant ${tenantId} takes the subscription over.`
       );
-      throw _ownedByOtherAccount();
     }
 
     const previousMaxBranches = existing ? existing.branchCount : null;
@@ -622,6 +659,21 @@ const _applyVerifiedSubscriptionOnce = async (
           actorType: 'SYSTEM',
         });
       }
+    }
+
+    if (takeover) {
+      // NEW-276: ids only, never the store's transaction id (as the ownership-mismatch line).
+      await PlatformAuditLog.create(
+        {
+          actorUserId: null,
+          action: 'billing.store_subscription_taken_over',
+          targetType: 'TenantSubscription',
+          targetId: subscription.id,
+          details: { platform: values.platform, tenantId, ...takeover },
+          createdAt: new Date(),
+        },
+        { transaction: platformTx }
+      );
     }
 
     await platformTx.commit();
