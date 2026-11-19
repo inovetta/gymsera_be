@@ -17,12 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-18 (NEW-267 and R-112 built: server, app, CMS; waiting for the owner) |
+| Last updated | 2026-11-19 (NEW-276 to NEW-280: Apple purchase after the launch wipe; server and app build 27) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Build 26 (R-112 + NEW-267).** be `feat/r-112-brand-name` (`../gymsera_be_brand` from `origin/main` `cc887b3`: `b56e474` contract, `051f301` server, `fcad4c6` unchanged brand + results, this docs commit); app `feat/r-112-brand-name` (`../gyms_era_brand` from `8739852`: `a4eb24f` 1.0.0+26, `cc037b6` + `a69f104` NEW-267, `bfc8bd4` R-112); CMS `feat/r-112-brand-name` (`../gymsera_cms_brand` from `origin/main` `0aeef5c`: `9103362`). Not pushed, no PRs, no deploy, no release build |
+| Current prompt | **Apple purchase never activates (owner, 2026-11-19).** Production log: `POST /billing/ios/sync` 409 "bound by the store to tenant 570aba97… (wiped)". be `fix/new-276-apple-ownership-takeover` (`../gymsera_be_new276` from `origin/main` `5c9eb4d`: `71669b1` NEW-276 takeover, `8fbcef3` NEW-277 bundleId, `6058b22` NEW-278 Apple timeouts, plus this docs commit). App `fix/new-279-iap-recovery` (`../gyms_era_new279` from `origin/feat/r-112-brand-name` `93d0dab`, build 26 not merged yet: `6b5d29d` NEW-279 409 words, `b7aae6d` NEW-280 watchdog / unfinished transaction / Restore, `f335609` 1.0.0+27). No deploy, no push to main / master, no release build |
 | Prompt status | `DONE` |
 | Issue in progress | (none) |
-| Step within issue | be full suite 364 / 367 suites, 3783 / 3787 (known: staging-script 2, two zkteco load tests green alone); R-112 be test 20. App 557 / 557, analyze 157. CMS Vitest 118 / 763 (Node 22) |
+| Step within issue | Results: see spec §13 "NEW-276 to NEW-278" (rows NEW-276 to NEW-280) |
+
+**Next action (NEW-276 to NEW-280, 2026-11-19):** **Owner:** review; open the be PR (`fix/new-276-apple-ownership-takeover` into `main`) and the app PR (`fix/new-279-iap-recovery`, stacked on `feat/r-112-brand-name`: merge build 26 first). Deploy order: the API first (no migration; optional `APPLE_API_TIMEOUT_MS`), then build 27. **Before the App Store release:** remove `APPLE_IAP_ENVIRONMENT` from the production API (or set `Production`); with `Sandbox` every real purchase is refused (spec §13 NEW-276 section). **Decide:** the rule for SANDBOX store plans on the production server (proposal in §3 "Sandbox plans on production"). **Agent, next:** that decision when given; build 27 release build only on the owner's word.
 
 **Next action (R-112, 2026-11-18):** **Owner:** review the three branches (spec §13 "R-112" server / app / CMS parts and the readings there; NEW-267 root cause), push and open PRs, merge be first. Deploy: the API first (no migration), then the CMS, then build 26 (never build 26 before the API: Step 1 and Step 2 need it). Decide NEW-268 (other `.value ??` reads) and NEW-269 (website "by <brand>"). **Agent, next:** those when asked; build 26 release build only on the owner's word.
 
@@ -530,6 +532,12 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 
 ## 3. Notes for the next agent
 
+**Sandbox plans on production (2026-11-19, read-only analysis, owner decision pending).** Facts at `origin/main` `5c9eb4d`:
+(a) A SANDBOX Apple or Google row is verified and **entitles** like a real one (`apple-billing.service.js#syncSubscriptionFromTransaction` stores `environment`; `subscription-quota.service.js` `ENTITLING_STATUSES` ignores it): host area, branches and approval all work. R-87 (`discovery.service.js:72-83`): it **never makes the gym live for travellers** unless `SANDBOX_PURCHASES_GO_LIVE=true` (staging only). So a real gym on a sandbox plan is approved but invisible.
+(b) When it lapses, Apple sends EXPIRED (if the sandbox notification URL is set), or the 01:00 daily job finds it: `reconcileStoreSubscriptions` re-fetches store rows (EXPIRED ones for 7 more days), and the date pass marks `ACTIVE` rows with `endDate < today` EXPIRED (`subscription-expiry.cron.js:225-257`). The tenant stays ACTIVE (REL-04). With no entitling plan, every active branch is over quota: 7 days of grace from `entitlementEndedAt` (`OVERQUOTA_GRACE_DAYS`), then branches lock; members can still check in for 7 more days (`MEMBER_CHECKIN_GRACE_DAYS`). It unlocks automatically when a plan entitles again (R-82).
+(c) Bank transfer (R-95) while the store row exists: refused with 409 `store_plan_active` while it entitles **and** auto-renews (`plan-payment.service.js#storeBlock`, also checked at approval). Allowed as soon as auto-renew is off (cancelled in the store) or the row has ended. On approval, the MANUAL PAID row supersedes it: a store row with auto-renew off is closed `CANCELLED` "no action needed" (`subscription-migration.service.js` `newPlatform === 'MANUAL' && autoRenew === false`). The period starts at the end of a running store plan (store rows count as paid in `periodFor`), which for a sandbox row is today or tomorrow.
+**Proposal (not decided):** keep accepting sandbox transactions on production (App Review requires it), but a SANDBOX row never stands in the way of a real plan: `storeBlock` and approval ignore SANDBOX rows; a real plan closes a SANDBOX row `CANCELLED` "test purchase replaced, no action needed" (never `PENDING_CANCEL`); `periodFor` never extends from a SANDBOX row; and the CMS shows "Test purchase (Sandbox)" on such rows. Record the answer in spec §14 before building it.
+
 <!-- Things you learned that are not obvious from the code or §13: commands that work, test DB setup quirks,
      files that look relevant but aren't, dead ends already tried. Append; delete only when no longer true. -->
 
@@ -840,3 +848,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 155 | 2026-11-16 | Claude Code (Opus 5.5) | NEW-265: read-only host-flow review (origin/main, origin/master), then contract revision 2 (spec §13 A1 to A9, R-109) | — (contract only; waiting for approval) | blocked on owner (contract approval) | yes |
 | 156 | 2026-11-16/17 | Claude Code (Opus 5.5) | NEW-265 Part A server part (contract approved), then R-110: NEW-266 (be + app) and NEW-265 CMS part | NEW-265 Part A server part (p032, area requests, A4 writes / reads, admin queue, carry-over, discovery); 88 new tests | blocked on owner (server part approval) | yes |
 | 157 | 2026-11-18 | Claude Code (Opus 5.5) | Build 26: NEW-267 (step 6 grey overlay) and R-112 (brand name) | app `a4eb24f`, `cc037b6`, `a69f104`, `bfc8bd4` (557 / 557); be `b56e474`, `051f301`, `fcad4c6` (full 3783 / 3787, known failures only); CMS `9103362` (763) | task complete | yes |
+| 158 | 2026-11-19 | Claude Code (Opus 5.5) | Apple purchase after the launch wipe (owner): read-only diagnosis, then NEW-276 to NEW-278 (be) and NEW-279 / NEW-280 + build 27 (app) | be `71669b1`, `8fbcef3`, `6058b22`; app `6b5d29d`, `b7aae6d`, `f335609`; sandbox-on-production analysis in §3 | task complete | yes |
