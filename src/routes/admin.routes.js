@@ -287,12 +287,12 @@ router.delete('/tenants/:id/gym-listing/images', validate.allowBody(['imageUrl']
 // the location fields get the host routes' range and place-id rules (gyms.validator.js branchLocation).
 router.post(
   '/tenants/:id/branches',
-  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages'] }),
+  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'phone', 'openingTime', 'closingTime', 'hours', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages'] }),
   adminController.createAdminTenantBranch
 );
 router.patch(
   '/tenants/:id/branches/:branchId',
-  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'status', 'facilities'] }),
+  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hours', 'facilitiesJson', 'status', 'facilities'] }),
   adminController.updateAdminTenantBranch
 );
 router.post('/tenants/:id/branches/:branchId/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadAdminBranchImages);

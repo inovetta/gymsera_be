@@ -1485,6 +1485,26 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // R-113 H1 (owner 2026-11-18, build 27): a branch's opening hours as a weekly schedule
+    // (src/services/branch-hours.service.js). NULL = no schedule: the old opening_time / closing_time
+    // pair, which stays (written from the schedule as a summary for old clients), is read as
+    // "every day, one slot". No backfill, nothing dropped.
+    // Rollback (manual):
+    //   ALTER TABLE `branches` DROP COLUMN `hours_json`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 29;
+    version: 29,
+    name: '029_branch_hours_json',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const has = (await sequelize.query(
+        'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'branches\' AND COLUMN_NAME = \'hours_json\'',
+        { type: QueryTypes.SELECT }
+      )).length > 0;
+      if (!has) await sequelize.query('ALTER TABLE `branches` ADD COLUMN `hours_json` JSON NULL');
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

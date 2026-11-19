@@ -489,8 +489,10 @@ const stepCreateBranch = async (ctx) => {
         googlePlaceId: b.placeId || null, // Phase 7 P3: the address the host picked from Google
         currency: firstBranchCurrency(), // BUG-09 / R-80: the currency Become a Host showed
         phone: b.phone || tenant.phone || null,
-        openingTime: b.openingTime || null,
-        closingTime: b.closingTime || null,
+        // R-113 H4: the draft's week (Become a Host); older drafts keep their pair.
+        ...(b.hoursJson && typeof b.hoursJson === 'object'
+          ? { hours: b.hoursJson }
+          : _draftPair(b.openingTime, b.closingTime)),
         images: onboardingImages,
         // NEW-266: the amenities picked in Become a Host.
         facilitiesJson: onboardingFacilities,
@@ -630,6 +632,17 @@ const stepCreateBranch = async (ctx) => {
 };
 
 // ── Step 5: the tenant's plan, then its unbuilt slots ────────────────────────
+/**
+ * R-113 / NEW-273: an old draft's pair was never checked (it may read "06:00:00" or be junk). Approval
+ * must not fail on it: a real HH:MM pair is copied, anything else gives the branch no hours.
+ */
+const _draftPair = (open, close) => {
+  const hm = (t) => (typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d/.test(t) ? t.slice(0, 5) : null);
+  const o = hm(open);
+  const c = typeof close === 'string' && close.slice(0, 5) === '24:00' ? '24:00' : hm(close);
+  return o && c && o !== c ? { openingTime: o, closingTime: c } : { openingTime: null, closingTime: null };
+};
+
 const stepLinkSubscription = async (ctx) => {
   const { tenant } = ctx;
 

@@ -5,6 +5,7 @@ const discoveryCache = require('./discovery-cache.service');
 const { ENTITLING_STATUSES } = require('./subscription-quota.service');
 const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
+const branchHours = require('./branch-hours.service');
 
 /**
  * The one rule for "travellers can see this branch": open (ACTIVE), approved for
@@ -256,6 +257,11 @@ const _buildAllActiveBranches = async () => {
             city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
             // NEW-265 (R-109): the area of the chain above, never the listing's own.
             area: finalAreaId ? (areaMap.get(finalAreaId) || null) : null,
+            // R-113 H6: the week and "open now" in the branch's timezone (as of the snapshot, up to the
+            // cache time late), plus the old pair as HH:MM.
+            openingTime: b.openingTime || null,
+            closingTime: b.closingTime || null,
+            ...branchHours.readFields(b),
           };
           branchesList.push(mappedBranch);
         }
@@ -520,7 +526,8 @@ const getGym = async (id) => {
             ...TRAVELLER_VISIBLE_BRANCH(),
             ...(gymIdToUse ? { gymId: gymIdToUse } : {}),
           },
-          attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
+          // R-113 H6: hoursJson and timezone for the week and "open now" (Branch#toJSON).
+          attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hoursJson', 'timezone', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
           order: [['createdAt', 'ASC']],
         }),
       ]);
@@ -539,7 +546,8 @@ const getGym = async (id) => {
       }
 
       branches = branches.map(b => {
-        const plainBranch = b.get({ plain: true });
+        // R-113 H6: the same branch object as everywhere else (Branch#toJSON adds the week and "open now").
+        const plainBranch = b.toJSON();
         plainBranch.gymListingId = branchToListingMap[plainBranch.id] || null;
         return plainBranch;
       });

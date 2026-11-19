@@ -11,6 +11,7 @@ const { getNextInvoiceNumber } = require('./invoice-sequence.service');
 const { normalizeCurrency, isSupportedCurrency } = require('../utils/currency.utils');
 const { assertAreaInCity } = require('./places.service');
 const areaRequests = require('./area-requests.service');
+const branchHours = require('./branch-hours.service');
 
 /** A valid IANA timezone, or a 400. Intl throws on an unknown zone, which would break every date in the branch. */
 const _assertTimezone = (timezone) => {
@@ -290,6 +291,7 @@ const _countActiveBranchesForTenant = async (tenantDb) => {
  * callers (createBranch, createListing) always have one open.
  */
 const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { transaction, allowNoPlan = false } = {}) => {
+  const hoursValues = branchHours.resolveWrite(data, {}); // R-113 H4 / H5
   const { Branch } = tenantDb.models;
 
   // NEW-146: no plan is ever invented (it used to be "<branch> Membership" at 0, visible to
@@ -331,8 +333,9 @@ const _createBranchRecord = async (tenantDb, gym, targetListingId, data, { trans
     latitude: data.latitude || null,
     longitude: data.longitude || null,
     googlePlaceId: data.googlePlaceId || null,
-    openingTime: data.openingTime || null,
-    closingTime: data.closingTime || null,
+    openingTime: hoursValues ? hoursValues.openingTime : null,
+    closingTime: hoursValues ? hoursValues.closingTime : null,
+    hoursJson: hoursValues ? hoursValues.hoursJson : null,
     phone: data.phone || null,
     facilitiesJson: Array.isArray(data.facilities) ? data.facilities : (data.facilitiesJson || null),
     imagesJson: Array.isArray(data.images) ? data.images : (data.imagesJson || null),
@@ -485,6 +488,8 @@ const _guardLastBranchInOrganization = async (tenantDb, branch, confirmed) => {
 };
 
 const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, options = {}) => {
+  // R-113 H4 / H5: the weekly schedule (or the old pair), checked before anything is created.
+  branchHours.resolveWrite(data, {});
   const {
     transaction: callerTx = null,
     skipCapacityCheck = false,
@@ -710,6 +715,8 @@ const updateBranch = async (tenantDb, branchId, data, { tenantId = null, userId 
   const { Branch, MembershipPlan } = tenantDb.models;
   const branch = await Branch.findByPk(branchId);
   if (!branch) throw createError('Branch not found', 404);
+  // R-113 H4 / H5: the week or the old pair, decided before anything changes (422 / 409).
+  const hoursValues = branchHours.resolveWrite(data, branch);
 
   // NEW-259: a new city or area must still pair up (the city sent, else the branch's own).
   // NEW-265 (A4, R-109 F1): or a pending area request; kept when neither key is sent, cleared by null or
@@ -810,7 +817,8 @@ const updateBranch = async (tenantDb, branchId, data, { tenantId = null, userId 
   }
 
   // Deliberately no 'status' — see the guard above.
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'googlePlaceId', 'openingTime', 'closingTime', 'phone', 'facilitiesJson', 'imagesJson', 'travelerVisibilityStatus', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
+  // R-113: openingTime / closingTime are written from hoursValues (the schedule's summary), never directly.
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'googlePlaceId', 'phone', 'facilitiesJson', 'imagesJson', 'travelerVisibilityStatus', 'tagline', 'category', 'tagsJson', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'country'];
   fields.forEach((f) => {
     if (data[f] !== undefined) branch[f] = data[f];
   });
@@ -818,6 +826,7 @@ const updateBranch = async (tenantDb, branchId, data, { tenantId = null, userId 
   if (Array.isArray(data.facilities)) branch.facilitiesJson = data.facilities;
   if (Array.isArray(data.images)) branch.imagesJson = data.images;
   if (Array.isArray(data.tags)) branch.tagsJson = data.tags;
+  if (hoursValues) Object.assign(branch, hoursValues);
   await branch.save();
   await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'branch', targetId: branch.id });
 

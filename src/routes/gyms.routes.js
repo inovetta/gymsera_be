@@ -153,7 +153,7 @@ router.post(
   '/branches',
   authorize('GYM_HOST'),
   idempotency(), // NEW-282: a retried create answers the first result
-  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities'] }),
+  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities', 'hours'] }), // R-113 H4
   gymsController.createBranch
 );
 
@@ -197,7 +197,7 @@ router.get('/branches/:branchId', gymsController.getBranch);
  */
 router.patch(
   '/branches/:branchId',
-  validate.strict(gymsValidators.updateBranch, { stage: 2, allow: ['facilities'] }),
+  validate.strict(gymsValidators.updateBranch, { stage: 2, allow: ['facilities', 'hours'] }), // R-113 H4
   gymsController.updateBranch
 );
 

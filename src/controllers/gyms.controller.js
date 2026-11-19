@@ -465,6 +465,7 @@ const updateBranchListingContent = async (req, res, next) => {
     if (imagesJson !== undefined) patch.imagesJson = imagesJson;
     if (openingTime !== undefined) patch.openingTime = openingTime;
     if (closingTime !== undefined) patch.closingTime = closingTime;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'hours')) patch.hours = req.body.hours; // R-113 H4
     if (address !== undefined) patch.address = address;
     if (phone !== undefined) patch.phone = phone;
     if (latitude !== undefined) patch.latitude = latitude;
