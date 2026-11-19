@@ -280,6 +280,7 @@ const filterBranches = (branches, {
   cityId,
   areaId,
   genderType,
+  audience,
   search,
   featured,
   category,
@@ -293,6 +294,7 @@ const filterBranches = (branches, {
   if (cityId) filtered = filtered.filter(b => b.cityId === parseInt(cityId));
   if (areaId) filtered = filtered.filter(b => b.areaId === parseInt(areaId));
   if (genderType) filtered = filtered.filter(b => b.genderType?.toLowerCase() === genderType.toLowerCase());
+  if (audience) filtered = filtered.filter(b => branchHours.matchesAudience(b, audience));
   if (featured === 'true' || featured === true) filtered = filtered.filter(b => b.isFeatured === true);
   if (category && category !== 'All') {
     const cats = typeof category === 'string' && category.includes(',')
@@ -358,6 +360,7 @@ const listGyms = async ({
   cityId,
   areaId,
   genderType,
+  audience,
   search,
   featured,
   category,
@@ -376,6 +379,7 @@ const listGyms = async ({
     cityId,
     areaId,
     genderType,
+    audience,
     search,
     featured,
     category,
@@ -666,13 +670,14 @@ const haversineKm = (lat1, lng1, lat2, lng2) => {
 };
 
 // ── nearbyGyms ────────────────────────────────────────────────────────────────
-const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1 }) => {
+const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1, audience = null }) => {
   const branches = await _getAllActiveBranches();
   const uLat = parseFloat(lat);
   const uLng = parseFloat(lng);
 
   const inRange = [];
   for (const b of branches) {
+    if (audience && !branchHours.matchesAudience(b, audience)) continue;
     if (b.latitude == null || b.longitude == null) continue;
     const dist = haversineKm(uLat, uLng, b.latitude, b.longitude);
     if (dist <= radiusKm) {
@@ -688,11 +693,14 @@ const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1 }) => 
 };
 
 // ── mapGyms ───────────────────────────────────────────────────────────────────
-const mapGyms = async ({ cityId } = {}) => {
+const mapGyms = async ({ cityId, audience = null } = {}) => {
   const branches = await _getAllActiveBranches();
   let filtered = branches.filter(b => b.latitude != null && b.longitude != null);
   if (cityId) {
     filtered = filtered.filter(b => b.cityId === parseInt(cityId));
+  }
+  if (audience) {
+    filtered = filtered.filter(b => branchHours.matchesAudience(b, audience));
   }
   return filtered;
 };

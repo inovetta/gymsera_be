@@ -222,4 +222,53 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     expect(branch.hoursJson.days.sun.closed).toBe(true);
     expect([branch.openingTime, branch.closingTime]).toEqual(['06:00', '19:00']);
   });
+
+  describe('H7 filter (audience=women|men)', () => {
+    const { matchesAudience } = require('../../src/services/branch-hours.service');
+
+    test('matchesAudience rules', () => {
+      const mixedAll = {
+        genderType: 'MIXED',
+        hours: { days: { mon: { closed: false, slots: [{ open: '08:00', close: '22:00', for: 'all' }] } } },
+      };
+      const mixedWithWomen = {
+        genderType: 'MIXED',
+        hours: { days: { mon: { closed: false, slots: [{ open: '10:00', close: '12:00', for: 'women' }] } } },
+      };
+      const mixedWithMen = {
+        genderType: 'MIXED',
+        hours: { days: { mon: { closed: false, slots: [{ open: '14:00', close: '16:00', for: 'men' }] } } },
+      };
+      const femaleOnly = { genderType: 'FEMALE_ONLY', hours: mixedAll.hours };
+      const maleOnly = { genderType: 'MALE_ONLY', hours: mixedAll.hours };
+
+      // audience=women
+      expect(matchesAudience(femaleOnly, 'women')).toBe(true);
+      expect(matchesAudience(mixedWithWomen, 'women')).toBe(true);
+      expect(matchesAudience(mixedAll, 'women')).toBe(false);
+      expect(matchesAudience(maleOnly, 'women')).toBe(false);
+
+      // audience=men
+      expect(matchesAudience(maleOnly, 'men')).toBe(true);
+      expect(matchesAudience(mixedWithMen, 'men')).toBe(true);
+      expect(matchesAudience(mixedAll, 'men')).toBe(false);
+      expect(matchesAudience(femaleOnly, 'men')).toBe(false);
+
+      // no audience filter
+      expect(matchesAudience(mixedAll, null)).toBe(true);
+    });
+
+    test('GET /discovery/gyms rejects invalid audience with 422', async () => {
+      const res = await asPersona('anonymous').get('/discovery/gyms?audience=other');
+      expect(res.status).toBe(422);
+      expect(JSON.stringify(res.body)).toContain('audience must be women or men');
+    });
+
+    test('GET /discovery/gyms accepts valid audience (women / men)', async () => {
+      const resWomen = await asPersona('anonymous').get('/discovery/gyms?audience=women');
+      expect(resWomen.status).toBe(200);
+      const resMen = await asPersona('anonymous').get('/discovery/gyms?audience=men');
+      expect(resMen.status).toBe(200);
+    });
+  });
 });

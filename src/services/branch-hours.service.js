@@ -321,6 +321,39 @@ const readFields = (branch, now = new Date()) => {
   return { hours: h, timezone, ...computeNow(h, timezone, now) };
 };
 
+/**
+ * H7: whether a branch matches audience filter ('women' or 'men').
+ * women: organisation FEMALE_ONLY, or a branch with at least one women slot in its week;
+ * men: organisation MALE_ONLY, or a branch with at least one men slot in its week.
+ * MIXED-only branches with all slots match neither.
+ */
+const matchesAudience = (branch, audience) => {
+  if (!audience) return true;
+  const target = String(audience).toLowerCase();
+  if (target !== 'women' && target !== 'men') return true;
+
+  const orgGender = String(branch.genderType || '').toUpperCase();
+  if (target === 'women' && (orgGender === 'FEMALE_ONLY' || orgGender === 'FEMALE')) {
+    return true;
+  }
+  if (target === 'men' && (orgGender === 'MALE_ONLY' || orgGender === 'MALE')) {
+    return true;
+  }
+
+  const hours = branch.hours || (branch.hoursJson ? branch.hoursJson : null);
+  const days = hours?.days;
+  if (!days || typeof days !== 'object') return false;
+
+  for (const day of Object.values(days)) {
+    if (!day || day.closed || !Array.isArray(day.slots)) continue;
+    for (const slot of day.slots) {
+      if (slot && slot.for === target) return true;
+    }
+  }
+
+  return false;
+};
+
 module.exports = {
   readFields,
   DAYS,
@@ -331,4 +364,5 @@ module.exports = {
   resolveWrite,
   effective,
   computeNow,
+  matchesAudience,
 };
