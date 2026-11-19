@@ -17,12 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-19 (NEW-276 to NEW-280: Apple purchase after the launch wipe; server and app build 27) |
+| Last updated | 2026-11-19 (build 27, R-115: NEW-282 to NEW-285 done; R-113 next) |
 | Updated by | Claude Code (Opus 5.5) |
-| Current prompt | **Apple purchase never activates (owner, 2026-11-19).** Production log: `POST /billing/ios/sync` 409 "bound by the store to tenant 570aba97… (wiped)". be `fix/new-276-apple-ownership-takeover` (`../gymsera_be_new276` from `origin/main` `5c9eb4d`: `71669b1` NEW-276 takeover, `8fbcef3` NEW-277 bundleId, `6058b22` NEW-278 Apple timeouts, plus this docs commit). App `fix/new-279-iap-recovery` (`../gyms_era_new279` from `origin/feat/r-112-brand-name` `93d0dab`, build 26 not merged yet: `6b5d29d` NEW-279 409 words, `b7aae6d` NEW-280 watchdog / unfinished transaction / Restore, `f335609` 1.0.0+27). No deploy, no push to main / master, no release build |
-| Prompt status | `DONE` |
-| Issue in progress | (none) |
-| Step within issue | Results: see spec §13 "NEW-276 to NEW-278" (rows NEW-276 to NEW-280) |
+| Current prompt | **Build 27 (R-115, owner 2026-11-19).** Order: NEW-282, R-113 hours, NEW-283, NEW-284, NEW-285, then NEW-286 amenities, NEW-287 labels. Freeze 2026-11-30. be `feat/build-27` (`../gymsera_be_b27` from `origin/main` `5c9eb4d`: `d014b8d` R-115 docs, `95698f5` NEW-282 server, `7163283` NEW-283, plus this docs commit). App `feat/build-27` (`../gyms_era_b27` from `fix/new-279-iap-recovery` `f335609` = 1.0.0+27 with NEW-279 / NEW-280: `4037af8` NEW-282 app, `89e0033` NEW-284, `d32eadf` NEW-285). Not pushed (no approval yet for these two). Pushed earlier today: be `fix/new-276-apple-ownership-takeover` (with R-114 in §14), `fix/new-281-sandbox-plans`; app `fix/new-279-iap-recovery`; CMS `fix/new-281-sandbox-label`. No PRs, no merge, no deploy |
+| Prompt status | `IN PROGRESS` |
+| Issue in progress | R-113 (hours): nothing built yet |
+| Step within issue | Contract revision 1 is on `feat/r-113-hours` (spec §13 "R-113", H1-H10); owner priority (R-115): server schema / contract (H1-H6), then D1-D3 (NEW-270 to NEW-272) and the week editor; slot tags and the audience filter (H7) last |
+
+**Next action (build 27, 2026-11-19):** **Agent:** R-113 server: be branch from `feat/build-27` (or rebase `feat/r-113-hours` onto it). First `tests/regression/r-113-hours.test.js` red (H3 rules, H4 routes, H5 old clients, H6 reads with a fixed clock), then tenant migration 029 `branches.hours_json`, the rules, H4 writes, H5, H6. Then app week editor (fixes NEW-270 to NEW-272) and gym detail week / today / Open now. Then NEW-286, NEW-287 if time. **Owner:** say whether to push `feat/build-27` (be, app).
 
 **Next action (NEW-276 to NEW-280, 2026-11-19):** **Owner:** review; open the be PR (`fix/new-276-apple-ownership-takeover` into `main`) and the app PR (`fix/new-279-iap-recovery`, stacked on `feat/r-112-brand-name`: merge build 26 first). Deploy order: the API first (no migration; optional `APPLE_API_TIMEOUT_MS`), then build 27. **Before the App Store release:** remove `APPLE_IAP_ENVIRONMENT` from the production API (or set `Production`); with `Sandbox` every real purchase is refused (spec §13 NEW-276 section). **Decide:** the rule for SANDBOX store plans on the production server (proposal in §3 "Sandbox plans on production"). **Agent, next:** that decision when given; build 27 release build only on the owner's word.
 
@@ -849,3 +851,4 @@ Added 2026-10-31 after be `ef72b38` (a "merge main into P8" commit) kept both si
 | 156 | 2026-11-16/17 | Claude Code (Opus 5.5) | NEW-265 Part A server part (contract approved), then R-110: NEW-266 (be + app) and NEW-265 CMS part | NEW-265 Part A server part (p032, area requests, A4 writes / reads, admin queue, carry-over, discovery); 88 new tests | blocked on owner (server part approval) | yes |
 | 157 | 2026-11-18 | Claude Code (Opus 5.5) | Build 26: NEW-267 (step 6 grey overlay) and R-112 (brand name) | app `a4eb24f`, `cc037b6`, `a69f104`, `bfc8bd4` (557 / 557); be `b56e474`, `051f301`, `fcad4c6` (full 3783 / 3787, known failures only); CMS `9103362` (763) | task complete | yes |
 | 158 | 2026-11-19 | Claude Code (Opus 5.5) | Apple purchase after the launch wipe (owner): read-only diagnosis, then NEW-276 to NEW-278 (be) and NEW-279 / NEW-280 + build 27 (app) | be `71669b1`, `8fbcef3`, `6058b22`; app `6b5d29d`, `b7aae6d`, `f335609`; sandbox-on-production analysis in §3 | task complete | yes |
+| 159 | 2026-11-19 | Claude Code (Opus 5.5) | R-114 / NEW-281 (sandbox plans, be + CMS, pushed); build 27 (R-115): NEW-282 (be + app), NEW-283 (be), NEW-284, NEW-285 (app) | be `542beb8`, `95698f5`, `7163283`; CMS `531ef9d`; app `4037af8`, `89e0033`, `d32eadf` | context checkpoint, R-113 next | yes |
