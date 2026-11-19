@@ -4280,6 +4280,80 @@ Order: NEW-282, R-113 (hours), NEW-283, NEW-284, NEW-285, then NEW-286, NEW-287.
 
 **Results so far (2026-11-19).** be: discovery, branch, listing, organisation, capacity, idempotency and visibility suites in one in-band list: 62 / 62 suites, 747 / 747 tests; changed files lint clean. App (with NEW-279 / NEW-280): 582 / 582, `flutter analyze` 157 (unchanged).
 
+### R-113: opening hours as a weekly schedule, with women / men slots (owner 2026-11-18). STATUS: CONTRACT REVISION 1 WRITTEN, WAITING FOR THE OWNER (nothing built)
+
+**Current state (read-only review 2026-11-18, file:line):**
+- Storage: one `branches.opening_time` / `closing_time` pair (`TIME`, tenant DB, `Branch.model.js:52-59`), the same every day; created by model sync (no migration names them). The draft first branch keeps `mainBranchDataJson.openingTime` / `closingTime`, copied at approval (`tenant-provisioning.service.js:492-493`). No hours on `gym_listings`, `gyms` or `tenants`.
+- Validation: `^\d{2}:\d{2}$` only on create / update (`gyms.validator.js:115-123`, `:191-192`); nothing on the draft (`tenants.validator.js` submitGymProfile).
+- Timezone: `branches.timezone` (IANA, default `Asia/Karachi`, `Branch.model.js:66-70`), copied from a sibling branch (`gym.service.js:318`); `cities` has no timezone and approval never sets one, so every branch is `Asia/Karachi` today.
+- Read: only gym detail returns the pair (`discovery.service.js:523`), as MySQL `TIME` (`HH:MM:SS`); list / search / map do not. App `gym_detail_screen.dart:1386-1391`, website `gyms/[id]/page.tsx:296-299,375-377,487-490`, `branches/[branchId]/page.tsx:229-236` print it as received. "Open now" was removed as invented data (NEW-160, `gym_detail_screen.dart:271`).
+- Write UIs: Become a Host Step 3 optional pair (`listing_step2_screen.dart:445-470`); Add branch pair, default 06:00-22:00 (`add_branch_screen.dart:92-93,597-598`); app Edit hours (per-day screen, see D1-D3); CMS branch form / branches page / listing hours section (one pair; `listing/hours-section.tsx:13` mirrors "the Monday pair"); website owner sign-up (one pair).
+- Nothing else reads hours: no push, e-mail, job, check-in, attendance, booking, plan rule or ZKTeco logic (`devices/sync-rules.js` uses the branch timezone only for package end).
+- Gender: `MIXED | MALE_ONLY | FEMALE_ONLY` per organisation (`tenants.gender_type`, tenant `gyms.gender_type`, `gym_listings.gender_type`); set on Become a Host Step 2 (`listing_step1_screen.dart:245`), Edit Organization, CMS, website sign-up; default MIXED. Discovery filter is an exact match (`discovery.service.js:289`); the app has no gender filter in its UI; "Ladies Only" also exists as a **category** (`edit_organization_screen.dart:58`).
+
+**Defects found (owner 2026-11-18: record now):**
+
+| ID | Status | Defect (file:line) |
+|---|---|---|
+| NEW-270 (D1) | OPEN, fixed by R-113 app | App Edit hours saves Monday's pair only; every other day and every "closed" switch is discarded (`listings_provider.dart:213-224`). |
+| NEW-271 (D2) | OPEN, fixed by R-113 app | With "same hours every day" on, picking Monday's closing time writes that time into every day's **opening** time (`edit_operating_hours_screen.dart:64-68`: `from` is set whatever `isStart` is). |
+| NEW-272 (D3) | OPEN, fixed by R-113 app | Edit hours shows Sunday closed though nothing stored says so (`listings_provider.dart:151`). |
+| NEW-273 (D4) | OPEN, fixed by R-113 server | Times are checked for shape only (`25:99` passes, `gyms.validator.js:115-123`); the draft's pair is not checked at all, so a bad value fails only at approval. Also the seconds: the API sends `HH:MM:SS`, clients print it (fix now, owner 2026-11-18). |
+| NEW-274 (D5) | OPEN, website fix in R-113 | The website uses `MALE` / `FEMALE`, the API `MALE_ONLY` / `FEMALE_ONLY`: the search filter sends `FEMALE` → 422 (`gyms/page.tsx:231-233`, `discovery.validator.js:15-18`); the card badge is empty (`gym-card.tsx:18-24`); the gym page shows a women-only gym as "Mixed" (`gyms/[id]/page.tsx:198`) and a men-only gym as "Women Only" (`:238`). |
+| NEW-275 (D6) | OPEN, CMS fix in R-113 | CMS admin listing tab offers `MALE` / `FEMALE` and "Female Only (legacy)" (`gym-listing-tab.tsx:281-283`, `:474-476`): saving "Male Only" sends a value the `gym_listings.gender_type` enum does not have. |
+
+**Cut (owner 2026-11-18):** server in full; app (build **27**, `1.0.0+27` own commit, on top of the R-112 app branch): week editor (fixes D1-D3), "Women only" / "Men only" filter, gym detail week / today / Open now; website: D5 only; CMS: read-only week + D6; the seconds now. Later: Open now on cards and an "open now" filter, CMS week editor, website week display, city timezones, merging the "Ladies Only" category. Build 26 does not wait for R-113 (separate branches).
+
+#### R-113 API contract, revision 1 (Day 1, for the owner's approval; nothing built)
+
+**H1 Data.** Tenant migration **029**: `branches.hours_json JSON NULL`. No backfill, no column dropped. `opening_time` / `closing_time` stay (summary for old clients, H5).
+
+**H2 Shape (`hours`, version 1).**
+```json
+{
+  "v": 1,
+  "days": {
+    "mon": { "closed": false, "slots": [ { "open": "06:00", "close": "11:00", "for": "all" },
+                                          { "open": "16:00", "close": "19:00", "for": "women" } ] },
+    "tue": { "closed": false, "slots": [ { "open": "06:00", "close": "23:00", "for": "all" } ] },
+    "sun": { "closed": true, "slots": [] }
+  }
+}
+```
+All seven keys `mon` to `sun` are required in a write. `for` = `all | men | women`. Times `HH:MM`, local to the branch's timezone.
+
+**H3 Rules (server, 422 `hours_invalid` with `errors: [{ path, message }]`).**
+1. `open` 00:00-23:59, `close` 00:00-23:59 or `24:00`; real times (`25:99` refused).
+2. 1 to 4 slots on an open day; a closed day has none.
+3. A slot whose `close` is earlier than or equal to its `open` ends the next day ("after midnight", e.g. 22:00-02:00); allowed only on the day's last slot, at most 12 hours past midnight. `open == close` is refused except `00:00`-`24:00`.
+4. No two slots overlap, whatever their `for` (a branch is one thing at a time; `all` already covers both). The after-midnight part counts against the next day's first slot.
+5. 24 hours = one slot `00:00`-`24:00` (`for` any); shown "Open 24 hours".
+6. Slots are stored sorted by `open`.
+
+**H4 Writes that take `hours` (new optional field).** `PATCH /host/branches/:branchId/listing-content` (app Edit hours), `POST /host/branches` and `POST /gyms/branches` (Add branch), `PATCH /gyms/branches/:branchId` (Edit location), `POST /host/listings` (another organisation, first branch), `POST /tenants/:id/gym-profile` as `mainBranchData.hoursJson` (Become a Host; copied to the first branch at approval, NEW-266 pattern), admin `POST|PATCH /admin/tenants/:id/branches[/:branchId]`. Sending `hours: null` clears the schedule (back to "no hours"). A body with `hours` must not also carry `openingTime` / `closingTime` (422 `hours_invalid`).
+
+**H5 Old clients (builds up to 26, CMS / website today).** They send `openingTime` / `closingTime` only.
+- The server always writes the summary pair from a schedule: `opening_time` = the earliest `open` of the week, `closing_time` = the latest close of the week (an after-midnight close is shown as its clock time); a 24-hour schedule = `00:00` / `23:59`. Old screens keep showing a sensible pair.
+- An old-style write (pair, no `hours`) when the stored `hours_json` is NULL or **uniform** (every day open, one `all` slot, same times) is accepted and stored as a uniform schedule plus the pair.
+- An old-style write when the stored schedule is **not** uniform is refused: **409 `hours_schedule_newer`**, message "These hours have a different schedule for some days. Update the app (or ask GymsEra support) to change them." Nothing is changed. This stops an old app or the CMS form from flattening a weekly schedule.
+- Reads for old clients: `openingTime` / `closingTime` are sent as `HH:MM` (no seconds; NEW-273, deployable at once on its own).
+- `hours_json` NULL with a pair = treated everywhere as "every day, one `all` slot". NULL with no pair = no hours.
+
+**H6 Reads (every branch object in host routes, gym detail, list / search / nearby / map).** New fields, old ones unchanged:
+- `hours` (H2, or derived from the pair, or null), `timezone`, `utcOffsetMinutes` (now, in the branch's timezone);
+- `hoursToday`: `{ day: "mon", closed, slots: [...] }` for the branch's local date (a slot that started yesterday after midnight is included);
+- `openNow`: `true | false | null` (null = no hours), `openNowFor`: `all | men | women | null`;
+- `nextChange`: `{ at: ISO-8601 UTC, kind: "opens" | "closes", for }` or null.
+Computed by the server at request time in the branch's timezone; the public cache keeps 60 s (`publicCache.js`), so "Open now" can be up to a minute late. Clients never use the phone's timezone for these.
+
+**H7 Filter.** `audience=women|men` on `GET /discovery/gyms`, `/gyms/nearby`, `/gyms/map`: `women` = organisation `FEMALE_ONLY`, or a branch with at least one `women` slot in its week; `men` likewise. `MIXED`-only branches with `all` slots match neither. `genderType` keeps its exact meaning for old clients. (`openNow=true` filter: later, not in the cut.)
+
+**H8 Not changed in this release.** ZKTeco door access and device sync (no time rules; members can enter outside hours as today); check-in and attendance; booking, purchase, plan visit limits and plan validity (R-77 bookability unchanged); push, e-mails, jobs; ledger business dates; organisation `genderType` (slots add information and a filter, they are no entry rule); no city timezone yet (branch timezone as today).
+
+**H9 Deploy.** Server first, any time: old builds keep working (H5); migration 029 dry run before the API. CMS read-only week + D6, website D5, then build 27.
+
+**H10 Tests (failing first).** be `tests/regression/r-113-hours.test.js`: H3 each rule (overlap across days, after midnight, 24 h, 25:99), H4 each route, H5 accept-uniform / 409 non-uniform / summary pair / `HH:MM`, H6 `openNow` and `nextChange` across midnight in `Asia/Karachi` and one non-Pakistan zone with a fixed clock, H7 filter, provisioning copy. App: editor (copy to all days, add / remove slot, tags, closed day), Edit hours sends the whole week (D1-D3), detail week / today / Open now from the API fields, filter sends `audience`. Website: D5. CMS: read-only week, D6.
+
 ## 14. Remaining risks and open decisions
 
 > **Decisions recorded 2026-09-26.** The owner delegated these to the architect (Claude Code) and they are now **final for agents**. Agents apply them and do **not** stop to ask about them again. The owner may override any row at any time by editing it.
@@ -4397,6 +4471,7 @@ Order: NEW-282, R-113 (hours), NEW-283, NEW-284, NEW-285, then NEW-286, NEW-287.
 | R-110 | Plan for build 25 and the real gym (NEW-265 A, NEW-266, Part B), with the owner's corrections | Amir | **DECIDED 2026-11-17 (prompt, plan approved with corrections):** (1) the launch wipe was done on 2026-11-15; there is no further wipe; the real gym and the App Review demo accounts are created as soon as build 25 passes the phone tests. (2) p031 is applied in production (platform at v31); the p032 dry run must list only p032. (3) Reading 5 of the NEW-265 server part changed: approving an area request does **not** require a map pin (latitude / longitude optional). (4) NEW-265 server part (`a78b5c4`) approved; opened as a PR from `feat/new-265-pending-areas` into `main`; the owner reviews and merges; no push to `main`. (5) Cut line for build 25: MUST NEW-266 and the Become a Host path of NEW-265 A2 (steps 1 and 3 picker, typed requests, keep / clear, resume, "Choose your area again"); nice to have: the picker on Add listing / Add branch / Edit location and the reverse-geocode suggestion; Part B C1 map pin, C2 near me, C3 NEW-262 in build 26 or later; C4 NEW-263 (website) and C5 admin pin editing (CMS) any day. (6) Order: NEW-266 (verify, server, app) and A3 CMS in parallel, then A2 on top of NEW-266; report after each part. No deploy, no release build, no push to `main`. Dates: freeze Mon 2026-11-30, release Sat 2026-12-05; a rebuilt app after build 25 is 1.0.0+26 (store build numbers never repeat). |
 | R-111 | Wording: the first-branch default area (NEW-265, R-108 to R-110) | Amir | **DECIDED 2026-11-18 (prompt; wording and cleanup only, no behaviour or schema change):** (1) a brand / organisation has no address. Become a Host Step 1 captures the **first branch's** city and area (never a street address, never the host's home address); Step 3 captures the branch's street address. (2) Data meaning, no schema change: `tenants.city_id` = the organisation's home city (approval, billing, admin filters); `tenants.area_id` and its pending request = the **first-branch default area**: it pre-fills the Step 3 area picker (G1) and is copied to the first listing and the first branch at approval; the branch area (real or pending) is the source of truth for travellers and always wins; the tenant default is only a same-city fallback for old data. (3) Spec, handoff and code comments say "first-branch default" instead of "organisation area"; Step 1 copy reads "Where is your first gym located?" (the app has no Urdu strings). Earlier records (R-108, R-109, §13 NEW-265 A1 to A9) keep their text; read "organisation('s) area" there as "first-branch default area". |
 | R-112 | Brand name is a real field in Become a Host (build 26); replaces "do not apply" for Part B | Amir | **DECIDED 2026-11-18 (prompt):** (1) Become a Host Step 2 shows **Brand / organization name** (required, 3 to 60 characters, the same word filter as area names) and **First gym name** (pre-filled from the brand, editable, required). (2) The brand is saved as `tenants.business_name` (no more "`<full name>'s Gym Business`"); the gym name as `tenants.gym_name` and the first branch's name; old data keeps working. (3) The brand is shown on the host dashboard / status panel, the host header, gym detail ("by <brand>"), CMS tenant screens, and invoices / receipts / e-mails where `business_name` is used. (4) Edit Organization lets the host change the brand later; the server validates and audits it. (5) Resume restores both names. (6) Also in build 26: the step 6 grey overlay (NEW-267). Work from `feat/new-265-pending-areas` `8739852` (app, new branch) and `origin/main` (server); failing tests first; version 1.0.0+26 as its own commit; report after the server part and after the app part; no deploy, no push to master / main, no release build. Contract and readings: §13 "R-112". |
+| R-113 | Opening hours as a weekly schedule with women / men slots | Amir | **DECIDED 2026-11-18 (prompt):** approved with this plan: record R-113 and D1-D6 (NEW-270 to NEW-275) first; cut: server in full; app week editor + "Women only" / "Men only" filter + gym detail week / today / Open now as **build 27** (`1.0.0+27`, own commit) on top of the R-112 app branch; website D5; CMS read-only week + D6; fix the seconds in the hours display now. Day 1: the API contract (schedule and the old-client rule 409 `hours_schedule_newer`) is shown to the owner before building; then server and app in parallel. Build 26 (R-112 + NEW-265 / 266 / 267) stays shippable on its own (R-113 on separate branches). The server may deploy early and must keep every old build working. No effect on ZKTeco door access or booking rules in this release. Contract: §13 "R-113". |
 | R-114 | Store test purchases (SANDBOX) on the production server | Amir | **DECIDED 2026-11-19 (prompt, approved as proposed in the handoff §3 "Sandbox plans on production"):** (1) The production server keeps verifying sandbox transactions (App Review and TestFlight need it). They entitle the host area as before, and R-87 still keeps the gym hidden from travellers. (2) A SANDBOX row never stands in the way of a real plan: the bank-transfer form (`plan-payment.service.js#storeBlock`) and the admin approval ignore it. (3) A real plan closes a SANDBOX row `CANCELLED` "Test purchase replaced, no action needed", never `PENDING_CANCEL`. (4) `periodFor` never extends a paid period from a SANDBOX row's end date. (5) The CMS shows "Test purchase (Sandbox)" on such rows. **Owner note:** a gym whose only plan is SANDBOX is invisible to travellers (R-87). So the App Review demo gym and the owner's real gym must both end on a MANUAL plan, a bank transfer approved in Admin › Plan Payments, after the sandbox purchase is cancelled. Built as NEW-281 (server, CMS). |
 | R-115 | Build 27 work list and order | Amir | **DECIDED 2026-11-19 (prompt):** (1) idempotency on brand / branch creates (NEW-282); (2) hours, R-113 (server schema / contract, then D1-D3 and the week editor; slot tags and the Women only / Men only filter last, if time allows); (3) byline guard (NEW-283); (4) per-brand Add branch draft (NEW-284); (5) rejected-brand dialog (NEW-285); then (6) amenities, one list and filter aliases, if time allows (NEW-286); (7) host area label renames if time remains (NEW-287). Already in build 27: NEW-279 / NEW-280. Failing tests first, old builds keep working, version 1.0.0+27. Report early what will not fit before the 2026-11-30 freeze. Also recorded: R-114 (sandbox plans), on `fix/new-276-apple-ownership-takeover`. |
 
