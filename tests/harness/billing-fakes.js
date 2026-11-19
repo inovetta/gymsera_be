@@ -25,6 +25,7 @@ const appleTransaction = ({
   appAccountToken = undefined,
   price = undefined, // milliunits, as Apple reports it (4990000 = 4990.00)
   currency = undefined,
+  bundleId = undefined, // NEW-277: the app the purchase was made in
 }) => ({
   originalTransactionId,
   transactionId,
@@ -35,6 +36,7 @@ const appleTransaction = ({
   ...(revocationDate ? { revocationDate } : {}),
   ...(appAccountToken ? { appAccountToken } : {}),
   ...(price !== undefined ? { price, currency } : {}),
+  ...(bundleId !== undefined ? { bundleId } : {}),
 });
 
 /**

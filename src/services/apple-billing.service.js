@@ -384,6 +384,19 @@ const getLatestTransaction = async (transactionId, { environment = null } = {}) 
 const appleApi = { verifyAndDecode, getTransactionInfo, getLatestTransaction };
 
 /**
+ * NEW-277: a verified transaction is used only when it was made in our app (its bundleId is
+ * APPLE_IAP_BUNDLE_ID). Without the setting the API call itself has already refused
+ * (_appleApiJwt answers 500), so there is nothing to compare against here.
+ */
+const _assertOurBundle = (decodedTransaction) => {
+  const expected = process.env.APPLE_IAP_BUNDLE_ID;
+  if (!expected || decodedTransaction?.bundleId === expected) return;
+  const err = createError('This purchase was made in a different app, so it cannot be used here.', 422);
+  err.code = 'store_bundle_mismatch';
+  throw err;
+};
+
+/**
  * The one entry point both POST /billing/ios/sync and the App Store
  * notification processor (billing-event.service.js) use: re-fetch Apple's
  * truth, then apply it through syncSubscriptionFromTransaction.
@@ -395,6 +408,7 @@ const appleApi = { verifyAndDecode, getTransactionInfo, getLatestTransaction };
  */
 const syncFromApple = async ({ transactionId, tenantId = null, originListingId = null, environment = null }) => {
   const decodedTransaction = await appleApi.getLatestTransaction(transactionId, { environment });
+  _assertOurBundle(decodedTransaction);
   const owner =
     tenantId ||
     (await subscriptionMigrationService.resolveSubscriptionOwner(

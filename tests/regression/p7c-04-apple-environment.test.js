@@ -126,7 +126,8 @@ describe('P7c item 4: Apple Production first, Sandbox on transaction-not-found',
 
   test('a Sandbox App Store notification re-fetches from Sandbox first', async () => {
     const latest = jest.spyOn(appleBilling.appleApi, 'getLatestTransaction').mockResolvedValue({
-      originalTransactionId: '2000001', transactionId: '2000002', productId: 'x', environment: 'Sandbox',
+      // Apple always names the app; NEW-277 refuses a transaction without our bundleId.
+      originalTransactionId: '2000001', transactionId: '2000002', productId: 'x', environment: 'Sandbox', bundleId: 'com.gymsera.test',
     });
     jest.spyOn(require('../../src/services/subscription-migration.service'), 'resolveSubscriptionOwner').mockResolvedValue(null);
     const event = {
