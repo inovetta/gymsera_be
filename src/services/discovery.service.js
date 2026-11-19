@@ -597,6 +597,12 @@ const getGym = async (id) => {
   }
 
   const normalizedGym = _normalizeFacilities(listing);
+  // NEW-283: the brand is the account's (R-112). With two or more live organisations it would show the
+  // first brand's name under another brand's gyms, so it is sent only for exactly one live organisation.
+  if (normalizedGym.tenant && normalizedGym.tenantId) {
+    const liveBrands = await GymListing.count({ where: { tenantId: normalizedGym.tenantId, status: 'ACTIVE' } });
+    if (liveBrands !== 1) normalizedGym.tenant = { ...normalizedGym.tenant, businessName: null };
+  }
   return { gym: { ...normalizedGym, branches }, membershipPlans };
 };
 
