@@ -289,13 +289,48 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
       expect(JSON.stringify(res.body)).toContain('audience must be women or men');
     });
 
-    test('GET /discovery/gyms accepts valid audience (women / men)', async () => {
-      const resWomen = await asPersona('anonymous').get('/discovery/gyms?audience=women');
-      expect(resWomen.status).toBe(200);
-      const resMen = await asPersona('anonymous').get('/discovery/gyms?audience=men');
-      expect(resMen.status).toBe(200);
-    });
+  });
+});
 
+// NEW-293 (R-116): the H7 route tests used to check the status code only (200), so a filter that
+// returned everything, or nothing, passed. These check which gyms come back.
+describe('H7: what audience=women|men keeps, on list, nearby and map', () => {
+  const ids = {};
+  // A spot of our own, so nearby (small radius) sees only these three branches.
+  const LAT = 10.1234;
+  const LNG = 20.5678;
+  const live = async (name, hours, dLng) => {
+    const created = await asPersona('owner').post('/host/branches').send(branchBody({ hours }));
+    expect(created.status).toBe(201);
+    const id = created.body.data.branch.id;
+    await Branch().update({ latitude: LAT, longitude: LNG + dLng, cityId: 1 }, { where: { id } });
+    await makeBranchLive(ctx.tenant1Db, id);
+    ids[name] = id;
+  };
+
+  beforeAll(async () => {
+    await live('women', week({ all: [slot('06:00', '11:00'), slot('16:00', '19:00', 'women')] }), 0.001);
+    await live('men', week({ all: [slot('06:00', '11:00'), slot('20:00', '22:00', 'men')], sun: null }), 0.002);
+    await live('allOnly', week({ all: [slot('06:00', '22:00')] }), 0.003);
+  });
+  beforeEach(() => cache._resetForTests());
+
+  const ours = (items) => Object.keys(ids).filter((k) => items.some((g) => g.id === ids[k])).sort();
+  const routes = {
+    list: (q) => `/discovery/gyms?page=1&limit=50${q}`,
+    nearby: (q) => `/discovery/gyms/nearby?lat=${LAT}&lng=${LNG}&radius=5&limit=50${q}`,
+    map: (q) => `/discovery/gyms/map?cityId=1${q}`,
+  };
+
+  test.each(Object.keys(routes))('%s: women keeps the branch with a women slot only; men the one with a men slot; none keeps all three', async (route) => {
+    const get = async (q) => {
+      const res = await asPersona('anonymous').get(routes[route](q));
+      expect(res.status).toBe(200);
+      return ours(res.body.data.gyms);
+    };
+    expect(await get('')).toEqual(['allOnly', 'men', 'women']);
+    expect(await get('&audience=women')).toEqual(['women']);
+    expect(await get('&audience=men')).toEqual(['men']);
   });
 });
 

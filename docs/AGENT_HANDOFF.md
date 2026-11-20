@@ -21,7 +21,7 @@ next agent won't know it.
 | Updated by | Claude Code (Opus 5.5), session 162 |
 | Current prompt | **Build 27 (R-115), R-113 review fixes (R-116, owner 2026-11-20).** Fix order: (a) NEW-288 SEC-06 fixtures + full be suite; (b) NEW-292 unchanged legacy equal pair = no-op; (c) NEW-290 app editor full multi-slot (up to 4 a day, all / women / men), NEW-272 Sunday default, `userFacingMessage` on save errors; (d) NEW-291 gym detail slot tags + the opened branch; (e) NEW-293 real app widget tests + be H7 tests that check what is filtered; (f) corrected docs (H9, R-113 status, NEW-270..272 root causes, NEW-273 row, "Open now" up to ~2 min late). be `feat/r-113-server` (worktree `../gymsera_be_r113`); app `feat/build-27` (worktree `../GymsEraApp/gyms_era_b27`). |
 | Prompt status | `IN PROGRESS` |
-| Issue in progress | NEW-288, NEW-292 done (be); NEW-290, NEW-291 done (app `2e6e0b2`, `f39e7cc`, local); next NEW-293 be H7 tests, then (f) docs |
+| Issue in progress | NEW-288, NEW-292, NEW-293 done (be); NEW-290, NEW-291 done (app `2e6e0b2`, `f39e7cc`, local); next (f) docs |
 | Step within issue | See "Next action" below. |
 
 **R-113 status (corrected 2026-11-20, owner review):** server (`a2fb704`, `3d7bf8f`) and app (`332043d`, `2e579af`) are BUILT but **not DONE**: the review (session 161) found the SEC-06 guards red on 7 routes, a one-slot app editor that drops slots 2-4, gym detail without slot tags, old-client 422 on a legacy equal pair, copy-based app tests, and a wrong deploy order. The CMS part (NEW-275 + read-only week) and the website part (NEW-274) are **NOT started**; owner R-116: schedule them after build 27.
