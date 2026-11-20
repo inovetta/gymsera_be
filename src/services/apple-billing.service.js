@@ -188,6 +188,14 @@ const APPLE_API_BASE = {
 // TransactionIdNotFoundError, OriginalTransactionIdNotFoundError.
 const APPLE_NOT_FOUND_CODES = [4040010, 4040005];
 
+// NEW-278: every call to Apple has a time limit, under the app's own 10 s (dio_client.dart), so
+// /billing/ios/sync answers instead of being cut off. APPLE_API_TIMEOUT_MS overrides it.
+const DEFAULT_APPLE_API_TIMEOUT_MS = 8000;
+const _appleApiTimeoutMs = () => {
+  const value = Number(process.env.APPLE_API_TIMEOUT_MS);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_APPLE_API_TIMEOUT_MS;
+};
+
 /** 'Sandbox' | 'Production' | null, from Apple's spelling or the row's (SANDBOX / PRODUCTION). */
 const _appleEnvironment = (value) => {
   const v = String(value || '').toUpperCase();
@@ -228,6 +236,7 @@ const getTransactionInfo = async (transactionId, { environment = null } = {}) =>
     try {
       const response = await axios.get(`${APPLE_API_BASE[order[i]]}/inApps/v1/transactions/${transactionId}`, {
         headers: { Authorization: `Bearer ${_appleApiJwt()}` },
+        timeout: _appleApiTimeoutMs(),
       });
       return appleApi.verifyAndDecode(response.data.signedTransactionInfo);
     } catch (err) {
@@ -360,6 +369,7 @@ const getLatestTransaction = async (transactionId, { environment = null } = {}) 
   const base = APPLE_API_BASE[_appleEnvironment(known.environment) || _environmentOrder(environment)[0]];
   const response = await axios.get(`${base}/inApps/v1/subscriptions/${encodeURIComponent(originalId)}`, {
     headers: { Authorization: `Bearer ${_appleApiJwt()}` },
+    timeout: _appleApiTimeoutMs(),
   });
   for (const group of response.data?.data || []) {
     for (const last of group.lastTransactions || []) {
@@ -384,6 +394,19 @@ const getLatestTransaction = async (transactionId, { environment = null } = {}) 
 const appleApi = { verifyAndDecode, getTransactionInfo, getLatestTransaction };
 
 /**
+ * NEW-277: a verified transaction is used only when it was made in our app (its bundleId is
+ * APPLE_IAP_BUNDLE_ID). Without the setting the API call itself has already refused
+ * (_appleApiJwt answers 500), so there is nothing to compare against here.
+ */
+const _assertOurBundle = (decodedTransaction) => {
+  const expected = process.env.APPLE_IAP_BUNDLE_ID;
+  if (!expected || decodedTransaction?.bundleId === expected) return;
+  const err = createError('This purchase was made in a different app, so it cannot be used here.', 422);
+  err.code = 'store_bundle_mismatch';
+  throw err;
+};
+
+/**
  * The one entry point both POST /billing/ios/sync and the App Store
  * notification processor (billing-event.service.js) use: re-fetch Apple's
  * truth, then apply it through syncSubscriptionFromTransaction.
@@ -395,6 +418,7 @@ const appleApi = { verifyAndDecode, getTransactionInfo, getLatestTransaction };
  */
 const syncFromApple = async ({ transactionId, tenantId = null, originListingId = null, environment = null }) => {
   const decodedTransaction = await appleApi.getLatestTransaction(transactionId, { environment });
+  _assertOurBundle(decodedTransaction);
   const owner =
     tenantId ||
     (await subscriptionMigrationService.resolveSubscriptionOwner(
