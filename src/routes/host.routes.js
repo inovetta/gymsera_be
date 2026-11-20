@@ -92,7 +92,7 @@ router.post(
 );
 // NEW-140 (P9): the first branch's location may come from Google (CMS New Organization), with its place id.
 // NEW-282: a retry with the same Idempotency-Key answers the first result (no second brand / slot).
-router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, idempotency(), validate.strict([...gymsValidators.branchLocation, ...gymsValidators.listingFacilities], { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'hours', 'images', 'logoUrl', 'packages'] }), hostController.createListing);
+router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, idempotency(), validate.strict([...gymsValidators.branchLocation, ...gymsValidators.listingFacilities], { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'closingTime', 'genderType', 'gymDescription', 'gymName', 'hours', 'images', 'logoUrl', 'openingTime', 'packages'] }), hostController.createListing);
 // Phase 7 P5 (BUG-22): one organization and its own gym details, for Edit Organization.
 router.get('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), hostController.getListing);
 router.put('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
