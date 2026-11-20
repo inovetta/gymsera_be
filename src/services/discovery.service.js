@@ -5,6 +5,7 @@ const discoveryCache = require('./discovery-cache.service');
 const { ENTITLING_STATUSES } = require('./subscription-quota.service');
 const { DEFAULT_CURRENCY } = require('../utils/currency.utils');
 const { createError, parsePagination, buildPagination } = require('../utils/response.utils');
+const branchHours = require('./branch-hours.service');
 
 /**
  * The one rule for "travellers can see this branch": open (ACTIVE), approved for
@@ -256,6 +257,11 @@ const _buildAllActiveBranches = async () => {
             city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
             // NEW-265 (R-109): the area of the chain above, never the listing's own.
             area: finalAreaId ? (areaMap.get(finalAreaId) || null) : null,
+            // R-113 H6: the week and "open now" in the branch's timezone (as of the snapshot, up to the
+            // cache time late), plus the old pair as HH:MM.
+            openingTime: b.openingTime || null,
+            closingTime: b.closingTime || null,
+            ...branchHours.readFields(b),
           };
           branchesList.push(mappedBranch);
         }
@@ -274,6 +280,7 @@ const filterBranches = (branches, {
   cityId,
   areaId,
   genderType,
+  audience,
   search,
   featured,
   category,
@@ -287,6 +294,7 @@ const filterBranches = (branches, {
   if (cityId) filtered = filtered.filter(b => b.cityId === parseInt(cityId));
   if (areaId) filtered = filtered.filter(b => b.areaId === parseInt(areaId));
   if (genderType) filtered = filtered.filter(b => b.genderType?.toLowerCase() === genderType.toLowerCase());
+  if (audience) filtered = filtered.filter(b => branchHours.matchesAudience(b, audience));
   if (featured === 'true' || featured === true) filtered = filtered.filter(b => b.isFeatured === true);
   if (category && category !== 'All') {
     const cats = typeof category === 'string' && category.includes(',')
@@ -352,6 +360,7 @@ const listGyms = async ({
   cityId,
   areaId,
   genderType,
+  audience,
   search,
   featured,
   category,
@@ -370,6 +379,7 @@ const listGyms = async ({
     cityId,
     areaId,
     genderType,
+    audience,
     search,
     featured,
     category,
@@ -520,7 +530,8 @@ const getGym = async (id) => {
             ...TRAVELLER_VISIBLE_BRANCH(),
             ...(gymIdToUse ? { gymId: gymIdToUse } : {}),
           },
-          attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
+          // R-113 H6: hoursJson and timezone for the week and "open now" (Branch#toJSON).
+          attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hoursJson', 'timezone', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
           order: [['createdAt', 'ASC']],
         }),
       ]);
@@ -539,7 +550,8 @@ const getGym = async (id) => {
       }
 
       branches = branches.map(b => {
-        const plainBranch = b.get({ plain: true });
+        // R-113 H6: the same branch object as everywhere else (Branch#toJSON adds the week and "open now").
+        const plainBranch = b.toJSON();
         plainBranch.gymListingId = branchToListingMap[plainBranch.id] || null;
         return plainBranch;
       });
@@ -597,6 +609,12 @@ const getGym = async (id) => {
   }
 
   const normalizedGym = _normalizeFacilities(listing);
+  // NEW-283: the brand is the account's (R-112). With two or more live organisations it would show the
+  // first brand's name under another brand's gyms, so it is sent only for exactly one live organisation.
+  if (normalizedGym.tenant && normalizedGym.tenantId) {
+    const liveBrands = await GymListing.count({ where: { tenantId: normalizedGym.tenantId, status: 'ACTIVE' } });
+    if (liveBrands !== 1) normalizedGym.tenant = { ...normalizedGym.tenant, businessName: null };
+  }
   return { gym: { ...normalizedGym, branches }, membershipPlans };
 };
 
@@ -652,13 +670,14 @@ const haversineKm = (lat1, lng1, lat2, lng2) => {
 };
 
 // ── nearbyGyms ────────────────────────────────────────────────────────────────
-const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1 }) => {
+const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1, audience = null }) => {
   const branches = await _getAllActiveBranches();
   const uLat = parseFloat(lat);
   const uLng = parseFloat(lng);
 
   const inRange = [];
   for (const b of branches) {
+    if (audience && !branchHours.matchesAudience(b, audience)) continue;
     if (b.latitude == null || b.longitude == null) continue;
     const dist = haversineKm(uLat, uLng, b.latitude, b.longitude);
     if (dist <= radiusKm) {
@@ -674,11 +693,14 @@ const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1 }) => 
 };
 
 // ── mapGyms ───────────────────────────────────────────────────────────────────
-const mapGyms = async ({ cityId } = {}) => {
+const mapGyms = async ({ cityId, audience = null } = {}) => {
   const branches = await _getAllActiveBranches();
   let filtered = branches.filter(b => b.latitude != null && b.longitude != null);
   if (cityId) {
     filtered = filtered.filter(b => b.cityId === parseInt(cityId));
+  }
+  if (audience) {
+    filtered = filtered.filter(b => branchHours.matchesAudience(b, audience));
   }
   return filtered;
 };

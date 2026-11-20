@@ -1617,8 +1617,11 @@ const updateAdminTenantBranch = async (tenantId, branchId, data, adminUserId) =>
   // NEW-103: latitude / longitude (null clears them) and `facilities` (the array the CMS form sends) were dropped here;
   // same handling as the host-side gym.service#updateBranch.
   // NEW-140 (P9): googlePlaceId, the address the admin picked from Google (as the host's updateBranch).
-  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'googlePlaceId', 'phone', 'openingTime', 'closingTime', 'facilitiesJson'];
+  // R-113 H4 / H5: the week or the old pair (a CMS form sending the pair cannot flatten a weekly schedule).
+  const hoursValues = require('./branch-hours.service').resolveWrite(data, branch);
+  const fields = ['branchName', 'address', 'cityId', 'areaId', 'latitude', 'longitude', 'googlePlaceId', 'phone', 'facilitiesJson'];
   fields.forEach((f) => { if (data[f] !== undefined) branch[f] = data[f]; });
+  if (hoursValues) Object.assign(branch, hoursValues);
   if (Array.isArray(data.facilities)) branch.facilitiesJson = data.facilities;
   await branch.save();
   // NEW-265 (R-109 F7): a real area (or a clear) saved by an admin drops the branch's request.

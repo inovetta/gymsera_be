@@ -4,7 +4,7 @@ const { DataTypes } = require('sequelize');
 const hourMinute = (v) => (v == null ? v : String(v).slice(0, 5));
 
 module.exports = (sequelize) => {
-  return sequelize.define(
+  const Branch = sequelize.define(
     'Branch',
     {
       id: {
@@ -63,6 +63,12 @@ module.exports = (sequelize) => {
         type: DataTypes.TIME,
         allowNull: true,
         get() { return hourMinute(this.getDataValue('closingTime')); },
+      },
+      // R-113 H1 (tenant migration 029): the weekly schedule (branch-hours.service.js), or NULL.
+      hoursJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        field: 'hours_json',
       },
       phone: {
         type: DataTypes.STRING(25),
@@ -218,4 +224,18 @@ module.exports = (sequelize) => {
       ],
     }
   );
+
+  /**
+   * R-113 H6: every branch object a route sends carries the week and what it means now, in the
+   * branch's timezone: hours (its own, else the one its old pair stands for, else null), timezone,
+   * utcOffsetMinutes, hoursToday, openNow, openNowFor, nextChange. Computed when serialized, so a
+   * query that did not load hoursJson / timezone still answers (from the pair, Asia/Karachi).
+   */
+  const plainToJSON = Branch.prototype.toJSON;
+  Branch.prototype.toJSON = function toJSON() {
+    const { hoursJson, ...out } = plainToJSON.call(this);
+    return { ...out, ...require('../../services/branch-hours.service').readFields({ ...out, hoursJson }) };
+  };
+
+  return Branch;
 };

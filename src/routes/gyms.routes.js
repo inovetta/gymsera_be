@@ -8,6 +8,7 @@ const tenantContext = require('../middleware/tenantContext');
 const upload = require('../middleware/upload');
 const can = require('../middleware/can');
 
+const idempotency = require('../middleware/idempotency');
 const router = Router();
 
 // All /gyms routes require a logged-in GYM_HOST (or BRANCH_MANAGER) + tenant DB
@@ -151,7 +152,8 @@ router.get('/branches', gymsController.listBranches);
 router.post(
   '/branches',
   authorize('GYM_HOST'),
-  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities'] }),
+  idempotency(), // NEW-282: a retried create answers the first result
+  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities', 'hours'] }), // R-113 H4
   gymsController.createBranch
 );
 
@@ -195,7 +197,7 @@ router.get('/branches/:branchId', gymsController.getBranch);
  */
 router.patch(
   '/branches/:branchId',
-  validate.strict(gymsValidators.updateBranch, { stage: 2, allow: ['facilities'] }),
+  validate.strict(gymsValidators.updateBranch, { stage: 2, allow: ['facilities', 'hours'] }), // R-113 H4
   gymsController.updateBranch
 );
 

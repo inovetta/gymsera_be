@@ -91,7 +91,8 @@ router.post(
   validate.allowBody([]), hostController.uploadListingStagingImages
 );
 // NEW-140 (P9): the first branch's location may come from Google (CMS New Organization), with its place id.
-router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.strict([...gymsValidators.branchLocation, ...gymsValidators.listingFacilities], { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'images', 'logoUrl', 'packages'] }), hostController.createListing);
+// NEW-282: a retry with the same Idempotency-Key answers the first result (no second brand / slot).
+router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, idempotency(), validate.strict([...gymsValidators.branchLocation, ...gymsValidators.listingFacilities], { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'hours', 'images', 'logoUrl', 'packages'] }), hostController.createListing);
 // Phase 7 P5 (BUG-22): one organization and its own gym details, for Edit Organization.
 router.get('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), hostController.getListing);
 router.put('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
@@ -190,8 +191,9 @@ router.post(
   authorize('GYM_HOST'),
   tenantContext,
   ownerHere,
+  idempotency(), // NEW-282: a retried create answers the first result
   // SEC-06: facilities is the key the CMS sends (the service reads facilitiesJson); country is ignored
-  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities', 'country'] }),
+  validate.strict(gymsValidators.createBranch, { stage: 2, allow: ['facilities', 'country', 'hours'] }), // R-113 H4
   gymsController.createBranch
 );
 
@@ -219,7 +221,7 @@ router.patch(
   // Phase 7 P3: coordinates in range and the Google place id (the app's branch location editor).
   validate.strict(gymsValidators.branchLocation, {
     stage: 2,
-    allow: ['address', 'addressLine1', 'addressLine2', 'areaId', 'branchName', 'category', 'cityId', 'closingTime', 'country', 'description', 'establishedYear', 'facilitiesJson', 'floorArea', 'googlePlaceId', 'imagesJson', 'latitude', 'longitude', 'openingTime', 'phone', 'postalCode', 'tagline', 'tagsJson'],
+    allow: ['address', 'addressLine1', 'addressLine2', 'areaId', 'branchName', 'category', 'cityId', 'closingTime', 'country', 'description', 'establishedYear', 'facilitiesJson', 'floorArea', 'googlePlaceId', 'hours', 'imagesJson', 'latitude', 'longitude', 'openingTime', 'phone', 'postalCode', 'tagline', 'tagsJson'],
   }),
   gymsController.updateBranchListingContent
 );

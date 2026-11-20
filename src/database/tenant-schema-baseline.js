@@ -98,6 +98,9 @@ const ADDS = {
     tables: ['refund_requests'],
     columns: { gyms: ['refunds_allowed', 'refund_window_days'] },
   },
+  29: {
+    columns: { branches: ['hours_json'] },
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -317,6 +320,8 @@ const PROBES = {
     }
     return tableWithColumn(s, 'refund_requests', 'ledger_adjustment_id');
   },
+  // 029 adds branches.hours_json (R-113 H1); MySQL reports JSON as json (MariaDB as longtext).
+  29: async (s) => columnOfType(s, 'branches', 'hours_json', (c) => ['json', 'longtext'].includes(type(c))),
 };
 
 /** Tables and columns the tenant models read (Sequelize field names, no VIRTUAL attributes). */

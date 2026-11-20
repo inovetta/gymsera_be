@@ -17,6 +17,12 @@ const discoveryValidators = {
       .isIn(['MIXED', 'MALE_ONLY', 'FEMALE_ONLY'])
       .withMessage('genderType must be MIXED, MALE_ONLY, or FEMALE_ONLY'),
 
+    // R-113 H7: filter by audience ('women' | 'men')
+    query('audience')
+      .optional({ checkFalsy: true })
+      .isIn(['women', 'men'])
+      .withMessage('audience must be women or men'),
+
     query('search')
       .optional({ checkFalsy: true })
       .isString()
@@ -56,12 +62,20 @@ const discoveryValidators = {
     query('limit')
       .optional({ checkFalsy: true })
       .isInt({ min: 1, max: 50 }),
+    query('audience')
+      .optional({ checkFalsy: true })
+      .isIn(['women', 'men'])
+      .withMessage('audience must be women or men'),
   ],
 
   mapGyms: [
     query('cityId')
       .optional({ checkFalsy: true })
       .isInt({ min: 1 }),
+    query('audience')
+      .optional({ checkFalsy: true })
+      .isIn(['women', 'men'])
+      .withMessage('audience must be women or men'),
   ],
 
   submitReview: [

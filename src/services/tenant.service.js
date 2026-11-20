@@ -3,6 +3,7 @@ const { Tenant, User, PlatformPackage, City, TenantSubscription, PlatformAuditLo
 const kycStorageService = require('./kyc-storage.service');
 const { createError } = require('../utils/response.utils');
 const { assertAreaInCity } = require('./places.service');
+const branchHours = require('./branch-hours.service');
 const areaRequests = require('./area-requests.service');
 const { validateBrandName } = require('./brand-name.service');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
@@ -97,6 +98,24 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     ...(existingMainBranch || {}),
     ...mainBranchData,
   } : tenant.mainBranchDataJson;
+
+  // R-113 H4 / H5: the draft first branch's week (`mainBranchData.hoursJson`, Become a Host), checked and
+  // stored with its summary pair; an older build's pair follows the same old-client rules as a branch.
+  if (mainBranchData && typeof mainBranchData === 'object' && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
+    const has = (k) => Object.prototype.hasOwnProperty.call(mainBranchData, k);
+    if (has('hoursJson') || has('openingTime') || has('closingTime')) {
+      const stored = existingMainBranch || {};
+      const hm = (t) => (typeof t === 'string' && t ? t.slice(0, 5) : null);
+      const body = has('hoursJson')
+        ? { hours: mainBranchData.hoursJson, ...(has('openingTime') && { openingTime: mainBranchData.openingTime }), ...(has('closingTime') && { closingTime: mainBranchData.closingTime }) }
+        : { ...(has('openingTime') && { openingTime: mainBranchData.openingTime }), ...(has('closingTime') && { closingTime: mainBranchData.closingTime }) };
+      const values = branchHours.resolveWrite(body, { hoursJson: stored.hoursJson || null, openingTime: hm(stored.openingTime), closingTime: hm(stored.closingTime) });
+      const next = values || { hoursJson: stored.hoursJson || null, openingTime: stored.openingTime || null, closingTime: stored.closingTime || null };
+      mergedMainBranchData.hoursJson = next.hoursJson;
+      mergedMainBranchData.openingTime = next.openingTime;
+      mergedMainBranchData.closingTime = next.closingTime;
+    }
+  }
 
   // NEW-265 (A4, R-109 F1): the draft first branch's area. A key not sent keeps the stored area or
   // request; `areaId: null` / `areaRequestId: null` or a new real area clears the request.

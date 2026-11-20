@@ -29,6 +29,7 @@ const listGyms = async (req, res, next) => {
       cityId,
       areaId,
       genderType,
+      audience,
       search,
       featured,
       category,
@@ -45,6 +46,7 @@ const listGyms = async (req, res, next) => {
       cityId: cityId ? parseInt(cityId) : null,
       areaId: areaId ? parseInt(areaId) : null,
       genderType: genderType || null,
+      audience: audience || null,
       search: search || null,
       featured: featured || null,
       category: category || null,
@@ -69,13 +71,14 @@ const listGyms = async (req, res, next) => {
 // ── GET /discovery/gyms/nearby ────────────────────────────────────────────────
 const nearbyGyms = async (req, res, next) => {
   try {
-    const { lat, lng, radius = 10, page = 1, limit = 20 } = req.query;
+    const { lat, lng, radius = 10, page = 1, limit = 20, audience } = req.query;
     const result = await discoveryService.nearbyGyms({
       lat: parseFloat(lat),
       lng: parseFloat(lng),
       radiusKm: parseFloat(radius),
       page: parseInt(page),
       limit: parseInt(limit),
+      audience: audience || null,
     });
     return sendSuccess(res, result);
   } catch (err) {
@@ -86,8 +89,8 @@ const nearbyGyms = async (req, res, next) => {
 // ── GET /discovery/gyms/map ───────────────────────────────────────────────────
 const mapGyms = async (req, res, next) => {
   try {
-    const { cityId } = req.query;
-    const gyms = await discoveryService.mapGyms({ cityId: cityId || null });
+    const { cityId, audience } = req.query;
+    const gyms = await discoveryService.mapGyms({ cityId: cityId || null, audience: audience || null });
     return sendSuccess(res, { gyms });
   } catch (err) {
     next(err);
