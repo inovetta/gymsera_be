@@ -143,6 +143,31 @@ describe('H5: old clients (builds up to 26, the CMS, the website) keep working',
     const res = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${created.body.data.branch.id}`).send({ openingTime: '05:00', closingTime: '23:00' });
     expect(res.status).toBe(409);
   });
+
+  // NEW-292 (R-116): a branch saved before R-113 with an equal pair (00:00 / 00:00) and no schedule.
+  // Old forms send the pair back on every save; that must not turn every edit into a 422.
+  test('a legacy equal pair sent back unchanged is a no-op on the app and the admin (CMS) form; a changed one is still checked', async () => {
+    const created = await asPersona('owner').post('/host/branches').send(branchBody());
+    const id = created.body.data.branch.id;
+    await ctx.tenant1Db.sequelize.query(
+      'UPDATE branches SET opening_time = \'00:00:00\', closing_time = \'00:00:00\', hours_json = NULL WHERE id = ?',
+      { replacements: [id] }
+    );
+
+    const app = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ openingTime: '00:00', closingTime: '00:00', tagline: 'Kept' });
+    expect(app.status).toBe(200);
+    const cms = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${id}`).send({ branchName: 'Renamed by admin', openingTime: '00:00', closingTime: '00:00' });
+    expect(cms.status).toBe(200);
+    const row = await Branch().findByPk(id);
+    expect(row.tagline).toBe('Kept');
+    expect(row.branchName).toBe('Renamed by admin');
+    expect(row.hoursJson).toBeNull();
+    expect([row.openingTime, row.closingTime]).toEqual(['00:00', '00:00']);
+
+    const changed = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ openingTime: '05:00', closingTime: '05:00' });
+    expect(changed.status).toBe(422);
+    expect(changed.body.code).toBe('hours_invalid');
+  });
 });
 
 describe('H6: every branch object reads the schedule', () => {
@@ -270,5 +295,34 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
       const resMen = await asPersona('anonymous').get('/discovery/gyms?audience=men');
       expect(resMen.status).toBe(200);
     });
+
+  });
+});
+
+// R-116 item 4: the owner runs src/scripts/r113-hours-precheck.js on the server (read-only).
+describe('r113-hours-precheck (read-only counts for the owner)', () => {
+  test('counts the equal pairs per tenant database and prints no credentials', async () => {
+    const created = await asPersona('owner').post('/host/branches').send(branchBody());
+    await ctx.tenant1Db.sequelize.query(
+      'UPDATE branches SET opening_time = \'00:00:00\', closing_time = \'00:00:00\', hours_json = NULL WHERE id = ?',
+      { replacements: [created.body.data.branch.id] }
+    );
+    const { precheck, report } = require('../../src/scripts/r113-hours-precheck');
+    const result = await precheck();
+    const mine = result.tenants.find((t) => t.tenantCode === ctx.tenant1.tenantCode);
+    expect(mine).toBeDefined();
+    expect(mine.error).toBeUndefined();
+    expect(mine.hoursJsonColumn).toBe(true);
+    expect(mine.equalPairs).toBeGreaterThanOrEqual(1);
+    expect(mine.equalPairsNoSchedule).toBeGreaterThanOrEqual(1);
+    expect(result.migratableTenants).toBeGreaterThanOrEqual(1);
+
+    let out = '';
+    report(result, (s) => { out += s; });
+    expect(out).toContain(`${ctx.tenant1.tenantCode} (`);
+    expect(out).not.toMatch(/mysql:\/\/|password|127\.0\.0\.1|localhost/i);
+    const before = await Branch().count();
+    await precheck();
+    expect(await Branch().count()).toBe(before);
   });
 });

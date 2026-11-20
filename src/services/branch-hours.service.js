@@ -161,8 +161,8 @@ const _pairEqual = (a, b) => (a || null) === (b || null);
  * - `hours` (a schedule) → the schedule and its summary pair; `hours: null` clears both;
  *   `hours` together with the old pair → 422 hours_invalid.
  * - the old pair only → accepted when nothing or a uniform schedule is stored (stored as a uniform
- *   schedule plus the pair); refused with 409 hours_schedule_newer on a weekly schedule, unless it is
- *   the same pair sent back unchanged (a form that resends every field).
+ *   schedule plus the pair); refused with 409 hours_schedule_newer on a weekly schedule.
+ * - the same pair sent back unchanged → null (no change), whatever is stored (NEW-292).
  */
 const resolveWrite = (body = {}, stored = {}) => {
   const hasHours = Object.prototype.hasOwnProperty.call(body, 'hours');
@@ -186,9 +186,13 @@ const resolveWrite = (body = {}, stored = {}) => {
   if (closingTime !== null && !CLOSE_RE.test(closingTime)) errors.push({ path: 'closingTime', message: 'Closing time must be a real time, 00:00 to 24:00.' });
   if (errors.length) throw invalid(errors);
 
+  // The same pair sent back unchanged (a form that resends every field, e.g. the CMS branch form) is
+  // always a no-op: it must neither flatten a weekly schedule nor fail on a legacy pair that today's
+  // rules refuse, such as 00:00 / 00:00 stored before R-113 (NEW-292).
+  if (_pairEqual(openingTime, stored.openingTime) && _pairEqual(closingTime, stored.closingTime)) return null;
+
   const current = stored.hoursJson || null;
   if (current && !isUniform(current)) {
-    if (_pairEqual(openingTime, stored.openingTime) && _pairEqual(closingTime, stored.closingTime)) return null;
     const err = createError(
       'These hours have a different schedule for some days. Update the app (or ask GymsEra support) to change them.',
       409,

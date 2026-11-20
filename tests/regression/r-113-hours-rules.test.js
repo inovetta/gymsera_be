@@ -135,6 +135,26 @@ describe('R-113 H5: the summary pair and old clients', () => {
       expect(hours.resolveWrite({ openingTime: '06:00', closingTime: '22:00' }, stored(weekly, '06:00', '22:00'))).toBeNull();
     });
 
+    // NEW-292 (R-116): a legacy equal pair (00:00 / 00:00 from before R-113, no schedule) sent back
+    // unchanged by an old form (the CMS branch form resends every field) was refused with 422.
+    test('the same pair sent back unchanged is always a no-op, also a legacy equal pair with no schedule', () => {
+      expect(hours.resolveWrite({ openingTime: '00:00', closingTime: '00:00' }, stored(null, '00:00', '00:00'))).toBeNull();
+      expect(hours.resolveWrite({ openingTime: '09:00', closingTime: '09:00' }, stored(null, '09:00', '09:00'))).toBeNull();
+      expect(hours.resolveWrite({ openingTime: '00:00' }, stored(null, '00:00', '00:00'))).toBeNull();
+      expect(hours.resolveWrite({ openingTime: '06:00', closingTime: '22:00' }, stored(null, '06:00', '22:00'))).toBeNull();
+      const uniform = hours.validate(week({ all: [slot('06:00', '22:00')] }));
+      expect(hours.resolveWrite({ openingTime: '06:00', closingTime: '22:00' }, stored(uniform, '06:00', '22:00'))).toBeNull();
+    });
+
+    test('a changed pair is still checked: a new equal pair is refused, a real change to a legacy pair is stored', () => {
+      expect(() => hours.resolveWrite({ openingTime: '05:00', closingTime: '05:00' }, stored(null, '00:00', '00:00')))
+        .toThrow(expect.objectContaining({ statusCode: 422, code: 'hours_invalid' }));
+      expect(() => hours.resolveWrite({ openingTime: '05:00', closingTime: '05:00' }, stored(null)))
+        .toThrow(expect.objectContaining({ statusCode: 422, code: 'hours_invalid' }));
+      expect(hours.resolveWrite({ openingTime: '06:00', closingTime: '22:00' }, stored(null, '00:00', '00:00')))
+        .toEqual({ hoursJson: week({ all: [slot('06:00', '22:00')] }), openingTime: '06:00', closingTime: '22:00' });
+    });
+
     test('a body without any hours field changes nothing', () => {
       expect(hours.resolveWrite({ branchName: 'x' }, stored(null, '06:00', '22:00'))).toBeNull();
     });
