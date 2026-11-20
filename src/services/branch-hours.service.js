@@ -18,6 +18,7 @@ const AUDIENCES = Object.freeze(['all', 'men', 'women']);
 const MAX_SLOTS = 4;
 const DAY_MINUTES = 1440;
 const MAX_AFTER_MIDNIGHT = 12 * 60;
+const AFTER_MIDNIGHT_MESSAGE = 'Closing time is before opening time. Check AM/PM, or pick a closing time up to 12:00 PM the next day.';
 const OPEN_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const CLOSE_RE = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/;
 
@@ -98,7 +99,8 @@ const validate = (input) => {
       const end = _endOf(s);
       if (end > DAY_MINUTES) {
         if (k !== clean.length - 1) add(`${path}.close`, 'Only the last slot of a day may go past midnight.');
-        else if (end - DAY_MINUTES > MAX_AFTER_MIDNIGHT) add(`${path}.close`, 'A slot may end at most 12 hours after midnight.');
+        // NEW-296 (R-117): the rule is unchanged; the sentence names the likely cause (AM / PM).
+        else if (end - DAY_MINUTES > MAX_AFTER_MIDNIGHT) add(`${path}.close`, AFTER_MIDNIGHT_MESSAGE);
       }
       if (k > 0 && open < _endOf(clean[k - 1])) add(path, 'This slot overlaps another one.');
     });

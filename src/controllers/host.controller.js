@@ -429,8 +429,13 @@ const createListing = async (req, res, next) => {
     const tenantId = req.user.tenantId;
     if (!tenantId) throw createError('Tenant not found', 404);
     // R-113 H4: the first branch's week, checked before the organisation is created.
-    const hasHours = Object.prototype.hasOwnProperty.call(req.body, 'hours');
-    if (hasHours) require('../services/branch-hours.service').resolveWrite({ hours: req.body.hours }, {});
+    // NEW-297 (R-117): the old opening / closing pair too (H5), checked by the same rules, never dropped.
+    const hoursBody = {};
+    for (const k of ['hours', 'openingTime', 'closingTime']) {
+      if (Object.prototype.hasOwnProperty.call(req.body, k)) hoursBody[k] = req.body[k];
+    }
+    const hasHours = Object.keys(hoursBody).length > 0;
+    if (hasHours) require('../services/branch-hours.service').resolveWrite(hoursBody, {});
 
     const platformTx = await Tenant.sequelize.transaction();
     try {
@@ -677,7 +682,7 @@ const createListing = async (req, res, next) => {
             longitude,
             googlePlaceId: googlePlaceId || null, // NEW-140: the address picked from Google
             facilitiesJson: Array.isArray(req.body.facilitiesJson) ? req.body.facilitiesJson : null, // NEW-266
-            ...(hasHours ? { hours: req.body.hours } : {}), // R-113 H4
+            ...hoursBody, // R-113 H4; NEW-297: or the old pair
             phone: contactPhone || tenant.phone || null,
             images: Array.isArray(images) && images.length > 0
               ? images
