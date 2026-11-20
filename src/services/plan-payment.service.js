@@ -62,7 +62,8 @@ const storeRenewsSentence = (platform) => `Your plan is billed by ${STORE_NAMES[
 /** Why the bank-transfer form is refused now, or null. */
 const storeBlock = async (tenantId) => {
   const current = await subscriptionQuotaService.getActiveSubscription(tenantId);
-  if (current && STORE_PLATFORMS.includes(current.platform) && current.autoRenew !== false) {
+  // NEW-281 (R-114): a store test purchase (SANDBOX) never blocks a real plan.
+  if (current && STORE_PLATFORMS.includes(current.platform) && current.autoRenew !== false && current.environment !== 'SANDBOX') {
     return {
       code: 'store_plan_active',
       platform: current.platform,
@@ -202,7 +203,9 @@ const _pendingOr409 = async (requestId) => {
 /** The period an approval grants (R-95): from the end of a running PAID plan, else from today. */
 const periodFor = async (tenantId, months, today = isoDate(new Date())) => {
   const current = await subscriptionQuotaService.getActiveSubscription(tenantId);
-  const paid = current && (current.paymentStatus === 'PAID' || STORE_PLATFORMS.includes(current.platform));
+  // NEW-281 (R-114): a store test purchase (SANDBOX) is not a paid period to extend from.
+  const paid = current && current.environment !== 'SANDBOX' &&
+    (current.paymentStatus === 'PAID' || STORE_PLATFORMS.includes(current.platform));
   const runningEnd = current?.endDate && String(current.endDate) > today ? String(current.endDate) : null;
   const base = paid && runningEnd ? runningEnd : today;
   return { start: today, extendedFrom: base === today ? null : base, end: addMonths(base, months) };

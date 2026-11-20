@@ -198,6 +198,16 @@ const requestProviderChange = async (
       },
       { transaction }
     );
+  } else if (currentActive.environment === 'SANDBOX' && newSubscriptionValues.environment !== 'SANDBOX') {
+    // NEW-281 (R-114): a store test purchase replaced by a real plan (bank transfer or a real
+    // store purchase). Nobody pays for it, so there is nothing to cancel and nothing to tell.
+    await currentActive.update(
+      {
+        status: 'CANCELLED',
+        statusNote: `Test purchase replaced by a ${storeLabel[newPlatform]} plan on ${today} — no action needed.`,
+      },
+      { transaction }
+    );
   } else if (currentActive.platform === 'STRIPE') {
     // We control Stripe server-side — schedule its real cancellation. The
     // caller (stripe-billing.service.js, or another provider's service via
@@ -330,7 +340,8 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
 
   return {
     ...incomingValues,
-    duplicateBilling: true,
+    // NEW-281 (R-114): a store test purchase renewing costs nobody money: not duplicate billing.
+    duplicateBilling: existingRow.environment !== 'SANDBOX',
     status: existingRow.status,
     statusNote:
       existingRow.statusNote ||
