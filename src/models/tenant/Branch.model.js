@@ -70,6 +70,19 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'hours_json',
       },
+      // R-119 D12 (tenant migration 030): the refund policy belongs to the branch only. Off for a new branch;
+      // window in days from the payment, null = no limit (subscription-refund.service.js#policyFor).
+      refundsAllowed: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'refunds_allowed',
+      },
+      refundWindowDays: {
+        type: DataTypes.SMALLINT.UNSIGNED,
+        allowNull: true,
+        field: 'refund_window_days',
+      },
       phone: {
         type: DataTypes.STRING(25),
         allowNull: true,

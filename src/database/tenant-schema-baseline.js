@@ -101,6 +101,9 @@ const ADDS = {
   29: {
     columns: { branches: ['hours_json'] },
   },
+  30: {
+    columns: { branches: ['refunds_allowed', 'refund_window_days'] },
+  },
 };
 
 /** One read of information_schema for the current database. */
@@ -322,6 +325,12 @@ const PROBES = {
   },
   // 029 adds branches.hours_json (R-113 H1); MySQL reports JSON as json (MariaDB as longtext).
   29: async (s) => columnOfType(s, 'branches', 'hours_json', (c) => ['json', 'longtext'].includes(type(c))),
+  // 030 adds two branches columns (R-119 D12); the last step is refund_window_days.
+  30: async (s) => {
+    const r = columnOfType(s, 'branches', 'refunds_allowed', (c) => INT_TYPES.includes(type(c)));
+    if (r.state !== 'present') return r;
+    return columnOfType(s, 'branches', 'refund_window_days', (c) => INT_TYPES.includes(type(c)));
+  },
 };
 
 /** Tables and columns the tenant models read (Sequelize field names, no VIRTUAL attributes). */

@@ -1409,6 +1409,61 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 33,
+    name: 'p033_business_kyc_and_approval',
+    description:
+      'R-119 (Organization › Business › Branch): business-level KYC and approval on gym_listings (kyc_status, kyc_documents_json, kyc_submitted_at, approved_at, approved_by), the verified badge (verified_at, verified_by; D11) and the held first branch of an Add Business submission (first_branch_data_json; Q2). New columns only; kyc_status defaults to NOT_SUBMITTED, everything else NULL. Existing rows are filled by src/scripts/backfill-enterprise-model.js, not here. Safe to re-run.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run (lists p033, writes nothing).
+    // BACKUP: none needed (new columns only; no existing value is read or changed).
+    //   All-or-nothing, as p032: a column someone added by hand with another type skips the whole
+    //   migration (not recorded, reported) and nothing is written.
+    // DEPLOY (D13): after build 28 is live; before the backfill script and before the API that reads them.
+    // ROLLBACK (deploy the previous API build FIRST: it never reads these columns):
+    //   ALTER TABLE `gym_listings` DROP COLUMN `kyc_status`, DROP COLUMN `kyc_documents_json`,
+    //     DROP COLUMN `kyc_submitted_at`, DROP COLUMN `approved_at`, DROP COLUMN `approved_by`,
+    //     DROP COLUMN `verified_at`, DROP COLUMN `verified_by`, DROP COLUMN `first_branch_data_json`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 33;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const KYC_ENUM = "ENUM('NOT_SUBMITTED','PENDING','APPROVED','REJECTED')";
+      const columns = [
+        { column: 'kyc_status', ddl: `${KYC_ENUM} NOT NULL DEFAULT 'NOT_SUBMITTED'`, accept: [`enum('not_submitted','pending','approved','rejected')`], nullable: 'NO' },
+        { column: 'kyc_documents_json', ddl: 'JSON NULL', accept: ['json', 'longtext'] },
+        { column: 'kyc_submitted_at', ddl: 'DATETIME NULL', accept: ['datetime'] },
+        { column: 'approved_at', ddl: 'DATETIME NULL', accept: ['datetime'] },
+        { column: 'approved_by', ddl: 'CHAR(36) BINARY NULL', accept: ['char(36)'] },
+        { column: 'verified_at', ddl: 'DATETIME NULL', accept: ['datetime'] },
+        { column: 'verified_by', ddl: 'CHAR(36) BINARY NULL', accept: ['char(36)'] },
+        { column: 'first_branch_data_json', ddl: 'JSON NULL', accept: ['json', 'longtext'] },
+      ];
+      const [table] = await sequelize.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+        { replacements: ['gym_listings'], type: QueryTypes.SELECT }
+      );
+      if (!table) return null;
+      const toAdd = [];
+      for (const c of columns) {
+        const [col] = await sequelize.query(
+          'SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: ['gym_listings', c.column], type: QueryTypes.SELECT }
+        );
+        if (!col) {
+          toAdd.push(c);
+        } else if (!c.accept.includes(String(col.type).toLowerCase()) || col.nullable !== (c.nullable || 'YES')) {
+          console.warn(
+            `[PlatformMigration] SKIPPING p033_business_kyc_and_approval: gym_listings.${c.column} already exists as ${col.type} ` +
+              `(nullable: ${col.nullable}); expected ${c.ddl}. Resolve it by hand, then re-run.`
+          );
+          return { skipped: true, reason: 'column_exists_with_other_type', table: 'gym_listings', column: c.column, type: col.type };
+        }
+      }
+      if (toAdd.length > 0) {
+        await sequelize.query(`ALTER TABLE \`gym_listings\` ${toAdd.map((c) => `ADD COLUMN \`${c.column}\` ${c.ddl}`).join(', ')}`);
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

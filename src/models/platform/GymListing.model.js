@@ -151,6 +151,43 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: true,
       },
+      // R-119 (platform migration p033): business-level KYC and approval, the verified badge, the held first branch.
+      kycStatus: {
+        type: DataTypes.ENUM('NOT_SUBMITTED', 'PENDING', 'APPROVED', 'REJECTED'),
+        allowNull: false,
+        defaultValue: 'NOT_SUBMITTED',
+      },
+      // Same shape as tenants.kyc_documents_json (R-85), business types only (BUSINESS_REGISTRATION, PROOF_OF_PREMISES).
+      kycDocumentsJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
+      kycSubmittedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      approvedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      approvedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // D11: set by an admin who approved the BUSINESS_REGISTRATION document; NULL = not verified / revoked.
+      verifiedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      verifiedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // Q2: the first branch of an Add Business submission, built on approval. Shape of tenants.main_branch_data_json.
+      firstBranchDataJson: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
     },
     {
       tableName: 'gym_listings',

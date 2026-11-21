@@ -58,6 +58,8 @@ module.exports = (sequelize) => {
         comment: 'Cross-DB reference to GymListing id on the platform DB',
       },
       // NEW-253 (R-103): refunds on cancellation, off by default; window in days from the payment (null = no limit).
+      // DEPRECATED (R-119 D12, tenant migration 030): the policy lives on the branch (branches.refunds_allowed /
+      // refund_window_days). Kept, unused by the API, never dropped; 030 copied these values to each branch.
       refundsAllowed: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

@@ -1505,6 +1505,52 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // R-119 D12 (owner 2026-11-22): the refund policy belongs to the branch only. Adds
+    // branches.refunds_allowed (NOT NULL DEFAULT 0: a new branch starts with refunds off) and
+    // branches.refund_window_days (NULL = no limit), then copies each business's current gyms values to
+    // its branches (a branch without a gym takes the oldest gym's, the scope policyFor used for it).
+    // The copy runs only when this run added refunds_allowed, so a re-run never overwrites a branch's
+    // own policy. gyms.refunds_allowed / refund_window_days stay (deprecated, unused); nothing dropped.
+    // Rollback (manual; deploy the previous API build first, it reads the gyms columns):
+    //   ALTER TABLE `branches` DROP COLUMN `refunds_allowed`, DROP COLUMN `refund_window_days`;
+    //   DELETE FROM `schema_migrations` WHERE `version` = 30;
+    version: 30,
+    name: '030_branch_refund_policy',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const hasColumn = async (table, column) =>
+        (await sequelize.query(
+          'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+          { replacements: [table, column], type: QueryTypes.SELECT }
+        )).length > 0;
+      const addedAllowed = !(await hasColumn('branches', 'refunds_allowed'));
+      if (addedAllowed) {
+        await sequelize.query('ALTER TABLE `branches` ADD COLUMN `refunds_allowed` TINYINT(1) NOT NULL DEFAULT 0');
+      }
+      if (!(await hasColumn('branches', 'refund_window_days'))) {
+        await sequelize.query('ALTER TABLE `branches` ADD COLUMN `refund_window_days` SMALLINT UNSIGNED NULL');
+      }
+      const gymsHavePolicy = (await hasColumn('gyms', 'refunds_allowed')) && (await hasColumn('gyms', 'refund_window_days'));
+      if (addedAllowed && gymsHavePolicy && (await hasColumn('branches', 'gym_id'))) {
+        await sequelize.query(
+          'UPDATE `branches` b JOIN `gyms` g ON g.`id` = b.`gym_id` SET b.`refunds_allowed` = g.`refunds_allowed`, b.`refund_window_days` = g.`refund_window_days`'
+        );
+        const order = (await hasColumn('gyms', 'created_at')) ? '`created_at` ASC, `id` ASC' : '`id` ASC';
+        const [oldest] = await sequelize.query(
+          `SELECT \`refunds_allowed\` AS allowed, \`refund_window_days\` AS days FROM \`gyms\` ORDER BY ${order} LIMIT 1`,
+          { type: QueryTypes.SELECT }
+        );
+        if (oldest) {
+          await sequelize.query(
+            'UPDATE `branches` b LEFT JOIN `gyms` g ON g.`id` = b.`gym_id` SET b.`refunds_allowed` = ?, b.`refund_window_days` = ? WHERE g.`id` IS NULL',
+            { replacements: [oldest.allowed ? 1 : 0, oldest.days == null ? null : Number(oldest.days)] }
+          );
+        }
+      }
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
