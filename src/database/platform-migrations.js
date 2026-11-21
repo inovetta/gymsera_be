@@ -1426,9 +1426,9 @@ const PLATFORM_MIGRATIONS = [
     //   DELETE FROM `schema_migrations` WHERE `version` = 33;
     up: async (sequelize, context = {}) => {
       if (context?.dryRun === true) return null;
-      const KYC_ENUM = "ENUM('NOT_SUBMITTED','PENDING','APPROVED','REJECTED')";
+      const KYC_ENUM = 'ENUM(\'NOT_SUBMITTED\',\'PENDING\',\'APPROVED\',\'REJECTED\')';
       const columns = [
-        { column: 'kyc_status', ddl: `${KYC_ENUM} NOT NULL DEFAULT 'NOT_SUBMITTED'`, accept: [`enum('not_submitted','pending','approved','rejected')`], nullable: 'NO' },
+        { column: 'kyc_status', ddl: `${KYC_ENUM} NOT NULL DEFAULT 'NOT_SUBMITTED'`, accept: ['enum(\'not_submitted\',\'pending\',\'approved\',\'rejected\')'], nullable: 'NO' },
         { column: 'kyc_documents_json', ddl: 'JSON NULL', accept: ['json', 'longtext'] },
         { column: 'kyc_submitted_at', ddl: 'DATETIME NULL', accept: ['datetime'] },
         { column: 'approved_at', ddl: 'DATETIME NULL', accept: ['datetime'] },
