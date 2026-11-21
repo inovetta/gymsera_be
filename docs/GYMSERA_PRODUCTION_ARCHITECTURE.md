@@ -4407,6 +4407,12 @@ Report (owner, 2026-11-20, server at `main` `8172e7b`): on Become a Host step 3 
 
 **Deploy order.** The app commits work against today's `main` API (step 3 and Add branch send the same pair shapes as before, plus 00:00-24:00, which H3 already accepts); the be branch gives the new sentence and keeps a pair sent to `POST /host/listings`. Merge and deploy be (no migration; touch `web.config`, never `iisreset`) before shipping build 27 for the friendlier server sentence; not required for the app to work.
 
+### NEW-302: a "+" in the email (owner 2026-11-22, R-119 task 3)
+
+| ID | Status | Issue → Root cause → Pattern reused → Fix → Test → Result |
+|---|---|---|
+| NEW-302 | DONE (be, PR from `fix/email-plus-space`) | **Sign-up with a "+" alias could not be verified, and login of an unverified "+" account looped.** Root cause: app builds 27 / 28 open `/auth/otp-verify?email=$email` without encoding (`signup_screen.dart:91`, `login_screen.dart:65`); `Uri.queryParameters` (`app_router.dart:246`) decodes "+" as a space, so verify / resend sent `a b@x.com`, which `isEmail()` refuses (422) and no account matches. Pattern reused: the express-validator sanitizer chain already on every auth email. Fix: one `emailField()` rule in `auth.validator.js` (register, login, OTP verify, OTP resend, password reset request / confirm): trim, then each inner space becomes "+", then lower-case and `isEmail()`. A space is never valid in an address, so nothing valid changes; a real format error still gets 422. The app should still encode the query (`Uri.encodeQueryComponent`) in its next build; old builds are covered by this server fix. Test: `tests/regression/new-302-email-plus-space.test.js` (5; red 4 / 5 before the fix). Result: 5 / 5; with the auth, OTP, rate-limit, SEC-06 and unauthenticated-route suites 285 / 285 (local Docker MySQL). |
+
 ## 14. Remaining risks and open decisions
 
 > **Decisions recorded 2026-09-26.** The owner delegated these to the architect (Claude Code) and they are now **final for agents**. Agents apply them and do **not** stop to ask about them again. The owner may override any row at any time by editing it.
