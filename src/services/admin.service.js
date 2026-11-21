@@ -365,6 +365,49 @@ const getTenant = async (tenantId) => {
  * `provisioning.inProgress` (the controller answers 202). The route also takes
  * an optional Idempotency-Key (REL-01 middleware).
  */
+/**
+ * R-119 Q2: an Add Business submission holds its first branch in gym_listings.first_branch_data_json on one
+ * reserved unit. Approval marks the business ACTIVE and builds that branch through gymService.createBranch
+ * (CAP-03) in one platform transaction: it consumes the reserved unit (SLOT_CONSUMED_BUILD) and the JSON
+ * is cleared. A second approval finds no JSON and builds nothing.
+ */
+const buildHeldFirstBranch = async (listing, approval, adminUserId) => {
+  const tenant = await Tenant.findByPk(listing.tenantId);
+  if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
+    throw createError('The organization\'s database is not ready; approve the organization first', 409);
+  }
+  const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+  const gymService = require('./gym.service');
+  const { submittedBy, submittedAt, ...held } = listing.firstBranchDataJson || {};
+  const t = await GymListing.sequelize.transaction();
+  try {
+    await listing.update(approval, { transaction: t });
+    const { branch } = await gymService.createBranch(
+      tenantDb,
+      tenant.id,
+      { ...held, gymListingId: listing.id },
+      submittedBy || null,
+      {
+        transaction: t,
+        isProvisioning: true,
+        actorType: 'ADMIN',
+        reason: `First branch "${held.branchName || listing.title}" built on business approval by ${adminUserId || 'admin'} (held since ${submittedAt || 'submit'})`,
+      }
+    );
+    // NEW-265 (A4): a held branch waiting on an area request gets its own `branch` link, as a branch
+    // created by the host would (the listing's link was written at submit).
+    if (held.areaRequestId) {
+      await areaRequests.applyChoiceToLink({ kind: 'request', requestId: Number(held.areaRequestId) }, { tenantId: tenant.id, target: 'branch', targetId: branch.id }, { transaction: t });
+    }
+    await listing.update({ firstBranchDataJson: null, branchId: listing.branchId || branch.id }, { transaction: t });
+    await t.commit();
+    return branch;
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+};
+
 const approveTenant = async (tenantId, adminUserId, { photosChecked = false } = {}) => {
   const [actualTenantId, listingId] = tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined];
   // R-84 (NEW-158): the route requires the admin's photo check; the record is written once the
@@ -375,14 +418,26 @@ const approveTenant = async (tenantId, adminUserId, { photosChecked = false } = 
   if (listingId) {
     const listing = await GymListing.findByPk(listingId);
     if (!listing) throw createError('Gym listing not found', 404);
+    // R-119 D10: a business not yet approved needs proof of premises and 3+ photos (registration optional).
+    // Re-approving an ACTIVE business changes nothing that needs them.
+    if (listing.status !== 'ACTIVE') require('./business-kyc.service').assertReadyForApproval(listing);
     await recordPhotoCheck();
 
-    await listing.update({
+    const approval = {
+      kycStatus: 'APPROVED',
       status: 'ACTIVE',
       rejectionReason: null,
       rejectedAt: null,
       rejectedBy: null,
-    });
+      approvedAt: new Date(),
+      approvedBy: adminUserId || null,
+    };
+    if (listing.firstBranchDataJson) {
+      // R-119 Q2: build the held first branch into the business's reserved unit, then clear it.
+      await buildHeldFirstBranch(listing, approval, adminUserId);
+    } else {
+      await listing.update(approval);
+    }
 
     if (listing.hostId) {
       notificationsService.createNotification({
@@ -521,6 +576,7 @@ const rejectTenant = async (tenantId, adminUserId, reason) => {
 
     await listing.update({
       status: 'REJECTED',
+      kycStatus: 'REJECTED', // R-119: the business's own review
       rejectionReason: reason.trim(),
       rejectedAt: new Date(),
       rejectedBy: adminUserId,

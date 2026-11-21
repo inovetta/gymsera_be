@@ -83,7 +83,8 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
       gymName: `Org 266 ${Date.now()}`, facilitiesJson: AMENITIES, packages: [{ name: 'Monthly', price: 50 }],
     });
     expect(res.status).toBe(201);
-    const branch = await personaManager.context.tenant1Db.models.Branch.findByPk(res.body.data.branch.id);
+    // R-119 Q2: held until approval; approval builds it from the held fields.
+    const branch = await factories.approveHeldBusiness(res.body.data.id, personaManager.personas.platformAdmin.user.id, personaManager.context.tenant1Db);
     expect(branch.facilitiesJson).toEqual(AMENITIES);
   });
 });

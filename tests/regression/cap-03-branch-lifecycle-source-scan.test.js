@@ -7,6 +7,7 @@ const {
   setupPersonas,
   asPersona,
 } = require('../harness');
+const { personaManager } = require('../harness/personas');
 const adminService = require('../../src/services/admin.service');
 const gymService = require('../../src/services/gym.service');
 const { TenantSubscription, GymListing } = require('../../src/models/platform');
@@ -140,8 +141,10 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
       expect([200, 201]).toContain(res.status);
       expect(res.body.success).toBe(true);
 
-      // Verify branch was created in tenantDb with ACTIVE status
+      // R-119 Q2: the first branch is held and built through createBranch when the business is approved.
       const { Branch } = dbHarness.tenant1.models;
+      expect(await Branch.findOne({ where: { branchName: 'Host Created New Org' } })).toBeNull();
+      await factories.approveHeldBusiness(res.body.data.id, personaManager.personas.platformAdmin.user.id);
       const branch = await Branch.findOne({ where: { branchName: 'Host Created New Org' } });
       expect(branch).not.toBeNull();
       expect(branch.status).toBe('ACTIVE');

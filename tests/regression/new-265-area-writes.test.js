@@ -282,18 +282,21 @@ describe('A4: "Choose your area again" (rejected marker, GET /host/status)', () 
 });
 
 describe('A4: host listing and branch routes', () => {
-  test('POST /host/listings with areaRequestId writes two links (listing and its first branch) and the listing marker (R-109, F5)', async () => {
+  // R-119 Q2: the first branch is held until the business is approved; its `branch` link is written when the
+  // approval builds it (tests/regression/r-119-create-rules.test.js). At submit: the listing link and marker,
+  // and the request kept in the held branch.
+  test('POST /host/listings with areaRequestId writes the listing link and marker, and holds the request for the first branch (R-109, F5; R-119 Q2)', async () => {
     const r = await makeRequest(ownerUserId, peshawar, 'Two Links Town');
     const res = await asPersona('owner').post('/host/listings').send({
       gymName: `Org 265 ${Date.now()}`, cityId: peshawar.id, areaRequestId: r.id, packages: [{ name: 'Monthly', price: 50 }],
     });
     expect(res.status).toBe(201);
     const listingId = res.body.data.id;
-    const branchId = res.body.data.branch.id;
-    expect(await GymListing.findByPk(listingId)).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
-    expect(res.body.data.branch.areaId).toBeNull();
+    expect(res.body.data).toMatchObject({ branch: null, heldFirstBranch: true });
+    const listing = await GymListing.findByPk(listingId);
+    expect(listing).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
+    expect(listing.firstBranchDataJson).toMatchObject({ areaId: null, areaRequestId: r.id });
     expect(await linkOf('listing', ctx.tenant1.id, listingId)).toMatchObject({ areaRequestId: r.id });
-    expect(await linkOf('branch', ctx.tenant1.id, branchId)).toMatchObject({ areaRequestId: r.id });
     // Reads.
     const one = await asPersona('owner').get(`/host/listings/${listingId}`);
     expect(one.body.data.pendingArea).toMatchObject({ requestId: r.id, name: 'Two Links Town', status: 'pending_review' });

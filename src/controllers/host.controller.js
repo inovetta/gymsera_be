@@ -389,7 +389,11 @@ const getListings = async (req, res, next) => {
     }
 
     // NEW-265 (A4 reads): each organization's pending or rejected area request.
-    return sendSuccess(res, await areaRequests.withPendingAreas('listing', tenantId, listings));
+    // R-119 §2.1: business state, verified badge, held branch, documents (no storage keys).
+    const { withBusinessFields } = require('../services/business-kyc.service');
+    const rows = await areaRequests.withPendingAreas('listing', tenantId, listings);
+    const byId = new Map(listings.map((l) => [l.id, l]));
+    return sendSuccess(res, rows.map((r) => (byId.has(r.id) ? withBusinessFields(r, byId.get(r.id)) : r)));
   } catch (err) {
     next(err);
   }
@@ -504,8 +508,10 @@ const createListing = async (req, res, next) => {
       const areaValues = areaRequests.rowValues(areaChoice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
       // How this organization's first branch gets filled:
-      //   'new'     (default) — build a real branch immediately, same as
-      //             before; requires packages, consumes 1 unit of capacity.
+      //   'new'     (default) — R-119 Q2: the business is PENDING, so its first
+      //             branch is HELD (gym_listings.first_branch_data_json) on one
+      //             reserved unit and built when an admin approves the business
+      //             (admin.service.js#approveTenant). Requires packages.
       //   'reserve' — no branch yet, just earmark 1 unit of capacity on this
       //             organization (a "slot") to be built later from the Gyms
       //             tab, or moved to a different organization first.
@@ -594,12 +600,13 @@ const createListing = async (req, res, next) => {
         latitude: latitude || null,
         longitude: longitude || null,
         status: 'PENDING',
-        reservedSlots: branchSource === 'reserve' ? 1 : 0,
+        // R-119 Q2: both sources earmark one unit; 'new' also holds the branch's fields.
+        reservedSlots: 1,
       }, { transaction: platformTx });
 
       await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'listing', targetId: listing.id }, { transaction: platformTx });
 
-      if (branchSource === 'reserve') {
+      {
         // Drawing 1 unit of already-available tenant-wide capacity (checked
         // above) into this brand-new organization as an unbuilt slot — same
         // shape as any other slot attribution, so it gets the same audit
@@ -614,7 +621,9 @@ const createListing = async (req, res, next) => {
             reservedSlotsAfter: 1,
             actorUserId: req.user.sub || req.user.id,
             actorType: 'HOST',
-            reason: `Organization "${gymName}" created with a reserved slot (build later)`,
+            reason: branchSource === 'new'
+              ? `Business "${gymName}" created; its first branch is held until approval (R-119)`
+              : `Organization "${gymName}" created with a reserved slot (build later)`,
             idempotencyKey: `slot_attribute_reserve:${listing.id}`,
           },
           { transaction: platformTx }
@@ -664,45 +673,34 @@ const createListing = async (req, res, next) => {
         gymListingId: listing.id,
       });
 
-      let branch = null;
+      // R-119 Q2: the first branch is held on the business, not built: a business under review receives no
+      // branch (D7). admin.service.js#approveTenant builds it from this JSON into the reserved unit.
+      let heldFirstBranch = false;
       if (branchSource === 'new') {
-        // CAP-03: Route through gymService.createBranch with caller's transaction
-        // and capacity already verified/settled above.
-        const branchResult = await gymService.createBranch(
-          req.tenantDb,
-          tenantId,
-          {
-            branchName: gymName,
-            address,
-            addressLine1: address,
-            cityId: targetCityId,
-            areaId: areaValues.areaId,
-            ...(areaValues.areaRequestId ? { areaRequestId: areaValues.areaRequestId } : {}), // NEW-265: second link
-            latitude,
-            longitude,
-            googlePlaceId: googlePlaceId || null, // NEW-140: the address picked from Google
-            facilitiesJson: Array.isArray(req.body.facilitiesJson) ? req.body.facilitiesJson : null, // NEW-266
-            ...hoursBody, // R-113 H4; NEW-297: or the old pair
-            phone: contactPhone || tenant.phone || null,
-            images: Array.isArray(images) && images.length > 0
-              ? images
-              : (coverImageUrl ? [coverImageUrl] : []),
-            packages,
-            gymListingId: listing.id,
-          },
-          req.user.sub || req.user.id,
-          {
-            transaction: platformTx,
-            skipCapacityCheck: true,
-            skipCapacityEvent: !!slotDonorListing,
-            reason: `Initial branch "${gymName}" created with new organization`,
-          }
-        );
-        branch = branchResult.branch;
+        const held = {
+          branchName: gymName,
+          address,
+          addressLine1: address,
+          cityId: targetCityId,
+          areaId: areaValues.areaId,
+          ...(areaValues.areaRequestId ? { areaRequestId: areaValues.areaRequestId } : {}),
+          latitude: latitude || null,
+          longitude: longitude || null,
+          googlePlaceId: googlePlaceId || null,
+          facilitiesJson: Array.isArray(req.body.facilitiesJson) ? req.body.facilitiesJson : null,
+          ...hoursBody,
+          phone: contactPhone || tenant.phone || null,
+          images: Array.isArray(images) && images.length > 0 ? images : (coverImageUrl ? [coverImageUrl] : []),
+          packages,
+          submittedBy: req.user.sub || req.user.id,
+          submittedAt: new Date().toISOString(),
+        };
+        await listing.update({ firstBranchDataJson: held }, { transaction: platformTx });
+        heldFirstBranch = true;
       }
 
       await platformTx.commit();
-      return sendSuccess(res, { ...listing.toJSON(), branch }, 'Listing created successfully', 201);
+      return sendSuccess(res, { ...listing.toJSON(), branch: null, heldFirstBranch }, 'Listing created successfully', 201);
     } catch (err) {
       await platformTx.rollback();
       throw err;
@@ -736,7 +734,8 @@ const getListing = async (req, res, next) => {
     if (!listing) throw createError('Organization not found or access denied', 404);
     const gym = await _organizationGym(req.tenantDb, listing);
     const pendingArea = await areaRequests.pendingAreaFor('listing', tenantId, listing.id); // NEW-265
-    return sendSuccess(res, { ...listing.toJSON(), pendingArea, gym: gym ? gym.toJSON() : null });
+    const { withBusinessFields } = require('../services/business-kyc.service'); // R-119 §2.1
+    return sendSuccess(res, { ...withBusinessFields(listing.toJSON(), listing), pendingArea, gym: gym ? gym.toJSON() : null });
   } catch (err) {
     next(err);
   }
@@ -1649,7 +1648,52 @@ const findOrCreateConversation = async (req, res, next) => {
   }
 };
 
+// ── R-119 D10: business documents (POST / GET /host/listings/:id/kyc-documents, .../:documentId/stream) ──
+const businessKyc = () => require('../services/business-kyc.service');
+
+const uploadBusinessDocuments = async (req, res, next) => {
+  try {
+    const docs = await businessKyc().uploadDocuments({
+      listingId: req.params.id, userId: req.user.sub || req.user.id, userRole: req.user.role,
+      files: req.files, documentType: req.body.documentType,
+    });
+    return sendSuccess(res, { documents: docs }, 'Documents uploaded', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getBusinessDocuments = async (req, res, next) => {
+  try {
+    const docs = await businessKyc().listDocuments({ listingId: req.params.id, userId: req.user.sub || req.user.id, userRole: req.user.role });
+    return sendSuccess(res, { documents: docs });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const streamBusinessDocument = async (req, res, next) => {
+  try {
+    const { stream, doc, contentType, contentLength } = await businessKyc().streamDocument({
+      listingId: req.params.id, documentId: req.params.documentId,
+      userId: req.user.sub || req.user.id, userRole: req.user.role,
+      reqInfo: { ip: req.ip, userAgent: req.get('user-agent') },
+    });
+    res.setHeader('Content-Type', contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.originalName || 'document')}"`);
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (stream.pipe) stream.pipe(res); else res.send(stream);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
+  uploadBusinessDocuments,
+  getBusinessDocuments,
+  streamBusinessDocument,
   getHostStatus,
   getTodaySummary,
   getBranchQuota,

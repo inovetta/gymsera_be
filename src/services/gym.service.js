@@ -487,6 +487,56 @@ const _guardLastBranchInOrganization = async (tenantDb, branch, confirmed) => {
   throw err;
 };
 
+/**
+ * R-119 D7: only an approved (ACTIVE) business receives branches. PENDING / DRAFT / REJECTED answer 409
+ * `business_not_approved`. `allowInactive` keeps CAP-06 (restoring into an approved business that was
+ * auto-deactivated when its last branch was deleted).
+ */
+const BUSINESS_NOT_APPROVED_MESSAGE = 'This business is still under review. You can add branches once it is approved.';
+const assertBusinessCanReceiveBranches = (listing, { allowInactive = false } = {}) => {
+  if (!listing) return;
+  if (listing.status === 'ACTIVE' || (allowInactive && listing.status === 'INACTIVE')) return;
+  const err = createError(BUSINESS_NOT_APPROVED_MESSAGE, 409);
+  err.code = 'business_not_approved';
+  throw err;
+};
+
+/**
+ * R-119 (walkthrough W4): the pool is full only because a free unit is parked on ANOTHER approved business
+ * as an unbuilt reserved slot. Move one unit from that business to the target in the caller's transaction
+ * (the same SLOT_TRANSFERRED pair transferReservedSlots records), so the build consumes it. Capacity-neutral.
+ * A PENDING business's reservation (its held first branch, Q2) is never taken: donors are ACTIVE only.
+ */
+const _transferDonorSlotInTx = async (tenantId, targetListing, actorUserId, transaction) => {
+  const donor = await GymListing.findOne({
+    where: { tenantId, status: 'ACTIVE', reservedSlots: { [Op.gt]: 0 }, id: { [Op.ne]: targetListing.id } },
+    order: [['reservedSlots', 'DESC'], ['createdAt', 'ASC']],
+    lock: true,
+    transaction,
+  });
+  if (!donor) return false;
+  const transferId = crypto.randomUUID();
+  const actorType = actorUserId ? 'HOST' : 'SYSTEM';
+  await subscriptionQuotaService.recordCapacityEvent({
+    tenantId, listingId: donor.id, action: 'SLOT_TRANSFERRED', delta: -1,
+    reservedSlotsBefore: donor.reservedSlots, reservedSlotsAfter: donor.reservedSlots - 1,
+    actorUserId, actorType,
+    reason: `1 unbuilt slot moved to business ${targetListing.id} for a new branch`,
+    idempotencyKey: `slot_transfer_out:${transferId}`,
+  }, { transaction });
+  await subscriptionQuotaService.recordCapacityEvent({
+    tenantId, listingId: targetListing.id, action: 'SLOT_TRANSFERRED', delta: 1,
+    reservedSlotsBefore: targetListing.reservedSlots, reservedSlotsAfter: targetListing.reservedSlots + 1,
+    actorUserId, actorType,
+    reason: `1 unbuilt slot received from business ${donor.id} for a new branch`,
+    idempotencyKey: `slot_transfer_in:${transferId}`,
+  }, { transaction });
+  await donor.decrement('reservedSlots', { by: 1, transaction });
+  await targetListing.increment('reservedSlots', { by: 1, transaction });
+  await targetListing.reload({ transaction });
+  return true;
+};
+
 const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, options = {}) => {
   // R-113 H4 / H5: the weekly schedule (or the old pair), checked before anything is created.
   branchHours.resolveWrite(data, {});
@@ -525,8 +575,10 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
 
     let targetListingId = data.gymListingId;
     if (!targetListingId) {
+      // R-119: no business named → the oldest approved one (else the oldest), never a PENDING one by chance.
       const firstListing = await GymListing.findOne({
         where: { tenantId },
+        order: [[sequelize.literal('status = \'ACTIVE\''), 'DESC'], ['createdAt', 'ASC']],
         transaction: platformTx,
       });
       if (firstListing) targetListingId = firstListing.id;
@@ -542,7 +594,10 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
     if (targetListingId) {
       targetListing = await GymListing.findByPk(targetListingId, { lock: true, transaction: platformTx });
     }
-    const consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
+    // R-119 D7: business state before capacity (spec §2.2 order). Provisioning and the approval build of a
+    // held first branch run with isProvisioning, after the business is approved.
+    if (!isProvisioning) assertBusinessCanReceiveBranches(targetListing);
+    let consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
 
     if (!consumingReservedSlot && !skipCapacityCheck) {
       const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
@@ -565,7 +620,10 @@ const createBranch = async (tenantDb, tenantId, data, createdByUserId = null, op
       const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
       const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb, { transaction: platformTx });
 
-      if (usedCapacity >= maxBranches && !isProvisioning) {
+      if (usedCapacity >= maxBranches && !isProvisioning && targetListing
+        && await _transferDonorSlotInTx(tenantId, targetListing, createdByUserId, platformTx)) {
+        consumingReservedSlot = true;
+      } else if (usedCapacity >= maxBranches && !isProvisioning) {
         _notifyBranchLimitReached(tenantId, tenant).catch((notifErr) => {
           console.warn('[Notification Error] Failed to create branch quota reached notification:', notifErr.message);
         });
@@ -1289,6 +1347,8 @@ const restoreBranch = async (tenantDb, tenantId, branchId, restoredByUserId) => 
     if (!listing) {
       throw createError('This branch\'s organization no longer exists, so the branch cannot be restored', 404);
     }
+    // R-119 D7: a business under review or rejected receives no branch (CAP-06 INACTIVE stays allowed).
+    assertBusinessCanReceiveBranches(listing, { allowInactive: true });
 
     // CAP-06: Restoring a branch whose organization was auto-deactivated reactivates
     // the organization in the same flow and consumes that organization's preserved reservedSlots first.
@@ -2299,6 +2359,8 @@ const checkAndTriggerPendingStaffInvites = async (user) => {
 };
 
 module.exports = {
+  assertBusinessCanReceiveBranches,
+  BUSINESS_NOT_APPROVED_MESSAGE,
   getProfile,
   updateProfile,
   addGymImages,

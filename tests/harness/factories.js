@@ -328,7 +328,26 @@ async function getTenantPayoutAccount(tenantId) {
   return PayoutAccount.findOne({ where: { tenantId, scopeKey: 'TENANT', provider: 'BANK_TRANSFER' } });
 }
 
+/**
+ * R-119 Q2: an Add Business submission holds its first branch until a platform admin approves the business.
+ * This gives the business what approval needs (D10: proof of premises + 3 photos, as an upload would) and
+ * approves it through the real admin path, which builds the held branch. Returns the built branch (or null).
+ */
+async function approveHeldBusiness(listingId, adminUserId, tenantDb) {
+  const adminService = require('../../src/services/admin.service');
+  const listing = await GymListing.findByPk(listingId);
+  const docs = Array.isArray(listing.kycDocumentsJson) ? listing.kycDocumentsJson : [];
+  await listing.update({
+    kycDocumentsJson: [...docs, { documentId: `doc-${listingId}`, key: `kyc/${listingId}/premises.pdf`, originalName: 'premises.pdf', mimetype: 'application/pdf', size: 10, documentType: 'PROOF_OF_PREMISES', uploadedAt: new Date().toISOString() }],
+    coverImageUrl: listing.coverImageUrl || 'https://img.test/held-1.jpg',
+    imagesJson: ['https://img.test/held-2.jpg', 'https://img.test/held-3.jpg'],
+  });
+  await adminService.approveTenant(`${listing.tenantId}:${listingId}`, adminUserId, { photosChecked: true });
+  return tenantDb ? tenantDb.models.Branch.findOne({ where: { gymListingId: listingId } }) : null;
+}
+
 module.exports = {
+  approveHeldBusiness,
   setPayoutAccount,
   getTenantPayoutAccount,
   createUser,

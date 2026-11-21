@@ -49,6 +49,14 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
     const req = asPersona('owner').post(path);
     if (k) req.set('Idempotency-Key', k);
     const res = await req.send(body);
+    // R-119 Q2: a new business holds its first branch until approval; approving it (once) builds it, so
+    // "one create = one branch" is still checked. A replay returns the same listing; it builds nothing more.
+    if (path === '/host/listings' && [200, 201].includes(res.status)) {
+      const l = await GymListing.findByPk(res.body.data.id);
+      if (l && l.firstBranchDataJson) {
+        await factories.approveHeldBusiness(l.id, personaManager.personas.platformAdmin.user.id);
+      }
+    }
     if (path === '/host/listings') await approvePending();
     return res;
   };

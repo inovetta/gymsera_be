@@ -98,6 +98,11 @@ router.get('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsCont
 router.put('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
 router.patch('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
 router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
+// R-119 D10: the documents of one business (proof of premises required, registration optional). The
+// organization's owner or a platform admin; anyone else gets 404 (business-kyc.service.js).
+router.post('/listings/:id/kyc-documents', authenticate, upload.documents('documents', 5), upload.handleMulterError, validate.allowBody(['documentType']), hostController.uploadBusinessDocuments);
+router.get('/listings/:id/kyc-documents', authenticate, hostController.getBusinessDocuments);
+router.get('/listings/:id/kyc-documents/:documentId/stream', authenticate, hostController.streamBusinessDocument);
 router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toListingId']), hostController.transferReservedSlots);
 router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody([]), hostController.restoreBranch);
 // P5b item 2 (R-81): pause hides a branch from travellers and changes nothing else; who may change the branch's settings may pause it.

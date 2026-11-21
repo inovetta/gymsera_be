@@ -119,6 +119,9 @@ router.get('/tenants/:id', adminController.getTenant);
  *         description: A provisioning step failed; the tenant stays APPROVED and can be resumed
  */
 router.post('/tenants/:id/approve', idempotency(), validate.allowBody(['photosChecked']), adminController.approveTenant);
+// R-119 D11: the verified badge of one business (registration document checked by a GymsEra admin), revocable.
+router.post('/listings/:id/verify', validate.allowBody([]), adminController.verifyBusiness);
+router.delete('/listings/:id/verify', validate.allowBody([]), adminController.unverifyBusiness);
 // R-84 (NEW-158): take a photo off an application before approving it (audited).
 router.delete(
   '/tenants/:id/approval-photos',

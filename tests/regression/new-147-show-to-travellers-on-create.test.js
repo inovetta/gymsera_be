@@ -7,7 +7,8 @@
  * (absent = visible, as provisioning does), and a branch whose plans are all hidden is refused
  * 422 visible_plan_required before anything is created (BUG-05 rule).
  */
-const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
+const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
+const { personaManager } = require('../harness/personas');
 const { stopTestServer } = require('../harness/test-server');
 const { GymListing, TenantSubscription } = require('../../src/models/platform');
 
@@ -40,8 +41,9 @@ const newOrg = async (gymName, packages = [plan(`${gymName} Monthly`)]) => {
   await approvePending();
   const res = await asPersona('owner').post('/host/listings', { gymName, branchSource: 'new', cityId: 1, packages });
   expect(res.status).toBe(201);
-  await approvePending();
-  return res.body.data;
+  // R-119 Q2: the first branch is held; approval builds it (the plans are kept as sent).
+  const branch = await factories.approveHeldBusiness(res.body.data.id, personaManager.personas.platformAdmin.user.id, tenantDb);
+  return { ...res.body.data, branch };
 };
 
 const plansOf = async (branchId) =>

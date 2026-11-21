@@ -27,7 +27,7 @@ const listingCount = () => GymListing.count({ where: { tenantId: ctx.tenant1.id 
 const create = async (body) => {
   const res = await asPersona('owner').post('/host/listings').send(body);
   if (res.status === 201) {
-    const row = await Branch().findByPk(res.body.data.branch.id);
+    const row = await factories.approveHeldBusiness(res.body.data.id, personaManager.personas.platformAdmin.user.id, personaManager.context.tenant1Db); // R-119 Q2
     await GymListing.update({ status: 'INACTIVE' }, { where: { id: row.gymListingId } });
   }
   return res;
@@ -50,7 +50,7 @@ describe('NEW-297: POST /host/listings keeps the old pair', () => {
   test('06:00-00:00 (12 AM closing) is stored on the first branch as the pair and a uniform week', async () => {
     const res = await create(listingBody({ openingTime: '06:00', closingTime: '00:00' }));
     expect(res.status).toBe(201);
-    const row = await Branch().findByPk(res.body.data.branch.id);
+    const row = await Branch().findOne({ where: { gymListingId: res.body.data.id } }); // built on approval (R-119 Q2)
     expect([row.openingTime, row.closingTime]).toEqual(['06:00', '00:00']);
     expect(row.hoursJson).toEqual(uniform('06:00', '00:00'));
   });
@@ -73,10 +73,10 @@ describe('NEW-297: POST /host/listings keeps the old pair', () => {
   test('the week alone still works (R-113 H4), and no hours at all leaves the branch without hours', async () => {
     const week = await create(listingBody({ hours: uniform('00:00', '24:00') }));
     expect(week.status).toBe(201);
-    expect((await Branch().findByPk(week.body.data.branch.id)).hoursJson).toEqual(uniform('00:00', '24:00'));
+    expect((await Branch().findOne({ where: { gymListingId: week.body.data.id } })).hoursJson).toEqual(uniform('00:00', '24:00'));
     const none = await create(listingBody());
     expect(none.status).toBe(201);
-    const row = await Branch().findByPk(none.body.data.branch.id);
+    const row = await Branch().findOne({ where: { gymListingId: none.body.data.id } });
     expect([row.hoursJson, row.openingTime, row.closingTime]).toEqual([null, null, null]);
   });
 });

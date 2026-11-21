@@ -94,13 +94,16 @@ describe('H4: the writes that take a weekly schedule', () => {
     expect([row.hoursJson, row.openingTime, row.closingTime]).toEqual([null, null, null]);
   });
 
-  test('POST /host/listings (another organisation) gives its first branch the week', async () => {
+  // R-119 Q2: the first branch is held until approval; the week is kept in the held branch, checked at submit,
+  // and the approval build writes it (r-119-create-rules.test.js builds a held branch with hours).
+  test('POST /host/listings (another organisation) keeps the week for its held first branch', async () => {
     const res = await asPersona('owner').post('/host/listings').send({
       gymName: `R113 Org ${Date.now()}`, packages: [{ name: 'Monthly', price: 50 }], hours: WEEKLY,
     });
     expect(res.status).toBe(201);
-    const row = await Branch().findByPk(res.body.data.branch.id);
-    expect(row.hoursJson.days.sun.closed).toBe(true);
+    expect(res.body.data.branch).toBeNull();
+    const listing = await require('../../src/models/platform').GymListing.findByPk(res.body.data.id);
+    expect(listing.firstBranchDataJson.hours.days.sun.closed).toBe(true);
   });
 
   test('admin PATCH /admin/tenants/:id/branches/:branchId takes the week too', async () => {

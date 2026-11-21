@@ -9,7 +9,8 @@
  * Also: POST /host/listings (New Organization with its first branch) dropped `googlePlaceId`
  * (host.routes.js allow-list; host.controller.js createListing); the first branch now keeps it.
  */
-const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
+const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
+const { personaManager } = require('../harness/personas');
 const { stopTestServer } = require('../harness/test-server');
 
 let h;
@@ -89,7 +90,8 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
         packages: [{ name: 'Monthly', price: 3000, durationType: 'MONTHLY', durationValue: 1 }],
       });
     expect(res.status).toBe(201);
-    const branch = await h.tenant1.models.Branch.findOne({ where: { gymListingId: res.body.data.id } });
+    // R-119 Q2: held until approval; approval builds it from the held fields.
+    const branch = await factories.approveHeldBusiness(res.body.data.id, personaManager.personas.platformAdmin.user.id, h.tenant1);
     expect(branch.googlePlaceId).toBe(PLACE);
   });
 

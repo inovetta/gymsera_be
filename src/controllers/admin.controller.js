@@ -514,7 +514,28 @@ const getBranchVisibilityHistory = async (req, res, next) => {
   }
 };
 
+// R-119 D11: POST / DELETE /admin/listings/:id/verify
+const verifyBusiness = async (req, res, next) => {
+  try {
+    const result = await require('../services/business-kyc.service').verify(req.params.id, req.user.id || req.user.sub);
+    return sendSuccess(res, result, 'Business verified');
+  } catch (err) {
+    next(err);
+  }
+};
+
+const unverifyBusiness = async (req, res, next) => {
+  try {
+    const result = await require('../services/business-kyc.service').unverify(req.params.id, req.user.id || req.user.sub);
+    return sendSuccess(res, result, 'Verification removed');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
+  verifyBusiness,
+  unverifyBusiness,
   createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
   reactivateTenant, revealTenantMemberContact, getTenantBranches, getTenantCapacityAudit, listBillingEvents, listAuditLogs, updateTenantBranchStatus,
   suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
