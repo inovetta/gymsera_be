@@ -1,7 +1,8 @@
 /**
  * NEW-253 (R-103): refunds on subscription cancellation.
  *
- *  - Policy per gym (`gyms.refunds_allowed`, `gyms.refund_window_days`, tenant migration 028). Off by default.
+ *  - Policy per BRANCH (R-119 D12: `branches.refunds_allowed`, `branches.refund_window_days`, tenant migration
+ *    030). Off by default for a new branch. The gyms columns of 028 are deprecated and no longer read.
  *  - What can be refunded: the subscription's latest COMPLETED membership payment, up to its remaining
  *    refundable balance (PAY-07). Suggested amount: prorated by the unused days of the current period.
  *  - Staff cancel with refund: cancel + refund in one transaction when the caller refunds directly
@@ -37,25 +38,38 @@ const REASONS = {
   not_cancelled: 'Cancel the subscription first, then ask for a refund',
 };
 
-/** The refund policy of the gym the branch belongs to (the tenant's first gym when the branch has none). */
-const policyFor = async (tenantDb, branchId) => {
+/**
+ * R-119 D12: the oldest business's oldest branch: the branch an old client (no branchId) reads, and the
+ * fallback for a subscription without a branch. Old builds saw "the tenant's first gym" here.
+ */
+const legacyScope = async (tenantDb) => {
   const { Gym, Branch } = tenantDb.models;
-  const branch = branchId ? await Branch.findByPk(branchId, { attributes: ['id', 'gymId', 'timezone'] }) : null;
-  let gym = branch && branch.gymId ? await Gym.findByPk(branch.gymId) : null;
-  if (!gym) gym = await Gym.findOne({ order: [['createdAt', 'ASC']] });
-  return {
-    gymId: gym ? gym.id : null,
-    refundsAllowed: Boolean(gym && gym.refundsAllowed),
-    refundWindowDays: gym && gym.refundWindowDays != null ? Number(gym.refundWindowDays) : null,
-    timezone: (branch && branch.timezone) || 'Asia/Karachi',
-  };
+  const gym = await Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
+  const branches = await Branch.findAll({
+    where: gym ? { gymId: gym.id } : {},
+    order: [['createdAt', 'ASC'], ['id', 'ASC']],
+  });
+  return { gym, branches };
 };
 
-/** Change the policy of the branch's gym. Audited (before / after). */
-const updatePolicy = async (ctx, branchId, { refundsAllowed, refundWindowDays }) => {
-  const { Gym } = ctx.tenantDb.models;
-  const current = await policyFor(ctx.tenantDb, branchId);
-  if (!current.gymId) throw createError('Gym not found', 404);
+const policyOfBranch = (branch, gymId = null) => ({
+  branchId: branch ? branch.id : null,
+  gymId: branch ? branch.gymId || gymId : gymId,
+  refundsAllowed: Boolean(branch && branch.refundsAllowed),
+  refundWindowDays: branch && branch.refundWindowDays != null ? Number(branch.refundWindowDays) : null,
+  timezone: (branch && branch.timezone) || 'Asia/Karachi',
+});
+
+/** The refund policy of the branch (R-119 D12: the branch only). No branch: the oldest business's oldest branch. */
+const policyFor = async (tenantDb, branchId) => {
+  const { Branch } = tenantDb.models;
+  const branch = branchId ? await Branch.findByPk(branchId) : null;
+  if (branch) return policyOfBranch(branch);
+  const { gym, branches } = await legacyScope(tenantDb);
+  return policyOfBranch(branches[0] || null, gym ? gym.id : null);
+};
+
+const validatedChanges = ({ refundsAllowed, refundWindowDays }) => {
   const changes = {};
   if (refundsAllowed !== undefined) {
     if (typeof refundsAllowed !== 'boolean') throw coded('refundsAllowed must be true or false', 422, 'invalid_refund_policy');
@@ -66,16 +80,49 @@ const updatePolicy = async (ctx, branchId, { refundsAllowed, refundWindowDays })
     if (!ok) throw coded('refundWindowDays must be empty (no limit) or a whole number of days from 1 to 3650', 422, 'invalid_refund_policy');
     changes.refundWindowDays = refundWindowDays;
   }
-  await Gym.update(changes, { where: { id: current.gymId } });
-  const next = await policyFor(ctx.tenantDb, branchId);
-  await auditService.record(ctx, {
-    action: 'refunds.policy.update',
-    targetType: 'gym',
-    targetId: current.gymId,
-    before: { refundsAllowed: current.refundsAllowed, refundWindowDays: current.refundWindowDays },
-    after: { refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays },
-  });
-  return { gymId: next.gymId, refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays };
+  return changes;
+};
+
+/** Change the policy of these branches; one audit row (before / after) per branch. Returns the new policies. */
+const updateBranches = async (ctx, branches, input) => {
+  const changes = validatedChanges(input);
+  const out = [];
+  for (const branch of branches) {
+    const before = policyOfBranch(branch);
+    await branch.update(changes);
+    const after = policyOfBranch(branch);
+    await auditService.record(ctx, {
+      action: 'refunds.policy.update',
+      targetType: 'branch',
+      targetId: branch.id,
+      before: { refundsAllowed: before.refundsAllowed, refundWindowDays: before.refundWindowDays },
+      after: { refundsAllowed: after.refundsAllowed, refundWindowDays: after.refundWindowDays },
+    });
+    out.push(after);
+  }
+  return out;
+};
+
+/** Change one branch's policy. Audited. */
+const updatePolicy = async (ctx, branchId, input) => {
+  const { Branch } = ctx.tenantDb.models;
+  const branch = branchId ? await Branch.findByPk(branchId) : null;
+  if (!branch) throw createError('Branch not found', 404);
+  const [p] = await updateBranches(ctx, [branch], input);
+  return { branchId: p.branchId, gymId: p.gymId, refundsAllowed: p.refundsAllowed, refundWindowDays: p.refundWindowDays };
+};
+
+/**
+ * Old clients (builds 27 / 28, CMS before R-119) send no branchId: the change applies to every branch of
+ * the oldest business, the scope of the one gym row they used to change. Answers the old shape.
+ */
+const updateLegacyPolicy = async (ctx, input) => {
+  const { gym, branches } = await legacyScope(ctx.tenantDb);
+  if (!gym) throw createError('Gym not found', 404);
+  validatedChanges(input);
+  const done = await updateBranches(ctx, branches, input);
+  const first = done[0] || policyOfBranch(null, gym.id);
+  return { gymId: gym.id, refundsAllowed: first.refundsAllowed, refundWindowDays: first.refundWindowDays, updatedBranchIds: done.map((p) => p.branchId) };
 };
 
 const _days = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
@@ -331,5 +378,8 @@ const listRequests = async (tenantDb, { branchIds = null, status = null } = {}) 
 };
 
 module.exports = {
+  updateBranches,
+  updateLegacyPolicy,
+  legacyScope,
   REASONS, policyFor, updatePolicy, quote, assertEligible, pickAmount, memberStatus, requestRefund, decide, listRequests, serializeRequest,
 };

@@ -469,35 +469,70 @@ const decideRefundRequest = async (req, res, next) => {
 };
 
 // ── Host: GET / PUT /subscriptions/staff/refund-policy ────────────────────────
-// Per gym (the branch's gym; ?branchId= picks it, else the tenant's first gym). Changing it needs a
-// direct payments.refund at that branch (Owner / Org admin by default).
+// R-119 D12: the policy belongs to the branch. ?branchId= / body branchId picks one branch;
+// applyToAllBranches changes every branch where the caller refunds directly; no branchId (builds 27 / 28,
+// CMS before R-119) reads / changes the oldest business's branches, the scope of the old single gym row.
+// Changing it needs a direct payments.refund (Owner / Org admin by default).
 const getRefundPolicy = async (req, res, next) => {
   try {
     const p = await refundService.policyFor(req.tenantDb, req.query.branchId || null);
-    return sendSuccess(res, { gymId: p.gymId, refundsAllowed: p.refundsAllowed, refundWindowDays: p.refundWindowDays });
+    return sendSuccess(res, { branchId: p.branchId, gymId: p.gymId, refundsAllowed: p.refundsAllowed, refundWindowDays: p.refundWindowDays });
   } catch (err) {
     next(err);
   }
 };
 
+const refundNotPermitted = () => {
+  const err = createError('Only someone who can issue refunds directly can change the refund policy', 403);
+  err.code = 'refund_not_permitted';
+  return err;
+};
+
 const updateRefundPolicy = async (req, res, next) => {
   try {
     const branchId = req.body.branchId || null;
+    const all = req.body.applyToAllBranches === true;
+    if (all && branchId) {
+      const err = createError('Send a branch or "apply to all branches", not both', 422);
+      err.code = 'invalid_refund_policy';
+      throw err;
+    }
     if (branchId && !(await hasBranchAccess(req, branchId, 'subscriptions.view'))) throw createError('Branch not found', 404);
     const accessService = require('../services/access.service');
     const tenantId = req.tenantId || req.user?.tenantId;
     const userId = req.user.id || req.user.sub;
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
-    if (grants.tierFor('payments.refund') !== 'DIRECT') {
-      const err = createError('Only someone who can issue refunds directly can change the refund policy', 403);
-      err.code = 'refund_not_permitted';
-      throw err;
+    const input = { refundsAllowed: req.body.refundsAllowed, refundWindowDays: req.body.refundWindowDays };
+    const ctxFor = (grants, atBranch) => ({ tenantDb: req.tenantDb, tenantId, userId, branchId: atBranch, grants, roleKey: (grants.roleKeys || [])[0] || null, req });
+
+    if (all) {
+      const branches = await req.tenantDb.models.Branch.findAll({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
+      const allowed = [];
+      const skippedBranchIds = [];
+      let firstGrants = null;
+      for (const b of branches) {
+        const g = await accessService.resolve(req.tenantDb, tenantId, userId, b.id);
+        if (g.tierFor('payments.refund') === 'DIRECT') {
+          allowed.push(b);
+          firstGrants = firstGrants || g;
+        } else {
+          skippedBranchIds.push(b.id);
+        }
+      }
+      if (allowed.length === 0) throw refundNotPermitted();
+      const done = await refundService.updateBranches(ctxFor(firstGrants, null), allowed, input);
+      return sendSuccess(res, {
+        refundsAllowed: done[0].refundsAllowed,
+        refundWindowDays: done[0].refundWindowDays,
+        updatedBranchIds: done.map((p) => p.branchId),
+        skippedBranchIds,
+      }, 'Refund policy saved');
     }
-    const ctx = { tenantDb: req.tenantDb, tenantId, userId, branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
-    const policy = await refundService.updatePolicy(ctx, branchId, {
-      refundsAllowed: req.body.refundsAllowed,
-      refundWindowDays: req.body.refundWindowDays,
-    });
+
+    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+    if (grants.tierFor('payments.refund') !== 'DIRECT') throw refundNotPermitted();
+    const policy = branchId
+      ? await refundService.updatePolicy(ctxFor(grants, branchId), branchId, input)
+      : await refundService.updateLegacyPolicy(ctxFor(grants, null), input);
     return sendSuccess(res, policy, 'Refund policy saved');
   } catch (err) {
     next(err);

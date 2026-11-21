@@ -292,7 +292,7 @@ router.get('/staff', tenantContext, authorize(...staffRoles), can.atAnyBranch('s
  *       409: { description: refund_request_decided }
  * /subscriptions/staff/refund-policy:
  *   get:
- *     summary: The gym's refund policy { refundsAllowed, refundWindowDays } (?branchId= picks the gym)
+ *     summary: A branch's refund policy { branchId, gymId, refundsAllowed, refundWindowDays } (R-119 D12; ?branchId= picks the branch, none = the oldest business's oldest branch)
  *     tags: [Subscriptions]
  *   put:
  *     summary: Change it (direct payments.refund; Owner / Org admin by default)

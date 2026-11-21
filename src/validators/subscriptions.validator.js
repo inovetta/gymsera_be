@@ -106,6 +106,8 @@ const decideRefund = [
 const refundPolicy = [
   body('branchId').optional({ values: 'null' }).isUUID().withMessage('branchId must be a valid UUID'),
   body('refundsAllowed').optional().isBoolean({ strict: true }).withMessage('refundsAllowed must be true or false'),
+  // R-119 D12: every branch where the caller refunds directly (app / CMS "Apply to all branches").
+  body('applyToAllBranches').optional().isBoolean({ strict: true }).withMessage('applyToAllBranches must be true or false'),
   body('refundWindowDays').optional({ values: 'null' }).isInt({ min: 1, max: 3650 }).toInt().withMessage('refundWindowDays must be 1 to 3650, or empty for no limit'),
 ];
 

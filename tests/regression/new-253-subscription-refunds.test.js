@@ -57,7 +57,8 @@ const as = (persona, method, path, body, { tenantId = T1(), key = null } = {}) =
 const cancelWithRefund = (persona, sub, extra = {}, opts) => as(persona, 'post', `staff/${sub.id}/cancel`, { refund: true, ...extra }, opts);
 const memberCall = (member, method, sub, body) => as(member, method, `${sub.id}/refund-request`, body, { tenantId: null });
 const reversalsOf = (payment) => db1.models.LedgerAdjustment.findAll({ where: { relatedPaymentId: payment.id, type: 'REVERSAL' } });
-const setPolicy = (refundsAllowed, refundWindowDays = null) => gym1.update({ refundsAllowed, refundWindowDays });
+// R-119 D12: the policy lives on the branch; set it on every branch of tenant 1 (the old per-gym scope here).
+const setPolicy = (refundsAllowed, refundWindowDays = null) => db1.models.Branch.update({ refundsAllowed, refundWindowDays }, { where: {} });
 const expectedSuggestion = (q) => Math.floor((300000 * q.unusedDays) / q.periodDays) / 100;
 
 beforeAll(async () => {
@@ -107,8 +108,8 @@ describe('NEW-253 C: refund policy', () => {
     expect((await as(personas.frontDesk, 'put', 'staff/refund-policy', { branchId: ctx.branch1.id, refundsAllowed: false })).status).toBe(403);
     expect((await as(personas.owner, 'put', 'staff/refund-policy', { branchId: ctx.branch1.id, refundWindowDays: 0 })).status).toBe(422);
     expect((await as(personas.owner, 'put', 'staff/refund-policy', { branchId: ctx.branch1.id, refundsAllowed: 'yes' })).status).toBe(422);
-    await gym1.reload();
-    expect(gym1.refundsAllowed).toBe(true);
+    await ctx.branch1.reload();
+    expect(ctx.branch1.refundsAllowed).toBe(true);
   });
 });
 
