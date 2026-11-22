@@ -71,7 +71,7 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'gyms',
+      tableName: 'businesses', // R-120 NEW-306 (tenant 030); model renamed with the API (NEW-309)
       underscored: true,
       timestamps: true,
     }

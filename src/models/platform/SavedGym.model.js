@@ -14,16 +14,17 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       gymListingId: {
+        field: 'business_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: false,
       },
     },
     {
-      tableName: 'saved_gyms',
+      tableName: 'saved_businesses', // R-120 NEW-306 (p033)
       underscored: true,
       timestamps: true,
       indexes: [
-        { unique: true, fields: ['user_id', 'gym_listing_id'] },
+        { unique: true, fields: ['user_id', 'business_id'] },
         { fields: ['user_id'] },
       ],
     }

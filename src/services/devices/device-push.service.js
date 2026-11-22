@@ -198,8 +198,8 @@ async function memberTargets(db, memberId, { permittedBranchIds, deviceIds }) {
   // Only devices that could hold this member (Phase 4 push load test: computing desired state on every
   // device of a 50-device tenant made one Push now answer in 11 s): a branch of an organization where
   // they have an ACTIVE package, a branch where they are staff with door access, or a device that has them.
-  const orgs = new Set((await select(db, `SELECT DISTINCT b.gym_id FROM member_subscriptions s JOIN branches b ON b.id = s.branch_id
-    WHERE s.user_id = ? AND s.status = 'ACTIVE'`, [memberId])).map((r) => r.gym_id));
+  const orgs = new Set((await select(db, `SELECT DISTINCT b.business_id FROM member_subscriptions s JOIN branches b ON b.id = s.branch_id
+    WHERE s.user_id = ? AND s.status = 'ACTIVE'`, [memberId])).map((r) => r.business_id));
   const staffAt = new Set((await select(db, 'SELECT DISTINCT branch_id FROM gym_staff WHERE user_id = ? AND device_access = 1', [memberId])).map((r) => r.branch_id));
   const holding = new Set((await select(db, 'SELECT device_id FROM device_member_sync WHERE member_id = ? AND state <> \'removed\'', [memberId])).map((r) => r.device_id));
   const out = [];
@@ -477,9 +477,9 @@ async function memberDeviceStatus(db, { memberId, permittedBranchIds = null, now
   const all = await usableDevices(db, { permittedBranchIds });
   const orgs = new Set((await select(
     db,
-    'SELECT DISTINCT b.gym_id FROM member_subscriptions s JOIN branches b ON b.id = s.branch_id WHERE s.user_id = ?',
+    'SELECT DISTINCT b.business_id FROM member_subscriptions s JOIN branches b ON b.id = s.branch_id WHERE s.user_id = ?',
     [memberId]
-  )).map((r) => r.gym_id));
+  )).map((r) => r.business_id));
   const rows = new Map((await select(db, 'SELECT * FROM device_member_sync WHERE member_id = ?', [memberId])).map((r) => [r.device_id, r]));
   const devices = [];
   for (const { view, device } of all) {

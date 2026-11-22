@@ -448,7 +448,7 @@ const _deactivateOrganizationIfEmpty = async (tenantDb, listingId, actorUserId, 
     {
       tenantId: listing.tenantId,
       listingId,
-      action: 'ORG_DELETED',
+      action: 'BUSINESS_DELETED',
       delta: 0,
       reservedSlotsBefore: listing.reservedSlots,
       reservedSlotsAfter: listing.reservedSlots,
@@ -915,7 +915,7 @@ const _organizationDeleteBlockers = async (tenantDb, branches, transaction = nul
   const counts = _emptyBlockCounts();
   const blocked = [];
   for (const branch of branches) {
-    // eslint-disable-next-line no-await-in-loop
+     
     const result = await _branchDeleteBlockers(tenantDb, branch, transaction);
     for (const key of Object.keys(counts)) counts[key] += result.counts[key];
     if (result.reasons.length > 0) {
@@ -1449,7 +1449,7 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, del
           throw _deleteBlockedError('organization_delete_blocked', ORGANIZATION_DELETE_BLOCKED_MESSAGE, { listingId, ...lockedBlockers });
         }
         for (const branch of locked) {
-          // eslint-disable-next-line no-await-in-loop
+           
           cascades.push({ branch, cascade: await _cascadeBranchDeletion(tenantDb, branch, deletedByUserId, t) });
         }
         await t.commit();
@@ -1459,7 +1459,7 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, del
       }
     }
     for (const { branch, cascade } of cascades) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await _afterBranchDeletion(tenantDb, branch, deletedByUserId, cascade);
     }
     // reservedSlots are simply released back to the shared pool by
@@ -1472,7 +1472,7 @@ const deleteOrganization = async (tenantDb, tenantId, listingId, { strategy, del
     {
       tenantId,
       listingId,
-      action: 'ORG_DELETED',
+      action: 'BUSINESS_DELETED',
       delta: 0,
       reservedSlotsBefore: listing.reservedSlots,
       reservedSlotsAfter: listing.reservedSlots,

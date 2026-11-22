@@ -27,6 +27,7 @@ module.exports = (sequelize) => {
       },
       tenantId: { type: DataTypes.UUID, allowNull: false },
       listingId: {
+        field: 'business_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: true,
         comment: 'The GymListing whose reservedSlots this event changed. Null for tenant-wide events with no single listing (rare).',
@@ -44,8 +45,8 @@ module.exports = (sequelize) => {
           'SLOT_TRIMMED_DOWNGRADE',
           'SLOT_ATTRIBUTED_UPGRADE',
           'SLOT_CONSUMED_BUILD',
-          'ORG_DELETED',
-          'ORG_BRANCHES_MOVED',
+          'BUSINESS_DELETED', // R-120 (p033): was ORG_DELETED
+          'BUSINESS_BRANCHES_MOVED', // was ORG_BRANCHES_MOVED
           'BRANCH_BILLING_LOCKED',
           'BRANCH_BILLING_UNLOCKED'
         ),
@@ -82,7 +83,7 @@ module.exports = (sequelize) => {
       updatedAt: false,
       indexes: [
         { fields: ['tenant_id'] },
-        { fields: ['listing_id'] },
+        { fields: ['business_id'] },
         { unique: true, fields: ['idempotency_key'] },
       ],
     }

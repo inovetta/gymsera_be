@@ -99,7 +99,7 @@ const counts = async (tenant) => {
   return {
     databases: (await tenantDbExists(tenant)) ? 1 : 0,
     listings: await GymListing.count({ where: { tenantId: tenant.id } }),
-    gyms: await one(`SELECT COUNT(*) AS n FROM \`${db}\`.gyms`),
+    gyms: await one(`SELECT COUNT(*) AS n FROM \`${db}\`.businesses`), // R-120: table renamed by tenant migration 030
     branches: await one(`SELECT COUNT(*) AS n FROM \`${db}\`.branches`),
     plans: await one(`SELECT COUNT(*) AS n FROM \`${db}\`.membership_plans`),
     subscriptions: await TenantSubscription.count({ where: { tenantId: tenant.id } }),

@@ -26,7 +26,7 @@ describe('Platform migration p027 (payout_accounts + tenant default backfill)', 
       type: QueryTypes.SELECT,
     })).length > 0;
   const accounts = () =>
-    seq.query('SELECT tenant_id AS tenantId, organization_id AS organizationId, scope_key AS scopeKey, provider, status, details_json AS details, DATE_FORMAT(details_updated_at, \'%Y-%m-%d %H:%i:%s\') AS updatedAt FROM payout_accounts ORDER BY tenant_id', { type: QueryTypes.SELECT });
+    seq.query('SELECT tenant_id AS tenantId, business_id AS organizationId, scope_key AS scopeKey, provider, status, details_json AS details, DATE_FORMAT(details_updated_at, \'%Y-%m-%d %H:%i:%s\') AS updatedAt FROM payout_accounts ORDER BY tenant_id', { type: QueryTypes.SELECT });
   const parse = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
 
   beforeAll(async () => {
@@ -119,13 +119,13 @@ describe('Platform migration p027 (payout_accounts + tenant default backfill)', 
   test('the table allows one tenant default and one row per organization', async () => {
     const insert = (id, tenant, org, scope) =>
       seq.query(
-        'INSERT INTO payout_accounts (id, tenant_id, organization_id, scope_key, provider, status, created_at, updated_at) VALUES (?, ?, ?, ?, \'BANK_TRANSFER\', \'ACTIVE\', NOW(), NOW())',
+        'INSERT INTO payout_accounts (id, tenant_id, business_id, scope_key, provider, status, created_at, updated_at) VALUES (?, ?, ?, ?, \'BANK_TRANSFER\', \'ACTIVE\', NOW(), NOW())',
         { replacements: [id, tenant, org, scope] }
       );
     await expect(insert(T(7), T(1), null, 'TENANT')).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
     await insert(T(8), T(1), T(9), T(9));
     await expect(insert(T(6), T(1), T(9), T(9))).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
-    await seq.query('DELETE FROM payout_accounts WHERE organization_id IS NOT NULL');
+    await seq.query('DELETE FROM payout_accounts WHERE business_id IS NOT NULL');
   });
 
   test('re-run: recorded, nothing copied twice; a later run never overwrites an existing default', async () => {

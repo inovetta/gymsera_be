@@ -48,7 +48,7 @@ if (!tenantId) {
     });
 
     const [listings] = await sequelize.query(
-      'SELECT id, title, status, reserved_slots FROM gym_listings WHERE tenant_id = ? ORDER BY created_at ASC',
+      'SELECT id, name AS title, status, reserved_slots FROM business_listings WHERE tenant_id = ? ORDER BY created_at ASC', // R-120 (p033)
       { replacements: [tenantId] }
     );
     console.log(`=== GymListings (reservedSlots) for tenant ${tenantId} ===`);

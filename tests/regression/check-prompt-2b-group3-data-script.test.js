@@ -127,7 +127,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     const getCounts = async () => {
       const [pUsers] = await platformSeq.query('SELECT COUNT(*) AS c FROM users', { type: QueryTypes.SELECT });
       const [pTenants] = await platformSeq.query('SELECT COUNT(*) AS c FROM tenants', { type: QueryTypes.SELECT });
-      const [pReviews] = await platformSeq.query('SELECT COUNT(*) AS c FROM gym_reviews', { type: QueryTypes.SELECT });
+      const [pReviews] = await platformSeq.query('SELECT COUNT(*) AS c FROM business_reviews', { type: QueryTypes.SELECT });
       const [tStaff] = await tenant1Seq.query('SELECT COUNT(*) AS c FROM gym_staff', { type: QueryTypes.SELECT });
       const [tSubs] = await tenant1Seq.query('SELECT COUNT(*) AS c FROM member_subscriptions', { type: QueryTypes.SELECT });
       const [tLedger] = await tenant1Seq.query('SELECT COUNT(*) AS c FROM ledger_days', { type: QueryTypes.SELECT });

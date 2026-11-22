@@ -21,7 +21,7 @@ module.exports = (sequelize) => {
       gymId: {
         type: DataTypes.UUID,
         allowNull: true,
-        field: 'gym_id',
+        field: 'business_id',
       },
     },
     {

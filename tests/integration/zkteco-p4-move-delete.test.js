@@ -63,7 +63,7 @@ describe('move a device to another branch', () => {
     expect(res.body.data.device.branchName).toBe('Move To');
     const row = await platformRow(door.id);
     expect(row.branch_id).toBe(b.id);
-    expect(row.organization_id).toBe(b.gymId);
+    expect(row.business_id).toBe(b.gymId); // R-120: column renamed by p033
     const [det] = await w.q(w.db1, 'SELECT branch_id FROM access_device_details WHERE id = ?', [door.id]);
     expect(det.branch_id).toBe(b.id);
     await door.sim.drain();

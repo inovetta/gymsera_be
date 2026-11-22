@@ -13,6 +13,7 @@ module.exports = (sequelize) => {
         primaryKey: true,
       },
       gymId: {
+        field: 'business_id', // R-120 NEW-306 (tenant 030)
         type: DataTypes.UUID,
         allowNull: false,
       },
@@ -218,7 +219,7 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { fields: ['gym_id'] },
+        { fields: ['business_id'] },
         { fields: ['status'] },
         { fields: ['city_id', 'area_id'] },
       ],

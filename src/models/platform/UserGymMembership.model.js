@@ -32,6 +32,7 @@ module.exports = (sequelize) => {
       },
       // GymListing ID (for quick display without tenant DB round-trip)
       gymListingId: {
+        field: 'business_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: false,
       },
@@ -42,6 +43,7 @@ module.exports = (sequelize) => {
       },
       // Denormalised fields for fast listing without hitting tenant DB
       gymName: {
+        field: 'business_name', // R-120 NEW-306 (p033)
         type: DataTypes.STRING(200),
         allowNull: true,
       },
@@ -64,14 +66,14 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'user_gym_memberships',
+      tableName: 'member_subscription_index', // R-120 NEW-306 (p033)
       underscored: true,
       timestamps: true,
       indexes: [
         { fields: ['user_id', 'status'] },
         { fields: ['tenant_id'] },
         { fields: ['subscription_id'] },
-        { fields: ['gym_listing_id'] },
+        { fields: ['business_id'] },
       ],
     }
   );

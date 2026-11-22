@@ -131,9 +131,10 @@ const connect = async () => {
   // Unbuilt branch capacity earmarked for an organization — see the comment
   // on GymListing.model.js#reservedSlots.
   try {
-    await sequelize.query('ALTER TABLE `gym_listings` ADD COLUMN `reserved_slots` INT NOT NULL DEFAULT 0;');
+    // R-120: `gym_listings` until platform migration p033 renamed it `business_listings`.
+    await sequelize.query('ALTER TABLE `business_listings` ADD COLUMN `reserved_slots` INT NOT NULL DEFAULT 0;');
   } catch (err) {
-    _logIfUnexpected('gym_listings.reserved_slots', err);
+    _logIfUnexpected('business_listings.reserved_slots', err);
   }
 
   // Refresh token rotation session family identifier (AUTH-01)
@@ -388,9 +389,9 @@ const connect = async () => {
       CREATE TABLE IF NOT EXISTS capacity_events (
         id CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
         tenant_id CHAR(36) NOT NULL,
-        listing_id CHAR(36) NULL,
+        business_id CHAR(36) NULL,
         branch_id CHAR(36) NULL,
-        action ENUM('BRANCH_DELETED','BRANCH_RESTORED','SLOT_TRANSFERRED','SLOT_TRIMMED_DOWNGRADE','SLOT_ATTRIBUTED_UPGRADE','SLOT_CONSUMED_BUILD','ORG_DELETED','ORG_BRANCHES_MOVED','BRANCH_BILLING_LOCKED','BRANCH_BILLING_UNLOCKED') NOT NULL,
+        action ENUM('BRANCH_DELETED','BRANCH_RESTORED','SLOT_TRANSFERRED','SLOT_TRIMMED_DOWNGRADE','SLOT_ATTRIBUTED_UPGRADE','SLOT_CONSUMED_BUILD','BUSINESS_DELETED','BUSINESS_BRANCHES_MOVED','BRANCH_BILLING_LOCKED','BRANCH_BILLING_UNLOCKED') NOT NULL,
         delta INT NOT NULL,
         reserved_slots_before INT NULL,
         reserved_slots_after INT NULL,
@@ -401,7 +402,7 @@ const connect = async () => {
         created_at DATETIME NOT NULL,
         UNIQUE INDEX capacity_events_idempotency_key (idempotency_key),
         INDEX capacity_events_tenant_id (tenant_id),
-        INDEX capacity_events_listing_id (listing_id)
+        INDEX capacity_events_business_id (business_id)
       );
     `);
   } catch (err) {
@@ -411,9 +412,17 @@ const connect = async () => {
   // staging boot) before SLOT_CONSUMED_BUILD existed — CREATE TABLE IF NOT
   // EXISTS above never retroactively adds it.
   try {
-    await sequelize.query(
-      'ALTER TABLE `capacity_events` MODIFY COLUMN `action` ENUM(\'BRANCH_DELETED\',\'BRANCH_RESTORED\',\'SLOT_TRANSFERRED\',\'SLOT_TRIMMED_DOWNGRADE\',\'SLOT_ATTRIBUTED_UPGRADE\',\'SLOT_CONSUMED_BUILD\',\'ORG_DELETED\',\'ORG_BRANCHES_MOVED\',\'BRANCH_BILLING_LOCKED\',\'BRANCH_BILLING_UNLOCKED\') NOT NULL;'
+    // R-120: ORG_DELETED / ORG_BRANCHES_MOVED were renamed BUSINESS_* by platform migration p033. Until p033
+    // has run, a row can still hold an old value; the MODIFY would then fail (or, without strict mode,
+    // blank it), so it is left to p033.
+    const [[{ n: oldValues }]] = await sequelize.query(
+      'SELECT COUNT(*) AS n FROM `capacity_events` WHERE `action` IN (\'ORG_DELETED\', \'ORG_BRANCHES_MOVED\')'
     );
+    if (Number(oldValues) === 0) {
+      await sequelize.query(
+        'ALTER TABLE `capacity_events` MODIFY COLUMN `action` ENUM(\'BRANCH_DELETED\',\'BRANCH_RESTORED\',\'SLOT_TRANSFERRED\',\'SLOT_TRIMMED_DOWNGRADE\',\'SLOT_ATTRIBUTED_UPGRADE\',\'SLOT_CONSUMED_BUILD\',\'BUSINESS_DELETED\',\'BUSINESS_BRANCHES_MOVED\',\'BRANCH_BILLING_LOCKED\',\'BRANCH_BILLING_UNLOCKED\') NOT NULL;'
+      );
+    }
   } catch (err) {
     _logIfUnexpected('capacity_events.action widen ENUM', err);
   }

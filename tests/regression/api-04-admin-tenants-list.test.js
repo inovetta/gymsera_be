@@ -63,7 +63,7 @@ describe('GET /admin/tenants', () => {
     const at20 = await list('?page=1&limit=20');
     await seed(100, 2);
     const at100 = await list('?page=1&limit=20');
-    // eslint-disable-next-line no-console
+     
     console.log(`ADMIN_TENANTS_QUERIES at20=${at20.queries} at100=${at100.queries} pendingAdditional=${pendingAdditional}`);
     expect(at20.res.status).toBe(200);
     expect(at100.res.status).toBe(200);
@@ -77,7 +77,7 @@ describe('GET /admin/tenants', () => {
     expect(tenantSelects.length).toBe(1);
     expect(tenantSelects[0]).toMatch(/LIMIT 20\b/); // offset 10 + limit 10: enough to merge the page
     // and the first-listing check is one batched read, not one per listing
-    const listingReads = sqlLog.filter((q) => /FROM `gym_listings`/.test(q));
+    const listingReads = sqlLog.filter((q) => /FROM `business_listings`/.test(q));
     expect(listingReads.length).toBeLessThanOrEqual(2);
   });
 

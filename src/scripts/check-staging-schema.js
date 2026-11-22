@@ -67,11 +67,11 @@ const { sequelize } = require('../database/platform');
     );
     console.log('\nExisting FK on tenant_subscriptions.platform_package_id:', fks.length > 0 ? JSON.stringify(fks[0]) : 'none found');
 
-    // 5. gym_listings row count and reserved_slots presence (sanity, not a migration risk)
+    // 5. business_listings (gym_listings before p033, R-120) row count and reserved_slots presence (sanity, not a migration risk)
     const [glCols] = await sequelize.query(
-      'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gym_listings\' AND COLUMN_NAME = \'reserved_slots\''
+      'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'business_listings\' AND COLUMN_NAME = \'reserved_slots\''
     );
-    console.log(`\ngym_listings.reserved_slots already exists: ${glCols.length > 0 ? 'YES' : 'no'}`);
+    console.log(`\nbusiness_listings.reserved_slots already exists: ${glCols.length > 0 ? 'YES' : 'no'}`);
 
     console.log('\n--- Done. No writes were made. ---');
   } catch (err) {
