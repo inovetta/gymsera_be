@@ -187,7 +187,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
     test('exemption fails: created > 5 minutes ago -> 401 reauth_required and deletes nothing', async () => {
       const { user, tenant, listing } = await createPasswordHost();
       // Age listing beyond 5-minute rollback window (6 minutes ago)
-      await GymListing.sequelize.query('UPDATE gym_listings SET created_at = :createdAt WHERE id = :id', {
+      await GymListing.sequelize.query('UPDATE business_listings SET created_at = :createdAt WHERE id = :id', {
         replacements: {
           createdAt: new Date(Date.now() - 6 * 60 * 1000),
           id: listing.id,

@@ -490,7 +490,7 @@ function viewOf(row, det, branchName) {
     key: formatKey(row.device_key),
     branchId: row.branch_id,
     branchName: branchName || null,
-    organizationId: row.organization_id,
+    organizationId: row.business_id, // R-120: column renamed (p033); key renamed with the API (NEW-309)
     name: det?.name || null,
     direction: det?.direction || null,
     enabled: det ? Boolean(det.enabled) : row.status !== 'disabled',
@@ -543,7 +543,7 @@ function viewOf(row, det, branchName) {
 }
 
 async function branchOf(tenantDb, branchId) {
-  const [b] = await q(tenantDb.sequelize, 'SELECT id, gym_id, branch_name FROM branches WHERE id = ?', [branchId]);
+  const [b] = await q(tenantDb.sequelize, 'SELECT id, business_id AS gym_id, branch_name FROM branches WHERE id = ?', [branchId]);
   return b || null;
 }
 
@@ -580,7 +580,7 @@ async function createDevice({ tenantId, tenantDb, branchId, organizationId, name
     const key = newDeviceKey();
     try {
       await platformDb.query(
-        `INSERT INTO access_devices (id, device_key, serial_number, tenant_id, organization_id, branch_id, link_mode, comm_key,
+        `INSERT INTO access_devices (id, device_key, serial_number, tenant_id, business_id, branch_id, link_mode, comm_key,
            registry_code, session_id, token_mode, status, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_connection', ?, ?, ?)`,
         {
@@ -831,7 +831,7 @@ async function moveDevice({ tenantId, tenantDb, deviceId, branchId }) {
   const branch = await branchOf(tenantDb, branchId);
   if (!branch) throw createError('Branch not found.', 404, 'branch_not_found');
   const now = new Date();
-  await platformDb.query('UPDATE access_devices SET branch_id = ?, organization_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?', {
+  await platformDb.query('UPDATE access_devices SET branch_id = ?, business_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?', {
     replacements: utc([branchId, branch.gym_id || null, now, deviceId, tenantId]),
   });
   await tenantDb.sequelize.query('UPDATE access_device_details SET branch_id = ?, last_sweep_at = NULL, updated_at = ? WHERE id = ?', {

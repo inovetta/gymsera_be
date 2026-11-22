@@ -311,8 +311,9 @@ const PLATFORM_MIGRATIONS = [
           'SLOT_TRIMMED_DOWNGRADE',
           'SLOT_ATTRIBUTED_UPGRADE',
           'SLOT_CONSUMED_BUILD',
-          'ORG_DELETED',
-          'ORG_BRANCHES_MOVED',
+          // R-120: ORG_DELETED / ORG_BRANCHES_MOVED until p033 renamed them (they are business events).
+          'BUSINESS_DELETED',
+          'BUSINESS_BRANCHES_MOVED',
           'BRANCH_BILLING_LOCKED',
           'BRANCH_BILLING_UNLOCKED',
         ],
@@ -1074,7 +1075,7 @@ const PLATFORM_MIGRATIONS = [
         `CREATE TABLE IF NOT EXISTS \`payout_accounts\` (
           \`id\` CHAR(36) BINARY NOT NULL,
           \`tenant_id\` CHAR(36) BINARY NOT NULL,
-          \`organization_id\` CHAR(36) BINARY NULL,
+          \`business_id\` CHAR(36) BINARY NULL,
           \`scope_key\` VARCHAR(36) NOT NULL,
           \`provider\` VARCHAR(32) NOT NULL DEFAULT 'BANK_TRANSFER',
           \`status\` VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
@@ -1087,7 +1088,7 @@ const PLATFORM_MIGRATIONS = [
           \`updated_at\` DATETIME NOT NULL,
           PRIMARY KEY (\`id\`),
           UNIQUE KEY \`payout_accounts_tenant_scope_provider\` (\`tenant_id\`, \`scope_key\`, \`provider\`),
-          KEY \`payout_accounts_organization_id\` (\`organization_id\`)
+          KEY \`payout_accounts_business_id\` (\`business_id\`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
       );
       const plan = await planPayoutAccountBackfill(sequelize);
@@ -1157,7 +1158,7 @@ const PLATFORM_MIGRATIONS = [
           \`serial_number\` VARCHAR(32) NULL,
           \`previous_serial_number\` VARCHAR(32) NULL,
           \`tenant_id\` CHAR(36) BINARY NOT NULL,
-          \`organization_id\` CHAR(36) BINARY NULL,
+          \`business_id\` CHAR(36) BINARY NULL,
           \`branch_id\` CHAR(36) BINARY NOT NULL,
           \`link_mode\` VARCHAR(8) NOT NULL,
           \`comm_key\` VARCHAR(8) NULL,
@@ -1324,16 +1325,21 @@ const PLATFORM_MIGRATIONS = [
         { table: 'areas', column: 'radius_m', type: 'INT', accept: ['int', 'int(11)'] },
         { table: 'tenants', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
         { table: 'tenants', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
-        { table: 'gym_listings', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
-        { table: 'gym_listings', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
+        // R-120: `gym_listings` until p033 renamed it; a database before p033 still has the old name.
+        { table: 'business_listings', legacyTable: 'gym_listings', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
+        { table: 'business_listings', legacyTable: 'gym_listings', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
       ];
       const toAdd = [];
       for (const c of columns) {
         // A table this database does not have is left alone (same rule as the older migrations).
-        const [table] = await sequelize.query(
-          'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-          { replacements: [c.table], type: QueryTypes.SELECT }
-        );
+        let table = null;
+        for (const name of [c.table, c.legacyTable].filter(Boolean)) {
+          [table] = await sequelize.query(
+            'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+            { replacements: [name], type: QueryTypes.SELECT }
+          );
+          if (table) { c.table = name; break; }
+        }
         if (!table) continue;
         const [col] = await sequelize.query(
           'SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
@@ -1405,6 +1411,72 @@ const PLATFORM_MIGRATIONS = [
       );
       for (const c of toAdd) {
         await sequelize.query(`ALTER TABLE \`${c.table}\` ADD COLUMN \`${c.column}\` ${c.type} NULL`);
+      }
+      return null;
+    },
+  },
+  {
+    version: 33,
+    name: 'p033_business_naming',
+    description:
+      'R-120 NEW-306 (docs/NAMING_AND_DATA_DICTIONARY.md §3.6): business tables and columns get their names. gym_listings → business_listings (title → name, branch_id → primary_branch_id, short_description → description); saved_gyms → saved_businesses, gym_reviews → business_reviews, user_gym_memberships → member_subscription_index (gym_listing_id → business_id, gym_name → business_name); payout_accounts.organization_id, access_devices.organization_id, capacity_events.listing_id → business_id; platform_packages.max_organizations → max_businesses; capacity_events.action ORG_DELETED / ORG_BRANCHES_MOVED → BUSINESS_DELETED / BUSINESS_BRANCHES_MOVED. Indexes renamed; foreign keys follow. Metadata only except the two enum values. Safe to re-run.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run (lists p033, writes nothing).
+    // BACKUP: mysqldump of the platform database first (the enum step rewrites two values in capacity_events).
+    // DEPLOY: run it BEFORE the API build that reads these names (the models select them).
+    // CONFLICT: a table or column present under both names with data in both is reported (skipped, not
+    //   recorded) and nothing more is changed for that step; every other step is idempotent, so re-run.
+    // ROLLBACK (deploy the previous API build FIRST): the reverse RENAME TABLE / CHANGE COLUMN / RENAME INDEX
+    //   of every step below, the enum values back, then DELETE FROM `schema_migrations` WHERE `version` = 33;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const col = (table, from, to, comment) => [r.renameColumn, { table, from, to, comment }];
+      const idx = (table, from, to) => [r.renameIndex, { table, from, to }];
+      const out = await r.applyAll(sequelize, [
+        [r.renameTable, { from: 'gym_listings', to: 'business_listings', comment: 'One row per business: its public, traveller-facing half (name, photos, area, approval, reserved branch units). Same id as the tenant businesses row.' }],
+        [r.renameTable, { from: 'saved_gyms', to: 'saved_businesses', comment: 'A business a traveller saved.' }],
+        [r.renameTable, { from: 'gym_reviews', to: 'business_reviews', comment: 'A traveller review of a business (optionally one branch), moderated by platform admins.' }],
+        [r.renameTable, { from: 'user_gym_memberships', to: 'member_subscription_index', comment: 'Index of a member\'s subscriptions across tenant databases; the real record is the tenant member_subscriptions row.' }],
+        col('business_listings', 'title', 'name', 'Business name shown to travellers. Same value as businesses.name.'),
+        col('business_listings', 'branch_id', 'primary_branch_id', 'Primary branch of the business (tenant branches.id), for the card and chat; NULL until a branch exists.'),
+        col('business_listings', 'short_description', 'description', 'Business description shown to travellers.'),
+        idx('business_listings', 'gym_listings_city_id_area_id_status', 'business_listings_city_id_area_id_status'),
+        idx('business_listings', 'gym_listings_tenant_id', 'business_listings_tenant_id'),
+        idx('business_listings', 'gym_listings_is_featured', 'business_listings_is_featured'),
+        idx('business_listings', 'gym_listings_gender_type', 'business_listings_gender_type'),
+        col('saved_businesses', 'gym_listing_id', 'business_id', 'The business saved.'),
+        idx('saved_businesses', 'saved_gyms_user_id_gym_listing_id', 'saved_businesses_user_id_business_id'),
+        idx('saved_businesses', 'saved_gyms_user_id', 'saved_businesses_user_id'),
+        col('business_reviews', 'gym_listing_id', 'business_id', 'The business reviewed.'),
+        idx('business_reviews', 'gym_reviews_gym_listing_id_status', 'business_reviews_business_id_status'),
+        idx('business_reviews', 'gym_reviews_branch_id_status', 'business_reviews_branch_id_status'),
+        idx('business_reviews', 'gym_reviews_user_id', 'business_reviews_user_id'),
+        idx('business_reviews', 'gym_reviews_branch_user_unique', 'business_reviews_branch_user_unique'),
+        col('member_subscription_index', 'gym_listing_id', 'business_id', 'The business, for display without opening the tenant database.'),
+        col('member_subscription_index', 'gym_name', 'business_name', 'Business name at subscription time (copy).'),
+        idx('member_subscription_index', 'user_gym_memberships_user_id_status', 'member_subscription_index_user_id_status'),
+        idx('member_subscription_index', 'user_gym_memberships_tenant_id', 'member_subscription_index_tenant_id'),
+        idx('member_subscription_index', 'user_gym_memberships_subscription_id', 'member_subscription_index_subscription_id'),
+        idx('member_subscription_index', 'user_gym_memberships_gym_listing_id', 'member_subscription_index_business_id'),
+        col('payout_accounts', 'organization_id', 'business_id', 'The business this account is for; NULL = organization-wide.'),
+        idx('payout_accounts', 'payout_accounts_organization_id', 'payout_accounts_business_id'),
+        col('access_devices', 'organization_id', 'business_id', 'The business of the device\'s branch.'),
+        col('capacity_events', 'listing_id', 'business_id', 'The business whose reserved_slots changed; NULL for organization-wide events.'),
+        idx('capacity_events', 'capacity_events_listing_id', 'capacity_events_business_id'),
+        col('platform_packages', 'max_organizations', 'max_businesses', 'Businesses allowed on this legacy package.'),
+        [r.renameEnumValues, {
+          table: 'capacity_events',
+          column: 'action',
+          rename: { ORG_DELETED: 'BUSINESS_DELETED', ORG_BRANCHES_MOVED: 'BUSINESS_BRANCHES_MOVED' },
+          values: [
+            'BRANCH_DELETED', 'BRANCH_RESTORED', 'SLOT_TRANSFERRED', 'SLOT_TRIMMED_DOWNGRADE', 'SLOT_ATTRIBUTED_UPGRADE',
+            'SLOT_CONSUMED_BUILD', 'BUSINESS_DELETED', 'BUSINESS_BRANCHES_MOVED', 'BRANCH_BILLING_LOCKED', 'BRANCH_BILLING_UNLOCKED',
+          ],
+        }],
+      ]);
+      if (out.skipped.length) {
+        console.warn(`[PlatformMigration] SKIPPING p033_business_naming (not recorded): ${JSON.stringify(out.skipped)}. Resolve by hand, then re-run.`);
+        return { skipped: true, reason: 'rename_conflict', conflicts: out.skipped };
       }
       return null;
     },

@@ -2,7 +2,7 @@
  * P7b (R-94): the data move of platform migration p027. Bank details saved before P7b live in
  * tenants.payment_details_json (one value per tenant; the API saved them there for whichever
  * organization the host was editing). They become that tenant's DEFAULT payout account
- * (payout_accounts row, organization_id NULL, provider BANK_TRANSFER), keeping the old
+ * (payout_accounts row, business_id NULL (R-120: organization_id until p033), provider BANK_TRANSFER), keeping the old
  * payment_details_updated_at so a SEC-13 cooling period in progress is not restarted or lost. The
  * timestamp is copied as text ('YYYY-MM-DD HH:MM:SS'), never through a JS Date, so the server's
  * time zone cannot shift it.
@@ -95,7 +95,7 @@ const applyPayoutAccountBackfill = async (sequelize, plan) => {
   for (const item of plan.copy) {
     await sequelize.query(
       `INSERT IGNORE INTO payout_accounts
-         (id, tenant_id, organization_id, scope_key, provider, status, details_json, details_updated_at, created_at, updated_at)
+         (id, tenant_id, business_id, scope_key, provider, status, details_json, details_updated_at, created_at, updated_at)
        VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())`,
       { replacements: [crypto.randomUUID(), item.tenantId, TENANT_SCOPE, PROVIDER, JSON.stringify(item.detailsJson), item.detailsUpdatedAt] }
     );

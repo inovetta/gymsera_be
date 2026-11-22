@@ -27,8 +27,8 @@ beforeAll(async () => {
   // The onboarding organization and its gym are older than anything these tests build (MySQL keeps
   // whole seconds, so rows made in one test run would otherwise tie).
   const { sequelize: platformSql } = GymListing;
-  await platformSql.query('UPDATE gym_listings SET created_at = ? WHERE id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
-  await tenantDb.models.Gym.sequelize.query('UPDATE gyms SET created_at = ? WHERE gym_listing_id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
+  await platformSql.query('UPDATE business_listings SET created_at = ? WHERE id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
+  await tenantDb.models.Gym.sequelize.query('UPDATE businesses SET created_at = ? WHERE gym_listing_id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
   const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { tenantId: personas.owner.tenantId } });
   expect(updated).toBeGreaterThan(0);
 });

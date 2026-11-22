@@ -80,7 +80,7 @@ const MIGRATIONS = [
       ).catch(() => {});
 
       // gyms
-      await ensureCol('gyms', 'gym_listing_id', '`gym_listing_id` CHAR(36) NULL');
+      await ensureCol(await businessTable(sequelize), 'gym_listing_id', '`gym_listing_id` CHAR(36) NULL'); // R-120: `gyms` until 030
     },
   },
   {
@@ -149,7 +149,7 @@ const MIGRATIONS = [
             { replacements: [firstListing.id, ''] }
           ).catch(() => {});
           await sequelize.query(
-            'UPDATE gyms SET gym_listing_id = ? WHERE gym_listing_id IS NULL OR gym_listing_id = ?',
+            `UPDATE \`${await businessTable(sequelize)}\` SET gym_listing_id = ? WHERE gym_listing_id IS NULL OR gym_listing_id = ?`, // R-120: `gyms` until 030
             { replacements: [firstListing.id, ''] }
           ).catch(() => {});
         }
@@ -1449,16 +1449,15 @@ const MIGRATIONS = [
           'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
           { replacements: [table, column], type: QueryTypes.SELECT }
         )).length > 0;
-      // As 023 does for gym_staff: a database without `gyms` (a partial test schema) gets the table only.
-      const hasGyms = (await sequelize.query(
-        'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gyms\'',
-        { type: QueryTypes.SELECT }
-      )).length > 0;
-      if (hasGyms && !(await hasColumn('gyms', 'refunds_allowed'))) {
-        await sequelize.query('ALTER TABLE `gyms` ADD COLUMN `refunds_allowed` TINYINT(1) NOT NULL DEFAULT 0');
+      // As 023 does for gym_staff: a database without the business table (a partial test schema) gets the
+      // table only. R-120: `gyms` until 030 renames it `businesses`.
+      const biz = await businessTable(sequelize);
+      const hasGyms = await hasTable(sequelize, biz);
+      if (hasGyms && !(await hasColumn(biz, 'refunds_allowed'))) {
+        await sequelize.query(`ALTER TABLE \`${biz}\` ADD COLUMN \`refunds_allowed\` TINYINT(1) NOT NULL DEFAULT 0`);
       }
-      if (hasGyms && !(await hasColumn('gyms', 'refund_window_days'))) {
-        await sequelize.query('ALTER TABLE `gyms` ADD COLUMN `refund_window_days` SMALLINT UNSIGNED NULL');
+      if (hasGyms && !(await hasColumn(biz, 'refund_window_days'))) {
+        await sequelize.query(`ALTER TABLE \`${biz}\` ADD COLUMN \`refund_window_days\` SMALLINT UNSIGNED NULL`);
       }
       await sequelize.query(`CREATE TABLE IF NOT EXISTS \`refund_requests\` (
         \`id\` CHAR(36) NOT NULL,
@@ -1505,6 +1504,35 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // R-120 NEW-306 (docs/NAMING_AND_DATA_DICTIONARY.md §3.6): the tenant `gyms` table holds businesses.
+    // gyms → businesses; branches / membership_plans / expense_categories .gym_id → business_id (indexes
+    // renamed; the foreign keys follow the rename). Metadata only (ALGORITHM=INPLACE), no data changes.
+    // A fresh database built by sync already has the new names: every step is then a no-op.
+    // A conflict (both names hold data) is reported and the migration is not recorded; re-run after fixing.
+    // Rollback (manual, in this order):
+    //   ALTER TABLE `expense_categories` CHANGE COLUMN `business_id` `gym_id` <same definition>;
+    //   ALTER TABLE `membership_plans` RENAME INDEX `membership_plans_business_id` TO `membership_plans_gym_id`;
+    //   ALTER TABLE `membership_plans` CHANGE COLUMN `business_id` `gym_id` <same definition>;
+    //   ALTER TABLE `branches` RENAME INDEX `branches_business_id` TO `branches_gym_id`;
+    //   ALTER TABLE `branches` CHANGE COLUMN `business_id` `gym_id` <same definition>;
+    //   RENAME TABLE `businesses` TO `gyms`; DELETE FROM `schema_migrations` WHERE `version` = 30;
+    version: 30,
+    name: '030_business_naming',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const out = await r.applyAll(sequelize, [
+        [r.renameTable, { from: 'gyms', to: 'businesses', comment: 'One row per business in this organization (staff profile); same id as its business_listings row.' }],
+        [r.renameColumn, { table: 'branches', from: 'gym_id', to: 'business_id', comment: 'The business this branch belongs to (businesses.id).' }],
+        [r.renameIndex, { table: 'branches', from: 'branches_gym_id', to: 'branches_business_id' }],
+        [r.renameColumn, { table: 'membership_plans', from: 'gym_id', to: 'business_id', comment: 'The business that sells the plan (businesses.id).' }],
+        [r.renameIndex, { table: 'membership_plans', from: 'membership_plans_gym_id', to: 'membership_plans_business_id' }],
+        [r.renameColumn, { table: 'expense_categories', from: 'gym_id', to: 'business_id', comment: 'Business of a custom category; NULL for system categories.' }],
+      ]);
+      return out.skipped.length ? { skipped: true, reason: 'rename_conflict', conflicts: out.skipped } : null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -1521,6 +1549,9 @@ const hasTable = async (sequelize, table) => {
   );
   return rows.length > 0;
 };
+
+/** R-120 (030): the tenant business table is `businesses`; a database before 030 still has `gyms`. */
+const businessTable = async (sequelize) => ((await hasTable(sequelize, 'businesses')) ? 'businesses' : 'gyms');
 
 /**
  * Versions of `migrations` not recorded in `schema_migrations` (all of them when the table is missing).

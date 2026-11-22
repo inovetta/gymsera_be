@@ -87,7 +87,7 @@ describe('gymsera-prompt-2b-group4-check.js (read-only)', () => {
       'CHECKSUM TABLE payments, invoices, member_subscriptions, membership_plans, schema_migrations',
       { type: QueryTypes.SELECT }
     );
-    const p = await h.platform.sequelize.query('CHECKSUM TABLE user_gym_memberships, tenants', { type: QueryTypes.SELECT });
+    const p = await h.platform.sequelize.query('CHECKSUM TABLE member_subscription_index, tenants', { type: QueryTypes.SELECT });
     return JSON.stringify([...t, ...p]);
   };
 

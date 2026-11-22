@@ -30,7 +30,7 @@ module.exports = (sequelize) => {
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
       tenantId: { type: DataTypes.UUID, allowNull: false },
-      organizationId: { type: DataTypes.UUID, allowNull: true },
+      organizationId: { type: DataTypes.UUID, allowNull: true, field: 'business_id' }, // R-120 NEW-306 (p033)
       scopeKey: { type: DataTypes.STRING(36), allowNull: false },
       provider: { type: DataTypes.STRING(32), allowNull: false, defaultValue: PROVIDERS.BANK_TRANSFER },
       status: { type: DataTypes.STRING(16), allowNull: false, defaultValue: STATUSES.ACTIVE },
@@ -54,7 +54,7 @@ module.exports = (sequelize) => {
       timestamps: true,
       indexes: [
         { unique: true, name: 'payout_accounts_tenant_scope_provider', fields: ['tenant_id', 'scope_key', 'provider'] },
-        { name: 'payout_accounts_organization_id', fields: ['organization_id'] },
+        { name: 'payout_accounts_business_id', fields: ['business_id'] },
       ],
       hooks: {
         beforeValidate: (row) => {

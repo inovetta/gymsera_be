@@ -36,7 +36,7 @@ async function checkHistoricalData(options = {}) {
   // ── FLOW-10 Check: Reviews auto-approved or without active/past subscription ─
   try {
     const allReviews = await pSeq.query(
-      'SELECT id, branch_id, user_id, tenant_id, rating, status, created_at FROM gym_reviews',
+      'SELECT id, branch_id, user_id, tenant_id, rating, status, created_at FROM business_reviews', // R-120: gym_reviews before p033
       { type: QueryTypes.SELECT }
     );
 
@@ -45,7 +45,7 @@ async function checkHistoricalData(options = {}) {
       let sub = null;
       if (rev.tenant_id) {
         [sub] = await pSeq.query(
-          'SELECT id, status FROM user_gym_memberships WHERE user_id = ? AND tenant_id = ? AND status IN (\'ACTIVE\', \'EXPIRED\', \'FROZEN\') LIMIT 1',
+          'SELECT id, status FROM member_subscription_index WHERE user_id = ? AND tenant_id = ? AND status IN (\'ACTIVE\', \'EXPIRED\', \'FROZEN\') LIMIT 1',
           { replacements: [rev.user_id, rev.tenant_id], type: QueryTypes.SELECT }
         );
       }

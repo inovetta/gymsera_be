@@ -40,7 +40,7 @@ const ADDS = {
       branches: ['gym_listing_id', 'timezone'],
       approval_requests: ['collected_by', 'collected_at', 'collection_method', 'collection_notes'],
       payments: ['business_date', 'idempotency_key', 'printed_at', 'printed_by'],
-      gyms: ['gym_listing_id'],
+      businesses: ['gym_listing_id'], // R-120: `gyms` until 030 (the snapshot resolves the old name)
     },
     indexes: { payments: ['payments_branch_business_date', 'payments_idempotency_unique'] },
   },
@@ -96,12 +96,21 @@ const ADDS = {
   },
   28: {
     tables: ['refund_requests'],
-    columns: { gyms: ['refunds_allowed', 'refund_window_days'] },
+    columns: { businesses: ['refunds_allowed', 'refund_window_days'] },
   },
   29: {
     columns: { branches: ['hours_json'] },
   },
+  // R-120 NEW-306: 030 renames gyms → businesses and the gym_id columns → business_id.
+  30: {
+    tables: ['businesses'],
+    columns: { branches: ['business_id'], membership_plans: ['business_id'], expense_categories: ['business_id'] },
+  },
 };
+
+// R-120: a table renamed by a later migration, looked up under its old name on a database before that
+// migration (new name → old name). Probes of older migrations name the new table; the snapshot finds the old.
+const LEGACY_TABLES = Object.freeze({ businesses: 'gyms' });
 
 /** One read of information_schema for the current database. */
 async function readSnapshot(sequelize) {
@@ -127,10 +136,13 @@ async function readSnapshot(sequelize) {
     if (!indexes.has(r.TABLE_NAME)) indexes.set(r.TABLE_NAME, new Set());
     indexes.get(r.TABLE_NAME).add(r.INDEX_NAME);
   }
+  const resolve = (t) => (tables.has(t) || !LEGACY_TABLES[t] ? t : LEGACY_TABLES[t]);
   return {
-    hasTable: (t) => tables.has(t),
-    col: (t, c) => columns.get(t)?.get(c) || null,
-    hasIndex: (t, i) => Boolean(indexes.get(t)?.has(i)),
+    hasTable: (t) => tables.has(resolve(t)),
+    hasTableExact: (t) => tables.has(t),
+    tableName: resolve,
+    col: (t, c) => columns.get(resolve(t))?.get(c) || null,
+    hasIndex: (t, i) => Boolean(indexes.get(resolve(t))?.has(i)),
     tables,
     columns,
   };
@@ -186,10 +198,11 @@ const PROBES = {
     return n ? missing(`${n} payment(s) without business_date`) : present();
   },
   5: async (s, seq) => {
-    if (!s.col('branches', 'gym_listing_id') || !s.col('gyms', 'gym_listing_id')) return missing('gym_listing_id not found');
+    if (!s.col('branches', 'gym_listing_id') || !s.col('businesses', 'gym_listing_id')) return missing('gym_listing_id not found');
     const n = await count(
       seq,
-      'SELECT (SELECT COUNT(*) FROM branches WHERE gym_listing_id IS NULL OR gym_listing_id = \'\') + (SELECT COUNT(*) FROM gyms WHERE gym_listing_id IS NULL OR gym_listing_id = \'\') AS n'
+      'SELECT (SELECT COUNT(*) FROM branches WHERE gym_listing_id IS NULL OR gym_listing_id = \'\') + ' +
+        `(SELECT COUNT(*) FROM \`${s.tableName('businesses')}\` WHERE gym_listing_id IS NULL OR gym_listing_id = '') AS n`
     );
     return n ? missing(`${n} branch / gym row(s) without gym_listing_id`) : present();
   },
@@ -312,16 +325,26 @@ const PROBES = {
   26: async (s) => columnOfType(s, 'access_device_details', 'user_command_form', (c) => ['char', 'varchar'].includes(type(c))),
   // 027 creates one table (NEW-248d).
   27: async (s) => tableWithColumn(s, 'device_admin_pins', 'privilege'),
-  // 028 adds two gyms columns, then creates refund_requests (NEW-253); the last step is the table.
+  // 028 adds two business-table columns (`gyms` until 030), then creates refund_requests (NEW-253); the last step is the table.
   28: async (s) => {
     for (const column of ['refunds_allowed', 'refund_window_days']) {
-      const r = columnOfType(s, 'gyms', column, (c) => INT_TYPES.includes(type(c)), { tableOptional: true });
+      const r = columnOfType(s, 'businesses', column, (c) => INT_TYPES.includes(type(c)), { tableOptional: true });
       if (r.state !== 'present') return r;
     }
     return tableWithColumn(s, 'refund_requests', 'ledger_adjustment_id');
   },
   // 029 adds branches.hours_json (R-113 H1); MySQL reports JSON as json (MariaDB as longtext).
   29: async (s) => columnOfType(s, 'branches', 'hours_json', (c) => ['json', 'longtext'].includes(type(c))),
+  // 030 (R-120): the new names exist and the old ones are gone.
+  30: async (s) => {
+    if (!s.hasTableExact('businesses')) return missing('table businesses not found (still gyms)');
+    for (const t of ['branches', 'membership_plans']) {
+      if (!s.col(t, 'business_id')) return missing(`${t}.business_id not found`);
+      if (s.col(t, 'gym_id')) return conflict(`${t} has both gym_id and business_id`);
+    }
+    if (s.hasTableExact('gyms')) return conflict('both gyms and businesses exist');
+    return present();
+  },
 };
 
 /** Tables and columns the tenant models read (Sequelize field names, no VIRTUAL attributes). */
@@ -360,8 +383,8 @@ async function inspectTenantSchema(sequelize) {
   if (hasMigrationTable) {
     refusals.push('schema_migrations already exists: use node src/scripts/run-tenant-migrations.js (--dry-run first)');
   }
-  if (!s.hasTable('branches') || !s.hasTable('gyms')) {
-    refusals.push('no branches / gyms table: this is not a provisioned tenant database');
+  if (!s.hasTable('branches') || !s.hasTable('businesses')) {
+    refusals.push('no branches / businesses (gyms) table: this is not a provisioned tenant database');
   }
 
   const probes = [];
