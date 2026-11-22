@@ -17,14 +17,14 @@ next agent won't know it.
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-22 (R-120 task 1: docs branch committed; session 166) |
+| Last updated | 2026-11-22 (R-120 task 2: API contract v2 frozen; session 166) |
 | Updated by | Claude Code (Opus 5.5), session 166 |
 | Current prompt | **R-120 (owner 2026-11-22): clean names, no old-build compatibility, no backfill.** Tasks in order, report at each checkpoint: (1) docs branch `docs/naming-and-contract` (naming doc, enterprise spec revision, spec §13 / §14 R-120, this handoff), no merge; (2) **contract freeze** `docs/API_CONTRACT_V2.md` (routes before → after, keys per endpoint, enums, error codes in the new names), report at once; (3) server, in order: NEW-305 rename helper, NEW-306 business tables / columns, NEW-307 organization tables / columns, NEW-308 option S, NEW-303 enterprise P1 redone in the new names, NEW-309 / NEW-310 / NEW-311 tier A and `tenantId`; full be suite on local MySQL 5.7 after each step. Limits: no merge, no deploy, no push to main, no production access, no wipe, never print secrets. |
 | Prompt status | `IN PROGRESS` |
-| Issue in progress | NEW-304 (docs) committed; next task 2 (contract freeze). |
+| Issue in progress | NEW-304 DONE (naming doc + spec + `docs/API_CONTRACT_V2.md` frozen). Next: task 3, NEW-305 rename helper. |
 | Step within issue | see Next action |
 
-**Next action (R-120):** write `docs/API_CONTRACT_V2.md` on `docs/naming-and-contract` (worktree `../gymsera_be_naming`) from the naming doc §2.5-§2.6 and today's routes; then the server branch (from the docs branch, own worktree) starting with NEW-305. `feat/enterprise-p1` (`7f7b21b`; NEW-303a schema, NEW-303b refund per branch, NEW-303c create rules + held branch + donor, NEW-303d business documents + verified badge, all in the old names) is **on hold**: reuse its logic and tests when NEW-303 is redone, not its branch. Test env: local Docker MySQL on 3308 (see the session 165 notes below); start Docker Desktop first.
+**Next action (R-120):** server branch `feat/naming-v2` from `docs/naming-and-contract` (own worktree `../gymsera_be_namingv2`), NEW-305 rename helper with tests (naming doc §3.4-§3.5), then NEW-306, NEW-307, NEW-308, NEW-303 redo, NEW-309..311, each ending with the full be suite on local MySQL 5.7. Clients (app, CMS, website) build against `docs/API_CONTRACT_V2.md` (frozen; changes only with the owner's word, logged in its §9). `feat/enterprise-p1` (`7f7b21b`, NEW-303a-d in the old names) is on hold: reuse its logic and tests, not its branch. Test env: local Docker MySQL on 3308 (session 165 notes below); start Docker Desktop first.
 
 **Rebased 2026-11-20 (owner, 2026-11-20: push approved after a rebase onto `origin/main` `308a447`).** be `feat/build-27` and `feat/r-113-server` were rebased; commit hashes quoted above and in the handoff before this date map old → new: `d014b8d` → `5ef4b94`, `95698f5` → `4edc97a`, `7163283` → `255e9ba`, `bd385b8` → `f94d757`, `5424c97` → `2657ec3`, `a2fb704` → `0e2860e`, `1348998` → `516f130`, `e43f2a6` → `d2aff0d`, `76f0482` → `91dc6f6`, `3d7bf8f` → `6f08842`, `40e3ac0` → `42f19f8`, `b0c3871` → `df18a56`, `fdeba44` → `a844c69`, `0d77df3` → `2e5b8e0`, `c857e1b` → `d2c8d1c`. Conflicts were only in the docs (both sides appended): spec §13 (main's NEW-276..278 / NEW-281 sections kept before "Build 27") and §14 (R-113, R-114, R-115, R-116 in ID order); handoff §1 (build 27 state kept, main's NEW-276..280 next-action paragraph kept as history) and the session log (rows 158 and 159 both kept). No code conflicts.
 
