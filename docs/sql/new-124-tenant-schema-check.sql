@@ -33,8 +33,10 @@ WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
 ORDER BY t.updated_at DESC;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 2. Every column the code selects from `branches` and `gyms` (generated from
---    src/models/tenant/Branch.model.js and Gym.model.js on 2026-10-26) that a live tenant
+-- 2. Every column the code selects from `branches` and `businesses` (generated from
+--    src/models/tenant/Branch.model.js and Gym.model.js on 2026-10-26; R-120: `gyms` → `businesses`,
+--    `branches.gym_id` → `business_id` by tenant migration 030, so a database before 030 lists
+--    `branches.business_id` as missing) that a live tenant
 --    database does NOT have, plus one row `schema_migrations | (table)` for a tenant database
 --    with no migration table at all (NEW-127/128: such a database needs
 --    `node src/scripts/repair-tenant-schema.js --tenant <code>`, not the normal runner).
@@ -50,7 +52,7 @@ SELECT
 FROM tenants t
 JOIN (
   SELECT 'branches' AS table_name, 'id' AS column_name
-  UNION ALL SELECT 'branches' AS table_name, 'gym_id' AS column_name
+  UNION ALL SELECT 'branches' AS table_name, 'business_id' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'gym_listing_id' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'branch_name' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'address' AS column_name
@@ -88,20 +90,20 @@ JOIN (
   UNION ALL SELECT 'branches' AS table_name, 'billing_lock_reason' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'created_at' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'updated_at' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'id' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'name' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'description' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'contact_phone' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'contact_email' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'website' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'gender_type' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'logo_url' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'cover_image_url' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'social_links_json' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'images_json' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'gym_listing_id' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'created_at' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'updated_at' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'id' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'name' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'description' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'contact_phone' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'contact_email' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'website' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'gender_type' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'logo_url' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'cover_image_url' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'social_links_json' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'images_json' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'gym_listing_id' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'created_at' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'updated_at' AS column_name
 ) e
 WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
   AND EXISTS (SELECT 1 FROM information_schema.TABLES x

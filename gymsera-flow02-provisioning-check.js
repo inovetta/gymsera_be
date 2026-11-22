@@ -195,7 +195,13 @@ async function main() {
       `SELECT id, tenant_code, status, db_name, (connection_string_encrypted IS NOT NULL AND connection_string_encrypted <> 'PENDING_PROVISIONING') AS has_connection` +
         `${hasState ? ', provisioning_state' : ''} FROM ${q(platformDb)}.tenants ORDER BY created_at, id`
     );
-    [listings] = await pconn.query(`SELECT tenant_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
+    // R-120 (p033): business_listings (name) on a renamed database, gym_listings (title) before it.
+    const [[renamed]] = await pconn.query(
+      'SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?', [platformDb, 'business_listings']
+    );
+    [listings] = await pconn.query(Number(renamed.n) > 0
+      ? `SELECT tenant_id, name AS title, created_at FROM ${q(platformDb)}.business_listings`
+      : `SELECT tenant_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
     [plans] = await pconn.query(`SELECT tenant_id, COUNT(*) AS n FROM ${q(platformDb)}.tenant_subscriptions GROUP BY tenant_id`);
     await pconn.query('ROLLBACK');
   } finally {
@@ -212,23 +218,25 @@ async function main() {
     const [schemas] = await tconn.query("SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'gymsera\\_%'");
     databases = schemas.map((s) => s.name);
     const [tables] = await tconn.query(
-      "SELECT TABLE_SCHEMA AS db, TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA LIKE 'gymsera\\_%' AND TABLE_NAME IN ('gyms','branches')"
+      "SELECT TABLE_SCHEMA AS db, TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA LIKE 'gymsera\\_%' AND TABLE_NAME IN ('gyms','businesses','branches')"
     );
     const has = new Set(tables.map((r) => `${r.db}.${r.t}`));
+    // R-120 (tenant 030): the business table is `businesses`; a database before 030 still has `gyms`.
+    const bizTable = (db) => (has.has(`${db}.businesses`) ? 'businesses' : 'gyms');
     const [gymCols] = await tconn.query(
-      'SELECT TABLE_SCHEMA AS db FROM information_schema.COLUMNS WHERE TABLE_SCHEMA LIKE ? AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-      ['gymsera\\_%', 'gyms', 'gym_listing_id']
+      'SELECT TABLE_SCHEMA AS db FROM information_schema.COLUMNS WHERE TABLE_SCHEMA LIKE ? AND TABLE_NAME IN (?, ?) AND COLUMN_NAME = ?',
+      ['gymsera\\_%', 'gyms', 'businesses', 'gym_listing_id']
     );
     const hasGymListingId = new Set(gymCols.map((r) => r.db));
     for (const db of databases) {
       if (db === platformDb) continue;
       try {
-        const gyms = has.has(`${db}.gyms`) ? Number((await tconn.query(`SELECT COUNT(*) AS n FROM ${q(db)}.gyms`))[0][0].n) : 0;
+        const gyms = has.has(`${db}.${bizTable(db)}`) ? Number((await tconn.query(`SELECT COUNT(*) AS n FROM ${q(db)}.${bizTable(db)}`))[0][0].n) : 0;
         // Gym rows whose listing is also on another gym row (0 on very old schemas without the column).
         const gymsSharingListing = hasGymListingId.has(db)
           ? Number(
             (await tconn.query(
-              `SELECT COALESCE(SUM(n), 0) AS n FROM (SELECT COUNT(*) AS n FROM ${q(db)}.gyms ` +
+              `SELECT COALESCE(SUM(n), 0) AS n FROM (SELECT COUNT(*) AS n FROM ${q(db)}.${bizTable(db)} ` +
                 'WHERE gym_listing_id IS NOT NULL GROUP BY gym_listing_id HAVING COUNT(*) > 1) shared'
             ))[0][0].n
           )
