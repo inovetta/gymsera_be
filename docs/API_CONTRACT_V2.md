@@ -667,6 +667,11 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | POST | `/admin/businesses/:businessId/reject` | body `reason` |
 | POST | `/admin/businesses/:businessId/verify` | verified badge on; 422 `registration_missing` |
 | DELETE | `/admin/businesses/:businessId/verify` | verified badge off |
+| GET | `/admin/review-queue` | A1 G1: `{ items: [ReviewItem] }` |
+| GET | `/admin/businesses/:businessId/documents` | A1 G4 |
+| GET | `/admin/businesses/:businessId/documents/:documentId/stream` | A1 G4 |
+| POST | `/admin/businesses/:businessId/documents/:documentId/approve` | A1 G4 |
+| POST | `/admin/businesses/:businessId/documents/:documentId/reject` | A1 G4, body `reason` |
 
 ## 5. Enum values
 
@@ -911,6 +916,10 @@ Every `code` the server sends today, plus the new ones. HTTP "—" = the status 
 | `visible_plan_required` | 422/— | |
 | `web_card_payments_disabled` | — | |
 | `wipe_confirmation_required` | 422 | |
+| **`organization_not_active`** | 409 | was `tenant_not_active` (A1 G16) |
+| **`missing_organization_context`** | 400 | was `missing_tenant_context` (A1 G16) |
+| `branch_delete_blocked` | 409 | unchanged (A1 G16) |
+| `organization_delete_blocked` | 409 | unchanged code; raised on deleting a business (A1 G16) |
 | **`business_not_approved`** | 409 | new: branch create / restore into a business that is not approved |
 | **`business_requirements_missing`** | 422 | new: approve without proof of premises or 3 photos; `data.missing` |
 | **`registration_missing`** | 422 | new: verify without a registration document |
@@ -931,12 +940,134 @@ Every `code` the server sends today, plus the new ones. HTTP "—" = the status 
 
 `GYM_HOST` role key, `isHost`, `businessDate` (accounting day), `traveler*` spelling in keys and values,
 `facilitiesJson` / `imagesJson` / `kycDocumentsJson` key style, R2 URL prefixes, `/health/tenant-schema` (tenant
-database mechanism), `tenant_unavailable` / `tenant_schema_incomplete` codes (mechanism), device protocol routes
+database mechanism), `tenant_unavailable` / `tenant_schema_incomplete` codes (mechanism; `tenant_not_active` and `missing_tenant_context` are renamed by A1 G16), device protocol routes
 (`/iclock…`, `cutover/gymbiosync-stopped`: a product name), legacy device routes `/devices…`, `/admin/devices…`.
+
+## 10. Amendment A1 (owner, 2026-11-22, final)
+
+Where this section and §1-§8 differ, this section wins. Items G1-G16 are the owner's numbering (G12-G14 were not
+issued).
+
+### G1. Admin organization list and review queue
+
+- `GET /admin/organizations` (was `GET /admin/tenants`) → `{ organizations: [Organization], page, total }`.
+- **New** `GET /admin/review-queue` → `{ items: [ReviewItem] }`. One item per organization waiting for identity
+  review and one per business waiting for approval (replaces the compound `tenantId:listingId` rows, F7):
+
+| Key | Value |
+|---|---|
+| `kind` | `ORGANIZATION` \| `BUSINESS` |
+| `organizationId` | always |
+| `businessId` | `BUSINESS` items only (absent on `ORGANIZATION` items) |
+| `name` | organization name (`ORGANIZATION`) or business name (`BUSINESS`) |
+| `status` | the organization's or the business's `status` |
+| `kycStatus` | the organization's or the business's `kycStatus` |
+| `submittedAt` | when it was submitted for review (organization: finalize; business: `kycSubmittedAt`, else creation) |
+
+### G2. Organization detail
+
+`GET /admin/organizations/:organizationId` → `{ organization: Organization, businesses: [Business], ... }`: the
+organization's businesses are listed under **`businesses`** (each a §3 Business, with its own `id`).
+
+### G3. Admin business wrapper
+
+`GET /admin/businesses/:businessId` and `PATCH /admin/businesses/:businessId` → `{ business: Business }` (was
+`{ gymListing }`).
+
+### G4. Admin business documents
+
+| Method | Route | Answer / body |
+|---|---|---|
+| GET | `/admin/businesses/:businessId/documents` | `{ documents: [{ id, documentType, status, originalName, uploadedAt, reviewedAt, rejectionReason }] }` |
+| GET | `/admin/businesses/:businessId/documents/:documentId/stream` | the file (private) |
+| POST | `/admin/businesses/:businessId/documents/:documentId/approve` | — → `{ document }` |
+| POST | `/admin/businesses/:businessId/documents/:documentId/reject` | body `reason` → `{ document }` |
+
+Document `status`: `PENDING` \| `APPROVED` \| `REJECTED`. Approving a `BUSINESS_REGISTRATION` document is what the
+verified badge reads (enterprise D11); `POST/DELETE /admin/businesses/:businessId/verify` stay.
+
+### G5. Business quota
+
+`GET /host/business-quota` → `{ pool: { max, used, reserved, free }, canAddBusiness, blockingBusinessStatus }`.
+`canAddBusiness` (bool): a unit is free in the organization pool (or can be transferred) and no business blocks it.
+`blockingBusinessStatus`: `null`, or the `status` of the business that blocks adding another (for example
+`PENDING` while one is under review, if that rule applies), so the app can say why. Replaces the per-business keys of
+§3 BranchQuota for this route.
+
+### G6. Branch delete answer
+
+`organizationDeleted` → **`businessDeleted`** (true when deleting the last branch also deleted its business).
+
+### G7. Two more keys
+
+`tenantName` → **`organizationName`** (admin billing events, `billing-event.service.js:321`); `gymTitle` →
+**`businessName`** (data export saved items `data-export.service.js:134`; review lists `discovery.service.js:1067`).
+
+### G8. Capacity audit
+
+`GET /admin/organizations/:organizationId/capacity-audit` → `audit`: `listings` → **`businesses`**,
+`driftedListings` → **`driftedBusinesses`** (each row keyed `businessId`); also, as the same rename,
+`emptyActiveOrgs` → `emptyActiveBusinesses`, `hasEmptyActiveOrgs` → `hasEmptyActiveBusinesses`;
+`tenantId` → `organizationId`, `businessName` → `organizationName` (§2).
+
+### G9. Refund policy
+
+- `GET /subscriptions/staff/refund-policy?branchId=` → `{ branchId, refundsAllowed, refundWindowDays }` (as §3).
+- `GET` **without** `branchId` → `{ branches: [{ branchId, branchName, businessId, refundsAllowed,
+  refundWindowDays }] }`, every non-deleted branch the caller can see (replaces the 422 `branch_required` on GET).
+- `PUT` takes `branchId` **or** `applyToAllBranches: true`, with `refundsAllowed` and `refundWindowDays`; neither id →
+  422 `branch_required` (PUT only). Answers as §3.
+
+### G10. Payout account scope
+
+`scope`: **`ORGANIZATION`** (organization-wide account) \| **`BUSINESS`** (one business; `businessId` set).
+Today the values are `TENANT` (organization-wide) and `ORGANIZATION` (one business, `payout-account.service.js:49`),
+so **`ORGANIZATION` changes meaning**: clients map by the new table, never by the old word.
+
+### G11. Notification deep links (every string the server sends, new names)
+
+| Before | After | Sent by |
+|---|---|---|
+| `/traveler/subscriptions` | (same) | subscription events (6) |
+| `/traveler/inbox` | (same) | chat (3) |
+| `/traveler/staff-invite-confirmation?staffId=<id>&tenantId=<id>` | `/traveler/staff-invite-confirmation?staffId=<id>&organizationId=<id>` | staff invite |
+| `/host/subscriptions` | (same) | GymsEra plan events (5) |
+| `/host/listings` | **`/host/businesses`** | business approval / rejection (4) |
+| `/host/profile` | (same) | (3) |
+| `/host/branches` | (same) | (3) |
+| `/host/today` | (same) | (2) |
+| `/host/devices` | (same) | access devices (2) |
+| `/host/inbox` | (same) | chat |
+| `/host/gyms/<branchId>/staff` | **`/host/branches/<branchId>/staff`** | staff joined / left (2) |
+| `/host/gyms/<branchId>/staff-requests` | **`/host/branches/<branchId>/staff-requests`** | staff requests (2) |
+| `/host/gyms?tab=subscriptions&filter=PENDING&subscriptionId=<id>` | **`/host/operations?tab=subscriptions&filter=PENDING&subscriptionId=<id>`** | member subscription to approve (the host tab shown as "Gyms" today; identifiers never "gym", D-7) |
+| `/staff/dashboard` | (same) | (4) |
+| `/admin/tenants/<id>` | **`/admin/organizations/<organizationId>`** | admin alerts (2) |
+| `/admin/plan-payments` | (same) | plan payment requests |
+| `/notifications` | (same) | generic |
+
+New with the enterprise model: `/host/businesses/<businessId>` (business approved / needs changes / verified).
+No other deep link is sent; a test lists them (server work).
+
+### G15. Area-request groups (admin, `GET /admin/area-requests`)
+
+Each group: `gyms` → **`businesses`**, `gymCount` → **`businessCount`**; inside each item `title` → **`name`**
+(the organization, business or branch name waiting on the area; `listingId` → `businessId`, `tenantId` →
+`organizationId` by §2).
+
+### G16. Error codes
+
+| Code | HTTP | Note |
+|---|---|---|
+| **`organization_not_active`** | 409 | was `tenant_not_active` (`tenantContext.js:326`, `plan-payment.service.js:118`) |
+| **`missing_organization_context`** | 400 | was `missing_tenant_context` (`tenantContext.js:331`) |
+| `branch_delete_blocked` | 409 | unchanged |
+| `organization_delete_blocked` | 409 | unchanged code (owner); raised when **deleting a business** whose branches cannot be deleted (`gym.service.js:1419,1449`); `data.businessId` (was `listingId`) |
 
 ## 9. Change log
 
 | Date | Change | By |
 |---|---|---|
 | 2026-11-22 | Frozen (R-120). | Claude Code (Opus 5.5), session 166 |
+| 2026-11-22 | Amendment A1 (§10, owner G1-G11, G15, G16): admin list and review queue, organization detail, business wrapper, admin business documents, business quota, `businessDeleted`, `organizationName` / `businessName` for `tenantName` / `gymTitle`, capacity audit keys, refund-policy list, payout scope values, deep links, area-request groups, error codes. | Claude Code (Opus 5.5), session 166 |
 
