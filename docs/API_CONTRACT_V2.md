@@ -143,7 +143,7 @@ this branch.
 
 `status`, `nextAction`, `organizationId` (was `tenantId`), `organizationName` (was `brandName`),
 `firstBusinessName` (was `gymName`), `applicationSubmitted`, `firstBusinessComplete` (was `listingComplete`),
-`payment { done, entitled, method }`, `plan`, `verification { status, verified }`, `rejectionReason`, `pendingArea`.
+`payment { done, entitled, method }`, `plan`, `verification { status, verified }`, `rejectionReason`, `area` (A3 J5; was written `pendingArea`).
 
 #### BranchQuota (`GET /host/branch-quota[?businessId=]`)
 
@@ -436,7 +436,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 252 | GET | `/host/organization-quota` | **`/host/business-quota`** |  |  |
 | 253 | GET | `/host/listings` | **`/host/businesses`** |  | `[Business]`, every non-deleted business of the organization |
 | 254 | POST | `/host/listings/staging-images` | **`/host/businesses/staging-images`** |  |  |
-| 255 | POST | `/host/listings` | **`/host/businesses`** | `address`, `areaId`, `areaRequestId`, `cityId`, `closingTime`, `contactPhone`, `coverImageUrl`, `facilitiesJson`, `genderType`, `googlePlaceId`, `businessDescription` (was `gymDescription`), `businessName` (was `gymName`), `hours`, `images`, `latitude`, `logoUrl`, `longitude`, `openingTime`, `packages` | Add Business (§3): the first branch is held until approval; `branchSource` removed |
+| 255 | POST | `/host/listings` | **`/host/businesses`** | `businessName` (was `gymName`), `businessDescription` (was `gymDescription`), `genderType`, `contactPhone`, `logoUrl`, `coverImageUrl`, `facilitiesJson`, `firstBranch` (A3 J8: the first branch is nested; no top-level branch keys, no `branchSource`) | Add Business (§3, A2 H2): the first branch is held until approval |
 | 256 | GET | `/host/listings/:id` | **`/host/businesses/:businessId`** |  |  |
 | 257 | PUT | `/host/listings/:id` | **`/host/businesses/:businessId`** | `areaId`, `areaRequestId`, `category`, `cityId`, `contactEmail`, `contactPhone`, `coverImageUrl`, `establishedYear`, `genderType`, `businessDescription` (was `gymDescription`), `businessName` (was `gymName`), `imagesJson`, `latitude`, `logoUrl`, `longitude`, `website` |  |
 | 258 | PATCH | `/host/listings/:id` | **`/host/businesses/:businessId`** | `areaId`, `areaRequestId`, `category`, `cityId`, `contactEmail`, `contactPhone`, `coverImageUrl`, `establishedYear`, `genderType`, `businessDescription` (was `gymDescription`), `businessName` (was `gymName`), `imagesJson`, `latitude`, `logoUrl`, `longitude`, `website` |  |
@@ -1077,7 +1077,7 @@ Where this section and earlier sections differ, this section wins (except H5, wh
 | `tenant_rejected` | **`organization_rejected`** | admin rejects it (`:596`) |
 | `tenant_suspended` | **`organization_suspended`** | admin suspends it (`:631`) |
 | metadata `event: 'tenant_status_updated'` | **`organization_status_updated`** | every organization status change (`metadataJson.event` on the four rows above; key `tenantId` → `organizationId`, §2) |
-| `tenant_reactivated` | `organization_reactivated` | admin reactivates it (`:684`); follows §2, owner may rename |
+| `tenant_reactivated` | **`organization_reactivated`** | admin reactivates it (`:684`); final (A3 J1) |
 | `tenant_submitted_review` | `organization_submitted_review` | to admins, on finalize (`tenant.service.js:404`); follows §2 |
 | `listing_approved` / `listing_rejected` | `business_approved` / `business_rejected` | business approval (`admin.service.js:391,534`); deep link `/host/businesses/<businessId>` (A1 G11); follows §2 |
 
@@ -1148,6 +1148,92 @@ BranchDetail). The "New routes" row of §4 now says the same.
 |---|---|---|
 | **`first_branch_already_built`** | 409 | new: `PATCH …/first-branch` after the business was approved (H2) |
 
+## 12. Amendment A3 (owner, 2026-11-23, final)
+
+Where this section and earlier sections differ, this section wins.
+
+### J1. `organization_reactivated`
+
+Notification type `tenant_reactivated` → **`organization_reactivated`** (A2 H1 had it as "owner may rename"; now final).
+
+### J2. List keys
+
+| Route | Items under | Was |
+|---|---|---|
+| `GET /discovery/branches`, `/branches/featured`, `/branches/top-rated`, `/branches/nearby`, `/branches/map` | **`branches`** | `gyms` |
+| `GET /discovery/businesses/:businessId/branches` | **`branches`** (the duplicate `gyms` key is removed) | `gyms` + `branches` |
+| `GET /host/branches`, `GET /host/businesses/:businessId/branches`, `GET /organizations/me/branches` | **`branches`** | (as today) |
+| `GET /me/saved-businesses` | **`businesses`** (each the BusinessPublic keys of §3 without `branches`: `id` = `businessId`, `name`, `description`, `logoUrl`, `coverImageUrl`, `city`, `area`, `facilitiesJson`, `businessVerified`, …) | `gyms` |
+| `GET /discovery/businesses` | `businesses` (§2) | `organizations` |
+
+### J3. My subscriptions
+
+`GET /me/subscriptions` → `{ memberships: [MemberSubscriptionSummary] }`, each row: `id`, `organizationId`, `businessId`,
+**`branchId`**, `businessName`, `subscriptionId`, `planName`, `startDate`, `endDate`, `status`. `branchId` and `businessId`
+are new on the row (today the index has no branch). **Server note:** `member_subscription_index` gets a `branch_id` column
+(new migration, written with the subscription; rows of a database created before it are filled from the tenant
+`member_subscriptions` row); tracked in NEW-312.
+
+### J4. Error table
+
+`branch_delete_blocked` (409) and `organization_delete_blocked` (409) are in the §6 table and in §10 G16; both are
+listed again here as the owner asked. `data` for `branch_delete_blocked`: `{ branchId, branchName, counts, reasons, canPause }`;
+for `organization_delete_blocked`: `{ businessId, branches, canPause }` (a business whose branches cannot be deleted).
+
+### J5. HostStatus area
+
+`GET /host/status` key is **`area`** (null, or the pending / rejected area request of the organization or its draft first
+branch, as `hostStatusArea` sends it today), **not** `pendingArea`. §3 HostStatus is corrected. (`pendingArea` stays on
+Organization and Business objects, where the server sends it.)
+
+### J6. Inbox conversations
+
+Every conversation (`GET /host/inbox/inquiries`, `GET /host/inbox/inquiries/:inquiryId`, `GET /me/inbox`, `GET /me/inbox/:conversationId`) nests
+**`business { id, name }`** (was `gymListing { id, title, logoUrl, branchId }`) and **`branchName`**. The conversation's own
+`branchId` and `organizationId` stay. `logoUrl` is no longer sent inside `business` (owner's shape; ask if a client needs it).
+
+### J7. Staff roles are scoped ORG or BRANCH
+
+A staff role is a `role_assignments` row: `scopeType` **`ORG`** (the whole organization, every branch of every business,
+including ones created later) or **`BRANCH`** (the branches listed in `role_assignment_branches`). A response never shows
+one business or branch name where the scope is a list.
+
+**`GET /me/staff-status`** → `{ isStaff, organizations: [StaffOrganization] }` (was a flat `branches` list):
+
+| Key | Value |
+|---|---|
+| `organizationId` | |
+| `organizationName` | the organization's name (was `gymName` on each branch) |
+| `scopeType` | `ORG` \| `BRANCH`. With several assignments in the organization: `ORG` if any is `ORG`, else `BRANCH` |
+| `roleKey` | the highest-level role among the user's active assignments there |
+| `designation` | job title, else the role's display name (as today) |
+| `branches` | `[{ branchId, branchName, businessId, businessName }]`: **empty for `ORG`**; for `BRANCH` the union of the linked branches that are ACTIVE |
+
+`isStaff` is true when the list is not empty. The client lists an `ORG` user's branches from `GET /me/context`.
+
+**`GET /staff-invites/:staffId`** → `{ staff, organization { id, name }, scopeType, roleKey, branches, host }`
+(replaces `branch { id, name }` and `gym { id, name }`); `branches` has the same item shape and is empty for `ORG`. An
+invite from the legacy `gym_staff` row has one branch (`scopeType` `BRANCH`, `branches` of length 1). Accept and decline
+bodies take `organizationId` (was `tenantId`).
+
+### J8. Add Business
+
+`POST /host/businesses` takes the business fields plus **`firstBranch`**; the schema is the one of `PATCH
+/host/businesses/:businessId/first-branch` (A2 H2: `FirstBranch`; the PATCH takes any subset of it). Body keys:
+`businessName`, `businessDescription`, `genderType`, `contactPhone`, `logoUrl`, `coverImageUrl`, `facilitiesJson`,
+`firstBranch`. §4 row 255 corrected.
+
+### J9. Report only (not changed): staff and role responses that show one name where the scope can be a list
+
+| Response | What it shows | Observation |
+|---|---|---|
+| `GET /team`, `GET /team/:id` rows (`team.service.js#serializeAssignment`) | `branches: [{ id, name }]` | A list, as it should be, but items lack `businessId` / `businessName` and use `id` / `name`, not the J7 item shape |
+| `GET /me/context` `organizations[].branches` (`context.controller.js:56-70`) | `{ id, name, permissions, scopes }` per branch | A list; no `businessId` / `businessName`; `name` is the branch name |
+| Approval requests (`approvals.controller.js:48`, `approval.service.js:417,432`) | `branch { id, name }` or null | One branch is correct (a request is made at one branch); `null` means organization-wide |
+| `GET /gyms/staff`, `GET /gyms/branches/:branchId/staff` (legacy `gym_staff`) | one row per (person, branch), `branch` single | Scope is represented by several rows; no `scopeType` / `roleKey` (legacy table, F5, deferred) |
+| Team welcome e-mail and "You're now {role} at {gymName}" notification (`team.service.js:338-346,752`) | the organization name in `gymName`, branches as text in `scopeText` | Correct, but the payload key `gymName` follows §2 → `organizationName` |
+| Approval notification text (`approval.service.js:465`) | "at {branchName}" or "your gym" | One branch for a one-branch request; "your gym" for organization-wide requests (copy only) |
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1155,4 +1241,5 @@ BranchDetail). The "New routes" row of §4 now says the same.
 | 2026-11-22 | Frozen (R-120). | Claude Code (Opus 5.5), session 166 |
 | 2026-11-22 | Amendment A1 (§10, owner G1-G11, G15, G16): admin list and review queue, organization detail, business wrapper, admin business documents, business quota, `businessDeleted`, `organizationName` / `businessName` for `tenantName` / `gymTitle`, capacity audit keys, refund-policy list, payout scope values, deep links, area-request groups, error codes. | Claude Code (Opus 5.5), session 166 |
 | 2026-11-22 | Amendment A2 (§11, owner): notification types `organization_*`, `FirstBranch` schema and nested Add Business body, business `kycDocuments` item (no storage keys; admin documents use it), `applyToAllBranches` on the refund-policy PUT, branch detail aligned with §3; new code `first_branch_already_built`. | Claude Code (Opus 5.5), session 166 |
+| 2026-11-23 | Amendment A3 (§12, owner): `organization_reactivated`; list keys `branches` / `businesses`; my-subscriptions rows with `branchId` + `businessId`; error-table rows listed; HostStatus key `area`; inbox `business { id, name }` + `branchName`; staff roles scoped ORG / BRANCH (`/me/staff-status`, staff invite) with the report of other responses; Add Business nested `firstBranch`. | Claude Code (Sonnet 5.5), session 166 |
 
