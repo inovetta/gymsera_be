@@ -159,7 +159,7 @@ same keys for one business.
 isOwner, role { key, name, displayName, level }, scopeType ('ORG' | 'BRANCH'), orgPermissions, branches,
 pendingApprovals }]`. ("org" in RBAC already means the organization; unchanged.)
 
-#### Add Business request (`POST /host/businesses`)
+#### Add Business request (`POST /host/businesses`) (superseded by A2 H2: nested `firstBranch`)
 
 `businessName`, `businessDescription`, `genderType`, `contactPhone`, `logoUrl`, `coverImageUrl`, `images`,
 `facilitiesJson`, and the held first branch: `address`, `cityId`, `areaId` or `areaRequestId` (one required),
@@ -501,7 +501,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 317 | GET | `/subscriptions/staff/refund-requests` | (same) |  |  |
 | 318 | POST | `/subscriptions/staff/refund-requests/:requestId/decide` | (same) | `amount`, `decision`, `reason` |  |
 | 319 | GET | `/subscriptions/staff/refund-policy` | (same) |  |  |
-| 320 | PUT | `/subscriptions/staff/refund-policy` | (same) | `branchId`, `refundWindowDays`, `refundsAllowed` |  |
+| 320 | PUT | `/subscriptions/staff/refund-policy` | (same) | `branchId`, `applyToAllBranches` (new), `refundWindowDays`, `refundsAllowed` | A1 G9 / A2 H4 |
 | 321 | GET | `/subscriptions/staff/:id` | (same) |  |  |
 | 322 | POST | `/subscriptions/staff/:id/activate` | (same) |  |  |
 | 323 | POST | `/subscriptions/staff` | (same) | `branchId`, `notes`, `paymentMethod`, `planId`, `startDate`, `userId` |  |
@@ -658,11 +658,11 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 
 | Method | Route | Note |
 |---|---|---|
-| GET | `/discovery/branches/:branchId` | branch detail: `{ branch: BranchDetail, business: BusinessPublic, membershipPlans: [...] }` (replaces the branch-id form of `/discovery/gyms/:id`) |
-| POST | `/host/businesses/:businessId/kyc-documents` | body `documentType` (`PROOF_OF_PREMISES` / `BUSINESS_REGISTRATION`), files `documents` (enterprise D10) |
+| GET | `/discovery/branches/:branchId` | branch detail: `{ branch, business, membershipPlans }` as §3 BranchDetail (`branch` = BranchCard keys, `business` = BusinessPublic keys without `branches`); replaces the branch-id form of `/discovery/gyms/:id` |
+| POST | `/host/businesses/:businessId/kyc-documents` | body `type` (`PROOF_OF_PREMISES` / `BUSINESS_REGISTRATION`), files `documents` (enterprise D10; A2 H3) |
 | GET | `/host/businesses/:businessId/kyc-documents` | business documents |
 | GET | `/host/businesses/:businessId/kyc-documents/:documentId/stream` | one document (private) |
-| PATCH | `/host/businesses/:businessId/first-branch` | edit the held first branch until approval (body = `BranchDraft`) |
+| PATCH | `/host/businesses/:businessId/first-branch` | edit the held first branch until approval (body = `FirstBranch`, A2 H2) |
 | POST | `/admin/businesses/:businessId/approve` | approve the business (builds the held first branch); 422 `business_requirements_missing` |
 | POST | `/admin/businesses/:businessId/reject` | body `reason` |
 | POST | `/admin/businesses/:businessId/verify` | verified badge on; 422 `registration_missing` |
@@ -758,7 +758,7 @@ Stored values as the API sends them. Renamed values are marked; every other valu
 
 Also: `role_assignments.scope_type` / Workspace `scopeType` `ORG` | `BRANCH` (unchanged, ORG = the organization);
 `user_blocks.blocked_by` `USER` | **`ORGANIZATION`** (was `TENANT`); business `kycStatus`
-`NOT_SUBMITTED` | `PENDING` | `APPROVED` | `REJECTED` (new); business document `documentType`
+`NOT_SUBMITTED` | `PENDING` | `APPROVED` | `REJECTED` (new); business document `type` (A2 H3)
 `PROOF_OF_PREMISES` | `BUSINESS_REGISTRATION` (new); organization document type `OWNER_ID`; `missingForApproval`
 items `PROOF_OF_PREMISES` | `PHOTOS_MIN_3` (new).
 
@@ -920,6 +920,7 @@ Every `code` the server sends today, plus the new ones. HTTP "—" = the status 
 | **`missing_organization_context`** | 400 | was `missing_tenant_context` (A1 G16) |
 | `branch_delete_blocked` | 409 | unchanged (A1 G16) |
 | `organization_delete_blocked` | 409 | unchanged code; raised on deleting a business (A1 G16) |
+| **`first_branch_already_built`** | 409 | new (A2 H6) |
 | **`business_not_approved`** | 409 | new: branch create / restore into a business that is not approved |
 | **`business_requirements_missing`** | 422 | new: approve without proof of premises or 3 photos; `data.missing` |
 | **`registration_missing`** | 422 | new: verify without a registration document |
@@ -978,7 +979,7 @@ organization's businesses are listed under **`businesses`** (each a §3 Business
 
 | Method | Route | Answer / body |
 |---|---|---|
-| GET | `/admin/businesses/:businessId/documents` | `{ documents: [{ id, documentType, status, originalName, uploadedAt, reviewedAt, rejectionReason }] }` |
+| GET | `/admin/businesses/:businessId/documents` | `{ documents: [KycDocument] }` (item shape: A2 H3) |
 | GET | `/admin/businesses/:businessId/documents/:documentId/stream` | the file (private) |
 | POST | `/admin/businesses/:businessId/documents/:documentId/approve` | — → `{ document }` |
 | POST | `/admin/businesses/:businessId/documents/:documentId/reject` | body `reason` → `{ document }` |
@@ -1064,10 +1065,94 @@ Each group: `gyms` → **`businesses`**, `gymCount` → **`businessCount`**; ins
 | `branch_delete_blocked` | 409 | unchanged |
 | `organization_delete_blocked` | 409 | unchanged code (owner); raised when **deleting a business** whose branches cannot be deleted (`gym.service.js:1419,1449`); `data.businessId` (was `listingId`) |
 
+## 11. Amendment A2 (owner, 2026-11-22, final)
+
+Where this section and earlier sections differ, this section wins (except H5, where §3 wins by the owner's word).
+
+### H1. Notification types (`notifications.type`, push `data.type`)
+
+| Before | After | When |
+|---|---|---|
+| `tenant_approved` | **`organization_approved`** | admin approves the organization (`admin.service.js:474`) |
+| `tenant_rejected` | **`organization_rejected`** | admin rejects it (`:596`) |
+| `tenant_suspended` | **`organization_suspended`** | admin suspends it (`:631`) |
+| metadata `event: 'tenant_status_updated'` | **`organization_status_updated`** | every organization status change (`metadataJson.event` on the four rows above; key `tenantId` → `organizationId`, §2) |
+| `tenant_reactivated` | `organization_reactivated` | admin reactivates it (`:684`); follows §2, owner may rename |
+| `tenant_submitted_review` | `organization_submitted_review` | to admins, on finalize (`tenant.service.js:404`); follows §2 |
+| `listing_approved` / `listing_rejected` | `business_approved` / `business_rejected` | business approval (`admin.service.js:391,534`); deep link `/host/businesses/<businessId>` (A1 G11); follows §2 |
+
+Every other type is unchanged.
+
+### H2. `FirstBranch` schema
+
+The branch-create body of `POST /host/branches` **without `businessId`** (the business it belongs to is the one
+being created or the one in the path). Used as `firstBranch` in `POST /host/businesses` and as the whole body of
+`PATCH /host/businesses/:businessId/first-branch`.
+
+| Key | Type | Rule (enterprise D8) |
+|---|---|---|
+| `branchName` | string | required |
+| `cityId` | int | required |
+| `areaId` / `areaRequestId` | int | exactly one required |
+| `address`, `addressLine1`, `addressLine2`, `postalCode`, `country` | string | `address` required |
+| `googlePlaceId` | string | optional |
+| `latitude`, `longitude` | number | required (map pin) |
+| `phone` | string | required |
+| `hours` | WeeklyHours (R-113) | optional; default every day 06:00–22:00. `openingTime` / `closingTime` accepted as the one-slot form |
+| `timezone`, `currency` | string | optional (server defaults) |
+| `tagline`, `description`, `category` | string | optional |
+| `establishedYear`, `floorArea` | int | optional |
+| `facilitiesJson` | string[] | optional (one amenity list; `facilities` is accepted as the same list) |
+| `imagesJson` | string[] (URLs from `POST /host/businesses/staging-images`) | **at least 3** |
+| `packages` | MembershipPlan create bodies | at least 1 |
+
+`PATCH /host/businesses/:businessId/first-branch`: any subset of the keys; allowed only while the business is not
+approved (409 `business_not_approved` is not used here; after approval the branch is a real branch: 409
+`first_branch_already_built`). Answer `{ business: Business }` with `firstBranchDraft` updated.
+
+**Add Business body** (replaces §3 "Add Business request"): `businessName` (required), `businessDescription`,
+`genderType`, `contactPhone`, `logoUrl`, `coverImageUrl`, `facilitiesJson`, **`firstBranch: FirstBranch`**
+(required). Top-level branch keys are no longer accepted. Answer unchanged: `{ business, branch: null,
+heldFirstBranch: true }`.
+
+### H3. Business `kycDocuments` item
+
+`kycDocuments: [{ id, type, status, uploadedAt, reviewedAt, rejectionReason }]` on Business (host and admin views).
+
+| Key | Value |
+|---|---|
+| `type` | `BUSINESS_REGISTRATION` (optional; drives the verified badge) \| `PROOF_OF_PREMISES` (required for approval) |
+| `status` | `PENDING` \| `APPROVED` \| `REJECTED` |
+| `uploadedAt`, `reviewedAt` | ISO date-time; `reviewedAt` null until reviewed |
+| `rejectionReason` | string or null |
+
+No storage keys, file names or URLs are sent; the file is read only through the `…/stream` routes. The same item
+shape is used by `GET /host/businesses/:businessId/kyc-documents` and by the admin `GET
+/admin/businesses/:businessId/documents` (A1 G4: `documentType` → `type`; `originalName` removed). Upload body key:
+`type` (was `documentType`).
+
+### H4. Refund policy route
+
+`PUT /subscriptions/staff/refund-policy` body keys: `branchId`, **`applyToAllBranches`**, `refundsAllowed`,
+`refundWindowDays` (§4 row 320 corrected). Rules as A1 G9.
+
+### H5. Branch detail (§3 wins)
+
+`GET /discovery/branches/:branchId` → `{ branch, business, membershipPlans }`: `branch` has the BranchCard keys,
+`business` the BusinessPublic keys without `branches`, `membershipPlans` the plans sold at this branch (§3
+BranchDetail). The "New routes" row of §4 now says the same.
+
+### H6. Error code
+
+| Code | HTTP | Note |
+|---|---|---|
+| **`first_branch_already_built`** | 409 | new: `PATCH …/first-branch` after the business was approved (H2) |
+
 ## 9. Change log
 
 | Date | Change | By |
 |---|---|---|
 | 2026-11-22 | Frozen (R-120). | Claude Code (Opus 5.5), session 166 |
 | 2026-11-22 | Amendment A1 (§10, owner G1-G11, G15, G16): admin list and review queue, organization detail, business wrapper, admin business documents, business quota, `businessDeleted`, `organizationName` / `businessName` for `tenantName` / `gymTitle`, capacity audit keys, refund-policy list, payout scope values, deep links, area-request groups, error codes. | Claude Code (Opus 5.5), session 166 |
+| 2026-11-22 | Amendment A2 (§11, owner): notification types `organization_*`, `FirstBranch` schema and nested Add Business body, business `kycDocuments` item (no storage keys; admin documents use it), `applyToAllBranches` on the refund-policy PUT, branch detail aligned with §3; new code `first_branch_already_built`. | Claude Code (Opus 5.5), session 166 |
 
