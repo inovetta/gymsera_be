@@ -97,11 +97,17 @@ const planReset = async (conn, { keepAdmins }) => {
   }
   if (!plan.users) throw refusal('the platform database has no users table; refusing', 'no_users_table');
 
-  if (names.includes('tenants')) {
-    // The real columns are tenant_code and db_name (Tenant model, underscored). NEW-136: this read `dbName`,
+  // R-120 NEW-307 (p034): `tenants` (tenant_code) was renamed `organizations` (organization_code). The wipe may run
+  // before or after that migration, so it reads whichever table the database has.
+  const orgTable = names.includes('organizations') ? 'organizations' : names.includes('tenants') ? 'tenants' : null;
+  if (orgTable) {
+    // The real columns are the organization code and db_name (Tenant model, underscored). NEW-136: this read `dbName`,
     // which does not exist, so the wipe stopped at its plan step. Names come only from this read (R-79).
-    const [rows] = await conn.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id');
-    plan.tenants = rows.map((r) => ({ id: r.id, tenantCode: r.tenant_code, status: r.status, dbName: r.db_name }));
+    // Two literal queries (no interpolation: SEC-16).
+    const [rows] = orgTable === 'organizations'
+      ? await conn.query('SELECT id, organization_code AS code, status, db_name FROM `organizations` ORDER BY id')
+      : await conn.query('SELECT id, tenant_code AS code, status, db_name FROM `tenants` ORDER BY id');
+    plan.tenants = rows.map((r) => ({ id: r.id, tenantCode: r.code, status: r.status, dbName: r.db_name }));
   }
   return plan;
 };

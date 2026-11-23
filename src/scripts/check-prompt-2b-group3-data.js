@@ -74,7 +74,7 @@ async function checkHistoricalData(options = {}) {
     }));
   } else {
     const tenants = await pSeq.query(
-      'SELECT id, business_name, tenant_code, connection_string_encrypted FROM tenants WHERE status = \'ACTIVE\'',
+      'SELECT id, organization_name AS business_name, organization_code AS tenant_code, connection_string_encrypted FROM organizations WHERE status = \'ACTIVE\'',
       { type: QueryTypes.SELECT }
     );
     logger(`[Platform DB] Found ${tenants.length} active tenant(s) to inspect.\n`);

@@ -33,7 +33,7 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
   };
 
   const columnType = async (column) => {
-    const [[col]] = await seq.query(`SHOW COLUMNS FROM tenant_subscriptions LIKE '${column}'`);
+    const [[col]] = await seq.query(`SHOW COLUMNS FROM organization_subscriptions LIKE '${column}'`);
     return col ? col.Type : null;
   };
 
@@ -50,18 +50,18 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
       logging: false,
     });
     await seq.query(`
-      CREATE TABLE tenant_subscriptions (
+      CREATE TABLE organization_subscriptions (
         id CHAR(36) NOT NULL PRIMARY KEY,
         tenant_id CHAR(36) NOT NULL,
         platform ENUM('MANUAL','IOS','ANDROID','STRIPE') NOT NULL DEFAULT 'MANUAL',
         external_original_transaction_id VARCHAR(150) NULL,
         amount DECIMAL(10,2) NOT NULL DEFAULT 0,
         status ${statusType},
-        UNIQUE INDEX tenant_subscriptions_platform_external_unique (platform, external_original_transaction_id)
+        UNIQUE INDEX organization_subscriptions_platform_external_unique (platform, external_original_transaction_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await seq.query(
-      "INSERT INTO tenant_subscriptions (id, tenant_id, platform, external_original_transaction_id, amount, status) VALUES " +
+      "INSERT INTO organization_subscriptions (id, tenant_id, platform, external_original_transaction_id, amount, status) VALUES " +
         "('s1', 't1', 'IOS', 'orig-1', 4999.00, 'ACTIVE'), ('s2', 't2', 'MANUAL', NULL, 1000.00, 'REVOKED')"
     );
     await seq.query(`
@@ -112,7 +112,7 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
         statusType:
           "ENUM('ACTIVE','EXPIRED','CANCELLED','PENDING_MIGRATION','PENDING_CANCEL','SCHEDULED','REVOKED','LEGACY_TRIAL') NOT NULL DEFAULT 'ACTIVE'",
       });
-      await seq.query("INSERT INTO tenant_subscriptions (id, tenant_id, amount, status) VALUES ('s3', 't3', 0, 'LEGACY_TRIAL')");
+      await seq.query("INSERT INTO organization_subscriptions (id, tenant_id, amount, status) VALUES ('s3', 't3', 0, 'LEGACY_TRIAL')");
       const before = await snapshot();
 
       const result = await p004().up(seq, {});
@@ -134,9 +134,9 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
       expect(await columnType('status')).toBe(
         "enum('ACTIVE','EXPIRED','CANCELLED','PENDING_MIGRATION','PENDING_CANCEL','SCHEDULED','REVOKED','GRACE','ON_HOLD','PAUSED')"
       );
-      const rows = await seq.query('SELECT id, status FROM tenant_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
+      const rows = await seq.query('SELECT id, status FROM organization_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
       expect(rows).toEqual([{ id: 's1', status: 'ACTIVE' }, { id: 's2', status: 'REVOKED' }]);
-      await seq.query("UPDATE tenant_subscriptions SET status = 'GRACE' WHERE id = 's1'");
+      await seq.query("UPDATE organization_subscriptions SET status = 'GRACE' WHERE id = 's1'");
 
       const afterFirst = await snapshot();
       const second = await runPlatformMigrations(seq);
@@ -147,7 +147,7 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
     });
   });
 
-  describe('p005 — tenant_subscriptions.currency (BILL-05)', () => {
+  describe('p005 — organization_subscriptions.currency (BILL-05)', () => {
     const P005 = 'p005_tenant_subscriptions_currency';
     const p005 = () => PLATFORM_MIGRATIONS.find((m) => m.name === P005);
 
@@ -163,8 +163,8 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
 
     test('conflicting data: a hand-made currency column of another type → skipped, not recorded, untouched', async () => {
       await createDbAfter1A();
-      await seq.query('ALTER TABLE tenant_subscriptions ADD COLUMN currency VARCHAR(10) NULL');
-      await seq.query("UPDATE tenant_subscriptions SET currency = 'rupees' WHERE id = 's1'");
+      await seq.query('ALTER TABLE organization_subscriptions ADD COLUMN currency VARCHAR(10) NULL');
+      await seq.query("UPDATE organization_subscriptions SET currency = 'rupees' WHERE id = 's1'");
       const before = await snapshot();
 
       const result = await p005().up(seq, {});
@@ -182,7 +182,7 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
       const result = await runPlatformMigrations(seq);
       expect(result.applied).toContain(P005);
       expect(await columnType('currency')).toBe('char(3)');
-      const rows = await seq.query('SELECT id, amount, currency FROM tenant_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
+      const rows = await seq.query('SELECT id, amount, currency FROM organization_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
       expect(rows).toEqual([
         { id: 's1', amount: '4999.00', currency: null },
         { id: 's2', amount: '1000.00', currency: null },
@@ -195,7 +195,7 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
     });
   });
 
-  describe('p006 — tenant_subscriptions.pending_change (BILL-03)', () => {
+  describe('p006 — organization_subscriptions.pending_change (BILL-03)', () => {
     const P006 = 'p006_tenant_subscriptions_pending_change';
     const p006 = () => PLATFORM_MIGRATIONS.find((m) => m.name === P006);
 
@@ -210,8 +210,8 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
 
     test('conflicting data: a hand-made pending_change column of another type → skipped, not recorded, untouched', async () => {
       await createDbAfter1A();
-      await seq.query('ALTER TABLE tenant_subscriptions ADD COLUMN pending_change VARCHAR(255) NULL');
-      await seq.query("UPDATE tenant_subscriptions SET pending_change = 'downgrade to 3' WHERE id = 's1'");
+      await seq.query('ALTER TABLE organization_subscriptions ADD COLUMN pending_change VARCHAR(255) NULL');
+      await seq.query("UPDATE organization_subscriptions SET pending_change = 'downgrade to 3' WHERE id = 's1'");
       const before = await snapshot();
 
       const result = await p006().up(seq, {});
@@ -227,9 +227,9 @@ describe('Platform migrations p004+ (Prompt 1B)', () => {
       await createDbAfter1A();
       expect((await runPlatformMigrations(seq)).applied).toContain(P006);
       expect(await columnType('pending_change')).toBe('json');
-      const rows = await seq.query('SELECT id, pending_change FROM tenant_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
+      const rows = await seq.query('SELECT id, pending_change FROM organization_subscriptions ORDER BY id', { type: QueryTypes.SELECT });
       expect(rows.map((r) => r.pending_change)).toEqual([null, null]);
-      await seq.query('UPDATE tenant_subscriptions SET pending_change = \'{"branchCount":3}\' WHERE id = \'s1\'');
+      await seq.query('UPDATE organization_subscriptions SET pending_change = \'{"branchCount":3}\' WHERE id = \'s1\'');
 
       const afterFirst = await snapshot();
       expect((await runPlatformMigrations(seq)).applied).toEqual([]);

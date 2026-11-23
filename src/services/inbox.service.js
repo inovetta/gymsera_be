@@ -105,7 +105,7 @@ const getInquiryDetail = async (conversationId, tenantId) => {
     order: [['createdAt', 'ASC']],
   });
 
-  return { conversation, messages, block: await userBlocks.blockStateFor(conversation, BlockSide.TENANT) };
+  return { conversation, messages, block: await userBlocks.blockStateFor(conversation, BlockSide.ORGANIZATION) };
 };
 
 const replyToInquiry = async (conversationId, senderId, text, tenantId, options = {}) => {
@@ -118,7 +118,7 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
   }
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
-  await userBlocks.assertCanMessage(conversation.userId, conversation.tenantId, BlockSide.TENANT);
+  await userBlocks.assertCanMessage(conversation.userId, conversation.tenantId, BlockSide.ORGANIZATION);
   await moderationWords.assertClean(text);
 
   const { message, created } = await createMessageOnce(
@@ -477,7 +477,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
 
   // NEW-256: an opening message is a message (blocked pair, listed word).
   if (initialMessage) {
-    await userBlocks.assertCanMessage(userId, tenantId, BlockSide.TENANT);
+    await userBlocks.assertCanMessage(userId, tenantId, BlockSide.ORGANIZATION);
     await moderationWords.assertClean(initialMessage);
   }
 
@@ -565,9 +565,9 @@ const setHostBlock = async (conversationId, tenantId, actorUserId, blocked) => {
   if (!tenantId) throw _notFound();
   const conversation = await Conversation.findOne({ where: { id: conversationId, tenantId } });
   if (!conversation) throw _notFound();
-  if (blocked) await userBlocks.block(conversation, BlockSide.TENANT, actorUserId);
-  else await userBlocks.unblock(conversation, BlockSide.TENANT);
-  return userBlocks.blockStateFor(conversation, BlockSide.TENANT);
+  if (blocked) await userBlocks.block(conversation, BlockSide.ORGANIZATION, actorUserId);
+  else await userBlocks.unblock(conversation, BlockSide.ORGANIZATION);
+  return userBlocks.blockStateFor(conversation, BlockSide.ORGANIZATION);
 };
 
 module.exports = {

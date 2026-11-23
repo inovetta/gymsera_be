@@ -31,13 +31,13 @@ const withPendingAreas = async (view) => {
   if (!view || !view.tenant || !view.tenant.id) return view;
   const areaRequests = require('../services/area-requests.service');
   const tenant = { ...view.tenant };
-  tenant.pendingArea = await areaRequests.pendingAreaFor('tenant', tenant.id, tenant.id);
+  tenant.pendingArea = await areaRequests.pendingAreaFor('organization', tenant.id, tenant.id);
   let mb = tenant.mainBranchDataJson;
   if (typeof mb === 'string') {
     try { mb = JSON.parse(mb); } catch { mb = null; }
   }
   if (mb && typeof mb === 'object') {
-    tenant.mainBranchDataJson = { ...mb, pendingArea: await areaRequests.pendingAreaFor('main_branch', tenant.id, tenant.id) };
+    tenant.mainBranchDataJson = { ...mb, pendingArea: await areaRequests.pendingAreaFor('first_branch_draft', tenant.id, tenant.id) };
   }
   return { ...view, tenant };
 };

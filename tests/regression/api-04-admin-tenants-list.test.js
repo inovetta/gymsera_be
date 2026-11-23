@@ -73,7 +73,7 @@ describe('GET /admin/tenants', () => {
 
   test('the page is cut in SQL: the tenants read carries a LIMIT, not every row', async () => {
     await list('?page=2&limit=10');
-    const tenantSelects = sqlLog.filter((q) => /^SELECT .* FROM `tenants` AS `Tenant`/s.test(q) && /LEFT OUTER JOIN `users`/.test(q));
+    const tenantSelects = sqlLog.filter((q) => /^SELECT .* FROM `organizations` AS `Tenant`/s.test(q) && /LEFT OUTER JOIN `users`/.test(q));
     expect(tenantSelects.length).toBe(1);
     expect(tenantSelects[0]).toMatch(/LIMIT 20\b/); // offset 10 + limit 10: enough to merge the page
     // and the first-listing check is one batched read, not one per listing

@@ -80,7 +80,7 @@ describe('NEW-127: a fresh approval leaves a complete tenant database', () => {
   test('provisioning recorded its last step: provisioning_state = ACTIVE (NULL on the 2026-09-26 build)', async () => {
     const conn = await getAdminConnection();
     const platformDb = tenant.sequelize.config.database;
-    const [[row]] = await conn.query(`SELECT provisioning_state AS state FROM \`${platformDb}\`.tenants WHERE id = ?`, [tenant.id]);
+    const [[row]] = await conn.query(`SELECT provisioning_state AS state FROM \`${platformDb}\`.organizations WHERE id = ?`, [tenant.id]);
     expect(row.state).toBe('ACTIVE');
   });
 

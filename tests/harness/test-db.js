@@ -167,7 +167,10 @@ async function createTestDatabases() {
 // R-120: tables renamed by a naming migration (old name). A test database reused from a run of the
 // older code still has them, and their foreign keys stop sync({ force: true }) from dropping the tables
 // they point at, so they are dropped first.
-const LEGACY_PLATFORM_TABLES = ['saved_gyms', 'gym_reviews', 'user_gym_memberships', 'gym_listings'];
+const LEGACY_PLATFORM_TABLES = [
+  'saved_gyms', 'gym_reviews', 'user_gym_memberships', 'gym_listings', // p033
+  'tenant_subscriptions', 'tenant_invitations', 'user_org_index', 'tenants', // p034
+];
 const LEGACY_TENANT_TABLES = ['gyms'];
 async function dropLegacyTables(seq, names) {
   await seq.query('SET FOREIGN_KEY_CHECKS = 0');

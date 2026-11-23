@@ -77,11 +77,11 @@ describe('A6: the admin queue', () => {
     r1 = await makeRequest(host2.id, peshawar, 'Shinwari Town');
     r2 = await makeRequest(ownerUserId, peshawar, 'shinwari  town');
     await draft.update({ areaStatus: 'pending_review', areaRequestId: r1.id, mainBranchDataJson: { ...draft.mainBranchDataJson, areaRequestId: r1.id } });
-    await link(r1, draft.id, 'tenant', draft.id);
-    await link(r1, draft.id, 'main_branch', draft.id);
+    await link(r1, draft.id, 'organization', draft.id);
+    await link(r1, draft.id, 'first_branch_draft', draft.id);
     await ctx.tenant1Db.models.Branch.update({ cityId: peshawar.id, areaId: null }, { where: { id: ctx.branch1.id } });
     await M.GymListing.update({ cityId: peshawar.id, areaId: null, areaStatus: 'pending_review', areaRequestId: r2.id }, { where: { id: ctx.listing1.id } });
-    await link(r2, ctx.tenant1.id, 'listing', ctx.listing1.id);
+    await link(r2, ctx.tenant1.id, 'business', ctx.listing1.id);
     await link(r2, ctx.tenant1.id, 'branch', ctx.branch1.id);
   });
 
@@ -207,8 +207,8 @@ describe('A6: the admin queue', () => {
     });
     const r = await makeRequest(host3.id, peshawar, 'Fake Place');
     await t.update({ areaStatus: 'pending_review', areaRequestId: r.id, mainBranchDataJson: { name: 'M', areaRequestId: r.id, areaStatus: 'pending_review' } });
-    await link(r, t.id, 'tenant', t.id);
-    await link(r, t.id, 'main_branch', t.id);
+    await link(r, t.id, 'organization', t.id);
+    await link(r, t.id, 'first_branch_draft', t.id);
     expect((await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/reject`).send({ reason: 'x' })).status).toBe(422);
 
     const res = await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/reject`).send({ reason: 'Not an area of Peshawar' });
@@ -217,7 +217,7 @@ describe('A6: the admin queue', () => {
     await t.reload();
     expect(t).toMatchObject({ areaStatus: 'rejected', areaId: null, areaRequestId: r.id });
     expect(t.mainBranchDataJson.areaStatus).toBe('rejected');
-    expect(await linkOf('tenant', t.id, t.id)).not.toBeNull();
+    expect(await linkOf('organization', t.id, t.id)).not.toBeNull();
     const note = await M.Notification.findOne({ where: { type: 'area_request_decided', userId: host3.id } });
     expect(note.message).toContain('was not accepted: Not an area of Peshawar. Please pick your area again.');
     expect(await M.PlatformAuditLog.count({ where: { action: 'areas.request.reject' } })).toBe(1);
@@ -305,14 +305,14 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
     const rt = await makeRequest(t.ownerUserId, peshawar, 'Org Pending Town');
     const rb = await makeRequest(t.ownerUserId, peshawar, 'Branch Pending Town');
     await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id, mainBranchDataJson: { ...t.mainBranchDataJson, areaRequestId: rb.id, areaStatus: 'pending_review' } });
-    await link(rt, t.id, 'tenant', t.id);
-    await link(rb, t.id, 'main_branch', t.id);
+    await link(rt, t.id, 'organization', t.id);
+    await link(rb, t.id, 'first_branch_draft', t.id);
     const { listing, branch } = await approve(t);
     expect(listing).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: rt.id });
-    expect(await linkOf('listing', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
+    expect(await linkOf('business', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
     expect(branch.areaId).toBeNull();
     expect(await linkOf('branch', t.id, branch.id)).toMatchObject({ areaRequestId: rb.id });
-    expect(await linkOf('main_branch', t.id, t.id)).toBeNull();
+    expect(await linkOf('first_branch_draft', t.id, t.id)).toBeNull();
   });
 
   test('a draft without its own area takes the tenant\'s only in the same city', async () => {
@@ -328,9 +328,9 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
     const t = await pendingTenant('fallback', { mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id } });
     const rt = await makeRequest(t.ownerUserId, peshawar, 'Fallback Town');
     await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id });
-    await link(rt, t.id, 'tenant', t.id);
+    await link(rt, t.id, 'organization', t.id);
     const { listing, branch } = await approve(t);
-    expect(await linkOf('listing', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
+    expect(await linkOf('business', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
     expect(await linkOf('branch', t.id, branch.id)).toMatchObject({ areaRequestId: rt.id });
     expect(branch.areaId).toBeNull();
   });

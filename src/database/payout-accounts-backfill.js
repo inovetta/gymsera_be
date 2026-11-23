@@ -15,7 +15,9 @@
 const crypto = require('crypto');
 const { QueryTypes } = require('sequelize');
 
-const TENANT_SCOPE = 'TENANT';
+// R-120 NEW-307 (p034): `tenants` was renamed `organizations`; this runs inside p027, before p034, on a database that may have either.
+const ORG_TABLE_CANDIDATES = ['organizations', 'tenants'];
+const TENANT_SCOPE = 'ORGANIZATION'; // R-120 NEW-307 (p034): was 'TENANT'
 const PROVIDER = 'BANK_TRANSFER';
 
 const _hasTable = async (sequelize, table) =>
@@ -56,12 +58,15 @@ const _hasContent = (obj) =>
  */
 const planPayoutAccountBackfill = async (sequelize) => {
   const plan = { copy: [], alreadyHaveDefault: [], emptyOrUnreadable: [], tenantsScanned: 0 };
-  if (!(await _hasTable(sequelize, 'tenants')) || !(await _hasColumn(sequelize, 'tenants', 'payment_details_json'))) return plan;
-  const hasUpdatedAt = await _hasColumn(sequelize, 'tenants', 'payment_details_updated_at');
+  let ORG_TABLE = null;
+  for (const name of ORG_TABLE_CANDIDATES) if (await _hasTable(sequelize, name)) { ORG_TABLE = name; break; }
+  if (!ORG_TABLE) return plan;
+  if (!(await _hasTable(sequelize, ORG_TABLE)) || !(await _hasColumn(sequelize, ORG_TABLE, 'payment_details_json'))) return plan;
+  const hasUpdatedAt = await _hasColumn(sequelize, ORG_TABLE, 'payment_details_updated_at');
 
   const rows = await sequelize.query(
     `SELECT id, payment_details_json AS details${hasUpdatedAt ? ', DATE_FORMAT(payment_details_updated_at, \'%Y-%m-%d %H:%i:%s\') AS updatedAt' : ''}
-       FROM tenants WHERE payment_details_json IS NOT NULL ORDER BY id`,
+       FROM ${ORG_TABLE} WHERE payment_details_json IS NOT NULL ORDER BY id`,
     { type: QueryTypes.SELECT }
   );
   plan.tenantsScanned = rows.length;

@@ -19,7 +19,7 @@ const getBlockState = async (userId, tenantId) => {
   if (!userId || !tenantId) return { blockedByUser: false, blockedByTenant: false };
   const rows = await UserBlock.findAll({ where: { userId, tenantId }, attributes: ['blockedBy'] });
   const sides = new Set(rows.map((r) => r.blockedBy));
-  return { blockedByUser: sides.has(BlockSide.USER), blockedByTenant: sides.has(BlockSide.TENANT) };
+  return { blockedByUser: sides.has(BlockSide.USER), blockedByTenant: sides.has(BlockSide.ORGANIZATION) };
 };
 
 /** The block state as the given side sees it (what the clients show). */
@@ -69,7 +69,7 @@ const tenantIdsBlockedByUser = async (userId) =>
 
 /** Traveller ids a gym has blocked (their conversations are hidden from the gym). */
 const userIdsBlockedByTenant = async (tenantId) =>
-  (await UserBlock.findAll({ where: { tenantId, blockedBy: BlockSide.TENANT }, attributes: ['userId'] })).map((r) => r.userId);
+  (await UserBlock.findAll({ where: { tenantId, blockedBy: BlockSide.ORGANIZATION }, attributes: ['userId'] })).map((r) => r.userId);
 
 /** The newest conversation of each (user, tenant) pair, for "Unblock" in the lists. */
 const latestConversations = async (pairs) => {
@@ -109,7 +109,7 @@ const listForUser = async (userId) => {
 /** Host inbox › Blocked: the travellers this gym blocked. */
 const listForTenant = async (tenantId) => {
   const rows = await UserBlock.findAll({
-    where: { tenantId, blockedBy: BlockSide.TENANT },
+    where: { tenantId, blockedBy: BlockSide.ORGANIZATION },
     include: [{ model: User, as: 'user', attributes: ['id', 'fullName', 'profileImageUrl'] }],
     order: [['createdAt', 'DESC']],
   });

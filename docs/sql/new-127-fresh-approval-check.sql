@@ -4,8 +4,8 @@
 -- 2. From the app folder that holds server.js and .env:
 --      node src/scripts/run-sql-check.js docs/sql/new-127-fresh-approval-check.sql
 -- It checks the gym approved most recently. To check another one, replace the first SET with
---   SET @tenant_code = 'GYM-XXXXXXXX';
--- SELECTs only, over `tenants` and information_schema, plus the gym's own schema_migrations.
+--   SET @organization_code = 'GYM-XXXXXXXX';
+-- SELECTs only, over `organizations` and information_schema, plus the gym's own schema_migrations.
 --
 -- PASS on today's code: grid 1 verdict PASS (status ACTIVE, provisioning_state ACTIVE,
 -- 52 tables (29 before tenant migration 022, 31 before 023, 43 before 024, 46 before 025, 50 before 027, ZKTeco devices; 51 before 028, refund_requests), schema_migrations 1, branches.currency 1, the four newest tables 4), and grid 2
@@ -13,7 +13,7 @@
 -- 24 tables, provisioning_state NULL, schema_migrations 0, newest tables 0, and grid 2 ends
 -- with "Table ... schema_migrations doesn't exist": that is a FAIL, the server is running old code.
 
-SET @tenant_code = (SELECT tenant_code FROM tenants
+SET @organization_code = (SELECT organization_code FROM organizations
                     WHERE db_name IS NOT NULL AND approved_at IS NOT NULL
                     ORDER BY approved_at DESC LIMIT 1);
 
@@ -21,7 +21,7 @@ SET @tenant_code = (SELECT tenant_code FROM tenants
 -- 1. The gym and its database.
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  x.tenant_code,
+  x.organization_code,
   x.approved_at,
   x.status,
   x.provisioning_state,
@@ -34,7 +34,7 @@ SELECT
             AND x.has_branches_currency = 1 AND x.newest_tables = 4 THEN 'PASS' ELSE 'FAIL' END AS verdict
 FROM (
   SELECT
-    t.tenant_code,
+    t.organization_code,
     t.approved_at,
     t.status,
     t.provisioning_state,
@@ -48,8 +48,8 @@ FROM (
     (SELECT COUNT(*) FROM information_schema.TABLES i
        WHERE i.TABLE_SCHEMA = t.db_name
          AND i.TABLE_NAME IN ('capacity_outbox', 'idempotency_records', 'payouts', 'invoice_sequences')) AS newest_tables
-  FROM tenants t
-  WHERE t.tenant_code = @tenant_code
+  FROM organizations t
+  WHERE t.organization_code = @organization_code
 ) x;
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ FROM (
 -- ─────────────────────────────────────────────────────────────────────────────
 SET @versions_sql = CONCAT(
   'SELECT COUNT(*) AS recorded, MIN(version) AS lowest, MAX(version) AS highest FROM `',
-  (SELECT db_name FROM tenants WHERE tenant_code = @tenant_code),
+  (SELECT db_name FROM organizations WHERE organization_code = @organization_code),
   '`.schema_migrations'
 );
 PREPARE versions FROM @versions_sql;

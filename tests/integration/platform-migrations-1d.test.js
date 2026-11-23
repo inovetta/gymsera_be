@@ -207,7 +207,7 @@ describe('Platform migrations p008, p009, p010 (Prompt 1D)', () => {
     });
   });
 
-  describe('p010 — tenant_invitations and platform_audit_logs (AUTH-09)', () => {
+  describe('p010 — organization_invitations and platform_audit_logs (AUTH-09)', () => {
     const P010 = 'p010_tenant_invitations_and_audit';
     const p010 = () => PLATFORM_MIGRATIONS.find((m) => m.name === P010);
 
@@ -220,13 +220,13 @@ describe('Platform migrations p008, p009, p010 (Prompt 1D)', () => {
       expect(await snapshot()).toEqual(before);
     });
 
-    test('conflicting data: tenant_invitations table exists with incompatible schema → skipped, not recorded', async () => {
+    test('conflicting data: organization_invitations table exists with incompatible schema → skipped, not recorded', async () => {
       await createDbBefore1D();
-      await seq.query('CREATE TABLE tenant_invitations (id INT PRIMARY KEY, dummy VARCHAR(50))');
+      await seq.query('CREATE TABLE organization_invitations (id INT PRIMARY KEY, dummy VARCHAR(50))');
       const before = await snapshot();
 
       const result = await p010().up(seq, {});
-      expect(result).toMatchObject({ skipped: true, reason: 'table_exists_with_other_schema', table: 'tenant_invitations' });
+      expect(result).toMatchObject({ skipped: true, reason: 'table_exists_with_other_schema', table: 'organization_invitations' });
       expect(await snapshot()).toEqual(before);
 
       const run = await runPlatformMigrations(seq);
@@ -235,12 +235,12 @@ describe('Platform migrations p008, p009, p010 (Prompt 1D)', () => {
       expect(recorded).toHaveLength(0);
     });
 
-    test('apply creates tenant_invitations and platform_audit_logs tables; re-run is idempotent', async () => {
+    test('apply creates organization_invitations and platform_audit_logs tables; re-run is idempotent', async () => {
       await createDbBefore1D();
       const result = await runPlatformMigrations(seq, { targetVersion: 10 });
       expect(result.applied).toContain(P010);
 
-      const [[invTable]] = await seq.query("SHOW TABLES LIKE 'tenant_invitations'");
+      const [[invTable]] = await seq.query("SHOW TABLES LIKE 'organization_invitations'");
       expect(invTable).toBeDefined();
 
       const [[auditTable]] = await seq.query("SHOW TABLES LIKE 'platform_audit_logs'");

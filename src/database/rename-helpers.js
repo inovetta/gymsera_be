@@ -178,6 +178,17 @@ const renameStringValues = async (seq, { table, column, rename, dryRun = false }
   return run(seq, statements, dryRun);
 };
 
+/**
+ * Widens a VARCHAR column to `length` (never narrows). Everything else about the column is kept.
+ * In place when the length prefix stays one byte (utf8mb4: up to 63 characters).
+ */
+const widenVarchar = async (seq, { table, column, length, dryRun = false }) => {
+  const col = (await tableExists(seq, table)) ? await columnInfo(seq, table, column) : null;
+  const m = col && /^varchar\((\d+)\)$/i.exec(col.type);
+  if (!m || Number(m[1]) >= length) return { statements: [] };
+  return run(seq, [`ALTER TABLE ${q(table)} MODIFY COLUMN ${q(column)} ${definitionOf({ ...col, type: `varchar(${length})` })}, ${INPLACE}`], dryRun);
+};
+
 /** Runs a list of helper calls in order; collects statements and skips (a skip stops nothing else). */
 const applyAll = async (seq, steps, { dryRun = false } = {}) => {
   const out = { statements: [], skipped: [] };
@@ -197,6 +208,7 @@ module.exports = {
   setColumnComment,
   renameEnumValues,
   renameStringValues,
+  widenVarchar,
   applyAll,
   // for tests and probes
   tableExists,

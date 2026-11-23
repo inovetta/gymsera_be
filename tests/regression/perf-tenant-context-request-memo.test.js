@@ -34,7 +34,7 @@ describe('tenantContext: per-request memo', () => {
     await teardownTestDatabases();
   });
 
-  const tenantReads = () => seen.filter((q) => /FROM `tenants`/.test(q)).length;
+  const tenantReads = () => seen.filter((q) => /FROM `organizations`/.test(q)).length;
   const run = async (persona, path) => {
     await asPersona(persona).get(path); // warm: pools, caches
     seen = [];
@@ -54,11 +54,11 @@ describe('tenantContext: per-request memo', () => {
     expect(res.status).toBe(200);
     // the tenant row tenantContext needs (owner + connection string) is one read;
     // other middleware (permission version, controller) read `tenants` separately
-    const connStrReads = seen.filter((q) => /FROM `tenants`/.test(q) && /connection_string_encrypted/.test(q)).length;
+    const connStrReads = seen.filter((q) => /FROM `organizations`/.test(q) && /connection_string_encrypted/.test(q)).length;
     expect(connStrReads).toBeLessThanOrEqual(1);
     // owner check + (index + membership) used to run for the header check AND
     // again in resolveTenantId; now once.
-    const indexReads = seen.filter((q) => /FROM `user_org_index`/.test(q)).length;
+    const indexReads = seen.filter((q) => /FROM `user_organization_index`/.test(q)).length;
     expect(indexReads).toBeLessThanOrEqual(1);
   });
 

@@ -69,7 +69,7 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'user_org_index',
+      tableName: 'user_organization_index', // R-120 NEW-307 (p034)
       underscored: true,
       timestamps: true,
       indexes: [

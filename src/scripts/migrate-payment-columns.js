@@ -78,7 +78,7 @@ async function main() {
   console.log('✅  Platform DB connected\n');
 
   const tenants = await platformSeq.query(
-    'SELECT gym_name, connection_string_encrypted FROM tenants WHERE status = \'ACTIVE\' AND connection_string_encrypted IS NOT NULL',
+    'SELECT first_business_name AS gym_name, connection_string_encrypted FROM organizations WHERE status = \'ACTIVE\' AND connection_string_encrypted IS NOT NULL',
     { type: QueryTypes.SELECT }
   );
 

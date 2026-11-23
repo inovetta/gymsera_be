@@ -121,7 +121,7 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     expect(res.status).toBe(201);
     const tenant = await Tenant.findOne({ where: { ownerUserId: h.user.id } });
     expect(tenant).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
-    expect(await linkOf('tenant', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
+    expect(await linkOf('organization', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
     expect(res.body.data.tenant.pendingArea).toEqual({ requestId: r.id, name: 'Register Town', status: 'pending_review', rejectReason: null });
   });
 
@@ -140,14 +140,14 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     expect(first.status).toBe(200);
     await tenant.reload();
     expect(tenant.mainBranchDataJson).toMatchObject({ areaId: null, areaRequestId: r.id, areaStatus: 'pending_review' });
-    expect(await linkOf('main_branch', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
+    expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
 
     // Step 6 (plans) without area keys: kept.
     const plans = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { plans: [{ name: 'Monthly', price: 10 }] } });
     expect(plans.status).toBe(200);
     await tenant.reload();
     expect(tenant.mainBranchDataJson).toMatchObject({ areaRequestId: r.id, areaStatus: 'pending_review' });
-    expect(await linkOf('main_branch', tenant.id, tenant.id)).not.toBeNull();
+    expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).not.toBeNull();
 
     // An explicit clear (what builds 21 to 24 send without an area): link and marker go.
     const cleared = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { address: 'x', areaId: null } });
@@ -156,7 +156,7 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     expect(tenant.mainBranchDataJson.areaId).toBeNull();
     expect(tenant.mainBranchDataJson.areaRequestId).toBeUndefined();
     expect(tenant.mainBranchDataJson.areaStatus).toBeUndefined();
-    expect(await linkOf('main_branch', tenant.id, tenant.id)).toBeNull();
+    expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toBeNull();
   });
 
   test('gym-profile: a real area replaces a link; a request of another city than the branch → 422', async () => {
@@ -169,7 +169,7 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     await tenant.reload();
     expect(tenant.mainBranchDataJson).toMatchObject({ areaId: hayatabad.id });
     expect(tenant.mainBranchDataJson.areaRequestId).toBeUndefined();
-    expect(await linkOf('main_branch', tenant.id, tenant.id)).toBeNull();
+    expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toBeNull();
     const lahoreReq = await makeRequest(h.user.id, lahore, 'Lahore Branch Town');
     expectCode(await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { areaRequestId: lahoreReq.id } }), 422, 'area_not_listed');
   });
@@ -200,12 +200,12 @@ describe('A4: PATCH /tenants/me area (R-109, F3)', () => {
     const pending = await h.as().patch('/tenants/me').send({ areaRequestId: r.id });
     expect(pending.status).toBe(200);
     expect(await Tenant.findByPk(tenant.id)).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
-    expect(await linkOf('tenant', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
+    expect(await linkOf('organization', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
     expect(pending.body.data.tenant.pendingArea).toMatchObject({ requestId: r.id, status: 'pending_review' });
 
     await h.as().patch('/tenants/me').send({ areaId: hayatabad.id });
     expect(await Tenant.findByPk(tenant.id)).toMatchObject({ areaId: hayatabad.id, areaStatus: null, areaRequestId: null });
-    expect(await linkOf('tenant', tenant.id, tenant.id)).toBeNull();
+    expect(await linkOf('organization', tenant.id, tenant.id)).toBeNull();
   });
 
   test('PENDING_REVIEW works too; other fields stay ACTIVE-only (not saved)', async () => {
@@ -253,7 +253,7 @@ describe('A4: "Choose your area again" (rejected marker, GET /host/status)', () 
 
     const status = await h.as().get('/host/status');
     expect(status.status).toBe(200);
-    expect(status.body.data.area).toEqual({ status: 'rejected', name: 'Soon Refused Town', rejectReason: 'Not in Peshawar', target: 'tenant' });
+    expect(status.body.data.area).toEqual({ status: 'rejected', name: 'Soon Refused Town', rejectReason: 'Not in Peshawar', target: 'organization' });
     const me = await h.as().get('/tenants/me');
     expect(me.body.data.tenant.pendingArea).toEqual({ requestId: r.id, name: 'Soon Refused Town', status: 'rejected', rejectReason: 'Not in Peshawar' });
 
@@ -271,7 +271,7 @@ describe('A4: "Choose your area again" (rejected marker, GET /host/status)', () 
     await tenant.reload();
     await tenant.update({ mainBranchDataJson: { ...tenant.mainBranchDataJson, areaStatus: 'rejected' } });
     const status = await h.as().get('/host/status');
-    expect(status.body.data.area).toEqual({ status: 'rejected', name: 'Branch Refused Town', rejectReason: 'Duplicate', target: 'main_branch' });
+    expect(status.body.data.area).toEqual({ status: 'rejected', name: 'Branch Refused Town', rejectReason: 'Duplicate', target: 'first_branch_draft' });
   });
 
   test('no request anywhere: area null', async () => {
@@ -292,7 +292,7 @@ describe('A4: host listing and branch routes', () => {
     const branchId = res.body.data.branch.id;
     expect(await GymListing.findByPk(listingId)).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
     expect(res.body.data.branch.areaId).toBeNull();
-    expect(await linkOf('listing', ctx.tenant1.id, listingId)).toMatchObject({ areaRequestId: r.id });
+    expect(await linkOf('business', ctx.tenant1.id, listingId)).toMatchObject({ areaRequestId: r.id });
     expect(await linkOf('branch', ctx.tenant1.id, branchId)).toMatchObject({ areaRequestId: r.id });
     // Reads.
     const one = await asPersona('owner').get(`/host/listings/${listingId}`);
@@ -310,10 +310,10 @@ describe('A4: host listing and branch routes', () => {
     expect((await asPersona('owner').put(`/host/listings/${listing1.id}`).send({ cityId: peshawar.id, areaRequestId: r.id })).status).toBe(200);
     expect(await GymListing.findByPk(listing1.id)).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
     expect((await asPersona('owner').patch(`/host/listings/${listing1.id}`).send({ gymName: 'Renamed' })).status).toBe(200);
-    expect(await linkOf('listing', ctx.tenant1.id, listing1.id)).toMatchObject({ areaRequestId: r.id });
+    expect(await linkOf('business', ctx.tenant1.id, listing1.id)).toMatchObject({ areaRequestId: r.id });
     expect((await asPersona('owner').patch(`/host/listings/${listing1.id}`).send({ areaId: hayatabad.id })).status).toBe(200);
     expect(await GymListing.findByPk(listing1.id)).toMatchObject({ areaId: hayatabad.id, areaStatus: null, areaRequestId: null });
-    expect(await linkOf('listing', ctx.tenant1.id, listing1.id)).toBeNull();
+    expect(await linkOf('business', ctx.tenant1.id, listing1.id)).toBeNull();
   });
 
   test('POST /host/branches with areaRequestId writes the branch link', async () => {
@@ -379,7 +379,7 @@ describe('A4: admin routes take real areas only, and a real area clears the link
     const res = await asPersona('platformAdmin').patch(`/admin/tenants/${tenant1.id}:${listing1.id}/gym-listing`).send({ areaId: hayatabad.id });
     expect(res.status).toBe(200);
     expect(await GymListing.findByPk(listing1.id)).toMatchObject({ areaId: hayatabad.id, areaStatus: null, areaRequestId: null });
-    expect(await linkOf('listing', tenant1.id, listing1.id)).toBeNull();
+    expect(await linkOf('business', tenant1.id, listing1.id)).toBeNull();
   });
 
   test('POST /admin/tenants/:id/branches ignores areaRequestId (no link is written)', async () => {

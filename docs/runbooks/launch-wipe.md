@@ -6,6 +6,13 @@
 > and `--keep-admin`, tenant drops use only `tenants.db_name` (R-79), and `tests/regression/reset-platform-data.test.js`
 > passes in the full suite.
 
+> **R-120 (2026-11-22): table names.** The platform tables were renamed by migrations p033 and p034 (`tenants` →
+> `organizations`, `tenant_subscriptions` → `organization_subscriptions`, `gym_listings` → `business_listings`, …; column
+> `tenant_code` → `organization_code`). The wipe script reads **either** name (`platform-reset.service.js`). The two SQL files
+> exist in both forms: `docs/sql/launch-wipe-inventory.sql` and `docs/sql/tenant-db-name-before-drop.sql` for a database
+> **after** p033 / p034, and `launch-wipe-inventory-before-p033.sql` and `tenant-db-name-before-drop-before-p034.sql` for one
+> **before** them. Every `tenants` / `tenant_code` in the steps below means `organizations` / `organization_code` after p034.
+
 Owner: Amir. Script: `src/scripts/reset-platform-data.js` (service `src/services/platform-reset.service.js`).
 Target: the Windows / IIS API server with MySQL 5.7. The database holds TEST data only (R-19), but the wipe cannot be
 undone except from the dumps in section 4. Do the steps in order and tick them.

@@ -78,7 +78,7 @@ const ttlHours = () => {
 async function discoverTenantDbs(platformSeq, logger) {
   const TenantDbManager = require('../database/TenantDbManager');
   const tenants = await platformSeq.query(
-    'SELECT id, tenant_code, connection_string_encrypted FROM tenants WHERE status = \'ACTIVE\'',
+    'SELECT id, organization_code AS tenant_code, connection_string_encrypted FROM organizations WHERE status = \'ACTIVE\'',
     { type: QueryTypes.SELECT }
   );
   const out = [];

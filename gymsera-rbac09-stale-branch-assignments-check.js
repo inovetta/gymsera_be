@@ -96,9 +96,9 @@ async function discoverTenantDatabases(conn, platformDb) {
   const warnings = [];
 
   let tenants = [];
-  if (await tableExists(conn, platformDb, 'tenants')) {
+  if (await tableExists(conn, platformDb, 'organizations')) {
     const [rows] = await conn.query(
-      `SELECT id, business_name, status, connection_string_encrypted FROM \`${platformDb}\`.tenants`
+      `SELECT id, organization_name AS business_name, status, connection_string_encrypted FROM \`${platformDb}\`.organizations`
     );
     tenants = rows;
   }
