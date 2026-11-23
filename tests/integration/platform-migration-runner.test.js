@@ -50,17 +50,17 @@ describe('Platform migration runner', () => {
     // A pre-migration platform DB: the subscription table as production has it
     // today (no REVOKED status, non-unique external id), with one row.
     await seq.query(`
-      CREATE TABLE tenant_subscriptions (
+      CREATE TABLE organization_subscriptions (
         id CHAR(36) NOT NULL PRIMARY KEY,
         tenant_id CHAR(36) NOT NULL,
         platform ENUM('MANUAL','IOS','ANDROID','STRIPE') NOT NULL DEFAULT 'MANUAL',
         external_original_transaction_id VARCHAR(150) NULL,
         status ENUM('ACTIVE','EXPIRED','CANCELLED','PENDING_MIGRATION','PENDING_CANCEL','SCHEDULED') NOT NULL DEFAULT 'ACTIVE',
-        INDEX tenant_subscriptions_external_original_transaction_id (external_original_transaction_id)
+        INDEX organization_subscriptions_external_original_transaction_id (external_original_transaction_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await seq.query(
-      "INSERT INTO tenant_subscriptions (id, tenant_id, platform, external_original_transaction_id, status) VALUES ('s1', 't1', 'IOS', 'orig-1', 'ACTIVE')"
+      "INSERT INTO organization_subscriptions (id, tenant_id, platform, external_original_transaction_id, status) VALUES ('s1', 't1', 'IOS', 'orig-1', 'ACTIVE')"
     );
   });
 
@@ -86,7 +86,7 @@ describe('Platform migration runner', () => {
 
   test('p003 is skipped — not recorded, nothing deleted — while duplicate store ids exist', async () => {
     await seq.query(
-      "INSERT INTO tenant_subscriptions (id, tenant_id, platform, external_original_transaction_id, status) VALUES ('dup', 't9', 'IOS', 'orig-1', 'CANCELLED')"
+      "INSERT INTO organization_subscriptions (id, tenant_id, platform, external_original_transaction_id, status) VALUES ('dup', 't9', 'IOS', 'orig-1', 'CANCELLED')"
     );
     const result = await runPlatformMigrations(seq);
     // Every migration except p003 runs; p003 is not recorded.
@@ -97,11 +97,11 @@ describe('Platform migration runner', () => {
     expect(result.applied).toContain('p002_tenant_subscriptions_status_revoked');
     const [recorded] = await seq.query('SELECT version FROM schema_migrations WHERE version = 3');
     expect(recorded).toHaveLength(0);
-    const [[{ n }]] = await seq.query('SELECT COUNT(*) AS n FROM tenant_subscriptions');
+    const [[{ n }]] = await seq.query('SELECT COUNT(*) AS n FROM organization_subscriptions');
     expect(Number(n)).toBe(2);
 
     // Once a human resolves the duplicate, a re-run applies p003.
-    await seq.query("DELETE FROM tenant_subscriptions WHERE id = 'dup'");
+    await seq.query("DELETE FROM organization_subscriptions WHERE id = 'dup'");
   });
 
   test('apply runs every migration once; a second run applies nothing and changes nothing', async () => {
@@ -113,14 +113,14 @@ describe('Platform migration runner', () => {
     expect(billingEvents).toHaveLength(1);
 
     // p002: REVOKED added, the existing row untouched.
-    const [[statusCol]] = await seq.query("SHOW COLUMNS FROM tenant_subscriptions LIKE 'status'");
+    const [[statusCol]] = await seq.query("SHOW COLUMNS FROM organization_subscriptions LIKE 'status'");
     expect(statusCol.Type).toContain("'REVOKED'");
-    const [[row]] = await seq.query("SELECT status FROM tenant_subscriptions WHERE id = 's1'");
+    const [[row]] = await seq.query("SELECT status FROM organization_subscriptions WHERE id = 's1'");
     expect(row.status).toBe('ACTIVE');
 
     // p003: the unique index exists and rejects a second row for the same store subscription.
     await expect(
-      seq.query("INSERT INTO tenant_subscriptions (id, tenant_id, platform, external_original_transaction_id) VALUES ('s2', 't2', 'IOS', 'orig-1')")
+      seq.query("INSERT INTO organization_subscriptions (id, tenant_id, platform, external_original_transaction_id) VALUES ('s2', 't2', 'IOS', 'orig-1')")
     ).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
 
     const afterFirst = await snapshot();

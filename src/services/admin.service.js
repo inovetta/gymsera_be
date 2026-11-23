@@ -1428,7 +1428,7 @@ const getGymListing = async (tenantId) => {
   }
   if (!listing) throw createError('Gym listing not found', 404);
   // NEW-265 (R-109 F7): the listing's pending or rejected area request.
-  const [gymListing] = await areaRequests.withPendingAreas('listing', listing.tenantId, [listing]);
+  const [gymListing] = await areaRequests.withPendingAreas('business', listing.tenantId, [listing]);
   return { gymListing };
 };
 
@@ -1485,7 +1485,7 @@ const updateGymListing = async (tenantId, data) => {
     listing.areaRequestId = null;
   }
   await listing.save();
-  if (data.areaId !== undefined) await areaRequests.removeLink({ target: 'listing', tenantId: listing.tenantId, targetId: listing.id });
+  if (data.areaId !== undefined) await areaRequests.removeLink({ target: 'business', tenantId: listing.tenantId, targetId: listing.id });
 
   const full = await GymListing.findByPk(listing.id, { include: _getListingIncludes() });
   return { gymListing: full };

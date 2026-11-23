@@ -1216,8 +1216,7 @@ const acceptTenantInvitation = async ({ token, password, fullName, phone }, auth
   }
 
   // Create the Tenant
-  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
-  const tenantCode = `GYM-${suffix}`;
+  const tenantCode = require('../utils/organization-code.utils').generateOrganizationCode(); // R-120 NEW-307: one generator (F8)
 
   const tenant = await Tenant.create({
     tenantCode,

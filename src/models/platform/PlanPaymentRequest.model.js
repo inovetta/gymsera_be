@@ -35,7 +35,7 @@ module.exports = (sequelize) => {
       reviewedByUserId: { type: DataTypes.UUID, allowNull: true },
       reviewedAt: { type: DataTypes.DATE, allowNull: true },
       rejectionReason: { type: DataTypes.STRING(500), allowNull: true },
-      tenantSubscriptionId: { type: DataTypes.UUID, allowNull: true },
+      tenantSubscriptionId: { type: DataTypes.UUID, allowNull: true, field: 'organization_subscription_id' }, // R-120 NEW-307 (p034)
       periodStart: { type: DataTypes.DATEONLY, allowNull: true },
       periodEnd: { type: DataTypes.DATEONLY, allowNull: true },
     },

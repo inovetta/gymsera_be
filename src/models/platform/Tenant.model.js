@@ -12,10 +12,12 @@ module.exports = (sequelize) => {
         primaryKey: true,
       },
       tenantCode: {
+        field: 'organization_code', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(50),
         allowNull: false,
       },
       businessName: {
+        field: 'organization_name', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(200),
         allowNull: false,
       },
@@ -56,10 +58,12 @@ module.exports = (sequelize) => {
       },
       // ── Gym profile (pre-approval snapshot) ─────────────────────────────────
       gymName: {
+        field: 'first_business_name', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(200),
         allowNull: true,
       },
       gymDescription: {
+        field: 'first_business_description', // R-120 NEW-307 (p034)
         type: DataTypes.TEXT,
         allowNull: true,
       },
@@ -84,6 +88,7 @@ module.exports = (sequelize) => {
         allowNull: true,
       },
       mainBranchDataJson: {
+        field: 'first_branch_draft_json', // R-120 NEW-307 (p034)
         type: DataTypes.JSON,
         allowNull: true,
         comment: 'Branch data captured during onboarding; used to auto-create Branch on provisioning',
@@ -228,11 +233,11 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'tenants',
+      tableName: 'organizations', // R-120 NEW-307 (p034)
       underscored: true,
       timestamps: true,
       indexes: [
-        { name: 'tenants_tenant_code_unique', unique: true, fields: ['tenant_code'] },
+        { name: 'organizations_organization_code_unique', unique: true, fields: ['organization_code'] },
         { fields: ['owner_user_id'] },
         { fields: ['status'] },
         { fields: ['city_id'] },

@@ -291,7 +291,7 @@ const checkFile = (sql) => {
 // Column names whose values may be personal data or secrets. Structural names are allowed.
 const SENSITIVE_COLUMN = /(pass|secret|token|hash|salt|key|email|e_mail|phone|mobile|whatsapp|cnic|national|address|street|postal|zip|birth|dob|ip_?addr|latitude|longitude|card|iban|account|name)/i;
 const STRUCTURAL_COLUMNS = new Set([
-  'tenant_code', 'db_name', 'table_name', 'column_name', 'missing_column', 'schema_name', 'table_schema',
+  'tenant_code', 'organization_code', 'db_name', 'table_name', 'column_name', 'missing_column', 'schema_name', 'table_schema',
   'index_name', 'constraint_name', 'has_schema_migrations', 'has_branches_currency',
 ]);
 const isHiddenColumn = (name) => !STRUCTURAL_COLUMNS.has(String(name).toLowerCase()) && SENSITIVE_COLUMN.test(String(name));

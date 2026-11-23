@@ -27,7 +27,7 @@ if (!tenantId) {
               external_original_transaction_id, external_transaction_id, environment,
               amount, billing_cycle, start_date, end_date, auto_renew, over_quota_count,
               status_note, last_verified_at, created_at, updated_at
-       FROM tenant_subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 20`,
+       FROM organization_subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 20`,
       { replacements: [tenantId] }
     );
 

@@ -187,13 +187,13 @@ async function main() {
   try {
     await readOnly(pconn);
     const [cols] = await pconn.query(
-      "SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'provisioning_state'",
+      "SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'organizations' AND COLUMN_NAME = 'provisioning_state'",
       [platformDb]
     );
     hasState = cols.length === 1;
     [tenants] = await pconn.query(
-      `SELECT id, tenant_code, status, db_name, (connection_string_encrypted IS NOT NULL AND connection_string_encrypted <> 'PENDING_PROVISIONING') AS has_connection` +
-        `${hasState ? ', provisioning_state' : ''} FROM ${q(platformDb)}.tenants ORDER BY created_at, id`
+      `SELECT id, organization_code AS tenant_code, status, db_name, (connection_string_encrypted IS NOT NULL AND connection_string_encrypted <> 'PENDING_PROVISIONING') AS has_connection` +
+        `${hasState ? ', provisioning_state' : ''} FROM ${q(platformDb)}.organizations ORDER BY created_at, id`
     );
     // R-120 (p033): business_listings (name) on a renamed database, gym_listings (title) before it.
     const [[renamed]] = await pconn.query(
@@ -202,7 +202,7 @@ async function main() {
     [listings] = await pconn.query(Number(renamed.n) > 0
       ? `SELECT tenant_id, name AS title, created_at FROM ${q(platformDb)}.business_listings`
       : `SELECT tenant_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
-    [plans] = await pconn.query(`SELECT tenant_id, COUNT(*) AS n FROM ${q(platformDb)}.tenant_subscriptions GROUP BY tenant_id`);
+    [plans] = await pconn.query(`SELECT tenant_id, COUNT(*) AS n FROM ${q(platformDb)}.organization_subscriptions GROUP BY tenant_id`);
     await pconn.query('ROLLBACK');
   } finally {
     await pconn.end().catch(() => {});

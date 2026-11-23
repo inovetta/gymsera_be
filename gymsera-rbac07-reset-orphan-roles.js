@@ -110,18 +110,18 @@ async function evaluate(conn, platformDb, userIds, { lock = false } = {}) {
   const userById = new Map(users.map((u) => [u.id, u]));
 
   const [owned] = await conn.query(
-    `SELECT id, tenant_code, owner_user_id, status FROM ${q(platformDb)}.tenants
+    `SELECT id, organization_code AS tenant_code, owner_user_id, status FROM ${q(platformDb)}.organizations
       WHERE owner_user_id IN (?)${lock ? ' LOCK IN SHARE MODE' : ''}`,
     [userIds]
   );
   const [tenants] = await conn.query(
-    `SELECT id, tenant_code, owner_user_id, status, connection_string_encrypted FROM ${q(platformDb)}.tenants`
+    `SELECT id, organization_code AS tenant_code, owner_user_id, status, connection_string_encrypted FROM ${q(platformDb)}.organizations`
   );
 
   let orgIndexRows = [];
-  if (await tableExists(conn, platformDb, 'user_org_index')) {
+  if (await tableExists(conn, platformDb, 'user_organization_index')) {
     [orgIndexRows] = await conn.query(
-      `SELECT user_id, tenant_id, role_key, status FROM ${q(platformDb)}.user_org_index WHERE user_id IN (?)`,
+      `SELECT user_id, tenant_id, role_key, status FROM ${q(platformDb)}.user_organization_index WHERE user_id IN (?)`,
       [userIds]
     );
   }

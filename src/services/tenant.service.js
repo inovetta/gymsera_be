@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const { Tenant, User, PlatformPackage, City, TenantSubscription, PlatformAuditLog } = require('../models/platform');
 const kycStorageService = require('./kyc-storage.service');
 const { createError } = require('../utils/response.utils');
@@ -9,13 +8,8 @@ const { validateBrandName } = require('./brand-name.service');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
 
-/**
- * Generate a unique tenant code in the format GYM-XXXXXX (uppercase alphanumeric).
- */
-const _generateTenantCode = () => {
-  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return `GYM-${suffix}`;
-};
+/** The organization code (one generator, R-120 NEW-307): `ORG-` + 8 uppercase hex characters. */
+const _generateTenantCode = () => require('../utils/organization-code.utils').generateOrganizationCode();
 
 /**
  * Ensure the generated tenant code is actually unique in the DB.
@@ -25,7 +19,7 @@ const _uniqueTenantCode = async () => {
   let attempts = 0;
   do {
     code = _generateTenantCode();
-    // eslint-disable-next-line no-await-in-loop
+     
     const existing = await Tenant.findOne({ where: { tenantCode: code } });
     if (!existing) return code;
     attempts++;
@@ -63,7 +57,7 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
     kycStatus: KycStatus.NOT_SUBMITTED,
     onboardingStep: 1,
   });
-  await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'tenant', targetId: tenant.id });
+  await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'organization', targetId: tenant.id });
 
   // Upgrade user role to GYM_HOST and set isHost to true. This is an account flag
   // (the host area, onboarding routes). It grants nothing inside any tenant:
@@ -138,7 +132,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
   } else if (mainBranchData && mainBranchData.cityId !== undefined) {
     // NEW-259: the main branch's area belongs to its city (the branch's, else the business's).
     await assertAreaInCity({ cityId: branchCityId, areaId: mergedMainBranchData.areaId });
-    await areaRequests.assertKeptLinkInCity({ tenantId: tenant.id, target: 'main_branch', targetId: tenant.id, cityId: branchCityId });
+    await areaRequests.assertKeptLinkInCity({ tenantId: tenant.id, target: 'first_branch_draft', targetId: tenant.id, cityId: branchCityId });
   }
   if (mergedMainBranchData && typeof mergedMainBranchData === 'object') delete mergedMainBranchData.pendingArea; // a read-only view
 
@@ -165,7 +159,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     kycStatus: KycStatus.PENDING,
     onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || mainBranchData !== undefined) ? 3 : 2),
   });
-  await areaRequests.applyChoiceToLink(resolvedBranchChoice, { tenantId: tenant.id, target: 'main_branch', targetId: tenant.id });
+  await areaRequests.applyChoiceToLink(resolvedBranchChoice, { tenantId: tenant.id, target: 'first_branch_draft', targetId: tenant.id });
 
   return { tenant };
 };
@@ -265,7 +259,7 @@ const updateMyTenant = async (userId, updates) => {
     });
     const values = areaRequests.rowValues(choice);
     if (values) await tenant.update(values); // the other fields stay ACTIVE-only, as before
-    await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'tenant', targetId: tenant.id });
+    await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'organization', targetId: tenant.id });
     await tenant.reload({ include: [{ model: City, as: 'city', attributes: ['id', 'name'] }] });
     return { tenant };
   }

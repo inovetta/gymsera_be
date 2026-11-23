@@ -325,7 +325,7 @@ async function setPayoutAccount(tenantId, details, { organizationId = null, deta
 /** P7b: the tenant default payout account row (or null). */
 async function getTenantPayoutAccount(tenantId) {
   const { PayoutAccount } = require('../../src/models/platform');
-  return PayoutAccount.findOne({ where: { tenantId, scopeKey: 'TENANT', provider: 'BANK_TRANSFER' } });
+  return PayoutAccount.findOne({ where: { tenantId, scopeKey: 'ORGANIZATION', provider: 'BANK_TRANSFER' } });
 }
 
 module.exports = {

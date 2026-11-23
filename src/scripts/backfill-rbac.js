@@ -69,7 +69,7 @@ const migratePlatform = async () => {
   const { sequelize } = require('../database/platform');
 
   const statements = [
-    `CREATE TABLE IF NOT EXISTS user_org_index (
+    `CREATE TABLE IF NOT EXISTS user_organization_index (
        user_id      CHAR(36)    NOT NULL,
        tenant_id    CHAR(36)    NOT NULL,
        role_key     VARCHAR(40) NOT NULL,

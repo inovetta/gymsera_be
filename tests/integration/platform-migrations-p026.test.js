@@ -1,5 +1,5 @@
 /**
- * Platform migration p026: `tenant_subscriptions.entitlement_ended_at` (P7c, R-82, NEW-170), when a plan
+ * Platform migration p026: `organization_subscriptions.entitlement_ended_at` (P7c, R-82, NEW-170), when a plan
  * stopped entitling, so a lapsed plan locks branches after the 7-day grace. Proof: dry-run writes nothing;
  * existing rows keep NULL (no backfill: the first capacity pass sets it); a re-run is a no-op; a missing
  * table is skipped.
@@ -13,7 +13,7 @@ const { PLATFORM_MIGRATIONS, runPlatformMigrations } = require('../../src/databa
 const SCRATCH_DB = 'gymsera_test_platform_mig_p026';
 const P026 = 'p026_tenant_subscriptions_entitlement_ended_at';
 
-describe('Platform migration p026 (tenant_subscriptions.entitlement_ended_at)', () => {
+describe('Platform migration p026 (organization_subscriptions.entitlement_ended_at)', () => {
   let seq;
 
   const columns = async (table) =>
@@ -63,8 +63,8 @@ describe('Platform migration p026 (tenant_subscriptions.entitlement_ended_at)', 
     expect(block).toMatch(/ROLLBACK/);
   });
 
-  test('a database without a tenant_subscriptions table is skipped and recorded', async () => {
-    await seq.query('DROP TABLE IF EXISTS tenant_subscriptions');
+  test('a database without a organization_subscriptions table is skipped and recorded', async () => {
+    await seq.query('DROP TABLE IF EXISTS organization_subscriptions');
     const res = await runPlatformMigrations(seq, { targetVersion: 26 });
     expect(res.applied).toEqual([P026]);
     await seq.query('DELETE FROM schema_migrations WHERE version = 26');
@@ -72,17 +72,17 @@ describe('Platform migration p026 (tenant_subscriptions.entitlement_ended_at)', 
 
   test('dry-run changes nothing; apply adds a nullable entitlement_ended_at and keeps rows (no backfill); re-run is a no-op', async () => {
     await seq.query(
-      "CREATE TABLE tenant_subscriptions (id CHAR(36) PRIMARY KEY, status ENUM('ACTIVE','EXPIRED') NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+      "CREATE TABLE organization_subscriptions (id CHAR(36) PRIMARY KEY, status ENUM('ACTIVE','EXPIRED') NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
-    await seq.query("INSERT INTO tenant_subscriptions VALUES ('00000000-0000-0000-0000-000000000001', 'EXPIRED', NOW(), NOW())");
+    await seq.query("INSERT INTO organization_subscriptions VALUES ('00000000-0000-0000-0000-000000000001', 'EXPIRED', NOW(), NOW())");
 
     await runPlatformMigrations(seq, { targetVersion: 26, dryRun: true });
-    expect((await columns('tenant_subscriptions')).entitlement_ended_at).toBeUndefined();
+    expect((await columns('organization_subscriptions')).entitlement_ended_at).toBeUndefined();
 
     const res = await runPlatformMigrations(seq, { targetVersion: 26 });
     expect(res.applied).toEqual([P026]);
-    expect((await columns('tenant_subscriptions')).entitlement_ended_at).toBe('datetime YES');
-    const rows = await seq.query('SELECT status, entitlement_ended_at AS endedAt FROM tenant_subscriptions', { type: QueryTypes.SELECT });
+    expect((await columns('organization_subscriptions')).entitlement_ended_at).toBe('datetime YES');
+    const rows = await seq.query('SELECT status, entitlement_ended_at AS endedAt FROM organization_subscriptions', { type: QueryTypes.SELECT });
     expect(rows).toEqual([{ status: 'EXPIRED', endedAt: null }]);
 
     const again = await runPlatformMigrations(seq, { targetVersion: 26 });

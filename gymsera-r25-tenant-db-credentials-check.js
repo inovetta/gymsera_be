@@ -115,7 +115,7 @@ async function main() {
     await conn.query('SET SESSION TRANSACTION READ ONLY');
     await conn.query('START TRANSACTION READ ONLY');
     [rows] = await conn.query(
-      `SELECT id, tenant_code, status, connection_string_encrypted FROM ${q(platformDb)}.tenants ORDER BY created_at, id`
+      `SELECT id, organization_code AS tenant_code, status, connection_string_encrypted FROM ${q(platformDb)}.organizations ORDER BY created_at, id`
     );
     await conn.query('ROLLBACK');
   } finally {

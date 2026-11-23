@@ -18,7 +18,7 @@ module.exports = (sequelize) =>
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
       areaRequestId: { type: DataTypes.INTEGER, allowNull: false },
       tenantId: { type: DataTypes.CHAR(36).BINARY, allowNull: false },
-      target: { type: DataTypes.ENUM('tenant', 'main_branch', 'listing', 'branch'), allowNull: false },
+      target: { type: DataTypes.ENUM('organization', 'first_branch_draft', 'business', 'branch'), allowNull: false }, // R-120 NEW-307 (p034): was tenant, main_branch, listing
       targetId: { type: DataTypes.STRING(36), allowNull: false },
       propagatedAt: { type: DataTypes.DATE, allowNull: true },
       propagationError: { type: DataTypes.STRING(300), allowNull: true },

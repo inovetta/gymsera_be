@@ -410,13 +410,13 @@ const withPendingAreas = async (target, tenantId, rows, idKey = 'id') => {
  */
 const hostStatusArea = async (tenant) => {
   if (!tenant) return null;
-  const tenantPending = await pendingAreaFor('tenant', tenant.id, tenant.id);
-  const branchPending = await pendingAreaFor('main_branch', tenant.id, tenant.id);
+  const tenantPending = await pendingAreaFor('organization', tenant.id, tenant.id);
+  const branchPending = await pendingAreaFor('first_branch_draft', tenant.id, tenant.id);
   const shape = (p, target) => ({ status: p.status, name: p.name, rejectReason: p.rejectReason, target });
-  if (tenantPending && tenantPending.status === 'rejected') return shape(tenantPending, 'tenant');
-  if (branchPending && branchPending.status === 'rejected') return shape(branchPending, 'main_branch');
-  if (tenantPending) return shape(tenantPending, 'tenant');
-  if (branchPending) return shape(branchPending, 'main_branch');
+  if (tenantPending && tenantPending.status === 'rejected') return shape(tenantPending, 'organization');
+  if (branchPending && branchPending.status === 'rejected') return shape(branchPending, 'first_branch_draft');
+  if (tenantPending) return shape(tenantPending, 'organization');
+  if (branchPending) return shape(branchPending, 'first_branch_draft');
   return null;
 };
 
@@ -455,10 +455,10 @@ const openRequestOfLink = async (link) => {
 
 /** Provisioning step 3: the new listing takes the tenant's link (copied; the tenant keeps its own). */
 const carryTenantLinkToListing = async (tenant, listing) => {
-  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'tenant', tenantId: tenant.id, targetId: String(tenant.id) } });
+  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'organization', tenantId: tenant.id, targetId: String(tenant.id) } });
   const request = await openRequestOfLink(tenantLink);
   if (!request) return;
-  await applyChoiceToLink({ kind: 'request', requestId: request.id }, { tenantId: tenant.id, target: 'listing', targetId: listing.id });
+  await applyChoiceToLink({ kind: 'request', requestId: request.id }, { tenantId: tenant.id, target: 'business', targetId: listing.id });
   await listing.update({ areaId: null, areaStatus: request.status === 'rejected' ? 'rejected' : 'pending_review', areaRequestId: request.id });
 };
 
@@ -468,7 +468,7 @@ const carryTenantLinkToListing = async (tenant, listing) => {
  * Returns { areaId, link: request | null } for the branch row about to be created.
  */
 const firstBranchArea = async (tenant, draft, branchCityId) => {
-  const ownLink = await AreaRequestLink.findOne({ where: { target: 'main_branch', tenantId: tenant.id, targetId: String(tenant.id) } });
+  const ownLink = await AreaRequestLink.findOne({ where: { target: 'first_branch_draft', tenantId: tenant.id, targetId: String(tenant.id) } });
   const ownRequest = await openRequestOfLink(ownLink);
   if (ownRequest) return { areaId: null, request: ownRequest };
   if (draft.areaId) return { areaId: draft.areaId, request: null };
@@ -476,7 +476,7 @@ const firstBranchArea = async (tenant, draft, branchCityId) => {
     const area = await Area.findByPk(tenant.areaId, { attributes: ['id', 'cityId'] });
     return { areaId: area && Number(area.cityId) === Number(branchCityId) ? area.id : null, request: null };
   }
-  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'tenant', tenantId: tenant.id, targetId: String(tenant.id) } });
+  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'organization', tenantId: tenant.id, targetId: String(tenant.id) } });
   const tenantRequest = await openRequestOfLink(tenantLink);
   if (tenantRequest && Number(tenantRequest.cityId) === Number(branchCityId)) return { areaId: null, request: tenantRequest };
   return { areaId: null, request: null };
@@ -487,7 +487,7 @@ const carryLinkToFirstBranch = async (tenant, branch, request) => {
   if (request) {
     await applyChoiceToLink({ kind: 'request', requestId: request.id }, { tenantId: tenant.id, target: 'branch', targetId: branch.id });
   }
-  await AreaRequestLink.destroy({ where: { target: 'main_branch', tenantId: tenant.id, targetId: String(tenant.id) } });
+  await AreaRequestLink.destroy({ where: { target: 'first_branch_draft', tenantId: tenant.id, targetId: String(tenant.id) } });
 };
 
 // ── A6: admin queue ───────────────────────────────────────────────────────────
@@ -499,16 +499,16 @@ const titleFor = async (link) => {
   const base = { tenantId: link.tenantId, listingId: null, branchId: null, title: null, latitude: null, longitude: null };
   const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   try {
-    if (link.target === 'tenant' || link.target === 'main_branch') {
+    if (link.target === 'organization' || link.target === 'first_branch_draft') {
       const t = await Tenant.findByPk(link.tenantId, { attributes: ['id', 'gymName', 'businessName', 'latitude', 'longitude', 'mainBranchDataJson'] });
       if (!t) return base;
       const mb = parseJson(t.mainBranchDataJson);
-      if (link.target === 'main_branch') {
+      if (link.target === 'first_branch_draft') {
         return { ...base, title: mb.name || t.gymName || t.businessName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
       }
       return { ...base, title: t.gymName || t.businessName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
     }
-    if (link.target === 'listing') {
+    if (link.target === 'business') {
       const l = await GymListing.findByPk(link.targetId, { attributes: ['id', 'title', 'latitude', 'longitude'] });
       return { ...base, listingId: link.targetId, title: l ? l.title : null, latitude: num(l?.latitude), longitude: num(l?.longitude) };
     }
@@ -651,18 +651,18 @@ const propagate = async (requestIds, areaId) => {
   for (const link of links) {
     try {
       const reqId = link.areaRequestId;
-      if (link.target === 'tenant') {
+      if (link.target === 'organization') {
         const t = await Tenant.findByPk(link.targetId);
         if (!t) throw new Error('tenant_not_found');
         assertSameCity(t.cityId, area.cityId);
         await t.update({ areaId, areaStatus: null, areaRequestId: null });
-      } else if (link.target === 'listing') {
+      } else if (link.target === 'business') {
         const l = await GymListing.findByPk(link.targetId);
         if (!l) throw new Error('listing_not_found');
         if (l.tenantId !== link.tenantId) throw new Error('listing_not_of_tenant');
         assertSameCity(l.cityId, area.cityId);
         await l.update({ areaId, areaStatus: null, areaRequestId: null });
-      } else if (link.target === 'main_branch') {
+      } else if (link.target === 'first_branch_draft') {
         const t = await Tenant.findByPk(link.targetId);
         if (!t) throw new Error('tenant_not_found');
         const mb = { ...parseJson(t.mainBranchDataJson) };
@@ -791,11 +791,11 @@ const reject = async (id, { reason, applyToGroup } = {}, adminId) => {
     // The gyms' markers (R-109): tenants, listings and draft first branches; branch rows keep their link.
     const links = await AreaRequestLink.findAll({ where: { areaRequestId: { [Op.in]: ids } }, transaction });
     for (const l of links) {
-      if (l.target === 'tenant') {
+      if (l.target === 'organization') {
         await Tenant.update({ areaStatus: 'rejected' }, { where: { id: l.targetId, areaRequestId: l.areaRequestId }, transaction });
-      } else if (l.target === 'listing') {
+      } else if (l.target === 'business') {
         await GymListing.update({ areaStatus: 'rejected' }, { where: { id: l.targetId, areaRequestId: l.areaRequestId }, transaction });
-      } else if (l.target === 'main_branch') {
+      } else if (l.target === 'first_branch_draft') {
         const t = await Tenant.findByPk(l.targetId, { transaction });
         if (t) {
           const mb = { ...parseJson(t.mainBranchDataJson) };

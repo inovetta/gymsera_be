@@ -189,7 +189,7 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'tenant_subscriptions',
+      tableName: 'organization_subscriptions', // R-120 NEW-307 (p034)
       underscored: true,
       timestamps: true,
       indexes: [
@@ -202,7 +202,7 @@ module.exports = (sequelize) => {
         {
           unique: true,
           fields: ['platform', 'external_original_transaction_id'],
-          name: 'tenant_subscriptions_platform_external_unique',
+          name: 'organization_subscriptions_platform_external_unique',
         },
       ],
     }

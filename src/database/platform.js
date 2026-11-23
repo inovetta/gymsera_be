@@ -164,13 +164,13 @@ const connect = async () => {
   // Tenant invitations and platform audit logs (AUTH-09)
   try {
     await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS \`tenant_invitations\` (
+      CREATE TABLE IF NOT EXISTS \`organization_invitations\` (
         \`id\` CHAR(36) NOT NULL,
         \`token_hash\` VARCHAR(64) NOT NULL,
         \`owner_email\` VARCHAR(150) NOT NULL,
         \`owner_full_name\` VARCHAR(150) NOT NULL,
         \`owner_phone\` VARCHAR(25) NULL,
-        \`business_name\` VARCHAR(200) NOT NULL,
+        \`organization_name\` VARCHAR(200) NOT NULL,
         \`email\` VARCHAR(150) NOT NULL,
         \`phone\` VARCHAR(25) NULL,
         \`city_id\` INT NULL,
@@ -183,13 +183,13 @@ const connect = async () => {
         \`created_at\` DATETIME NOT NULL,
         \`updated_at\` DATETIME NOT NULL,
         PRIMARY KEY (\`id\`),
-        UNIQUE KEY \`idx_tenant_invitations_token_hash\` (\`token_hash\`),
-        KEY \`idx_tenant_invitations_owner_email\` (\`owner_email\`),
-        KEY \`idx_tenant_invitations_status\` (\`status\`)
+        UNIQUE KEY \`idx_organization_invitations_token_hash\` (\`token_hash\`),
+        KEY \`idx_organization_invitations_owner_email\` (\`owner_email\`),
+        KEY \`idx_organization_invitations_status\` (\`status\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
   } catch (err) {
-    _logIfUnexpected('tenant_invitations', err);
+    _logIfUnexpected('organization_invitations', err);
   }
   try {
     await sequelize.query(`
@@ -278,7 +278,7 @@ const connect = async () => {
     _logIfUnexpected('CREATE TABLE billing_offers', err);
   }
   await _makeColumnNullableAroundForeignKey(sequelize, {
-    table: 'tenant_subscriptions',
+    table: 'organization_subscriptions',
     column: 'platform_package_id',
     // Must match what Sequelize generates for a DataTypes.UUID column (see
     // the capacity_events/billing_plans note above) — a plain CHAR(36) here
@@ -287,7 +287,7 @@ const connect = async () => {
     // collation-mismatched against platform_packages.id, invisible until
     // something tried to (re)create the FK against it via a stricter check.
     columnType: 'CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin',
-    logLabel: 'tenant_subscriptions.platform_package_id -> NULL',
+    logLabel: 'organization_subscriptions.platform_package_id -> NULL',
   });
   const tenantSubBillingColumns = [
     'ADD COLUMN `billing_plan_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL',
@@ -304,24 +304,24 @@ const connect = async () => {
   ];
   for (const clause of tenantSubBillingColumns) {
     try {
-      await sequelize.query(`ALTER TABLE \`tenant_subscriptions\` ${clause};`);
+      await sequelize.query(`ALTER TABLE \`organization_subscriptions\` ${clause};`);
     } catch (err) {
-      _logIfUnexpected(`tenant_subscriptions ${clause}`, err);
+      _logIfUnexpected(`organization_subscriptions ${clause}`, err);
     }
   }
   try {
     await sequelize.query(
-      'ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `billing_plan_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL;'
+      'ALTER TABLE `organization_subscriptions` MODIFY COLUMN `billing_plan_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL;'
     );
   } catch (err) {
-    _logIfUnexpected('tenant_subscriptions.billing_plan_id COLLATE utf8mb4_bin', err);
+    _logIfUnexpected('organization_subscriptions.billing_plan_id COLLATE utf8mb4_bin', err);
   }
   try {
     await sequelize.query(
-      'ALTER TABLE `tenant_subscriptions` ADD INDEX `tenant_subscriptions_external_original_transaction_id` (`external_original_transaction_id`);'
+      'ALTER TABLE `organization_subscriptions` ADD INDEX `organization_subscriptions_external_original_transaction_id` (`external_original_transaction_id`);'
     );
   } catch (err) {
-    _logIfUnexpected('tenant_subscriptions external_original_transaction_id index', err);
+    _logIfUnexpected('organization_subscriptions external_original_transaction_id index', err);
   }
 
   // Set when a subscription downgrade leaves more real ACTIVE branches than
@@ -332,13 +332,13 @@ const connect = async () => {
   // until they upgrade or close branches themselves.
   try {
     await sequelize.query(
-      'ALTER TABLE `tenant_subscriptions` ADD COLUMN `over_quota_count` INT NOT NULL DEFAULT 0;'
+      'ALTER TABLE `organization_subscriptions` ADD COLUMN `over_quota_count` INT NOT NULL DEFAULT 0;'
     );
   } catch (err) {
-    _logIfUnexpected('tenant_subscriptions.over_quota_count', err);
+    _logIfUnexpected('organization_subscriptions.over_quota_count', err);
   }
 
-  // tenant_subscriptions.status is owned by platform migration p002
+  // organization_subscriptions.status is owned by platform migration p002
   // (platform-migrations.js) from now on. The boot-time MODIFY that used to
   // live here would narrow the ENUM back on every boot and drop REVOKED.
 

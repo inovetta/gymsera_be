@@ -62,10 +62,10 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
 
     // Seed minimal tenants table
     await platformSeq.query(`
-      CREATE TABLE IF NOT EXISTS tenants (
+      CREATE TABLE IF NOT EXISTS organizations (
         id CHAR(36) NOT NULL PRIMARY KEY,
-        tenant_code VARCHAR(50) NOT NULL,
-        gym_name VARCHAR(255) NOT NULL,
+        organization_code VARCHAR(50) NOT NULL,
+        first_business_name VARCHAR(255) NOT NULL,
         payment_details_json JSON NULL,
         created_at DATETIME NOT NULL,
         updated_at DATETIME NOT NULL
@@ -188,7 +188,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
       await createPlatformDbBefore1E();
       await runPlatformMigrations(platformSeq, { targetVersion: 11 });
       await platformSeq.query(`
-        ALTER TABLE tenants ADD COLUMN payment_details_updated_at INT NOT NULL
+        ALTER TABLE organizations ADD COLUMN payment_details_updated_at INT NOT NULL
       `);
 
       const before = await snapshot(platformSeq);
@@ -210,7 +210,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
       expect(res1.finalVersion).toBe(12);
       expect(res1.applied).toContain(P012);
 
-      const cols = await platformSeq.getQueryInterface().describeTable('tenants');
+      const cols = await platformSeq.getQueryInterface().describeTable('organizations');
       expect(cols.payment_details_updated_at).toBeDefined();
 
       // Second run is idempotent

@@ -79,7 +79,7 @@ describe('PUT / GET /host/payout-account: the tenant default (NEW-217)', () => {
 
     const res = await asPersona('owner').put('/host/payout-account', { details: DEFAULT_DETAILS, password: PASSWORD });
     expect(res.status).toBe(200);
-    expect(res.body.data.account).toMatchObject({ scope: 'TENANT', organizationId: null, provider: 'BANK_TRANSFER', details: DEFAULT_DETAILS });
+    expect(res.body.data.account).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, provider: 'BANK_TRANSFER', details: DEFAULT_DETAILS });
     expect(res.body.data.account.detailsUpdatedAt).toBeTruthy();
 
     const rows = await PayoutAccount.findAll({ raw: true });
@@ -108,7 +108,7 @@ describe('PUT / GET /host/payout-account: the tenant default (NEW-217)', () => {
     await asPersona('owner').put('/host/payout-account', { details: DEFAULT_DETAILS, password: PASSWORD });
     const res = await asPersona('owner').get('/host/payout-account');
     expect(res.status).toBe(200);
-    expect(res.body.data.account).toMatchObject({ scope: 'TENANT', organizationId: null, details: DEFAULT_DETAILS });
+    expect(res.body.data.account).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, details: DEFAULT_DETAILS });
   });
 
   test('the tenant default is returned even when an organization override exists (launch exposes only the default)', async () => {
@@ -165,8 +165,8 @@ describe('resolver: tenant → organization → branch (R-94)', () => {
     await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
     const a = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, ctx.branch1.id);
     const b = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id);
-    expect(a).toMatchObject({ scope: 'TENANT', organizationId: null, details: DEFAULT_DETAILS });
-    expect(b).toMatchObject({ scope: 'TENANT', organizationId: null, details: DEFAULT_DETAILS });
+    expect(a).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, details: DEFAULT_DETAILS });
+    expect(b).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, details: DEFAULT_DETAILS });
   });
 
   test('an organization override → its branches use it; other organizations keep the tenant default', async () => {
@@ -174,8 +174,8 @@ describe('resolver: tenant → organization → branch (R-94)', () => {
     await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
     const a = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, ctx.branch1.id);
     const b = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id);
-    expect(a).toMatchObject({ scope: 'TENANT', details: DEFAULT_DETAILS });
-    expect(b).toMatchObject({ scope: 'ORGANIZATION', organizationId: orgB.id, details: ORG_DETAILS });
+    expect(a).toMatchObject({ scope: 'ORGANIZATION', details: DEFAULT_DETAILS });
+    expect(b).toMatchObject({ scope: 'BUSINESS', organizationId: orgB.id, details: ORG_DETAILS });
   });
 
   test('an override with no tenant default still applies to its organization; others get null', async () => {
@@ -187,19 +187,19 @@ describe('resolver: tenant → organization → branch (R-94)', () => {
   test('a DISABLED override is skipped → tenant default', async () => {
     await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
     await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS, status: 'DISABLED' });
-    expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id)).toMatchObject({ scope: 'TENANT' });
+    expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id)).toMatchObject({ scope: 'ORGANIZATION' });
   });
 
   test('an override of another tenant\'s organization id is never used', async () => {
     await PayoutAccount.create({ tenantId: ctx.tenant2.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
     await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
-    expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id)).toMatchObject({ scope: 'TENANT', details: DEFAULT_DETAILS });
+    expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id)).toMatchObject({ scope: 'ORGANIZATION', details: DEFAULT_DETAILS });
   });
 
   test('no branch (an organization-wide payout) → the tenant default', async () => {
     await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
     await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
-    expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, null)).toMatchObject({ scope: 'TENANT' });
+    expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, null)).toMatchObject({ scope: 'ORGANIZATION' });
   });
 });
 

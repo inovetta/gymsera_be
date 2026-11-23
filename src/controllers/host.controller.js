@@ -389,7 +389,7 @@ const getListings = async (req, res, next) => {
     }
 
     // NEW-265 (A4 reads): each organization's pending or rejected area request.
-    return sendSuccess(res, await areaRequests.withPendingAreas('listing', tenantId, listings));
+    return sendSuccess(res, await areaRequests.withPendingAreas('business', tenantId, listings));
   } catch (err) {
     next(err);
   }
@@ -597,7 +597,7 @@ const createListing = async (req, res, next) => {
         reservedSlots: branchSource === 'reserve' ? 1 : 0,
       }, { transaction: platformTx });
 
-      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'listing', targetId: listing.id }, { transaction: platformTx });
+      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'business', targetId: listing.id }, { transaction: platformTx });
 
       if (branchSource === 'reserve') {
         // Drawing 1 unit of already-available tenant-wide capacity (checked
@@ -735,7 +735,7 @@ const getListing = async (req, res, next) => {
     const listing = await GymListing.findOne({ where: { id: req.params.id, tenantId } });
     if (!listing) throw createError('Organization not found or access denied', 404);
     const gym = await _organizationGym(req.tenantDb, listing);
-    const pendingArea = await areaRequests.pendingAreaFor('listing', tenantId, listing.id); // NEW-265
+    const pendingArea = await areaRequests.pendingAreaFor('business', tenantId, listing.id); // NEW-265
     return sendSuccess(res, { ...listing.toJSON(), pendingArea, gym: gym ? gym.toJSON() : null });
   } catch (err) {
     next(err);
@@ -771,7 +771,7 @@ const updateListing = async (req, res, next) => {
     });
     if (areaChoice.kind === 'keep' && cityId !== undefined) {
       await assertAreaInCity({ cityId: nextCityId, areaId: listing.areaId });
-      await areaRequests.assertKeptLinkInCity({ tenantId, target: 'listing', targetId: listing.id, cityId: nextCityId });
+      await areaRequests.assertKeptLinkInCity({ tenantId, target: 'business', targetId: listing.id, cityId: nextCityId });
     }
 
     const updates = {};
@@ -797,7 +797,7 @@ const updateListing = async (req, res, next) => {
       .filter((f) => req.body[f] !== undefined);
     await GymListing.sequelize.transaction(async (transaction) => {
       await listing.update(updates, { transaction });
-      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'listing', targetId: listing.id }, { transaction });
+      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'business', targetId: listing.id }, { transaction });
       await PlatformAuditLog.create({
         actorUserId: req.user.id || req.user.sub,
         action: 'organization.profile_updated',

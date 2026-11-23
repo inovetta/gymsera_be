@@ -9,7 +9,7 @@
 --
 -- Without a mysql client (the API server), from the app folder that holds server.js and .env:
 --   node src/scripts/run-sql-check.js docs/sql/new-124-tenant-schema-check.sql
--- It uses the API's PLATFORM_DB_* settings, runs read-only, and prints gym_name as [hidden].
+-- It uses the API's PLATFORM_DB_* settings, runs read-only, and prints first_business_name as [hidden].
 --
 -- Send the agent both result grids.
 
@@ -19,8 +19,8 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
   t.id         AS tenant_id,
-  t.tenant_code,
-  t.gym_name,
+  t.organization_code,
+  t.first_business_name,
   t.db_name,
   t.updated_at AS tenant_updated_at,
   t.status,
@@ -28,7 +28,7 @@ SELECT
      WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = 'schema_migrations') AS has_schema_migrations,
   (SELECT COUNT(*) FROM information_schema.COLUMNS c
      WHERE c.TABLE_SCHEMA = t.db_name AND c.TABLE_NAME = 'branches' AND c.COLUMN_NAME = 'currency') AS has_branches_currency
-FROM tenants t
+FROM organizations t
 WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
 ORDER BY t.updated_at DESC;
 
@@ -45,11 +45,11 @@ ORDER BY t.updated_at DESC;
 --    migration step (NEW-127).
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.tenant_code,
+  t.organization_code,
   t.db_name,
   e.table_name,
   e.column_name AS missing_column
-FROM tenants t
+FROM organizations t
 JOIN (
   SELECT 'branches' AS table_name, 'id' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'business_id' AS column_name
@@ -113,12 +113,12 @@ WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
                       AND c.COLUMN_NAME = e.column_name)
 UNION ALL
 SELECT
-  t.tenant_code,
+  t.organization_code,
   t.db_name,
   'schema_migrations' AS table_name,
   '(table)' AS missing_column
-FROM tenants t
+FROM organizations t
 WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
   AND NOT EXISTS (SELECT 1 FROM information_schema.TABLES x
                     WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = 'schema_migrations')
-ORDER BY tenant_code, table_name, missing_column;
+ORDER BY organization_code, table_name, missing_column;

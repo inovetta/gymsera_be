@@ -156,7 +156,7 @@ async function main() {
       return new Set(cols.map((r) => r.c));
     };
     const userCols = await colSet('users');
-    const tenantCols = await colSet('tenants');
+    const tenantCols = await colSet('organizations');
     migrated = userCols.has('deletion_scheduled_for') && tenantCols.has('deletion_scheduled_for');
     [users] = await pconn.query(
       `SELECT id, status, is_verified${migrated ? ', deletion_scheduled_for, deleted_at' : ''}, ` +
@@ -164,7 +164,7 @@ async function main() {
         `FROM ${q(platformDb)}.users`
     );
     [tenants] = await pconn.query(
-      `SELECT id, tenant_code, status, db_name, owner_user_id, rejected_at, updated_at${migrated ? ', deletion_scheduled_for' : ''} FROM ${q(platformDb)}.tenants`
+      `SELECT id, organization_code AS tenant_code, status, db_name, owner_user_id, rejected_at, updated_at${migrated ? ', deletion_scheduled_for' : ''} FROM ${q(platformDb)}.organizations`
     );
     await pconn.query('ROLLBACK');
   } finally {

@@ -46,7 +46,7 @@ const toView = (row) =>
   row
     ? {
       id: row.id,
-      scope: row.organizationId ? 'ORGANIZATION' : 'TENANT',
+      scope: row.organizationId ? 'BUSINESS' : 'ORGANIZATION', // A1 G10: BUSINESS (one business) | ORGANIZATION (organization-wide)
       organizationId: row.organizationId || null,
       provider: row.provider,
       status: row.status,

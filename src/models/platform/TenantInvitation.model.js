@@ -34,7 +34,7 @@ module.exports = (sequelize) => {
       businessName: {
         type: DataTypes.STRING(200),
         allowNull: false,
-        field: 'business_name',
+        field: 'organization_name',
       },
       email: {
         type: DataTypes.STRING(150),
@@ -81,7 +81,7 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'tenant_invitations',
+      tableName: 'organization_invitations', // R-120 NEW-307 (p034)
       underscored: true,
       timestamps: true,
       indexes: [

@@ -1,6 +1,6 @@
 /**
  * Platform migration added in Prompt 2A (BILL-09): p017 adds the
- * `duplicate_billing` column to `tenant_subscriptions`.
+ * `duplicate_billing` column to `organization_subscriptions`.
  *
  * Proven like every earlier migration:
  * `--dry-run` writes nothing, a conflicting column makes it skip (not recorded,
@@ -15,7 +15,7 @@ const { PLATFORM_MIGRATIONS, PLATFORM_TARGET_VERSION, runPlatformMigrations } = 
 const SCRATCH_DB = 'gymsera_test_platform_mig_2a';
 const P017 = 'p017_tenant_subscriptions_duplicate_billing';
 
-describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', () => {
+describe('Prompt 2A migration p017 (organization_subscriptions duplicate_billing)', () => {
   let seq;
 
   const snapshot = async () => {
@@ -35,7 +35,7 @@ describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', ()
   const duplicateBillingCol = async () =>
     (await seq.query(
       "SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS " +
-        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_subscriptions' AND COLUMN_NAME = 'duplicate_billing'",
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'organization_subscriptions' AND COLUMN_NAME = 'duplicate_billing'",
       { type: QueryTypes.SELECT }
     ))[0];
 
@@ -61,7 +61,7 @@ describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', ()
       });
     }
     await seq.query(`
-      CREATE TABLE tenant_subscriptions (
+      CREATE TABLE organization_subscriptions (
         id CHAR(36) NOT NULL PRIMARY KEY,
         tenant_id CHAR(36) NOT NULL,
         package_id CHAR(36) NOT NULL,
@@ -72,7 +72,7 @@ describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', ()
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await seq.query(`
-      INSERT INTO tenant_subscriptions (id, tenant_id, package_id, status, platform, created_at, updated_at) VALUES
+      INSERT INTO organization_subscriptions (id, tenant_id, package_id, status, platform, created_at, updated_at) VALUES
         ('11111111-0000-4000-8000-000000000001', 'ten-1', 'pkg-1', 'ACTIVE', 'GOOGLE_PLAY', NOW(), NOW()),
         ('11111111-0000-4000-8000-000000000002', 'ten-1', 'pkg-1', 'EXPIRED', 'APPLE_APP_STORE', NOW(), NOW())
     `);
@@ -105,8 +105,8 @@ describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', ()
 
   test('a conflicting column (other type) → skipped, not recorded, table unchanged', async () => {
     await createPlatformDbBefore2A();
-    await seq.query('ALTER TABLE tenant_subscriptions ADD COLUMN duplicate_billing VARCHAR(20) NULL');
-    await seq.query("UPDATE tenant_subscriptions SET duplicate_billing = 'CONFLICT' WHERE id = '11111111-0000-4000-8000-000000000001'");
+    await seq.query('ALTER TABLE organization_subscriptions ADD COLUMN duplicate_billing VARCHAR(20) NULL');
+    await seq.query("UPDATE organization_subscriptions SET duplicate_billing = 'CONFLICT' WHERE id = '11111111-0000-4000-8000-000000000001'");
     const before = await snapshot();
 
     await runPlatformMigrations(seq, { targetVersion: 17 });
@@ -118,7 +118,7 @@ describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', ()
 
   test('apply adds duplicate_billing column, keeps existing rows, is recorded; re-run is a no-op', async () => {
     await createPlatformDbBefore2A();
-    const rowsBefore = await seq.query('SELECT id, tenant_id, package_id, status, platform FROM tenant_subscriptions ORDER BY id', {
+    const rowsBefore = await seq.query('SELECT id, tenant_id, package_id, status, platform FROM organization_subscriptions ORDER BY id', {
       type: QueryTypes.SELECT,
     });
 
@@ -129,7 +129,7 @@ describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', ()
     expect(col.type.toLowerCase()).toBe('tinyint(1)');
 
     expect(
-      await seq.query('SELECT id, tenant_id, package_id, status, platform FROM tenant_subscriptions ORDER BY id', {
+      await seq.query('SELECT id, tenant_id, package_id, status, platform FROM organization_subscriptions ORDER BY id', {
         type: QueryTypes.SELECT,
       })
     ).toEqual(rowsBefore);
@@ -142,7 +142,7 @@ describe('Prompt 2A migration p017 (tenant_subscriptions duplicate_billing)', ()
 
   test('duplicate_billing column added by hand with correct type is recorded without error', async () => {
     await createPlatformDbBefore2A();
-    await seq.query('ALTER TABLE tenant_subscriptions ADD COLUMN duplicate_billing TINYINT(1) NULL DEFAULT 0');
+    await seq.query('ALTER TABLE organization_subscriptions ADD COLUMN duplicate_billing TINYINT(1) NULL DEFAULT 0');
     const res = await runPlatformMigrations(seq, { targetVersion: 17 });
     expect(res.applied).toEqual([P017]);
   });

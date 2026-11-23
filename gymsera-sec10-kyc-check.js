@@ -61,7 +61,7 @@ async function main() {
 
   try {
     const [rows] = await conn.query(
-      `SELECT id, tenant_code, business_name, email, status, kyc_status, 
+      `SELECT id, organization_code AS tenant_code, organization_name AS business_name, email, status, kyc_status, 
               kyc_documents_json, rejected_at, created_at, updated_at
        FROM \`tenants\`
        ORDER BY created_at ASC`

@@ -18,7 +18,7 @@ const { DataTypes } = require('sequelize');
  * gateway later) adds a provider value plus `externalAccountId`, `countryCode` and
  * `capabilitiesJson`; nothing here talks to a provider.
  */
-const TENANT_SCOPE = 'TENANT';
+const TENANT_SCOPE = 'ORGANIZATION'; // R-120 NEW-307 (p034): the stored scope_key of an organization-wide account, was 'TENANT'
 const PROVIDERS = Object.freeze({ BANK_TRANSFER: 'BANK_TRANSFER' });
 const STATUSES = Object.freeze({ ACTIVE: 'ACTIVE', DISABLED: 'DISABLED' });
 

@@ -47,10 +47,10 @@ describe('Platform migration p027 (payout_accounts + tenant default backfill)', 
       await seq.query('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, NOW())', { replacements: [mig.version, mig.name] });
     }
     await seq.query(
-      'CREATE TABLE tenants (id CHAR(36) PRIMARY KEY, payment_details_json JSON NULL, payment_details_updated_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+      'CREATE TABLE organizations (id CHAR(36) PRIMARY KEY, payment_details_json JSON NULL, payment_details_updated_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
     await seq.query(
-      `INSERT INTO tenants VALUES
+      `INSERT INTO organizations VALUES
         ('${T(1)}', '{"bankName":"Meezan","accountTitle":"Alpha","accountNumber":"0012345678"}', '2026-10-01 10:00:00'),
         ('${T(2)}', '{"jazzCashNumber":"03001234567"}', NULL),
         ('${T(3)}', '{"bankName":"  ","iban":""}', NULL),
@@ -106,13 +106,13 @@ describe('Platform migration p027 (payout_accounts + tenant default backfill)', 
 
     const rows = await accounts();
     expect(rows.map((r) => r.tenantId)).toEqual([T(1), T(2)]);
-    expect(rows[0]).toMatchObject({ organizationId: null, scopeKey: 'TENANT', provider: 'BANK_TRANSFER', status: 'ACTIVE' });
+    expect(rows[0]).toMatchObject({ organizationId: null, scopeKey: 'ORGANIZATION', provider: 'BANK_TRANSFER', status: 'ACTIVE' });
     expect(parse(rows[0].details)).toEqual({ bankName: 'Meezan', accountTitle: 'Alpha', accountNumber: '0012345678' });
     // Copied as text: the machine's time zone (UTC+5 on the dev Mac) must not shift it.
     expect(rows[0].updatedAt).toBe('2026-10-01 10:00:00');
     expect(rows[1].updatedAt).toBeNull();
 
-    const [kept] = await seq.query('SELECT payment_details_json AS d FROM tenants WHERE id = ?', { replacements: [T(1)], type: QueryTypes.SELECT });
+    const [kept] = await seq.query('SELECT payment_details_json AS d FROM organizations WHERE id = ?', { replacements: [T(1)], type: QueryTypes.SELECT });
     expect(parse(kept.d).bankName).toBe('Meezan');
   });
 
@@ -122,7 +122,7 @@ describe('Platform migration p027 (payout_accounts + tenant default backfill)', 
         'INSERT INTO payout_accounts (id, tenant_id, business_id, scope_key, provider, status, created_at, updated_at) VALUES (?, ?, ?, ?, \'BANK_TRANSFER\', \'ACTIVE\', NOW(), NOW())',
         { replacements: [id, tenant, org, scope] }
       );
-    await expect(insert(T(7), T(1), null, 'TENANT')).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
+    await expect(insert(T(7), T(1), null, 'ORGANIZATION')).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
     await insert(T(8), T(1), T(9), T(9));
     await expect(insert(T(6), T(1), T(9), T(9))).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
     await seq.query('DELETE FROM payout_accounts WHERE business_id IS NOT NULL');
