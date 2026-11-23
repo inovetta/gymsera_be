@@ -40,13 +40,12 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     });
 
     const gym = await tenantDb.models.Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Outbox Gym 1',
     });
 
     const branch = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Outbox Normal Branch',
       status: 'ACTIVE',
     });
@@ -104,13 +103,12 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     });
 
     const gym = await tenantDb.models.Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Outbox Gym 2',
     });
 
     const branch = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Outbox Crash Branch',
       status: 'ACTIVE',
     });

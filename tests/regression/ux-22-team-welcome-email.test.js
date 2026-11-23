@@ -19,7 +19,7 @@ describe('UX-22: team welcome e-mail', () => {
     const personas = await setupPersonas(h);
     tenantId = personas.owner.tenantId;
     const listing = await GymListing.findOne({ where: { tenantId } });
-    branchId = (await h.tenant1.models.Branch.findOne({ where: { gymListingId: listing.id } })).id;
+    branchId = (await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } })).id;
   });
   afterAll(async () => {
     await teardownTestDatabases();

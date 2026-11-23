@@ -432,21 +432,18 @@ const stepCreateBranch = async (ctx) => {
   let gym = await models.Gym.findOne();
   if (!gym) {
     gym = await models.Gym.create({
+      ...(listingId ? { id: listingId } : {}), // R-120 NEW-308 (option S): one id per business
       name: tenant.gymName,
       description: tenant.gymDescription || null,
       contactPhone: tenant.phone || null,
       genderType: tenant.genderType || 'MIXED',
       logoUrl: tenant.logoUrl || null,
       coverImageUrl: tenant.coverImageUrl || null,
-      gymListingId: listingId,
     });
     gymId = gym.id;
     console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${gymId})`);
   } else {
     gymId = gym.id;
-    if (listingId && !gym.gymListingId) {
-      await gym.update({ gymListingId: listingId }).catch(() => {});
-    }
   }
 
   // ── Initial Branch from onboarding data ────────────────────────────────────
@@ -511,7 +508,6 @@ const stepCreateBranch = async (ctx) => {
     console.log(`[Provisioning] Initial Branch created in '${dbName}' (id: ${branch.id})`);
   } else {
     const updates = {};
-    if (listingId && !branch.gymListingId) updates.gymListingId = listingId;
     if (b.name && !branch.branchName) updates.branchName = b.name;
     if (b.address && !branch.address) updates.address = b.address;
     // Only fill in if the branch has no photos of its own yet — never

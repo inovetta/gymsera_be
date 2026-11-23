@@ -86,7 +86,7 @@ const _report = async (tenant, tenantDb, branch) => {
     branch.billingLockedAt ? `locked on ${_day(branch.billingLockedAt)} (${branch.billingLockReason || 'no reason'})` : 'not locked'
   );
 
-  const listing = branch.gymListingId ? await GymListing.findByPk(branch.gymListingId, { attributes: ['id', 'status', 'cityId'] }) : null;
+  const listing = branch.gymId ? await GymListing.findByPk(branch.gymId, { attributes: ['id', 'status', 'cityId'] }) : null;
   const liveListing = listing && listing.status === 'ACTIVE' ? listing : null;
   const cityId = resolveBranchCityId(branch, liveListing, tenant);
   const city = cityId ? await City.findByPk(cityId, { attributes: ['id', 'name'] }) : null;
@@ -99,7 +99,7 @@ const _report = async (tenant, tenantDb, branch) => {
   const failing = checks.filter((c) => c.status === 'FAIL').map((c) => c.name);
   return {
     tenant: { id: tenant.id, name: tenant.businessName || tenant.gymName || null },
-    branch: { id: branch.id, name: branch.branchName || null, listingId: branch.gymListingId || null, listingStatus: listing?.status || null },
+    branch: { id: branch.id, name: branch.branchName || null, listingId: branch.gymId || null, listingStatus: listing?.status || null },
     checks,
     failing,
     live: failing.length === 0,

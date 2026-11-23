@@ -41,19 +41,17 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
       reservedSlots: 0,
     });
     const gym = await Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Grace Gym',
     });
 
     const branch1 = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Branch 1',
       status: 'ACTIVE',
     });
     const branch2 = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Branch 2',
       status: 'ACTIVE',
     });
@@ -106,28 +104,25 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
       reservedSlots: 0,
     });
     const gym = await Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Lock Gym',
     });
 
     const now = Date.now();
     const branchOld = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Branch Old',
       status: 'ACTIVE',
       createdAt: new Date(now - 30000),
     });
     const branchMid = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Branch Mid',
       status: 'ACTIVE',
       createdAt: new Date(now - 20000),
     });
     const branchNew = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Branch New',
       status: 'ACTIVE',
       createdAt: new Date(now - 10000),

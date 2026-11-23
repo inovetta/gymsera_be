@@ -31,7 +31,7 @@ beforeAll(async () => {
   const tenantDb = dbHarness.tenant1;
   tenantId = personas.owner.tenantId;
   const listing = await GymListing.findOne({ where: { tenantId } });
-  branchA = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  branchA = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
   branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
 
   const { Trainer } = tenantDb.models;

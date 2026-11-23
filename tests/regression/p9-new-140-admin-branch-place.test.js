@@ -89,7 +89,7 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
         packages: [{ name: 'Monthly', price: 3000, durationType: 'MONTHLY', durationValue: 1 }],
       });
     expect(res.status).toBe(201);
-    const branch = await h.tenant1.models.Branch.findOne({ where: { gymListingId: res.body.data.id } });
+    const branch = await h.tenant1.models.Branch.findOne({ where: { gymId: res.body.data.id } });
     expect(branch.googlePlaceId).toBe(PLACE);
   });
 

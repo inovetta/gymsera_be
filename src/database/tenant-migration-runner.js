@@ -1533,6 +1533,23 @@ const MIGRATIONS = [
       return out.skipped.length ? { skipped: true, reason: 'rename_conflict', conflicts: out.skipped } : null;
     },
   },
+  {
+    // R-120 NEW-308 (option S): one id per business. `businesses.id` is the `business_listings.id`, so the two link
+    // columns are dropped. No backfill (R-120): a database whose ids differ is recreated, never repaired.
+    // Undo (manual): ALTER TABLE `branches` ADD COLUMN `gym_listing_id` CHAR(36) NULL;
+    //   ALTER TABLE `businesses` ADD COLUMN `gym_listing_id` CHAR(36) NULL; DELETE FROM `schema_migrations` WHERE `version` = 31;
+    version: 31,
+    name: '031_business_one_id',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      await r.applyAll(sequelize, [
+        [r.dropColumn, { table: 'branches', column: 'gym_listing_id' }],
+        [r.dropColumn, { table: await businessTable(sequelize), column: 'gym_listing_id' }],
+      ]);
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

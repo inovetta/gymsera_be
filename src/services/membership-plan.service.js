@@ -51,9 +51,9 @@ const _tenantFromGymListing = async (gymListingId) => {
         if (branch) {
           tenantId = t.id;
           branchId = branch.id;
-          if (branch.gymListingId) {
+          if (branch.gymId) {
             listing = await GymListing.findOne({
-              where: { id: branch.gymListingId, status: 'ACTIVE' },
+              where: { id: branch.gymId, status: 'ACTIVE' },
               attributes: ['id', 'tenantId', 'title', 'branchId'],
             });
           }
@@ -127,13 +127,10 @@ const _syncMinPrice = async (tenantDb, gymId, { transaction } = {}) => {
       });
     }
 
-    // Find the GymListing linked to this tenant
-    const gym = await tenantDb.models.Gym.findOne({ attributes: ['gymListingId'] });
-    if (!gym || !gym.gymListingId) return;
-
+    // Option S (R-120 NEW-308): the business id is the listing id.
     await GymListing.update(
       { minPrice: featured ? parseFloat(featured.price) : null },
-      { where: { id: gym.gymListingId }, transaction }
+      { where: { id: gymId }, transaction }
     );
   } catch (err) {
     // Non-fatal: log and continue — minPrice sync failure shouldn't block the plan operation
@@ -210,7 +207,9 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
 
     let gym = await Gym.findOne();
     if (!gym && tenant.gymName) {
+      const firstListing = await GymListing.findOne({ where: { tenantId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
       gym = await Gym.create({
+        ...(firstListing ? { id: firstListing.id } : {}), // option S: the business id is the listing id
         name: tenant.gymName,
         description: tenant.gymDescription || null,
         contactPhone: tenant.phone || null,

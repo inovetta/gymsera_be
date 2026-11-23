@@ -277,7 +277,7 @@ describe('P3: the traveller city list carries each city centre', () => {
     const liveIn = async (tenantDb, tenantId, cityId) => {
       const listing = await GymListing.findOne({ where: { tenantId } });
       await listing.update({ status: 'ACTIVE', cityId });
-      const branch = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+      const branch = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
       await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false, cityId });
       await tenantDb.models.MembershipPlan.create({
         gymId: branch.gymId, branchId: branch.id, name: 'Monthly', price: 2500,

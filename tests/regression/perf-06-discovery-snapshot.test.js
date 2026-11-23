@@ -32,7 +32,7 @@ describe('PERF-06: discovery snapshot cache', () => {
     tenantId = personas.owner.tenantId;
     listing = await GymListing.findOne({ where: { tenantId } });
     await listing.update({ status: 'ACTIVE' });
-    branch = await h.tenant1.models.Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
     await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
     const MembershipPlan = h.tenant1.models.MembershipPlan;
     await MembershipPlan.create({

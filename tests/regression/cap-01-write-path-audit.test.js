@@ -39,14 +39,13 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
         reservedSlots: 0,
       });
       activeGym = await Gym.create({
-        gymListingId: listing.id,
+        id: listing.id,
         name: 'Audit Locked Gym',
       });
     }
 
     lockedBranch = await Branch.create({
       gymId: activeGym.id,
-      gymListingId: activeGym.gymListingId,
       branchName: 'Audit Locked Branch',
       status: 'ACTIVE',
       billingLockedAt: new Date(),

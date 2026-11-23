@@ -47,7 +47,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
       hostId: hostUser.id,
     });
     await Gym.create({
-      gymListingId: emptyListing.id,
+      id: emptyListing.id,
       name: 'Empty Gym',
     });
 
@@ -70,12 +70,11 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
       hostId: hostUser.id,
     });
     const gym = await Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Guarded Gym',
     });
     const branch = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Guarded Branch',
       status: 'ACTIVE',
     });
@@ -130,12 +129,11 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
         hostId: hostUser.id,
       });
       const gym = await Gym.create({
-        gymListingId: listing.id,
+        id: listing.id,
         name: `Property Gym ${i}`,
       });
       const branch = await Branch.create({
         gymId: gym.id,
-        gymListingId: listing.id,
         branchName: `Prop Branch ${i}`,
         status: 'ACTIVE',
       });
@@ -165,7 +163,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
           const activeListings = await GymListing.findAll({ where: { tenantId, status: 'ACTIVE' } });
           if (activeListings.length > 0) {
             const target = activeListings[Math.floor(Math.random() * activeListings.length)];
-            const gym = await Gym.findOne({ where: { gymListingId: target.id } });
+            const gym = await Gym.findOne({ where: { id: target.id } });
             await gymService.createBranch(
               tenantDb,
               tenantId,

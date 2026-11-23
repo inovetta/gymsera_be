@@ -24,7 +24,7 @@ describe('RBAC-04: Approval execution re-checks and atomicity (spec §12.5, §8.
     tenantId = personas.owner.tenantId;
     listing = await GymListing.findOne({ where: { tenantId } });
     const { Branch, ExpenseCategory } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await Branch.findOne({ where: { gymId: listing.id } });
     category = await ExpenseCategory.create({
       branchId: branch.id,
       name: 'Operations Category',
