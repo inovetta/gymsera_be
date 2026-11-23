@@ -38,7 +38,7 @@ describe('Phase 7 P6: traveller discovery', () => {
   const makeVisible = async (tenantDb, tenantId, { cityId, gymName, branchName, imagesJson, currency }) => {
     const listing = await GymListing.findOne({ where: { tenantId } });
     await listing.update({ status: 'ACTIVE', cityId });
-    const branch = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+    const branch = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
     await branch.update({
       status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false,
       cityId, branchName, imagesJson, currency,

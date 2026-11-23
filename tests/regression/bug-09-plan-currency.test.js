@@ -27,7 +27,7 @@ beforeAll(async () => {
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
   listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
-  first = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id }, order: [['createdAt', 'ASC']] });
+  first = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id }, order: [['createdAt', 'ASC']] });
   await first.update({ currency: 'PKR' });
   usd = await factories.createBranch(tenantDb, listing.id, { name: 'USD branch', currency: 'USD' });
   // created_at has 1-second precision; make "first" unambiguous rather than relying on test timing.

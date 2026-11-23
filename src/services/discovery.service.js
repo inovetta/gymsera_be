@@ -51,10 +51,10 @@ const _getTravelerVisibleListingIds = async () => {
         const { Branch } = tenantDb.models;
         const branches = await Branch.findAll({
           where: TRAVELLER_VISIBLE_BRANCH(),
-          attributes: ['id', 'gymListingId'],
+          attributes: ['id', 'gymId'],
         });
         for (const b of branches) {
-          if (b.gymListingId) listingIds.push(b.gymListingId);
+          if (b.gymId) listingIds.push(b.gymId);
         }
       } catch (err) {
         // Ignore unreachable DBs
@@ -196,7 +196,7 @@ const _buildAllActiveBranches = async () => {
         ]);
 
         for (const b of branches) {
-          const listing = b.gymListingId ? listingMap.get(b.gymListingId) : null;
+          const listing = b.gymId ? listingMap.get(b.gymId) : null;
           const gym = gymMap.get(b.gymId) || gyms[0];
 
           // Compute branch-specific minPrice dynamically based on public plans
@@ -251,7 +251,7 @@ const _buildAllActiveBranches = async () => {
             minPrice,
             // NEW-145: the price is in the branch's currency (GLB-02, BUG-09).
             currency: b.currency || DEFAULT_CURRENCY,
-            gymListingId: b.gymListingId || null,
+            gymListingId: b.gymId || null, // NEW-309 renames the key
             status: 'ACTIVE',
             createdAt: b.createdAt,
             city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
@@ -449,8 +449,8 @@ const getGym = async (id) => {
         const branch = await Branch.findByPk(id);
         if (branch) {
           branchRecord = branch;
-          if (branch.gymListingId) {
-            listing = await GymListing.findByPk(branch.gymListingId, {
+          if (branch.gymId) {
+            listing = await GymListing.findByPk(branch.gymId, {
               include: [
                 { model: City, as: 'city', attributes: ['id', 'name'] },
                 { model: Area, as: 'area', attributes: ['id', 'name'] },

@@ -141,14 +141,14 @@ async function createBranch(tenantDb, gymListingId, overrides = {}) {
   const BranchModel = tenantDb.models ? tenantDb.models.Branch : tenantDb.Branch;
   const GymModel = tenantDb.models ? tenantDb.models.Gym : tenantDb.Gym;
 
+  // R-120 NEW-308 (option S): the business row has the id of its business_listings row.
   let gymId = overrides.gymId;
   if (!gymId && GymModel) {
-    let gym = await GymModel.findOne();
+    let gym = gymListingId ? await GymModel.findByPk(gymListingId) : await GymModel.findOne();
     if (!gym) {
       gym = await GymModel.create({
-        id: uuidv4(),
+        id: gymListingId || uuidv4(),
         name: overrides.gymName || `Gym ${suffix}`,
-        gymListingId,
       });
     }
     gymId = gym.id;
@@ -159,7 +159,6 @@ async function createBranch(tenantDb, gymListingId, overrides = {}) {
   return BranchModel.create({
     id,
     gymId,
-    gymListingId,
     branchName,
     status: overrides.status || 'ACTIVE',
     timezone: overrides.timezone || 'Asia/Karachi',

@@ -45,11 +45,11 @@ const TenantDbManager = require('../database/TenantDbManager');
       for (const listing of listings) {
         checked++;
         const pointedBranch = await tenantDb.models.Branch.findByPk(listing.branchId);
-        const isStale = !pointedBranch || pointedBranch.gymListingId !== listing.id;
+        const isStale = !pointedBranch || pointedBranch.gymId !== listing.id;
         if (!isStale) continue;
 
         const realBranch = await tenantDb.models.Branch.findOne({
-          where: { gymListingId: listing.id, status: 'ACTIVE' },
+          where: { gymId: listing.id, status: 'ACTIVE' },
         });
         await listing.update({ branchId: realBranch ? realBranch.id : null });
         console.log(

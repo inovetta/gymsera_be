@@ -38,12 +38,11 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
       hostId: hostUser.id,
     });
     const gym = await Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Auto Deactivated Gym',
     });
     const branch = await Branch.create({
       gymId: gym.id,
-      gymListingId: listing.id,
       branchName: 'Sole Branch',
       status: 'ACTIVE',
     });

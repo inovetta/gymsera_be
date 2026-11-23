@@ -53,7 +53,6 @@ FROM organizations t
 JOIN (
   SELECT 'branches' AS table_name, 'id' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'business_id' AS column_name
-  UNION ALL SELECT 'branches' AS table_name, 'gym_listing_id' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'branch_name' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'address' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'city_id' AS column_name
@@ -101,7 +100,6 @@ JOIN (
   UNION ALL SELECT 'businesses' AS table_name, 'cover_image_url' AS column_name
   UNION ALL SELECT 'businesses' AS table_name, 'social_links_json' AS column_name
   UNION ALL SELECT 'businesses' AS table_name, 'images_json' AS column_name
-  UNION ALL SELECT 'businesses' AS table_name, 'gym_listing_id' AS column_name
   UNION ALL SELECT 'businesses' AS table_name, 'created_at' AS column_name
   UNION ALL SELECT 'businesses' AS table_name, 'updated_at' AS column_name
 ) e

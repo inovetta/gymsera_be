@@ -26,7 +26,7 @@ beforeAll(async () => {
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
   listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
-  branch1 = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  branch1 = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
 });
 
 afterAll(async () => {

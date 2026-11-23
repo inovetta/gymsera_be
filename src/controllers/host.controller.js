@@ -655,13 +655,13 @@ const createListing = async (req, res, next) => {
       // to a completely different one if this step were skipped for
       // 'reserve'/'none'.
       const gym = await req.tenantDb.models.Gym.create({
+        id: listing.id, // R-120 NEW-308 (option S): one id per business
         name: gymName,
         description: gymDescription || null,
         contactPhone: contactPhone || tenant.phone || null,
         genderType: genderType || 'MIXED',
         logoUrl: logoUrl || tenant.logoUrl || null,
         coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
-        gymListingId: listing.id,
       });
 
       let branch = null;
@@ -712,17 +712,8 @@ const createListing = async (req, res, next) => {
   }
 };
 
-/**
- * The tenant-DB gym of one organization. A gym from before organizations has no gymListingId; it
- * belongs to the tenant's first organization (same rule as gym.service.js#_syncGymListing).
- */
-const _organizationGym = async (tenantDb, listing) => {
-  const { Gym } = tenantDb.models;
-  const linked = await Gym.findOne({ where: { gymListingId: listing.id } });
-  if (linked) return linked;
-  const first = await GymListing.findOne({ where: { tenantId: listing.tenantId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
-  return first && first.id === listing.id ? Gym.findOne({ where: { gymListingId: null } }) : null;
-};
+/** The tenant-DB gym of one organization: option S (R-120 NEW-308), the same id as its listing. */
+const _organizationGym = async (tenantDb, listing) => tenantDb.models.Gym.findByPk(listing.id);
 
 /**
  * GET /host/listings/:id — one organization and its own gym details (Phase 7 P5, BUG-22: Edit
@@ -859,7 +850,7 @@ const deleteListing = async (req, res, next) => {
     if (belongsToCaller && req.tenantDb && req.tenantDb.models && req.tenantDb.models.Branch) {
       const branchCount = await req.tenantDb.models.Branch.count({
         where: {
-          gymListingId: id,
+          gymId: id,
           status: { [Op.in]: ['ACTIVE', 'INACTIVE'] },
         },
       });

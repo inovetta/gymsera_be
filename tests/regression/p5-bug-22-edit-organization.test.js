@@ -28,7 +28,7 @@ beforeAll(async () => {
   // whole seconds, so rows made in one test run would otherwise tie).
   const { sequelize: platformSql } = GymListing;
   await platformSql.query('UPDATE business_listings SET created_at = ? WHERE id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
-  await tenantDb.models.Gym.sequelize.query('UPDATE businesses SET created_at = ? WHERE gym_listing_id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
+  await tenantDb.models.Gym.sequelize.query('UPDATE businesses SET created_at = ? WHERE id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
   const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { tenantId: personas.owner.tenantId } });
   expect(updated).toBeGreaterThan(0);
 });
@@ -62,7 +62,7 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
 
   test('GET /host/listings/:id answers that organization and its own gym details', async () => {
     const { Gym } = tenantDb.models;
-    await Gym.update({ website: 'https://b.example.com' }, { where: { gymListingId: orgB.id } });
+    await Gym.update({ website: 'https://b.example.com' }, { where: { id: orgB.id } });
     await GymListing.update({ category: 'Yoga' }, { where: { id: orgB.id } });
 
     const res = await asPersona('owner').get(`/host/listings/${orgB.id}`);
@@ -85,7 +85,7 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
     expect(res.status).toBe(200);
 
     const { Gym } = tenantDb.models;
-    const gymB = await Gym.findOne({ where: { gymListingId: orgB.id } });
+    const gymB = await Gym.findOne({ where: { id: orgB.id } });
     expect(gymB).toMatchObject({
       name: 'P5 Org B Renamed', description: 'B description', contactEmail: 'b@example.com', website: 'https://b2.example.com',
     });
@@ -95,7 +95,7 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
 
     // Organization A and its gym are untouched.
     expect((await GymListing.findByPk(orgA.id)).title).toBe('P5 Org A');
-    const gymA = await Gym.findOne({ where: { gymListingId: orgA.id } });
+    const gymA = await Gym.findOne({ where: { id: orgA.id } });
     expect(gymA.name).toBe('P5 Org A');
     expect(gymA.website).not.toBe('https://b2.example.com');
     expect((await GymListing.findByPk(orgA.id)).category).not.toBe('CrossFit');
@@ -123,7 +123,7 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
     }
     expect((await asPersona('otherTenantOwner').get(`/host/listings/${orgA.id}`)).status).toBe(404);
     expect((await asPersona('otherTenantOwner').put(`/host/listings/${orgA.id}`, { website: 'https://x.example.com' })).status).toBe(404);
-    const gymA = await tenantDb.models.Gym.findOne({ where: { gymListingId: orgA.id } });
+    const gymA = await tenantDb.models.Gym.findOne({ where: { id: orgA.id } });
     expect(gymA.website).not.toBe('https://x.example.com');
   });
 });

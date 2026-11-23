@@ -50,7 +50,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       hostId: hostUser.id,
     });
     await Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Concurrency Gym',
     });
 
@@ -123,7 +123,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       hostId: hostUser.id,
     });
     await tenantDb.models.Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Del-Restore Gym',
     });
 
@@ -247,7 +247,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       hostId: hostUser.id,
     });
     await tenantDb.models.Gym.create({
-      gymListingId: donorListing.id,
+      id: donorListing.id,
       name: 'Donor Gym',
     });
 

@@ -29,7 +29,7 @@ describe('why-not-live: every live-gym condition, and which one fails', () => {
     city = await City.create({ name: 'WNL City', isActive: true });
     const listing = await GymListing.findOne({ where: { tenantId } });
     await listing.update({ status: 'ACTIVE', cityId: city.id });
-    branch = await h.tenant1.models.Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
     await branch.update({
       status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false, pausedAt: null,
       billingLockedAt: null, cityId: city.id, branchName: 'Why Not Live Downtown',

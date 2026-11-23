@@ -27,7 +27,7 @@ describe('NEW-187: host lists send the real plan name or null, never an invented
     app = await startTestServer();
     const { Branch, MembershipPlan, MemberSubscription, AttendanceLog } = h.tenant1.models;
     const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
-    branch = await Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await Branch.findOne({ where: { gymId: listing.id } });
     plan = await MembershipPlan.create({
       gymId: branch.gymId, branchId: branch.id, name: 'Gold Monthly', price: 3000,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',

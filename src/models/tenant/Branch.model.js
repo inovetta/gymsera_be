@@ -17,11 +17,11 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      // R-120 NEW-308 (option S): the business id IS the business_listings id, so the copy column is gone (tenant 031).
+      // Read-only alias kept for the response JSON until the API rename (NEW-309). Never use it in a `where`.
       gymListingId: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        field: 'gym_listing_id',
-        comment: 'Cross-DB reference to GymListing id on the platform DB',
+        type: DataTypes.VIRTUAL,
+        get() { return this.getDataValue('gymId') || null; },
       },
       branchName: {
         type: DataTypes.STRING(200),

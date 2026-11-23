@@ -17,7 +17,7 @@ describe('NEW-103: admin branch edit saves position and facilities', () => {
     db = h.tenant1;
     tenantId = personas.owner.tenantId;
     const listing = await GymListing.findOne({ where: { tenantId } });
-    branch = await db.models.Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await db.models.Branch.findOne({ where: { gymId: listing.id } });
   });
   afterAll(async () => {
     await teardownTestDatabases();

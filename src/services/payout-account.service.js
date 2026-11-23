@@ -86,8 +86,8 @@ const resolve = async ({ tenantId, organizationId = null }) => {
 /** The account for a branch (through its organization); branchId null → the tenant default. */
 const resolveForBranch = async (tenantDb, tenantId, branchId) => {
   if (!branchId) return resolve({ tenantId });
-  const branch = await tenantDb.models.Branch.findByPk(branchId, { attributes: ['id', 'gymListingId'] });
-  return resolve({ tenantId, organizationId: branch ? branch.gymListingId : null });
+  const branch = await tenantDb.models.Branch.findByPk(branchId, { attributes: ['id', 'gymId'] });
+  return resolve({ tenantId, organizationId: branch ? branch.gymId : null });
 };
 
 /** SEC-13: alert the owner (in-app, push, e-mail) that payout details changed. Never throws. */

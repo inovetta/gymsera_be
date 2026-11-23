@@ -65,7 +65,7 @@ async function createWorld() {
     db2: ctx.tenant2Db,
 
     async gym(db, name = `Org ${uuidv4().slice(0, 6)}`) {
-      return db.models.Gym.create({ id: uuidv4(), name, gymListingId: ctx.branch1.gymListingId || null });
+      return db.models.Gym.create({ id: uuidv4(), name });
     },
 
     async branch(db, { gymId, timezone = TZ, name } = {}) {

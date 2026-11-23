@@ -114,7 +114,7 @@ const line = (n = 74) => console.log('─'.repeat(n));
       let reservedTotal = 0;
       for (const l of listings) {
         const branchesHere = await tenantDb.models.Branch.count({
-          where: { status: 'ACTIVE', gymListingId: l.id },
+          where: { status: 'ACTIVE', gymId: l.id },
         });
         if (l.status !== 'INACTIVE') reservedTotal += l.reservedSlots;
         console.log(

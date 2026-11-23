@@ -61,9 +61,9 @@ const _resolveTenant = async (gymListingId) => {
         const branch = await Branch.findByPk(gymListingId);
         if (branch) {
           tenantId = t.id;
-          if (branch.gymListingId) {
+          if (branch.gymId) {
             listing = await GymListing.findOne({
-              where: { id: branch.gymListingId, status: 'ACTIVE' },
+              where: { id: branch.gymId, status: 'ACTIVE' },
               attributes: ['id', 'tenantId', 'title'],
             });
           }

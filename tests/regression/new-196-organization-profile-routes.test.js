@@ -40,7 +40,7 @@ beforeAll(async () => {
   team = await buildTwoBranchTeam(dbHarness, personas);
   firstOrg = await GymListing.findOne({ where: { tenantId: team.tenantId }, order: [['createdAt', 'ASC']] });
   secondOrg = await factories.createGymListing(team.tenantId, { title: 'Second Organization' });
-  secondGym = await dbHarness.tenant1.models.Gym.create({ name: 'Second Organization', gymListingId: secondOrg.id, genderType: 'MIXED' });
+  secondGym = await dbHarness.tenant1.models.Gym.create({ name: 'Second Organization', id: secondOrg.id, genderType: 'MIXED' });
   // listing.manage granted at one branch only: a Front Desk at branch A with an ALLOW override.
   branchScoped = await teamMember({
     tenantDb: dbHarness.tenant1, tenantId: team.tenantId, email: 'branch-listing@new196.test',

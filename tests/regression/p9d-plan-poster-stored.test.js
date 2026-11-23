@@ -40,7 +40,7 @@ beforeAll(async () => {
   const personas = await setupPersonas(h);
   tenantDb = h.tenant1;
   const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
-  const branch = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  const branch = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
   const gym = await tenantDb.models.Gym.findOne();
   plan = await tenantDb.models.MembershipPlan.create({
     gymId: gym.id, branchId: branch.id, name: 'Poster plan', durationType: 'MONTHLY', durationValue: 1,

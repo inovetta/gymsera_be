@@ -91,7 +91,7 @@ describe('PATCH /trainers/:id moving a trainer needs the permission at the targe
   beforeAll(async () => {
     const tenantId = personas.owner.tenantId;
     const listing = await GymListing.findOne({ where: { tenantId } });
-    branchA = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+    branchA = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
     branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B (stage2b)' });
     managerA = await teamMember({ tenantDb, tenantId, email: 'mgr-a@stage2b.test', roleKey: 'MANAGER', scopeType: 'BRANCH', branchIds: [branchA.id] });
     const u = await factories.createUser({ email: 'trainer@stage2b.test', role: 'MEMBER', fullName: 'Trainer' });

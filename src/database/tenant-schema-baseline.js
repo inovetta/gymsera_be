@@ -37,10 +37,9 @@ const ADDS = {
       member_subscriptions: ['created_by', 'created_by_role'],
       invoices: ['branch_id', 'created_by', 'created_by_role'],
       membership_plans: ['is_deactivated'],
-      branches: ['gym_listing_id', 'timezone'],
+      branches: ['timezone'], // `gym_listing_id` was added here and dropped by 031 (R-120 NEW-308)
       approval_requests: ['collected_by', 'collected_at', 'collection_method', 'collection_notes'],
       payments: ['business_date', 'idempotency_key', 'printed_at', 'printed_by'],
-      businesses: ['gym_listing_id'], // R-120: `gyms` until 030 (the snapshot resolves the old name)
     },
     indexes: { payments: ['payments_branch_business_date', 'payments_idempotency_unique'] },
   },
@@ -198,6 +197,8 @@ const PROBES = {
     return n ? missing(`${n} payment(s) without business_date`) : present();
   },
   5: async (s, seq) => {
+    // R-120 NEW-308: 031 drops both columns (one id per business), so a database without them has nothing left to fill.
+    if (!s.col('branches', 'gym_listing_id') && !s.col('businesses', 'gym_listing_id')) return present();
     if (!s.col('branches', 'gym_listing_id') || !s.col('businesses', 'gym_listing_id')) return missing('gym_listing_id not found');
     const n = await count(
       seq,
@@ -343,6 +344,13 @@ const PROBES = {
       if (s.col(t, 'gym_id')) return conflict(`${t} has both gym_id and business_id`);
     }
     if (s.hasTableExact('gyms')) return conflict('both gyms and businesses exist');
+    return present();
+  },
+  // 031 (R-120 NEW-308, option S): the two gym_listing_id link columns are gone.
+  31: async (s) => {
+    for (const [t, tbl] of [['branches', 'branches'], ['businesses', 'businesses']]) {
+      if (s.col(t, 'gym_listing_id')) return missing(`${tbl}.gym_listing_id still exists`);
+    }
     return present();
   },
 };
