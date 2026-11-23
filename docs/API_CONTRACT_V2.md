@@ -1234,6 +1234,27 @@ bodies take `organizationId` (was `tenantId`).
 | Team welcome e-mail and "You're now {role} at {gymName}" notification (`team.service.js:338-346,752`) | the organization name in `gymName`, branches as text in `scopeText` | Correct, but the payload key `gymName` follows §2 → `organizationName` |
 | Approval notification text (`approval.service.js:465`) | "at {branchName}" or "your gym" | One branch for a one-branch request; "your gym" for organization-wide requests (copy only) |
 
+### J10. `FirstBranch` is one schema everywhere (owner, final)
+
+The `FirstBranch` schema of A2 H2 (the branch-create body without `businessId`: `branchName`, `googlePlaceId`, `hours`,
+`facilitiesJson`, `imagesJson`, `packages`, plus the address, map pin and phone keys listed there) is the body shape
+for all of: `POST /organizations/:organizationId/first-business` (the first business of a new organization: its
+`firstBranch` key), `POST /host/businesses` (`firstBranch`), and `PATCH /host/businesses/:businessId/first-branch`
+(any subset). One validator, one set of keys. The flat first-branch keys of §4 row 46 (`address`, `latitude`,
+`longitude`, `kycDocumentsJson` branch data, `firstBranchDraft` input) are replaced by `firstBranch`.
+
+### J11. Business KYC documents list
+
+`GET /host/businesses/:businessId/kyc-documents` → **`{ documents: [BusinessKycDocument] }`** (item shape: A2 H3). Not a
+bare array. The admin `GET /admin/businesses/:businessId/documents` uses the same `{ documents: [...] }` wrapper.
+
+### J12. First-time host drafts are phone-only
+
+A first-time host's unfinished Become a Host / Add Business form is kept on the phone only. There is **no partial-save
+route** and no server draft: the server first sees the business when `POST /host/businesses` (or `POST
+/organizations/:organizationId/first-business`) arrives with a complete `firstBranch`. The held first branch
+(`firstBranchDraft`, A2 H2) exists only after that call and is edited through the PATCH route.
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1242,4 +1263,4 @@ bodies take `organizationId` (was `tenantId`).
 | 2026-11-22 | Amendment A1 (§10, owner G1-G11, G15, G16): admin list and review queue, organization detail, business wrapper, admin business documents, business quota, `businessDeleted`, `organizationName` / `businessName` for `tenantName` / `gymTitle`, capacity audit keys, refund-policy list, payout scope values, deep links, area-request groups, error codes. | Claude Code (Opus 5.5), session 166 |
 | 2026-11-22 | Amendment A2 (§11, owner): notification types `organization_*`, `FirstBranch` schema and nested Add Business body, business `kycDocuments` item (no storage keys; admin documents use it), `applyToAllBranches` on the refund-policy PUT, branch detail aligned with §3; new code `first_branch_already_built`. | Claude Code (Opus 5.5), session 166 |
 | 2026-11-23 | Amendment A3 (§12, owner): `organization_reactivated`; list keys `branches` / `businesses`; my-subscriptions rows with `branchId` + `businessId`; error-table rows listed; HostStatus key `area`; inbox `business { id, name }` + `branchName`; staff roles scoped ORG / BRANCH (`/me/staff-status`, staff invite) with the report of other responses; Add Business nested `firstBranch`. | Claude Code (Sonnet 5.5), session 166 |
-
+| 2026-11-23 | Amendment A3 addendum (§12 J10-J12, owner): one `FirstBranch` schema for first-business, Add Business and first-branch edit; business KYC list is `{ documents: [...] }`; first-time host drafts are phone-only (no partial-save contract). | Claude Code (Sonnet 5.5), session 167 |
