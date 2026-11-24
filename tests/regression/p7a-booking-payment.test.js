@@ -160,7 +160,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   describe('BUG-35: bank details are real or null', () => {
     const details = async () => {
-      const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`);
+      const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.businessId}/payment-details`);
       expect(res.status).toBe(200);
       return res.body.data.paymentDetails;
     };
@@ -188,11 +188,13 @@ describe('Phase 7 P7a: booking and payment', () => {
       await ctx.tenant1Db.models.Branch.update({ travelerVisibilityStatus: 'active' }, { where: { id: ctx.branch1.id } });
     });
 
-    const detail = (id) => asPersona('member').get(`/discovery/businesses/${id}`);
+    const detail = (id) => asPersona('member').get(`/discovery/branches/${id}`);
+    const businessDetail = (id) => asPersona('member').get(`/discovery/businesses/${id}`);
 
-    test('live: detail opens by branch id and by listing id', async () => {
+    test('live: the branch detail opens by branch id and the business detail by business id (one id, one meaning)', async () => {
       expect((await detail(ctx.branch1.id)).status).toBe(200);
-      expect((await detail(ctx.listing1.id)).status).toBe(200);
+      expect((await businessDetail(ctx.listing1.id)).status).toBe(200);
+      expect((await businessDetail(ctx.branch1.id)).status).toBe(404);
     });
 
     test('no entitled subscription: detail 404, payment details 404, quote and booking 409 gym_not_bookable', async () => {
@@ -201,7 +203,7 @@ describe('Phase 7 P7a: booking and payment', () => {
       expect(gone.status).toBe(404);
       expect(gone.body.code).toBe('gym_not_available');
       expect((await detail(ctx.listing1.id)).status).toBe(404);
-      expect((await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`)).status).toBe(404);
+      expect((await asPersona('member').get(`/discovery/businesses/${ctx.branch1.businessId}/payment-details`)).status).toBe(404);
 
       const q = await quote('member', body());
       expect(q.status).toBe(409);

@@ -210,14 +210,14 @@ describe('consumers use the resolver', () => {
     await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
     await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: orgB.id, detailsJson: ORG_DETAILS });
 
-    const byBranchB = await asPersona('member').get(`/discovery/businesses/${branchB.id}/payment-details`);
+    const byBranchB = await asPersona('member').get(`/discovery/businesses/${branchB.businessId}/payment-details`);
     expect(byBranchB.status).toBe(200);
     expect(byBranchB.body.data.paymentDetails).toEqual(ORG_DETAILS);
 
     const byOrgB = await asPersona('member').get(`/discovery/businesses/${orgB.id}/payment-details`);
     expect(byOrgB.body.data.paymentDetails).toEqual(ORG_DETAILS);
 
-    const byBranch1 = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`);
+    const byBranch1 = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.businessId}/payment-details`);
     expect(byBranch1.body.data.paymentDetails).toEqual(DEFAULT_DETAILS);
   });
 

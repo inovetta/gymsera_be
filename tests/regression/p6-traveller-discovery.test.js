@@ -31,9 +31,9 @@ describe('Phase 7 P6: traveller discovery', () => {
     expect(res.status).toBe(200);
     return res.body.data;
   };
-  const listed = async () => (await get('/gyms?page=1&limit=50')).gyms;
+  const listed = async () => (await get('/branches?page=1&limit=50')).branches;
   const cityIds = async () => (await get('/cities')).cities.map((c) => c.id);
-  const orgs = async () => (await get('/organizations?limit=50')).organizations;
+  const orgs = async () => (await get('/businesses?limit=50')).businesses;
 
   const makeVisible = async (tenantDb, organizationId, { cityId, gymName, branchName, imagesJson, currency }) => {
     const listing = await GymListing.findOne({ where: { organizationId } });
@@ -95,7 +95,7 @@ describe('Phase 7 P6: traveller discovery', () => {
       expect((await listed()).map((g) => g.id)).not.toContain(t2.branch.id);
       expect(await cityIds()).not.toContain(otherCity.id);
       expect((await orgs()).map((o) => o.organizationId)).not.toContain(t2.organizationId);
-      const branches = await get(`/organizations/${t2.gym.id}/branches`).catch(() => null);
+      const branches = await get(`/businesses/${t2.gym.id}/branches`).catch(() => null);
       expect(branches === null || branches.branches.length === 0).toBe(true);
     });
 
@@ -130,8 +130,8 @@ describe('Phase 7 P6: traveller discovery', () => {
       const g2 = (await listed()).find((g) => g.id === t2.branch.id);
       expect(g2).toMatchObject({ averageRating: 0, reviewCount: 0 });
 
-      const detail = await get(`/gyms/${t1.branch.id}`);
-      expect(detail.gym).toMatchObject({ averageRating: 4, reviewCount: 1 });
+      const detail = await get(`/branches/${t1.branch.id}`);
+      expect(detail.branch).toMatchObject({ averageRating: 4, reviewCount: 1 });
 
       const o1 = (await orgs()).find((o) => o.organizationId === t1.organizationId);
       expect(o1).toMatchObject({ averageRating: 4, reviewCount: 1 });
@@ -178,11 +178,11 @@ describe('Phase 7 P6: traveller discovery', () => {
 
     test('list, detail and organization branches use the rule', async () => {
       const gyms = await listed();
-      expect(gyms.find((g) => g.id === t1.branch.id).title).toBe('Alpha Fitness Club · Downtown');
-      expect(gyms.find((g) => g.id === t2.branch.id).title).toBe('Beta Gym');
-      expect((await get(`/gyms/${t2.branch.id}`)).gym.title).toBe('Beta Gym');
-      const { branches } = await get(`/organizations/${t1.gym.id}/branches`);
-      expect(branches.map((b) => b.title)).toEqual(['Alpha Fitness Club · Downtown']);
+      expect(gyms.find((g) => g.id === t1.branch.id).displayName).toBe('Alpha Fitness Club · Downtown');
+      expect(gyms.find((g) => g.id === t2.branch.id).displayName).toBe('Beta Gym');
+      expect((await get(`/branches/${t2.branch.id}`)).branch.displayName).toBe('Beta Gym');
+      const { branches } = await get(`/businesses/${t1.gym.id}/branches`);
+      expect(branches.map((b) => b.displayName)).toEqual(['Alpha Fitness Club · Downtown']);
     });
   });
 
@@ -191,7 +191,7 @@ describe('Phase 7 P6: traveller discovery', () => {
       const gyms = await listed();
       expect(gyms.find((g) => g.id === t1.branch.id)).toMatchObject({ minPrice: 2500, currency: 'USD' });
       expect(gyms.find((g) => g.id === t2.branch.id)).toMatchObject({ currency: 'PKR' });
-      expect((await get(`/gyms/${t1.branch.id}`)).gym.currency).toBe('USD');
+      expect((await get(`/branches/${t1.branch.id}`)).branch.currency).toBe('USD');
     });
   });
 });

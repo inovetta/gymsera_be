@@ -123,7 +123,7 @@ describe.each([
   });
 
   test('travellers still get the bank details', async () => {
-    const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`);
+    const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.businessId}/payment-details`);
     expect(res.status).toBe(200);
     expect(res.body.data.paymentDetails).toMatchObject({ accountNumber: DETAILS.accountNumber });
   });

@@ -36,7 +36,7 @@ describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () =>
     expect(res.status).toBe(200);
     return res.body.data.cities.map((c) => c.id);
   };
-  const detailStatus = async () => (await request(server).get(`/api/v1/discovery/businesses/${branch.id}`)).status;
+  const detailStatus = async () => (await request(server).get(`/api/v1/discovery/branches/${branch.id}`)).status;
   const onlySubscription = async (fields) => {
     await TenantSubscription.destroy({ where: { organizationId } });
     return createTenantSubscription(organizationId, { branchCount: 10, ...fields });

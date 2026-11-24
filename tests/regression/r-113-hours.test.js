@@ -190,9 +190,9 @@ describe('H6: every branch object reads the schedule', () => {
   });
 
   test('the gym detail\'s branches', async () => {
-    const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}`);
+    const res = await asPersona('member').get(`/discovery/branches/${ctx.branch1.id}`);
     expect(res.status).toBe(200);
-    const b = res.body.data.gym.branches.find((x) => x.id === ctx.branch1.id);
+    const b = res.body.data.business.branches.find((x) => x.id === ctx.branch1.id);
     for (const f of H6_FIELDS) expect(b).toHaveProperty(f);
     expect(b.openingTime).toBe('06:00');
   });
