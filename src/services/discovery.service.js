@@ -651,7 +651,13 @@ const getBranchDetail = async (branchId) => {
   return {
     branch: card,
     business: businessOnly,
-    membershipPlans: membershipPlans.filter((p) => p.branchId == null || p.branchId === branchId),
+    // BUG-09: a plan says which currency it is sold in: its own branch's, and at this branch a business-wide plan is sold in this branch's currency.
+    membershipPlans: membershipPlans
+      .filter((p) => p.branchId == null || p.branchId === branchId)
+      .map((p) => {
+        const plain = typeof p.toJSON === 'function' ? p.toJSON() : { ...p };
+        return { ...plain, currency: plain.branchId ? plain.currency : card.currency };
+      }),
   };
 };
 

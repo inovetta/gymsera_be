@@ -164,7 +164,7 @@ describe('OBS-03: request rate, latency and errors by route pattern', () => {
   test('a parameterised route is labelled by its pattern, not the value', async () => {
     await request(app).get('/api/v1/discovery/businesses/11111111-2222-3333-4444-555555555555');
     const text = (await scrape()).text;
-    expect(text).toMatch(/route="\/api\/v1\/discovery\/gyms\/:id"/);
+    expect(text).toMatch(/route="\/api\/v1\/discovery\/businesses\/:businessId"/);
     expect(text).not.toContain('11111111-2222-3333-4444-555555555555');
   });
 

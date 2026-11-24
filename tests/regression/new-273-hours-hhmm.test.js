@@ -40,7 +40,7 @@ describe('NEW-273: branch hours are HH:MM, never HH:MM:SS', () => {
   test('gym detail (travellers)', async () => {
     const res = await asPersona('anonymous').get(`/discovery/branches/${branch.id}`);
     expect(res.status).toBe(200);
-    const b = res.body.data.business.branches.find((x) => x.id === branch.id);
+    const b = [res.body.data.branch].find((x) => x.id === branch.id);
     expect(b.openingTime).toBe('06:00');
     expect(b.closingTime).toBe('22:30');
   });

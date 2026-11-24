@@ -153,12 +153,11 @@ const getPaymentDetails = async (req, res, next) => {
 const listReviews = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 10, 50);
-    const { id } = req.params;
+    const { businessId: id } = req.params;
     const listing = await discoveryService.getGymListingByIdentifier(id);
-    if (!listing) return res.status(404).json({ success: false, message: 'Gym not found' });
-
-    // :id may be a listing id or a branch id; scope to the branch only in the latter case.
-    const branchId = listing.id === id ? undefined : id;
+    // One id, one meaning (contract rule 4): this route takes a business id; a branch's reviews are under /discovery/branches/:branchId/reviews.
+    if (!listing || listing.id !== id) return res.status(404).json({ success: false, message: 'Business not found' });
+    const branchId = undefined;
     const viewerUserId = req.user ? req.user.sub || req.user.id : null; // NEW-256
     const result = await discoveryService.listReviews(listing.id, branchId, { page, limit, offset, viewerUserId });
     return sendSuccess(res, { reviews: result.reviews }, 'OK', 200, result.pagination);
