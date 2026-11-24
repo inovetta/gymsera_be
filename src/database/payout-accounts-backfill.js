@@ -28,6 +28,10 @@ const _hasTable = async (sequelize, table) =>
     )
   ).length > 0;
 
+// R-120 NEW-309: the organization column of payout_accounts is tenant_id until p035 and organization_id after it (a database
+// built from the models has the new name before this p027 backfill runs).
+const _orgColumn = async (sequelize) => ((await _hasColumn(sequelize, 'payout_accounts', 'tenant_id')) ? 'tenant_id' : 'organization_id');
+
 const _hasColumn = async (sequelize, table, column) =>
   (
     await sequelize.query(
@@ -74,7 +78,7 @@ const planPayoutAccountBackfill = async (sequelize) => {
   const existing = new Set();
   if (await _hasTable(sequelize, 'payout_accounts')) {
     const have = await sequelize.query(
-      'SELECT tenant_id AS organizationId FROM payout_accounts WHERE scope_key = ? AND provider = ?',
+      `SELECT ${await _orgColumn(sequelize)} AS organizationId FROM payout_accounts WHERE scope_key = ? AND provider = ?`,
       { replacements: [TENANT_SCOPE, PROVIDER], type: QueryTypes.SELECT }
     );
     have.forEach((r) => existing.add(r.organizationId));
@@ -100,7 +104,7 @@ const applyPayoutAccountBackfill = async (sequelize, plan) => {
   for (const item of plan.copy) {
     await sequelize.query(
       `INSERT IGNORE INTO payout_accounts
-         (id, tenant_id, business_id, scope_key, provider, status, details_json, details_updated_at, created_at, updated_at)
+         (id, ${await _orgColumn(sequelize)}, business_id, scope_key, provider, status, details_json, details_updated_at, created_at, updated_at)
        VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())`,
       { replacements: [crypto.randomUUID(), item.organizationId, TENANT_SCOPE, PROVIDER, JSON.stringify(item.detailsJson), item.detailsUpdatedAt] }
     );

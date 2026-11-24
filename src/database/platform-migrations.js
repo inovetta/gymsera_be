@@ -1431,6 +1431,10 @@ const PLATFORM_MIGRATIONS = [
       if (context?.dryRun === true) return null;
       const r = require('./rename-helpers');
       const col = (table, from, to, comment) => [r.renameColumn, { table, from, to, comment }];
+      // R-120 NEW-309: `organization_id` meant the business on these two tables until this step. A database built from the models
+      // already has `organization_id` for the ORGANIZATION (renamed from tenant_id by p035), so the rename only runs on a table that
+      // still has `tenant_id` (the old shape).
+      const oldShape = (table, _t, from, to, comment) => [async (seq, args) => ((await r.columnInfo(seq, table, 'tenant_id')) ? r.renameColumn(seq, args) : { statements: [] }), { table, from, to, comment }];
       const idx = (table, from, to) => [r.renameIndex, { table, from, to }];
       const out = await r.applyAll(sequelize, [
         [r.renameTable, { from: 'gym_listings', to: 'business_listings', comment: 'One row per business: its public, traveller-facing half (name, photos, area, approval, reserved branch units). Same id as the tenant businesses row.' }],
@@ -1458,9 +1462,9 @@ const PLATFORM_MIGRATIONS = [
         idx('member_subscription_index', 'user_gym_memberships_tenant_id', 'member_subscription_index_tenant_id'),
         idx('member_subscription_index', 'user_gym_memberships_subscription_id', 'member_subscription_index_subscription_id'),
         idx('member_subscription_index', 'user_gym_memberships_gym_listing_id', 'member_subscription_index_business_id'),
-        col('payout_accounts', 'organization_id', 'business_id', 'The business this account is for; NULL = organization-wide.'),
+        oldShape('payout_accounts', 'payout_accounts', 'organization_id', 'business_id', 'The business this account is for; NULL = organization-wide.'),
         idx('payout_accounts', 'payout_accounts_organization_id', 'payout_accounts_business_id'),
-        col('access_devices', 'organization_id', 'business_id', 'The business of the device\'s branch.'),
+        oldShape('access_devices', 'access_devices', 'organization_id', 'business_id', 'The business of the device\'s branch.'),
         col('capacity_events', 'listing_id', 'business_id', 'The business whose reserved_slots changed; NULL for organization-wide events.'),
         idx('capacity_events', 'capacity_events_listing_id', 'capacity_events_business_id'),
         col('platform_packages', 'max_organizations', 'max_businesses', 'Businesses allowed on this legacy package.'),
