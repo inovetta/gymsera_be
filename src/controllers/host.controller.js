@@ -424,6 +424,22 @@ const uploadListingStagingImages = async (req, res, next) => {
   }
 };
 
+/**
+ * R-120 A3 J13: stateless image upload for a first-time host, who has no organization yet. Stores the files under the
+ * caller's own folder and returns the URLs; saves nothing about a business, an organization or a draft.
+ */
+const uploadStagingImages = async (req, res, next) => {
+  try {
+    if (req.user?.role === 'PLATFORM_ADMIN') throw createError('Forbidden', 403);
+    if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
+    const userId = req.user.sub || req.user.id;
+    const urls = await storageService.uploadImages(req.files, `users/${userId}/staging`);
+    return sendSuccess(res, { urls }, 'Images uploaded');
+  } catch (err) {
+    next(err);
+  }
+};
+
 const createListing = async (req, res, next) => {
   try {
     const tenantId = req.user.tenantId;
@@ -1647,6 +1663,7 @@ module.exports = {
   getOrganizationQuota,
   getListings,
   uploadListingStagingImages,
+  uploadStagingImages,
   createListing,
   getListing,
   updateListing,
