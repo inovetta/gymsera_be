@@ -131,9 +131,9 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     };
 
     test('social-only account + random password is REJECTED (401 invalid_credentials)', async () => {
-      const { user, tenant } = await createSocialHost();
+      const { user, tenant, listing } = await createSocialHost();
 
-      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
+      const res = await api('patch', `/organizations/me/businesses/${listing.id}/profile`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -151,9 +151,9 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     });
 
     test('social-only account with no credentials is REJECTED (401 reauth_required)', async () => {
-      const { user, tenant } = await createSocialHost();
+      const { user, tenant, listing } = await createSocialHost();
 
-      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
+      const res = await api('patch', `/organizations/me/businesses/${listing.id}/profile`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -170,7 +170,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
 
       const spy = jest.spyOn(authService, 'verifyReauthCredential').mockResolvedValue(true);
 
-      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
+      const res = await api('patch', `/organizations/me/businesses/${listing.id}/profile`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -199,7 +199,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         Object.assign(new Error('That Google account does not match your GymsEra account'), { statusCode: 401 })
       );
 
-      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
+      const res = await api('patch', `/organizations/me/businesses/${listing.id}/profile`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -213,9 +213,9 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     });
 
     test('normal password account with correct password is ACCEPTED (200)', async () => {
-      const { user, tenant } = await createPasswordHost();
+      const { user, tenant, listing } = await createPasswordHost();
 
-      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
+      const res = await api('patch', `/organizations/me/businesses/${listing.id}/profile`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -233,9 +233,9 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     });
 
     test('normal password account with incorrect password is REJECTED (401 invalid_credentials)', async () => {
-      const { user, tenant } = await createPasswordHost();
+      const { user, tenant, listing } = await createPasswordHost();
 
-      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
+      const res = await api('patch', `/organizations/me/businesses/${listing.id}/profile`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {

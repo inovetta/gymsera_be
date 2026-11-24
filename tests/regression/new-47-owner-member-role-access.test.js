@@ -114,16 +114,16 @@ afterAll(async () => {
 });
 
 const reqGet = (path, token) =>
-  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
+  request(app).get(`/api/v1${path.replace('{businessId}', team.branchA.businessId)}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
 const reqPost = (path, token, body = {}) =>
-  request(app).post(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
+  request(app).post(`/api/v1${path.replace('{businessId}', team.branchA.businessId)}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
 
 const reqPatch = (path, token, body = {}) =>
-  request(app).patch(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
+  request(app).patch(`/api/v1${path.replace('{businessId}', team.branchA.businessId)}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
 
 const reqDelete = (path, token, body = {}) =>
-  request(app).delete(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
+  request(app).delete(`/api/v1${path.replace('{businessId}', team.branchA.businessId)}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
 
 describe('NEW-47: tenant owner with account role MEMBER access', () => {
   describe('Direct utility checks', () => {
