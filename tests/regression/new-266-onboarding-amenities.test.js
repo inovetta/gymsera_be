@@ -42,12 +42,12 @@ const draftHost = async () => {
 describe('NEW-266: Become a Host keeps the amenities', () => {
   test('gym-profile stores firstBranchDraft.facilitiesJson; a later save without it keeps it', async () => {
     const { tenant, as } = await draftHost();
-    const saved = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'G', firstBranchDraft: { facilitiesJson: AMENITIES } });
+    const saved = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { facilitiesJson: AMENITIES } });
     expect(saved.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
     // The plans step sends its own fields only: the amenities stay.
-    await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'G', firstBranchDraft: { plans: [{ name: 'Monthly', price: 10 }] } });
+    await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { plans: [{ name: 'Monthly', price: 10 }] } });
     await tenant.reload();
     expect(tenant.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
     // GET /tenants/me returns them for resume.
@@ -57,7 +57,7 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
   test('a list of names only: not a list, a non-text item or an over-long name → 422, nothing saved', async () => {
     const { tenant, as } = await draftHost();
     for (const bad of ['Parking', [{ name: 'x' }], ['x'.repeat(101)]]) {
-      const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'G', firstBranchDraft: { facilitiesJson: bad } });
+      const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { facilitiesJson: bad } });
       expect(res.status).toBe(422);
     }
     await tenant.reload();

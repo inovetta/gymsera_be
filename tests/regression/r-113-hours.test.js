@@ -223,10 +223,10 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
 
   test('gym-profile checks firstBranchDraft.hoursJson and stores it with its summary pair', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'G', firstBranchDraft: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
+    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
-    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'G', firstBranchDraft: { hoursJson: WEEKLY } });
+    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { hoursJson: WEEKLY } });
     expect(ok.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft.hoursJson.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);

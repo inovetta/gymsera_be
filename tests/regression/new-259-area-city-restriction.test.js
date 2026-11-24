@@ -260,14 +260,14 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
       ownerUserId: host.user.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
     });
     expectNotListed(await host.as().post(`/organizations/${tenant.id}/first-business`).send({
-      gymName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: gulberg.id },
+      firstBusinessName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: gulberg.id },
     }));
     // No cityId in the branch data: the business's city is used.
     expectNotListed(await host.as().post(`/organizations/${tenant.id}/first-business`).send({
-      gymName: 'Area Gym', firstBranchDraft: { address: 'x', areaId: gulberg.id },
+      firstBusinessName: 'Area Gym', firstBranchDraft: { address: 'x', areaId: gulberg.id },
     }));
     const ok = await host.as().post(`/organizations/${tenant.id}/first-business`).send({
-      gymName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: ringRoad.id },
+      firstBusinessName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: ringRoad.id },
     });
     expect(ok.status).toBe(200);
   });

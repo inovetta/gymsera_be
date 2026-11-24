@@ -35,7 +35,7 @@ describe('FLOW-04: re-apply after rejection', () => {
       kycStatus: 'REJECTED',
       rejectionReason: 'The ID photo is unreadable',
       rejectedAt: new Date(Date.now() - 100 * 86400000),
-      gymName: 'Iron Works',
+      firstBusinessName: 'Iron Works',
       address: 'Main Boulevard',
       onboardingStep: 5,
       kycDocumentsJson: DOCS,
@@ -55,7 +55,7 @@ describe('FLOW-04: re-apply after rejection', () => {
     expect(res.body.data.tenant.id).toBe(tenant.id);
     const row = await Tenant.findByPk(tenant.id);
     expect(row.status).toBe('DRAFT');
-    expect(row.gymName).toBe('Iron Works');
+    expect(row.firstBusinessName).toBe('Iron Works');
     expect(row.address).toBe('Main Boulevard');
     expect(row.rejectionReason).toBe('The ID photo is unreadable');
     expect(row.kycStatus).toBe('PENDING');
@@ -99,7 +99,7 @@ describe('FLOW-04: re-apply after rejection', () => {
     const edit = await request(app)
       .post(`${API}/organizations/${tenant.id}/first-business`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ gymName: 'Iron Works 2' });
+      .send({ firstBusinessName: 'Iron Works 2' });
     expect(edit.status).toBe(200);
     const fin = await request(app)
       .post(`${API}/organizations/${tenant.id}/finalize`)
@@ -108,7 +108,7 @@ describe('FLOW-04: re-apply after rejection', () => {
     expect(fin.status).toBe(200);
     const row = await Tenant.findByPk(tenant.id);
     expect(row.status).toBe('PENDING_REVIEW');
-    expect(row.gymName).toBe('Iron Works 2');
+    expect(row.firstBusinessName).toBe('Iron Works 2');
   });
 
   test('a reopened application is not swept by the 90-day KYC retention, a still-rejected one is', async () => {

@@ -76,27 +76,27 @@ describe('R-112: brand name', () => {
 
   test('C3: gym-profile saves the brand (cleaned) and the gym name; GET /tenants/me returns both', async () => {
     const { tenant, as } = await draftHost({ organizationName: '' });
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: '  Iron   Works  ', gymName: 'Iron Works Saddar' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: '  Iron   Works  ', firstBusinessName: 'Iron Works Saddar' });
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe('Iron Works');
     expect(tenant.firstBusinessName).toBe('Iron Works Saddar');
     const me = (await as().get('/organizations/me')).body.data.tenant;
     expect(me.organizationName).toBe('Iron Works');
-    expect(me.gymName).toBe('Iron Works Saddar');
+    expect(me.firstBusinessName).toBe('Iron Works Saddar');
   });
 
   test.each([['Gold\'s Gym'], ['F45 Training'], ['24/7 Fitness'], ['Fit+ Club'], ['Zorba & Sons']])('C1: real brands pass: %s', async (name) => {
     const { tenant, as } = await draftHost();
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, gymName: 'Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, firstBusinessName: 'Gym' });
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe(name);
   });
 
   test.each(BAD_NAMES)('C1 / C3: gym-profile refuses %s → %s, nothing saved', async (name, code) => {
-    const { tenant, as } = await draftHost({ organizationName: 'Kept Brand', gymName: 'Kept Gym' });
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, gymName: 'Other Gym' });
+    const { tenant, as } = await draftHost({ organizationName: 'Kept Brand', firstBusinessName: 'Kept Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, firstBusinessName: 'Other Gym' });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe(code);
     if (code === 'brand_name_blocked') expect(JSON.stringify(res.body).toLowerCase()).not.toContain('fuck');
@@ -107,7 +107,7 @@ describe('R-112: brand name', () => {
 
   test('C3: without organizationName gym-profile behaves as before (old apps)', async () => {
     const { tenant, as } = await draftHost({ organizationName: 'Old Person\'s Gym Business' });
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'Old Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'Old Gym' });
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe('Old Person\'s Gym Business');
@@ -115,15 +115,15 @@ describe('R-112: brand name', () => {
   });
 
   test('C3: the draft first branch name follows the gym name, unless the host typed another one', async () => {
-    const { tenant, as } = await draftHost({ gymName: 'First Name', firstBranchDraft: { name: 'First Name', address: 'Road 1' } });
-    await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Brand One', gymName: 'Second Name' });
+    const { tenant, as } = await draftHost({ firstBusinessName: 'First Name', firstBranchDraft: { name: 'First Name', address: 'Road 1' } });
+    await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Brand One', firstBusinessName: 'Second Name' });
     await tenant.reload();
     expect(tenant.firstBranchDraft.name).toBe('Second Name');
     expect(tenant.firstBranchDraft.address).toBe('Road 1');
     expect(tenant.onboardingStep).toBeLessThanOrEqual(2); // saving names does not skip the address step
 
-    const typed = await draftHost({ gymName: 'Gym A', firstBranchDraft: { name: 'Gym A Saddar' } });
-    await typed.as().post(`/organizations/${typed.tenant.id}/first-business`).send({ gymName: 'Gym B' });
+    const typed = await draftHost({ firstBusinessName: 'Gym A', firstBranchDraft: { name: 'Gym A Saddar' } });
+    await typed.as().post(`/organizations/${typed.tenant.id}/first-business`).send({ firstBusinessName: 'Gym B' });
     await typed.tenant.reload();
     expect(typed.tenant.firstBranchDraft.name).toBe('Gym A Saddar');
   });
@@ -155,15 +155,15 @@ describe('R-112: brand name', () => {
   });
 
   test('C5: GET /host/status returns organizationName (null while empty)', async () => {
-    const empty = await draftHost({ organizationName: '', gymName: 'Status Gym' });
+    const empty = await draftHost({ organizationName: '', firstBusinessName: 'Status Gym' });
     let body = (await empty.as().get('/host/status')).body.data;
     expect(body.organizationName).toBeNull();
-    expect(body.gymName).toBe('Status Gym');
+    expect(body.firstBusinessName).toBe('Status Gym');
 
-    await empty.as().post(`/organizations/${empty.tenant.id}/first-business`).send({ organizationName: 'Status Brand', gymName: 'Status Gym' });
+    await empty.as().post(`/organizations/${empty.tenant.id}/first-business`).send({ organizationName: 'Status Brand', firstBusinessName: 'Status Gym' });
     body = (await empty.as().get('/host/status')).body.data;
     expect(body.organizationName).toBe('Status Brand');
-    expect(body.gymName).toBe('Status Gym');
+    expect(body.firstBusinessName).toBe('Status Gym');
   });
 
   test('C4 / C7: an old stored name sent back unchanged is not re-checked (the host can still edit the e-mail)', async () => {

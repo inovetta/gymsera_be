@@ -95,8 +95,8 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
   };
 
   const baseProfile = {
-    gymName: 'UX24 Gym',
-    gymDescription: 'A gym used to pin the signup contract between clients.',
+    firstBusinessName: 'UX24 Gym',
+    firstBusinessDescription: 'A gym used to pin the signup contract between clients.',
     genderType: 'MIXED',
     address: 'Main Boulevard, Peshawar',
     latitude: 34.01,
@@ -222,16 +222,16 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
 
       // step 1 (saveStep1Data): name, description, gender only
       const s1 = await post({
-        gymName: baseProfile.gymName,
-        gymDescription: baseProfile.gymDescription,
+        firstBusinessName: baseProfile.firstBusinessName,
+        firstBusinessDescription: baseProfile.firstBusinessDescription,
         genderType: 'FEMALE_ONLY',
       });
       expect(s1.status).toBe(200);
 
       // step 2 (saveStep2Data): address + branch data
       const s2 = await post({
-        gymName: baseProfile.gymName,
-        gymDescription: baseProfile.gymDescription,
+        firstBusinessName: baseProfile.firstBusinessName,
+        firstBusinessDescription: baseProfile.firstBusinessDescription,
         genderType: 'FEMALE_ONLY',
         address: baseProfile.address,
         latitude: baseProfile.latitude,
@@ -242,8 +242,8 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
 
       // step 5 (saveStep5Plans): same branch data plus plans
       const s5 = await post({
-        gymName: baseProfile.gymName,
-        gymDescription: baseProfile.gymDescription,
+        firstBusinessName: baseProfile.firstBusinessName,
+        firstBusinessDescription: baseProfile.firstBusinessDescription,
         genderType: 'FEMALE_ONLY',
         address: baseProfile.address,
         latitude: baseProfile.latitude,
