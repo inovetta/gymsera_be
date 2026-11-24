@@ -201,7 +201,6 @@ router.post(
 
 // GET /host/listings/:listingId/branches — branches scoped to an org listing
 router.get('/businesses/:businessId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
-router.get('/gyms/:businessId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
 
 // GET /host/branches/:branchId/listing-content — get all storefront fields
 router.get(
