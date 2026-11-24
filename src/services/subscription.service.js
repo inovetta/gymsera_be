@@ -268,7 +268,7 @@ const subscribe = async (userId, { planId, businessId, branchId, autoRenew, sour
     organizationId,
     businessId: gymListing.id,
     subscriptionId: subscription.id,
-    gymName: gymListing.name,
+    businessName: gymListing.name,
     planName: plan.name,
     startDate,
     endDate,
@@ -570,20 +570,20 @@ const applyRenewal = async (models, subscriptionId, planId, customStartDate = nu
   try {
     const user = await User.findByPk(sub.userId, { attributes: ['id', 'email', 'fullName'] });
     if (user) {
-      const gymName = (index && index.gymName) || 'your gym';
+      const businessName = (index && index.businessName) || 'your gym';
       // 1. In-app notification, WebSocket broadcast, and FCM push
       await notificationsService.createNotification({
         userId: user.id,
         role: 'traveler',
         type: 'subscription',
         title: 'Subscription Renewed',
-        message: `Your ${plan.name} at ${gymName} has been renewed until ${newEndDate}.`,
+        message: `Your ${plan.name} at ${businessName} has been renewed until ${newEndDate}.`,
         deepLink: '/traveler/subscriptions',
         metadataJson: {
           event: 'subscription_renewed',
           subscriptionId: sub.id,
           planName: plan.name,
-          gymName,
+          businessName,
           endDate: newEndDate,
         },
       }).catch((notifErr) => {
@@ -594,7 +594,7 @@ const applyRenewal = async (models, subscriptionId, planId, customStartDate = nu
       await emailService.sendSubscriptionRenewedEmail(
         user.email,
         user.fullName,
-        gymName,
+        businessName,
         plan.name,
         newEndDate
       ).catch((mailErr) => {

@@ -507,8 +507,8 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      const { gymName, gymDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
-      if (!gymName) throw createError('gymName is required', 400);
+      const { businessName, businessDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
+      if (!businessName) throw createError('businessName is required', 400);
       // NEW-259: a real area belongs to the city sent. NEW-265 (A4, R-109 F5): or a pending request of the
       // organization's city (the one saved below), linked to the listing and to its first branch.
       const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
@@ -600,8 +600,8 @@ const createListing = async (req, res, next) => {
         organizationId,
         cityId: targetCityId,
         ...areaValues,
-        name: gymName,
-        description: gymDescription || null,
+        name: businessName,
+        description: businessDescription || null,
         genderType: genderType || 'MIXED',
         logoUrl: logoUrl || tenant.logoUrl || null,
         coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
@@ -629,7 +629,7 @@ const createListing = async (req, res, next) => {
             reservedSlotsAfter: 1,
             actorUserId: req.user.sub || req.user.id,
             actorType: 'HOST',
-            reason: `Organization "${gymName}" created with a reserved slot (build later)`,
+            reason: `Organization "${businessName}" created with a reserved slot (build later)`,
             idempotencyKey: `slot_attribute_reserve:${listing.id}`,
           },
           { transaction: platformTx }
@@ -652,7 +652,7 @@ const createListing = async (req, res, next) => {
             reservedSlotsAfter: slotDonorListing.reservedSlots - 1,
             actorUserId: req.user.sub || req.user.id,
             actorType: 'HOST',
-            reason: `1 unbuilt slot released to new organization "${gymName}" (${listing.id})`,
+            reason: `1 unbuilt slot released to new organization "${businessName}" (${listing.id})`,
             idempotencyKey: `slot_transfer:new_org:${listing.id}`,
           },
           { transaction: platformTx }
@@ -671,8 +671,8 @@ const createListing = async (req, res, next) => {
       // 'reserve'/'none'.
       const gym = await req.tenantDb.models.Gym.create({
         id: listing.id, // R-120 NEW-308 (option S): one id per business
-        name: gymName,
-        description: gymDescription || null,
+        name: businessName,
+        description: businessDescription || null,
         contactPhone: contactPhone || tenant.phone || null,
         genderType: genderType || 'MIXED',
         logoUrl: logoUrl || tenant.logoUrl || null,
@@ -687,7 +687,7 @@ const createListing = async (req, res, next) => {
           req.tenantDb,
           organizationId,
           {
-            branchName: gymName,
+            branchName: businessName,
             address,
             addressLine1: address,
             cityId: targetCityId,
@@ -710,7 +710,7 @@ const createListing = async (req, res, next) => {
             transaction: platformTx,
             skipCapacityCheck: true,
             skipCapacityEvent: !!slotDonorListing,
-            reason: `Initial branch "${gymName}" created with new organization`,
+            reason: `Initial branch "${businessName}" created with new organization`,
           }
         );
         branch = branchResult.branch;
@@ -764,7 +764,7 @@ const updateListing = async (req, res, next) => {
       throw createError('Organization not found or access denied', 404);
     }
 
-    const { gymName, gymDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
+    const { businessName, businessDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
     // Phase 7 P5 (BUG-22): the rest of Edit Organization, for this organization only.
     // category and establishedYear live on the organization; the gym has no columns for them.
     const { category, establishedYear, contactEmail, website, imagesJson } = req.body;
@@ -781,8 +781,8 @@ const updateListing = async (req, res, next) => {
     }
 
     const updates = {};
-    if (gymName !== undefined) updates.name = gymName;
-    if (gymDescription !== undefined) updates.description = gymDescription;
+    if (businessName !== undefined) updates.name = businessName;
+    if (businessDescription !== undefined) updates.description = businessDescription;
     if (genderType !== undefined) updates.genderType = genderType;
     if (cityId !== undefined) updates.cityId = cityId;
     Object.assign(updates, areaRequests.rowValues(areaChoice) || {});
@@ -798,7 +798,7 @@ const updateListing = async (req, res, next) => {
 
     // NEW-196 (R-89): every organization edit is in the platform audit log with its actor (field
     // names only, no values), in the same transaction: an edit that cannot be audited is not saved.
-    const fields = ['gymName', 'gymDescription', 'genderType', 'cityId', 'areaId', 'areaRequestId', 'logoUrl', 'coverImageUrl',
+    const fields = ['businessName', 'businessDescription', 'genderType', 'cityId', 'areaId', 'areaRequestId', 'logoUrl', 'coverImageUrl',
       'contactPhone', 'latitude', 'longitude', 'category', 'establishedYear', 'contactEmail', 'website', 'imagesJson']
       .filter((f) => req.body[f] !== undefined);
     await GymListing.sequelize.transaction(async (transaction) => {
@@ -818,8 +818,8 @@ const updateListing = async (req, res, next) => {
     const gym = await _organizationGym(req.tenantDb, listing);
     if (gym) {
       const gymUpdates = {};
-      if (gymName !== undefined) gymUpdates.name = gymName;
-      if (gymDescription !== undefined) gymUpdates.description = gymDescription;
+      if (businessName !== undefined) gymUpdates.name = businessName;
+      if (businessDescription !== undefined) gymUpdates.description = businessDescription;
       if (genderType !== undefined) gymUpdates.genderType = genderType;
       if (contactPhone !== undefined) gymUpdates.contactPhone = contactPhone || null;
       if (logoUrl !== undefined) gymUpdates.logoUrl = logoUrl || null;

@@ -820,7 +820,7 @@ const collectionAction = async (tenantDb, paymentIds, staffUserId) => {
 };
 
 // ── POST /payments/:id/fail (webhook / gateway callback) ──────────────────────
-const markPaymentFailed = async (tenantDb, paymentId, gymName) => {
+const markPaymentFailed = async (tenantDb, paymentId, businessName) => {
   const { Payment } = tenantDb.models;
 
   const payment = await Payment.findByPk(paymentId);
@@ -834,7 +834,7 @@ const markPaymentFailed = async (tenantDb, paymentId, gymName) => {
   try {
     const user = await User.findByPk(payment.userId, { attributes: ['id', 'email', 'fullName'] });
     if (user) {
-      const formattedGymName = gymName || 'your gym';
+      const formattedGymName = businessName || 'your gym';
       const formattedAmount = payment.amount;
       const formattedCurrency = payment.currency || 'PKR';
 
@@ -851,7 +851,7 @@ const markPaymentFailed = async (tenantDb, paymentId, gymName) => {
           paymentId: payment.id,
           amount: formattedAmount,
           currency: formattedCurrency,
-          gymName: formattedGymName,
+          businessName: formattedGymName,
         },
       }).catch((notifErr) => {
         console.warn('[Notification Error] Failed to create PAYMENT_FAILED notification:', notifErr.message);

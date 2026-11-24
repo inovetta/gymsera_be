@@ -138,10 +138,10 @@ const _processTenant = async (organizationId, tenantDb) => {
       // Get gym name from platform index
       const index = await UserGymMembership.findOne({
         where: { subscriptionId: sub.id },
-        attributes: ['gymName'],
+        attributes: ['businessName'],
       });
 
-      const gymName = index?.gymName || 'your gym';
+      const businessName = index?.businessName || 'your gym';
 
       // 1. In-app notification, WebSocket broadcast, and FCM push
       await notificationsService.createNotification({
@@ -149,12 +149,12 @@ const _processTenant = async (organizationId, tenantDb) => {
         role: 'traveler',
         type: 'expiry',
         title: 'Plan Expiring Soon',
-        message: `Your membership at ${gymName} expires on ${sub.endDate}. Renew now!`,
+        message: `Your membership at ${businessName} expires on ${sub.endDate}. Renew now!`,
         deepLink: '/traveler/subscriptions',
         metadataJson: {
           event: 'subscription_expiring_soon',
           subscriptionId: sub.id,
-          gymName,
+          businessName,
           endDate: sub.endDate,
         },
       }).catch((notifErr) => {
@@ -165,7 +165,7 @@ const _processTenant = async (organizationId, tenantDb) => {
       await emailService.sendSubscriptionExpiringSoonEmail(
         user.email,
         user.fullName,
-        gymName,
+        businessName,
         sub.endDate
       ).catch((mailErr) => {
         console.warn('[Email Error] Failed to send SUBSCRIPTION_EXPIRING_SOON email:', mailErr.message);

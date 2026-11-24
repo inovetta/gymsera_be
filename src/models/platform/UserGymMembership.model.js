@@ -42,7 +42,7 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       // Denormalised fields for fast listing without hitting tenant DB
-      gymName: {
+      businessName: {
         field: 'business_name', // R-120 NEW-306 (p033)
         type: DataTypes.STRING(200),
         allowNull: true,
