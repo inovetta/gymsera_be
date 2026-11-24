@@ -281,9 +281,9 @@ router.delete(
   require('../controllers/me-biometrics.controller').withdraw
 );
 
-router.get('/saved-gyms', meController.getSavedGyms);
-router.post('/saved-gyms/:businessId', validate.allowBody([]), meController.saveGym);
-router.delete('/saved-gyms/:businessId', validate.allowBody([]), meController.unsaveGym);
+router.get('/saved-businesses', meController.getSavedGyms);
+router.post('/saved-businesses/:businessId', validate.allowBody([]), meController.saveGym);
+router.delete('/saved-businesses/:businessId', validate.allowBody([]), meController.unsaveGym);
 
 /**
  * @swagger

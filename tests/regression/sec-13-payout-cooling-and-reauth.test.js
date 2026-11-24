@@ -43,8 +43,8 @@ describe('SEC-13: Payout Account Changes: Re-auth, Owner Notification, and Cooli
     await teardownTestDatabases();
   });
 
-  test('PATCH /gyms/profile with paymentDetailsJson without password returns 401 reauth_required', async () => {
-    const res = await asPersona('owner').patch('/gyms/profile', {
+  test('PATCH /organizations/me/businesses/{businessId}/profile with paymentDetailsJson without password returns 401 reauth_required', async () => {
+    const res = await asPersona('owner').patch('/organizations/me/businesses/{businessId}/profile', {
       paymentDetailsJson: {
         bankName: 'Standard Chartered',
         accountTitle: 'Attacker Account',
@@ -56,8 +56,8 @@ describe('SEC-13: Payout Account Changes: Re-auth, Owner Notification, and Cooli
     expect(res.body.code).toBe('reauth_required');
   });
 
-  test('PATCH /gyms/profile with paymentDetailsJson and incorrect password returns 401 invalid_credentials', async () => {
-    const res = await asPersona('owner').patch('/gyms/profile', {
+  test('PATCH /organizations/me/businesses/{businessId}/profile with paymentDetailsJson and incorrect password returns 401 invalid_credentials', async () => {
+    const res = await asPersona('owner').patch('/organizations/me/businesses/{businessId}/profile', {
       paymentDetailsJson: {
         bankName: 'Standard Chartered',
         accountTitle: 'Attacker Account',
@@ -71,7 +71,7 @@ describe('SEC-13: Payout Account Changes: Re-auth, Owner Notification, and Cooli
   });
 
   test('Non-authorized persona (cleaner) attempting to update paymentDetailsJson returns 403 Forbidden', async () => {
-    const res = await asPersona('cleaner').patch('/gyms/profile', {
+    const res = await asPersona('cleaner').patch('/organizations/me/businesses/{businessId}/profile', {
       paymentDetailsJson: {
         bankName: 'HBL',
         accountTitle: 'Cleaner Rogue Account',
@@ -85,7 +85,7 @@ describe('SEC-13: Payout Account Changes: Re-auth, Owner Notification, and Cooli
 
   test('Updating paymentDetailsJson with valid re-auth stamps paymentDetailsUpdatedAt and sends owner notification', async () => {
     // Default password for test persona users created by harness is 'Password123!'
-    const res = await asPersona('owner').patch('/gyms/profile', {
+    const res = await asPersona('owner').patch('/organizations/me/businesses/{businessId}/profile', {
       paymentDetailsJson: {
         bankName: 'Habib Bank Limited',
         accountTitle: 'Alpha Fitness Main',

@@ -98,7 +98,7 @@ describe('SEC-04: OTP and the other auth routes', () => {
 
 describe('SEC-04: public discovery search', () => {
   test('moderate per-IP limit with Retry-After; other IPs and non-discovery routes are unaffected', async () => {
-    const get = (n) => request(server).get('/api/v1/discovery/gyms').set(ip(n));
+    const get = (n) => request(server).get('/api/v1/discovery/branches').set(ip(n));
     for (let i = 0; i < 3; i++) expect((await get(31)).status).toBe(200);
     const limited = await get(31);
     expect(limited.status).toBe(429);

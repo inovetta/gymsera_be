@@ -89,7 +89,7 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
     expect(foundInDiscovery).toBeFalsy();
 
     // 4. Verify host cannot bypass policy by republishing visibility
-    const hostUpdateRes = await asPersona('owner').patch(`/gyms/branches/${branch.id}`, {
+    const hostUpdateRes = await asPersona('owner').patch(`/organizations/me/branches/${branch.id}`, {
       travelerVisibilityStatus: 'active',
     });
     expect(hostUpdateRes.status).toBe(403);

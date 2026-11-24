@@ -73,8 +73,8 @@ describe('UX-22: team welcome e-mail', () => {
     expect(res.body.data.tempPassword.length).toBeGreaterThanOrEqual(8);
   });
 
-  test('POST /gyms/staff behaves the same', async () => {
-    const res = await asPersona('owner').post('/gyms/staff', {
+  test('POST /organizations/me/staff behaves the same', async () => {
+    const res = await asPersona('owner').post('/organizations/me/staff', {
       fullName: 'Legacy Path',
       email: 'ux22.staff@example.test',
       designation: 'Receptionist',

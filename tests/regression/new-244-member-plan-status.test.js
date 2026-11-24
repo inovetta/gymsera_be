@@ -1,5 +1,5 @@
 /**
- * NEW-244: GET /gyms/members (the CMS Members list) reports each member's plan status the way the
+ * NEW-244: GET /organizations/me/members (the CMS Members list) reports each member's plan status the way the
  * mobile app's branch member list shows it, not only the platform account status.
  *
  * Owner report (2026-11-13): branch "savvvv" had four members; the CMS Status column said "Active"
@@ -102,7 +102,7 @@ const getMembers = (query = '') =>
 const byId = (res) => new Map(res.body.data.members.map((row) => [row.id, row]));
 const ours = (res) => res.body.data.members.filter((row) => row.email.endsWith('@new244.test'));
 
-describe('NEW-244: GET /gyms/members reports the plan status like the app', () => {
+describe('NEW-244: GET /organizations/me/members reports the plan status like the app', () => {
   test('each member carries the plan status the app shows', async () => {
     const res = await getMembers(`?branchId=${branch.id}&limit=100`);
     expect(res.status).toBe(200);

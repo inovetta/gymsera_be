@@ -86,8 +86,8 @@ describe('Integration Test Harness & Factories', () => {
       expect(resOwner.body).toHaveProperty('success');
     }
 
-    // 4. Manager call to /gyms/branches
-    const resManager = await asPersona('manager').get('/gyms/branches');
+    // 4. Manager call to /organizations/me/branches
+    const resManager = await asPersona('manager').get('/organizations/me/branches');
     expect([200, 403, 404]).toContain(resManager.status);
   });
 });

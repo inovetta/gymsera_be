@@ -340,7 +340,7 @@ describe('A5 / A9 rule 4: the area a traveller sees', () => {
   const cache = () => require('../../src/services/discovery-cache.service');
   const gyms = async () => {
     cache().invalidate();
-    const res = await asPersona('anonymous').get('/discovery/gyms?page=1&limit=50');
+    const res = await asPersona('anonymous').get('/discovery/branches?page=1&limit=50');
     expect(res.status).toBe(200);
     const list = res.body.data.gyms || res.body.data.items || res.body.data;
     return new Map(list.map((g) => [g.branchId || g.id, g]));

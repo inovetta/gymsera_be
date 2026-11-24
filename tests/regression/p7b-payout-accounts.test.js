@@ -2,7 +2,7 @@
  * P7b (R-73, R-94, NEW-217): payout accounts belong to the TENANT (the business), not to one
  * organization.
  *
- * Before: the CMS Payouts page read and saved bank details through GET / PATCH /gyms/profile
+ * Before: the CMS Payouts page read and saved bank details through GET / PATCH /organizations/me/businesses/{businessId}/profile
  * (cms `gym/payouts/page.tsx`), an organization-profile endpoint that loads the tenant's first
  * gym (`gym.service.js#getProfile` / `_getOrCreateGym`) and needs listing.manage (NEW-62); the
  * details were a single tenants.payment_details_json value with no room for an organization
@@ -12,7 +12,7 @@
  * payout or a traveller checkout for a branch uses its organization's account if one exists,
  * otherwise the tenant default. The launch API exposes only the tenant default:
  * GET / PUT /host/payout-account (owner only: payouts.bank.manage; re-auth; SEC-13 cooling).
- * /gyms/profile keeps reading and writing the same tenant default for released app builds.
+ * /organizations/me/businesses/{businessId}/profile keeps reading and writing the same tenant default for released app builds.
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
@@ -210,14 +210,14 @@ describe('consumers use the resolver', () => {
     await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
     await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: orgB.id, detailsJson: ORG_DETAILS });
 
-    const byBranchB = await asPersona('member').get(`/discovery/gyms/${branchB.id}/payment-details`);
+    const byBranchB = await asPersona('member').get(`/discovery/businesses/${branchB.id}/payment-details`);
     expect(byBranchB.status).toBe(200);
     expect(byBranchB.body.data.paymentDetails).toEqual(ORG_DETAILS);
 
-    const byOrgB = await asPersona('member').get(`/discovery/gyms/${orgB.id}/payment-details`);
+    const byOrgB = await asPersona('member').get(`/discovery/businesses/${orgB.id}/payment-details`);
     expect(byOrgB.body.data.paymentDetails).toEqual(ORG_DETAILS);
 
-    const byBranch1 = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}/payment-details`);
+    const byBranch1 = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`);
     expect(byBranch1.body.data.paymentDetails).toEqual(DEFAULT_DETAILS);
   });
 
@@ -243,8 +243,8 @@ describe('consumers use the resolver', () => {
     expect(res.body.code).toBe('no_payout_destination');
   });
 
-  test('/gyms/profile (released app builds) reads and writes the same tenant default', async () => {
-    const save = await asPersona('owner').patch('/gyms/profile', { paymentDetailsJson: DEFAULT_DETAILS, password: PASSWORD });
+  test('/organizations/me/businesses/{businessId}/profile (released app builds) reads and writes the same tenant default', async () => {
+    const save = await asPersona('owner').patch('/organizations/me/businesses/{businessId}/profile', { paymentDetailsJson: DEFAULT_DETAILS, password: PASSWORD });
     expect(save.status).toBe(200);
     expect(save.body.data.gym.paymentDetailsJson).toEqual(DEFAULT_DETAILS);
     expect(save.body.data.gym.paymentDetailsUpdatedAt).toBeTruthy();
@@ -255,7 +255,7 @@ describe('consumers use the resolver', () => {
 
     const viaNew = await asPersona('owner').get('/host/payout-account');
     expect(viaNew.body.data.account.details).toEqual(DEFAULT_DETAILS);
-    const viaOld = await asPersona('owner').get('/gyms/profile');
+    const viaOld = await asPersona('owner').get('/organizations/me/businesses/{businessId}/profile');
     expect(viaOld.body.data.gym.paymentDetailsJson).toEqual(DEFAULT_DETAILS);
   });
 });

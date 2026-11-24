@@ -395,7 +395,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
   describe('Branch Lifecycle: /api/v1/gyms/branches', () => {
     it('only allows Host/Owner to create a branch (branch.create)', async () => {
       // Owner is allowed (validation error 422 if input missing, never 403)
-      const ownerRes = await asPersona('owner').post('/gyms/branches', {
+      const ownerRes = await asPersona('owner').post('/organizations/me/branches', {
         branchName: 'Downtown Expansion',
         address: 'Sector C',
       });
@@ -404,7 +404,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
 
       // OrgAdmin, Manager, Desk, Trainer, Cleaner are strictly forbidden from branch creation
       for (const persona of ['orgAdmin', 'manager', 'frontDesk', 'trainer', 'cleaner']) {
-        const res = await asPersona(persona).post('/gyms/branches', {
+        const res = await asPersona(persona).post('/organizations/me/branches', {
           branchName: 'Unauthorized Branch',
         });
         expect(res.status).toBe(403);

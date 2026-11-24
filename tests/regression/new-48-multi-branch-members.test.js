@@ -1,5 +1,5 @@
 /**
- * NEW-48: GET /gyms/members for a multi-branch Branch Manager.
+ * NEW-48: GET /organizations/me/members for a multi-branch Branch Manager.
  *
  * Verifies:
  * 1. Multi-branch Manager (3 branches) sees members across all 3 branches without query branchId.
@@ -137,7 +137,7 @@ const getMembers = (token, query = '') =>
     .set('Authorization', `Bearer ${token}`)
     .set('X-Organization-Id', organizationId);
 
-describe('NEW-48: GET /gyms/members multi-branch access and permission enforcement', () => {
+describe('NEW-48: GET /organizations/me/members multi-branch access and permission enforcement', () => {
   test('manager of three branches sees members at all three', async () => {
     const res = await getMembers(managerThree.token);
     expect(res.status).toBe(200);

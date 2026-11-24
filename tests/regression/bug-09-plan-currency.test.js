@@ -98,7 +98,7 @@ describe('BUG-09: plan payloads carry the branch currency', () => {
   });
 
   test('discovery gym detail of the USD branch: its plans are USD', async () => {
-    const res = await asPersona('anonymous').get(`/discovery/gyms/${usd.id}`);
+    const res = await asPersona('anonymous').get(`/discovery/businesses/${usd.id}`);
     expect(res.status).toBe(200);
     const c = byId(res.body.data.membershipPlans);
     expect(c[usdPlan.id]).toBe('USD');

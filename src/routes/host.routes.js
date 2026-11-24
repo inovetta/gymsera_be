@@ -80,12 +80,12 @@ router.delete('/branches/:branchId/expenses/:expenseId', authenticate, tenantCon
 router.get('/status', authenticate, hostController.getHostStatus);
 router.get('/today-summary', authenticate, authorize('GYM_HOST'), hostController.getTodaySummary);
 router.get('/branch-quota', authenticate, authorize('GYM_HOST'), hostController.getBranchQuota);
-router.get('/organization-quota', authenticate, authorize('GYM_HOST'), hostController.getOrganizationQuota);
-router.get('/listings', authenticate, ownerOrListingManager({ ownerNeedsContext: false }), hostController.getListings);
+router.get('/business-quota', authenticate, authorize('GYM_HOST'), hostController.getOrganizationQuota);
+router.get('/businesses', authenticate, ownerOrListingManager({ ownerNeedsContext: false }), hostController.getListings);
 // R-120 A3 J13: a first-time host has no organization yet; any signed-in user may upload. Stateless (stores files, saves no draft).
 router.post('/staging-images', authenticate, refusePlatformAdmin('staging_images_not_for_platform_admins', 'Platform admins do not upload host images.'), upload.images('images', 10), upload.handleMulterError, validate.allowBody([], { stage: 1 }), hostController.uploadStagingImages);
 router.post(
-  '/listings/staging-images',
+  '/businesses/staging-images',
   authenticate,
   ownerOrListingManager({ ownerNeedsContext: false }),
   upload.images('images', 10),
@@ -94,13 +94,13 @@ router.post(
 );
 // NEW-140 (P9): the first branch's location may come from Google (CMS New Organization), with its place id.
 // NEW-282: a retry with the same Idempotency-Key answers the first result (no second brand / slot).
-router.post('/listings', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, idempotency(), validate.strict([...gymsValidators.branchLocation, ...gymsValidators.listingFacilities], { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'closingTime', 'genderType', 'businessDescription', 'businessName', 'hours', 'images', 'logoUrl', 'openingTime', 'packages'] }), hostController.createListing);
+router.post('/businesses', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, idempotency(), validate.strict([...gymsValidators.branchLocation, ...gymsValidators.listingFacilities], { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'closingTime', 'genderType', 'businessDescription', 'businessName', 'hours', 'images', 'logoUrl', 'openingTime', 'packages'] }), hostController.createListing);
 // Phase 7 P5 (BUG-22): one organization and its own gym details, for Edit Organization.
-router.get('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), hostController.getListing);
-router.put('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'businessDescription', 'businessName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
-router.patch('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'businessDescription', 'businessName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
-router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
-router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toBusinessId']), hostController.transferReservedSlots);
+router.get('/businesses/:businessId', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), hostController.getListing);
+router.put('/businesses/:businessId', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'businessDescription', 'businessName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
+router.patch('/businesses/:businessId', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'businessDescription', 'businessName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
+router.delete('/businesses/:businessId', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
+router.post('/businesses/:businessId/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toBusinessId']), hostController.transferReservedSlots);
 router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody([]), hostController.restoreBranch);
 // P5b item 2 (R-81): pause hides a branch from travellers and changes nothing else; who may change the branch's settings may pause it.
 router.post('/branches/:branchId/pause', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('branch.settings'), validate.allowBody([]), hostController.pauseBranch);
@@ -200,12 +200,12 @@ router.post(
 );
 
 // GET /host/listings/:listingId/branches — branches scoped to an org listing
-router.get('/listings/:listingId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
+router.get('/businesses/:businessId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
 router.get('/gyms/:businessId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
 
 // GET /host/branches/:branchId/listing-content — get all storefront fields
 router.get(
-  '/branches/:branchId/listing-content',
+  '/branches/:branchId/public-content',
   authenticate,
   authorize('GYM_HOST'),
   tenantContext,
@@ -215,7 +215,7 @@ router.get(
 
 // PATCH /host/branches/:branchId/listing-content — content fields only (photos, amenities)
 router.patch(
-  '/branches/:branchId/listing-content',
+  '/branches/:branchId/public-content',
   authenticate,
   authorize('GYM_HOST'),
   tenantContext,

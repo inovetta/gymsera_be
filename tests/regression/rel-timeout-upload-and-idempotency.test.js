@@ -42,7 +42,7 @@ describe('2A Blocker 1: Request Timeout & Upload Exemption & Idempotency Protect
 
       // Normal routes must NOT be classified as uploads
       expect(isUploadRoute('/api/v1/organizations/me')).toBe(false);
-      expect(isUploadRoute('/api/v1/host/listings')).toBe(false);
+      expect(isUploadRoute('/api/v1/host/businesses')).toBe(false);
       expect(isUploadRoute('/api/v1/auth/login')).toBe(false);
       expect(isUploadRoute('/api/v1/payments')).toBe(false);
       expect(isUploadRoute('/api/v1/branches')).toBe(false);

@@ -160,7 +160,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   describe('BUG-35: bank details are real or null', () => {
     const details = async () => {
-      const res = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}/payment-details`);
+      const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`);
       expect(res.status).toBe(200);
       return res.body.data.paymentDetails;
     };
@@ -188,7 +188,7 @@ describe('Phase 7 P7a: booking and payment', () => {
       await ctx.tenant1Db.models.Branch.update({ travelerVisibilityStatus: 'active' }, { where: { id: ctx.branch1.id } });
     });
 
-    const detail = (id) => asPersona('member').get(`/discovery/gyms/${id}`);
+    const detail = (id) => asPersona('member').get(`/discovery/businesses/${id}`);
 
     test('live: detail opens by branch id and by listing id', async () => {
       expect((await detail(ctx.branch1.id)).status).toBe(200);
@@ -201,7 +201,7 @@ describe('Phase 7 P7a: booking and payment', () => {
       expect(gone.status).toBe(404);
       expect(gone.body.code).toBe('gym_not_available');
       expect((await detail(ctx.listing1.id)).status).toBe(404);
-      expect((await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}/payment-details`)).status).toBe(404);
+      expect((await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`)).status).toBe(404);
 
       const q = await quote('member', body());
       expect(q.status).toBe(409);

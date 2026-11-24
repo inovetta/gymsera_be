@@ -43,7 +43,7 @@ describe('P5b item 7: the plan still bills in the store after an organization go
   test('deleting an organization\'s last branch (iOS plan) → organizationDeleted and the App Store notice', async () => {
     await usePlatform('IOS');
     const { branches: [branch] } = await orgWith('Store Last Branch', 1);
-    const res = await asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
+    const res = await asPersona('owner').delete(`/organizations/me/branches/${branch.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
     expect(res.status).toBe(200);
     expect(res.body.data.organizationDeleted).toBe(true);
     expect(res.body.data.storePlanNotice).toEqual({
@@ -56,7 +56,7 @@ describe('P5b item 7: the plan still bills in the store after an organization go
   test('deleting an organization (Android plan) → the Google Play notice', async () => {
     await usePlatform('ANDROID');
     const { listing } = await orgWith('Store Org', 2);
-    const res = await asPersona('owner').delete(`/host/listings/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
+    const res = await asPersona('owner').delete(`/host/businesses/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
     expect(res.status).toBe(200);
     expect(res.body.data.storePlanNotice).toEqual({
       platform: 'ANDROID',
@@ -68,7 +68,7 @@ describe('P5b item 7: the plan still bills in the store after an organization go
   test('deleting a branch that is not the organization\'s last → no notice', async () => {
     await usePlatform('IOS');
     const { branches: [branch] } = await orgWith('Store Not Last', 2);
-    const res = await asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: PASSWORD });
+    const res = await asPersona('owner').delete(`/organizations/me/branches/${branch.id}`, { password: PASSWORD });
     expect(res.status).toBe(200);
     expect(res.body.data.organizationDeleted).toBe(false);
     expect(res.body.data.storePlanNotice).toBeNull();
@@ -77,7 +77,7 @@ describe('P5b item 7: the plan still bills in the store after an organization go
   test('a plan that does not bill through a store (bank transfer) → no notice', async () => {
     await usePlatform('MANUAL');
     const { listing } = await orgWith('Store Manual', 1);
-    const res = await asPersona('owner').delete(`/host/listings/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
+    const res = await asPersona('owner').delete(`/host/businesses/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
     expect(res.status).toBe(200);
     expect(res.body.data.storePlanNotice).toBeNull();
   });
@@ -85,7 +85,7 @@ describe('P5b item 7: the plan still bills in the store after an organization go
   test('the server never changes the store subscription', async () => {
     await usePlatform('IOS');
     const { listing } = await orgWith('Store Untouched', 1);
-    await asPersona('owner').delete(`/host/listings/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
+    await asPersona('owner').delete(`/host/businesses/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
     await plan.reload();
     expect(plan.status).toBe('ACTIVE');
     expect(plan.autoRenew).toBe(true);

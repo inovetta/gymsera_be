@@ -140,13 +140,13 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/organizations/:p/gym-listing/cover",
+   "path": "/api/v1/admin/businesses/:p/cover",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/admin/organizations/:p/gym-listing/images",
+   "path": "/api/v1/admin/businesses/:p/images",
    "allowed": [
     "imageUrl"
    ],
@@ -156,19 +156,19 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/organizations/:p/gym-listing/images",
+   "path": "/api/v1/admin/businesses/:p/images",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/organizations/:p/gym-listing/logo",
+   "path": "/api/v1/admin/businesses/:p/logo",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/admin/organizations/:p/gym-listing",
+   "path": "/api/v1/admin/businesses/:p",
    "allowed": [
     "areaId",
     "cityId",
@@ -200,7 +200,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/organizations/:p/gym-listing",
+   "path": "/api/v1/admin/organizations/:p/businesses",
    "allowed": [
     "areaId",
     "cityId",

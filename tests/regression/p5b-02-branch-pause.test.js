@@ -52,7 +52,7 @@ afterAll(async () => {
 beforeEach(() => cache._resetForTests());
 
 const listedIds = async () => {
-  const res = await request(server).get('/api/v1/discovery/gyms?page=1&limit=50');
+  const res = await request(server).get('/api/v1/discovery/branches?page=1&limit=50');
   expect(res.status).toBe(200);
   const d = res.body.data;
   return (Array.isArray(d) ? d : d.branches || d.gyms || []).map((r) => r.id);

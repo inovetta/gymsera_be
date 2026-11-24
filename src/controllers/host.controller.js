@@ -738,7 +738,7 @@ const getListing = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
     if (!organizationId) throw createError('Tenant not found', 404);
-    const listing = await GymListing.findOne({ where: { id: req.params.id, organizationId } });
+    const listing = await GymListing.findOne({ where: { id: req.params.businessId, organizationId } });
     if (!listing) throw createError('Organization not found or access denied', 404);
     const gym = await _organizationGym(req.tenantDb, listing);
     const pendingArea = await areaRequests.pendingAreaFor('business', organizationId, listing.id); // NEW-265
@@ -753,8 +753,8 @@ const updateListing = async (req, res, next) => {
     const organizationId = req.user.organizationId;
     if (!organizationId) throw createError('Tenant not found', 404);
 
-    const { id } = req.params;
-    if (!id) throw createError('Organization ID is required', 400);
+    const { businessId: id } = req.params;
+    if (!id) throw createError('Business ID is required', 400);
 
     const listing = await GymListing.findOne({
       where: { id, organizationId }
@@ -852,7 +852,7 @@ const deleteListing = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
     if (!organizationId) throw createError('Tenant not found', 404);
-    const { id } = req.params;
+    const { businessId: id } = req.params;
     const { strategy, password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
 
     const userId = req.user.sub || req.user.id;
@@ -956,7 +956,7 @@ const transferReservedSlots = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
     if (!organizationId) throw createError('Tenant not found', 404);
-    const { id } = req.params;
+    const { businessId: id } = req.params;
     const { toBusinessId, count } = req.body;
     if (!toBusinessId) throw createError('toBusinessId is required', 400);
 

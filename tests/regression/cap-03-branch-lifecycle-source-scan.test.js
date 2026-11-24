@@ -127,7 +127,7 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
       }
 
       // Host creates listing with branchSource: 'new'
-      const res = await asPersona('owner').post('/host/listings', {
+      const res = await asPersona('owner').post('/host/businesses', {
         businessName: 'Host Created New Org',
         branchSource: 'new',
         branchName: 'Host Created New Branch',
@@ -147,7 +147,7 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
       expect(branch.status).toBe('ACTIVE');
 
       // Now at 2 active branches (capacity 2). Next attempt to create branchSource: 'new' without donor slot must fail
-      const failRes = await asPersona('owner').post('/host/listings', {
+      const failRes = await asPersona('owner').post('/host/businesses', {
         businessName: 'Listing Over Capacity',
         branchSource: 'new',
         branchName: 'Over Capacity Branch',

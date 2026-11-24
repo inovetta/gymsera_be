@@ -144,13 +144,13 @@ describe('NEW-108: GYM_HOST with a PENDING booking at gym B gets 403 on gym B st
     ['GET /host/payouts', (c) => c.get('/host/payouts')],
     ['GET /host/payouts/balance', (c) => c.get('/host/payouts/balance')],
     ['POST /host/payouts', (c) => c.post('/host/payouts', { amount: 1000, branchId: team.branchA.id }).set('Idempotency-Key', uuidv4())],
-    ['GET /gyms/staff (legacy authorize GYM_HOST)', (c) => c.get('/gyms/staff')],
-    ['GET /gyms/members', (c) => c.get('/gyms/members')],
+    ['GET /organizations/me/staff (legacy authorize GYM_HOST)', (c) => c.get('/organizations/me/staff')],
+    ['GET /organizations/me/members', (c) => c.get('/organizations/me/members')],
     ['GET /host/branches', (c) => c.get('/host/branches')],
     ['POST /host/branches', (c) => c.post('/host/branches', { branchName: 'Planted', businessId: team.branchA.businessId })],
-    ['PATCH /host/branches/:id/listing-content', (c) => c.patch(`/host/branches/${team.branchA.id}/listing-content`, { tagline: 'pwned' })],
+    ['PATCH /host/branches/:id/public-content', (c) => c.patch(`/host/branches/${team.branchA.id}/public-content`, { tagline: 'pwned' })],
     ['POST /host/branches/:id/restore', (c) => c.post(`/host/branches/${team.branchA.id}/restore`, {})],
-    ['POST /host/listings', (c) => c.post('/host/listings', { businessName: 'Planted Org' })],
+    ['POST /host/businesses', (c) => c.post('/host/businesses', { businessName: 'Planted Org' })],
   ];
 
   test.each(cases)('%s with X-Organization-Id: gym B → 403', async (_name, call) => {

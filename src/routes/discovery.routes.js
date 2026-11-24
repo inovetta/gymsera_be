@@ -94,10 +94,10 @@ router.get('/stats', publicCache, controller.platformStats);
  *       200:
  *         description: Featured gym listings
  */
-router.get('/organizations', publicCache, controller.listOrganizations);
-router.get('/organizations/:businessId/branches', publicCache, controller.listOrganizationBranches);
-router.get('/top-hosts', publicCache, controller.getTopHosts);
-router.get('/gyms/featured', publicCache, controller.featuredGyms);
+router.get('/businesses', publicCache, controller.listOrganizations);
+router.get('/businesses/:businessId/branches', publicCache, controller.listOrganizationBranches);
+router.get('/top-businesses', publicCache, controller.getTopHosts);
+router.get('/branches/featured', publicCache, controller.featuredGyms);
 /**
  * @swagger
  * /discovery/gyms/top-rated:
@@ -117,7 +117,7 @@ router.get('/gyms/featured', publicCache, controller.featuredGyms);
  *       200:
  *         description: Top-rated gym listings
  */
-router.get('/gyms/top-rated', publicCache, controller.topRatedGyms);
+router.get('/branches/top-rated', publicCache, controller.topRatedGyms);
 
 /**
  * @swagger
@@ -167,7 +167,7 @@ router.get('/gyms/top-rated', publicCache, controller.topRatedGyms);
  *                             properties:
  *                               distanceKm: { type: number }
  */
-router.get('/gyms/nearby', publicCache, validate(validators.nearbyGyms), controller.nearbyGyms);
+router.get('/branches/nearby', publicCache, validate(validators.nearbyGyms), controller.nearbyGyms);
 
 /**
  * @swagger
@@ -206,7 +206,7 @@ router.get('/gyms/nearby', publicCache, validate(validators.nearbyGyms), control
  *                               averageRating: { type: number }
  *                               logoUrl:       { type: string }
  */
-router.get('/gyms/map', publicCache, validate(validators.mapGyms), controller.mapGyms);
+router.get('/branches/map', publicCache, validate(validators.mapGyms), controller.mapGyms);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // General gym directory
@@ -246,7 +246,7 @@ router.get('/gyms/map', publicCache, validate(validators.mapGyms), controller.ma
  *       200:
  *         description: Paginated gym listings
  */
-router.get('/gyms', publicCache, validate(validators.listGyms), controller.listGyms);
+router.get('/branches', publicCache, validate(validators.listGyms), controller.listGyms);
 
 /**
  * @swagger
@@ -266,8 +266,8 @@ router.get('/gyms', publicCache, validate(validators.listGyms), controller.listG
  *       404:
  *         description: Gym not found
  */
-router.get('/gyms/:id', publicCache, validate(validators.getGym), controller.getGym);
-router.get('/gyms/:id/payment-details', authenticate, controller.getPaymentDetails);
+router.get('/businesses/:businessId', publicCache, validate(validators.getGym), controller.getGym);
+router.get('/businesses/:businessId/payment-details', authenticate, controller.getPaymentDetails);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reviews
@@ -296,7 +296,7 @@ router.get('/gyms/:id/payment-details', authenticate, controller.getPaymentDetai
  *         description: Paginated approved reviews
  */
 // NEW-256: public; with a token, the reviews the caller reported are left out.
-router.get('/gyms/:id/reviews', optionalAuthenticate, validate(validators.getGym), controller.listReviews);
+router.get('/businesses/:businessId/reviews', optionalAuthenticate, validate(validators.getGym), controller.listReviews);
 
 /**
  * @swagger
@@ -339,7 +339,7 @@ router.get('/gyms/:id/reviews', optionalAuthenticate, validate(validators.getGym
  *         description: Already reviewed this gym
  */
 router.post(
-  '/gyms/:id/reviews',
+  '/businesses/:businessId/reviews',
   authenticate,
   validate.strict(validators.submitReview),
   controller.submitReview
@@ -413,7 +413,7 @@ module.exports = router;
  *                         limit: { type: integer }
  *                         totalPages: { type: integer }
  */
-router.get('/gyms', publicCache, validate(validators.listGyms), controller.listGyms);
+router.get('/branches', publicCache, validate(validators.listGyms), controller.listGyms);
 
 /**
  * @swagger
@@ -448,7 +448,9 @@ router.get('/gyms', publicCache, validate(validators.listGyms), controller.listG
  *       404:
  *         description: Gym not found or inactive
  */
-router.get('/gyms/:id', publicCache, validate(validators.getGym), controller.getGym);
+router.get('/businesses/:businessId', publicCache, validate(validators.getGym), controller.getGym);
+// R-120 NEW-309 (contract §3 BranchDetail): `/discovery/branches/:branchId`. Until the BranchDetail shape is built the same handler answers (it accepts a branch id).
+router.get('/branches/:branchId', publicCache, (req, _res, next) => { req.params.businessId = req.params.branchId; next(); }, validate(validators.getGym), controller.getGym);
 
 router.post(
   '/branches/:branchId/inquiries',

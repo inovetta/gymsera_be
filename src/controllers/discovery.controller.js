@@ -122,7 +122,7 @@ const topRatedGyms = async (req, res, next) => {
 // ── GET /discovery/gyms/:id ───────────────────────────────────────────────────
 const getGym = async (req, res, next) => {
   try {
-    const result = await discoveryService.getGym(req.params.id);
+    const result = await discoveryService.getGym(req.params.businessId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -132,7 +132,7 @@ const getGym = async (req, res, next) => {
 // ── GET /discovery/gyms/:id/payment-details ───────────────────────────────────
 const getPaymentDetails = async (req, res, next) => {
   try {
-    const result = await discoveryService.getPaymentDetails(req.params.id);
+    const result = await discoveryService.getPaymentDetails(req.params.businessId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -161,10 +161,10 @@ const listReviews = async (req, res, next) => {
 const submitReview = async (req, res, next) => {
   try {
     const { branchId, rating, title, body, text } = req.body || {};
-    const targetBranchId = branchId || req.params.id;
+    const targetBranchId = branchId || req.params.businessId;
     const review = await discoveryService.submitReview(
       req.user.sub || req.user.id,
-      req.params.id,
+      req.params.businessId,
       targetBranchId,
       { rating, title, body: body || text }
     );

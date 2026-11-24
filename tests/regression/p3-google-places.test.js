@@ -314,21 +314,21 @@ describe('P3: free-text area when Google has no match (platform administrator)',
 });
 
 describe('P3: branch coordinates are in range and keep the Google place id', () => {
-  test('POST /gyms/branches refuses latitude 123 and longitude 200', async () => {
-    const lat = await asPersona('owner').post('/gyms/branches').send({ branchName: 'Bad Lat', latitude: 123, longitude: 74 });
+  test('POST /organizations/me/branches refuses latitude 123 and longitude 200', async () => {
+    const lat = await asPersona('owner').post('/organizations/me/branches').send({ branchName: 'Bad Lat', latitude: 123, longitude: 74 });
     expect(lat.status).toBe(422);
     expect(lat.body.errors.map((e) => e.field)).toContain('latitude');
-    const lng = await asPersona('owner').post('/gyms/branches').send({ branchName: 'Bad Lng', latitude: 31, longitude: 200 });
+    const lng = await asPersona('owner').post('/organizations/me/branches').send({ branchName: 'Bad Lng', latitude: 31, longitude: 200 });
     expect(lng.status).toBe(422);
     expect(lng.body.errors.map((e) => e.field)).toContain('longitude');
   });
 
-  test('PATCH /gyms/branches/:id refuses an out-of-range latitude and stores googlePlaceId', async () => {
+  test('PATCH /organizations/me/branches/:id refuses an out-of-range latitude and stores googlePlaceId', async () => {
     const { branch1, tenant1Db } = personaManager.context;
-    const bad = await asPersona('owner').patch(`/gyms/branches/${branch1.id}`).send({ latitude: -91 });
+    const bad = await asPersona('owner').patch(`/organizations/me/branches/${branch1.id}`).send({ latitude: -91 });
     expect(bad.status).toBe(422);
 
-    const ok = await asPersona('owner').patch(`/gyms/branches/${branch1.id}`).send({
+    const ok = await asPersona('owner').patch(`/organizations/me/branches/${branch1.id}`).send({
       address: '1 Test Road, Lahore', latitude: 31.5, longitude: 74.3, googlePlaceId: 'pl-branch-1',
     });
     expect(ok.status).toBe(200);
@@ -337,13 +337,13 @@ describe('P3: branch coordinates are in range and keep the Google place id', () 
     expect(Number(row.latitude)).toBeCloseTo(31.5, 5);
   });
 
-  test('PATCH /host/branches/:id/listing-content (the app branch editor) checks the range and keeps the place id', async () => {
+  test('PATCH /host/branches/:id/public-content (the app branch editor) checks the range and keeps the place id', async () => {
     const { branch1, tenant1Db } = personaManager.context;
-    const bad = await asPersona('owner').patch(`/host/branches/${branch1.id}/listing-content`).send({ latitude: 99, longitude: 74 });
+    const bad = await asPersona('owner').patch(`/host/branches/${branch1.id}/public-content`).send({ latitude: 99, longitude: 74 });
     expect(bad.status).toBe(422);
     expect(bad.body.errors.map((e) => e.field)).toContain('latitude');
 
-    const ok = await asPersona('owner').patch(`/host/branches/${branch1.id}/listing-content`).send({
+    const ok = await asPersona('owner').patch(`/host/branches/${branch1.id}/public-content`).send({
       address: '2 Editor Road', latitude: 31.6, longitude: 74.4, googlePlaceId: 'pl-editor-1',
     });
     expect(ok.status).toBe(200);

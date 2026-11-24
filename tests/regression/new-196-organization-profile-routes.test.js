@@ -1,11 +1,11 @@
 /**
- * NEW-196 (P10b): the CMS Gym Profile lists the organizations (GET /host/listings) and edits each
- * one through GET / PATCH /host/listings/:id and uploads photos through POST /host/listings/staging-images, as the mobile
- * Edit Organization does. /gyms/profile edits only the tenant's first organization.
+ * NEW-196 (P10b): the CMS Gym Profile lists the organizations (GET /host/businesses) and edits each
+ * one through GET / PATCH /host/businesses/:id and uploads photos through POST /host/businesses/staging-images, as the mobile
+ * Edit Organization does. /organizations/me/businesses/{businessId}/profile edits only the tenant's first organization.
  *
  * Owner decision 2026-11-03 (§14 R-89): those routes accept the owner (as before, including the
  * onboarding upload that has no tenant context yet) and a team member with listing.manage
- * organization-wide (the rule /gyms/profile already uses, NEW-45). Persona matrix: owner and Org
+ * organization-wide (the rule /organizations/me/businesses/{businessId}/profile already uses, NEW-45). Persona matrix: owner and Org
  * Admin pass; Branch Manager and Front Desk (no listing.manage) get 403; another tenant's owner
  * cannot read or change this tenant's organization; no token is 401.
  *
@@ -71,31 +71,31 @@ describe('NEW-196 organization profile routes: who may use them', () => {
 
   test('owner and Org Admin list the organizations to choose from; Branch Manager and Front Desk cannot', async () => {
     for (const [, token] of allowed()) {
-      const res = await call('get', '/host/listings', token);
+      const res = await call('get', '/host/businesses', token);
       expect(res.status).toBe(200);
       expect(res.body.data.map((l) => l.id)).toEqual(expect.arrayContaining([firstOrg.id, secondOrg.id]));
     }
     for (const [, token] of refused()) {
-      expect((await call('get', '/host/listings', token)).status).toBe(403);
+      expect((await call('get', '/host/businesses', token)).status).toBe(403);
     }
   });
 
   test('owner and Org Admin read any organization of the tenant', async () => {
     for (const [, token] of allowed()) {
       for (const org of [firstOrg, secondOrg]) {
-        const res = await call('get', `/host/listings/${org.id}`, token);
+        const res = await call('get', `/host/businesses/${org.id}`, token);
         expect(res.status).toBe(200);
         expect(res.body.data.id).toBe(org.id);
       }
     }
-    const second = await call('get', `/host/listings/${secondOrg.id}`, team.orgAdmin.token);
+    const second = await call('get', `/host/businesses/${secondOrg.id}`, team.orgAdmin.token);
     expect(second.body.data.gym.id).toBe(secondGym.id);
   });
 
   test('owner and Org Admin save the second organization; the first is not touched', async () => {
     const before = (await GymListing.findByPk(firstOrg.id)).toJSON();
     for (const [who, token] of allowed()) {
-      const res = await call('patch', `/host/listings/${secondOrg.id}`, token, {
+      const res = await call('patch', `/host/businesses/${secondOrg.id}`, token, {
         businessName: `Second Organization (${who})`,
         businessDescription: 'Edited from the CMS',
         contactEmail: 'second@gymsera.test',
@@ -117,7 +117,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
 
   test('owner and Org Admin get past the check on the photo upload (422: no file, nothing stored)', async () => {
     for (const [, token] of allowed()) {
-      expect((await call('post', '/host/listings/staging-images', token)).status).toBe(422);
+      expect((await call('post', '/host/businesses/staging-images', token)).status).toBe(422);
     }
   });
 
@@ -126,23 +126,23 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     ['patch', 'save'],
   ])('Branch Manager and Front Desk cannot %s an organization (403)', async (method) => {
     for (const [, token] of refused()) {
-      const res = await call(method, `/host/listings/${secondOrg.id}`, token, method === 'patch' ? { businessDescription: 'x' } : undefined);
+      const res = await call(method, `/host/businesses/${secondOrg.id}`, token, method === 'patch' ? { businessDescription: 'x' } : undefined);
       expect(res.status).toBe(403);
     }
   });
 
   test('Branch Manager and Front Desk cannot upload organization photos (403)', async () => {
     for (const [, token] of refused()) {
-      expect((await call('post', '/host/listings/staging-images', token)).status).toBe(403);
+      expect((await call('post', '/host/businesses/staging-images', token)).status).toBe(403);
     }
   });
 
   test('another tenant\'s owner cannot read or change this tenant\'s organization', async () => {
     const other = personas.otherTenantOwner;
     for (const organizationId of [other.organizationId, team.organizationId]) {
-      const read = await call('get', `/host/listings/${secondOrg.id}`, other.token, undefined, organizationId);
+      const read = await call('get', `/host/businesses/${secondOrg.id}`, other.token, undefined, organizationId);
       expect([403, 404]).toContain(read.status);
-      const write = await call('patch', `/host/listings/${secondOrg.id}`, other.token, { businessDescription: 'hijack' }, organizationId);
+      const write = await call('patch', `/host/businesses/${secondOrg.id}`, other.token, { businessDescription: 'hijack' }, organizationId);
       expect([403, 404]).toContain(write.status);
     }
     await secondGym.reload();
@@ -150,17 +150,17 @@ describe('NEW-196 organization profile routes: who may use them', () => {
   });
 
   test('no token is 401', async () => {
-    expect((await call('get', `/host/listings/${secondOrg.id}`)).status).toBe(401);
-    expect((await call('patch', `/host/listings/${secondOrg.id}`, null, { businessDescription: 'x' })).status).toBe(401);
-    expect((await call('post', '/host/listings/staging-images')).status).toBe(401);
+    expect((await call('get', `/host/businesses/${secondOrg.id}`)).status).toBe(401);
+    expect((await call('patch', `/host/businesses/${secondOrg.id}`, null, { businessDescription: 'x' })).status).toBe(401);
+    expect((await call('post', '/host/businesses/staging-images')).status).toBe(401);
   });
 
   test('listing.manage granted at a branch only does not edit the organization (403 everywhere)', async () => {
     const t = branchScoped.token;
-    expect((await call('get', '/host/listings', t)).status).toBe(403);
-    expect((await call('get', `/host/listings/${secondOrg.id}`, t)).status).toBe(403);
-    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { businessDescription: 'branch scoped' })).status).toBe(403);
-    expect((await call('post', '/host/listings/staging-images', t)).status).toBe(403);
+    expect((await call('get', '/host/businesses', t)).status).toBe(403);
+    expect((await call('get', `/host/businesses/${secondOrg.id}`, t)).status).toBe(403);
+    expect((await call('patch', `/host/businesses/${secondOrg.id}`, t, { businessDescription: 'branch scoped' })).status).toBe(403);
+    expect((await call('post', '/host/businesses/staging-images', t)).status).toBe(403);
     await secondGym.reload();
     expect(secondGym.description).not.toBe('branch scoped');
   });
@@ -168,8 +168,8 @@ describe('NEW-196 organization profile routes: who may use them', () => {
   test('another tenant\'s Org Admin (listing.manage there) is refused here, with either tenant header', async () => {
     for (const organizationId of [personas.otherTenantOwner.organizationId, team.organizationId]) {
       const t = otherTenantOrgAdmin.token;
-      expect([403, 404]).toContain((await call('get', `/host/listings/${secondOrg.id}`, t, undefined, organizationId)).status);
-      expect([403, 404]).toContain((await call('patch', `/host/listings/${secondOrg.id}`, t, { businessDescription: 'cross tenant' }, organizationId)).status);
+      expect([403, 404]).toContain((await call('get', `/host/businesses/${secondOrg.id}`, t, undefined, organizationId)).status);
+      expect([403, 404]).toContain((await call('patch', `/host/businesses/${secondOrg.id}`, t, { businessDescription: 'cross tenant' }, organizationId)).status);
     }
     await secondGym.reload();
     expect(secondGym.description).not.toBe('cross tenant');
@@ -177,8 +177,8 @@ describe('NEW-196 organization profile routes: who may use them', () => {
 
   test('a platform admin gets nothing on these host routes (deny by default; the admin area has its own)', async () => {
     const t = personas.platformAdmin.token;
-    expect((await call('get', `/host/listings/${secondOrg.id}`, t)).status).toBe(403);
-    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { businessDescription: 'platform admin' })).status).toBe(403);
+    expect((await call('get', `/host/businesses/${secondOrg.id}`, t)).status).toBe(403);
+    expect((await call('patch', `/host/businesses/${secondOrg.id}`, t, { businessDescription: 'platform admin' })).status).toBe(403);
     await secondGym.reload();
     expect(secondGym.description).not.toBe('platform admin');
   });
@@ -190,8 +190,8 @@ describe('NEW-196 every organization edit is in the audit log with its actor', (
 
   test('owner and Org Admin edits each write a row: actor, organization, tenant, changed fields, no values', async () => {
     const seen = new Set((await auditRows()).map((r) => r.id));
-    await call('patch', `/host/listings/${secondOrg.id}`, team.ownerToken, { website: 'https://owner.example.test' }).expect(200);
-    await call('put', `/host/listings/${secondOrg.id}`, team.orgAdmin.token, { contactEmail: 'audit@gymsera.test', businessDescription: 'by org admin' }).expect(200);
+    await call('patch', `/host/businesses/${secondOrg.id}`, team.ownerToken, { website: 'https://owner.example.test' }).expect(200);
+    await call('put', `/host/businesses/${secondOrg.id}`, team.orgAdmin.token, { contactEmail: 'audit@gymsera.test', businessDescription: 'by org admin' }).expect(200);
     const rows = (await auditRows()).filter((r) => !seen.has(r.id));
     expect(rows).toHaveLength(2);
     const byOwner = rows.find((r) => r.actorUserId === personas.owner.user.id);
@@ -207,7 +207,7 @@ describe('NEW-196 every organization edit is in the audit log with its actor', (
   test('an edit that cannot be audited is not saved', async () => {
     const spy = jest.spyOn(PlatformAuditLog, 'create').mockRejectedValueOnce(new Error('audit table down'));
     try {
-      const res = await call('patch', `/host/listings/${secondOrg.id}`, team.ownerToken, { businessName: 'Not audited' });
+      const res = await call('patch', `/host/businesses/${secondOrg.id}`, team.ownerToken, { businessName: 'Not audited' });
       expect(res.status).toBe(500);
     } finally {
       spy.mockRestore();

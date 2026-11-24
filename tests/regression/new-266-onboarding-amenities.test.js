@@ -2,11 +2,11 @@
  * NEW-266 (owner 2026-11-16, build 25, R-110): the amenities a host picks in Become a Host are lost.
  *
  * Before: the app kept them in memory only; the server had no place for them on the draft, approval
- * (tenant-provisioning.service.js step 4) built the first branch without them, and POST /host/listings
+ * (tenant-provisioning.service.js step 4) built the first branch without them, and POST /host/businesses
  * (another organisation) did not accept them. The live branch showed "No amenities listed."
  *
  * After: the draft first branch keeps `firstBranchDraft.facilitiesJson` (a list of names, checked), approval
- * copies it to the branch's facilitiesJson, and POST /host/listings passes `facilitiesJson` to the first
+ * copies it to the branch's facilitiesJson, and POST /host/businesses passes `facilitiesJson` to the first
  * branch of the new organisation.
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories, getAdminConnection } = require('../harness');
@@ -78,8 +78,8 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
     expect(branch.facilitiesJson).toEqual(AMENITIES);
   });
 
-  test('POST /host/listings (another organisation) gives its first branch the amenities', async () => {
-    const res = await asPersona('owner').post('/host/listings').send({
+  test('POST /host/businesses (another organisation) gives its first branch the amenities', async () => {
+    const res = await asPersona('owner').post('/host/businesses').send({
       businessName: `Org 266 ${Date.now()}`, facilitiesJson: AMENITIES, packages: [{ name: 'Monthly', price: 50 }],
     });
     expect(res.status).toBe(201);

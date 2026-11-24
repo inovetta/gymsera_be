@@ -2,10 +2,10 @@
  * Phase 7 P5 — BUG-22 L8 (Listings tab: Edit Organization), backend half.
  *
  * L8 Edit Organization edited the wrong organization. The app has no per-organization read, so it
- * used GET/PATCH /gyms/profile: gym.service.js#updateProfile edits Gym.findOne() (whichever gym row
+ * used GET/PATCH /organizations/me/businesses/{businessId}/profile: gym.service.js#updateProfile edits Gym.findOne() (whichever gym row
  * comes first), and #_syncGymListing then wrote name, description, logo, cover, phone, website and
  * photos onto EVERY GymListing of the tenant. A host with two organizations who edited one renamed
- * both. After: GET /host/listings/:id and PUT/PATCH /host/listings/:id read and write that organization
+ * both. After: GET /host/businesses/:id and PUT/PATCH /host/businesses/:id read and write that organization
  * and its own gym only, and the profile sync touches only the edited gym's own listing.
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
@@ -44,7 +44,7 @@ const approvePending = () =>
 
 const newOrg = async (businessName, packages = [plan(`${businessName} Monthly`)]) => {
   await approvePending();
-  const res = await asPersona('owner').post('/host/listings', { businessName, branchSource: 'new', cityId: 1, packages });
+  const res = await asPersona('owner').post('/host/businesses', { businessName, branchSource: 'new', cityId: 1, packages });
   expect(res.status).toBe(201);
   await approvePending();
   return res.body.data;
@@ -60,20 +60,20 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
     orgB = await newOrg('P5 Org B');
   });
 
-  test('GET /host/listings/:id answers that organization and its own gym details', async () => {
+  test('GET /host/businesses/:id answers that organization and its own gym details', async () => {
     const { Gym } = tenantDb.models;
     await Gym.update({ website: 'https://b.example.com' }, { where: { id: orgB.id } });
     await GymListing.update({ category: 'Yoga' }, { where: { id: orgB.id } });
 
-    const res = await asPersona('owner').get(`/host/listings/${orgB.id}`);
+    const res = await asPersona('owner').get(`/host/businesses/${orgB.id}`);
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(orgB.id);
     expect(res.body.data.category).toBe('Yoga');
     expect(res.body.data.gym).toMatchObject({ name: 'P5 Org B', website: 'https://b.example.com' });
   });
 
-  test('PUT /host/listings/:id changes that organization and its gym, never the other one', async () => {
-    const res = await asPersona('owner').put(`/host/listings/${orgB.id}`, {
+  test('PUT /host/businesses/:id changes that organization and its gym, never the other one', async () => {
+    const res = await asPersona('owner').put(`/host/businesses/${orgB.id}`, {
       businessName: 'P5 Org B Renamed',
       businessDescription: 'B description',
       category: 'CrossFit',
@@ -101,14 +101,14 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
     expect((await GymListing.findByPk(orgA.id)).category).not.toBe('CrossFit');
   });
 
-  test('PUT /host/listings/:id validates the new fields (bad website / year: 422)', async () => {
-    const bad = await asPersona('owner').put(`/host/listings/${orgB.id}`, { website: 'not a url', establishedYear: 3000 });
+  test('PUT /host/businesses/:id validates the new fields (bad website / year: 422)', async () => {
+    const bad = await asPersona('owner').put(`/host/businesses/${orgB.id}`, { website: 'not a url', establishedYear: 3000 });
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('validation_error');
   });
 
-  test('PATCH /gyms/profile renames only its own organization (the first one), not every one of the tenant', async () => {
-    const res = await asPersona('owner').patch('/gyms/profile', { name: 'P5 Profile Name' });
+  test('PATCH /organizations/me/businesses/{businessId}/profile renames only its own organization (the first one), not every one of the tenant', async () => {
+    const res = await asPersona('owner').patch('/organizations/me/businesses/{businessId}/profile', { name: 'P5 Profile Name' });
     expect(res.status).toBe(200);
     const titles = (await GymListing.findAll({ where: { organizationId: personas.owner.organizationId } })).map((l) => l.name);
     expect(titles.filter((t) => t === 'P5 Profile Name')).toHaveLength(1);
@@ -118,11 +118,11 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
 
   test('personas: only the owner reads or edits; another tenant\'s owner gets 404', async () => {
     for (const who of ['manager', 'frontDesk', 'member']) {
-      expect((await asPersona(who).get(`/host/listings/${orgA.id}`)).status).toBe(403);
-      expect((await asPersona(who).put(`/host/listings/${orgA.id}`, { website: 'https://x.example.com' })).status).toBe(403);
+      expect((await asPersona(who).get(`/host/businesses/${orgA.id}`)).status).toBe(403);
+      expect((await asPersona(who).put(`/host/businesses/${orgA.id}`, { website: 'https://x.example.com' })).status).toBe(403);
     }
-    expect((await asPersona('otherTenantOwner').get(`/host/listings/${orgA.id}`)).status).toBe(404);
-    expect((await asPersona('otherTenantOwner').put(`/host/listings/${orgA.id}`, { website: 'https://x.example.com' })).status).toBe(404);
+    expect((await asPersona('otherTenantOwner').get(`/host/businesses/${orgA.id}`)).status).toBe(404);
+    expect((await asPersona('otherTenantOwner').put(`/host/businesses/${orgA.id}`, { website: 'https://x.example.com' })).status).toBe(404);
     const gymA = await tenantDb.models.Gym.findOne({ where: { id: orgA.id } });
     expect(gymA.website).not.toBe('https://x.example.com');
   });

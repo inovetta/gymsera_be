@@ -274,13 +274,13 @@ router.get('/areas/:areaId/aliases', validate([param('areaId').isInt({ min: 1 })
 router.delete('/area-aliases/:id', validate.strict([param('id').isInt({ min: 1 })]), areaRequestsController.deleteAlias);
 
 // ── Gym listing management ─────────────────────────────────────────────────────
-router.get('/organizations/:organizationId/gym-listing', adminController.getGymListing);
-router.post('/organizations/:organizationId/gym-listing', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson']), adminController.createGymListing);
-router.patch('/organizations/:organizationId/gym-listing', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status']), adminController.updateGymListing);
-router.post('/organizations/:organizationId/gym-listing/logo', upload.image('logo'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingLogo);
-router.post('/organizations/:organizationId/gym-listing/cover', upload.image('cover'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingCover);
-router.post('/organizations/:organizationId/gym-listing/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingImages);
-router.delete('/organizations/:organizationId/gym-listing/images', validate.allowBody(['imageUrl']), adminController.deleteGymListingImage);
+router.get('/businesses/:businessId', adminController.getGymListing);
+router.post('/organizations/:organizationId/businesses', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson']), adminController.createGymListing);
+router.patch('/businesses/:businessId', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status']), adminController.updateGymListing);
+router.post('/businesses/:businessId/logo', upload.image('logo'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingLogo);
+router.post('/businesses/:businessId/cover', upload.image('cover'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingCover);
+router.post('/businesses/:businessId/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingImages);
+router.delete('/businesses/:businessId/images', validate.allowBody(['imageUrl']), adminController.deleteGymListingImage);
 
 // ── Admin branch management ────────────────────────────────────────────────────
 // NEW-140 (P9): the CMS admin form picks the place from Google through /places, like the host forms;

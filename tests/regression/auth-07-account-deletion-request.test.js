@@ -263,7 +263,7 @@ describe('AUTH-07: account deletion request, preflight and undo', () => {
       await safeRedisDel(`tenant:${tenant.id}:connStr`);
       await api('post', '/me/request-deletion', { token: tokenFor(owner), body: { password: PASSWORD } });
 
-      const res = await api('get', '/gyms/members', { token, organizationId: tenant.id });
+      const res = await api('get', '/organizations/me/members', { token, organizationId: tenant.id });
       expect(res.status).toBe(404);
     });
 
@@ -337,7 +337,7 @@ describe('AUTH-07: account deletion request, preflight and undo', () => {
       const login = await api('post', '/auth/login', { body: { email: owner.email, password: PASSWORD } });
       const token = login.body.data.accessToken;
 
-      const blocked = await api('get', '/me/saved-gyms', { token });
+      const blocked = await api('get', '/me/saved-businesses', { token });
       expect(blocked.status).toBe(403);
       expect(blocked.body.code).toBe('account_pending_deletion');
 
@@ -350,7 +350,7 @@ describe('AUTH-07: account deletion request, preflight and undo', () => {
       const login = await api('post', '/auth/login', { body: { email: owner.email, password: PASSWORD } });
       const refreshed = await api('post', '/auth/refresh', { body: { refreshToken: login.body.data.refreshToken } });
       expect(refreshed.status).toBe(200);
-      const blocked = await api('get', '/me/saved-gyms', { token: refreshed.body.data.accessToken });
+      const blocked = await api('get', '/me/saved-businesses', { token: refreshed.body.data.accessToken });
       expect(blocked.status).toBe(403);
     });
 
@@ -397,7 +397,7 @@ describe('AUTH-07: account deletion request, preflight and undo', () => {
       // and a fresh login carries no restriction
       const again = await api('post', '/auth/login', { body: { email: owner.email, password: PASSWORD } });
       expect(again.body.data.user.deletionPending).toBeFalsy();
-      expect((await api('get', '/me/saved-gyms', { token: again.body.data.accessToken })).status).toBe(200);
+      expect((await api('get', '/me/saved-businesses', { token: again.body.data.accessToken })).status).toBe(200);
     });
 
     test('a SUSPENDED tenant comes back SUSPENDED, not ACTIVE', async () => {

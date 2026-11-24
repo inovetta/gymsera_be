@@ -1,7 +1,7 @@
 /**
  * Phase 7 P5 — NEW-147 (found in P4; the BUG-22 New Organization walk goes through the same code).
  *
- * New Organization > "Build a brand new branch" (POST /host/listings) and Add Branch
+ * New Organization > "Build a brand new branch" (POST /host/businesses) and Add Branch
  * (POST /host/branches) both build through gym.service.js#_createBranchRecord, which created every
  * plan with isPublic: true, so "Show to Travellers" off was ignored. After: isPublic is kept
  * (absent = visible, as provisioning does), and a branch whose plans are all hidden is refused
@@ -38,7 +38,7 @@ const approvePending = () =>
 
 const newOrg = async (businessName, packages = [plan(`${businessName} Monthly`)]) => {
   await approvePending();
-  const res = await asPersona('owner').post('/host/listings', { businessName, branchSource: 'new', cityId: 1, packages });
+  const res = await asPersona('owner').post('/host/businesses', { businessName, branchSource: 'new', cityId: 1, packages });
   expect(res.status).toBe(201);
   await approvePending();
   return res.body.data;
@@ -62,7 +62,7 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
   test('New Organization: every plan hidden = 422 visible_plan_required, nothing created', async () => {
     await approvePending();
     const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
-    const res = await asPersona('owner').post('/host/listings', {
+    const res = await asPersona('owner').post('/host/businesses', {
       businessName: 'P5 Hidden Org', branchSource: 'new', cityId: 1, packages: [plan('Hidden', false)],
     });
     expect(res.status).toBe(422);

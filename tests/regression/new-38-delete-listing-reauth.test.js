@@ -1,9 +1,9 @@
 /**
  * NEW-38 (spec §12.13.12 / §13):
- * Re-authentication required for organization deletion (DELETE /host/listings/:id).
+ * Re-authentication required for organization deletion (DELETE /host/businesses/:id).
  *
  * Prior bug:
- * `DELETE /host/listings/:id` (`host.controller.js:717-733`, `deleteListing`)
+ * `DELETE /host/businesses/:id` (`host.controller.js:717-733`, `deleteListing`)
  * deleted a whole organization (and could cascade-delete branches via strategy: 'deleteBranches')
  * with only a session token and no re-auth check.
  *
@@ -124,11 +124,11 @@ describe('NEW-38: Organization deletion re-authentication', () => {
     return { user, tenant, listing };
   };
 
-  describe('DELETE /host/listings/:id re-authentication requirements', () => {
+  describe('DELETE /host/businesses/:id re-authentication requirements', () => {
     test('exempt case: caller owns it, 0 branches, created < 5m ago, no cascade flag -> works without credentials (200)', async () => {
       const { user, tenant, listing } = await createPasswordHost();
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {},
@@ -145,7 +145,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
       const { user, tenant, listing } = await createPasswordHost();
       const branch = await factories.createBranch(tenant1, listing.id, { branchName: 'Active Branch In Org' });
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {},
@@ -168,7 +168,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
         status: 'INACTIVE',
       });
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {},
@@ -194,7 +194,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
         },
       });
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {},
@@ -212,7 +212,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
       const hostB = await createPasswordHost();
 
       // Host A attempts to delete Host B's listing with no credentials
-      const res = await api('delete', `/host/listings/${hostB.listing.id}`, {
+      const res = await api('delete', `/host/businesses/${hostB.listing.id}`, {
         token: tokenFor(hostA.user, hostA.tenant.id),
         organizationId: hostA.tenant.id,
         body: {},
@@ -228,7 +228,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
     test('exemption fails: cascade flag set (strategy: deleteBranches) without credentials -> 401 reauth_required', async () => {
       const { user, tenant, listing } = await createPasswordHost();
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -246,7 +246,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
     test('exemption fails: cascade flag set (cascade: true) without credentials -> 401 reauth_required', async () => {
       const { user, tenant, listing } = await createPasswordHost();
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -264,7 +264,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
     test('social-only account + random password -> 401 invalid_credentials and nothing deleted', async () => {
       const { user, tenant, listing } = await createSocialHost();
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -283,7 +283,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
     test('normal password account with wrong password -> 401 and nothing deleted', async () => {
       const { user, tenant, listing } = await createPasswordHost();
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -301,7 +301,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
     test('normal password account with valid password -> works (200) and organization deleted', async () => {
       const { user, tenant, listing } = await createPasswordHost();
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -321,7 +321,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const spy = jest.spyOn(authService, 'verifyReauthCredential').mockResolvedValue(true);
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -346,7 +346,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const spy = jest.spyOn(authService, 'verifyReauthCredential').mockResolvedValue(true);
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -373,7 +373,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
         Object.assign(new Error('That Google account does not match your GymsEra account'), { statusCode: 401 })
       );
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -392,7 +392,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
       const { user, tenant, listing } = await createPasswordHost();
       const branch = await factories.createBranch(tenant1, listing.id, { branchName: 'Branch In Org' });
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -414,7 +414,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
       const { user, tenant, listing } = await createPasswordHost();
       const branch = await factories.createBranch(tenant1, listing.id, { branchName: 'Branch In Org To Cascade' });
 
-      const res = await api('delete', `/host/listings/${listing.id}`, {
+      const res = await api('delete', `/host/businesses/${listing.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {

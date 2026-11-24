@@ -272,42 +272,42 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
     expect(ok.status).toBe(200);
   });
 
-  test('PUT /host/listings/:id (Edit organization)', async () => {
+  test('PUT /host/businesses/:id (Edit organization)', async () => {
     const { listing1 } = personaManager.context;
-    expectNotListed(await asPersona('owner').put(`/host/listings/${listing1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
-    const ok = await asPersona('owner').put(`/host/listings/${listing1.id}`).send({ cityId: peshawar.id, areaId: ringRoad.id });
+    expectNotListed(await asPersona('owner').put(`/host/businesses/${listing1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
+    const ok = await asPersona('owner').put(`/host/businesses/${listing1.id}`).send({ cityId: peshawar.id, areaId: ringRoad.id });
     expect(ok.status).toBe(200);
     // The city alone changes: the organization's area (Ring Road, Peshawar) no longer fits Lahore.
-    expectNotListed(await asPersona('owner').put(`/host/listings/${listing1.id}`).send({ cityId: lahore.id }));
+    expectNotListed(await asPersona('owner').put(`/host/businesses/${listing1.id}`).send({ cityId: lahore.id }));
   });
 
-  test('POST /host/listings (new organization)', async () => {
-    expectNotListed(await asPersona('owner').post('/host/listings').send({
+  test('POST /host/businesses (new organization)', async () => {
+    expectNotListed(await asPersona('owner').post('/host/businesses').send({
       businessName: 'Area Org 259', cityId: peshawar.id, areaId: gulberg.id, packages: [{ name: 'Monthly', price: 50 }],
     }));
   });
 
-  test('POST /gyms/branches (new branch)', async () => {
-    expectNotListed(await asPersona('owner').post('/gyms/branches').send({
+  test('POST /organizations/me/branches (new branch)', async () => {
+    expectNotListed(await asPersona('owner').post('/organizations/me/branches').send({
       branchName: 'Area Branch 259', cityId: peshawar.id, areaId: gulberg.id, packages: [{ name: 'Monthly', price: 50 }],
     }));
   });
 
-  test('PATCH /gyms/branches/:id and PATCH /host/branches/:id/listing-content', async () => {
+  test('PATCH /organizations/me/branches/:id and PATCH /host/branches/:id/public-content', async () => {
     const { branch1, tenant1Db } = personaManager.context;
-    expectNotListed(await asPersona('owner').patch(`/gyms/branches/${branch1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
-    expectNotListed(await asPersona('owner').patch(`/host/branches/${branch1.id}/listing-content`).send({ cityId: peshawar.id, areaId: gulberg.id }));
-    const ok = await asPersona('owner').patch(`/host/branches/${branch1.id}/listing-content`).send({ cityId: peshawar.id, areaId: ringRoad.id });
+    expectNotListed(await asPersona('owner').patch(`/organizations/me/branches/${branch1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
+    expectNotListed(await asPersona('owner').patch(`/host/branches/${branch1.id}/public-content`).send({ cityId: peshawar.id, areaId: gulberg.id }));
+    const ok = await asPersona('owner').patch(`/host/branches/${branch1.id}/public-content`).send({ cityId: peshawar.id, areaId: ringRoad.id });
     expect(ok.status).toBe(200);
     expect((await tenant1Db.models.Branch.findByPk(branch1.id)).areaId).toBe(ringRoad.id);
     // Clearing the area stays allowed.
-    const cleared = await asPersona('owner').patch(`/gyms/branches/${branch1.id}`).send({ areaId: null });
+    const cleared = await asPersona('owner').patch(`/organizations/me/branches/${branch1.id}`).send({ areaId: null });
     expect(cleared.status).toBe(200);
   });
 
   test('CMS admin: gym listing and branch edits', async () => {
-    const { tenant1, branch1 } = personaManager.context;
-    expectNotListed(await asPersona('platformAdmin').patch(`/admin/organizations/${tenant1.id}/gym-listing`).send({ cityId: peshawar.id, areaId: gulberg.id }));
+    const { tenant1, branch1, listing1 } = personaManager.context;
+    expectNotListed(await asPersona('platformAdmin').patch(`/admin/businesses/${listing1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
     expectNotListed(await asPersona('platformAdmin').patch(`/admin/organizations/${tenant1.id}/branches/${branch1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
     expectNotListed(await asPersona('platformAdmin').post(`/admin/organizations/${tenant1.id}/branches`).send({
       branchName: 'Admin Area Branch', cityId: peshawar.id, areaId: gulberg.id, packages: [{ name: 'Monthly', price: 50 }],

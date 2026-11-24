@@ -332,7 +332,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
   });
 
   describe('4. Branch IDOR Scoping', () => {
-    test('Host A reading Tenant B branch (/gyms/branches/:id) returns 404', async () => {
+    test('Host A reading Tenant B branch (/organizations/me/branches/:id) returns 404', async () => {
       const res = await request(appServer)
         .get(`/api/v1/gyms/branches/${tenant2Branch.id}`)
         .set('Authorization', `Bearer ${personas.owner.token}`);

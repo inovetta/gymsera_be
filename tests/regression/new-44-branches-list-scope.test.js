@@ -1,5 +1,5 @@
 /**
- * NEW-44 (2) — GET /gyms/branches returns only the branches the caller has any
+ * NEW-44 (2) — GET /organizations/me/branches returns only the branches the caller has any
  * grant at; owners and hosts still see every branch.
  *
  * Before: every team member got every branch of the tenant.
@@ -32,13 +32,13 @@ const list = (path, token) =>
 
 describe('NEW-44: the branches list is scoped to the caller', () => {
   test('a Front Desk clerk at branch A sees only A', async () => {
-    const res = await list('/gyms/branches', team.frontDeskOff.token);
+    const res = await list('/organizations/me/branches', team.frontDeskOff.token);
     expect(res.status).toBe(200);
     expect(names(res)).toEqual([team.branchA.id]);
   });
 
   test('a Branch Manager of A sees only A', async () => {
-    const res = await list('/gyms/branches', team.managerA.token);
+    const res = await list('/organizations/me/branches', team.managerA.token);
     expect(names(res)).toEqual([team.branchA.id]);
   });
 
@@ -51,17 +51,17 @@ describe('NEW-44: the branches list is scoped to the caller', () => {
       scopeType: 'BRANCH',
       branchIds: [team.branchB.id],
     });
-    const res = await list('/gyms/branches', atB.token);
+    const res = await list('/organizations/me/branches', atB.token);
     expect(names(res)).toEqual([team.branchB.id]);
   });
 
   test('an Org Admin (organization-wide) sees every branch', async () => {
-    const res = await list('/gyms/branches', team.orgAdmin.token);
+    const res = await list('/organizations/me/branches', team.orgAdmin.token);
     expect(names(res)).toEqual([team.branchA.id, team.branchB.id].sort());
   });
 
   test('the owner sees every branch, unchanged', async () => {
-    const res = await list('/gyms/branches', team.ownerToken);
+    const res = await list('/organizations/me/branches', team.ownerToken);
     expect(res.status).toBe(200);
     expect(names(res)).toEqual([team.branchA.id, team.branchB.id].sort());
   });
@@ -83,7 +83,7 @@ describe('NEW-44: the branches list is scoped to the caller', () => {
       branchIds: [team.branchA.id],
     });
     await RoleAssignment.update({ status: 'REVOKED' }, { where: { id: revoked.assignment.id } });
-    const res = await list('/gyms/branches', revoked.token);
+    const res = await list('/organizations/me/branches', revoked.token);
     // Either refused outright or an empty list — never someone else's branches.
     const branches = res.status === 200 ? res.body.data.branches : [];
     expect(branches).toEqual([]);

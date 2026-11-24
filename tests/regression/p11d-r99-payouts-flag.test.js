@@ -10,7 +10,7 @@
  *    POST /actions/payouts.request answer 404 `payouts_not_available`, for every caller, before
  *    authentication, tenant context or body checks; nothing is written;
  *  - GET / PUT /host/payout-account stay live either way (owner answer, 2026-11-08): it holds the bank
- *    details travellers pay into by bank transfer (GET /discovery/gyms/:id/payment-details);
+ *    details travellers pay into by bank transfer (GET /discovery/businesses/:id/payment-details);
  *  - GET /meta/app-config (and GET /me/bootstrap, which carries it) answers `features.payouts`, so the
  *    CMS and the app hide the payout entries;
  *  - on: every payout route behaves as before (the existing payout suites run with it on, see
@@ -123,7 +123,7 @@ describe.each([
   });
 
   test('travellers still get the bank details', async () => {
-    const res = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}/payment-details`);
+    const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.id}/payment-details`);
     expect(res.status).toBe(200);
     expect(res.body.data.paymentDetails).toMatchObject({ accountNumber: DETAILS.accountNumber });
   });

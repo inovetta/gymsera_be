@@ -98,7 +98,7 @@ describe('POST /reports', () => {
     expect(row).toMatchObject({ reporterUserId: personas.member.user.id, targetUserId: author.id, organizationId, reason: 'HARASSMENT', note: 'rude' });
     expect(row.snapshotText).toBe('Not great\nCrowded at night');
 
-    const path = `/discovery/gyms/${ctx.listing1.id}/reviews`;
+    const path = `/discovery/businesses/${ctx.listing1.id}/reviews`;
     expect(reviewIdsIn(await asPersona('member').get(path))).not.toContain(review.id);
     expect(reviewIdsIn(await asPersona('anonymous').get(path))).toContain(review.id);
     expect(reviewIdsIn(await asUser(bystander).get(path))).toContain(review.id);
@@ -369,7 +369,7 @@ describe('admin report queue', () => {
     expect((await GymReview.findByPk(review.id)).status).toBe('REJECTED');
     expect(await ContentReport.count({ where: { targetId: review.id, status: 'OPEN' } })).toBe(0);
     expect(await ContentReport.count({ where: { targetId: review.id, status: 'ACTIONED', action: 'HIDE_REVIEW' } })).toBe(2);
-    expect(reviewIdsIn(await asPersona('anonymous').get(`/discovery/gyms/${ctx.listing1.id}/reviews`))).not.toContain(review.id);
+    expect(reviewIdsIn(await asPersona('anonymous').get(`/discovery/businesses/${ctx.listing1.id}/reviews`))).not.toContain(review.id);
 
     const again = await asPersona('platformAdmin').patch(`/admin/reports/${r1.id}`, { action: 'DISMISS' });
     expect(again.status).toBe(409);

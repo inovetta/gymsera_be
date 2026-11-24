@@ -76,14 +76,14 @@ const listing1Status = async () => {
 describe('P5b item 1: a GYM_HOST of another tenant cannot delete tenant 1 branches or organizations', () => {
   test('host A (manager at tenant 1) with X-Organization-Id tenant 1: DELETE branch is 403', async () => {
     const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
-      .delete(`/gyms/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
+      .delete(`/organizations/me/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
     expect(res.status).toBe(403);
     expect(await branch1Status()).toBe('ACTIVE');
   });
 
   test('host A with a token that names tenant 1 and no header: DELETE branch is 403', async () => {
     const res = await asPersona('hostAAtTenant1Token')
-      .delete(`/gyms/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
+      .delete(`/organizations/me/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
     expect(res.status).toBe(403);
     expect(await branch1Status()).toBe('ACTIVE');
   });
@@ -104,24 +104,24 @@ describe('P5b item 1: a GYM_HOST of another tenant cannot delete tenant 1 branch
 
   test('host A in their own tenant: tenant 1 branch is not found there (404)', async () => {
     const res = await asPersona('otherTenantOwner')
-      .delete(`/gyms/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
+      .delete(`/organizations/me/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
     expect(res.status).toBe(404);
     expect(await branch1Status()).toBe('ACTIVE');
   });
 
   test('host A with X-Organization-Id tenant 1: DELETE organization is 403', async () => {
     const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
-      .delete(`/host/listings/${ctx.listing1.id}`, { password: PASSWORD });
+      .delete(`/host/businesses/${ctx.listing1.id}`, { password: PASSWORD });
     expect(res.status).toBe(403);
     expect(await listing1Status()).toBe('ACTIVE');
   });
 
   test('host C (no role at tenant 1) with X-Organization-Id tenant 1: 404, existence not leaked', async () => {
     const branch = await asPersona('hostC', { 'X-Organization-Id': ctx.tenant1.id })
-      .delete(`/gyms/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
+      .delete(`/organizations/me/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
     expect(branch.status).toBe(404);
     const org = await asPersona('hostC', { 'X-Organization-Id': ctx.tenant1.id })
-      .delete(`/host/listings/${ctx.listing1.id}`, { password: PASSWORD });
+      .delete(`/host/businesses/${ctx.listing1.id}`, { password: PASSWORD });
     expect(org.status).toBe(404);
     expect(await branch1Status()).toBe('ACTIVE');
     expect(await listing1Status()).toBe('ACTIVE');
@@ -139,7 +139,7 @@ describe('P5b item 1: host routes without tenantContext act on the caller\'s own
     const { GymListing } = require('../../src/models/platform');
     const before = (await GymListing.findByPk(ctx.listing1.id)).reservedSlots;
     const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
-      .post(`/host/listings/${ctx.listing1.id}/reserved-slots/transfer`, { toBusinessId: ctx.listing2.id, count: 1 });
+      .post(`/host/businesses/${ctx.listing1.id}/reserved-slots/transfer`, { toBusinessId: ctx.listing2.id, count: 1 });
     expect(res.status).toBe(404);
     expect((await GymListing.findByPk(ctx.listing1.id)).reservedSlots).toBe(before);
   });
@@ -147,13 +147,13 @@ describe('P5b item 1: host routes without tenantContext act on the caller\'s own
 
 describe('P5b item 1: the real owner still gets through authorization', () => {
   test('owner of tenant 1 reaches the password check (401 on a wrong password, branch kept)', async () => {
-    const res = await asPersona('owner').delete(`/gyms/branches/${ctx.branch1.id}`, { password: 'wrong-password' });
+    const res = await asPersona('owner').delete(`/organizations/me/branches/${ctx.branch1.id}`, { password: 'wrong-password' });
     expect(res.status).toBe(401);
     expect(await branch1Status()).toBe('ACTIVE');
   });
 
   test('branch manager of tenant 1 is refused delete (owner only)', async () => {
-    const res = await asPersona('manager').delete(`/gyms/branches/${ctx.branch1.id}`, { password: PASSWORD });
+    const res = await asPersona('manager').delete(`/organizations/me/branches/${ctx.branch1.id}`, { password: PASSWORD });
     expect(res.status).toBe(403);
     expect(await branch1Status()).toBe('ACTIVE');
   });

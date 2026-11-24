@@ -124,8 +124,8 @@ describe('NEW-228 read: a platform admin sees the payout account masked, and the
     await Payout.destroy({ where: {} });
   });
 
-  test('GET /gyms/profile with X-Organization-Id: the admin gets no bank details', async () => {
-    const res = await asPersona('platformAdmin', asAdminIn()).get('/gyms/profile');
+  test('GET /organizations/me/businesses/{businessId}/profile with X-Organization-Id: the admin gets no bank details', async () => {
+    const res = await asPersona('platformAdmin', asAdminIn()).get('/organizations/me/businesses/{businessId}/profile');
     expect([200, 403]).toContain(res.status);
     noFullNumber(res.body);
   });
@@ -146,9 +146,9 @@ describe('NEW-228 write: a platform admin gets 403 on every payout-account write
     expect(await storedDetails()).toEqual(DETAILS);
   });
 
-  test('PATCH /gyms/profile bank details with X-Organization-Id and the correct password → 403, nothing changed', async () => {
+  test('PATCH /organizations/me/businesses/{businessId}/profile bank details with X-Organization-Id and the correct password → 403, nothing changed', async () => {
     const res = await asPersona('platformAdmin', asAdminIn())
-      .patch('/gyms/profile', { paymentDetailsJson: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD });
+      .patch('/organizations/me/businesses/{businessId}/profile', { paymentDetailsJson: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD });
     expect(res.status).toBe(403);
     expect(await storedDetails()).toEqual(DETAILS);
   });

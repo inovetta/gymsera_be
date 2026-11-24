@@ -45,7 +45,7 @@ const discoveryValidators = {
   ],
 
   getGym: [
-    param('id').isUUID(4).withMessage('Invalid gym listing ID'),
+    param('businessId').isUUID(4).withMessage('Invalid business ID'),
   ],
 
   nearbyGyms: [
@@ -79,7 +79,7 @@ const discoveryValidators = {
   ],
 
   submitReview: [
-    param('id').isUUID(4).withMessage('Invalid gym listing ID'),
+    param('businessId').isUUID(4).withMessage('Invalid business ID'),
     body('branchId')
       .optional({ checkFalsy: true })
       .isUUID(4).withMessage('Invalid branch ID'),

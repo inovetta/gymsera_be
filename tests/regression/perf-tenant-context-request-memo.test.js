@@ -44,13 +44,13 @@ describe('tenantContext: per-request memo', () => {
 
   test('owner: one tenants read per request instead of four', async () => {
     await safeRedisDel(`tenant:${organizationId}:connStr`);
-    const { res, tenantReads: n } = await run('owner', '/gyms/branches');
+    const { res, tenantReads: n } = await run('owner', '/organizations/me/branches');
     expect(res.status).toBe(200);
     expect(n).toBeLessThanOrEqual(1);
   });
 
   test('team member: the membership check runs once, not twice', async () => {
-    const { res } = await run('manager', '/gyms/branches');
+    const { res } = await run('manager', '/organizations/me/branches');
     expect(res.status).toBe(200);
     // the tenant row tenantContext needs (owner + connection string) is one read;
     // other middleware (permission version, controller) read `tenants` separately
@@ -63,28 +63,28 @@ describe('tenantContext: per-request memo', () => {
   });
 
   test('nothing is carried between requests: each request reads the tenant itself', async () => {
-    await asPersona('owner').get('/gyms/branches');
+    await asPersona('owner').get('/organizations/me/branches');
     seen = [];
-    await asPersona('owner').get('/gyms/branches');
+    await asPersona('owner').get('/organizations/me/branches');
     const first = tenantReads();
     seen = [];
-    await asPersona('owner').get('/gyms/branches');
+    await asPersona('owner').get('/organizations/me/branches');
     const second = tenantReads();
     expect(first).toBeGreaterThanOrEqual(1);
     expect(second).toBeGreaterThanOrEqual(1);
   });
 
   test('a tenant suspended between two requests is refused on the second (NEW-26)', async () => {
-    const before = await asPersona('owner').get('/gyms/branches');
+    const before = await asPersona('owner').get('/organizations/me/branches');
     expect(before.status).toBe(200);
-    const memberBefore = await asPersona('manager').get('/gyms/branches');
+    const memberBefore = await asPersona('manager').get('/organizations/me/branches');
     expect(memberBefore.status).toBe(200);
 
     await adminService.suspendTenant(organizationId, personas.platformAdmin.user.id, 'perf memo test');
 
-    const after = await asPersona('owner').get('/gyms/branches');
+    const after = await asPersona('owner').get('/organizations/me/branches');
     expect([403, 404]).toContain(after.status);
-    const memberAfter = await asPersona('manager').get('/gyms/branches');
+    const memberAfter = await asPersona('manager').get('/organizations/me/branches');
     expect([403, 404]).toContain(memberAfter.status);
 
     const row = await Tenant.findByPk(organizationId);

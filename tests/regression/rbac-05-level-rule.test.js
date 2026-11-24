@@ -66,7 +66,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     expect(res.body.message).toMatch(/cannot be assigned|at or above your own level/i);
   });
 
-  test('Manager (level 60) assigning an Org Admin via legacy POST /gyms/branches/:branchId/staff is rejected with 403', async () => {
+  test('Manager (level 60) assigning an Org Admin via legacy POST /organizations/me/branches/:branchId/staff is rejected with 403', async () => {
     const { User } = require('../../src/models/platform');
     const targetUser = await User.create({
       fullName: 'Legacy Staff Assignee',

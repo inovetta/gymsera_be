@@ -19,10 +19,24 @@ const hideBankDetails = (result) => {
   delete result.gym.paymentDetailsUpdatedAt;
 };
 
-// ── GET /gyms/profile ─────────────────────────────────────────────────────────
+
+// R-120 NEW-309 (API contract v2 §4 rows 146-151): the business profile is `/organizations/me/businesses/:businessId/profile`.
+// The business must be one of the caller's organization (404 otherwise); nothing is created for an unknown id.
+const requireOwnBusiness = async (req) => {
+  const { GymListing } = require('../models/platform');
+  const businessId = req.params.businessId;
+  const listing = businessId
+    ? await GymListing.findOne({ where: { id: businessId, organizationId: req.user.organizationId }, attributes: ['id'] })
+    : null;
+  if (!listing) throw createError('Business not found', 404);
+  return listing.id;
+};
+
+// ── GET /organizations/me/businesses/:businessId/profile ─────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
   try {
-    const result = await gymService.getProfile(req.tenantDb, req.user.organizationId);
+    const businessId = await requireOwnBusiness(req);
+    const result = await gymService.getProfile(req.tenantDb, req.user.organizationId, businessId);
     if (!(await mayManageBankDetails(req))) hideBankDetails(result);
     return sendSuccess(res, result);
   } catch (err) {
@@ -35,6 +49,7 @@ const updateProfile = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId || req.organizationId;
     const userId = req.user.id || req.user.sub;
+    const businessId = await requireOwnBusiness(req);
 
     // SEC-13: If updating payment/bank details, require permission & re-auth
     const mayManageBank = await mayManageBankDetails(req);
@@ -52,7 +67,7 @@ const updateProfile = async (req, res, next) => {
       });
     }
 
-    const result = await gymService.updateProfile(req.tenantDb, organizationId, req.body);
+    const result = await gymService.updateProfile(req.tenantDb, organizationId, req.body, businessId);
     // NEW-231: the answer carries the bank details only for someone who may manage them, as GET.
     if (!mayManageBank) hideBankDetails(result);
     return sendSuccess(res, result, 'Gym profile updated successfully');
@@ -72,7 +87,7 @@ const withBranchPendingArea = async (req, result) => {
 // ── GET /gyms/branches ────────────────────────────────────────────────────────
 const listBranches = async (req, res, next) => {
   try {
-    const businessId = req.params.businessId || req.params.listingId || req.query.businessId || req.query.businessId;
+    const businessId = req.params.businessId || req.query.businessId;
     const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1';
     // NEW-44: a team member sees only the branches they hold a grant at (null = every branch).
     const branchIds = await branchIdsWithAnyGrant(req);
@@ -215,10 +230,11 @@ const removeStaff = async (req, res, next) => {
 const uploadLogo = async (req, res, next) => {
   try {
     if (!req.file) throw createError('Image file is required', 422);
-    const { gym } = await gymService.getProfile(req.tenantDb, req.user.organizationId);
+    const businessId = await requireOwnBusiness(req);
+    const { gym } = await gymService.getProfile(req.tenantDb, req.user.organizationId, businessId);
     if (gym.logoUrl) await storageService.deleteImage(gym.logoUrl).catch(() => { });
     const logoUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/logos', `gym-${req.user.organizationId}`);
-    await gymService.updateProfile(req.tenantDb, req.user.organizationId, { logoUrl });
+    await gymService.updateProfile(req.tenantDb, req.user.organizationId, { logoUrl }, businessId);
     return sendSuccess(res, { logoUrl }, 'Logo uploaded');
   } catch (err) {
     next(err);
@@ -229,10 +245,11 @@ const uploadLogo = async (req, res, next) => {
 const uploadCover = async (req, res, next) => {
   try {
     if (!req.file) throw createError('Image file is required', 422);
-    const { gym } = await gymService.getProfile(req.tenantDb, req.user.organizationId);
+    const businessId = await requireOwnBusiness(req);
+    const { gym } = await gymService.getProfile(req.tenantDb, req.user.organizationId, businessId);
     if (gym.coverImageUrl) await storageService.deleteImage(gym.coverImageUrl).catch(() => { });
     const coverImageUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/covers', `gym-${req.user.organizationId}`);
-    await gymService.updateProfile(req.tenantDb, req.user.organizationId, { coverImageUrl });
+    await gymService.updateProfile(req.tenantDb, req.user.organizationId, { coverImageUrl }, businessId);
     return sendSuccess(res, { coverImageUrl }, 'Cover image uploaded');
   } catch (err) {
     next(err);
@@ -243,8 +260,9 @@ const uploadCover = async (req, res, next) => {
 const uploadGymImages = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
+    const businessId = await requireOwnBusiness(req);
     const urls = await storageService.uploadImages(req.files, `gyms/${req.user.organizationId}/images`);
-    const result = await gymService.addGymImages(req.tenantDb, req.user.organizationId, urls);
+    const result = await gymService.addGymImages(req.tenantDb, req.user.organizationId, urls, businessId);
     return sendSuccess(res, { gym: result.gym, uploadedUrls: urls }, 'Images uploaded');
   } catch (err) {
     next(err);
@@ -256,8 +274,9 @@ const deleteGymImage = async (req, res, next) => {
   try {
     const { imageUrl } = req.body;
     if (!imageUrl) throw createError('imageUrl is required', 422);
+    const businessId = await requireOwnBusiness(req);
     await storageService.deleteImage(imageUrl).catch(() => { });
-    const result = await gymService.removeGymImage(req.tenantDb, req.user.organizationId, imageUrl);
+    const result = await gymService.removeGymImage(req.tenantDb, req.user.organizationId, imageUrl, businessId);
     return sendSuccess(res, { gym: result.gym }, 'Image removed');
   } catch (err) {
     next(err);

@@ -138,7 +138,7 @@ describe('Phase 7 P6: traveller discovery', () => {
     });
 
     test('top hosts carry the approved review count too', async () => {
-      const res = await request(server).get('/api/v1/discovery/top-hosts');
+      const res = await request(server).get('/api/v1/discovery/top-businesses');
       expect(res.status).toBe(200);
       const hosts = res.body.data.hosts || res.body.data;
       expect(hosts.find((x) => x.organizationId === t1.organizationId)).toMatchObject({ averageRating: 4, reviewCount: 1 });

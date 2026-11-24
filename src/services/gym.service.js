@@ -182,8 +182,8 @@ const _syncGymListing = async (organizationId, gym, patch) => {
 
 // P7b (R-94): bank details are the tenant's payout account (payout-account.service), not part of an
 // organization. /gyms/profile still reads and writes that tenant default for released app builds.
-const getProfile = async (tenantDb, organizationId) => {
-  const gym = await _getOrCreateGym(tenantDb, organizationId);
+const getProfile = async (tenantDb, organizationId, businessId = null) => {
+  const gym = await _getOrCreateGym(tenantDb, organizationId, businessId);
   const account = await payoutAccountService.getTenantDefault(organizationId);
   return {
     gym: {
@@ -194,8 +194,8 @@ const getProfile = async (tenantDb, organizationId) => {
   };
 };
 
-const updateProfile = async (tenantDb, organizationId, data) => {
-  const gym = await _getOrCreateGym(tenantDb, organizationId);
+const updateProfile = async (tenantDb, organizationId, data, businessId = null) => {
+  const gym = await _getOrCreateGym(tenantDb, organizationId, businessId);
 
   const fields = ['name', 'description', 'contactPhone', 'contactEmail', 'website', 'genderType', 'logoUrl', 'coverImageUrl', 'socialLinksJson', 'imagesJson', 'tagline', 'category', 'establishedYear'];
   fields.forEach((f) => {
@@ -1615,8 +1615,8 @@ const removeStaff = async (tenantDb, branchId, staffId, actor = null) => {
 
 // ── Gym profile images ────────────────────────────────────────────────────────
 
-const addGymImages = async (tenantDb, organizationId, newUrls) => {
-  const gym = await _getOrCreateGym(tenantDb, organizationId);
+const addGymImages = async (tenantDb, organizationId, newUrls, businessId = null) => {
+  const gym = await _getOrCreateGym(tenantDb, organizationId, businessId);
   const existing = Array.isArray(gym.imagesJson) ? gym.imagesJson : [];
   const combined = [...existing, ...newUrls];
   await gym.update({ imagesJson: combined });
@@ -1624,8 +1624,8 @@ const addGymImages = async (tenantDb, organizationId, newUrls) => {
   return { gym };
 };
 
-const removeGymImage = async (tenantDb, organizationId, imageUrl) => {
-  const gym = await _getOrCreateGym(tenantDb, organizationId);
+const removeGymImage = async (tenantDb, organizationId, imageUrl, businessId = null) => {
+  const gym = await _getOrCreateGym(tenantDb, organizationId, businessId);
   const existing = Array.isArray(gym.imagesJson) ? gym.imagesJson : [];
   const updated = existing.filter((url) => url !== imageUrl);
   await gym.update({ imagesJson: updated });

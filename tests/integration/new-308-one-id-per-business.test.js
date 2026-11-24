@@ -41,9 +41,9 @@ describe('NEW-308: the business id is the listing id', () => {
     expect(await rename.dropColumn(seq, { table: 'branches', column: 'gym_listing_id' })).toEqual({ statements: [] });
   });
 
-  test('POST /host/listings builds the business with the listing id, and its branch under it', async () => {
+  test('POST /host/businesses builds the business with the listing id, and its branch under it', async () => {
     await approvePending();
-    const res = await asPersona('owner').post('/host/listings', {
+    const res = await asPersona('owner').post('/host/businesses', {
       businessName: 'N308 Org', branchSource: 'new', cityId: 1,
       packages: [{ name: 'Monthly', price: 1500, durationType: 'MONTHLY', durationValue: 1 }],
     });
@@ -74,7 +74,7 @@ describe('NEW-308: the business id is the listing id', () => {
     const gyms = await Gym.findAll({ attributes: ['id'], raw: true });
     for (const g of gyms) {
       const own = await Branch.findAll({ where: { businessId: g.id }, attributes: ['id'], raw: true });
-      const res = await asPersona('owner').get(`/host/listings/${g.id}/branches`);
+      const res = await asPersona('owner').get(`/host/businesses/${g.id}/branches`);
       expect(res.status).toBe(200);
       const body = res.body.data;
       const rows = Array.isArray(body) ? body : body.branches || [];

@@ -1,5 +1,5 @@
 /**
- * NEW-45 (a) — POST /gyms/members/enroll goes through members.create and the
+ * NEW-45 (a) — POST /organizations/me/members/enroll goes through members.create and the
  * approval engine (approvalService.perform), like every other approvable action.
  *
  * Before: no permission check and no approval tier. Any team member (a Trainer, a

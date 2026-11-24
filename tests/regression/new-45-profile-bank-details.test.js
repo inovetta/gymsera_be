@@ -1,5 +1,5 @@
 /**
- * NEW-45 (b) — GET /gyms/profile shows the payout bank details only to someone who
+ * NEW-45 (b) — GET /organizations/me/businesses/{businessId}/profile shows the payout bank details only to someone who
  * holds payouts.bank.manage (the owner). Everyone else gets the profile without them.
  *
  * Before: every team member received paymentDetailsJson (bank account) with the profile.
@@ -30,7 +30,7 @@ afterAll(async () => {
 const profile = (token) =>
   request(app).get('/api/v1/gyms/profile').set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
-describe('NEW-45: bank details on GET /gyms/profile', () => {
+describe('NEW-45: bank details on GET /organizations/me/businesses/{businessId}/profile', () => {
   test.each([
     ['Front Desk', () => team.frontDeskOff.token],
     ['Branch Manager', () => team.managerA.token],

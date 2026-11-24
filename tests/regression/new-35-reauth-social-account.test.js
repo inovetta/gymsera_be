@@ -122,7 +122,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     return { user, tenant, listing, branch };
   };
 
-  describe('Call site 1: PATCH /gyms/profile (payout bank details re-auth)', () => {
+  describe('Call site 1: PATCH /organizations/me/businesses/{businessId}/profile (payout bank details re-auth)', () => {
     const sampleBankDetails = {
       bankName: 'Standard Chartered',
       accountTitle: 'Test Account',
@@ -133,7 +133,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     test('social-only account + random password is REJECTED (401 invalid_credentials)', async () => {
       const { user, tenant } = await createSocialHost();
 
-      const res = await api('patch', '/gyms/profile', {
+      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -153,7 +153,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     test('social-only account with no credentials is REJECTED (401 reauth_required)', async () => {
       const { user, tenant } = await createSocialHost();
 
-      const res = await api('patch', '/gyms/profile', {
+      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -170,7 +170,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
 
       const spy = jest.spyOn(authService, 'verifyReauthCredential').mockResolvedValue(true);
 
-      const res = await api('patch', '/gyms/profile', {
+      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -199,7 +199,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         Object.assign(new Error('That Google account does not match your GymsEra account'), { statusCode: 401 })
       );
 
-      const res = await api('patch', '/gyms/profile', {
+      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -215,7 +215,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     test('normal password account with correct password is ACCEPTED (200)', async () => {
       const { user, tenant } = await createPasswordHost();
 
-      const res = await api('patch', '/gyms/profile', {
+      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -235,7 +235,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     test('normal password account with incorrect password is REJECTED (401 invalid_credentials)', async () => {
       const { user, tenant } = await createPasswordHost();
 
-      const res = await api('patch', '/gyms/profile', {
+      const res = await api('patch', '/organizations/me/businesses/{businessId}/profile', {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -249,11 +249,11 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     });
   });
 
-  describe('Call site 2: DELETE /gyms/branches/:branchId (branch deletion re-auth)', () => {
+  describe('Call site 2: DELETE /organizations/me/branches/:branchId (branch deletion re-auth)', () => {
     test('social-only account + random password is REJECTED (401 invalid_credentials)', async () => {
       const { user, tenant, branch } = await createSocialHost();
 
-      const res = await api('delete', `/gyms/branches/${branch.id}`, {
+      const res = await api('delete', `/organizations/me/branches/${branch.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -273,7 +273,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     test('request with NO credentials at all is REJECTED (401 reauth_required)', async () => {
       const { user, tenant, branch } = await createSocialHost();
 
-      const res = await api('delete', `/gyms/branches/${branch.id}`, {
+      const res = await api('delete', `/organizations/me/branches/${branch.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -294,7 +294,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
 
       const spy = jest.spyOn(authService, 'verifyReauthCredential').mockResolvedValue(true);
 
-      const res = await api('delete', `/gyms/branches/${branch.id}`, {
+      const res = await api('delete', `/organizations/me/branches/${branch.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -320,7 +320,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
 
       const spy = jest.spyOn(authService, 'verifyReauthCredential').mockResolvedValue(true);
 
-      const res = await api('delete', `/gyms/branches/${branch.id}`, {
+      const res = await api('delete', `/organizations/me/branches/${branch.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -347,7 +347,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         Object.assign(new Error('That Google account does not match your GymsEra account'), { statusCode: 401 })
       );
 
-      const res = await api('delete', `/gyms/branches/${branch.id}`, {
+      const res = await api('delete', `/organizations/me/branches/${branch.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -366,7 +366,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     test('normal password account with correct password is ACCEPTED (200)', async () => {
       const { user, tenant, branch } = await createPasswordHost();
 
-      const res = await api('delete', `/gyms/branches/${branch.id}`, {
+      const res = await api('delete', `/organizations/me/branches/${branch.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
@@ -384,7 +384,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     test('normal password account with incorrect password is REJECTED (401 invalid_credentials)', async () => {
       const { user, tenant, branch } = await createPasswordHost();
 
-      const res = await api('delete', `/gyms/branches/${branch.id}`, {
+      const res = await api('delete', `/organizations/me/branches/${branch.id}`, {
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {

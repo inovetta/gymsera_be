@@ -35,8 +35,8 @@ describe('Regression §9.1: updateBranch status bypass', () => {
     await teardownTestDatabases();
   });
 
-  test('PATCH /gyms/branches/:id with changed status returns 400 branch_status_immutable_here', async () => {
-    const res = await asPersona('owner').patch(`/gyms/branches/${branch.id}`, {
+  test('PATCH /organizations/me/branches/:id with changed status returns 400 branch_status_immutable_here', async () => {
+    const res = await asPersona('owner').patch(`/organizations/me/branches/${branch.id}`, {
       status: 'INACTIVE',
     });
 
@@ -44,8 +44,8 @@ describe('Regression §9.1: updateBranch status bypass', () => {
     expect(res.body.code || res.body.error?.code).toBe('branch_status_immutable_here');
   });
 
-  test('PATCH /gyms/branches/:id with identical status returns 200', async () => {
-    const res = await asPersona('owner').patch(`/gyms/branches/${branch.id}`, {
+  test('PATCH /organizations/me/branches/:id with identical status returns 200', async () => {
+    const res = await asPersona('owner').patch(`/organizations/me/branches/${branch.id}`, {
       status: 'ACTIVE',
       branchName: 'Updated Branch Name',
     });

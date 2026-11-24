@@ -1,5 +1,5 @@
 /**
- * NEW-297 (owner 2026-11-20, decision R-117): POST /host/listings (another organisation) and the old
+ * NEW-297 (owner 2026-11-20, decision R-117): POST /host/businesses (another organisation) and the old
  * opening / closing pair.
  *
  * Before: createListing read only `hours` (host.controller.js:432, :680) and the route did not declare
@@ -25,7 +25,7 @@ const listingCount = () => GymListing.count({ where: { organizationId: ctx.tenan
 // One organisation at a time may be DRAFT / PENDING (the sequential gate): each one made here is set
 // INACTIVE once checked, so the next create is judged on its hours only.
 const create = async (body) => {
-  const res = await asPersona('owner').post('/host/listings').send(body);
+  const res = await asPersona('owner').post('/host/businesses').send(body);
   if (res.status === 201) {
     const row = await Branch().findByPk(res.body.data.branch.id);
     await GymListing.update({ status: 'INACTIVE' }, { where: { id: row.businessId } });
@@ -46,7 +46,7 @@ afterAll(async () => {
   await teardownTestDatabases();
 });
 
-describe('NEW-297: POST /host/listings keeps the old pair', () => {
+describe('NEW-297: POST /host/businesses keeps the old pair', () => {
   test('06:00-00:00 (12 AM closing) is stored on the first branch as the pair and a uniform week', async () => {
     const res = await create(listingBody({ openingTime: '06:00', closingTime: '00:00' }));
     expect(res.status).toBe(201);

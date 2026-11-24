@@ -6,7 +6,7 @@
  * (admin.routes.js:247-248 allow-lists; `updateAdminTenantBranch` fields, admin.service.js), and
  * neither checked the coordinate ranges P3 added to the host routes (latitude 123 was stored).
  * After: both take `googlePlaceId`; latitude / longitude out of range answer 422.
- * Also: POST /host/listings (New Organization with its first branch) dropped `googlePlaceId`
+ * Also: POST /host/businesses (New Organization with its first branch) dropped `googlePlaceId`
  * (host.routes.js allow-list; host.controller.js createListing); the first branch now keeps it.
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
@@ -80,9 +80,9 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
     expect(res.status).toBe(422);
   });
 
-  test('New Organization (POST /host/listings) keeps the first branch\'s googlePlaceId', async () => {
+  test('New Organization (POST /host/businesses) keeps the first branch\'s googlePlaceId', async () => {
     const res = await asPersona('owner')
-      .post('/host/listings')
+      .post('/host/businesses')
       .send({
         businessName: 'Second Org', businessDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
         address: 'MM Alam Road', latitude: 31.51, longitude: 74.34, googlePlaceId: PLACE,
@@ -93,9 +93,9 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
     expect(branch.googlePlaceId).toBe(PLACE);
   });
 
-  test('POST /host/listings refuses a googlePlaceId that is not a place id', async () => {
+  test('POST /host/businesses refuses a googlePlaceId that is not a place id', async () => {
     const res = await asPersona('owner')
-      .post('/host/listings')
+      .post('/host/businesses')
       .send({
         businessName: 'Bad Org', businessDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
         address: 'x', googlePlaceId: 'not a place id; drop table',

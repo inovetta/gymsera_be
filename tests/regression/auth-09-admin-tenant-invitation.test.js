@@ -138,7 +138,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
 
     // Recipient verifies token link
     const verifyRes = await request(appServer)
-      .get(`/api/v1/auth/tenant-invitations/verify?token=${token}`);
+      .get(`/api/v1/auth/organization-invitations/verify?token=${token}`);
 
     expect(verifyRes.status).toBe(200);
     expect(verifyRes.body.data.valid).toBe(true);
@@ -146,7 +146,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
 
     // Recipient accepts invitation and sets password
     const acceptRes = await request(appServer)
-      .post('/api/v1/auth/tenant-invitations/accept')
+      .post('/api/v1/auth/organization-invitations/accept')
       .send({
         token,
         password: 'HostPassword123!',
@@ -186,7 +186,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
   test('Forged, expired, or reused invitation tokens are rejected', async () => {
     // 1. Forged token
     const forgedRes = await request(appServer)
-      .post('/api/v1/auth/tenant-invitations/accept')
+      .post('/api/v1/auth/organization-invitations/accept')
       .send({
         token: '0000000000000000000000000000000000000000000000000000000000000000',
         password: 'Password123!',
@@ -208,13 +208,13 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
 
     // First accept: succeeds
     const firstAccept = await request(appServer)
-      .post('/api/v1/auth/tenant-invitations/accept')
+      .post('/api/v1/auth/organization-invitations/accept')
       .send({ token, password: 'Password123!' });
     expect(firstAccept.status).toBe(200);
 
     // Second accept: rejected
     const secondAccept = await request(appServer)
-      .post('/api/v1/auth/tenant-invitations/accept')
+      .post('/api/v1/auth/organization-invitations/accept')
       .send({ token, password: 'Password123!' });
     expect(secondAccept.status).toBe(400);
   });

@@ -50,7 +50,7 @@ describe('P5b item 8: Move branch is gone', () => {
     const { GymListing } = require('../../src/models/platform');
     const source = await factories.createGymListing(ctx.tenant1.id, { title: 'P5b Move Source' });
     const branch = await factories.createBranch(dbHarness.tenant1, source.id, { name: 'P5b Source Branch' });
-    const res = await asPersona('owner').delete(`/host/listings/${source.id}`, {
+    const res = await asPersona('owner').delete(`/host/businesses/${source.id}`, {
       password: 'Test@12345',
       strategy: 'moveBranches',
       targetListingId: ctx.listing1.id,

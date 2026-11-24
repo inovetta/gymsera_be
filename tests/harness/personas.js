@@ -297,6 +297,12 @@ class PersonaManager {
       },
     };
 
+    // R-120 NEW-309: each persona's own business (option S: its listing id), for paths like
+    // `/organizations/me/businesses/{businessId}/profile` (see `as()`).
+    for (const persona of Object.values(this.personas)) {
+      if (persona.organizationId) persona.businessId = persona.organizationId === tenant1Record.id ? listing1.id : listing2.id;
+    }
+
     return this.personas;
   }
 
@@ -323,7 +329,11 @@ class PersonaManager {
       defaultHeaders['X-Organization-Id'] = persona.organizationId;
     }
 
-    const formatPath = (path) => (path.startsWith('/api/v1') ? path : `/api/v1${path.startsWith('/') ? path : `/${path}`}`);
+    const withBusiness = (path) => path.replace('{businessId}', persona?.businessId || 'no-business');
+    const formatPath = (rawPath) => {
+      const path = withBusiness(rawPath);
+      return path.startsWith('/api/v1') ? path : `/api/v1${path.startsWith('/') ? path : `/${path}`}`;
+    };
 
     if (!this.server) throw new Error('Call setup() before as(): the test server is started there');
     const agent = request(this.server);

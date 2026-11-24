@@ -53,7 +53,7 @@ describe('authorization', () => {
     await M.AreaRequestLink.create({ areaRequestId: r.id, organizationId: ctx.tenant1.id, target: 'branch', targetId: ctx.branch1.id });
     const read = await asPersona('otherTenantOwner').get(`/places/area-requests/${r.id}`);
     expect([read.status, read.body.code]).toEqual([404, 'area_request_not_found']);
-    const use = await asPersona('otherTenantOwner').patch(`/gyms/branches/${ctx.branch2.id}`).send({ cityId: peshawar.id, areaRequestId: r.id });
+    const use = await asPersona('otherTenantOwner').patch(`/organizations/me/branches/${ctx.branch2.id}`).send({ cityId: peshawar.id, areaRequestId: r.id });
     expect([use.status, use.body.code]).toEqual([404, 'area_request_not_found']);
     // The owner's own team reads it (a request of the caller's tenant).
     expect((await asPersona('owner').get(`/places/area-requests/${r.id}`)).status).toBe(200);

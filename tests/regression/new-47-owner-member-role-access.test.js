@@ -7,7 +7,7 @@
  * - For an owner whose account role is MEMBER, hasAllBranches was false.
  * - branchIdsWithAnyGrant fell back to resolving grants per branch, but ownerGrants() has
  *   map: {}, so grants.keys().length === 0, returning [] (0 branches).
- * - GET /gyms/branches returned 0 branches.
+ * - GET /organizations/me/branches returned 0 branches.
  * - Other routes using hasAllBranches / branchIdsWithAnyGrant / can.atAnyBranch failed or were restricted.
  */
 const request = require('supertest');
@@ -148,9 +148,9 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
     });
   });
 
-  describe('Branches listing (GET /gyms/branches)', () => {
+  describe('Branches listing (GET /organizations/me/branches)', () => {
     test('owner with role MEMBER sees every branch (A and B)', async () => {
-      const res = await reqGet('/gyms/branches', memberRoleOwnerToken);
+      const res = await reqGet('/organizations/me/branches', memberRoleOwnerToken);
       expect(res.status).toBe(200);
       const branchIds = res.body.data.branches.map((b) => b.id).sort();
       expect(branchIds).toEqual([team.branchA.id, team.branchB.id].sort());
@@ -174,22 +174,22 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
     });
 
     test('Front Desk clerk at branch A sees only branch A', async () => {
-      const res = await reqGet('/gyms/branches', team.frontDeskOff.token);
+      const res = await reqGet('/organizations/me/branches', team.frontDeskOff.token);
       expect(res.status).toBe(200);
       const branchIds = res.body.data.branches.map((b) => b.id);
       expect(branchIds).toEqual([team.branchA.id]);
     });
   });
 
-  describe('Members listing (GET /gyms/members)', () => {
+  describe('Members listing (GET /organizations/me/members)', () => {
     test('owner with role MEMBER sees all members across all branches', async () => {
-      const res = await reqGet('/gyms/members', memberRoleOwnerToken);
+      const res = await reqGet('/organizations/me/members', memberRoleOwnerToken);
       expect(res.status).toBe(200);
       expect(res.body.data.members.length).toBeGreaterThanOrEqual(2);
     });
 
     test('Front Desk clerk sees only members of their assigned branch A', async () => {
-      const res = await reqGet('/gyms/members', team.frontDeskOff.token);
+      const res = await reqGet('/organizations/me/members', team.frontDeskOff.token);
       expect(res.status).toBe(200);
       expect(res.body.data.members.length).toBe(1);
     });
@@ -216,22 +216,22 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
     });
   });
 
-  describe('Gym Profile & Bank Details (GET /gyms/profile and PATCH /gyms/profile)', () => {
-    test('owner with role MEMBER gets paymentDetailsJson on GET /gyms/profile', async () => {
-      const res = await reqGet('/gyms/profile', memberRoleOwnerToken);
+  describe('Gym Profile & Bank Details (GET /organizations/me/businesses/{businessId}/profile and PATCH /organizations/me/businesses/{businessId}/profile)', () => {
+    test('owner with role MEMBER gets paymentDetailsJson on GET /organizations/me/businesses/{businessId}/profile', async () => {
+      const res = await reqGet('/organizations/me/businesses/{businessId}/profile', memberRoleOwnerToken);
       expect(res.status).toBe(200);
       expect(res.body.data.gym.paymentDetailsJson).toEqual(BANK);
     });
 
     test('Front Desk clerk gets profile WITHOUT paymentDetailsJson', async () => {
-      const res = await reqGet('/gyms/profile', team.frontDeskOff.token);
+      const res = await reqGet('/organizations/me/businesses/{businessId}/profile', team.frontDeskOff.token);
       expect(res.status).toBe(200);
       expect(res.body.data.gym).not.toHaveProperty('paymentDetailsJson');
     });
 
-    test('owner with role MEMBER can update paymentDetailsJson on PATCH /gyms/profile with re-auth', async () => {
+    test('owner with role MEMBER can update paymentDetailsJson on PATCH /organizations/me/businesses/{businessId}/profile with re-auth', async () => {
       const updatedBank = { bankName: 'Meezan Bank', accountTitle: 'Owner Member Corp', accountNumber: '9999-8888-7777' };
-      const res = await reqPatch('/gyms/profile', memberRoleOwnerToken, {
+      const res = await reqPatch('/organizations/me/businesses/{businessId}/profile', memberRoleOwnerToken, {
         paymentDetailsJson: updatedBank,
         password: 'Test@12345',
       });
@@ -240,29 +240,29 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
     });
 
     test('Front Desk clerk cannot update bank details (403 Forbidden)', async () => {
-      const res = await reqPatch('/gyms/profile', team.frontDeskOff.token, {
+      const res = await reqPatch('/organizations/me/businesses/{businessId}/profile', team.frontDeskOff.token, {
         paymentDetailsJson: { bankName: 'Hacker Bank' },
       });
       expect(res.status).toBe(403);
     });
   });
 
-  describe('Member search (GET /gyms/members/search)', () => {
+  describe('Member search (GET /organizations/me/members/search)', () => {
     test('owner with role MEMBER can search members by email', async () => {
-      const res = await reqGet('/gyms/members/search?email=member-a@new47.test', memberRoleOwnerToken);
+      const res = await reqGet('/organizations/me/members/search?email=member-a@new47.test', memberRoleOwnerToken);
       expect(res.status).toBe(200);
       expect(res.body.data.user.email).toBe('member-a@new47.test');
     });
 
     test('Trainer without members.create cannot search members (403 Forbidden)', async () => {
-      const res = await reqGet('/gyms/members/search?email=member-a@new47.test', trainer.token);
+      const res = await reqGet('/organizations/me/members/search?email=member-a@new47.test', trainer.token);
       expect(res.status).toBe(403);
     });
   });
 
-  describe('Member enroll (POST /gyms/members/enroll)', () => {
+  describe('Member enroll (POST /organizations/me/members/enroll)', () => {
     test('owner with role MEMBER gets direct 201 Created enrolment', async () => {
-      const res = await reqPost('/gyms/members/enroll', memberRoleOwnerToken, {
+      const res = await reqPost('/organizations/me/members/enroll', memberRoleOwnerToken, {
         branchId: team.branchA.id,
         planId: subPlan.id,
         email: 'walkin-owner@new47.test',
@@ -274,7 +274,7 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
     });
 
     test('Front Desk clerk enrolment returns 202 Accepted (pending approval)', async () => {
-      const res = await reqPost('/gyms/members/enroll', team.frontDeskOff.token, {
+      const res = await reqPost('/organizations/me/members/enroll', team.frontDeskOff.token, {
         branchId: team.branchA.id,
         planId: subPlan.id,
         email: 'walkin-desk@new47.test',
@@ -288,41 +288,41 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
 
   describe('Image routes permissions (can guards)', () => {
     test('owner with role MEMBER passes permission check on profile image upload (422 no file, not 403)', async () => {
-      const resLogo = await reqPost('/gyms/profile/logo', memberRoleOwnerToken);
+      const resLogo = await reqPost('/organizations/me/businesses/{businessId}/profile/logo', memberRoleOwnerToken);
       expect(resLogo.status).toBe(422);
 
-      const resCover = await reqPost('/gyms/profile/cover', memberRoleOwnerToken);
+      const resCover = await reqPost('/organizations/me/businesses/{businessId}/profile/cover', memberRoleOwnerToken);
       expect(resCover.status).toBe(422);
 
-      const resGymImages = await reqPost('/gyms/profile/images', memberRoleOwnerToken);
+      const resGymImages = await reqPost('/organizations/me/businesses/{businessId}/profile/images', memberRoleOwnerToken);
       expect(resGymImages.status).toBe(422);
 
-      const resBranchImages = await reqPost(`/gyms/branches/${team.branchA.id}/images`, memberRoleOwnerToken);
+      const resBranchImages = await reqPost(`/organizations/me/branches/${team.branchA.id}/images`, memberRoleOwnerToken);
       expect(resBranchImages.status).toBe(422);
     });
 
     test('Front Desk clerk gets 403 Forbidden on profile image and other-branch image routes', async () => {
-      const resLogo = await reqPost('/gyms/profile/logo', team.frontDeskOff.token);
+      const resLogo = await reqPost('/organizations/me/businesses/{businessId}/profile/logo', team.frontDeskOff.token);
       expect(resLogo.status).toBe(403);
 
-      const resCover = await reqPost('/gyms/profile/cover', team.frontDeskOff.token);
+      const resCover = await reqPost('/organizations/me/businesses/{businessId}/profile/cover', team.frontDeskOff.token);
       expect(resCover.status).toBe(403);
 
-      const resGymImages = await reqPost('/gyms/profile/images', team.frontDeskOff.token);
+      const resGymImages = await reqPost('/organizations/me/businesses/{businessId}/profile/images', team.frontDeskOff.token);
       expect(resGymImages.status).toBe(403);
 
-      const resBranchBImages = await reqPost(`/gyms/branches/${team.branchB.id}/images`, team.frontDeskOff.token);
+      const resBranchBImages = await reqPost(`/organizations/me/branches/${team.branchB.id}/images`, team.frontDeskOff.token);
       expect(resBranchBImages.status).toBe(403);
     });
   });
 
-  describe('Branch details & edit (GET & PATCH /gyms/branches/:branchId)', () => {
+  describe('Branch details & edit (GET & PATCH /organizations/me/branches/:branchId)', () => {
     test('owner with role MEMBER can view and update branch detail', async () => {
-      const resGet = await reqGet(`/gyms/branches/${team.branchA.id}`, memberRoleOwnerToken);
+      const resGet = await reqGet(`/organizations/me/branches/${team.branchA.id}`, memberRoleOwnerToken);
       expect(resGet.status).toBe(200);
       expect(resGet.body.data.branch.id).toBe(team.branchA.id);
 
-      const resPatch = await reqPatch(`/gyms/branches/${team.branchA.id}`, memberRoleOwnerToken, {
+      const resPatch = await reqPatch(`/organizations/me/branches/${team.branchA.id}`, memberRoleOwnerToken, {
         branchName: 'Branch A Updated By Owner Member',
       });
       expect(resPatch.status).toBe(200);
@@ -330,10 +330,10 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
     });
 
     test('Front Desk clerk at branch A cannot view or edit branch B (404 not found)', async () => {
-      const resGet = await reqGet(`/gyms/branches/${team.branchB.id}`, team.frontDeskOff.token);
+      const resGet = await reqGet(`/organizations/me/branches/${team.branchB.id}`, team.frontDeskOff.token);
       expect(resGet.status).toBe(404);
 
-      const resPatch = await reqPatch(`/gyms/branches/${team.branchB.id}`, team.frontDeskOff.token, {
+      const resPatch = await reqPatch(`/organizations/me/branches/${team.branchB.id}`, team.frontDeskOff.token, {
         branchName: 'Hacked Branch B',
       });
       expect(resPatch.status).toBe(404);

@@ -1,5 +1,5 @@
 /**
- * NEW-45 (c) — GET /gyms/members/search needs members.create at one or more branches.
+ * NEW-45 (c) — GET /organizations/me/members/search needs members.create at one or more branches.
  *
  * Before: any team member could look up any platform user by e-mail (name, phone,
  * status) — a Trainer or a Support account too.

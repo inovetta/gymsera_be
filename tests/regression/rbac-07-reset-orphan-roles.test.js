@@ -1,7 +1,7 @@
 /**
  * Regression: RBAC-07 residual role correction script (gymsera-rbac07-reset-orphan-roles.js)
  *
- * Fixtures reproduce what the legacy /gyms/staff flow left behind: a platform user whose
+ * Fixtures reproduce what the legacy /organizations/me/staff flow left behind: a platform user whose
  * users.role was raised to BRANCH_MANAGER while their only trace is someone else's staff
  * row. Verifies:
  * 1. PREVIEW makes zero writes and decides CORRECT only for live LIKELY_BUG_ORPHAN users.

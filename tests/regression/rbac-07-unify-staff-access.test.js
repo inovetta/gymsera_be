@@ -197,9 +197,9 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       expect([401, 403]).toContain(actionRes.status);
     });
 
-    test('Creating staff via legacy POST /gyms/staff creates RoleAssignment and keeps User role as MEMBER', async () => {
+    test('Creating staff via legacy POST /organizations/me/staff creates RoleAssignment and keeps User role as MEMBER', async () => {
       const email = 'legacy.create@example.test';
-      const createRes = await asPersona('owner').post('/gyms/staff', {
+      const createRes = await asPersona('owner').post('/organizations/me/staff', {
         fullName: 'Legacy Staff Member',
         email,
         phone: '+923001112233',
@@ -228,14 +228,14 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       expect(assignment.branchLinks.map((b) => b.branchId)).toContain(branchId);
     });
 
-    test('Removing staff via legacy DELETE /gyms/staff/:userId revokes RoleAssignment and revokes access', async () => {
+    test('Removing staff via legacy DELETE /organizations/me/staff/:userId revokes RoleAssignment and revokes access', async () => {
       // First, find the user created in previous test
       const email = 'legacy.create@example.test';
       const user = await User.findOne({ where: { email } });
       expect(user).not.toBeNull();
 
       // Delete via legacy endpoint
-      const delRes = await asPersona('owner').delete(`/gyms/staff/${user.id}`);
+      const delRes = await asPersona('owner').delete(`/organizations/me/staff/${user.id}`);
       expect(delRes.status).toBe(200);
 
       // Verify RoleAssignment in tenantDb is REVOKED

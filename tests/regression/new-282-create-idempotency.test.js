@@ -1,7 +1,7 @@
 /**
  * NEW-282 (owner, build 27): creating a brand or a branch is safe to retry.
  *
- * Before: POST /host/listings, POST /host/branches and POST /gyms/branches had no idempotency.
+ * Before: POST /host/businesses, POST /host/branches and POST /organizations/me/branches had no idempotency.
  * When the answer was lost (timeout, network drop) and the app sent the same create again, the
  * server made a second brand or branch, with its plans, and spent a second capacity slot.
  *
@@ -49,14 +49,14 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
     const req = asPersona('owner').post(path);
     if (k) req.set('Idempotency-Key', k);
     const res = await req.send(body);
-    if (path === '/host/listings') await approvePending();
+    if (path === '/host/businesses') await approvePending();
     return res;
   };
 
   describe.each([
-    ['POST /host/listings', '/host/listings', listingBody],
+    ['POST /host/businesses', '/host/businesses', listingBody],
     ['POST /host/branches', '/host/branches', branchBody],
-    ['POST /gyms/branches', '/gyms/branches', branchBody],
+    ['POST /organizations/me/branches', '/organizations/me/branches', branchBody],
   ])('%s', (_name, path, body) => {
     test('a retry with the same key answers the first result and creates nothing more', async () => {
       const k = key();

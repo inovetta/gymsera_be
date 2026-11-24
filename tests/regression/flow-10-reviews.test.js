@@ -94,7 +94,7 @@ describe('FLOW-10: Review moderation, active/past subscription requirement, and 
     expect(res.body.message || res.body.error?.message).toMatch(/active or past membership/i);
   });
 
-  test('2. POST /discovery/gyms/:id/reviews succeeds without crashing on req.body as branchId', async () => {
+  test('2. POST /discovery/businesses/:id/reviews succeeds without crashing on req.body as branchId', async () => {
     const { MemberSubscription } = dbHarness.tenant1.models;
 
     // Upgrade subscription to ACTIVE
@@ -104,7 +104,7 @@ describe('FLOW-10: Review moderation, active/past subscription requirement, and 
     );
 
     const res = await request(appServer)
-      .post(`/api/v1/discovery/gyms/${gymListing.id}/reviews`)
+      .post(`/api/v1/discovery/businesses/${gymListing.id}/reviews`)
       .set('Authorization', `Bearer ${memberToken}`)
       .send({
         branchId: branch.id,

@@ -284,7 +284,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     expect(usedBefore).toBe(2); // 1 active branch + 1 reserved slot = 2 (maxBranches = 2)
 
     // Two parallel requests to create a new organization competing for the single donor slot
-    const createReq1 = asPersona('owner').post('/host/listings', {
+    const createReq1 = asPersona('owner').post('/host/businesses', {
       businessName: 'Contender Org 1',
       branchSource: 'new',
       branchName: 'Contender Branch 1',
@@ -292,7 +292,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
     });
 
-    const createReq2 = asPersona('owner').post('/host/listings', {
+    const createReq2 = asPersona('owner').post('/host/businesses', {
       businessName: 'Contender Org 2',
       branchSource: 'new',
       branchName: 'Contender Branch 2',
