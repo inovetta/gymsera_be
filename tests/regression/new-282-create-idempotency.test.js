@@ -37,7 +37,7 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
 
   const branches = () => tenantDb.models.Branch.count();
   const listingBody = (n) => ({
-    gymName: `Idem Org ${n}`, branchSource: 'new', branchName: `Idem Org Branch ${n}`, address: `${n} Street`,
+    businessName: `Idem Org ${n}`, branchSource: 'new', branchName: `Idem Org Branch ${n}`, address: `${n} Street`,
     packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
   });
   const branchBody = (n) => ({ branchName: `Idem Branch ${n}`, address: `${n} Road`, packages: [{ name: 'Monthly', price: 50 }] });

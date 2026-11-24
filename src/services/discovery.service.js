@@ -560,10 +560,10 @@ const getGym = async (id) => {
       if (branchRecord && gym) {
         listing = listing.get({ plain: true });
         listing.id = branchRecord.id; // Override businessId with branchId so client matches
-        listing.name = displayName(gym.name, branchRecord.branchName);
+        listing.title = displayName(gym.name, branchRecord.branchName); // card label; becomes displayName with the discovery rows (group 3)
         listing.businessName = gym.name || null;
         listing.branchName = branchRecord.branchName || null;
-        listing.description = gym.description || branchRecord.tagline;
+        listing.shortDescription = gym.description || branchRecord.tagline; // becomes description with the discovery rows (group 3)
         listing.coverImageUrl = _firstPhoto(branchRecord.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || listing.coverImageUrl || null;
         listing.latitude = branchRecord.latitude ? parseFloat(branchRecord.latitude) : listing.latitude;
         listing.longitude = branchRecord.longitude ? parseFloat(branchRecord.longitude) : listing.longitude;

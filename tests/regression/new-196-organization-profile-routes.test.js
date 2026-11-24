@@ -106,7 +106,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
       expect(res.status).toBe(200);
     }
     const after = await GymListing.findByPk(secondOrg.id);
-    expect(after.title).toBe('Second Organization (Org Admin)');
+    expect(after.name).toBe('Second Organization (Org Admin)');
     await secondGym.reload();
     expect(secondGym.contactEmail).toBe('second@gymsera.test');
     expect(secondGym.genderType).toBe('FEMALE_ONLY');

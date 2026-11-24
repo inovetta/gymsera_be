@@ -95,7 +95,7 @@ describe('GET /admin/organizations', () => {
     }
     const additional = res.body.data.organizations.find((t) => t.isAdditionalOrganization);
     expect(additional).toBeDefined();
-    for (const k of ['id', 'organizationName', 'status', 'gymName', 'gymListing', 'owner', 'user', 'city', 'ownerUserId']) {
+    for (const k of ['id', 'organizationName', 'status', 'businessName', 'business', 'owner', 'user', 'city', 'ownerUserId']) {
       expect(additional).toHaveProperty(k);
     }
     expect(additional.id).toMatch(/^[0-9a-f-]{36}:[0-9a-f-]{36}$/);

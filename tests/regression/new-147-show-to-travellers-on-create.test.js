@@ -36,7 +36,7 @@ afterAll(async () => {
 const approvePending = () =>
   GymListing.update({ status: 'ACTIVE' }, { where: { organizationId: personas.owner.organizationId, status: 'PENDING' } });
 
-const newOrg = async (gymName, packages = [plan(`${gymName} Monthly`)]) => {
+const newOrg = async (businessName, packages = [plan(`${businessName} Monthly`)]) => {
   await approvePending();
   const res = await asPersona('owner').post('/host/listings', { businessName, branchSource: 'new', cityId: 1, packages });
   expect(res.status).toBe(201);
