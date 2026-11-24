@@ -91,7 +91,7 @@ describe('a tenant below the target', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.data.tenantSchema).toEqual(expect.objectContaining({ status: 'behind', behindCount: 1, failedCount: 0, targetVersion: TARGET_SCHEMA_VERSION }));
     expect(JSON.stringify(res.body)).not.toContain('GYM-N126A');
-    expect(JSON.stringify(res.body)).not.toContain(tenantA.gymName);
+    expect(JSON.stringify(res.body)).not.toContain(tenantA.firstBusinessName);
 
     expect((await request(app).get('/api/v1/health')).status).toBe(200);
   });

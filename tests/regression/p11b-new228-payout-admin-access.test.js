@@ -93,7 +93,7 @@ describe('NEW-228 read: a platform admin sees the payout account masked, and the
     expect(last.actorUserId).toBe(ctx.platformAdmin.id);
     expect(last.targetType).toBe('tenant');
     expect(last.targetId).toBe(ctx.tenant1.id);
-    expect(last.details).toEqual(expect.objectContaining({ organizationId: ctx.tenant1.id, gymName: ctx.tenant1.gymName }));
+    expect(last.details).toEqual(expect.objectContaining({ organizationId: ctx.tenant1.id, firstBusinessName: ctx.tenant1.firstBusinessName }));
     noFullNumber(last.details);
   });
 

@@ -43,8 +43,8 @@ describe('OBS-05: admin billing events view', () => {
     await City.findOrCreate({ where: { id: 1 }, defaults: { id: 1, name: 'Karachi', isActive: true } });
     const admin = await factories.createUser({ role: 'PLATFORM_ADMIN' });
     adminToken = signToken({ sub: admin.id, id: admin.id, role: 'PLATFORM_ADMIN', isVerified: true });
-    tenantA = await factories.createTenant({ gymName: 'Alpha Fitness' });
-    tenantB = await factories.createTenant({ gymName: 'Beta Fitness' });
+    tenantA = await factories.createTenant({ firstBusinessName: 'Alpha Fitness' });
+    tenantB = await factories.createTenant({ firstBusinessName: 'Beta Fitness' });
     hostToken = signToken({ sub: tenantA.ownerUserId, id: tenantA.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenantA.id });
   });
 
@@ -60,7 +60,7 @@ describe('OBS-05: admin billing events view', () => {
     expect(res.status).toBe(200);
     const rows = res.body.data;
     expect(rows.map((r) => r.providerEventId)).toEqual(['new', 'old']);
-    expect(rows[0]).toMatchObject({ organizationId: tenantA.id, tenantName: tenantA.gymName, status: 'FAILED', attempts: 2, provider: 'APPLE' });
+    expect(rows[0]).toMatchObject({ organizationId: tenantA.id, tenantName: tenantA.firstBusinessName, status: 'FAILED', attempts: 2, provider: 'APPLE' });
     expect(JSON.stringify(res.body)).not.toContain('receipt-data-123');
     expect(rows[0].rawPayload).toBeUndefined();
   });

@@ -115,7 +115,7 @@ const whyNotLive = async (query, { onSkip = () => {} } = {}) => {
   const q = String(query || '').trim();
   if (!q) return [];
   const tenants = await Tenant.findAll({
-    attributes: ['id', 'status', 'organizationName', 'gymName', 'cityId', 'connectionStringEncrypted'],
+    attributes: ['id', 'status', 'organizationName', 'firstBusinessName', 'cityId', 'connectionStringEncrypted'],
   });
   const reports = [];
   for (const tenant of tenants) {

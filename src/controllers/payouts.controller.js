@@ -170,7 +170,7 @@ const _auditAdminRead = async (req, organizationId, account) => {
       targetId: organizationId,
       details: {
         organizationId,
-        organizationName: tenant ? tenant.firstBusinessName : null,
+        firstBusinessName: tenant ? tenant.firstBusinessName : null,
         payoutAccountId: account ? account.id : null,
         route: `${req.method} ${req.baseUrl}${req.path}`,
       },
