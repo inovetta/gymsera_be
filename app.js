@@ -97,7 +97,7 @@ const allowedOrigins = [
 const allowedHeaders = [
   'Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With',
   'x-device-api-key', 'X-Request-Id', 'Idempotency-Key',
-  'X-Tenant-Id', 'X-Api-Version', 'X-Skip-Timeout',
+  'X-Organization-Id', 'X-Api-Version', 'X-Skip-Timeout',
 ];
 
 const isAllowedOrigin = (origin) => {
