@@ -69,7 +69,7 @@ describe('add, list, detail', () => {
     const text = JSON.stringify(res.body);
     expect(text).not.toContain(row.registry_code);
     expect(text).not.toContain(row.session_id);
-    expect(row).toMatchObject({ tenant_id: ctx.tenant1.id, branch_id: ctx.branch1.id, created_by: personas.owner.user.id, token_mode: 'log' });
+    expect(row).toMatchObject({ organization_id: ctx.tenant1.id, branch_id: ctx.branch1.id, created_by: personas.owner.user.id, token_mode: 'log' });
   });
 
   test('path mode shows push.gymsera.com/d/<key>', async () => {

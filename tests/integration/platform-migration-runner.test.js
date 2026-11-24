@@ -120,7 +120,7 @@ describe('Platform migration runner', () => {
 
     // p003: the unique index exists and rejects a second row for the same store subscription.
     await expect(
-      seq.query("INSERT INTO organization_subscriptions (id, tenant_id, platform, external_original_transaction_id) VALUES ('s2', 't2', 'IOS', 'orig-1')")
+      seq.query("INSERT INTO organization_subscriptions (id, organization_id, platform, external_original_transaction_id) VALUES ('s2', 't2', 'IOS', 'orig-1')")
     ).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
 
     const afterFirst = await snapshot();
