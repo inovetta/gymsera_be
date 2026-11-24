@@ -106,7 +106,7 @@ Removed: `gymListingId` (use `businessId`; the column is dropped, F1).
 
 #### MemberSubscriptionSummary (`/me/subscriptions` list rows; index row)
 
-`id`, `userId`, `organizationId` (was `tenantId`), `businessId` (was `gymListingId`), `subscriptionId`, `businessName` (was `gymName`), `planName`, `startDate`, `endDate`, `status`, `createdAt`, `updatedAt`
+`id`, `userId`, `organizationId` (was `tenantId`), `businessId` (was `gymListingId`), `branchId` (new, A3 J3), `subscriptionId`, `businessName` (was `gymName`), `planName`, `startDate`, `endDate`, `status`, `createdAt`, `updatedAt`
 
 #### BranchCard (discovery lists: `/discovery/branches`, `/branches/featured`, `/top-rated`, `/nearby`, `/map`, `/discovery/businesses/:businessId/branches`)
 
@@ -227,7 +227,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 43 | GET | `/tenants/me` | **`/organizations/me`** |  |  |
 | 44 | PATCH | `/tenants/me` | **`/organizations/me`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` |  |
 | 45 | POST | `/tenants/register` | **`/organizations/register`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` | new organization codes `ORG-` (D-5, F8) |
-| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `address`, `organizationName` (was `businessName`), `coverImageUrl`, `genderType`, `firstBusinessDescription` (was `gymDescription`), `firstBusinessName` (was `gymName`), `kycDocumentsJson`, `latitude`, `logoUrl`, `longitude`, `firstBranchDraft` (was `mainBranchData`) |  |
+| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (was `gymDescription`), `firstBranch` (`FirstBranch`, A2 H2 / A3 J10) |  |
 | 47 | POST | `/tenants/:id/select-package` | **`/organizations/:organizationId/select-package`** | `packageId` |  |
 | 48 | POST | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** |  |  |
 | 49 | PUT | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** | `imagesJson` |  |
@@ -436,6 +436,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 252 | GET | `/host/organization-quota` | **`/host/business-quota`** |  |  |
 | 253 | GET | `/host/listings` | **`/host/businesses`** |  | `[Business]`, every non-deleted business of the organization |
 | 254 | POST | `/host/listings/staging-images` | **`/host/businesses/staging-images`** |  |  |
+| new | POST | (none) | **`/host/staging-images`** | multipart `images` (1 to 10 files) | A3 J13: stateless upload for a first-time host (no organization yet); answer `{ urls: string[] }` |
 | 255 | POST | `/host/listings` | **`/host/businesses`** | `businessName` (was `gymName`), `businessDescription` (was `gymDescription`), `genderType`, `contactPhone`, `logoUrl`, `coverImageUrl`, `facilitiesJson`, `firstBranch` (A3 J8: the first branch is nested; no top-level branch keys, no `branchSource`) | Add Business (§3, A2 H2): the first branch is held until approval |
 | 256 | GET | `/host/listings/:id` | **`/host/businesses/:businessId`** |  |  |
 | 257 | PUT | `/host/listings/:id` | **`/host/businesses/:businessId`** | `areaId`, `areaRequestId`, `category`, `cityId`, `contactEmail`, `contactPhone`, `coverImageUrl`, `establishedYear`, `genderType`, `businessDescription` (was `gymDescription`), `businessName` (was `gymName`), `imagesJson`, `latitude`, `logoUrl`, `longitude`, `website` |  |
@@ -1255,6 +1256,15 @@ route** and no server draft: the server first sees the business when `POST /host
 /organizations/:organizationId/first-business`) arrives with a complete `firstBranch`. The held first branch
 (`firstBranchDraft`, A2 H2) exists only after that call and is edited through the PATCH route.
 
+### J13. Stateless image upload for first-time hosts (owner decision J12)
+
+`POST /host/staging-images` (multipart, field `images`, 1 to 10 files; same file types and size limits as every other image upload).
+
+- **Who:** any signed-in user. No organization, no host role and no tenant context needed (a first-time host has none yet). A platform admin is refused (403), as on every host route.
+- **Answer 200:** `{ success: true, message: "Images uploaded", data: { urls: string[] } }`, one URL per file, in the order sent. 422 `validation_failed` when no file is sent; 413 / 422 file errors as the other upload routes.
+- **Stateless:** the server stores the files (under the caller's own folder) and returns the URLs. It saves **nothing** about a business, an organization or a draft: no row, no link. The client keeps the URLs on the phone and sends them as `imagesJson` of `firstBranch` (A2 H2) or as `logoUrl` / `coverImageUrl` when it submits.
+- `POST /host/businesses/staging-images` (§4 row 254) is unchanged: the same upload for an existing organization (stored under its folder).
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1264,3 +1274,4 @@ route** and no server draft: the server first sees the business when `POST /host
 | 2026-11-22 | Amendment A2 (§11, owner): notification types `organization_*`, `FirstBranch` schema and nested Add Business body, business `kycDocuments` item (no storage keys; admin documents use it), `applyToAllBranches` on the refund-policy PUT, branch detail aligned with §3; new code `first_branch_already_built`. | Claude Code (Opus 5.5), session 166 |
 | 2026-11-23 | Amendment A3 (§12, owner): `organization_reactivated`; list keys `branches` / `businesses`; my-subscriptions rows with `branchId` + `businessId`; error-table rows listed; HostStatus key `area`; inbox `business { id, name }` + `branchName`; staff roles scoped ORG / BRANCH (`/me/staff-status`, staff invite) with the report of other responses; Add Business nested `firstBranch`. | Claude Code (Sonnet 5.5), session 166 |
 | 2026-11-23 | Amendment A3 addendum (§12 J10-J12, owner): one `FirstBranch` schema for first-business, Add Business and first-branch edit; business KYC list is `{ documents: [...] }`; first-time host drafts are phone-only (no partial-save contract). | Claude Code (Sonnet 5.5), session 167 |
+| 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName`, `firstBusinessName`, `firstBusinessDescription`, `firstBranch` only; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
