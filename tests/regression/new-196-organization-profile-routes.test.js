@@ -200,7 +200,7 @@ describe('NEW-196 every organization edit is in the audit log with its actor', (
     expect(byOwner.details).toMatchObject({ organizationId: team.organizationId, fields: ['website'], asOwner: true });
     expect(byOrgAdmin.targetType).toBe('GymListing');
     expect(byOrgAdmin.details).toMatchObject({ organizationId: team.organizationId, asOwner: false });
-    expect([...byOrgAdmin.details.fields].sort()).toEqual(['contactEmail', 'gymDescription']);
+    expect([...byOrgAdmin.details.fields].sort()).toEqual(['businessDescription', 'contactEmail']);
     expect(JSON.stringify(rows.map((r) => r.details))).not.toContain('audit@gymsera.test');
   });
 

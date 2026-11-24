@@ -91,10 +91,10 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
     });
     expect(gymB.imagesJson).toEqual(['https://cdn.example.com/b1.jpg']);
     const listingB = await GymListing.findByPk(orgB.id);
-    expect(listingB).toMatchObject({ title: 'P5 Org B Renamed', category: 'CrossFit', establishedYear: 2019, website: 'https://b2.example.com' });
+    expect(listingB).toMatchObject({ name: 'P5 Org B Renamed', category: 'CrossFit', establishedYear: 2019, website: 'https://b2.example.com' });
 
     // Organization A and its gym are untouched.
-    expect((await GymListing.findByPk(orgA.id)).title).toBe('P5 Org A');
+    expect((await GymListing.findByPk(orgA.id)).name).toBe('P5 Org A');
     const gymA = await Gym.findOne({ where: { id: orgA.id } });
     expect(gymA.name).toBe('P5 Org A');
     expect(gymA.website).not.toBe('https://b2.example.com');
@@ -112,8 +112,8 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
     expect(res.status).toBe(200);
     const titles = (await GymListing.findAll({ where: { organizationId: personas.owner.organizationId } })).map((l) => l.title);
     expect(titles.filter((t) => t === 'P5 Profile Name')).toHaveLength(1);
-    expect((await GymListing.findByPk(primary.id)).title).toBe('P5 Profile Name');
-    expect((await GymListing.findByPk(orgA.id)).title).toBe('P5 Org A');
+    expect((await GymListing.findByPk(primary.id)).name).toBe('P5 Profile Name');
+    expect((await GymListing.findByPk(orgA.id)).name).toBe('P5 Org A');
   });
 
   test('personas: only the owner reads or edits; another tenant\'s owner gets 404', async () => {

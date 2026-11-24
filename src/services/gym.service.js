@@ -434,7 +434,7 @@ const _deactivateOrganizationIfEmpty = async (tenantDb, listingId, actorUserId, 
   const listing = await GymListing.findByPk(listingId);
   if (!listing || listing.status === 'INACTIVE') return false;
 
-  await listing.update({ status: 'INACTIVE', branchId: null });
+  await listing.update({ status: 'INACTIVE', primaryBranchId: null });
   await subscriptionQuotaService.recordCapacityEvent(
     {
       organizationId: listing.organizationId,
@@ -1278,11 +1278,11 @@ const restoreBranch = async (tenantDb, organizationId, branchId, restoredByUserI
     if (listing.status === 'INACTIVE') {
       await listing.update({
         status: 'ACTIVE',
-        branchId: branch.id,
+        primaryBranchId: branch.id,
       }, { transaction: platformTx });
     } else if (!listing.primaryBranchId) {
       await listing.update({
-        branchId: branch.id,
+        primaryBranchId: branch.id,
       }, { transaction: platformTx });
     }
 
