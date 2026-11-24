@@ -17,7 +17,7 @@ const listDevices = async ({ organizationId, page, limit, offset }) => {
 
   const { count, rows } = await Device.findAndCountAll({
     where,
-    include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'businessName'] }],
+    include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'organizationName'] }],
     order: [['createdAt', 'DESC']],
     limit,
     offset,
@@ -34,7 +34,7 @@ const getDevice = async (deviceId, organizationId = null) => {
 
   const device = await Device.findOne({
     where,
-    include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'businessName'] }],
+    include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'organizationName'] }],
   });
   if (!device) throw createError('Device not found', 404);
   return { device };

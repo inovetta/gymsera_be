@@ -26,7 +26,7 @@ const { safeRedisDel } = require('../config/redis.config');
 const notificationsService = require('./notifications.service');
 
 // ── createTenant (admin invitation flow - AUTH-09) ───────────────────────────
-const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessName, email, phone, cityId, packageId }, adminActorId = null) => {
+const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, organizationName, email, phone, cityId, packageId }, adminActorId = null) => {
   const emailClean = ownerEmail.trim().toLowerCase();
 
   // If user already exists, verify they don't already own a gym business
@@ -53,7 +53,7 @@ const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessNam
     ownerEmail: emailClean,
     ownerFullName: ownerFullName.trim(),
     ownerPhone: ownerPhone ? ownerPhone.trim() : null,
-    businessName: businessName.trim(),
+    organizationName: organizationName.trim(),
     email: email.trim().toLowerCase(),
     phone: phone ? phone.trim() : null,
     cityId: cityId || null,
@@ -73,7 +73,7 @@ const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessNam
       details: {
         ownerEmail: emailClean,
         ownerFullName: ownerFullName.trim(),
-        businessName: businessName.trim(),
+        organizationName: organizationName.trim(),
       },
       createdAt: new Date(),
     });
@@ -88,7 +88,7 @@ const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessNam
     await emailService.sendTenantInvitationEmail(
       emailClean,
       ownerFullName.trim(),
-      businessName.trim(),
+      organizationName.trim(),
       inviteUrl
     );
   } catch (emailErr) {
@@ -100,7 +100,7 @@ const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, businessNam
       id: invitation.id,
       ownerEmail: invitation.ownerEmail,
       ownerFullName: invitation.ownerFullName,
-      businessName: invitation.businessName,
+      organizationName: invitation.organizationName,
       status: invitation.status,
       expiresAt: invitation.expiresAt,
     },
@@ -223,7 +223,7 @@ const listTenants = async ({ status, page, limit, offset }) => {
         organizationCode: tenant.organizationCode,
         // Named as what it actually is: a pending organization under an
         // existing tenant, not a standalone business applying fresh.
-        businessName: `${tenant.businessName} — new organization "${listing.title}"`,
+        organizationName: `${tenant.organizationName} — new organization "${listing.title}"`,
         isAdditionalOrganization: true,
         ownerUserId: tenant.ownerUserId,
         email: tenant.email,
@@ -301,7 +301,7 @@ const getTenant = async (organizationId) => {
     // organization row in listTenants links to — this is that one listing's
     // own review status, not a second tenant's.
     tenantJson.status = gymListing.status === 'PENDING' ? 'PENDING_REVIEW' : (gymListing.status === 'REJECTED' ? 'REJECTED' : 'ACTIVE');
-    tenantJson.businessName = `${tenant.businessName} — new organization "${gymListing.title}"`;
+    tenantJson.organizationName = `${tenant.organizationName} — new organization "${gymListing.title}"`;
   } else {
     // The real tenant view: every organization it owns, not just the
     // oldest. This is what replaces the old "one row per organization"
@@ -473,7 +473,7 @@ const approveTenant = async (organizationId, adminUserId, { photosChecked = fals
       role: 'host',
       type: 'tenant_approved',
       title: 'Your Gym has been Approved! 🎉',
-      message: `Congratulations! ${tenant.businessName} has been approved and is now active.`,
+      message: `Congratulations! ${tenant.organizationName} has been approved and is now active.`,
       priority: 'high',
       deepLink: '/host/today',
       metadataJson: { event: 'tenant_status_updated', organizationId: tenant.id, status: tenant.status },
@@ -581,7 +581,7 @@ const rejectTenant = async (organizationId, adminUserId, reason) => {
       await emailService.sendTenantRejectedEmail(
         tenant.owner.email,
         tenant.owner.fullName,
-        tenant.businessName,
+        tenant.organizationName,
         reason.trim()
       );
     } catch (err) {
@@ -595,7 +595,7 @@ const rejectTenant = async (organizationId, adminUserId, reason) => {
       role: 'host',
       type: 'tenant_rejected',
       title: 'Host Application Rejected',
-      message: `Your organization ${tenant.gymName || tenant.businessName} requires changes: ${reason.trim()}.`,
+      message: `Your organization ${tenant.gymName || tenant.organizationName} requires changes: ${reason.trim()}.`,
       priority: 'high',
       deepLink: '/host/profile',
       metadataJson: { event: 'tenant_status_updated', organizationId: tenant.id, status: 'REJECTED' },
@@ -1118,7 +1118,7 @@ const assignTenantSubscription = async (organizationId, { packageId, startDate, 
     const owner = tenant.owner;
     if (owner) {
       emailService.sendTenantAccountReactivatedEmail(owner.email, owner.fullName, {
-        businessName: tenant.businessName,
+        organizationName: tenant.organizationName,
         packageName: pkg.name,
         endDate: end.toISOString().split('T')[0],
       }).catch((err) => console.error('[assignTenantSubscription] reactivation email failed:', err.message));
@@ -1443,7 +1443,7 @@ const createGymListing = async (organizationId, data) => {
 
   const listing = await GymListing.create({
     organizationId: actualTenantId,
-    title: data.title || tenant.businessName,
+    title: data.title || tenant.organizationName,
     shortDescription: data.shortDescription || null,
     genderType: data.genderType || 'MIXED',
     contactPhone: data.contactPhone || null,

@@ -221,16 +221,16 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     return { tenant, as: () => asPersona('anonymous', { Authorization: `Bearer ${token}` }) };
   };
 
-  test('gym-profile checks mainBranchData.hoursJson and stores it with its summary pair', async () => {
+  test('gym-profile checks firstBranchDraft.hoursJson and stores it with its summary pair', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
+    const bad = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
-    const ok = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { hoursJson: WEEKLY } });
+    const ok = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { hoursJson: WEEKLY } });
     expect(ok.status).toBe(200);
     await tenant.reload();
-    expect(tenant.mainBranchDataJson.hoursJson.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);
-    expect([tenant.mainBranchDataJson.openingTime, tenant.mainBranchDataJson.closingTime]).toEqual(['06:00', '19:00']);
+    expect(tenant.firstBranchDraft.hoursJson.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);
+    expect([tenant.firstBranchDraft.openingTime, tenant.firstBranchDraft.closingTime]).toEqual(['06:00', '19:00']);
   });
 
   test('approval gives the first branch the week', async () => {
@@ -238,7 +238,7 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     dbNames.push(`gymsera_${organizationCode}`);
     const tenant = await factories.createTenant({
       organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER', cityId: 1,
-      mainBranchDataJson: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
+      firstBranchDraft: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
     });
     await require('../../src/services/admin.service').approveTenant(tenant.id, admin.id);
     await tenant.reload();

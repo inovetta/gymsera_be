@@ -3,7 +3,7 @@
  * area travellers see (A5, A9 rule 4).
  *
  * Before: no queue existed (a typed area had no path); provisioning gave the first branch
- * `mainBranchData.areaId || tenants.area_id` whatever the cities (tenant-provisioning.service.js:475);
+ * `firstBranchDraft.areaId || tenants.area_id` whatever the cities (tenant-provisioning.service.js:475);
  * discovery took `branch || listing || tenant` area (discovery.service.js:213) and showed the listing's
  * area object first (:255), so a branch in another city than its organisation was filed under the
  * organisation's area.
@@ -72,11 +72,11 @@ describe('A6: the admin queue', () => {
     draft = await factories.createTenant({
       ownerUserId: host2.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
       gymName: 'Draft Gym', latitude: 34.01, longitude: 71.51,
-      mainBranchDataJson: { name: 'Main', cityId: peshawar.id, areaId: null, areaRequestId: null, areaStatus: 'pending_review' },
+      firstBranchDraft: { name: 'Main', cityId: peshawar.id, areaId: null, areaRequestId: null, areaStatus: 'pending_review' },
     });
     r1 = await makeRequest(host2.id, peshawar, 'Shinwari Town');
     r2 = await makeRequest(ownerUserId, peshawar, 'shinwari  town');
-    await draft.update({ areaStatus: 'pending_review', areaRequestId: r1.id, mainBranchDataJson: { ...draft.mainBranchDataJson, areaRequestId: r1.id } });
+    await draft.update({ areaStatus: 'pending_review', areaRequestId: r1.id, firstBranchDraft: { ...draft.firstBranchDraft, areaRequestId: r1.id } });
     await link(r1, draft.id, 'organization', draft.id);
     await link(r1, draft.id, 'first_branch_draft', draft.id);
     await ctx.tenant1Db.models.Branch.update({ cityId: peshawar.id, areaId: null }, { where: { id: ctx.branch1.id } });
@@ -119,7 +119,7 @@ describe('A6: the admin queue', () => {
       expect(await M.AreaRequest.findByPk(r.id)).toMatchObject({ status: 'approved', resolvedAreaId: area.id, openKey: null, decidedBy: admin.id });
     }
     expect(await M.Tenant.findByPk(draft.id)).toMatchObject({ areaId: area.id, areaStatus: null, areaRequestId: null });
-    const mb = (await M.Tenant.findByPk(draft.id)).mainBranchDataJson;
+    const mb = (await M.Tenant.findByPk(draft.id)).firstBranchDraft;
     expect(mb.areaId).toBe(area.id);
     expect(mb.areaRequestId).toBeUndefined();
     expect(mb.areaStatus).toBeUndefined();
@@ -206,7 +206,7 @@ describe('A6: the admin queue', () => {
       ownerUserId: host3.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
     });
     const r = await makeRequest(host3.id, peshawar, 'Fake Place');
-    await t.update({ areaStatus: 'pending_review', areaRequestId: r.id, mainBranchDataJson: { name: 'M', areaRequestId: r.id, areaStatus: 'pending_review' } });
+    await t.update({ areaStatus: 'pending_review', areaRequestId: r.id, firstBranchDraft: { name: 'M', areaRequestId: r.id, areaStatus: 'pending_review' } });
     await link(r, t.id, 'organization', t.id);
     await link(r, t.id, 'first_branch_draft', t.id);
     expect((await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/reject`).send({ reason: 'x' })).status).toBe(422);
@@ -216,7 +216,7 @@ describe('A6: the admin queue', () => {
     expect(await M.AreaRequest.findByPk(r.id)).toMatchObject({ status: 'rejected', rejectReason: 'Not an area of Peshawar', openKey: null });
     await t.reload();
     expect(t).toMatchObject({ areaStatus: 'rejected', areaId: null, areaRequestId: r.id });
-    expect(t.mainBranchDataJson.areaStatus).toBe('rejected');
+    expect(t.firstBranchDraft.areaStatus).toBe('rejected');
     expect(await linkOf('organization', t.id, t.id)).not.toBeNull();
     const note = await M.Notification.findOne({ where: { type: 'area_request_decided', userId: host3.id } });
     expect(note.message).toContain('was not accepted: Not an area of Peshawar. Please pick your area again.');
@@ -294,17 +294,17 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
   };
 
   test('the draft branch\'s own area wins; the listing takes the tenant\'s', async () => {
-    const t = await pendingTenant('own', { areaId: hayatabad.id, mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id, areaId: universityTown.id } });
+    const t = await pendingTenant('own', { areaId: hayatabad.id, firstBranchDraft: { name: 'Main', plans, cityId: peshawar.id, areaId: universityTown.id } });
     const { listing, branch } = await approve(t);
     expect(listing.areaId).toBe(hayatabad.id);
     expect(branch.areaId).toBe(universityTown.id);
   });
 
   test('links move: tenant → listing (marker on the listing), main_branch → branch', async () => {
-    const t = await pendingTenant('links', { mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id } });
+    const t = await pendingTenant('links', { firstBranchDraft: { name: 'Main', plans, cityId: peshawar.id } });
     const rt = await makeRequest(t.ownerUserId, peshawar, 'Org Pending Town');
     const rb = await makeRequest(t.ownerUserId, peshawar, 'Branch Pending Town');
-    await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id, mainBranchDataJson: { ...t.mainBranchDataJson, areaRequestId: rb.id, areaStatus: 'pending_review' } });
+    await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id, firstBranchDraft: { ...t.firstBranchDraft, areaRequestId: rb.id, areaStatus: 'pending_review' } });
     await link(rt, t.id, 'organization', t.id);
     await link(rb, t.id, 'first_branch_draft', t.id);
     const { listing, branch } = await approve(t);
@@ -316,16 +316,16 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
   });
 
   test('a draft without its own area takes the tenant\'s only in the same city', async () => {
-    const same = await pendingTenant('same', { areaId: hayatabad.id, mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id } });
+    const same = await pendingTenant('same', { areaId: hayatabad.id, firstBranchDraft: { name: 'Main', plans, cityId: peshawar.id } });
     expect((await approve(same)).branch.areaId).toBe(hayatabad.id);
-    const other = await pendingTenant('other', { areaId: hayatabad.id, mainBranchDataJson: { name: 'Main', plans, cityId: lahore.id } });
+    const other = await pendingTenant('other', { areaId: hayatabad.id, firstBranchDraft: { name: 'Main', plans, cityId: lahore.id } });
     const res = await approve(other);
     expect(res.branch.cityId).toBe(lahore.id);
     expect(res.branch.areaId).toBeNull();
   });
 
   test('a tenant link also covers the branch in the old-data fallback (same city)', async () => {
-    const t = await pendingTenant('fallback', { mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id } });
+    const t = await pendingTenant('fallback', { firstBranchDraft: { name: 'Main', plans, cityId: peshawar.id } });
     const rt = await makeRequest(t.ownerUserId, peshawar, 'Fallback Town');
     await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id });
     await link(rt, t.id, 'organization', t.id);

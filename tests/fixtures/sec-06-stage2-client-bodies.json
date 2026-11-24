@@ -28,7 +28,7 @@
    "method": "POST",
    "path": "/api/v1/admin/tenants",
    "clientKeys": [
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "ownerEmail",
@@ -205,7 +205,7 @@
    "method": "PATCH",
    "path": "/api/v1/tenants/me",
    "clientKeys": [
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"

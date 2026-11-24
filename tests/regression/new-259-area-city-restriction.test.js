@@ -244,12 +244,12 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
   test('POST /tenants/register: another city\'s area or an unknown area is refused; a matching one is kept', async () => {
     const { Tenant } = require('../../src/models/platform');
     const a = await signedIn();
-    expectNotListed(await a.as().post('/tenants/register').send({ businessName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: gulberg.id }));
-    expectNotListed(await a.as().post('/tenants/register').send({ businessName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: 99999999 }));
-    expectNotListed(await a.as().post('/tenants/register').send({ businessName: 'X Gym', email: 'x259@new259.test', areaId: ringRoad.id }));
+    expectNotListed(await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: gulberg.id }));
+    expectNotListed(await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: 99999999 }));
+    expectNotListed(await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', areaId: ringRoad.id }));
     expect(await Tenant.count({ where: { ownerUserId: a.user.id } })).toBe(0);
 
-    const ok = await a.as().post('/tenants/register').send({ businessName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: ringRoad.id });
+    const ok = await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: ringRoad.id });
     expect(ok.status).toBe(201);
     expect((await Tenant.findOne({ where: { ownerUserId: a.user.id } })).areaId).toBe(ringRoad.id);
   });
@@ -260,14 +260,14 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
       ownerUserId: host.user.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
     });
     expectNotListed(await host.as().post(`/tenants/${tenant.id}/gym-profile`).send({
-      gymName: 'Area Gym', mainBranchData: { address: 'x', cityId: peshawar.id, areaId: gulberg.id },
+      gymName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: gulberg.id },
     }));
     // No cityId in the branch data: the business's city is used.
     expectNotListed(await host.as().post(`/tenants/${tenant.id}/gym-profile`).send({
-      gymName: 'Area Gym', mainBranchData: { address: 'x', areaId: gulberg.id },
+      gymName: 'Area Gym', firstBranchDraft: { address: 'x', areaId: gulberg.id },
     }));
     const ok = await host.as().post(`/tenants/${tenant.id}/gym-profile`).send({
-      gymName: 'Area Gym', mainBranchData: { address: 'x', cityId: peshawar.id, areaId: ringRoad.id },
+      gymName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: ringRoad.id },
     });
     expect(ok.status).toBe(200);
   });

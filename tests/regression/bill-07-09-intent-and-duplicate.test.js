@@ -38,7 +38,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
 
     testTenant = await Tenant.create({
       organizationCode: 'TEN-BILL-' + Date.now(),
-      businessName: 'Billing Test Gym',
+      organizationName: 'Billing Test Gym',
       ownerUserId: testHostUser.id,
       email: testHostUser.email,
       status: 'ACTIVE',

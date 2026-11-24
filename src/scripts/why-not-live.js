@@ -98,7 +98,7 @@ const _report = async (tenant, tenantDb, branch) => {
 
   const failing = checks.filter((c) => c.status === 'FAIL').map((c) => c.name);
   return {
-    tenant: { id: tenant.id, name: tenant.businessName || tenant.gymName || null },
+    tenant: { id: tenant.id, name: tenant.organizationName || tenant.gymName || null },
     branch: { id: branch.id, name: branch.branchName || null, listingId: branch.gymId || null, listingStatus: listing?.status || null },
     checks,
     failing,
@@ -115,7 +115,7 @@ const whyNotLive = async (query, { onSkip = () => {} } = {}) => {
   const q = String(query || '').trim();
   if (!q) return [];
   const tenants = await Tenant.findAll({
-    attributes: ['id', 'status', 'businessName', 'gymName', 'cityId', 'connectionStringEncrypted'],
+    attributes: ['id', 'status', 'organizationName', 'gymName', 'cityId', 'connectionStringEncrypted'],
   });
   const reports = [];
   for (const tenant of tenants) {

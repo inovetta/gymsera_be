@@ -36,7 +36,7 @@ const line = (n = 74) => console.log('─'.repeat(n));
 
     console.log('');
     line();
-    console.log(`TENANT  ${tenant.businessName || tenant.id}`);
+    console.log(`TENANT  ${tenant.organizationName || tenant.id}`);
     line();
     console.log(`  id               : ${tenant.id}`);
     console.log(`  status           : ${tenant.status}`);

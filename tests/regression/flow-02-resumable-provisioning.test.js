@@ -70,7 +70,7 @@ const pendingTenant = async (overrides = {}) => {
     connectionStringEncrypted: null,
     selectedPackageId: twoBranchPackage.id,
     paymentMethod: 'BANK_TRANSFER',
-    mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] },
+    firstBranchDraft: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] },
     ...overrides,
   });
 };

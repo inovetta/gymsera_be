@@ -132,12 +132,12 @@ const _getOrCreateGym = async (tenantDb, organizationId, businessId = null) => {
     }
     // Seed initial data from the Platform Tenant record
     const tenant = await Tenant.findByPk(organizationId, {
-      attributes: ['businessName', 'gymName', 'gymDescription', 'genderType', 'logoUrl', 'coverImageUrl', 'phone', 'email'],
+      attributes: ['organizationName', 'gymName', 'gymDescription', 'genderType', 'logoUrl', 'coverImageUrl', 'phone', 'email'],
     });
 
     gym = await Gym.create({
       ...(newId ? { id: newId } : {}),
-      name: (tenant && (tenant.gymName || tenant.businessName)) || 'My Gym',
+      name: (tenant && (tenant.gymName || tenant.organizationName)) || 'My Gym',
       description: (tenant && tenant.gymDescription) || null,
       contactPhone: (tenant && tenant.phone) || null,
       contactEmail: (tenant && tenant.email) || null,
@@ -474,7 +474,7 @@ const _guardLastBranchInOrganization = async (tenantDb, branch, confirmed) => {
   err.code = 'last_branch_in_organization';
   // `data` (not `details`) — that's the key errorHandler.js actually
   // forwards to the client alongside `code`.
-  err.data = { listingId: branch.gymId, organizationName: listing?.title || null };
+  err.data = { listingId: branch.gymId, businessName: listing?.title || null };
   throw err;
 };
 

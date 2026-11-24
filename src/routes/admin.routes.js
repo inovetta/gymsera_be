@@ -55,7 +55,7 @@ router.post(
     body('ownerEmail').trim().toLowerCase().notEmpty().isEmail().withMessage('Valid owner email is required'),
     body('ownerFullName').trim().notEmpty().withMessage('Owner full name is required'),
     body('ownerPhone').optional({ nullable: true }).trim(),
-    body('businessName').trim().notEmpty().withMessage('Business name is required'),
+    body('organizationName').trim().notEmpty().withMessage('Business name is required'),
     body('email').trim().toLowerCase().notEmpty().isEmail().withMessage('Valid business email is required'),
     body('phone').optional({ nullable: true }).trim(),
     body('cityId').optional({ nullable: true }).isInt({ min: 1 }).withMessage('Invalid city ID'),

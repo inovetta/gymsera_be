@@ -84,7 +84,7 @@ describe('gymsera-rbac09-stale-branch-assignments-check.js', () => {
     // 2. Register tenant in platform DB with encrypted connection string
     const connStr = `mysql://${dbUser}:${dbPass}@${dbHost}:${testPort}/${SCRATCH_DB}`;
     testTenant = await factories.createTenant({
-      businessName: 'RBAC09 Test Gym',
+      organizationName: 'RBAC09 Test Gym',
       organizationCode: 'RBAC09-CHK',
       status: 'ACTIVE',
       connectionStringEncrypted: encrypt(connStr),

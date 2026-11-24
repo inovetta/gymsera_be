@@ -174,7 +174,7 @@ describe('SEC-10: KYC Data Protection', () => {
   describe('4. Retention Policy (R-16): 90-Day Deletion Sweep', () => {
     test('Purges KYC documents for tenants rejected more than 90 days ago', async () => {
       const expiredTenant = await factories.createTenant({
-        businessName: 'Expired Rejected Gym',
+        organizationName: 'Expired Rejected Gym',
         email: 'rejected90@gym.test',
         status: 'REJECTED',
         kycStatus: 'REJECTED',
@@ -192,7 +192,7 @@ describe('SEC-10: KYC Data Protection', () => {
 
       // Also create a tenant rejected recently (10 days ago) — should NOT be purged
       const recentTenant = await factories.createTenant({
-        businessName: 'Recent Rejected Gym',
+        organizationName: 'Recent Rejected Gym',
         email: 'rejected10@gym.test',
         status: 'REJECTED',
         kycStatus: 'REJECTED',

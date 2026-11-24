@@ -5,7 +5,7 @@
  * all, and a draft first branch lost its area on every save that did not repeat it (F1). PATCH /tenants/me
  * refused every draft tenant (F3), and nothing told the host an area was under review or refused.
  *
- * After: register, gym-profile (mainBranchData), PATCH /tenants/me (DRAFT / PENDING_REVIEW), the host
+ * After: register, gym-profile (firstBranchDraft), PATCH /tenants/me (DRAFT / PENDING_REVIEW), the host
  * listing and branch routes take `areaRequestId`: the record's area_id is NULL, the gym's marker is
  * pending_review and a link row ties the record to the request (POST /host/listings writes two). A field not
  * sent keeps its value; only `null` or a new real area clears it. Reads carry `pendingArea`; /host/status
@@ -117,7 +117,7 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
   test('POST /tenants/register with areaRequestId: no area, marker pending_review, a tenant link', async () => {
     const h = await newHost();
     const r = await makeRequest(h.user.id, peshawar, 'Register Town');
-    const res = await h.as().post('/tenants/register').send({ businessName: 'Reg Gym', email: `reg${seq}@new265w.test`, cityId: peshawar.id, areaRequestId: r.id });
+    const res = await h.as().post('/tenants/register').send({ organizationName: 'Reg Gym', email: `reg${seq}@new265w.test`, cityId: peshawar.id, areaRequestId: r.id });
     expect(res.status).toBe(201);
     const tenant = await Tenant.findOne({ where: { ownerUserId: h.user.id } });
     expect(tenant).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
@@ -127,35 +127,35 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
 
   test('POST /tenants/register with areaId keeps working as before (builds 21 to 24)', async () => {
     const h = await newHost();
-    const res = await h.as().post('/tenants/register').send({ businessName: 'Old Gym', email: `old${seq}@new265w.test`, cityId: peshawar.id, areaId: hayatabad.id });
+    const res = await h.as().post('/tenants/register').send({ organizationName: 'Old Gym', email: `old${seq}@new265w.test`, cityId: peshawar.id, areaId: hayatabad.id });
     expect(res.status).toBe(201);
     expect(await Tenant.findOne({ where: { ownerUserId: h.user.id } })).toMatchObject({ areaId: hayatabad.id, areaStatus: null, areaRequestId: null });
   });
 
-  test('gym-profile: mainBranchData.areaRequestId → main_branch link; a save without area keys keeps it; areaId: null clears it (R-109, F1)', async () => {
+  test('gym-profile: firstBranchDraft.areaRequestId → main_branch link; a save without area keys keeps it; areaId: null clears it (R-109, F1)', async () => {
     const h = await newHost();
     const tenant = await draftTenant(h.user);
     const r = await makeRequest(h.user.id, peshawar, 'Branch Town');
-    const first = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { name: 'Main', cityId: peshawar.id, areaRequestId: r.id } });
+    const first = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { name: 'Main', cityId: peshawar.id, areaRequestId: r.id } });
     expect(first.status).toBe(200);
     await tenant.reload();
-    expect(tenant.mainBranchDataJson).toMatchObject({ areaId: null, areaRequestId: r.id, areaStatus: 'pending_review' });
+    expect(tenant.firstBranchDraft).toMatchObject({ areaId: null, areaRequestId: r.id, areaStatus: 'pending_review' });
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
 
     // Step 6 (plans) without area keys: kept.
-    const plans = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { plans: [{ name: 'Monthly', price: 10 }] } });
+    const plans = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { plans: [{ name: 'Monthly', price: 10 }] } });
     expect(plans.status).toBe(200);
     await tenant.reload();
-    expect(tenant.mainBranchDataJson).toMatchObject({ areaRequestId: r.id, areaStatus: 'pending_review' });
+    expect(tenant.firstBranchDraft).toMatchObject({ areaRequestId: r.id, areaStatus: 'pending_review' });
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).not.toBeNull();
 
     // An explicit clear (what builds 21 to 24 send without an area): link and marker go.
-    const cleared = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { address: 'x', areaId: null } });
+    const cleared = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { address: 'x', areaId: null } });
     expect(cleared.status).toBe(200);
     await tenant.reload();
-    expect(tenant.mainBranchDataJson.areaId).toBeNull();
-    expect(tenant.mainBranchDataJson.areaRequestId).toBeUndefined();
-    expect(tenant.mainBranchDataJson.areaStatus).toBeUndefined();
+    expect(tenant.firstBranchDraft.areaId).toBeNull();
+    expect(tenant.firstBranchDraft.areaRequestId).toBeUndefined();
+    expect(tenant.firstBranchDraft.areaStatus).toBeUndefined();
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toBeNull();
   });
 
@@ -163,28 +163,28 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     const h = await newHost();
     const tenant = await draftTenant(h.user);
     const r = await makeRequest(h.user.id, peshawar, 'Swap Town');
-    await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { cityId: peshawar.id, areaRequestId: r.id } });
-    const swap = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { areaId: hayatabad.id } });
+    await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { cityId: peshawar.id, areaRequestId: r.id } });
+    const swap = await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { areaId: hayatabad.id } });
     expect(swap.status).toBe(200);
     await tenant.reload();
-    expect(tenant.mainBranchDataJson).toMatchObject({ areaId: hayatabad.id });
-    expect(tenant.mainBranchDataJson.areaRequestId).toBeUndefined();
+    expect(tenant.firstBranchDraft).toMatchObject({ areaId: hayatabad.id });
+    expect(tenant.firstBranchDraft.areaRequestId).toBeUndefined();
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toBeNull();
     const lahoreReq = await makeRequest(h.user.id, lahore, 'Lahore Branch Town');
-    expectCode(await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { areaRequestId: lahoreReq.id } }), 422, 'area_not_listed');
+    expectCode(await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { areaRequestId: lahoreReq.id } }), 422, 'area_not_listed');
   });
 
-  test('GET /tenants/me: pendingArea for the tenant and mainBranchDataJson.pendingArea for the draft first branch', async () => {
+  test('GET /tenants/me: pendingArea for the tenant and firstBranchDraft.pendingArea for the draft first branch', async () => {
     const h = await newHost();
     const r1 = await makeRequest(h.user.id, peshawar, 'Org Town');
     const r2 = await makeRequest(h.user.id, peshawar, 'Draft Branch Town');
-    await h.as().post('/tenants/register').send({ businessName: 'Me Gym', email: `me${seq}@new265w.test`, cityId: peshawar.id, areaRequestId: r1.id });
+    await h.as().post('/tenants/register').send({ organizationName: 'Me Gym', email: `me${seq}@new265w.test`, cityId: peshawar.id, areaRequestId: r1.id });
     const tenant = await Tenant.findOne({ where: { ownerUserId: h.user.id } });
-    await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { areaRequestId: r2.id } });
+    await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { areaRequestId: r2.id } });
     const res = await h.as().get('/tenants/me');
     expect(res.status).toBe(200);
     expect(res.body.data.tenant.pendingArea).toEqual({ requestId: r1.id, name: 'Org Town', status: 'pending_review', rejectReason: null });
-    expect(res.body.data.tenant.mainBranchDataJson.pendingArea).toEqual({ requestId: r2.id, name: 'Draft Branch Town', status: 'pending_review', rejectReason: null });
+    expect(res.body.data.tenant.firstBranchDraft.pendingArea).toEqual({ requestId: r2.id, name: 'Draft Branch Town', status: 'pending_review', rejectReason: null });
   });
 });
 
@@ -210,10 +210,10 @@ describe('A4: PATCH /tenants/me area (R-109, F3)', () => {
 
   test('PENDING_REVIEW works too; other fields stay ACTIVE-only (not saved)', async () => {
     const h = await newHost();
-    const tenant = await draftTenant(h.user, { status: 'PENDING_REVIEW', businessName: 'Before Name' });
-    const res = await h.as().patch('/tenants/me').send({ areaId: hayatabad.id, businessName: 'After Name' });
+    const tenant = await draftTenant(h.user, { status: 'PENDING_REVIEW', organizationName: 'Before Name' });
+    const res = await h.as().patch('/tenants/me').send({ areaId: hayatabad.id, organizationName: 'After Name' });
     expect(res.status).toBe(200);
-    expect(await Tenant.findByPk(tenant.id)).toMatchObject({ areaId: hayatabad.id, businessName: 'Before Name' });
+    expect(await Tenant.findByPk(tenant.id)).toMatchObject({ areaId: hayatabad.id, organizationName: 'Before Name' });
   });
 
   test('a rejected request, another city\'s area or request → 422; the tenant keeps its area', async () => {
@@ -237,7 +237,7 @@ describe('A4: PATCH /tenants/me area (R-109, F3)', () => {
   test('DRAFT without area keys: 404 as today', async () => {
     const h = await newHost();
     await draftTenant(h.user);
-    expect((await h.as().patch('/tenants/me').send({ businessName: 'X' })).status).toBe(404);
+    expect((await h.as().patch('/tenants/me').send({ organizationName: 'X' })).status).toBe(404);
   });
 });
 
@@ -266,10 +266,10 @@ describe('A4: "Choose your area again" (rejected marker, GET /host/status)', () 
     const h = await newHost();
     const tenant = await draftTenant(h.user, { areaId: hayatabad.id });
     const r = await makeRequest(h.user.id, peshawar, 'Branch Refused Town');
-    await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { areaRequestId: r.id } });
+    await h.as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { areaRequestId: r.id } });
     await r.update({ status: 'rejected', openKey: null, rejectReason: 'Duplicate' });
     await tenant.reload();
-    await tenant.update({ mainBranchDataJson: { ...tenant.mainBranchDataJson, areaStatus: 'rejected' } });
+    await tenant.update({ firstBranchDraft: { ...tenant.firstBranchDraft, areaStatus: 'rejected' } });
     const status = await h.as().get('/host/status');
     expect(status.body.data.area).toEqual({ status: 'rejected', name: 'Branch Refused Town', rejectReason: 'Duplicate', target: 'first_branch_draft' });
   });

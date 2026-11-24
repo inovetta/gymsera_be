@@ -24,7 +24,7 @@ const hostTenantView = (result) => {
 };
 
 /**
- * NEW-265 (A4 reads): `pendingArea` for the organisation and, inside `mainBranchDataJson`, for the draft
+ * NEW-265 (A4 reads): `pendingArea` for the organisation and, inside `firstBranchDraft`, for the draft
  * first branch ({ requestId, name, status, rejectReason } or null).
  */
 const withPendingAreas = async (view) => {
@@ -32,12 +32,12 @@ const withPendingAreas = async (view) => {
   const areaRequests = require('../services/area-requests.service');
   const tenant = { ...view.tenant };
   tenant.pendingArea = await areaRequests.pendingAreaFor('organization', tenant.id, tenant.id);
-  let mb = tenant.mainBranchDataJson;
+  let mb = tenant.firstBranchDraft;
   if (typeof mb === 'string') {
     try { mb = JSON.parse(mb); } catch { mb = null; }
   }
   if (mb && typeof mb === 'object') {
-    tenant.mainBranchDataJson = { ...mb, pendingArea: await areaRequests.pendingAreaFor('first_branch_draft', tenant.id, tenant.id) };
+    tenant.firstBranchDraft = { ...mb, pendingArea: await areaRequests.pendingAreaFor('first_branch_draft', tenant.id, tenant.id) };
   }
   return { ...view, tenant };
 };
@@ -45,10 +45,10 @@ const withPendingAreas = async (view) => {
 // ── POST /tenants/register ────────────────────────────────────────────────────
 const register = async (req, res, next) => {
   try {
-    const { businessName, email, phone, cityId, areaId, areaRequestId } = req.body;
+    const { organizationName, email, phone, cityId, areaId, areaRequestId } = req.body;
     const result = await tenantService.registerTenant({
       userId: req.user.sub,
-      businessName,
+      organizationName,
       email,
       phone,
       cityId,
@@ -84,7 +84,7 @@ const selectPackage = async (req, res, next) => {
 // ── POST /tenants/:id/onboarding-images ───────────────────────────────────────
 // Step 4 photos, before the tenant has a real database — see
 // tenant.service.js#addOnboardingImages for why this writes to
-// mainBranchDataJson instead of a Branch row.
+// firstBranchDraft instead of a Branch row.
 const uploadOnboardingImages = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);

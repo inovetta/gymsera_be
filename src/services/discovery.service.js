@@ -124,8 +124,8 @@ const assertBranchBookable = async (branchId) => {
  * and spaces) read once ("heist", not "heist - heist"); otherwise "Organization · Branch".
  */
 const _sameName = (a, b) => a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase();
-const displayName = (organizationName, branchName) => {
-  const org = (organizationName || '').trim();
+const displayName = (businessName, branchName) => {
+  const org = (businessName || '').trim();
   const branch = (branchName || '').trim();
   if (!branch) return org;
   if (!org) return branch;
@@ -224,7 +224,7 @@ const _buildAllActiveBranches = async () => {
             cityId: finalCityId,
             areaId: finalAreaId,
             title: displayName(gym.name, b.branchName),
-            organizationName: gym.name || null,
+            businessName: gym.name || null,
             branchName: b.branchName || null,
             shortDescription: gym.description || b.tagline,
             logoUrl: gym.logoUrl,
@@ -421,7 +421,7 @@ const getGym = async (id) => {
       {
         model: Tenant,
         as: 'tenant',
-        attributes: ['id', 'businessName', 'email', 'phone'],
+        attributes: ['id', 'organizationName', 'email', 'phone'],
         include: [
           {
             model: User,
@@ -457,7 +457,7 @@ const getGym = async (id) => {
                 {
                   model: Tenant,
                   as: 'tenant',
-                  attributes: ['id', 'businessName', 'email', 'phone'],
+                  attributes: ['id', 'organizationName', 'email', 'phone'],
                   include: [
                     {
                       model: User,
@@ -561,7 +561,7 @@ const getGym = async (id) => {
         listing = listing.get({ plain: true });
         listing.id = branchRecord.id; // Override gymListingId with branchId so client matches
         listing.title = displayName(gym.name, branchRecord.branchName);
-        listing.organizationName = gym.name || null;
+        listing.businessName = gym.name || null;
         listing.branchName = branchRecord.branchName || null;
         listing.shortDescription = gym.description || branchRecord.tagline;
         listing.coverImageUrl = _firstPhoto(branchRecord.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || listing.coverImageUrl || null;
@@ -613,7 +613,7 @@ const getGym = async (id) => {
   // first brand's name under another brand's gyms, so it is sent only for exactly one live organisation.
   if (normalizedGym.tenant && normalizedGym.organizationId) {
     const liveBrands = await GymListing.count({ where: { organizationId: normalizedGym.organizationId, status: 'ACTIVE' } });
-    if (liveBrands !== 1) normalizedGym.tenant = { ...normalizedGym.tenant, businessName: null };
+    if (liveBrands !== 1) normalizedGym.tenant = { ...normalizedGym.tenant, organizationName: null };
   }
   return { gym: { ...normalizedGym, branches }, membershipPlans };
 };
@@ -1280,7 +1280,7 @@ const listTopHosts = async () => {
       return {
         id: tenant.id,
         organizationId: tenant.id,
-        businessName: tenant.businessName,
+        organizationName: tenant.organizationName,
         ownerName: tenant.owner ? tenant.owner.fullName : null,
         logoUrl,
         coverImageUrl,

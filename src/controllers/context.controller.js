@@ -90,7 +90,7 @@ const buildContext = async (userId) => {
   // it does not appear in the index.
   const ownedTenants = await membershipService.listOwnedTenants(userId, {
     statuses: ['ACTIVE', 'SUSPENDED'],
-    attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status'],
+    attributes: ['id', 'gymName', 'organizationName', 'connectionStringEncrypted', 'status'],
   });
 
   const tenantIds = [
@@ -105,7 +105,7 @@ const buildContext = async (userId) => {
     const tenant =
       ownedTenants.find((t) => t.id === organizationId) ||
       (await Tenant.findByPk(organizationId, {
-        attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status', 'ownerUserId'],
+        attributes: ['id', 'gymName', 'organizationName', 'connectionStringEncrypted', 'status', 'ownerUserId'],
       }));
 
     if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
@@ -138,11 +138,11 @@ const buildContext = async (userId) => {
       .catch(() => 0);
     pendingApprovals += pending;
 
-    tenantsById[organizationId] = { status: tenant.status, name: tenant.gymName || tenant.businessName };
+    tenantsById[organizationId] = { status: tenant.status, name: tenant.gymName || tenant.organizationName };
 
     organizations.push({
       organizationId,
-      name: tenant.gymName || tenant.businessName,
+      name: tenant.gymName || tenant.organizationName,
       isOwner,
       role: {
         key: roleKey,

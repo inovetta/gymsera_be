@@ -182,7 +182,7 @@ describe('NEW-26: Suspended Tenant Full Blocking and Admin Exception', () => {
       await tenant.update({ status: TenantStatus.SUSPENDED });
 
       const res = await asPersona('owner').patch('/tenants/me', {
-        businessName: 'Illegal Suspended Update',
+        organizationName: 'Illegal Suspended Update',
       });
 
       expect(res.status).toBe(404);
@@ -193,7 +193,7 @@ describe('NEW-26: Suspended Tenant Full Blocking and Admin Exception', () => {
 
       // Verify name in DB was NOT changed
       await tenant.reload();
-      expect(tenant.businessName).not.toBe('Illegal Suspended Update');
+      expect(tenant.organizationName).not.toBe('Illegal Suspended Update');
     });
   });
 

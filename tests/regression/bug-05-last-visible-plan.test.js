@@ -217,7 +217,7 @@ describe('BUG-05: onboarding submit needs at least one plan shown to travellers'
       gymName: `${key} Gym`,
       status: 'DRAFT',
       connectionStringEncrypted: 'PENDING_PROVISIONING',
-      mainBranchDataJson: { branchName: 'Main', plans },
+      firstBranchDraft: { branchName: 'Main', plans },
     });
     const { signToken } = require('../../src/utils/jwt.utils');
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true });

@@ -500,13 +500,13 @@ const titleFor = async (link) => {
   const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   try {
     if (link.target === 'organization' || link.target === 'first_branch_draft') {
-      const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'gymName', 'businessName', 'latitude', 'longitude', 'mainBranchDataJson'] });
+      const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'gymName', 'organizationName', 'latitude', 'longitude', 'firstBranchDraft'] });
       if (!t) return base;
-      const mb = parseJson(t.mainBranchDataJson);
+      const mb = parseJson(t.firstBranchDraft);
       if (link.target === 'first_branch_draft') {
-        return { ...base, title: mb.name || t.gymName || t.businessName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
+        return { ...base, title: mb.name || t.gymName || t.organizationName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
       }
-      return { ...base, title: t.gymName || t.businessName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
+      return { ...base, title: t.gymName || t.organizationName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
     }
     if (link.target === 'business') {
       const l = await GymListing.findByPk(link.targetId, { attributes: ['id', 'title', 'latitude', 'longitude'] });
@@ -665,14 +665,14 @@ const propagate = async (requestIds, areaId) => {
       } else if (link.target === 'first_branch_draft') {
         const t = await Tenant.findByPk(link.targetId);
         if (!t) throw new Error('tenant_not_found');
-        const mb = { ...parseJson(t.mainBranchDataJson) };
+        const mb = { ...parseJson(t.firstBranchDraft) };
         assertSameCity(mb.cityId || t.cityId, area.cityId);
         if (mb.areaRequestId === undefined || mb.areaRequestId === null || Number(mb.areaRequestId) === Number(reqId)) {
           mb.areaId = areaId;
           delete mb.areaRequestId;
           delete mb.areaStatus;
           delete mb.pendingArea;
-          await t.update({ mainBranchDataJson: mb });
+          await t.update({ firstBranchDraft: mb });
         }
       } else {
         const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'connectionStringEncrypted', 'dbName'] });
@@ -798,10 +798,10 @@ const reject = async (id, { reason, applyToGroup } = {}, adminId) => {
       } else if (l.target === 'first_branch_draft') {
         const t = await Tenant.findByPk(l.targetId, { transaction });
         if (t) {
-          const mb = { ...parseJson(t.mainBranchDataJson) };
+          const mb = { ...parseJson(t.firstBranchDraft) };
           if (Number(mb.areaRequestId) === Number(l.areaRequestId)) {
             mb.areaStatus = 'rejected';
-            await t.update({ mainBranchDataJson: mb }, { transaction });
+            await t.update({ firstBranchDraft: mb }, { transaction });
           }
         }
       }

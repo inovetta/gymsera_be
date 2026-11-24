@@ -300,7 +300,7 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
     activeTenants = activeTenants.filter((t) => {
       const idMatch = t.id?.toLowerCase() === filter;
       const codeMatch = t.organizationCode?.toLowerCase() === filter;
-      const businessMatch = t.businessName?.toLowerCase().includes(filter);
+      const businessMatch = t.organizationName?.toLowerCase().includes(filter);
       const gymMatch = t.gymName?.toLowerCase().includes(filter);
       return idMatch || codeMatch || businessMatch || gymMatch;
     });
@@ -332,7 +332,7 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
         tenantSeq,
         {
           organizationId: tenant.id,
-          gymName: tenant.businessName || tenant.gymName || tenant.organizationCode,
+          gymName: tenant.organizationName || tenant.gymName || tenant.organizationCode,
           organizationCode: tenant.organizationCode,
         },
         options
@@ -345,7 +345,7 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
       console.error(`❌ [Tenant Error] ${tenant.gymName || tenant.organizationCode} (${tenant.id}):`, err.message);
       reports.push({
         organizationId: tenant.id,
-        gymName: tenant.businessName || tenant.gymName || tenant.organizationCode,
+        gymName: tenant.organizationName || tenant.gymName || tenant.organizationCode,
         success: false,
         error: err.message,
       });

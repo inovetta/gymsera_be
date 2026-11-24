@@ -26,7 +26,7 @@ async function run() {
   console.log('\n--- TENANTS AND OWNERS ---');
   for (const t of tenants) {
     const owner = await User.findByPk(t.ownerUserId);
-    console.log(`Tenant: ${t.businessName || t.gymName} (ID: ${t.id})`);
+    console.log(`Tenant: ${t.organizationName || t.gymName} (ID: ${t.id})`);
     console.log(`Owner: ${owner ? owner.email : 'Unknown'} (ID: ${t.ownerUserId})`);
     console.log('-----------------------------');
   }

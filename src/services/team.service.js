@@ -732,8 +732,8 @@ const notifyInvitee = async (ctx, user, assignment, branchIds) => {
   const { Tenant } = require('../models/platform');
   const { Branch } = ctx.tenantDb.models;
 
-  const tenant = await Tenant.findByPk(ctx.organizationId, { attributes: ['gymName', 'businessName'] });
-  const gymName = tenant ? tenant.gymName || tenant.businessName : 'a gym';
+  const tenant = await Tenant.findByPk(ctx.organizationId, { attributes: ['gymName', 'organizationName'] });
+  const gymName = tenant ? tenant.gymName || tenant.organizationName : 'a gym';
   const meta = ROLE_META[assignment.roleKey] || {};
 
   let scopeText = 'all branches';

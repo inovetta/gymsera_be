@@ -186,7 +186,7 @@ const _finalizeTenantData = async (tenant, now) => {
     coverImageUrl: null,
     bankTransferRef: null,
     paymentDetailsJson: null,
-    mainBranchDataJson: null,
+    firstBranchDraft: null,
     status: TenantStatus.DELETED,
     deletedAt: now,
   });

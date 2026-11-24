@@ -37,7 +37,7 @@ describe('Prompt 2A: AUTH-02, AUTH-08, NEW-37 Session and Revocation Controls', 
 
     testTenant = await Tenant.create({
       organizationCode: 'TEN-AUTH-' + Date.now(),
-      businessName: 'Auth Test Tenant',
+      organizationName: 'Auth Test Tenant',
       ownerUserId: testUser.id,
       email: testUser.email,
       status: 'ACTIVE',

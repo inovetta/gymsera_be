@@ -7,7 +7,7 @@ const TenantDbManager = require('../database/TenantDbManager');
  * remove any that is not a real photo of the gym, and confirm before approving.
  *
  * - A first application (`organizationId`): the tenant's logo and cover and the main branch photos it sent
- *   (`mainBranchDataJson.imagesJson`, which provisioning copies onto the first branch).
+ *   (`firstBranchDraft.imagesJson`, which provisioning copies onto the first branch).
  * - An additional organization (`organizationId:listingId`): the listing's cover and photos and the photos
  *   of its branches in the tenant database.
  */
@@ -37,7 +37,7 @@ const listApprovalPhotos = async (organizationId) => {
     return [
       ...(tenant.logoUrl ? [{ url: tenant.logoUrl, kind: 'logo' }] : []),
       ...(tenant.coverImageUrl ? [{ url: tenant.coverImageUrl, kind: 'cover' }] : []),
-      ...urls(parseJson(tenant.mainBranchDataJson).imagesJson).map((url) => ({ url, kind: 'gallery' })),
+      ...urls(parseJson(tenant.firstBranchDraft).imagesJson).map((url) => ({ url, kind: 'gallery' })),
     ];
   }
 
@@ -59,7 +59,7 @@ const removeApprovalPhoto = async (organizationId, imageUrl, adminUserId) => {
 
   let removedFrom = null;
   if (!listingId) {
-    const data = parseJson(tenant.mainBranchDataJson);
+    const data = parseJson(tenant.firstBranchDraft);
     if (tenant.logoUrl === imageUrl) {
       await tenant.update({ logoUrl: null });
       removedFrom = 'logo';
@@ -67,7 +67,7 @@ const removeApprovalPhoto = async (organizationId, imageUrl, adminUserId) => {
       await tenant.update({ coverImageUrl: null });
       removedFrom = 'cover';
     } else if (urls(data.imagesJson).includes(imageUrl)) {
-      await tenant.update({ mainBranchDataJson: { ...data, imagesJson: urls(data.imagesJson).filter((u) => u !== imageUrl) } });
+      await tenant.update({ firstBranchDraft: { ...data, imagesJson: urls(data.imagesJson).filter((u) => u !== imageUrl) } });
       removedFrom = 'gallery';
     }
   } else {

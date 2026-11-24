@@ -167,7 +167,7 @@ const submit = async ({ organizationId, userId, billingPlanId, billingCycle, met
         role: 'admin',
         type: 'plan_payment_submitted',
         title: 'Plan payment to check',
-        message: `${tenant.businessName || 'A host'} sent a bank transfer for a ${plan.branchCount}-branch plan (${billingCycle.toLowerCase()}).`,
+        message: `${tenant.organizationName || 'A host'} sent a bank transfer for a ${plan.branchCount}-branch plan (${billingCycle.toLowerCase()}).`,
         deepLink: '/admin/plan-payments',
         metadataJson: { organizationId: tenant.id, requestId: request.id },
       });
@@ -185,9 +185,9 @@ const listForAdmin = async ({ status = null, organizationId = null } = {}) => {
   const rows = await PlanPaymentRequest.findAll({ where, order: [['createdAt', 'DESC']], limit: 200 });
   const tenants = await Tenant.findAll({
     where: { id: { [Op.in]: [...new Set(rows.map((r) => r.organizationId))] } },
-    attributes: ['id', 'businessName', 'gymName'],
+    attributes: ['id', 'organizationName', 'gymName'],
   });
-  const names = new Map(tenants.map((t) => [t.id, t.businessName || t.gymName || null]));
+  const names = new Map(tenants.map((t) => [t.id, t.organizationName || t.gymName || null]));
   return rows.map((r) => ({ ...r.toJSON(), tenantName: names.get(r.organizationId) || null }));
 };
 

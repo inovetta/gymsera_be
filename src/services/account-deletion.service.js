@@ -93,7 +93,7 @@ const getDeletionPreflight = async (userId) => {
     canDelete: blockers.length === 0 && user.role !== 'PLATFORM_ADMIN',
     blockers,
     willCancelAutomatically: stripeSubscriptions.map((s) => ({ type: 'STRIPE_SUBSCRIPTION', organizationId: s.organizationId })),
-    tenants: tenants.map((t) => ({ id: t.id, businessName: t.businessName, status: t.status })),
+    tenants: tenants.map((t) => ({ id: t.id, organizationName: t.organizationName, status: t.status })),
     windowDays: DELETION_WINDOW_DAYS,
     deletionPending: user.status === 'PENDING_DELETION' ? { scheduledFor: user.deletionScheduledFor } : null,
   };
@@ -120,7 +120,7 @@ const _notifyMembers = async (tenant) => {
         userId,
         role: 'traveler',
         type: 'GYM_CLOSING',
-        title: `${tenant.businessName || tenant.gymName || 'Your gym'} is closing on GymsEra`,
+        title: `${tenant.organizationName || tenant.gymName || 'Your gym'} is closing on GymsEra`,
         message:
           'This gym has asked to close its GymsEra account. Its owner can still cancel the request for 30 days; after that your ' +
           'membership here will end. Your receipts and history stay available in your account.',

@@ -10,7 +10,7 @@ const q = require('../src/services/subscription-quota.service');
     if (!t) { console.log('NO SUCH TENANT'); process.exit(1); }
 
     console.log('\n=== TENANT ===');
-    console.log('name             :', t.businessName);
+    console.log('name             :', t.organizationName);
     console.log('status           :', t.status);
     console.log('selectedPackageId:', t.selectedPackageId || '(none)');
     if (t.selectedPackageId) {

@@ -19,7 +19,7 @@ describe('GET /admin/tenants', () => {
   const seed = async (total, pendingEvery) => {
     for (let i = seeded; i < total; i += 1) {
       const t = await factories.createTenant({
-        gymName: `List ${i}`, businessName: `List Biz ${i}`,
+        gymName: `List ${i}`, organizationName: `List Biz ${i}`,
         createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)),
       });
       const first = await factories.createGymListing(t.id, { title: `First ${i}`, createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)) });
@@ -89,12 +89,12 @@ describe('GET /admin/tenants', () => {
       page: 1, limit: 20, total: expect.any(Number), totalPages: expect.any(Number),
     }));
     const row = res.body.data.tenants.find((t) => !t.isAdditionalOrganization);
-    for (const k of ['id', 'organizationCode', 'businessName', 'status', 'email', 'createdAt', 'owner', 'city']) {
+    for (const k of ['id', 'organizationCode', 'organizationName', 'status', 'email', 'createdAt', 'owner', 'city']) {
       expect(row).toHaveProperty(k);
     }
     const additional = res.body.data.tenants.find((t) => t.isAdditionalOrganization);
     expect(additional).toBeDefined();
-    for (const k of ['id', 'businessName', 'status', 'gymName', 'gymListing', 'owner', 'user', 'city', 'ownerUserId']) {
+    for (const k of ['id', 'organizationName', 'status', 'gymName', 'gymListing', 'owner', 'user', 'city', 'ownerUserId']) {
       expect(additional).toHaveProperty(k);
     }
     expect(additional.id).toMatch(/^[0-9a-f-]{36}:[0-9a-f-]{36}$/);

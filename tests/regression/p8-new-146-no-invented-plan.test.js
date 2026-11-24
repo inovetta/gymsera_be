@@ -20,12 +20,12 @@ const TenantDbManager = require('../../src/database/TenantDbManager');
 const dbNames = [];
 let admin;
 
-const pendingTenant = async (key, mainBranchDataJson) => {
+const pendingTenant = async (key, firstBranchDraft) => {
   const organizationCode = `test_p8n146_${key}_${Date.now().toString(36)}`;
   dbNames.push(`gymsera_${organizationCode}`);
   return factories.createTenant({
     organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
-    mainBranchDataJson,
+    firstBranchDraft,
   });
 };
 

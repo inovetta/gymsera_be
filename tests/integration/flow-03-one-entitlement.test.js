@@ -57,7 +57,7 @@ describe('FLOW-03: one entitlement across card-at-registration and approval', ()
       organizationCode,
       status: 'DRAFT',
       connectionStringEncrypted: null,
-      mainBranchDataJson: { plans: [{ name: 'Monthly', price: 3000, durationDays: 30 }] },
+      firstBranchDraft: { plans: [{ name: 'Monthly', price: 3000, durationDays: 30 }] },
     });
   };
   const stripeEvent = (id, subId) =>

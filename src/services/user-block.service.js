@@ -91,7 +91,7 @@ const latestConversations = async (pairs) => {
 const listForUser = async (userId) => {
   const rows = await UserBlock.findAll({
     where: { userId, blockedBy: BlockSide.USER },
-    include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'businessName'] }],
+    include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'organizationName'] }],
     order: [['createdAt', 'DESC']],
   });
   const convs = await latestConversations(rows.map((r) => ({ userId: r.userId, organizationId: r.organizationId })));
@@ -99,7 +99,7 @@ const listForUser = async (userId) => {
     const c = convs.get(`${r.userId}:${r.organizationId}`);
     return {
       organizationId: r.organizationId,
-      name: c?.gymListing?.title || r.tenant?.businessName || 'Gym',
+      name: c?.gymListing?.title || r.tenant?.organizationName || 'Gym',
       conversationId: c?.id || null,
       blockedAt: r.createdAt,
     };

@@ -32,7 +32,7 @@ const _uniqueTenantCode = async () => {
  * A verified user registers as a GYM_HOST.
  * Creates a Tenant record (PENDING_REVIEW) and upgrades the user's role.
  */
-const registerTenant = async ({ userId, businessName, email, phone, cityId, areaId, areaRequestId }) => {
+const registerTenant = async ({ userId, organizationName, email, phone, cityId, areaId, areaRequestId }) => {
   // Each user may own only one tenant (prevent duplicates)
   const existing = await Tenant.findOne({ where: { ownerUserId: userId } });
   if (existing) throw createError('You have already registered a gym business', 409);
@@ -47,7 +47,7 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
   const tenant = await Tenant.create({
     organizationCode,
     // R-112 (C2): build 26 sends no name here (the column is NOT NULL); Step 2 saves the brand.
-    businessName: businessName || '',
+    organizationName: organizationName || '',
     email,
     phone: phone || null,
     cityId: cityId || null,
@@ -80,29 +80,29 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
     throw createError('Gym profile cannot be updated at this stage', 400);
   }
 
-  const { gymName, gymDescription, genderType, address, latitude, longitude, mainBranchData, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
+  const { gymName, gymDescription, genderType, address, latitude, longitude, firstBranchDraft, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
   // R-112 (C1, C3): the brand the host typed on Step 2, checked before anything is saved.
-  const businessName = profileData.businessName !== undefined ? await validateBrandName(profileData.businessName) : undefined;
+  const organizationName = profileData.organizationName !== undefined ? await validateBrandName(profileData.organizationName) : undefined;
 
-  let existingMainBranch = tenant.mainBranchDataJson;
+  let existingMainBranch = tenant.firstBranchDraft;
   if (typeof existingMainBranch === 'string') {
     try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
   }
-  const mergedMainBranchData = mainBranchData !== undefined ? {
+  const mergedMainBranchData = firstBranchDraft !== undefined ? {
     ...(existingMainBranch || {}),
-    ...mainBranchData,
-  } : tenant.mainBranchDataJson;
+    ...firstBranchDraft,
+  } : tenant.firstBranchDraft;
 
-  // R-113 H4 / H5: the draft first branch's week (`mainBranchData.hoursJson`, Become a Host), checked and
+  // R-113 H4 / H5: the draft first branch's week (`firstBranchDraft.hoursJson`, Become a Host), checked and
   // stored with its summary pair; an older build's pair follows the same old-client rules as a branch.
-  if (mainBranchData && typeof mainBranchData === 'object' && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
-    const has = (k) => Object.prototype.hasOwnProperty.call(mainBranchData, k);
+  if (firstBranchDraft && typeof firstBranchDraft === 'object' && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
+    const has = (k) => Object.prototype.hasOwnProperty.call(firstBranchDraft, k);
     if (has('hoursJson') || has('openingTime') || has('closingTime')) {
       const stored = existingMainBranch || {};
       const hm = (t) => (typeof t === 'string' && t ? t.slice(0, 5) : null);
       const body = has('hoursJson')
-        ? { hours: mainBranchData.hoursJson, ...(has('openingTime') && { openingTime: mainBranchData.openingTime }), ...(has('closingTime') && { closingTime: mainBranchData.closingTime }) }
-        : { ...(has('openingTime') && { openingTime: mainBranchData.openingTime }), ...(has('closingTime') && { closingTime: mainBranchData.closingTime }) };
+        ? { hours: firstBranchDraft.hoursJson, ...(has('openingTime') && { openingTime: firstBranchDraft.openingTime }), ...(has('closingTime') && { closingTime: firstBranchDraft.closingTime }) }
+        : { ...(has('openingTime') && { openingTime: firstBranchDraft.openingTime }), ...(has('closingTime') && { closingTime: firstBranchDraft.closingTime }) };
       const values = branchHours.resolveWrite(body, { hoursJson: stored.hoursJson || null, openingTime: hm(stored.openingTime), closingTime: hm(stored.closingTime) });
       const next = values || { hoursJson: stored.hoursJson || null, openingTime: stored.openingTime || null, closingTime: stored.closingTime || null };
       mergedMainBranchData.hoursJson = next.hoursJson;
@@ -113,8 +113,8 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
 
   // NEW-265 (A4, R-109 F1): the draft first branch's area. A key not sent keeps the stored area or
   // request; `areaId: null` / `areaRequestId: null` or a new real area clears the request.
-  const branchChoice = mainBranchData && typeof mainBranchData === 'object'
-    ? areaRequests.parseAreaChoice(mainBranchData)
+  const branchChoice = firstBranchDraft && typeof firstBranchDraft === 'object'
+    ? areaRequests.parseAreaChoice(firstBranchDraft)
     : { kind: 'keep' };
   const branchCityId = mergedMainBranchData && mergedMainBranchData.cityId ? mergedMainBranchData.cityId : tenant.cityId;
   let resolvedBranchChoice = { kind: 'keep' };
@@ -129,7 +129,7 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
       delete mergedMainBranchData.areaRequestId;
       delete mergedMainBranchData.areaStatus;
     }
-  } else if (mainBranchData && mainBranchData.cityId !== undefined) {
+  } else if (firstBranchDraft && firstBranchDraft.cityId !== undefined) {
     // NEW-259: the main branch's area belongs to its city (the branch's, else the business's).
     await assertAreaInCity({ cityId: branchCityId, areaId: mergedMainBranchData.areaId });
     await areaRequests.assertKeptLinkInCity({ organizationId: tenant.id, target: 'first_branch_draft', targetId: tenant.id, cityId: branchCityId });
@@ -145,19 +145,19 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
   }
 
   await tenant.update({
-    ...(businessName !== undefined && { businessName }),
+    ...(organizationName !== undefined && { organizationName }),
     gymName: gymName || tenant.gymName,
     gymDescription: gymDescription !== undefined ? gymDescription : tenant.gymDescription,
     genderType: genderType || tenant.genderType,
     address: address !== undefined ? address : tenant.address,
     latitude: latitude !== undefined ? latitude : tenant.latitude,
     longitude: longitude !== undefined ? longitude : tenant.longitude,
-    mainBranchDataJson: mainBranchDataToSave,
+    firstBranchDraft: mainBranchDataToSave,
     kycDocumentsJson: kycDocumentsJson || tenant.kycDocumentsJson,
     logoUrl: logoUrl || tenant.logoUrl,
     coverImageUrl: coverImageUrl || tenant.coverImageUrl,
     kycStatus: KycStatus.PENDING,
-    onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || mainBranchData !== undefined) ? 3 : 2),
+    onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || firstBranchDraft !== undefined) ? 3 : 2),
   });
   await areaRequests.applyChoiceToLink(resolvedBranchChoice, { organizationId: tenant.id, target: 'first_branch_draft', targetId: tenant.id });
 
@@ -200,7 +200,7 @@ const selectPackage = async (organizationId, userId, packageId) => {
  *
  * There is no Branch row yet — provisioning (and the actual `Branch.create()`)
  * only runs later, when an admin approves the application (see
- * tenant-provisioning.service.js). Until then, `mainBranchDataJson` on this
+ * tenant-provisioning.service.js). Until then, `firstBranchDraft` on this
  * platform-DB Tenant row is the only place branch data can live at all —
  * exactly the same pattern submitGymProfile already uses for name/address/
  * hours. Provisioning reads `imagesJson` off this same blob to seed the real
@@ -210,13 +210,13 @@ const updateOnboardingImages = async (organizationId, userId, imagesJson) => {
   const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
-  let existingMainBranch = tenant.mainBranchDataJson;
+  let existingMainBranch = tenant.firstBranchDraft;
   if (typeof existingMainBranch === 'string') {
     try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
   }
 
   const mergedMainBranchData = { ...(existingMainBranch || {}), imagesJson };
-  await tenant.update({ mainBranchDataJson: mergedMainBranchData });
+  await tenant.update({ firstBranchDraft: mergedMainBranchData });
 
   return { imagesJson };
 };
@@ -226,7 +226,7 @@ const addOnboardingImages = async (organizationId, userId, newUrls) => {
   const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
-  let existingMainBranch = tenant.mainBranchDataJson;
+  let existingMainBranch = tenant.firstBranchDraft;
   if (typeof existingMainBranch === 'string') {
     try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
   }
@@ -238,7 +238,7 @@ const addOnboardingImages = async (organizationId, userId, newUrls) => {
 
 // ── updateMyTenant ────────────────────────────────────────────────────────────
 /**
- * Host updates their business contact info (businessName, email, phone, cityId).
+ * Host updates their business contact info (organizationName, email, phone, cityId).
  */
 const updateMyTenant = async (userId, updates) => {
   const tenant = await Tenant.findOne({
@@ -271,25 +271,25 @@ const updateMyTenant = async (userId, updates) => {
   const { email, phone, cityId } = updates;
   // R-112 (C4): the brand follows the Step 2 rules (C1); a change is audited. The stored name sent back
   // unchanged is not re-checked (C7: an older name must not block editing the other fields).
-  const unchangedBrand = typeof updates.businessName === 'string'
-    && areaRequests.cleanAreaName(updates.businessName) === (tenant.businessName || '').trim();
-  const businessName = updates.businessName !== undefined && !unchangedBrand
-    ? await validateBrandName(updates.businessName)
+  const unchangedBrand = typeof updates.organizationName === 'string'
+    && areaRequests.cleanAreaName(updates.organizationName) === (tenant.organizationName || '').trim();
+  const organizationName = updates.organizationName !== undefined && !unchangedBrand
+    ? await validateBrandName(updates.organizationName)
     : undefined;
-  const previousBusinessName = tenant.businessName;
+  const previousBusinessName = tenant.organizationName;
   await tenant.update({
-    ...(businessName !== undefined && { businessName }),
+    ...(organizationName !== undefined && { organizationName }),
     ...(email !== undefined && { email }),
     ...(phone !== undefined && { phone }),
     ...(cityId !== undefined && { cityId }),
   });
-  if (businessName !== undefined && businessName !== previousBusinessName) {
+  if (organizationName !== undefined && organizationName !== previousBusinessName) {
     await PlatformAuditLog.create({
       actorUserId: userId,
       action: 'tenant.brand_renamed',
       targetType: 'tenant',
       targetId: tenant.id,
-      details: { from: previousBusinessName, to: businessName },
+      details: { from: previousBusinessName, to: organizationName },
       createdAt: new Date(),
     });
   }
@@ -342,11 +342,11 @@ const reapplyTenant = async (organizationId, userId) => {
 
 /**
  * The membership plans the host entered for the main branch during onboarding
- * (`mainBranchDataJson.plans`, older drafts `.packages`), or null. Submitting needs at
+ * (`firstBranchDraft.plans`, older drafts `.packages`), or null. Submitting needs at
  * least one; host-status.service.js uses the same rule for "listing complete".
  */
 const mainBranchPlans = (tenant) => {
-  let mainBranch = tenant.mainBranchDataJson;
+  let mainBranch = tenant.firstBranchDraft;
   if (typeof mainBranch === 'string') {
     try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = {}; }
   }
@@ -397,7 +397,7 @@ const finalizeApplication = async (organizationId, userId, { paymentMethod, bank
         role: 'admin',
         type: 'tenant_submitted_review',
         title: 'New Organization Submitted',
-        message: `New organization pending review: ${tenant.gymName || tenant.businessName} (Host: ${hostName}).`,
+        message: `New organization pending review: ${tenant.gymName || tenant.organizationName} (Host: ${hostName}).`,
         deepLink: `/admin/tenants/${tenant.id}`,
         metadataJson: { organizationId: tenant.id },
       });

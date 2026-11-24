@@ -1139,7 +1139,7 @@ const verifyTenantInvitation = async (rawToken) => {
       id: invitation.id,
       ownerEmail: invitation.ownerEmail,
       ownerFullName: invitation.ownerFullName,
-      businessName: invitation.businessName,
+      organizationName: invitation.organizationName,
       email: invitation.email,
       phone: invitation.phone,
       expiresAt: invitation.expiresAt,
@@ -1220,7 +1220,7 @@ const acceptTenantInvitation = async ({ token, password, fullName, phone }, auth
 
   const tenant = await Tenant.create({
     organizationCode,
-    businessName: invitation.businessName,
+    organizationName: invitation.organizationName,
     email: invitation.email,
     phone: invitation.phone || null,
     cityId: invitation.cityId || null,
@@ -1248,7 +1248,7 @@ const acceptTenantInvitation = async ({ token, password, fullName, phone }, auth
       details: {
         ownerEmail: invitation.ownerEmail,
         organizationCode: tenant.organizationCode,
-        businessName: tenant.businessName,
+        organizationName: tenant.organizationName,
         invitationId: invitation.id,
       },
       createdAt: new Date(),

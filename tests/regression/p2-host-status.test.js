@@ -80,8 +80,8 @@ describe('BUG-24: one plan tier table', () => {
 
 describe('deriveHostStatus: every transition', () => {
   const tenant = (o = {}) => ({
-    id: 't1', gymName: 'G', businessName: 'B', status: 'DRAFT', kycStatus: 'NOT_SUBMITTED',
-    mainBranchDataJson: null, paymentMethod: null, rejectionReason: null, ...o,
+    id: 't1', gymName: 'G', organizationName: 'B', status: 'DRAFT', kycStatus: 'NOT_SUBMITTED',
+    firstBranchDraft: null, paymentMethod: null, rejectionReason: null, ...o,
   });
   const paidSub = (o = {}) => ({ status: 'ACTIVE', paymentStatus: 'PAID', branchCount: 1, billingCycle: 'MONTHLY', platform: 'IOS', ...o });
 
@@ -96,18 +96,18 @@ describe('deriveHostStatus: every transition', () => {
   });
 
   test('DRAFT, listing done, not paid: AWAITING_PAYMENT / CHOOSE_PLAN, no plan label', () => {
-    const s = deriveHostStatus({ tenant: tenant({ mainBranchDataJson: completeListing }) });
+    const s = deriveHostStatus({ tenant: tenant({ firstBranchDraft: completeListing }) });
     expect(s).toMatchObject({ status: 'AWAITING_PAYMENT', nextAction: 'CHOOSE_PLAN', listingComplete: true, plan: null });
     expect(s.payment).toMatchObject({ done: false, entitled: false });
   });
 
-  test('mainBranchDataJson stored as a JSON string still counts', () => {
-    const s = deriveHostStatus({ tenant: tenant({ mainBranchDataJson: JSON.stringify(completeListing) }) });
+  test('firstBranchDraft stored as a JSON string still counts', () => {
+    const s = deriveHostStatus({ tenant: tenant({ firstBranchDraft: JSON.stringify(completeListing) }) });
     expect(s.status).toBe('AWAITING_PAYMENT');
   });
 
   test('DRAFT, paid in the store but not submitted: DRAFT / SUBMIT_APPLICATION', () => {
-    const s = deriveHostStatus({ tenant: tenant({ mainBranchDataJson: completeListing }), entitledSub: paidSub() });
+    const s = deriveHostStatus({ tenant: tenant({ firstBranchDraft: completeListing }), entitledSub: paidSub() });
     expect(s).toMatchObject({ status: 'DRAFT', nextAction: 'SUBMIT_APPLICATION' });
     expect(s.payment.done).toBe(true);
     expect(s.plan).toMatchObject({ tierName: 'Starter', branchCount: 1 });
@@ -182,7 +182,7 @@ describe('GET /host/status', () => {
   });
 
   test('unpaid host with a finished listing: AWAITING_PAYMENT (BUG-12, not "under review")', async () => {
-    await makeHost('Unpaid', { status: 'DRAFT', mainBranchDataJson: completeListing });
+    await makeHost('Unpaid', { status: 'DRAFT', firstBranchDraft: completeListing });
     const res = await asPersona('Unpaid').get('/host/status');
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ status: 'AWAITING_PAYMENT', nextAction: 'CHOOSE_PLAN', plan: null });

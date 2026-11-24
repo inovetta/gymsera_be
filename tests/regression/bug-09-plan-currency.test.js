@@ -7,7 +7,7 @@
  * organization's first branch (the branch a new branch copies its currency from).
  *
  * Become a Host has no branch yet: the tenant payload says which currency approval will give the
- * first branch (`mainBranchCurrency`, R-80: PKR today), and provisioning uses that same value.
+ * first branch (`firstBranchCurrency`, R-80: PKR today), and provisioning uses that same value.
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
@@ -108,11 +108,11 @@ describe('BUG-09: plan payloads carry the branch currency', () => {
 });
 
 describe('BUG-09: Become a Host says which currency the first branch will get', () => {
-  test('GET /tenants/me carries mainBranchCurrency, the value provisioning uses', async () => {
+  test('GET /tenants/me carries firstBranchCurrency, the value provisioning uses', async () => {
     const user = await factories.createUser({ email: 'draft@bug09.test', role: 'GYM_HOST', isHost: true });
     await factories.createTenant({
       ownerUserId: user.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING',
-      mainBranchDataJson: { branchName: 'Main', plans: [{ name: 'Monthly', price: 5000 }] },
+      firstBranchDraft: { branchName: 'Main', plans: [{ name: 'Monthly', price: 5000 }] },
     });
     const { signToken } = require('../../src/utils/jwt.utils');
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true });
@@ -120,6 +120,6 @@ describe('BUG-09: Become a Host says which currency the first branch will get', 
     expect(res.status).toBe(200);
     const { firstBranchCurrency } = require('../../src/utils/currency.utils');
     expect(firstBranchCurrency()).toBe('PKR');
-    expect(res.body.data.tenant.mainBranchCurrency).toBe(firstBranchCurrency());
+    expect(res.body.data.tenant.firstBranchCurrency).toBe(firstBranchCurrency());
   });
 });

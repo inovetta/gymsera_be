@@ -129,9 +129,9 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
     status,
     nextAction,
     organizationId: tenant.id,
-    gymName: tenant.gymName || tenant.businessName || null,
+    gymName: tenant.gymName || tenant.organizationName || null,
     // R-112 (C5): the brand the host typed (null until Step 2 saves it).
-    brandName: tenant.businessName || null,
+    organizationName: tenant.organizationName || null,
     applicationSubmitted: submitted && status !== HostStatus.REJECTED,
     listingComplete,
     payment: { done: paid, entitled, method: tenant.paymentMethod || null },
@@ -145,7 +145,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
 };
 
 const TENANT_ATTRIBUTES = [
-  'id', 'gymName', 'businessName', 'status', 'kycStatus', 'mainBranchDataJson', 'paymentMethod', 'rejectionReason',
+  'id', 'gymName', 'organizationName', 'status', 'kycStatus', 'firstBranchDraft', 'paymentMethod', 'rejectionReason',
 ];
 
 /** The tenant the user owns (one per owner, registerTenant), or null. */

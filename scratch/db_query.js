@@ -11,7 +11,7 @@ async function main() {
   console.log('\n=== TENANTS ===');
   const tenants = await Tenant.findAll();
   for (const t of tenants) {
-    console.log(`Tenant: ID=${t.id}, Code=${t.organizationCode}, Name=${t.businessName}, Status=${t.status}`);
+    console.log(`Tenant: ID=${t.id}, Code=${t.organizationCode}, Name=${t.organizationName}, Status=${t.status}`);
   }
 
   console.log('\n=== GYM LISTINGS ===');

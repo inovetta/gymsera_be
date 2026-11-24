@@ -6,7 +6,7 @@
  * brandByline) and the website (NEW-269) print it under every gym of the account. A host with two
  * brands (two live organisations) then showed the first brand's name on the second brand's gyms.
  *
- * Now the gym detail (GET /discovery/gyms/:id) sends tenant.businessName only when the account has
+ * Now the gym detail (GET /discovery/gyms/:id) sends tenant.organizationName only when the account has
  * exactly one ACTIVE organisation; otherwise null, which every client (build 26 included) already
  * reads as "no byline". The server decides, so old builds and the website are guarded too.
  */
@@ -22,7 +22,7 @@ describe('NEW-283: the brand byline only for an account with exactly one live br
   const brandOnDetail = async () => {
     const res = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}`);
     expect(res.status).toBe(200);
-    return res.body.data.gym.tenant?.businessName ?? null;
+    return res.body.data.gym.tenant?.organizationName ?? null;
   };
 
   beforeAll(async () => {
@@ -34,7 +34,7 @@ describe('NEW-283: the brand byline only for an account with exactly one live br
       gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'N283 Monthly', price: '3000.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
-    await Tenant.update({ businessName: 'Iron Brand' }, { where: { id: ctx.tenant1.id } });
+    await Tenant.update({ organizationName: 'Iron Brand' }, { where: { id: ctx.tenant1.id } });
   });
   afterAll(async () => {
     await stopTestServer();

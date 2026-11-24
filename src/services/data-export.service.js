@@ -95,9 +95,9 @@ const buildUserDataExport = async (userId, { now = new Date() } = {}) => {
   for (const tenant of tenants) {
     try {
       const data = await exportFromTenantDb(tenant, userId);
-      gyms.push({ organizationId: tenant.id, gymName: tenant.gymName || tenant.businessName, ...(data || {}) });
+      gyms.push({ organizationId: tenant.id, gymName: tenant.gymName || tenant.organizationName, ...(data || {}) });
     } catch (err) {
-      unavailable.push({ organizationId: tenant.id, gymName: tenant.gymName || tenant.businessName, reason: 'database_unavailable' });
+      unavailable.push({ organizationId: tenant.id, gymName: tenant.gymName || tenant.organizationName, reason: 'database_unavailable' });
       console.error(`[DataExport] Tenant ${tenant.id} not readable for user ${userId}:`, err.message);
     }
   }

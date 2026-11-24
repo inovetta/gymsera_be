@@ -94,7 +94,7 @@ describe('Prompt 2A: REL-03 and REL-04 Reliability', () => {
       // Create a tenant in ACTIVE status
       activeTenant = await Tenant.create({
         organizationCode: 'TEN-REL04-' + Date.now(),
-        businessName: 'Rel04 Gym',
+        organizationName: 'Rel04 Gym',
         ownerUserId: owner.id,
         email: owner.email,
         status: 'ACTIVE',

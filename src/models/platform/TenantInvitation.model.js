@@ -31,7 +31,7 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'owner_phone',
       },
-      businessName: {
+      organizationName: {
         type: DataTypes.STRING(200),
         allowNull: false,
         field: 'organization_name',

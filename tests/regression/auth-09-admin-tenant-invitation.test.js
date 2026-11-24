@@ -46,7 +46,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
 
   test('Admin creating a tenant sends an invitation and does NOT auto-create/auto-link accounts directly', async () => {
     const ownerEmail = `invite_new_${Date.now()}@example.test`;
-    const businessName = 'Iron Peak Gym';
+    const organizationName = 'Iron Peak Gym';
 
     const res = await request(appServer)
       .post('/api/v1/admin/tenants')
@@ -55,7 +55,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
         ownerEmail,
         ownerFullName: 'Iron Owner',
         ownerPhone: '+923001234567',
-        businessName,
+        organizationName,
         email: `biz_${Date.now()}@example.test`,
         phone: '+923007654321',
       });
@@ -68,7 +68,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     expect(userInDb).toBeNull();
 
     // 2. Tenant must NOT be created yet without owner proof
-    const tenantInDb = await Tenant.findOne({ where: { businessName } });
+    const tenantInDb = await Tenant.findOne({ where: { organizationName } });
     expect(tenantInDb).toBeNull();
 
     // 3. A TenantInvitation record must exist in DB with token hashed at rest
@@ -95,7 +95,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
       email: `existing_member_${Date.now()}@example.test`,
       fullName: 'Regular Member',
     });
-    const businessName = 'Silver Peak Gym';
+    const organizationName = 'Silver Peak Gym';
 
     const res = await request(appServer)
       .post('/api/v1/admin/tenants')
@@ -103,7 +103,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
       .send({
         ownerEmail: existingMemberUser.email,
         ownerFullName: existingMemberUser.fullName,
-        businessName,
+        organizationName,
         email: `biz_${Date.now()}@example.test`,
       });
 
@@ -114,13 +114,13 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     expect(existingMemberUser.role).toBe('MEMBER');
 
     // Tenant must NOT be created yet
-    const tenantInDb = await Tenant.findOne({ where: { businessName } });
+    const tenantInDb = await Tenant.findOne({ where: { organizationName } });
     expect(tenantInDb).toBeNull();
   });
 
   test('Recipient proves ownership by accepting invitation via link token, creating the tenant', async () => {
     const ownerEmail = `accept_test_${Date.now()}@example.test`;
-    const businessName = 'Gold Peak Gym';
+    const organizationName = 'Gold Peak Gym';
 
     const inviteRes = await request(appServer)
       .post('/api/v1/admin/tenants')
@@ -128,7 +128,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
       .send({
         ownerEmail,
         ownerFullName: 'Gold Owner',
-        businessName,
+        organizationName,
         email: `biz_${Date.now()}@example.test`,
       });
 
@@ -163,7 +163,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     expect(createdUser.isVerified).toBe(true);
 
     // Tenant is now created with createdUser as owner
-    const createdTenant = await Tenant.findOne({ where: { businessName } });
+    const createdTenant = await Tenant.findOne({ where: { organizationName } });
     expect(createdTenant).not.toBeNull();
     expect(createdTenant.ownerUserId).toBe(createdUser.id);
 
@@ -201,7 +201,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
       .send({
         ownerEmail,
         ownerFullName: 'Reused Test',
-        businessName: 'Reused Gym',
+        organizationName: 'Reused Gym',
         email: `reused_biz_${Date.now()}@example.test`,
       });
     const token = inviteRes.body.data.debugToken;

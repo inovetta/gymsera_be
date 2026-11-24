@@ -220,7 +220,7 @@ const releaseLease = async (organizationId, token, error) => {
 };
 
 const onboardingBranchData = (tenant) => {
-  let b = tenant.mainBranchDataJson || {};
+  let b = tenant.firstBranchDraft || {};
   if (typeof b === 'string') {
     try { b = JSON.parse(b); } catch (e) { b = {}; }
   }
@@ -355,7 +355,7 @@ const stepSyncModels = async (ctx) => {
  * It used to fall back to city id 1, which filed the gym under an unrelated city.
  */
 const resolveTenantCityId = async (tenant) => {
-  let mainBranch = tenant.mainBranchDataJson;
+  let mainBranch = tenant.firstBranchDraft;
   if (typeof mainBranch === 'string') {
     try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = null; }
   }
@@ -453,7 +453,7 @@ const stepCreateBranch = async (ctx) => {
   const safeBranchLng = b.longitude != null ? parseFloat(Number(b.longitude).toFixed(7)) : (tenant.longitude != null ? parseFloat(Number(tenant.longitude).toFixed(7)) : null);
 
   // Step 4's photos — see tenant.service.js#addOnboardingImages — live
-  // on this same mainBranchDataJson blob until now, since there was no
+  // on this same firstBranchDraft blob until now, since there was no
   // Branch row for them to attach to any earlier than this.
   const onboardingImages = Array.isArray(b.imagesJson) ? b.imagesJson : [];
   // NEW-266: the amenities picked in Become a Host live on the same draft until now.
@@ -768,7 +768,7 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
       await emailService.sendTenantApprovedEmail(
         tenant.owner.email,
         tenant.owner.fullName,
-        tenant.businessName
+        tenant.organizationName
       );
     } catch (err) {
       console.error(`[Provisioning] Failed to send approval email for tenant ${tenant.id}:`, err.message);
@@ -783,7 +783,7 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
         role: 'host',
         type: 'host_update',
         title: 'Host Application Approved',
-        message: `Your organization ${tenant.gymName || tenant.businessName} has been approved.`,
+        message: `Your organization ${tenant.gymName || tenant.organizationName} has been approved.`,
         deepLink: '/host/profile',
         metadataJson: { organizationId: tenant.id }
       });

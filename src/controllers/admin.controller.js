@@ -327,7 +327,7 @@ const sendInvoiceReminder = async (req, res, next) => {
         description: invoice.description,
         totalAmount: invoice.totalAmount,
         dueDate: invoice.dueDate,
-        businessName: tenant.businessName,
+        organizationName: tenant.organizationName,
       });
     }
     return sendSuccess(res, null, 'Reminder email sent');
@@ -351,7 +351,7 @@ const sendInvoiceConfirmation = async (req, res, next) => {
         description: invoice.description,
         totalAmount: invoice.totalAmount,
         paidAt: invoice.paidAt,
-        businessName: tenant.businessName,
+        organizationName: tenant.organizationName,
       });
     }
     return sendSuccess(res, null, 'Payment confirmation email sent');

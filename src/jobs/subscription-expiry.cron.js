@@ -213,7 +213,7 @@ const _processPlatformSubscriptions = async () => {
     if (!owner) continue;
     try {
       await emailService.sendTenantSubscriptionWarningEmail(owner.email, owner.fullName, {
-        businessName: sub.tenant.businessName,
+        organizationName: sub.tenant.organizationName,
         packageName: sub.package?.name || 'Platform',
         endDate: sub.endDate,
       });
@@ -261,7 +261,7 @@ const _processPlatformSubscriptions = async () => {
       const tenant = sub.tenant;
       if (!tenant) continue;
 
-      console.log(`[Cron] Subscription expired for tenant ${tenant.id} (${tenant.businessName})`);
+      console.log(`[Cron] Subscription expired for tenant ${tenant.id} (${tenant.organizationName})`);
     } catch (err) {
       console.error(`[Cron] Failed to process expired subscription ${sub.id}:`, err.message);
     }
@@ -389,7 +389,7 @@ const _reconcileCapacityForAllTenants = async () => {
             found.emptyOrgCount += audit.emptyActiveOrgs.length;
           }
           console.warn(
-            `[Cron] CAPACITY AUDIT FAILED tenant ${sub.organizationId} (${audit.businessName}): ` +
+            `[Cron] CAPACITY AUDIT FAILED tenant ${sub.organizationId} (${audit.organizationName}): ` +
               `${audit.activeBranches} active + ${audit.usedCapacity - audit.activeBranches} reserved ` +
               `vs plan ${audit.maxBranches}` +
               (audit.totalDrift !== 0 ? `, ledger drift ${audit.totalDrift > 0 ? '+' : ''}${audit.totalDrift}` : '') +

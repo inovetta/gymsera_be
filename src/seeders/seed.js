@@ -664,7 +664,7 @@ async function seedTenantsAndListings(userMap) {
       _key: 'tenant1',
       data: {
         organizationCode:    'IRONPEAK',
-        businessName:  'Iron Peak Fitness Pvt Ltd',
+        organizationName:  'Iron Peak Fitness Pvt Ltd',
         ownerUserId:   userMap.host1.id,
         email:         'ahmed@ironpeak.com',
         phone:         '+923001234567',
@@ -697,7 +697,7 @@ async function seedTenantsAndListings(userMap) {
       _key: 'tenant2',
       data: {
         organizationCode:    'VITALITYFIT',
-        businessName:  'Vitality Fit Studio LLC',
+        organizationName:  'Vitality Fit Studio LLC',
         ownerUserId:   userMap.host2.id,
         email:         'sara@vitalityfit.com',
         phone:         '+923211234567',
@@ -730,7 +730,7 @@ async function seedTenantsAndListings(userMap) {
       _key: 'tenant3',
       data: {
         organizationCode:    'POWERZONE',
-        businessName:  'PowerZone Gym & Fitness',
+        organizationName:  'PowerZone Gym & Fitness',
         ownerUserId:   userMap.host3.id,
         email:         'usman@powerzone.com',
         phone:         '+923451234567',
@@ -763,7 +763,7 @@ async function seedTenantsAndListings(userMap) {
       _key: 'tenant4',
       data: {
         organizationCode:    'FITLIFE',
-        businessName:  'FitLife Studio Islamabad',
+        organizationName:  'FitLife Studio Islamabad',
         ownerUserId:   userMap.host4.id,
         email:         'nadia@fitlife.com',
         phone:         '+923361234567',
@@ -796,7 +796,7 @@ async function seedTenantsAndListings(userMap) {
       _key: 'tenant5',
       data: {
         organizationCode:    'CHAMPIONS',
-        businessName:  'Champions Athletic Club',
+        organizationName:  'Champions Athletic Club',
         ownerUserId:   userMap.host5.id,
         email:         'zain@champions.com',
         phone:         '+923121234567',

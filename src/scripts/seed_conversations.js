@@ -48,7 +48,7 @@ async function seed() {
 
   for (const tenant of tenants) {
     const listings = await GymListing.findAll({ where: { organizationId: tenant.id } });
-    console.log(`Tenant ${tenant.businessName} has ${listings.length} listings.`);
+    console.log(`Tenant ${tenant.organizationName} has ${listings.length} listings.`);
 
     for (const listing of listings) {
       if (!listing.branchId) continue;

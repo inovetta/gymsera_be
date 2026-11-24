@@ -96,7 +96,7 @@ async function createTenant(overrides = {}) {
     id,
     organizationCode: overrides.organizationCode || `GYM-${suffix}`,
     gymName: overrides.gymName || `Test Gym ${suffix}`,
-    businessName: overrides.businessName || `Test Gym Enterprises ${suffix}`,
+    organizationName: overrides.organizationName || `Test Gym Enterprises ${suffix}`,
     email: overrides.email || `tenant_${suffix.toLowerCase()}@gymseratest.com`,
     phone: overrides.phone || '+923007654321',
     cityId: overrides.cityId || 1,

@@ -214,7 +214,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       const t = await Tenant.findByPk(gym.tenant.id);
       expect(t.status).toBe('DELETED');
       expect(t.deletedAt).toBeTruthy();
-      expect(t.businessName).toBe(gym.tenant.businessName);
+      expect(t.organizationName).toBe(gym.tenant.organizationName);
       expect(t.connectionStringEncrypted).toBe(gym.tenant.connectionStringEncrypted); // the database is kept (R-28)
       expect([t.phone, t.address, t.bankTransferRef, t.paymentDetailsJson]).toEqual([null, null, null, null]);
       // P7b (R-94): every payout account of the tenant is gone too.

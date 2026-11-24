@@ -46,7 +46,7 @@ router.get('/me', authenticate, authorize('GYM_HOST'), tenantsController.getMyTe
  *           schema:
  *             type: object
  *             properties:
- *               businessName:
+ *               organizationName:
  *                 type: string
  *                 maxLength: 200
  *                 example: Iron Temple Fitness
@@ -91,7 +91,7 @@ router.patch(
  *             type: object
  *             required: [email]
  *             properties:
- *               businessName:
+ *               organizationName:
  *                 type: string
  *                 description: Optional (R-112). Build 26 sends none; the brand is saved on Step 2 (gym-profile).
  *                 example: Iron Temple Fitness
@@ -139,7 +139,7 @@ router.post(
  *             type: object
  *             required: [gymName]
  *             properties:
- *               businessName:
+ *               organizationName:
  *                 type: string
  *                 description: The brand / organisation name (R-112), 3 to 60 characters; 422 brand_name_invalid / brand_name_blocked.
  *                 example: Iron Temple
@@ -224,7 +224,7 @@ router.post(
  *     description: >
  *       No Branch row exists yet at this point — provisioning only runs on
  *       admin approval — so these are held on the platform Tenant row's
- *       mainBranchDataJson.imagesJson until then, same as every other Step
+ *       firstBranchDraft.imagesJson until then, same as every other Step
  *       2/4 field.
  *     tags: [Tenants]
  *     security:

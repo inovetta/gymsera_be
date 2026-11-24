@@ -52,7 +52,7 @@ const _push = (kind, { storeName, branchCount }) =>
  */
 const notifyHostOfPlanChange = async (organizationId, kind, subscription) => {
   try {
-    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId', 'businessName', 'gymName'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId', 'organizationName', 'gymName'] });
     const owner = tenant?.ownerUserId ? await User.findByPk(tenant.ownerUserId, { attributes: ['id', 'email', 'fullName'] }) : null;
     if (!owner) return;
     const storeName = STORE_NAME[subscription.platform] || null;
@@ -60,7 +60,7 @@ const notifyHostOfPlanChange = async (organizationId, kind, subscription) => {
     const endedAt = subscription.entitlementEndedAt ? new Date(subscription.entitlementEndedAt) : null;
     const branchesLockAt =
       kind !== 'downgraded' && endedAt ? new Date(endedAt.getTime() + overquotaGraceDays() * 24 * 60 * 60 * 1000) : null;
-    const businessName = tenant.businessName || tenant.gymName || 'your business';
+    const organizationName = tenant.organizationName || tenant.gymName || 'your business';
 
     const notificationsService = require('./notifications.service');
     await notificationsService
@@ -79,13 +79,13 @@ const notifyHostOfPlanChange = async (organizationId, kind, subscription) => {
     const send =
       kind === 'expired'
         ? emailService.sendTenantSubscriptionExpiredEmail(owner.email, owner.fullName, {
-            businessName,
+            organizationName,
             endDate: subscription.endDate,
             branchesLockAt,
           })
         : emailService.sendTenantPlanChangedEmail(owner.email, owner.fullName, {
             kind,
-            businessName,
+            organizationName,
             storeName,
             branchCount,
             branchesLockAt,

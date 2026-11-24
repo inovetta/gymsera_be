@@ -24,7 +24,7 @@ const TenantDbManager = require('../database/TenantDbManager');
       if (listings.length < 2) continue;
 
       console.log('=====================================================');
-      console.log(`Tenant: ${tenant.businessName || tenant.id} (${tenant.id})`);
+      console.log(`Tenant: ${tenant.organizationName || tenant.id} (${tenant.id})`);
       console.log('--- GymListings (platform DB) ---');
       for (const l of listings) {
         console.log(

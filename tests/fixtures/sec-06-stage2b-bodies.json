@@ -608,7 +608,7 @@
    "path": "/api/v1/tenants/:p/gym-profile",
    "allowed": [
     "address",
-    "businessName",
+    "organizationName",
     "coverImageUrl",
     "genderType",
     "gymDescription",
@@ -617,11 +617,11 @@
     "latitude",
     "logoUrl",
     "longitude",
-    "mainBranchData"
+    "firstBranchDraft"
    ],
    "clientKeys": [
     "address",
-    "businessName",
+    "organizationName",
     "coverImageUrl",
     "genderType",
     "gymDescription",
@@ -630,7 +630,7 @@
     "latitude",
     "logoUrl",
     "longitude",
-    "mainBranchData"
+    "firstBranchDraft"
    ]
   },
   {
@@ -639,14 +639,14 @@
    "allowed": [
     "areaId",
     "areaRequestId",
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"
    ],
    "clientKeys": [
     "areaId",
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"

@@ -127,7 +127,7 @@ describe('OBS-06: alert helper', () => {
     await alertService.raise('CAPACITY_DRIFT', {
       tenantCount: 30,
       tenantIds: ids,
-      businessName: 'Iron Temple Gym',
+      organizationName: 'Iron Temple Gym',
       ownerEmail: 'owner@example.test',
       note: 'Ali Khan called about it',
       listing: { title: 'Iron Temple' },
@@ -153,7 +153,7 @@ describe('OBS-06: alert helper', () => {
 
   test('with SENTRY_DSN a warning-level message is captured with the alert code tag and the same scrubbed fields', async () => {
     process.env.SENTRY_DSN = 'https://public@example.invalid/1';
-    await alertService.raise('CAPACITY_DRIFT', { tenantCount: 3, tenantIds: ['t-1'], businessName: 'Iron Temple Gym' });
+    await alertService.raise('CAPACITY_DRIFT', { tenantCount: 3, tenantIds: ['t-1'], organizationName: 'Iron Temple Gym' });
     expect(mockSentry.init).toHaveBeenCalledTimes(1);
     expect(mockSentry.init.mock.calls[0][0]).toMatchObject({ dsn: 'https://public@example.invalid/1' });
     expect(mockSentry.captureMessage).toHaveBeenCalledTimes(1);

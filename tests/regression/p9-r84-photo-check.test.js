@@ -4,7 +4,7 @@
  * Before: POST /admin/tenants/:id/approve took an empty body (`validate.allowBody([])`,
  * admin.routes.js:118) and approved without anyone having looked at the gym's photos; the admin
  * detail (`getTenant`, admin.service.js:266) listed no photo, and a photo on a pending application
- * (`mainBranchDataJson.imagesJson`) could not be removed by an admin. A screenshot of the app's
+ * (`firstBranchDraft.imagesJson`) could not be removed by an admin. A screenshot of the app's
  * own "Submitted!" screen became a live gym's cover (BUG-30).
  * After: the detail lists every photo the approval would publish (`approvalPhotos`); an admin can
  * remove one (DELETE /admin/tenants/:id/approval-photos, audited); approve answers 422
@@ -45,7 +45,7 @@ const pendingTenant = async (key) => {
     cityId: 1,
     logoUrl: 'https://cdn.gymsera.test/logo.png',
     coverImageUrl: 'https://cdn.gymsera.test/cover.jpg',
-    mainBranchDataJson: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], imagesJson: [...PHOTOS] },
+    firstBranchDraft: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], imagesJson: [...PHOTOS] },
   });
 };
 
@@ -89,7 +89,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
       .send({ imageUrl: PHOTOS[1] });
     expect(res.status).toBe(200);
     await tenant.reload();
-    const data = typeof tenant.mainBranchDataJson === 'string' ? JSON.parse(tenant.mainBranchDataJson) : tenant.mainBranchDataJson;
+    const data = typeof tenant.firstBranchDraft === 'string' ? JSON.parse(tenant.firstBranchDraft) : tenant.firstBranchDraft;
     expect(data.imagesJson).toEqual([PHOTOS[0]]);
     const rows = await auditRows('admin.approval_photo_removed', tenant.id);
     expect(rows).toHaveLength(1);
@@ -114,7 +114,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
     const res = await asPersona(persona).delete(`/admin/tenants/${tenant.id}/approval-photos`).send({ imageUrl: PHOTOS[0] });
     expect([401, 403]).toContain(res.status);
     await tenant.reload();
-    const data = typeof tenant.mainBranchDataJson === 'string' ? JSON.parse(tenant.mainBranchDataJson) : tenant.mainBranchDataJson;
+    const data = typeof tenant.firstBranchDraft === 'string' ? JSON.parse(tenant.firstBranchDraft) : tenant.firstBranchDraft;
     expect(data.imagesJson).toEqual(PHOTOS);
   });
 

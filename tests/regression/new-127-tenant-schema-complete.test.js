@@ -68,7 +68,7 @@ const pendingTenant = () => factories.createTenant({
   status: 'PENDING_REVIEW',
   connectionStringEncrypted: null,
   paymentMethod: 'BANK_TRANSFER',
-  mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] },
+  firstBranchDraft: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] },
 });
 
 const tenantUrl = (dbName) => {

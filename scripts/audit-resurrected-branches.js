@@ -40,7 +40,7 @@ const TenantDbManager = require('../src/database/TenantDbManager');
 
   const tenants = await Tenant.findAll({
     where: {},
-    attributes: ['id', 'businessName', 'status', 'connectionStringEncrypted'],
+    attributes: ['id', 'organizationName', 'status', 'connectionStringEncrypted'],
   });
 
   let tenantsChecked = 0;
@@ -62,7 +62,7 @@ const TenantDbManager = require('../src/database/TenantDbManager');
     try {
       tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
     } catch (err) {
-      console.log(`  [skip] ${tenant.businessName}: could not connect (${err.message})`);
+      console.log(`  [skip] ${tenant.organizationName}: could not connect (${err.message})`);
       continue;
     }
 
@@ -93,7 +93,7 @@ const TenantDbManager = require('../src/database/TenantDbManager');
         const hasRealRestore = laterEvents.some((e) => e.action === 'BRANCH_RESTORED');
         suspiciousBranches++;
         findings.push({
-          tenant: tenant.businessName,
+          tenant: tenant.organizationName,
           organizationId: tenant.id,
           branchId: del.branchId,
           branchName: branch.branchName,

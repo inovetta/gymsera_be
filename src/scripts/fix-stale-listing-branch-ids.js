@@ -53,7 +53,7 @@ const TenantDbManager = require('../database/TenantDbManager');
         });
         await listing.update({ branchId: realBranch ? realBranch.id : null });
         console.log(
-          `[Fixed] Tenant ${tenant.businessName || tenant.id}: listing "${listing.title}" (${listing.id}) ` +
+          `[Fixed] Tenant ${tenant.organizationName || tenant.id}: listing "${listing.title}" (${listing.id}) ` +
             `branchId ${listing.branchId ? 'was stale' : ''} -> ${realBranch ? realBranch.id : 'null'}`
         );
         fixed++;

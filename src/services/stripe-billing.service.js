@@ -92,7 +92,7 @@ const _resolveCustomerId = async (organizationId, tenant) => {
 
   const created = await stripe.customers.create({
     email: tenant?.email || undefined,
-    name: tenant?.businessName || undefined,
+    name: tenant?.organizationName || undefined,
     metadata: { organizationId },
   });
   return created.id;

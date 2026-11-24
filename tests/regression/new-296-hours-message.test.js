@@ -74,15 +74,15 @@ describe('NEW-296: Become a Host step 3 (POST /tenants/:id/gym-profile, the old 
 
   test('18:00-14:00 is refused with the new sentence; 06:00-00:00 (12 AM closing) is stored', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { openingTime: '18:00', closingTime: '14:00' } });
+    const bad = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { openingTime: '18:00', closingTime: '14:00' } });
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
     expect(JSON.stringify(bad.body)).toContain(MESSAGE);
 
-    const ok = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { openingTime: '06:00', closingTime: '00:00' } });
+    const ok = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { openingTime: '06:00', closingTime: '00:00' } });
     expect(ok.status).toBe(200);
     await tenant.reload();
-    expect([tenant.mainBranchDataJson.openingTime, tenant.mainBranchDataJson.closingTime]).toEqual(['06:00', '00:00']);
-    expect(tenant.mainBranchDataJson.hoursJson.days.sun.slots).toEqual([{ open: '06:00', close: '00:00', for: 'all' }]);
+    expect([tenant.firstBranchDraft.openingTime, tenant.firstBranchDraft.closingTime]).toEqual(['06:00', '00:00']);
+    expect(tenant.firstBranchDraft.hoursJson.days.sun.slots).toEqual([{ open: '06:00', close: '00:00', for: 'all' }]);
   });
 });

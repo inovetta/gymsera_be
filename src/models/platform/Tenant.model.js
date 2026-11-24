@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(50),
         allowNull: false,
       },
-      businessName: {
+      organizationName: {
         field: 'organization_name', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(200),
         allowNull: false,
@@ -87,7 +87,7 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(11, 8),
         allowNull: true,
       },
-      mainBranchDataJson: {
+      firstBranchDraft: {
         field: 'first_branch_draft_json', // R-120 NEW-307 (p034)
         type: DataTypes.JSON,
         allowNull: true,
@@ -95,7 +95,7 @@ module.exports = (sequelize) => {
       },
       // BUG-09 (R-80): not stored. The currency approval gives the first branch, for the price
       // labels in Become a Host; provisioning uses the same function.
-      mainBranchCurrency: {
+      firstBranchCurrency: {
         type: DataTypes.VIRTUAL,
         get() {
           return firstBranchCurrency();

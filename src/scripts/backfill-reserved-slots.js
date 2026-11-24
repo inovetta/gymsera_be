@@ -65,7 +65,7 @@ const subscriptionQuotaService = require('../services/subscription-quota.service
             { transaction: null }
           );
           await target.increment('reservedSlots', { by: unattributed });
-          console.log(`[Backfill] Tenant ${tenant.businessName || tenant.id}: attributed ${unattributed} slot(s) to "${target.title}" (${target.id})`);
+          console.log(`[Backfill] Tenant ${tenant.organizationName || tenant.id}: attributed ${unattributed} slot(s) to "${target.title}" (${target.id})`);
           updated++;
         } else {
           skipped++;

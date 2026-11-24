@@ -7,13 +7,13 @@
    "allowed": [
     "areaId",
     "areaRequestId",
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"
    ],
    "clientKeys": [
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"

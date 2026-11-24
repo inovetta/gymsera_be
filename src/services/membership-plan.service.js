@@ -195,7 +195,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
     const tenant = await Tenant.findByPk(organizationId);
     if (!tenant) return;
 
-    let b = tenant.mainBranchDataJson;
+    let b = tenant.firstBranchDraft;
     if (typeof b === 'string') {
       try { b = JSON.parse(b); } catch (e) { b = {}; }
     }

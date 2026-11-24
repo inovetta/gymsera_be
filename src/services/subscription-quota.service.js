@@ -463,7 +463,7 @@ const auditCapacity = async (organizationId, tenantDb) => {
 
   return {
     organizationId,
-    businessName: tenant.businessName,
+    organizationName: tenant.organizationName,
     maxBranches,
     activeBranches,
     usedCapacity,
