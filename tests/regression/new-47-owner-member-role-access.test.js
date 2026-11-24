@@ -80,7 +80,7 @@ beforeAll(async () => {
   const memberBUser = await factories.createUser({ email: 'member-b@new47.test', role: 'MEMBER' });
 
   subPlan = await dbHarness.tenant1.models.MembershipPlan.create({
-    gymId: team.branchA.gymId,
+    businessId: team.branchA.businessId,
     branchId: team.branchA.id,
     name: 'Sub Plan',
     price: 3000,

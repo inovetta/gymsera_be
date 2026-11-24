@@ -18,13 +18,13 @@ async function main() {
   const gyms = await tenantDb.models.Gym.findAll();
   console.log('\n--- Gyms ---');
   for (const g of gyms) {
-    console.log(`ID: ${g.id}, Name: ${g.name}, gymListingId: ${g.gymListingId}`);
+    console.log(`ID: ${g.id}, Name: ${g.name}, businessId: ${g.businessId}`);
   }
 
   const branches = await tenantDb.models.Branch.findAll();
   console.log('\n--- Branches ---');
   for (const b of branches) {
-    console.log(`ID: ${b.id}, Name: ${b.branchName}, gymId: ${b.gymId}`);
+    console.log(`ID: ${b.id}, Name: ${b.branchName}, businessId: ${b.businessId}`);
   }
 
   process.exit(0);

@@ -56,13 +56,13 @@ describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () =>
     city = await City.create({ name: 'P10 Sandbox City', isActive: true });
     const listing = await GymListing.findOne({ where: { organizationId } });
     await listing.update({ status: 'ACTIVE', cityId: city.id });
-    branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
+    branch = await h.tenant1.models.Branch.findOne({ where: { businessId: listing.id } });
     await branch.update({
       status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false, pausedAt: null,
       billingLockedAt: null, cityId: city.id, branchName: 'Sandbox Test Branch',
     });
     await h.tenant1.models.MembershipPlan.create({
-      gymId: branch.gymId, branchId: branch.id, name: 'Monthly', price: 2500,
+      businessId: branch.businessId, branchId: branch.id, name: 'Monthly', price: 2500,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
   });

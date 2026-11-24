@@ -82,8 +82,8 @@ User.hasMany(SavedGym, { foreignKey: 'userId', as: 'savedGyms', onDelete: 'CASCA
 SavedGym.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // GymListing ↔ SavedGym
-GymListing.hasMany(SavedGym, { foreignKey: 'gymListingId', as: 'savedGyms', onDelete: 'CASCADE' });
-SavedGym.belongsTo(GymListing, { foreignKey: 'gymListingId', as: 'gym' });
+GymListing.hasMany(SavedGym, { foreignKey: 'businessId', as: 'savedGyms', onDelete: 'CASCADE' });
+SavedGym.belongsTo(GymListing, { foreignKey: 'businessId', as: 'gym' });
 
 // User ↔ RefreshToken
 User.hasMany(RefreshToken, { foreignKey: 'userId', as: 'refreshTokens', onDelete: 'CASCADE' });
@@ -164,12 +164,12 @@ Tenant.hasMany(UserGymMembership, { foreignKey: 'organizationId', as: 'memberMem
 UserGymMembership.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // GymListing ↔ UserGymMembership
-GymListing.hasMany(UserGymMembership, { foreignKey: 'gymListingId', as: 'memberships' });
-UserGymMembership.belongsTo(GymListing, { foreignKey: 'gymListingId', as: 'gymListing' });
+GymListing.hasMany(UserGymMembership, { foreignKey: 'businessId', as: 'memberships' });
+UserGymMembership.belongsTo(GymListing, { foreignKey: 'businessId', as: 'gymListing' });
 
 // GymListing ↔ GymReview
-GymListing.hasMany(GymReview, { foreignKey: 'gymListingId', as: 'reviews', onDelete: 'CASCADE' });
-GymReview.belongsTo(GymListing, { foreignKey: 'gymListingId', as: 'gym' });
+GymListing.hasMany(GymReview, { foreignKey: 'businessId', as: 'reviews', onDelete: 'CASCADE' });
+GymReview.belongsTo(GymListing, { foreignKey: 'businessId', as: 'gym' });
 
 // User ↔ GymReview
 User.hasMany(GymReview, { foreignKey: 'userId', as: 'gymReviews', onDelete: 'CASCADE' });

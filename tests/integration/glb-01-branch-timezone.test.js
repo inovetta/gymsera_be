@@ -30,9 +30,9 @@ describe('GLB-01: memberships and recurring expenses use the branch timezone', (
 
   const makeBranch = async (name, timezone) => {
     const { Branch, MembershipPlan } = tenantDb.models;
-    const branch = await Branch.create({ gymId: ctx.branch1.gymId, branchName: name, timezone, status: 'ACTIVE' });
+    const branch = await Branch.create({ businessId: ctx.branch1.businessId, branchName: name, timezone, status: 'ACTIVE' });
     const plan = await MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: branch.id, name: `${name} Monthly`, price: '1000.00',
+      businessId: ctx.branch1.businessId, branchId: branch.id, name: `${name} Monthly`, price: '1000.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     const listing = await require('../harness/factories').createGymListing(ctx.tenant1.id, {
@@ -47,7 +47,7 @@ describe('GLB-01: memberships and recurring expenses use the branch timezone', (
     n += 1;
     const user = await createUser({ role: 'MEMBER', email: `glb01.m${n}@gymsera.test`, fullName: `GLB01 Member ${n}` });
     const { subscription } = await subscriptionService.subscribe(user.id, {
-      planId: plan.id, gymListingId: listing.id, branchId: branch.id,
+      planId: plan.id, businessId: listing.id, branchId: branch.id,
     });
     return subscription;
   };

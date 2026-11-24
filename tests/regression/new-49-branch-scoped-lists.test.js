@@ -43,7 +43,7 @@ beforeAll(async () => {
   const { Branch, MembershipPlan, MemberSubscription, AttendanceLog, Trainer, AssignmentOverride } = tenantDb.models;
 
   const listing = await GymListing.findOne({ where: { organizationId } });
-  const a = await Branch.findOne({ where: { gymId: listing.id } });
+  const a = await Branch.findOne({ where: { businessId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
   branches = { a, b, c };
@@ -53,7 +53,7 @@ beforeAll(async () => {
   for (const [letter, branch] of Object.entries(branches)) {
     n += 1;
     const plan = await MembershipPlan.create({
-      gymId: a.gymId,
+      businessId: a.businessId,
       branchId: branch.id,
       name: `N49 plan ${letter}`,
       price: 1000 + n,

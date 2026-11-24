@@ -30,7 +30,7 @@ const REG = 'DeviceType=acc,~DeviceName=SpeedFace Sim,FirmVer=SIM,PushVersion=3.
 
 test('50 devices, 30 members: each device holds exactly its branch\'s members; polls stay fast; no command twice', async () => {
   const branches = [];
-  for (let i = 0; i < 5; i++) branches.push(await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id }));
+  for (let i = 0; i < 5; i++) branches.push(await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id }));
   const members = new Map(); // branchId → [userId]
   for (const b of branches) {
     members.set(b.id, []);

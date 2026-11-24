@@ -57,7 +57,7 @@ describe('RBAC-07 residual: reset orphaned BRANCH_MANAGER roles', () => {
     // gym_staff.branch_id has a foreign key to branches: give each tenant a real branch.
     const branchIn = async (models) => {
       const gym = await models.Gym.create({ name: 'RBAC-07 Test Gym' });
-      const branch = await models.Branch.create({ gymId: gym.id, branchName: 'Main', timezone: 'Asia/Karachi' });
+      const branch = await models.Branch.create({ businessId: gym.id, branchName: 'Main', timezone: 'Asia/Karachi' });
       return branch.id;
     };
     const b1 = await branchIn(t1Models);

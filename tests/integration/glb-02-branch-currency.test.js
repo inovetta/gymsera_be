@@ -14,9 +14,9 @@ describe('GLB-02: currency per branch', () => {
 
   const makeBranch = async (name, over = {}) => {
     const { Branch, MembershipPlan } = tenantDb.models;
-    const branch = await Branch.create({ gymId: ctx.branch1.gymId, branchName: name, status: 'ACTIVE', ...over });
+    const branch = await Branch.create({ businessId: ctx.branch1.businessId, branchName: name, status: 'ACTIVE', ...over });
     const plan = await MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: branch.id, name: `${name} Plan`, price: '100.00',
+      businessId: ctx.branch1.businessId, branchId: branch.id, name: `${name} Plan`, price: '100.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     const listing = await factories.createGymListing(ctx.tenant1.id, { branchId: branch.id, title: `${name} Gym`, status: 'ACTIVE' });
@@ -55,7 +55,7 @@ describe('GLB-02: currency per branch', () => {
     n += 1;
     const user = await factories.createUser({ role: 'MEMBER', email: `glb02.m${n}@gymsera.test`, fullName: 'GLB02 Member' });
     const { payment } = await subscriptionService.subscribe(user.id, {
-      planId: usd.plan.id, gymListingId: usd.listing.id, branchId: usd.branch.id,
+      planId: usd.plan.id, businessId: usd.listing.id, branchId: usd.branch.id,
     });
     expect(payment.currency).toBe('USD');
 

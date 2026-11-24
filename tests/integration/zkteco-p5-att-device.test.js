@@ -54,7 +54,7 @@ const json = (t) => (t ? JSON.parse(t) : null);
 
 /** An att device on `branch`, connected the way the capture shows (no history unless asked). */
 async function attDevice({ importFirst = false, mode = 'host', name = 'Front Door', history = false, simOpts = {} } = {}) {
-  const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name, direction: 'in', importFirst, createdBy: w.owner.user.id });
+  const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.businessId, name, direction: 'in', importFirst, createdBy: w.owner.user.id });
   const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode, att: true, ...simOpts });
   const c = await sim.connectAtt();
   if (history) await sim.uploadHistory();
@@ -64,7 +64,7 @@ async function attDevice({ importFirst = false, mode = 'host', name = 'Front Doo
 
 beforeAll(async () => {
   w = await createWorld();
-  branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Att Branch' });
+  branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Att Branch' });
 });
 
 describe('activation without registry', () => {
@@ -114,7 +114,7 @@ describe('activation without registry', () => {
 
   test('serial pairing: activated only while DEVICE_SERIAL_PAIRING allows it', env({ DEVICE_SERIAL_PAIRING: 'open', DEVICE_UNCLAIMED_RATE_SECONDS: '0' }, async () => {
     const serial = sn();
-    const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name: 'Serial', direction: 'in', linkMode: 'serial', serialNumber: serial, importFirst: false, createdBy: w.owner.user.id });
+    const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.businessId, name: 'Serial', direction: 'in', linkMode: 'serial', serialNumber: serial, importFirst: false, createdBy: w.owner.user.id });
     process.env.DEVICE_SERIAL_PAIRING = 'off';
     const off = await new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: serial, att: true }).connectAtt({ info: false });
     expect(off.cdata.text.trim()).toBe('OK');
@@ -313,8 +313,8 @@ describe('audit fed by OPERLOG USER uploads', () => {
   // NEW-248b: an att audit asks DATA QUERY USERINFO per PIN (not DATA QUERY user) and takes every USER line the
   // device uploads while it is open; a PIN of nobody in GymsEra is listed as unlinked at the compare.
   test('the users the device uploads during the audit are its answer; compared once answered', async () => {
-    const own = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Att Audit Upload Branch' });
-    const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: own.id, businessId: own.gymId, name: 'Audit Door', direction: 'in', importFirst: false, createdBy: w.owner.user.id });
+    const own = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Att Audit Upload Branch' });
+    const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: own.id, businessId: own.businessId, name: 'Audit Door', direction: 'in', importFirst: false, createdBy: w.owner.user.id });
     const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true });
     await sim.connectAtt();
     const member = await w.member('Audit Upload Member', { email: `p5-audit-${crypto.randomBytes(3).toString('hex')}@gymseratest.com` });

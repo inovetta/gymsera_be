@@ -139,7 +139,7 @@ describe('P5b item 1: host routes without tenantContext act on the caller\'s own
     const { GymListing } = require('../../src/models/platform');
     const before = (await GymListing.findByPk(ctx.listing1.id)).reservedSlots;
     const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
-      .post(`/host/listings/${ctx.listing1.id}/reserved-slots/transfer`, { toListingId: ctx.listing2.id, count: 1 });
+      .post(`/host/listings/${ctx.listing1.id}/reserved-slots/transfer`, { toBusinessId: ctx.listing2.id, count: 1 });
     expect(res.status).toBe(404);
     expect((await GymListing.findByPk(ctx.listing1.id)).reservedSlots).toBe(before);
   });

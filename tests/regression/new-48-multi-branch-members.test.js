@@ -41,12 +41,12 @@ beforeAll(async () => {
   organizationId = personas.owner.organizationId;
 
   const listing = await GymListing.findOne({ where: { organizationId } });
-  branchA = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
+  branchA = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   branchC = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
 
   const plan = await tenantDb.models.MembershipPlan.create({
-    gymId: branchA.gymId,
+    businessId: branchA.businessId,
     branchId: branchA.id,
     name: 'Standard Monthly',
     price: 3000,

@@ -927,7 +927,7 @@ const _downgradeContext = async (organizationId, billingPlanId, { transaction = 
   const tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
   const branches = await tenantDb.models.Branch.findAll({
     where: { status: 'ACTIVE' },
-    attributes: ['id', 'branchName', 'gymId', 'createdAt'],
+    attributes: ['id', 'branchName', 'businessId', 'createdAt'],
     order: [['createdAt', 'ASC']],
   });
   const reservedSlots =
@@ -947,7 +947,7 @@ const previewDowngrade = async (organizationId, billingPlanId) => {
     keepCount: mustChooseBranches ? plan.branchCount : 0,
     // The provider applies a downgrade at the end of the paid period.
     effectiveAt: current.endDate,
-    branches: branches.map((b) => ({ id: b.id, name: b.branchName, businessId: b.gymId })),
+    branches: branches.map((b) => ({ id: b.id, name: b.branchName, businessId: b.businessId })),
     pendingChange: current.pendingChange || null,
   };
 };

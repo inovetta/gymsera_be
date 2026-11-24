@@ -428,7 +428,7 @@ const stepCreateBranch = async (ctx) => {
   const listingId = listing ? listing.id : null;
 
   // ── Gym record (one per tenant DB) ─────────────────────────────────────────
-  let gymId = null;
+  let businessId = null;
   let gym = await models.Gym.findOne();
   if (!gym) {
     gym = await models.Gym.create({
@@ -440,10 +440,10 @@ const stepCreateBranch = async (ctx) => {
       logoUrl: tenant.logoUrl || null,
       coverImageUrl: tenant.coverImageUrl || null,
     });
-    gymId = gym.id;
-    console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${gymId})`);
+    businessId = gym.id;
+    console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${businessId})`);
   } else {
-    gymId = gym.id;
+    businessId = gym.id;
   }
 
   // ── Initial Branch from onboarding data ────────────────────────────────────
@@ -464,7 +464,7 @@ const stepCreateBranch = async (ctx) => {
   const firstBranchCityId = b.cityId || tenant.cityId || null;
   const firstArea = await areaRequests.firstBranchArea(tenant, b, firstBranchCityId);
 
-  let branch = await models.Branch.findOne({ where: { gymId } });
+  let branch = await models.Branch.findOne({ where: { businessId } });
   if (!branch) {
     // CAP-03: Route through gymService.createBranch
     const gymService = require('./gym.service');
@@ -475,7 +475,7 @@ const stepCreateBranch = async (ctx) => {
       tenantDb,
       tenant.id,
       {
-        gymListingId: listingId,
+        businessId: listingId,
         branchName: b.name || tenant.firstBusinessName || 'Main Branch',
         address: b.address || tenant.address || null,
         addressLine1: b.address || tenant.address || null,
@@ -591,7 +591,7 @@ const stepCreateBranch = async (ctx) => {
           console.log(`[Provisioning] Updated existing MembershipPlan '${p.name}' in '${dbName}'`);
         } else {
           await models.MembershipPlan.create({
-            gymId,
+            businessId,
             branchId: branch.id,
             name: p.name.trim(),
             description: p.description || null,

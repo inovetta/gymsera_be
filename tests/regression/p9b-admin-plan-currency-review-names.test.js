@@ -35,7 +35,7 @@ beforeAll(async () => {
   branch = await Branch.findOne({ where: { status: 'ACTIVE' }, order: [['createdAt', 'ASC']] });
   await branch.update({ currency: 'USD' });
   await MembershipPlan.create({
-    gymId: branch.gymId || branch.id, branchId: branch.id, name: 'Quarter Pass', price: 99, priceMinor: 9900,
+    businessId: branch.businessId || branch.id, branchId: branch.id, name: 'Quarter Pass', price: 99, priceMinor: 9900,
     durationType: 'QUARTERLY', durationValue: 1, isPublic: false, status: 'ACTIVE',
   });
 
@@ -78,8 +78,8 @@ describe('BUG-29: admin reviews name the gym by the traveller rule', () => {
     const { createUser } = require('../harness/factories');
     const a = await createUser({ role: 'MEMBER', email: 'p9b.reviewer.a@gymsera.test', fullName: 'Reviewer A' });
     const b = await createUser({ role: 'MEMBER', email: 'p9b.reviewer.b@gymsera.test', fullName: 'Reviewer B' });
-    liveReview = await GymReview.create({ gymListingId: listing.id, organizationId, userId: a.id, branchId: branch.id, rating: 5, status: 'PENDING' });
-    hiddenReview = await GymReview.create({ gymListingId: listing.id, organizationId, userId: b.id, branchId: '99999999-9999-4999-8999-999999999999', rating: 4, status: 'PENDING' });
+    liveReview = await GymReview.create({ businessId: listing.id, organizationId, userId: a.id, branchId: branch.id, rating: 5, status: 'PENDING' });
+    hiddenReview = await GymReview.create({ businessId: listing.id, organizationId, userId: b.id, branchId: '99999999-9999-4999-8999-999999999999', rating: 4, status: 'PENDING' });
   });
 
   test('a review of a live branch gets the snapshot title (Organization · Branch)', async () => {

@@ -40,7 +40,7 @@ const getBranchQuota = async (organizationId, { businessId = null } = {}) => {
 
     if (businessId) {
       businessBranches = await tenantDb.models.Branch.count({
-        where: { status: 'ACTIVE', gymId: businessId },
+        where: { status: 'ACTIVE', businessId: businessId },
       });
       const orgListing = await GymListing.findOne({
         where: { id: businessId, organizationId },

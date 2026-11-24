@@ -63,13 +63,13 @@ beforeAll(async () => {
   const { Branch, MembershipPlan, MemberSubscription } = tenantDb.models;
 
   const listing = await GymListing.findOne({ where: { organizationId } });
-  const a = await Branch.findOne({ where: { gymId: listing.id } });
+  const a = await Branch.findOne({ where: { businessId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
   branches = { a, b, c };
 
   const plan = await MembershipPlan.create({
-    gymId: a.gymId || a.id, branchId: a.id, name: 'N51 Monthly', price: 5000, priceMinor: 500000,
+    businessId: a.businessId || a.id, branchId: a.id, name: 'N51 Monthly', price: 5000, priceMinor: 500000,
     durationType: 'MONTHLY', durationValue: 1, isPublic: true, status: 'ACTIVE',
   });
 

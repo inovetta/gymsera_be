@@ -53,7 +53,7 @@ beforeAll(async () => {
   branch = await factories.createBranch(tenantDb, listing.id, { name: 'Savvvv Test' });
 
   plan = await tenantDb.models.MembershipPlan.create({
-    gymId: branch.gymId,
+    businessId: branch.businessId,
     branchId: branch.id,
     name: 'Monthly 244',
     price: 3000,

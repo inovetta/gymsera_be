@@ -50,7 +50,7 @@ const create = (over = {}) =>
     organizationId: ctx.tenant1.id,
     tenantDb: ctx.tenant1Db,
     branchId: ctx.branch1.id,
-    businessId: ctx.branch1.gymId || null,
+    businessId: ctx.branch1.businessId || null,
     name: 'Front door IN',
     direction: 'in',
     createdBy: owner.user.id,

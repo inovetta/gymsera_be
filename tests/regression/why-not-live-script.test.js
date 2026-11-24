@@ -29,13 +29,13 @@ describe('why-not-live: every live-gym condition, and which one fails', () => {
     city = await City.create({ name: 'WNL City', isActive: true });
     const listing = await GymListing.findOne({ where: { organizationId } });
     await listing.update({ status: 'ACTIVE', cityId: city.id });
-    branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
+    branch = await h.tenant1.models.Branch.findOne({ where: { businessId: listing.id } });
     await branch.update({
       status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false, pausedAt: null,
       billingLockedAt: null, cityId: city.id, branchName: 'Why Not Live Downtown',
     });
     plan = await h.tenant1.models.MembershipPlan.create({
-      gymId: branch.gymId, branchId: branch.id, name: 'Monthly', price: 2500,
+      businessId: branch.businessId, branchId: branch.id, name: 'Monthly', price: 2500,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
   });

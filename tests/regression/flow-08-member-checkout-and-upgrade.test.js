@@ -34,7 +34,7 @@ describe('FLOW-08: member checkout and upgrade wait for verified money', () => {
   const activeMember = async () => {
     const m = await newMember();
     const { subscription, payment } = await subscriptionService.subscribe(m.user.id, {
-      planId: basic.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: basic.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     await paymentService.verifyPayment(ctx.tenant1Db, payment.id, personas.owner.user.id, null);
     return { ...m, subscription };
@@ -57,11 +57,11 @@ describe('FLOW-08: member checkout and upgrade wait for verified money', () => {
     await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     const { MembershipPlan } = ctx.tenant1Db.models;
     basic = await MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Flow08 Basic',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Flow08 Basic',
       price: '1000.05', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     premium = await MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Flow08 Premium',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Flow08 Premium',
       price: '1500.10', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
   });
@@ -145,7 +145,7 @@ describe('FLOW-08: member checkout and upgrade wait for verified money', () => {
   test('6. upgrading a membership that was never paid → 409', async () => {
     const m = await newMember();
     const { subscription } = await subscriptionService.subscribe(m.user.id, {
-      planId: basic.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: basic.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     const res = await callAs(m.token).post(`/member/subscriptions/${subscription.id}/upgrade`, { newPlanId: premium.id });
     expect(res.status).toBe(409);
@@ -154,7 +154,7 @@ describe('FLOW-08: member checkout and upgrade wait for verified money', () => {
   test('7. POST /me/payment-request keeps the server price whatever amount the client sends', async () => {
     const m = await newMember();
     const { subscription, payment } = await subscriptionService.subscribe(m.user.id, {
-      planId: basic.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: basic.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     expect(String(payment.amount)).toBe('1000.05');
 
@@ -170,7 +170,7 @@ describe('FLOW-08: member checkout and upgrade wait for verified money', () => {
   test('8. payment request after a rejected first payment → new payment at the server price', async () => {
     const m = await newMember();
     const { subscription, payment } = await subscriptionService.subscribe(m.user.id, {
-      planId: basic.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: basic.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     await paymentService.verifyOrRejectPayment(ctx.tenant1Db, payment.id, personas.owner.user.id, 'GYM_HOST', { action: 'reject' });
 
@@ -192,7 +192,7 @@ describe('FLOW-08: member checkout and upgrade wait for verified money', () => {
   test('10. walk-in enrollment totals are exact (no float sum)', async () => {
     const { MembershipPlan } = ctx.tenant1Db.models;
     const cents = await MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Flow08 Cents',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Flow08 Cents',
       price: '0.10', joiningFee: '0.20', securityFee: 0, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
     });
     const enrolled = await gymService.enrollMember(

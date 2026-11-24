@@ -52,7 +52,7 @@ const createExpenseCategory = async (req, res, next) => {
     const category = await ExpenseCategory.create({
       name: name.trim(),
       isSystem: false,
-      gymId: req.user.gymId || null,
+      businessId: req.user.businessId || null,
     });
 
     return sendSuccess(res, category, 'Expense category created', 201);

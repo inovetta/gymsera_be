@@ -46,12 +46,12 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     });
 
     const branch1 = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Branch 1',
       status: 'ACTIVE',
     });
     const branch2 = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Branch 2',
       status: 'ACTIVE',
     });
@@ -110,19 +110,19 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
 
     const now = Date.now();
     const branchOld = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Branch Old',
       status: 'ACTIVE',
       createdAt: new Date(now - 30000),
     });
     const branchMid = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Branch Mid',
       status: 'ACTIVE',
       createdAt: new Date(now - 20000),
     });
     const branchNew = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Branch New',
       status: 'ACTIVE',
       createdAt: new Date(now - 10000),
@@ -183,13 +183,13 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     });
     expect(lockedBranch).not.toBeNull();
 
-    const gym = await Gym.findByPk(lockedBranch.gymId);
+    const gym = await Gym.findByPk(lockedBranch.businessId);
 
     // 1. Refuse plan creation
     await expect(
       membershipPlanService.createPlan(tenantDb, {
         branchId: lockedBranch.id,
-        gymId: gym.id,
+        businessId: gym.id,
         name: 'New Gold Plan',
         price: 99,
         durationMonths: 1,
@@ -297,7 +297,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     const previouslyLockedBranch = await Branch.findOne({ where: { status: 'ACTIVE' } });
     const plan = await membershipPlanService.createPlan(tenantDb, {
       branchId: previouslyLockedBranch.id,
-      gymId: previouslyLockedBranch.gymId,
+      businessId: previouslyLockedBranch.businessId,
       name: 'Restored Plan',
       price: 150,
       durationMonths: 1,

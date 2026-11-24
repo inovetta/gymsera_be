@@ -9,7 +9,7 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      gymId: {
+      businessId: {
         field: 'business_id', // R-120 NEW-306 (tenant 030)
         type: DataTypes.UUID,
         allowNull: false,

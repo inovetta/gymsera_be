@@ -76,7 +76,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     const gym2 = (await tenant2Db.models.Gym.findOne()) || (await tenant2Db.models.Gym.create({ name: 'Beta Gym', genderType: 'MIXED' }));
 
     const planT1 = await tenant1Db.models.MembershipPlan.create({
-      gymId: gym1.id,
+      businessId: gym1.id,
       name: 'Plan T1',
       price: 1000,
       durationType: 'MONTHLY',
@@ -84,7 +84,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
       status: 'ACTIVE',
     });
     const planT2 = await tenant2Db.models.MembershipPlan.create({
-      gymId: gym2.id,
+      businessId: gym2.id,
       name: 'Plan T2',
       price: 2000,
       durationType: 'MONTHLY',
@@ -104,7 +104,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     await UserGymMembership.create({
       userId: tenant1Member.id,
       organizationId: ctx.tenant1.id,
-      gymListingId: ctx.listing1.id,
+      businessId: ctx.listing1.id,
       subscriptionId: tenant1SubBranch1.id,
       status: 'ACTIVE',
     });
@@ -120,7 +120,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     await UserGymMembership.create({
       userId: tenant1Member.id,
       organizationId: ctx.tenant1.id,
-      gymListingId: ctx.listing1.id,
+      businessId: ctx.listing1.id,
       subscriptionId: tenant1SubBranch2.id,
       status: 'ACTIVE',
     });
@@ -136,7 +136,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     await UserGymMembership.create({
       userId: tenant2Member.id,
       organizationId: ctx.tenant2.id,
-      gymListingId: ctx.listing2.id,
+      businessId: ctx.listing2.id,
       subscriptionId: tenant2Sub.id,
       status: 'ACTIVE',
     });

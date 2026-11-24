@@ -184,20 +184,20 @@ const getSavedGyms = async (req, res, next) => {
   }
 };
 
-// ── POST /me/saved-gyms/:gymId ───────────────────────────────────────────────
+// ── POST /me/saved-gyms/:businessId ───────────────────────────────────────────────
 const saveGym = async (req, res, next) => {
   try {
-    const saved = await meService.saveGym(req.user.sub, req.params.gymId);
+    const saved = await meService.saveGym(req.user.sub, req.params.businessId);
     return sendSuccess(res, { saved }, 'Gym saved to wishlist', 201);
   } catch (err) {
     next(err);
   }
 };
 
-// ── DELETE /me/saved-gyms/:gymId ─────────────────────────────────────────────
+// ── DELETE /me/saved-gyms/:businessId ─────────────────────────────────────────────
 const unsaveGym = async (req, res, next) => {
   try {
-    await meService.unsaveGym(req.user.sub, req.params.gymId);
+    await meService.unsaveGym(req.user.sub, req.params.businessId);
     return sendSuccess(res, null, 'Gym removed from wishlist', 200);
   } catch (err) {
     next(err);

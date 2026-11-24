@@ -39,7 +39,7 @@ describe('PAY-08: pending member payments expire; only the verified server path 
     const user = await createUser({ role: 'MEMBER', email: `pay08.m${n}@gymsera.test`, fullName: `Pay08 Member ${n}` });
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true });
     const { subscription, payment, invoice } = await subscriptionService.subscribe(user.id, {
-      planId: basic.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: basic.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     return { user, token, subscription, payment, invoice };
   };
@@ -66,11 +66,11 @@ describe('PAY-08: pending member payments expire; only the verified server path 
     // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
     await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     basic = await models().MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Pay08 Basic',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Pay08 Basic',
       price: '1200.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     premium = await models().MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Pay08 Premium',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Pay08 Premium',
       price: '1800.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
   });

@@ -28,7 +28,7 @@ const create = async (body) => {
   const res = await asPersona('owner').post('/host/listings').send(body);
   if (res.status === 201) {
     const row = await Branch().findByPk(res.body.data.branch.id);
-    await GymListing.update({ status: 'INACTIVE' }, { where: { id: row.gymListingId } });
+    await GymListing.update({ status: 'INACTIVE' }, { where: { id: row.businessId } });
   }
   return res;
 };

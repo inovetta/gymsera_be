@@ -206,7 +206,7 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
     await UserGymMembership.create({
       userId: member.id,
       organizationId: T1,
-      gymListingId: listing.id,
+      businessId: listing.id,
       subscriptionId: uuidv4(),
       gymName: 'Gym',
       planName: 'Monthly',

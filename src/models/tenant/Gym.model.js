@@ -51,12 +51,6 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of gallery image URLs',
       },
-      // R-120 NEW-308 (option S): this id IS the business_listings id (set at creation), so the link column is gone
-      // (tenant 031). Read-only alias until the API rename (NEW-309). Never use it in a `where`.
-      gymListingId: {
-        type: DataTypes.VIRTUAL,
-        get() { return this.getDataValue('id') || null; },
-      },
       // NEW-253 (R-103): refunds on cancellation, off by default; window in days from the payment (null = no limit).
       refundsAllowed: {
         type: DataTypes.BOOLEAN,

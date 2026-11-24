@@ -42,7 +42,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
       name: 'Auto Deactivated Gym',
     });
     const branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Sole Branch',
       status: 'ACTIVE',
     });
@@ -50,7 +50,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
 
     // Required plan so deleteBranch cascades cleanly
     await MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'Plan 1',
       price: 100,

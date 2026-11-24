@@ -114,7 +114,7 @@ const tenantWithDb = async ({ status, shape }) => {
     await s.sync();
     await runner.runTenantMigrations(s, { organizationId: organizationCode });
     const gym = await models.Gym.create({ name: 'N127 Gym', id: 'listing-n127' });
-    await models.Branch.create({ gymId: gym.id, branchName: 'Main' });
+    await models.Branch.create({ businessId: gym.id, branchName: 'Main' });
     if (shape === 'v18') await s.query('DELETE FROM schema_migrations WHERE version >= 19');
     if (shape === 'legacy') await s.query('DROP TABLE schema_migrations');
     if (shape === 'v18' || shape === 'legacy') await s.query('ALTER TABLE branches DROP COLUMN currency');

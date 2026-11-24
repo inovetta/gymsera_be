@@ -296,7 +296,7 @@
    "clientKeys": [
     "autoRenew",
     "branchId",
-    "gymListingId",
+    "businessId",
     "planId",
     "sourceChannel"
    ]

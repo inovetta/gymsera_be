@@ -42,14 +42,14 @@ const _getAllActiveBranches = async () => {
       });
 
       for (const b of branches) {
-        const listing = b.gymListingId ? listingMap.get(b.gymListingId) : null;
+        const listing = b.businessId ? listingMap.get(b.businessId) : null;
         
         // Map to unified branch object
         const mappedBranch = {
           id: b.id, // primary unit is branch id!
           organizationId: tenant.id,
           branchId: b.id,
-          gymId: gym.id,
+          businessId: gym.id,
           cityId: b.cityId || (listing ? listing.cityId : null),
           areaId: b.areaId || (listing ? listing.areaId : null),
           title: `${gym.name} - ${b.branchName}`,

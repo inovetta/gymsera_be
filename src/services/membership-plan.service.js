@@ -26,9 +26,9 @@ const _ensureSchema = async (tenantDb) => {
  * Resolve a tenant DB connection from a GymListing UUID.
  * Used by public-facing routes that don't have JWT tenantContext.
  */
-const _tenantFromGymListing = async (gymListingId) => {
+const _tenantFromGymListing = async (businessId) => {
   let listing = await GymListing.findOne({
-    where: { id: gymListingId, status: 'ACTIVE' },
+    where: { id: businessId, status: 'ACTIVE' },
     attributes: ['id', 'organizationId', 'title', 'branchId'],
   });
 
@@ -47,13 +47,13 @@ const _tenantFromGymListing = async (gymListingId) => {
         if (!t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
         const tenantDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
         const { Branch } = tenantDb.models;
-        const branch = await Branch.findByPk(gymListingId);
+        const branch = await Branch.findByPk(businessId);
         if (branch) {
           organizationId = t.id;
           branchId = branch.id;
-          if (branch.gymId) {
+          if (branch.businessId) {
             listing = await GymListing.findOne({
-              where: { id: branch.gymId, status: 'ACTIVE' },
+              where: { id: branch.businessId, status: 'ACTIVE' },
               attributes: ['id', 'organizationId', 'title', 'branchId'],
             });
           }
@@ -82,7 +82,7 @@ const _tenantFromGymListing = async (gymListingId) => {
 };
 
 /**
- * Resolve the tenant's Gym record (needed for new plan gymId).
+ * Resolve the tenant's Gym record (needed for new plan businessId).
  */
 const _getGym = async (models) => {
   const gym = await models.Gym.findOne();
@@ -108,20 +108,20 @@ const _getGym = async (models) => {
  * transaction through makes this UPDATE part of the same unit of work
  * instead of a competing one.
  */
-const _syncMinPrice = async (tenantDb, gymId, { transaction } = {}) => {
+const _syncMinPrice = async (tenantDb, businessId, { transaction } = {}) => {
   try {
     const { MembershipPlan } = tenantDb.models;
 
     // 1. Check for a manually featured plan
     let featured = await MembershipPlan.findOne({
-      where: { gymId, isFeatured: true, status: 'ACTIVE', isDeactivated: false },
+      where: { businessId, isFeatured: true, status: 'ACTIVE', isDeactivated: false },
       attributes: ['price'],
     });
 
     // 2. Fall back to cheapest public plan
     if (!featured) {
       featured = await MembershipPlan.findOne({
-        where: { gymId, status: 'ACTIVE', isPublic: true, isDeactivated: false },
+        where: { businessId, status: 'ACTIVE', isPublic: true, isDeactivated: false },
         order: [['price', 'ASC']],
         attributes: ['price'],
       });
@@ -130,7 +130,7 @@ const _syncMinPrice = async (tenantDb, gymId, { transaction } = {}) => {
     // Option S (R-120 NEW-308): the business id is the listing id.
     await GymListing.update(
       { minPrice: featured ? parseFloat(featured.price) : null },
-      { where: { id: gymId }, transaction }
+      { where: { id: businessId }, transaction }
     );
   } catch (err) {
     // Non-fatal: log and continue — minPrice sync failure shouldn't block the plan operation
@@ -158,8 +158,8 @@ const withCurrency = async (tenantDb, plans, branchId = null) => {
 };
 
 // ── Public: list active + public plans for a gym ──────────────────────────────
-const listPublic = async (gymListingId, branchId) => {
-  const { tenantDb, models, branchId: resolvedBranchId } = await _tenantFromGymListing(gymListingId);
+const listPublic = async (businessId, branchId) => {
+  const { tenantDb, models, branchId: resolvedBranchId } = await _tenantFromGymListing(businessId);
   const targetBranchId = branchId || resolvedBranchId;
 
   const where = { status: 'ACTIVE', isDeactivated: false, isPublic: true };
@@ -176,8 +176,8 @@ const listPublic = async (gymListingId, branchId) => {
 };
 
 // ── Public: single plan ───────────────────────────────────────────────────────
-const getPublic = async (planId, gymListingId) => {
-  const { tenantDb, models, branchId } = await _tenantFromGymListing(gymListingId);
+const getPublic = async (planId, businessId) => {
+  const { tenantDb, models, branchId } = await _tenantFromGymListing(businessId);
   const plan = await models.MembershipPlan.findOne({
     where: { id: planId, status: 'ACTIVE', isDeactivated: false, isPublic: true },
   });
@@ -218,7 +218,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
     }
 
     if (gym) {
-      let branch = await Branch.findOne({ where: { gymId: gym.id } }) || await Branch.findOne();
+      let branch = await Branch.findOne({ where: { businessId: gym.id } }) || await Branch.findOne();
       if (!branch) {
         const gymService = require('./gym.service');
         branch = await gymService.createBranch(
@@ -262,7 +262,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
             const isPublic = p.isPublic !== undefined ? Boolean(p.isPublic) : true;
 
             await MembershipPlan.create({
-              gymId: gym.id,
+              businessId: gym.id,
               branchId: branch.id,
               name: p.name.trim(),
               description: p.description || null,
@@ -345,7 +345,7 @@ const createPlan = async (tenantDb, data, { transaction } = {}) => {
   }
 
   const plan = await MembershipPlan.create({
-    gymId: gym.id,
+    businessId: gym.id,
     branchId: data.branchId || null,
     name: data.name,
     description: data.description || null,
@@ -418,7 +418,7 @@ const updatePlan = async (tenantDb, planId, data) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -448,7 +448,7 @@ const deletePlan = async (tenantDb, planId) => {
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({
-    where: { id: planId, gymId: gym.id, status: 'ACTIVE' },
+    where: { id: planId, businessId: gym.id, status: 'ACTIVE' },
   });
   if (!plan) throw createError('Plan not found', 404);
 
@@ -469,7 +469,7 @@ const toggleStatus = async (tenantDb, planId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -499,7 +499,7 @@ const togglePublic = async (tenantDb, planId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -526,7 +526,7 @@ const updatePoster = async (tenantDb, planId, file) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -552,7 +552,7 @@ const setFeatured = async (tenantDb, planId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -568,7 +568,7 @@ const setFeatured = async (tenantDb, planId) => {
   // Clear featured flag on all other plans for this gym
   await MembershipPlan.update(
     { isFeatured: false },
-    { where: { gymId: gym.id } }
+    { where: { businessId: gym.id } }
   );
 
   // Set featured on this plan (if toggling ON)

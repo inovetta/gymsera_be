@@ -100,7 +100,7 @@ router.get('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsCont
 router.put('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
 router.patch('/listings/:id', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'gymDescription', 'gymName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);
 router.delete('/listings/:id', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody(['cascade', 'cascadeDelete', 'strategy', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), hostController.deleteListing);
-router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toListingId']), hostController.transferReservedSlots);
+router.post('/listings/:id/reserved-slots/transfer', authenticate, authorize('GYM_HOST'), validate.allowBody(['count', 'toBusinessId']), hostController.transferReservedSlots);
 router.post('/branches/:branchId/restore', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, validate.allowBody([]), hostController.restoreBranch);
 // P5b item 2 (R-81): pause hides a branch from travellers and changes nothing else; who may change the branch's settings may pause it.
 router.post('/branches/:branchId/pause', authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'), can('branch.settings'), validate.allowBody([]), hostController.pauseBranch);
@@ -201,7 +201,7 @@ router.post(
 
 // GET /host/listings/:listingId/branches — branches scoped to an org listing
 router.get('/listings/:listingId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
-router.get('/gyms/:gymId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
+router.get('/gyms/:businessId/branches', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, gymsController.listBranches);
 
 // GET /host/branches/:branchId/listing-content — get all storefront fields
 router.get(

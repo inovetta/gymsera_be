@@ -120,18 +120,18 @@ describe('P0: Tenant Migration Dry-Run Safety & Migration 004 Isolation', () => 
 
     // Seed realistic data
     const branchId = '11111111-1111-1111-1111-111111111111';
-    const gymId = '22222222-2222-2222-2222-222222222222';
+    const businessId = '22222222-2222-2222-2222-222222222222';
     const paymentWrongDateId = '33333333-3333-3333-3333-333333333333';
     const paymentNullDateId = '44444444-4444-4444-4444-444444444444';
 
     await seq.query(`
       INSERT INTO gyms (id, name, created_at, updated_at)
-      VALUES ('${gymId}', 'Alpha Fitness', '2025-12-01 10:00:00', '2025-12-01 10:00:00')
+      VALUES ('${businessId}', 'Alpha Fitness', '2025-12-01 10:00:00', '2025-12-01 10:00:00')
     `);
 
     await seq.query(`
       INSERT INTO branches (id, gym_id, branch_name, timezone, status, created_at, updated_at)
-      VALUES ('${branchId}', '${gymId}', 'Main Branch', 'Asia/Karachi', 'ACTIVE', '2025-12-01 10:00:00', '2025-12-01 10:00:00')
+      VALUES ('${branchId}', '${businessId}', 'Main Branch', 'Asia/Karachi', 'ACTIVE', '2025-12-01 10:00:00', '2025-12-01 10:00:00')
     `);
 
     // Payment with WRONG-but-non-null business_date (e.g. 2025-12-29 instead of 2025-12-30)

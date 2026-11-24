@@ -26,7 +26,7 @@ const logRedaction = require('../../src/utils/log-redaction');
 let w; let branch;
 beforeAll(async () => {
   w = await createWorld();
-  branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Hardening Branch' });
+  branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Hardening Branch' });
 }, 120000);
 afterAll(async () => { await w.settled(); await require('../harness').teardownTestDatabases(); });
 afterEach(() => {

@@ -55,7 +55,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     });
     await GymReview.create({
       id: uuidv4(),
-      gymListingId: listingId,
+      businessId: listingId,
       branchId,
       userId: nonMemberUser.id,
       organizationId,
@@ -68,7 +68,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     // 3. Seed active subscription on legacy static QR (FLOW-09): qr_code LIKE 'GE-%'
     const plan = await MembershipPlan.create({
       id: uuidv4(),
-      gymId: branch.gymId,
+      businessId: branch.businessId,
       branchId,
       name: 'Standard Monthly',
       durationType: 'MONTHLY',

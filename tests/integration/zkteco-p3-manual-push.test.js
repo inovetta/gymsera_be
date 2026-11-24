@@ -179,7 +179,7 @@ describe('Push now for one member (§9.2)', () => {
 describe('Not entitled: no push, the reason, and Remove from device now (§9.2)', () => {
   let branch; let door; let user; let sub;
   beforeAll(async () => {
-    branch = await w.branch(w.db1, { gymId: w.ctx.branch1.gymId });
+    branch = await w.branch(w.db1, { businessId: w.ctx.branch1.businessId });
     door = await w.device(w.db1, { branch, registryBody: FACE_ONLY, name: 'Gate' });
     user = await w.member('Lapsed Member');
     sub = await w.subscribe(w.db1, { user, branch, start: -20, end: 10 });
@@ -229,7 +229,7 @@ describe('Push to branch and Sync now (§9.1)', () => {
   let branch; let door; let members;
   beforeAll(async () => {
     // Its own organization: packages at other branches of an organization cover all its branches.
-    branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     door = await w.device(w.db1, { branch, registryBody: FACE_ONLY, name: 'Branch door' });
     members = [];
     for (let i = 0; i < 3; i++) {
@@ -278,7 +278,7 @@ describe('Push to branch and Sync now (§9.1)', () => {
 
   test('an unknown branch is 404; a branch with no device is 409', async () => {
     expect((await owner().post('/host/branches/00000000-0000-4000-8000-000000000000/device-push', {})).status).toBe(404);
-    const empty = await w.branch(w.db1, { gymId: w.ctx.branch1.gymId });
+    const empty = await w.branch(w.db1, { businessId: w.ctx.branch1.businessId });
     const res = await owner().post(`/host/branches/${empty.id}/device-push`, {});
     expect(res.status).toBe(409);
     expect(res.body.error?.code || res.body.code).toBe('no_devices');

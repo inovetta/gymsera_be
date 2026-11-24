@@ -18,7 +18,7 @@ let n = 0;
 const sn = () => `ARI${RUN}${String(++n).padStart(4, '0')}`;
 
 async function attDevice(name) {
-  const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
+  const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.businessId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
   const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true, realFirmware: true });
   await sim.connectAtt();
   await w.settled();
@@ -35,7 +35,7 @@ const cmd = async (id) => (await w.q(w.db1, 'SELECT status, return_code FROM dev
 
 beforeAll(async () => {
   w = await createWorld();
-  branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Att Result Branch' });
+  branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Att Result Branch' });
 });
 
 test('parseDevicecmd: the real body (CMD=DATA on every line) gives one result per ID', () => {

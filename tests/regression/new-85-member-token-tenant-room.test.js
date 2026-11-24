@@ -44,7 +44,7 @@ describe('NEW-85: gym member with a tenant-scoped token', () => {
     await UserGymMembership.create({
       userId: member.id,
       organizationId: team.organizationId,
-      gymListingId: listing.id,
+      businessId: listing.id,
       subscriptionId: uuidv4(),
       gymName: 'Gym',
       planName: 'Monthly',

@@ -287,7 +287,7 @@ router.delete('/organizations/:organizationId/gym-listing/images', validate.allo
 // the location fields get the host routes' range and place-id rules (gyms.validator.js branchLocation).
 router.post(
   '/organizations/:organizationId/branches',
-  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['facilities', 'gymListingId', 'branchName', 'timezone', 'currency', 'address', 'phone', 'openingTime', 'closingTime', 'hours', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages'] }),
+  validate.strict(gymsValidators.adminBranchLocation, { stage: 2, allow: ['facilities', 'businessId', 'branchName', 'timezone', 'currency', 'address', 'phone', 'openingTime', 'closingTime', 'hours', 'facilitiesJson', 'imagesJson', 'tagline', 'category', 'description', 'establishedYear', 'floorArea', 'addressLine1', 'addressLine2', 'postalCode', 'packages'] }),
   adminController.createAdminTenantBranch
 );
 router.patch(
@@ -463,7 +463,7 @@ router.get('/analytics', adminController.getPlatformAnalytics);
  *           enum: [PENDING, APPROVED, REJECTED]
  *         description: Filter by review status (omit for all)
  *       - in: query
- *         name: gymListingId
+ *         name: businessId
  *         schema: { type: string, format: uuid }
  *       - in: query
  *         name: page

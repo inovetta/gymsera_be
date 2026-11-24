@@ -448,8 +448,8 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
 
       const { cityName, areaName, ...branchData } = b;
       const [branch] = await M.Branch.findOrCreate({
-        where:    { gymId: gym.id, branchName: b.branchName },
-        defaults: { ...branchData, gymId: gym.id, cityId, areaId },
+        where:    { businessId: gym.id, branchName: b.branchName },
+        defaults: { ...branchData, businessId: gym.id, cityId, areaId },
       });
       branchMap[b.branchName] = branch;
     }
@@ -459,9 +459,9 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
     const planMap = {};
     for (const p of def.plans) {
       const [plan] = await M.MembershipPlan.findOrCreate({
-        where:    { gymId: gym.id, name: p.name },
+        where:    { businessId: gym.id, name: p.name },
         defaults: {
-          gymId:           gym.id,
+          businessId:           gym.id,
           branchId:        null,
           name:            p.name,
           durationType:    p.durationType,

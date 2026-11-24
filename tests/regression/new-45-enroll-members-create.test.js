@@ -25,7 +25,7 @@ beforeAll(async () => {
   app = await startTestServer();
 
   plan = await dbHarness.tenant1.models.MembershipPlan.create({
-    gymId: team.branchA.gymId,
+    businessId: team.branchA.businessId,
     branchId: team.branchA.id,
     name: 'Standard Monthly',
     price: 3000,

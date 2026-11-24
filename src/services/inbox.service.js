@@ -137,7 +137,7 @@ const replyToInquiry = async (conversationId, senderId, text, organizationId, op
   try {
     const { GymListing } = require('../models/platform');
     const notificationsService = require('./notifications.service');
-    const listing = await GymListing.findByPk(conversation.gymListingId);
+    const listing = await GymListing.findByPk(conversation.businessId);
     const tenantName = listing ? listing.title : 'GymsEra Host';
 
     await notificationsService.createNotification({
@@ -211,7 +211,7 @@ const markInquiryRead = async (conversationId, organizationId) => {
 };
 
 const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}) => {
-  // Find GymListing mapping to the branchId or gymId
+  // Find GymListing mapping to the branchId or businessId
   const listing = await GymListing.findOne({
     where: {
       [Op.or]: [

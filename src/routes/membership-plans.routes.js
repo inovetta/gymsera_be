@@ -28,7 +28,7 @@ const router = Router();
  *     security: []
  *     parameters:
  *       - in: query
- *         name: gymListingId
+ *         name: businessId
  *         required: true
  *         schema: { type: string, format: uuid }
  *         description: GymListing UUID (from discovery endpoint)
@@ -85,7 +85,7 @@ router.get(
  *         required: true
  *         schema: { type: string, format: uuid }
  *       - in: query
- *         name: gymListingId
+ *         name: businessId
  *         required: true
  *         schema: { type: string, format: uuid }
  *     responses:

@@ -32,11 +32,11 @@ describe('PERF-06: discovery snapshot cache', () => {
     organizationId = personas.owner.organizationId;
     listing = await GymListing.findOne({ where: { organizationId } });
     await listing.update({ status: 'ACTIVE' });
-    branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
+    branch = await h.tenant1.models.Branch.findOne({ where: { businessId: listing.id } });
     await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
     const MembershipPlan = h.tenant1.models.MembershipPlan;
     await MembershipPlan.create({
-      gymId: branch.gymId, branchId: branch.id, name: 'Public', price: 2500,
+      businessId: branch.businessId, branchId: branch.id, name: 'Public', price: 2500,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     Sequelize.prototype.query = async function counted(...a) { queryCount += 1; return origQuery.apply(this, a); };

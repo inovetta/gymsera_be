@@ -47,7 +47,7 @@ describe('CAP-05: Rejecting a Pending Organization Returns Capacity via deleteBr
       name: 'Pending Gym',
     });
     const pendingBranch = await Branch.create({
-      gymId: pendingGym.id,
+      businessId: pendingGym.id,
       branchName: 'Pending Branch 1',
       status: 'ACTIVE',
     });

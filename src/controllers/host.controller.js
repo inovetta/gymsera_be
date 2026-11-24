@@ -703,7 +703,7 @@ const createListing = async (req, res, next) => {
               ? images
               : (coverImageUrl ? [coverImageUrl] : []),
             packages,
-            gymListingId: listing.id,
+            businessId: listing.id,
           },
           req.user.sub || req.user.id,
           {
@@ -865,7 +865,7 @@ const deleteListing = async (req, res, next) => {
     if (belongsToCaller && req.tenantDb && req.tenantDb.models && req.tenantDb.models.Branch) {
       const branchCount = await req.tenantDb.models.Branch.count({
         where: {
-          gymId: id,
+          businessId: id,
           status: { [Op.in]: ['ACTIVE', 'INACTIVE'] },
         },
       });
@@ -945,9 +945,9 @@ const restoreBranch = async (req, res, next) => {
 
 /**
  * POST /host/listings/:id/reserved-slots/transfer
- * Body: { toListingId, count }
+ * Body: { toBusinessId, count }
  * Moves unbuilt (paid, not-yet-a-real-branch) capacity from :id to
- * toListingId — used both from the Gyms tab's "swap branches between
+ * toBusinessId — used both from the Gyms tab's "swap branches between
  * organizations" and from the "create new organization" wizard's option to
  * assign an already-owned unused slot to the new organization instead of
  * building/buying a fresh branch.
@@ -957,13 +957,13 @@ const transferReservedSlots = async (req, res, next) => {
     const organizationId = req.user.organizationId;
     if (!organizationId) throw createError('Tenant not found', 404);
     const { id } = req.params;
-    const { toListingId, count } = req.body;
-    if (!toListingId) throw createError('toListingId is required', 400);
+    const { toBusinessId, count } = req.body;
+    if (!toBusinessId) throw createError('toBusinessId is required', 400);
 
     const result = await gymService.transferReservedSlots(
       organizationId,
       id,
-      toListingId,
+      toBusinessId,
       count ? parseInt(count, 10) : 1,
       req.user.sub || req.user.id
     );

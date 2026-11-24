@@ -37,7 +37,7 @@ describe('P9c A: payment proofs are stored privately and served only to the rece
     const user = await createUser({ role: 'MEMBER', email: `p9c.a${n}@gymsera.test`, fullName: `P9c Traveller ${n}` });
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true });
     const { subscription, payment } = await subscriptionService.subscribe(user.id, {
-      planId: plan.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: plan.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     return { user, token, subscription, payment };
   };
@@ -51,7 +51,7 @@ describe('P9c A: payment proofs are stored privately and served only to the rece
     ctx = require('../harness/personas').personaManager.context;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'P9c Proof Plan',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'P9c Proof Plan',
       price: '1500.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     jpeg = await sharp({ create: { width: 32, height: 24, channels: 3, background: { r: 10, g: 120, b: 200 } } }).jpeg().toBuffer();

@@ -26,7 +26,7 @@ beforeAll(async () => {
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
   listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
-  branch1 = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
+  branch1 = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
 });
 
 afterAll(async () => {
@@ -40,7 +40,7 @@ const plan = async (branchId, overrides = {}) => {
   const gym = await Gym.findOne();
   n += 1;
   return MembershipPlan.create({
-    gymId: gym.id,
+    businessId: gym.id,
     branchId,
     name: `B05 plan ${n}`,
     price: 1000 + n,

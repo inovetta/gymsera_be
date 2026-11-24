@@ -178,8 +178,8 @@ const submitReview = async (req, res, next) => {
 const adminListReviews = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { gymListingId, status } = req.query;
-    const result = await discoveryService.adminListReviews({ gymListingId, status, page, limit, offset });
+    const { businessId, status } = req.query;
+    const result = await discoveryService.adminListReviews({ businessId, status, page, limit, offset });
     return sendSuccess(res, { reviews: result.reviews }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
@@ -276,7 +276,7 @@ const listOrganizations = async (req, res, next) => {
 
 const listOrganizationBranches = async (req, res, next) => {
   try {
-    const result = await discoveryService.listOrganizationBranches(req.params.gymId);
+    const result = await discoveryService.listOrganizationBranches(req.params.businessId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);

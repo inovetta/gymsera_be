@@ -33,7 +33,7 @@ describe('Step 2.9: Repair script for payments on the wrong day', () => {
     const { Gym, Branch } = models;
     gym = await Gym.create({ name: 'Repair Test Gym' });
     branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Main Branch',
       timezone: 'Asia/Karachi',
     });

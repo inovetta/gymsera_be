@@ -109,7 +109,7 @@ describe('PAY-07: Member Payment Refunds (spec §6.3, §12)', () => {
     const { Branch } = tenant1.models;
     const branch = await Branch.findByPk(branchId);
     const plan = await MembershipPlan.create({
-      gymId: branch.gymId,
+      businessId: branch.businessId,
       branchId,
       name: 'Monthly Gold',
       price: '5000.00',
@@ -130,7 +130,7 @@ describe('PAY-07: Member Payment Refunds (spec §6.3, §12)', () => {
     await UserGymMembership.create({
       userId: memberUserId,
       organizationId: personas.owner.organizationId,
-      gymListingId: branch.gymListingId,
+      businessId: branch.businessId,
       subscriptionId: sub.id,
       status: 'ACTIVE',
       planName: plan.name,

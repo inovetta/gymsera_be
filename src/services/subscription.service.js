@@ -38,9 +38,9 @@ const _generateQrToken = () => `GE-${crypto.randomBytes(20).toString('hex').toUp
  * Resolve tenant DB from a GymListing UUID.
  * Returns { models, organizationId, encryptedConnStr }.
  */
-const _resolveTenant = async (gymListingId) => {
+const _resolveTenant = async (businessId) => {
   let listing = await GymListing.findOne({
-    where: { id: gymListingId, status: 'ACTIVE' },
+    where: { id: businessId, status: 'ACTIVE' },
     attributes: ['id', 'organizationId', 'title'],
   });
 
@@ -58,12 +58,12 @@ const _resolveTenant = async (gymListingId) => {
         if (!t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
         const tenantDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
         const { Branch } = tenantDb.models;
-        const branch = await Branch.findByPk(gymListingId);
+        const branch = await Branch.findByPk(businessId);
         if (branch) {
           organizationId = t.id;
-          if (branch.gymId) {
+          if (branch.businessId) {
             listing = await GymListing.findOne({
-              where: { id: branch.gymId, status: 'ACTIVE' },
+              where: { id: branch.businessId, status: 'ACTIVE' },
               attributes: ['id', 'organizationId', 'title'],
             });
           }
@@ -156,7 +156,7 @@ const priceFirstPayment = async (models, plan, userId, branchId) => {
  * be booked by sending its id.
  */
 const assertPlanBookableAt = (plan, branch) => {
-  const offeredHere = plan.branchId ? plan.branchId === branch.id : plan.gymId === branch.gymId;
+  const offeredHere = plan.branchId ? plan.branchId === branch.id : plan.businessId === branch.businessId;
   if (!plan.isPublic || !offeredHere) {
     throw createError('This plan is not available at this branch.', 404, 'plan_not_available');
   }
@@ -167,8 +167,8 @@ const assertPlanBookableAt = (plan, branch) => {
  * BUG-34 / NEW-150: what POST /subscriptions will charge this traveller, so the order
  * screen shows the server's price (no platform fee, R-74; no promo code) instead of its own.
  */
-const quoteFirstPayment = async (userId, { planId, gymListingId, branchId }) => {
-  const { models } = await _resolveTenant(gymListingId);
+const quoteFirstPayment = async (userId, { planId, businessId, branchId }) => {
+  const { models } = await _resolveTenant(businessId);
 
   const plan = await models.MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
   if (!plan) throw createError('Membership plan not found or inactive', 404);
@@ -205,8 +205,8 @@ const datesOnApproval = async (models, sub, transaction = null) => {
 };
 
 // ── POST /subscriptions ───────────────────────────────────────────────────────
-const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, sourceChannel }) => {
-  const { models, organizationId, gymListing } = await _resolveTenant(gymListingId);
+const subscribe = async (userId, { planId, businessId, branchId, autoRenew, sourceChannel }) => {
+  const { models, organizationId, gymListing } = await _resolveTenant(businessId);
   const { MembershipPlan, MemberSubscription, MemberProfile, Payment, Invoice } = models;
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
@@ -266,7 +266,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   await UserGymMembership.create({
     userId,
     organizationId,
-    gymListingId: gymListing.id,
+    businessId: gymListing.id,
     subscriptionId: subscription.id,
     gymName: gymListing.title,
     planName: plan.name,

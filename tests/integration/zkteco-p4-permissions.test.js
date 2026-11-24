@@ -18,7 +18,7 @@ const code = (res) => res.body.error?.code || res.body.code;
 beforeAll(async () => {
   w = await createWorld();
   home = w.ctx.branch1; // the manager's and the front desk's branch
-  away = await w.branch(w.db1, { gymId: w.ctx.branch1.gymId, name: 'Away P4' });
+  away = await w.branch(w.db1, { businessId: w.ctx.branch1.businessId, name: 'Away P4' });
   homeDoor = await w.device(w.db1, { branch: home, name: 'Home Import Door', importFirst: true });
   awayDoor = await w.device(w.db1, { branch: away, name: 'Away Import Door', importFirst: true });
   homeDoor.sim.seedUser({ pin: 77, name: 'GBS 77' });
@@ -120,7 +120,7 @@ describe('devices.manage: import, cut-over, move', () => {
   });
 
   test('org admin moves a device between branches of the organization', async () => {
-    const extra = await w.branch(w.db1, { gymId: w.ctx.branch1.gymId, name: 'Extra P4' });
+    const extra = await w.branch(w.db1, { businessId: w.ctx.branch1.businessId, name: 'Extra P4' });
     const plain = await w.device(w.db1, { branch: away, name: 'Movable' });
     expect((await asPersona('orgAdmin').put(`/host/devices/${plain.id}/branch`, { branchId: extra.id })).status).toBe(200);
   });

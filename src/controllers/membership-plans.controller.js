@@ -2,21 +2,21 @@ const membershipPlanService = require('../services/membership-plan.service');
 const { sendSuccess } = require('../utils/response.utils');
 const { resolveBranchScope } = require('../utils/branchAccess.utils');
 
-// ── GET /membership-plans?gymListingId=<uuid>&branchId=<uuid> (public) ────────
+// ── GET /membership-plans?businessId=<uuid>&branchId=<uuid> (public) ────────
 const listPublic = async (req, res, next) => {
   try {
-    const { gymListingId, branchId } = req.query;
-    const plans = await membershipPlanService.listPublic(gymListingId, branchId);
+    const { businessId, branchId } = req.query;
+    const plans = await membershipPlanService.listPublic(businessId, branchId);
     return sendSuccess(res, { plans });
   } catch (err) {
     next(err);
   }
 };
 
-// ── GET /membership-plans/:id?gymListingId=<uuid> (public) ───────────────────
+// ── GET /membership-plans/:id?businessId=<uuid> (public) ───────────────────
 const getPublic = async (req, res, next) => {
   try {
-    const plan = await membershipPlanService.getPublic(req.params.id, req.query.gymListingId);
+    const plan = await membershipPlanService.getPublic(req.params.id, req.query.businessId);
     return sendSuccess(res, { plan });
   } catch (err) {
     next(err);

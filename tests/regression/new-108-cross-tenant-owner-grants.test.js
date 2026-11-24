@@ -58,7 +58,7 @@ beforeAll(async () => {
   await UserGymMembership.create({
     userId: hostA.id,
     organizationId: gymBId,
-    gymListingId: listingB.id,
+    businessId: listingB.id,
     subscriptionId: uuidv4(),
     gymName: 'Alpha Fitness Club',
     planName: 'Monthly',
@@ -147,7 +147,7 @@ describe('NEW-108: GYM_HOST with a PENDING booking at gym B gets 403 on gym B st
     ['GET /gyms/staff (legacy authorize GYM_HOST)', (c) => c.get('/gyms/staff')],
     ['GET /gyms/members', (c) => c.get('/gyms/members')],
     ['GET /host/branches', (c) => c.get('/host/branches')],
-    ['POST /host/branches', (c) => c.post('/host/branches', { branchName: 'Planted', gymListingId: team.branchA.gymListingId })],
+    ['POST /host/branches', (c) => c.post('/host/branches', { branchName: 'Planted', businessId: team.branchA.businessId })],
     ['PATCH /host/branches/:id/listing-content', (c) => c.patch(`/host/branches/${team.branchA.id}/listing-content`, { tagline: 'pwned' })],
     ['POST /host/branches/:id/restore', (c) => c.post(`/host/branches/${team.branchA.id}/restore`, {})],
     ['POST /host/listings', (c) => c.post('/host/listings', { gymName: 'Planted Org' })],

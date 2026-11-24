@@ -33,7 +33,7 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     branch = await Branch.findOne({ where: { status: 'ACTIVE' } });
 
     plan = await MembershipPlan.create({
-      gymId: branch.gymId || branch.id,
+      businessId: branch.businessId || branch.id,
       branchId: branch.id,
       name: 'Standard Monthly',
       price: 5000,
@@ -73,7 +73,7 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
       userId: memberUser.id,
       organizationId,
       branchId: branch.id,
-      gymListingId: listing ? listing.id : branch.id,
+      businessId: listing ? listing.id : branch.id,
       subscriptionId: subscription.id,
       planName: plan.name,
       status: 'ACTIVE',

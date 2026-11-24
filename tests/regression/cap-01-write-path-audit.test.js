@@ -45,7 +45,7 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
     }
 
     lockedBranch = await Branch.create({
-      gymId: activeGym.id,
+      businessId: activeGym.id,
       branchName: 'Audit Locked Branch',
       status: 'ACTIVE',
       billingLockedAt: new Date(),
@@ -62,7 +62,7 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
     beforeAll(async () => {
       const { MembershipPlan } = tenantDb.models;
       testPlan = await MembershipPlan.create({
-        gymId: activeGym.id,
+        businessId: activeGym.id,
         branchId: lockedBranch.id,
         name: 'Pre-existing Locked Plan',
         durationType: 'MONTHLY',
@@ -126,7 +126,7 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
     beforeAll(async () => {
       const { MemberSubscription, MembershipPlan } = tenantDb.models;
       const plan = await MembershipPlan.create({
-        gymId: activeGym.id,
+        businessId: activeGym.id,
         branchId: lockedBranch.id,
         name: 'Sub Test Plan',
         durationType: 'MONTHLY',

@@ -55,8 +55,8 @@ const legacyTenant = async (alter = async () => {}) => {
   await seq.sync();
   await runTenantMigrations(seq, { organizationId: organizationCode });
   const gym = await models.Gym.create({ name: 'Repair Gym', id: 'listing-n127r' });
-  await models.Branch.create({ gymId: gym.id, branchName: 'Main' });
-  await models.Branch.create({ gymId: gym.id, branchName: 'Second' });
+  await models.Branch.create({ businessId: gym.id, branchName: 'Main' });
+  await models.Branch.create({ businessId: gym.id, branchName: 'Second' });
   await seq.query('DROP TABLE schema_migrations');
   await seq.query('ALTER TABLE branches DROP COLUMN currency');
   await alter(seq);

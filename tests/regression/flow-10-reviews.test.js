@@ -32,11 +32,11 @@ describe('FLOW-10: Review moderation, active/past subscription requirement, and 
 
     await branch.update({
       travelerVisibilityStatus: 'active',
-      gymListingId: gymListing.id,
+      businessId: gymListing.id,
     });
 
     plan = await MembershipPlan.create({
-      gymId: branch.gymId || branch.id,
+      businessId: branch.businessId || branch.id,
       branchId: branch.id,
       name: 'Standard Monthly',
       price: 5000,

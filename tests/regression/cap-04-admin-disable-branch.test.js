@@ -24,11 +24,11 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
 
     listing = await GymListing.findOne({ where: { organizationId } });
     const { Branch, MembershipPlan } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymId: listing.id } });
+    branch = await Branch.findOne({ where: { businessId: listing.id } });
 
     // Ensure branch has an active plan and is published to discovery
     await MembershipPlan.create({
-      gymId: branch.gymId,
+      businessId: branch.businessId,
       branchId: branch.id,
       name: 'Public Pass',
       price: 100,

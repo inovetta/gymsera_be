@@ -18,7 +18,7 @@ describe('NEW-80: expiry cron iterates ACTIVE tenants from the platform DB', () 
     const listing = await factories.createGymListing(tenant.id);
     const branch = await factories.createBranch(tenantDb, listing.id, { name: `Branch ${label}` });
     const plan = await tenantDb.models.MembershipPlan.create({
-      gymId: branch.gymId, branchId: branch.id, name: 'Std', price: 1000,
+      businessId: branch.businessId, branchId: branch.id, name: 'Std', price: 1000,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
     });
     return tenantDb.models.MemberSubscription.create({

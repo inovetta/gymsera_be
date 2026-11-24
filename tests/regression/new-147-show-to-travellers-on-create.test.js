@@ -74,7 +74,7 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
 
   test('Add Branch: hidden plans stay hidden; all hidden = 422, no branch', async () => {
     const ok = await asPersona('owner').post('/host/branches', {
-      branchName: 'P5 Add Branch', gymListingId: primary.id, address: '1 Mall Road', cityId: 1,
+      branchName: 'P5 Add Branch', businessId: primary.id, address: '1 Mall Road', cityId: 1,
       packages: [plan('A visible', true), plan('B hidden', false)],
     });
     expect(ok.status).toBe(201);
@@ -82,7 +82,7 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
     expect((await plansOf(branchId)).map((p) => [p.name, p.isPublic])).toEqual([['A visible', true], ['B hidden', false]]);
 
     const refused = await asPersona('owner').post('/host/branches', {
-      branchName: 'P5 Add Branch Hidden', gymListingId: primary.id, address: '1 Mall Road', cityId: 1,
+      branchName: 'P5 Add Branch Hidden', businessId: primary.id, address: '1 Mall Road', cityId: 1,
       packages: [plan('Hidden', false)],
     });
     expect(refused.status).toBe(422);

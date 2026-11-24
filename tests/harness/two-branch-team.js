@@ -38,7 +38,7 @@ const buildTwoBranchTeam = async (dbHarness, personas) => {
   const tenantDb = dbHarness.tenant1;
   const organizationId = personas.owner.organizationId;
   const listing = await GymListing.findOne({ where: { organizationId } });
-  const branchA = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
+  const branchA = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   const branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
 
   const now = new Date();

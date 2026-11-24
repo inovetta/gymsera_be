@@ -34,7 +34,7 @@ beforeAll(async () => {
   branch = await models.Branch.findByPk(ctx.branch1.id);
   await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
   const plan = await models.MembershipPlan.create({
-    gymId: branch.gymId, branchId: branch.id, name: 'Public', price: 2500,
+    businessId: branch.businessId, branchId: branch.id, name: 'Public', price: 2500,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
   });
   const user = await factories.createUser({ role: 'MEMBER', email: `m-${uuidv4().slice(0, 8)}@p5b.test` });
@@ -116,7 +116,7 @@ describe('P5b item 2: pause and resume', () => {
     await UserGymMembership.create({
       userId: personaManager.personas.member.user.id,
       organizationId: ctx.tenant1.id,
-      gymListingId: ctx.listing1.id,
+      businessId: ctx.listing1.id,
       subscriptionId: uuidv4(),
       gymName: 'Alpha Fitness Club',
       planName: 'Public',

@@ -39,7 +39,7 @@ describe('P5b item 8: Move branch is gone', () => {
     const res = await asPersona('owner').post(`/host/branches/${ctx.branch1.id}/move`, { targetListingId: target.id });
     expect(res.status).toBe(404);
     const branch = await dbHarness.tenant1.models.Branch.findByPk(ctx.branch1.id);
-    expect(branch.gymListingId).toBe(ctx.listing1.id);
+    expect(branch.businessId).toBe(ctx.listing1.id);
   });
 
   test('the service has no moveBranch', () => {
@@ -59,7 +59,7 @@ describe('P5b item 8: Move branch is gone', () => {
     expect(res.body.code).toBe('invalid_strategy');
     expect((await GymListing.findByPk(source.id)).status).toBe('ACTIVE');
     const reloaded = await dbHarness.tenant1.models.Branch.findByPk(branch.id);
-    expect(reloaded.gymListingId).toBe(source.id);
+    expect(reloaded.businessId).toBe(source.id);
     expect(reloaded.status).toBe('ACTIVE');
   });
 });

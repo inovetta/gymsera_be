@@ -135,30 +135,30 @@ async function createGymListing(organizationId, overrides = {}) {
 /**
  * Creates a Branch in tenant DB
  */
-async function createBranch(tenantDb, gymListingId, overrides = {}) {
+async function createBranch(tenantDb, listingBusinessId, overrides = {}) {
   const id = overrides.id || uuidv4();
   const suffix = id.slice(0, 6);
   const BranchModel = tenantDb.models ? tenantDb.models.Branch : tenantDb.Branch;
   const GymModel = tenantDb.models ? tenantDb.models.Gym : tenantDb.Gym;
 
   // R-120 NEW-308 (option S): the business row has the id of its business_listings row.
-  let gymId = overrides.gymId;
-  if (!gymId && GymModel) {
-    let gym = gymListingId ? await GymModel.findByPk(gymListingId) : await GymModel.findOne();
+  let businessId = overrides.businessId;
+  if (!businessId && GymModel) {
+    let gym = listingBusinessId ? await GymModel.findByPk(listingBusinessId) : await GymModel.findOne();
     if (!gym) {
       gym = await GymModel.create({
-        id: gymListingId || uuidv4(),
+        id: listingBusinessId || uuidv4(),
         name: overrides.gymName || `Gym ${suffix}`,
       });
     }
-    gymId = gym.id;
+    businessId = gym.id;
   }
 
   const branchName = overrides.branchName || overrides.name || `Branch ${suffix}`;
 
   return BranchModel.create({
     id,
-    gymId,
+    businessId,
     branchName,
     status: overrides.status || 'ACTIVE',
     timezone: overrides.timezone || 'Asia/Karachi',
@@ -295,13 +295,13 @@ async function makeBranchLive(tenantDb, branch) {
   const { Branch, MembershipPlan } = tenantDb.models || tenantDb;
   const row = typeof branch === 'string' ? await Branch.findByPk(branch) : branch;
   await row.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
-  if (row.gymListingId) {
-    await GymListing.update({ status: 'ACTIVE' }, { where: { id: row.gymListingId } });
+  if (row.businessId) {
+    await GymListing.update({ status: 'ACTIVE' }, { where: { id: row.businessId } });
   }
   const visible = await MembershipPlan.count({ where: { branchId: row.id, status: 'ACTIVE', isPublic: true } });
   if (visible === 0) {
     await MembershipPlan.create({
-      gymId: row.gymId, branchId: row.id, name: 'Visible Monthly', price: 1000,
+      businessId: row.businessId, branchId: row.id, name: 'Visible Monthly', price: 1000,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
   }

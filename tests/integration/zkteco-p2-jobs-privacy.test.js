@@ -32,7 +32,7 @@ afterAll(async () => { await w.settled(); await require('../harness').teardownTe
 
 const REG = 'DeviceType=acc,~DeviceName=SpeedFace Sim,FirmVer=SIM,PushVersion=3.1.2,MaxPackageSize=2048000,' +
   'MultiBioDataSupport=0:1:0:0:0:0:0:0:0:1:0,MultiBioPhotoSupport=0:0:0:0:0:0:0:0:0:1:0,MultiBioVersion=0:10.0:0:0:0:0:0:0:0:40.1:0,DateFmtFunOn=1';
-const freshBranch = async () => w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+const freshBranch = async () => w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
 const exec = (sql, rep) => w.db1.sequelize.query(sql, { replacements: utc(rep) });
 
 describe('layer 1: watchdog', () => {

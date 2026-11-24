@@ -92,9 +92,9 @@ describe('gymsera-rbac09-stale-branch-assignments-check.js', () => {
     });
 
     // 3. Seed gym and branches
-    const gymId = uuidv4();
+    const businessId = uuidv4();
     await models.Gym.create({
-      id: gymId,
+      id: businessId,
       name: 'Main Test Gym Org',
     });
 
@@ -103,14 +103,14 @@ describe('gymsera-rbac09-stale-branch-assignments-check.js', () => {
 
     await models.Branch.create({
       id: activeBranchId,
-      gymId,
+      businessId,
       branchName: 'Main Active Branch',
       status: 'ACTIVE',
     });
 
     await models.Branch.create({
       id: inactiveBranchId,
-      gymId,
+      businessId,
       branchName: 'Closed Inactive Branch',
       status: 'INACTIVE',
     });

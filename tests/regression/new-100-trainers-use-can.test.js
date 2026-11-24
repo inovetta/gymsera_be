@@ -33,7 +33,7 @@ beforeAll(async () => {
   const tenantDb = dbHarness.tenant1;
   const organizationId = personas.owner.organizationId;
   const listing = await GymListing.findOne({ where: { organizationId } });
-  branchA = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
+  branchA = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const make = (email, roleKey, scopeType, branchIds) =>
     teamMember({ tenantDb, organizationId, email, roleKey, scopeType, branchIds });

@@ -13,7 +13,7 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      gymListingId: {
+      businessId: {
         field: 'business_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: false,

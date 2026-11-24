@@ -68,13 +68,13 @@ async function createWorld() {
       return db.models.Gym.create({ id: uuidv4(), name });
     },
 
-    async branch(db, { gymId, timezone = TZ, name } = {}) {
-      const b = await createBranch(db, ctx.branch1.gymListingId || null, { gymId, timezone, branchName: name || `Branch ${uuidv4().slice(0, 6)}` });
+    async branch(db, { businessId, timezone = TZ, name } = {}) {
+      const b = await createBranch(db, ctx.branch1.businessId || null, { businessId, timezone, branchName: name || `Branch ${uuidv4().slice(0, 6)}` });
       return b;
     },
 
     async plan(db, branch) {
-      return db.models.MembershipPlan.create({ id: uuidv4(), gymId: branch.gymId, branchId: branch.id, name: 'Monthly', durationType: 'MONTHLY', durationValue: 1, price: 1000, status: 'ACTIVE' });
+      return db.models.MembershipPlan.create({ id: uuidv4(), businessId: branch.businessId, branchId: branch.id, name: 'Monthly', durationType: 'MONTHLY', durationValue: 1, price: 1000, status: 'ACTIVE' });
     },
 
     async member(fullName = 'Device Member', over = {}) {
@@ -98,7 +98,7 @@ async function createWorld() {
      */
     async device(db, { branch, direction = 'in', name = 'Door', registryBody, organizationId, importFirst = false, ...simOpts } = {}) {
       const tid = organizationId || db.organizationId;
-      const { device } = await registry.createDevice({ organizationId: tid, tenantDb: db, branchId: branch.id, businessId: branch.gymId || null, name, direction, importFirst, createdBy: personas.owner.user.id });
+      const { device } = await registry.createDevice({ organizationId: tid, tenantDb: db, branchId: branch.id, businessId: branch.businessId || null, name, direction, importFirst, createdBy: personas.owner.user.id });
       const sim = new ZkDeviceSimulator({ baseUrl, sn: `SIM${RUN}${String(++serial).padStart(4, '0')}`, key: device.deviceKey, mode: 'host', registryBody, ...simOpts });
       const c = await sim.connect();
       if (!c.ok) throw new Error(`simulator did not connect: ${c.step} ${c.res.status}`);

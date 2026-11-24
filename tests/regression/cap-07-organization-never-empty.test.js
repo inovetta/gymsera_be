@@ -74,14 +74,14 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
       name: 'Guarded Gym',
     });
     const branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Guarded Branch',
       status: 'ACTIVE',
     });
     await listing.update({ branchId: branch.id });
 
     await MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'P1',
       price: 10,
@@ -133,13 +133,13 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
         name: `Property Gym ${i}`,
       });
       const branch = await Branch.create({
-        gymId: gym.id,
+        businessId: gym.id,
         branchName: `Prop Branch ${i}`,
         status: 'ACTIVE',
       });
       await listing.update({ branchId: branch.id });
       await MembershipPlan.create({
-        gymId: gym.id,
+        businessId: gym.id,
         branchId: branch.id,
         name: `Plan Prop ${i}`,
         price: 50,
@@ -168,7 +168,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
               tenantDb,
               organizationId,
               {
-                gymListingId: target.id,
+                businessId: target.id,
                 branchName: `Random Branch ${step}`,
                 address: 'Random Street',
               },

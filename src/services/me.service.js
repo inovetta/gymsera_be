@@ -453,21 +453,21 @@ const getSavedGyms = async (userId) => {
     .filter(Boolean);
 };
 
-const saveGym = async (userId, gymListingId) => {
-  const gym = await GymListing.findByPk(gymListingId);
+const saveGym = async (userId, businessId) => {
+  const gym = await GymListing.findByPk(businessId);
   if (!gym || gym.status !== 'ACTIVE') {
     throw createError('Gym not found or inactive', 404);
   }
 
   const [saved] = await SavedGym.findOrCreate({
-    where: { userId, gymListingId },
+    where: { userId, businessId },
   });
   return saved;
 };
 
-const unsaveGym = async (userId, gymListingId) => {
+const unsaveGym = async (userId, businessId) => {
   await SavedGym.destroy({
-    where: { userId, gymListingId },
+    where: { userId, businessId },
   });
 };
 

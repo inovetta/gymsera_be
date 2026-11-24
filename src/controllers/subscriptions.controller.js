@@ -17,8 +17,8 @@ const subscribe = async (req, res, next) => {
 // ── GET /subscriptions/quote ──────────────────────────────────────────────────
 const quote = async (req, res, next) => {
   try {
-    const { planId, gymListingId, branchId } = req.query;
-    const result = await subscriptionService.quoteFirstPayment(req.user.id, { planId, gymListingId, branchId });
+    const { planId, businessId, branchId } = req.query;
+    const result = await subscriptionService.quoteFirstPayment(req.user.id, { planId, businessId, branchId });
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -474,7 +474,7 @@ const decideRefundRequest = async (req, res, next) => {
 const getRefundPolicy = async (req, res, next) => {
   try {
     const p = await refundService.policyFor(req.tenantDb, req.query.branchId || null);
-    return sendSuccess(res, { gymId: p.gymId, refundsAllowed: p.refundsAllowed, refundWindowDays: p.refundWindowDays });
+    return sendSuccess(res, { businessId: p.businessId, refundsAllowed: p.refundsAllowed, refundWindowDays: p.refundWindowDays });
   } catch (err) {
     next(err);
   }

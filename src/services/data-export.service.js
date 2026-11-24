@@ -116,7 +116,7 @@ const buildUserDataExport = async (userId, { now = new Date() } = {}) => {
     Tenant.findAll({ where: { ownerUserId: userId, status: { [Op.ne]: TenantStatus.DELETED } } }),
   ]);
   const savedListings = saved.length
-    ? await GymListing.findAll({ where: { id: { [Op.in]: saved.map((s) => s.gymListingId) } }, attributes: ['id', 'title'], raw: true })
+    ? await GymListing.findAll({ where: { id: { [Op.in]: saved.map((s) => s.businessId) } }, attributes: ['id', 'title'], raw: true })
     : [];
   const titleOf = Object.fromEntries(savedListings.map((l) => [l.id, l.title]));
 
@@ -131,7 +131,7 @@ const buildUserDataExport = async (userId, { now = new Date() } = {}) => {
     account: Object.fromEntries(ACCOUNT_FIELDS.map((k) => [k, user[k] ?? null])),
     signInMethods: { password: Boolean(user.passwordHash), google: Boolean(user.googleId), apple: Boolean(user.appleId) },
     devices: plainAll(devices),
-    savedGyms: saved.map((s) => ({ ...plain(s), gymTitle: titleOf[s.gymListingId] || null })),
+    savedGyms: saved.map((s) => ({ ...plain(s), gymTitle: titleOf[s.businessId] || null })),
     notifications: plainAll(notifications),
     reviews: plainAll(reviews),
     conversations: conversations.map((c) => ({

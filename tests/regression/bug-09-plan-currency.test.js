@@ -27,7 +27,7 @@ beforeAll(async () => {
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
   listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
-  first = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id }, order: [['createdAt', 'ASC']] });
+  first = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id }, order: [['createdAt', 'ASC']] });
   await first.update({ currency: 'PKR' });
   usd = await factories.createBranch(tenantDb, listing.id, { name: 'USD branch', currency: 'USD' });
   // created_at has 1-second precision; make "first" unambiguous rather than relying on test timing.
@@ -35,7 +35,7 @@ beforeAll(async () => {
 
   const { MembershipPlan, Gym } = tenantDb.models;
   const gym = await Gym.findOne();
-  const base = { gymId: gym.id, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true };
+  const base = { businessId: gym.id, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true };
   usdPlan = await MembershipPlan.create({ ...base, branchId: usd.id, name: 'USD monthly', price: 30 });
   pkrPlan = await MembershipPlan.create({ ...base, branchId: first.id, name: 'PKR monthly', price: 5000 });
   gymWide = await MembershipPlan.create({ ...base, branchId: null, name: 'Everywhere', price: 7000 });
@@ -86,13 +86,13 @@ describe('BUG-09: plan payloads carry the branch currency', () => {
   });
 
   test('public list for a branch and the public plan carry the currency', async () => {
-    const list = await asPersona('anonymous').get(`/membership-plans?gymListingId=${listing.id}&branchId=${usd.id}`);
+    const list = await asPersona('anonymous').get(`/membership-plans?businessId=${listing.id}&branchId=${usd.id}`);
     expect(list.status).toBe(200);
     const c = byId(list.body.data.plans);
     expect(c[usdPlan.id]).toBe('USD');
     expect(c[gymWide.id]).toBe('USD');
 
-    const one = await asPersona('anonymous').get(`/membership-plans/${usdPlan.id}?gymListingId=${listing.id}`);
+    const one = await asPersona('anonymous').get(`/membership-plans/${usdPlan.id}?businessId=${listing.id}`);
     expect(one.status).toBe(200);
     expect(one.body.data.plan.currency).toBe('USD');
   });

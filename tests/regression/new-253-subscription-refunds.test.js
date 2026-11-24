@@ -34,7 +34,7 @@ const makeSub = async ({ status = 'ACTIVE', branch = ctx.branch1, db = db1, orga
   });
   const listing = await GymListing.findOne({ where: { organizationId } });
   await UserGymMembership.create({
-    userId: member.id, organizationId, gymListingId: listing.id, subscriptionId: sub.id,
+    userId: member.id, organizationId, businessId: listing.id, subscriptionId: sub.id,
     gymName: listing.title, planName: planRow.name, startDate: sub.startDate, endDate: sub.endDate, status,
   });
   let payment = null;
@@ -67,14 +67,14 @@ beforeAll(async () => {
   db1 = ctx.tenant1Db;
   app = await startTestServer();
   plan = await db1.models.MembershipPlan.create({
-    gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Standard 253', price: 3000,
+    businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Standard 253', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
   });
   tenant2Plan = await ctx.tenant2Db.models.MembershipPlan.create({
-    gymId: ctx.branch2.gymId, branchId: ctx.branch2.id, name: 'Tenant2 253', price: 3000,
+    businessId: ctx.branch2.businessId, branchId: ctx.branch2.id, name: 'Tenant2 253', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
   });
-  gym1 = (ctx.branch1.gymId && await db1.models.Gym.findByPk(ctx.branch1.gymId)) || await db1.models.Gym.findOne({ order: [['createdAt', 'ASC']] });
+  gym1 = (ctx.branch1.businessId && await db1.models.Gym.findByPk(ctx.branch1.businessId)) || await db1.models.Gym.findOne({ order: [['createdAt', 'ASC']] });
   await setPolicy(true);
 });
 
@@ -263,7 +263,7 @@ describe('NEW-253 A: staff cancel with refund', () => {
 
   test('cancel with refund queues the device sync for the member', async () => {
     await registry.createDevice({
-      organizationId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.gymId || null,
+      organizationId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.businessId || null,
       name: 'N253 Door', direction: 'in', importFirst: false, createdBy: personas.owner.user.id,
     });
     const { sub, member } = await makeSub();

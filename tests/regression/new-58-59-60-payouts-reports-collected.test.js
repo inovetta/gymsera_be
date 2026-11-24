@@ -46,7 +46,7 @@ beforeAll(async () => {
   const { Branch } = tenantDb.models;
 
   const listing = await GymListing.findOne({ where: { organizationId } });
-  const a = await Branch.findOne({ where: { gymId: listing.id } });
+  const a = await Branch.findOne({ where: { businessId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
   branches = { a, b, c };

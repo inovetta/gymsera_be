@@ -159,7 +159,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
   test('Path 4: gym.service.js enrollMember stamps business_date at write time', async () => {
     const { MembershipPlan } = tenant1.models;
     const plan = await MembershipPlan.create({
-      gymId: branchKarachi.gymId,
+      businessId: branchKarachi.businessId,
       branchId: branchKarachi.id,
       name: 'Karachi Morning Plan',
       price: 6000,
@@ -190,7 +190,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
   test('Path 5: Approval command (member.commands.js) stamps business_date on execution', async () => {
     const { MembershipPlan } = tenant1.models;
     const plan = await MembershipPlan.create({
-      gymId: branchKarachi.gymId,
+      businessId: branchKarachi.businessId,
       branchId: branchKarachi.id,
       name: 'Approval Plan',
       price: 7000,
@@ -227,7 +227,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
   test('Path 6: me.service.js submitPaymentRequest preserves and sets businessDate', async () => {
     const { MemberSubscription, MembershipPlan } = tenant1.models;
     const plan = await MembershipPlan.create({
-      gymId: branchKarachi.gymId,
+      businessId: branchKarachi.businessId,
       branchId: branchKarachi.id,
       name: 'Traveler Plan',
       price: 3500,
@@ -250,7 +250,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       userId: testUser.id,
       organizationId: '22222222-2222-4222-8222-222222222222',
       subscriptionId: sub.id,
-      gymListingId: gymListing.id,
+      businessId: gymListing.id,
       status: 'ACTIVE',
     });
 

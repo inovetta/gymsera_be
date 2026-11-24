@@ -64,7 +64,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
         tenantDb,
         organizationId,
         {
-          gymListingId: listing.id,
+          businessId: listing.id,
           branchName: `Parallel Branch ${i + 1}`,
           packages: [
             {
@@ -132,7 +132,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       tenantDb,
       organizationId,
       {
-        gymListingId: listing.id,
+        businessId: listing.id,
         branchName: 'Keep Org Alive Branch',
         packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
@@ -143,7 +143,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       tenantDb,
       organizationId,
       {
-        gymListingId: listing.id,
+        businessId: listing.id,
         branchName: 'Contended Branch',
         packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
@@ -257,7 +257,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       tenantDb,
       organizationId,
       {
-        gymListingId: donorListing.id,
+        businessId: donorListing.id,
         branchName: 'Sole Active Branch',
         packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },

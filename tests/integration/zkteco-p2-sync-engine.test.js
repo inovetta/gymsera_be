@@ -27,7 +27,7 @@ describe('new member, renewal, expiry (§7.1, §7.2, §8.2)', () => {
   let org; let branch; let dev; let user; let sub;
   beforeAll(async () => {
     org = await w.gym(w.db1);
-    branch = await w.branch(w.db1, { gymId: org.id });
+    branch = await w.branch(w.db1, { businessId: org.id });
     dev = await w.device(w.db1, { branch, registryBody: FACE_ONLY });
     user = await w.member('A Member With A Very Long Full Name');
   });
@@ -107,9 +107,9 @@ describe('branch transfer between organizations', () => {
   test('moving the subscription to a branch of another organization moves the member between devices', async () => {
     const orgA = await w.gym(w.db1);
     const orgB = await w.gym(w.db1);
-    const bA = await w.branch(w.db1, { gymId: orgA.id });
-    const bA2 = await w.branch(w.db1, { gymId: orgA.id });
-    const bB = await w.branch(w.db1, { gymId: orgB.id });
+    const bA = await w.branch(w.db1, { businessId: orgA.id });
+    const bA2 = await w.branch(w.db1, { businessId: orgA.id });
+    const bB = await w.branch(w.db1, { businessId: orgB.id });
     const dA = await w.device(w.db1, { branch: bA, registryBody: FACE_ONLY });
     const dA2 = await w.device(w.db1, { branch: bA2, registryBody: FACE_ONLY });
     const dB = await w.device(w.db1, { branch: bB, registryBody: FACE_ONLY });
@@ -134,7 +134,7 @@ describe('branch transfer between organizations', () => {
 describe('return codes (§8.1)', () => {
   // Each test its own branch: a new device takes every member of its branch.
   let branch;
-  beforeEach(async () => { branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id }); });
+  beforeEach(async () => { branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id }); });
 
   test('-27 on the authorization: the user is sent again, then the authorization; the pair ends in sync', async () => {
     let once = true;
@@ -202,7 +202,7 @@ describe('return codes (§8.1)', () => {
 
 describe('version mismatch → comparison photo (§3, §7.1)', () => {
   test('a template of another algorithm version is not sent; the comparison photo is; -30 does the same', async () => {
-    const branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const d = await w.device(w.db1, { branch, registryBody: FACE_ONLY });
     const u = await w.member('Face Member');
     await biometrics.recordConsent(w.db1, { memberId: u.id, method: 'in_person' });
@@ -238,7 +238,7 @@ describe('version mismatch → comparison photo (§3, §7.1)', () => {
 
 describe('staff (D-8), locked branch (D-5), OUT exit grace (D-7)', () => {
   test('staff with device access: privilege 0, no window; flag off → removed', async () => {
-    const branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const d = await w.device(w.db1, { branch, registryBody: FACE_ONLY });
     const u = await w.member('Staff Person');
     const staff = await w.db1.models.GymStaff.create({ branchId: branch.id, userId: u.id, employmentStatus: 'ACTIVE', status: 'active' });
@@ -254,7 +254,7 @@ describe('staff (D-8), locked branch (D-5), OUT exit grace (D-7)', () => {
   });
 
   test('a branch locked past the members\' check-in grace: no new member is added, an expiry is still removed', async () => {
-    const branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const d = await w.device(w.db1, { branch, registryBody: FACE_ONLY });
     const old = await w.member('Already On');
     const s = await w.subscribe(w.db1, { user: old, branch });
@@ -271,7 +271,7 @@ describe('staff (D-8), locked branch (D-5), OUT exit grace (D-7)', () => {
   });
 
   test('OUT device: EndTime + 24 h, and an expired member stays for the exit grace, then goes', async () => {
-    const branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const din = await w.device(w.db1, { branch, registryBody: FACE_ONLY.replace('DateFmtFunOn=0', 'DateFmtFunOn=1'), direction: 'in' });
     const dout = await w.device(w.db1, { branch, registryBody: FACE_ONLY.replace('DateFmtFunOn=0', 'DateFmtFunOn=1'), direction: 'out' });
     const u = await w.member('Leaving Member');

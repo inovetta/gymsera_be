@@ -95,7 +95,7 @@ router.get('/stats', publicCache, controller.platformStats);
  *         description: Featured gym listings
  */
 router.get('/organizations', publicCache, controller.listOrganizations);
-router.get('/organizations/:gymId/branches', publicCache, controller.listOrganizationBranches);
+router.get('/organizations/:businessId/branches', publicCache, controller.listOrganizationBranches);
 router.get('/top-hosts', publicCache, controller.getTopHosts);
 router.get('/gyms/featured', publicCache, controller.featuredGyms);
 /**

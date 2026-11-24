@@ -61,7 +61,7 @@ const makeOrg = async (title, count = 2) => {
 const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), endDate = day(20), mirror = false } = {}) => {
   const plan = await models.MembershipPlan.create({
     branchId: branch.id,
-    gymId: branch.gymId,
+    businessId: branch.businessId,
     name: `Plan ${uuidv4().slice(0, 6)}`,
     price: 5000,
     durationType: 'MONTHLY',
@@ -82,7 +82,7 @@ const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), 
     await UserGymMembership.create({
       userId: member.id,
       organizationId: ctx.tenant1.id,
-      gymListingId: branch.gymListingId,
+      businessId: branch.businessId,
       subscriptionId: sub.id,
       gymName: 'Alpha Fitness Club',
       planName: plan.name,

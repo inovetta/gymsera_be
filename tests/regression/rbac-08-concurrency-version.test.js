@@ -24,7 +24,7 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     organizationId = personas.owner.organizationId;
     listing = await GymListing.findOne({ where: { organizationId } });
     const { Branch, RoleAssignment } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymId: listing.id } });
+    branch = await Branch.findOne({ where: { businessId: listing.id } });
     appServer = await startTestServer();
 
     deskMemberUser = await User.create({

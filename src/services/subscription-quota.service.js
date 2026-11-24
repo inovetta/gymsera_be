@@ -446,10 +446,10 @@ const auditCapacity = async (organizationId, tenantDb) => {
     });
     const activeBranchesList = await tenantDb.models.Branch.findAll({
       where: { status: 'ACTIVE' },
-      attributes: ['gymId'],
+      attributes: ['businessId'],
     });
     const activeListingIds = new Set(
-      activeBranchesList.map((b) => b.gymId).filter(Boolean)
+      activeBranchesList.map((b) => b.businessId).filter(Boolean)
     );
     emptyActiveOrgs = activeOrgs
       .filter((org) => !activeListingIds.has(org.id))

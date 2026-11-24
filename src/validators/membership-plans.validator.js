@@ -2,23 +2,23 @@ const { body, query, param } = require('express-validator');
 
 const DURATION_TYPES = ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'];
 
-// ── Public listing —  GET /membership-plans?gymListingId=<uuid> ───────────────
+// ── Public listing —  GET /membership-plans?businessId=<uuid> ───────────────
 const listPublic = [
-  query('gymListingId')
-    .notEmpty().withMessage('gymListingId is required')
-    .isUUID(4).withMessage('gymListingId must be a valid UUID'),
+  query('businessId')
+    .notEmpty().withMessage('businessId is required')
+    .isUUID(4).withMessage('businessId must be a valid UUID'),
   query('branchId')
     .optional()
     .isUUID(4).withMessage('branchId must be a valid UUID'),
 ];
 
-// ── Public single plan — GET /membership-plans/:id?gymListingId=<uuid> ────────
+// ── Public single plan — GET /membership-plans/:id?businessId=<uuid> ────────
 const getPublic = [
   param('id')
     .isUUID(4).withMessage('id must be a valid UUID'),
-  query('gymListingId')
-    .notEmpty().withMessage('gymListingId is required')
-    .isUUID(4).withMessage('gymListingId must be a valid UUID'),
+  query('businessId')
+    .notEmpty().withMessage('businessId is required')
+    .isUUID(4).withMessage('businessId must be a valid UUID'),
 ];
 
 // ── Create plan — POST /membership-plans ──────────────────────────────────────

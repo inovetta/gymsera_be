@@ -31,7 +31,7 @@ const FACE = (extra = '') => 'DeviceType=acc,~DeviceName=SpeedFace Sim,FirmVer=S
 const owner = () => asPersona('owner');
 const at = (db, sql, rep) => db.query(sql, { replacements: utc(rep) });
 const platformRow = async (id) => (await platformDb.query('SELECT * FROM access_devices WHERE id = ?', { replacements: [id], type: QueryTypes.SELECT }))[0];
-const newOrgBranch = async () => w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+const newOrgBranch = async () => w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
 const withFace = async (user) => {
   await biometrics.recordConsent(w.db1, { memberId: user.id, method: 'in_person' });
   await biometrics.storeTemplates(w.db1, { memberId: user.id, deviceId: null, templates: [{ pin: '1', type: 9, no: 0, index: 0, valid: 1, duress: 0, majorVer: '58', minorVer: '1', format: 0, tmp: fx.TEMPLATE }] });

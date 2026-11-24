@@ -23,12 +23,12 @@ describe('P7c item 8 (NEW-163): booking refuses a hidden plan or another branch\
   let otherBranchPlan;
   let gymWide;
 
-  const book = (planId) => asPersona('member').post('/subscriptions', { planId, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id });
+  const book = (planId) => asPersona('member').post('/subscriptions', { planId, businessId: ctx.listing1.id, branchId: ctx.branch1.id });
   const quote = (planId) =>
-    asPersona('member').get(`/subscriptions/quote?planId=${planId}&gymListingId=${ctx.listing1.id}&branchId=${ctx.branch1.id}`);
+    asPersona('member').get(`/subscriptions/quote?planId=${planId}&businessId=${ctx.listing1.id}&branchId=${ctx.branch1.id}`);
   const plan = (fields) =>
     models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, name: 'Plan', price: '1000.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
+      businessId: ctx.branch1.businessId, name: 'Plan', price: '1000.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
       ...fields,
     });
 
@@ -38,7 +38,7 @@ describe('P7c item 8 (NEW-163): booking refuses a hidden plan or another branch\
     ctx = require('../harness/personas').personaManager.context;
     models = ctx.tenant1Db.models;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
-    const sibling = await createBranch(ctx.tenant1Db, ctx.listing1.id, { gymId: ctx.branch1.gymId, branchName: 'Sibling' });
+    const sibling = await createBranch(ctx.tenant1Db, ctx.listing1.id, { businessId: ctx.branch1.businessId, branchName: 'Sibling' });
     await makeBranchLive(ctx.tenant1Db, sibling);
     visible = await plan({ branchId: ctx.branch1.id, name: 'Visible', isPublic: true });
     hidden = await plan({ branchId: ctx.branch1.id, name: 'Staff only', isPublic: false });

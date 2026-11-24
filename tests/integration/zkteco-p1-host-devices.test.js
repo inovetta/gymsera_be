@@ -33,7 +33,7 @@ beforeAll(async () => {
   for (const db of [ctx.tenant1Db, ctx.tenant2Db]) {
     for (const t of ['access_device_details', 'device_commands']) await db.sequelize.query(`DELETE FROM \`${t}\``);
   }
-  branchB = await factories.createBranch(ctx.tenant1Db, ctx.listing1.id, { branchName: 'Branch B', gymId: ctx.branch1.gymId });
+  branchB = await factories.createBranch(ctx.tenant1Db, ctx.listing1.id, { branchName: 'Branch B', businessId: ctx.branch1.businessId });
   const server = await startTestServer();
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });

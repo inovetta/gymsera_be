@@ -345,11 +345,11 @@
    "path": "/api/v1/host/listings/:p/reserved-slots/transfer",
    "allowed": [
     "count",
-    "toListingId"
+    "toBusinessId"
    ],
    "clientKeys": [
     "count",
-    "toListingId"
+    "toBusinessId"
    ]
   },
   {

@@ -81,9 +81,9 @@ describe('AUTH-07: day-30 deletion sweep', () => {
   const seedMember = async ({ db, tenant, listing, branch }, tag = 'm') => {
     const member = await factories.createUser({ role: 'MEMBER', email: `${tag}_${uuidv4().slice(0, 6)}@gymseratest.com`, phone: '+923009998888' });
     const { models } = db;
-    const plan = await models.MembershipPlan.create({ gymId: (await models.Gym.findOne())?.id || uuidv4(), name: 'Monthly', price: 3000 }).catch(async () => {
+    const plan = await models.MembershipPlan.create({ businessId: (await models.Gym.findOne())?.id || uuidv4(), name: 'Monthly', price: 3000 }).catch(async () => {
       const gym = await models.Gym.create({ name: 'G' });
-      return models.MembershipPlan.create({ gymId: gym.id, name: 'Monthly', price: 3000 });
+      return models.MembershipPlan.create({ businessId: gym.id, name: 'Monthly', price: 3000 });
     });
     const sub = await models.MemberSubscription.create({
       userId: member.id,
@@ -107,7 +107,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     await UserGymMembership.create({
       userId: member.id,
       organizationId: tenant.id,
-      gymListingId: listing.id,
+      businessId: listing.id,
       subscriptionId: sub.id,
       gymName: 'Test Gym',
       planName: 'Monthly',
@@ -117,7 +117,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     });
     await RefreshToken.create({ userId: member.id, familyId: uuidv4(), token: `h-${uuidv4()}`, expiresAt: new Date(Date.now() + DAY), isRevoked: false });
     await DeviceToken.create({ userId: member.id, token: `fcm-${uuidv4()}`, platform: 'ios' });
-    await SavedGym.create({ userId: member.id, gymListingId: listing.id });
+    await SavedGym.create({ userId: member.id, businessId: listing.id });
     await Notification.create({ userId: member.id, role: 'traveler', type: 'X', title: 't', message: 'm' });
     return { member, sub, payment, plan };
   };

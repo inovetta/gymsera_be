@@ -24,7 +24,7 @@ const splitId = (organizationId) => (organizationId.includes(':') ? organization
 const listingBranches = async (tenant, listingId) => {
   if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') return [];
   const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-  return models.Branch.findAll({ where: { gymId: listingId }, order: [['createdAt', 'ASC']] });
+  return models.Branch.findAll({ where: { businessId: listingId }, order: [['createdAt', 'ASC']] });
 };
 
 /** @returns {Promise<Array<{ url: string, kind: 'logo'|'cover'|'gallery', branchId?: string }>>} */

@@ -45,14 +45,14 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     });
 
     const branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Outbox Normal Branch',
       status: 'ACTIVE',
     });
 
     // Also need an initial membership plan so delete cascades cleanly
     await tenantDb.models.MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'Plan 1',
       price: 50,
@@ -108,13 +108,13 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     });
 
     const branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Outbox Crash Branch',
       status: 'ACTIVE',
     });
 
     await tenantDb.models.MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'Plan 2',
       price: 50,

@@ -51,10 +51,10 @@ const _getTravelerVisibleListingIds = async () => {
         const { Branch } = tenantDb.models;
         const branches = await Branch.findAll({
           where: TRAVELLER_VISIBLE_BRANCH(),
-          attributes: ['id', 'gymId'],
+          attributes: ['id', 'businessId'],
         });
         for (const b of branches) {
-          if (b.gymId) listingIds.push(b.gymId);
+          if (b.businessId) listingIds.push(b.businessId);
         }
       } catch (err) {
         // Ignore unreachable DBs
@@ -196,8 +196,8 @@ const _buildAllActiveBranches = async () => {
         ]);
 
         for (const b of branches) {
-          const listing = b.gymId ? listingMap.get(b.gymId) : null;
-          const gym = gymMap.get(b.gymId) || gyms[0];
+          const listing = b.businessId ? listingMap.get(b.businessId) : null;
+          const gym = gymMap.get(b.businessId) || gyms[0];
 
           // Compute branch-specific minPrice dynamically based on public plans
           const branchPlans = plans.filter(p => p.branchId === null || p.branchId === b.id);
@@ -220,7 +220,7 @@ const _buildAllActiveBranches = async () => {
             id: b.id, // primary unit is branch id!
             organizationId: tenant.id,
             branchId: b.id,
-            gymId: gym.id,
+            businessId: gym.id,
             cityId: finalCityId,
             areaId: finalAreaId,
             title: displayName(gym.name, b.branchName),
@@ -251,7 +251,7 @@ const _buildAllActiveBranches = async () => {
             minPrice,
             // NEW-145: the price is in the branch's currency (GLB-02, BUG-09).
             currency: b.currency || DEFAULT_CURRENCY,
-            gymListingId: b.gymId || null, // NEW-309 renames the key
+            businessId: b.businessId || null, // NEW-309 renames the key
             status: 'ACTIVE',
             createdAt: b.createdAt,
             city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
@@ -449,8 +449,8 @@ const getGym = async (id) => {
         const branch = await Branch.findByPk(id);
         if (branch) {
           branchRecord = branch;
-          if (branch.gymId) {
-            listing = await GymListing.findByPk(branch.gymId, {
+          if (branch.businessId) {
+            listing = await GymListing.findByPk(branch.businessId, {
               include: [
                 { model: City, as: 'city', attributes: ['id', 'name'] },
                 { model: Area, as: 'area', attributes: ['id', 'name'] },
@@ -496,11 +496,11 @@ const getGym = async (id) => {
       let gymIdToUse = null;
       let resolvedBranch = branchRecord || null;
       if (branchRecord) {
-        gymIdToUse = branchRecord.gymId;
+        gymIdToUse = branchRecord.businessId;
       } else if (listing && listing.branchId) {
         const primaryBranch = await Branch.findByPk(listing.branchId);
         if (primaryBranch) {
-          gymIdToUse = primaryBranch.gymId;
+          gymIdToUse = primaryBranch.businessId;
           resolvedBranch = primaryBranch;
         }
       }
@@ -508,7 +508,7 @@ const getGym = async (id) => {
       if (!gymIdToUse) {
         const fallbackBranch = await Branch.findOne({ where: { status: 'ACTIVE' } });
         if (fallbackBranch) {
-          gymIdToUse = fallbackBranch.gymId;
+          gymIdToUse = fallbackBranch.businessId;
           resolvedBranch = fallbackBranch;
         }
       }
@@ -528,7 +528,7 @@ const getGym = async (id) => {
         Branch.findAll({
           where: {
             ...TRAVELLER_VISIBLE_BRANCH(),
-            ...(gymIdToUse ? { gymId: gymIdToUse } : {}),
+            ...(gymIdToUse ? { businessId: gymIdToUse } : {}),
           },
           // R-113 H6: hoursJson and timezone for the week and "open now" (Branch#toJSON).
           attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hoursJson', 'timezone', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
@@ -536,7 +536,7 @@ const getGym = async (id) => {
         }),
       ]);
 
-      // Resolve branchId -> gymListingId mapping
+      // Resolve branchId -> businessId mapping
       const tenantListings = await GymListing.findAll({
         where: { organizationId: listing.organizationId, status: 'ACTIVE' },
         attributes: ['id', 'branchId'],
@@ -552,14 +552,14 @@ const getGym = async (id) => {
       branches = branches.map(b => {
         // R-113 H6: the same branch object as everywhere else (Branch#toJSON adds the week and "open now").
         const plainBranch = b.toJSON();
-        plainBranch.gymListingId = branchToListingMap[plainBranch.id] || null;
+        plainBranch.businessId = branchToListingMap[plainBranch.id] || null;
         return plainBranch;
       });
 
       // If we found by branchRecord, let's override title and other branch specific fields in the listing
       if (branchRecord && gym) {
         listing = listing.get({ plain: true });
-        listing.id = branchRecord.id; // Override gymListingId with branchId so client matches
+        listing.id = branchRecord.id; // Override businessId with branchId so client matches
         listing.title = displayName(gym.name, branchRecord.branchName);
         listing.businessName = gym.name || null;
         listing.branchName = branchRecord.branchName || null;
@@ -597,7 +597,7 @@ const getGym = async (id) => {
       // NEW-145: the detail's price is in the branch's currency.
       listing.currency = (resolvedBranch && resolvedBranch.currency) || DEFAULT_CURRENCY;
       if (listing.reviewCount === undefined) {
-        listing.reviewCount = await GymReview.count({ where: { gymListingId: listing.id, status: 'APPROVED' } });
+        listing.reviewCount = await GymReview.count({ where: { businessId: listing.id, status: 'APPROVED' } });
       }
       // BUG-09: each plan says which currency it is sold in.
       await require('./membership-plan.service').withCurrency(tenantDb, membershipPlans, resolvedBranch ? resolvedBranch.id : null);
@@ -732,7 +732,7 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
   const branches = await _getAllActiveBranches();
   const byGym = new Map();
   for (const b of branches) {
-    const key = `${b.organizationId}:${b.gymId}`;
+    const key = `${b.organizationId}:${b.businessId}`;
     if (!byGym.has(key)) byGym.set(key, []);
     byGym.get(key).push(b);
   }
@@ -745,8 +745,8 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
     const ratingSum = list.reduce((n, b) => n + (b.averageRating || 0) * (b.reviewCount || 0), 0);
     const averageRating = reviewCount > 0 ? Math.round((ratingSum / reviewCount) * 10) / 10 : 0;
     return {
-      id: first.gymId,
-      gymId: first.gymId,
+      id: first.businessId,
+      businessId: first.businessId,
       organizationId: first.organizationId,
       name: org.name,
       description: org.description,
@@ -768,9 +768,9 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
 };
 
 // ── listOrganizationBranches ──────────────────────────────────────────────────
-const listOrganizationBranches = async (gymId) => {
+const listOrganizationBranches = async (businessId) => {
   const branches = (await _getAllActiveBranches())
-    .filter((b) => b.gymId === gymId)
+    .filter((b) => b.businessId === businessId)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   if (branches.length === 0) throw createError('Organization not found', 404);
   return { gyms: branches, branches };
@@ -782,11 +782,11 @@ const getGymListingByIdentifier = async (identifier) => {
   let listing = await GymListing.findByPk(identifier);
   if (listing) return listing;
 
-  // 2. Branch ID → gymListingId lookup
+  // 2. Branch ID → businessId lookup
   const branches = await _getAllActiveBranches();
   const matched = branches.find(b => b.id === identifier || b.branchId === identifier);
-  if (matched && matched.gymListingId) {
-    listing = await GymListing.findByPk(matched.gymListingId);
+  if (matched && matched.businessId) {
+    listing = await GymListing.findByPk(matched.businessId);
     if (listing) return listing;
   }
 
@@ -794,7 +794,7 @@ const getGymListingByIdentifier = async (identifier) => {
   //    so reviews summary/list don't 404 (they'll just return empty data)
   if (matched) {
     return {
-      id: matched.gymListingId || matched.id,
+      id: matched.businessId || matched.id,
       organizationId: matched.organizationId,
       title: matched.title,
       averageRating: matched.averageRating || 0,
@@ -807,8 +807,8 @@ const getGymListingByIdentifier = async (identifier) => {
 
 // ── _recalculateAverageRating (helper) ────────────────────────────────────────
 // Recalculates averageRating on GymListing based on all approved reviews for that branch.
-const _recalculateAverageRating = async (gymListingId, branchId) => {
-  const where = { gymListingId, status: 'APPROVED' };
+const _recalculateAverageRating = async (businessId, branchId) => {
+  const where = { businessId, status: 'APPROVED' };
   if (branchId) where.branchId = branchId;
 
   const result = await GymReview.findOne({
@@ -821,7 +821,7 @@ const _recalculateAverageRating = async (gymListingId, branchId) => {
   // Update listing-level average (reflects the overall gym, not per-branch)
   await GymListing.update(
     { averageRating: parseFloat(avg.toFixed(2)) },
-    { where: { id: gymListingId } }
+    { where: { id: businessId } }
   );
 };
 
@@ -831,16 +831,16 @@ const _recalculateAverageRating = async (gymListingId, branchId) => {
  * branchId is required to scope reviews to a specific branch.
  * If no GymListing is found (synthetic), we still return the branch-scoped summary.
  */
-const getReviewsSummary = async (gymListingId, branchId, { viewerUserId = null } = {}) => {
+const getReviewsSummary = async (businessId, branchId, { viewerUserId = null } = {}) => {
   const where = { status: 'APPROVED' };
   if (branchId) {
     where.branchId = branchId;
-  } else if (gymListingId) {
-    where.gymListingId = gymListingId;
+  } else if (businessId) {
+    where.businessId = businessId;
   }
 
   // Try to get stored average from listing for display
-  const listing = await GymListing.findByPk(gymListingId).catch(() => null);
+  const listing = await GymListing.findByPk(businessId).catch(() => null);
   if (!listing && !branchId) {
     return {
       averageRating: 0,
@@ -887,7 +887,7 @@ const getReviewsSummary = async (gymListingId, branchId, { viewerUserId = null }
   };
 };
 
-const submitReview = async (userId, gymListingId, branchId, { rating, title, body }) => {
+const submitReview = async (userId, businessId, branchId, { rating, title, body }) => {
   if (!branchId) throw createError('branchId is required to submit a review', 400);
   // NEW-256: the word filter runs before anything else is looked up or stored.
   await require('./moderation-words.service').assertClean(title, body);
@@ -945,10 +945,10 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
       status: 'PENDING',
       adminNote: null,
     });
-    await _recalculateAverageRating(gymListingId, branchId);
+    await _recalculateAverageRating(businessId, branchId);
   } else {
     review = await GymReview.create({
-      gymListingId: gymListingId || null,
+      businessId: businessId || null,
       branchId,
       userId,
       organizationId,
@@ -992,7 +992,7 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
  * Branch-scoped review listing.
  * If branchId is provided, only returns reviews for that specific branch.
  */
-const listReviews = async (gymListingId, branchId, { page, limit, offset, sort = 'recent', filter = 'all', viewerUserId = null }) => {
+const listReviews = async (businessId, branchId, { page, limit, offset, sort = 'recent', filter = 'all', viewerUserId = null }) => {
   const where = { status: 'APPROVED' };
 
   // NEW-256: a review the viewer reported is hidden from them at once.
@@ -1002,8 +1002,8 @@ const listReviews = async (gymListingId, branchId, { page, limit, offset, sort =
   // Scope to branch if provided, else fall back to listing-level
   if (branchId) {
     where.branchId = branchId;
-  } else if (gymListingId) {
-    where.gymListingId = gymListingId;
+  } else if (businessId) {
+    where.businessId = businessId;
   }
 
   if (filter && filter !== 'all' && filter !== 'All') {
@@ -1036,9 +1036,9 @@ const listReviews = async (gymListingId, branchId, { page, limit, offset, sort =
 };
 
 // ── adminListReviews ──────────────────────────────────────────────────────────
-const adminListReviews = async ({ gymListingId, status, page, limit, offset }) => {
+const adminListReviews = async ({ businessId, status, page, limit, offset }) => {
   const where = {};
-  if (gymListingId) where.gymListingId = gymListingId;
+  if (businessId) where.businessId = businessId;
   if (status) where.status = status;
 
   const { count, rows } = await GymReview.findAndCountAll({
@@ -1087,13 +1087,13 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
   const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
   await review.update({ status: newStatus, adminNote: adminNote || null });
 
-  await _recalculateAverageRating(review.gymListingId);
+  await _recalculateAverageRating(review.businessId);
 
   // Create unified Traveler and Host notifications
   try {
     const { Tenant, GymListing } = require('../models/platform');
     const notificationsService = require('./notifications.service');
-    const listing = await GymListing.findByPk(review.gymListingId);
+    const listing = await GymListing.findByPk(review.businessId);
     const branchName = listing ? listing.title : 'Gym';
     const tenant = await Tenant.findByPk(review.organizationId);
 
@@ -1206,20 +1206,20 @@ const travellerPaymentDetails = (json) => {
   return Object.keys(details).length > 0 ? details : null;
 };
 
-const getPaymentDetails = async (gymListingId) => {
-  const organizationId = await _resolveTenantId(gymListingId);
-  if (!organizationId || !(await isLiveForTravellers(gymListingId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
+const getPaymentDetails = async (businessId) => {
+  const organizationId = await _resolveTenantId(businessId);
+  if (!organizationId || !(await isLiveForTravellers(businessId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
 
   // P7b (R-94): the payout account of this organization (or of the branch's organization), else
   // the tenant default. `id` is an organization (gym listing) id or a branch id.
   const payoutAccountService = require('./payout-account.service');
-  const listing = await GymListing.findByPk(gymListingId, { attributes: ['id', 'organizationId'] });
+  const listing = await GymListing.findByPk(businessId, { attributes: ['id', 'organizationId'] });
   const account = listing && listing.organizationId === organizationId
     ? await payoutAccountService.resolve({ organizationId, businessId: listing.id })
     : await payoutAccountService.resolveForBranch(
       await TenantDbManager.getConnection(organizationId, (await Tenant.findByPk(organizationId, { attributes: ['connectionStringEncrypted'] })).connectionStringEncrypted),
       organizationId,
-      gymListingId
+      businessId
     );
 
   return {

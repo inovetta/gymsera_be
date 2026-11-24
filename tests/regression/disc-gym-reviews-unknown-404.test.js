@@ -1,7 +1,7 @@
 /**
  * GET /discovery/gyms/:id/reviews for an unknown gym must be 404, not 500.
  * Root cause: the controller called listReviews(id, { page, limit, offset })
- * but the service signature is (gymListingId, branchId, opts), so opts was
+ * but the service signature is (businessId, branchId, opts), so opts was
  * undefined and its destructuring threw a TypeError (-> 500) for EVERY id.
  * Also checks that a real listing returns 200 with an empty list.
  */

@@ -322,11 +322,11 @@ const getTenant = async (organizationId) => {
         const tenantDb = await TenantDbManager.getConnection(actualTenantId, tenant.connectionStringEncrypted);
         const counts = await tenantDb.models.Branch.findAll({
           where: { status: 'ACTIVE' },
-          attributes: ['gymId', [fn('COUNT', col('id')), 'count']],
-          group: ['gymId'],
+          attributes: ['businessId', [fn('COUNT', col('id')), 'count']],
+          group: ['businessId'],
           raw: true,
         });
-        branchCountsByListing = Object.fromEntries(counts.map((c) => [c.gymId, parseInt(c.count, 10)]));
+        branchCountsByListing = Object.fromEntries(counts.map((c) => [c.businessId, parseInt(c.count, 10)]));
       } catch (err) {
         // Tenant DB unreachable — organizations still render, just without
         // branch counts, rather than failing the whole tenant page.
@@ -509,7 +509,7 @@ const rejectTenant = async (organizationId, adminUserId, reason) => {
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
       const { Branch } = tenantDb.models;
       const branches = await Branch.findAll({
-        where: { gymId: listing.id, status: 'ACTIVE' },
+        where: { businessId: listing.id, status: 'ACTIVE' },
       });
       const gymService = require('./gym.service');
       for (const branch of branches) {
@@ -739,7 +739,7 @@ const getTenantBranches = async (organizationId) => {
   
   const where = {};
   if (listingId) {
-    where.gymId = listingId;
+    where.businessId = listingId;
   }
 
   const branches = await models.Branch.findAll({
@@ -1581,7 +1581,7 @@ const createAdminTenantBranch = async (organizationId, data, adminUserId) => {
     actualTenantId,
     {
       ...adminData,
-      gymListingId: listingId || data.gymListingId,
+      businessId: listingId || data.businessId,
     },
     adminUserId,
     {

@@ -14,8 +14,8 @@ async function main() {
     console.log('Database connected successfully.');
 
     // Use FitLife Studio Listing ID
-    const gymId = 'aec3db1d-3582-46ab-9f76-eede1cb5eaf3';
-    const result = await discoveryService.getPaymentDetails(gymId);
+    const businessId = 'aec3db1d-3582-46ab-9f76-eede1cb5eaf3';
+    const result = await discoveryService.getPaymentDetails(businessId);
     console.log('Result from getPaymentDetails:', JSON.stringify(result, null, 2));
   } catch (err) {
     console.error('Error running script:', err);

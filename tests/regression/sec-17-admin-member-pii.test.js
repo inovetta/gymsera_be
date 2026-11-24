@@ -37,8 +37,8 @@ describe('SEC-17: admin Members tab', () => {
     organizationId = personas.owner.organizationId;
     const { Branch, MembershipPlan, MemberSubscription } = h.tenant1.models;
     const listing = await GymListing.findOne({ where: { organizationId } });
-    const branch = await Branch.findOne({ where: { gymId: listing.id } });
-    const plan = await MembershipPlan.create({ gymId: branch.gymId, branchId: branch.id, name: 'SEC17', price: 1000, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE' });
+    const branch = await Branch.findOne({ where: { businessId: listing.id } });
+    const plan = await MembershipPlan.create({ businessId: branch.businessId, branchId: branch.id, name: 'SEC17', price: 1000, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE' });
     member = await factories.createUser({ email: EMAIL, phone: PHONE, fullName: 'Sec Seventeen', role: 'MEMBER' });
     outsider = await factories.createUser({ email: 'sec17.outsider@example.test', phone: '+923009999999', fullName: 'Not A Member', role: 'MEMBER' });
     await MemberSubscription.create({ userId: member.id, membershipPlanId: plan.id, branchId: branch.id, status: 'ACTIVE', startDate: daysFromToday(-30), endDate: daysFromToday(335) });

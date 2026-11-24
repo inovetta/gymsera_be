@@ -52,9 +52,9 @@ describe('NEW-308: the business id is the listing id', () => {
     const { Gym, Branch } = h.tenant1.models;
     const gym = await Gym.findByPk(listingId);
     expect(gym).not.toBeNull();
-    const branches = await Branch.findAll({ where: { gymId: listingId } });
+    const branches = await Branch.findAll({ where: { businessId: listingId } });
     expect(branches).toHaveLength(1);
-    expect(branches[0].toJSON().gymListingId).toBe(listingId); // the read-only alias (until NEW-309)
+    expect(branches[0].toJSON().businessId).toBe(listingId); // the read-only alias (until NEW-309)
   });
 
   test('guard: every tenant business has the id of a platform listing of that organization, every branch a business', async () => {
@@ -65,15 +65,15 @@ describe('NEW-308: the business id is the listing id', () => {
     expect(gyms.length).toBeGreaterThan(0);
     for (const g of gyms) expect(listingIds.has(g.id)).toBe(true);
     const gymIds = new Set(gyms.map((g) => g.id));
-    const branches = await Branch.findAll({ attributes: ['id', 'gymId'], raw: true });
-    for (const b of branches) expect(gymIds.has(b.gymId)).toBe(true);
+    const branches = await Branch.findAll({ attributes: ['id', 'businessId'], raw: true });
+    for (const b of branches) expect(gymIds.has(b.businessId)).toBe(true);
   });
 
   test('listing the branches of one business returns only its own (a branch is never listed under every business, G11)', async () => {
     const { Gym, Branch } = h.tenant1.models;
     const gyms = await Gym.findAll({ attributes: ['id'], raw: true });
     for (const g of gyms) {
-      const own = await Branch.findAll({ where: { gymId: g.id }, attributes: ['id'], raw: true });
+      const own = await Branch.findAll({ where: { businessId: g.id }, attributes: ['id'], raw: true });
       const res = await asPersona('owner').get(`/host/listings/${g.id}/branches`);
       expect(res.status).toBe(200);
       const body = res.body.data;

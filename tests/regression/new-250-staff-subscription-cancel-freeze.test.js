@@ -48,7 +48,7 @@ const makeSub = async ({ status = 'ACTIVE', planRow = plan, branch = ctx.branch1
   });
   const listing = await GymListing.findOne({ where: { organizationId } });
   await UserGymMembership.create({
-    userId: member.id, organizationId, gymListingId: listing.id, subscriptionId: sub.id,
+    userId: member.id, organizationId, businessId: listing.id, subscriptionId: sub.id,
     gymName: listing.title, planName: planRow.name, startDate: sub.startDate, endDate: sub.endDate, status,
   });
   return { sub, member };
@@ -72,15 +72,15 @@ beforeAll(async () => {
   app = await startTestServer();
 
   plan = await db1.models.MembershipPlan.create({
-    gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Standard 250', price: 3000,
+    businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Standard 250', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', freezeLimitDays: 14,
   });
   noFreezePlan = await db1.models.MembershipPlan.create({
-    gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'No Freeze 250', price: 3000,
+    businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'No Freeze 250', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', freezeLimitDays: 0,
   });
   tenant2Plan = await ctx.tenant2Db.models.MembershipPlan.create({
-    gymId: ctx.branch2.gymId, branchId: ctx.branch2.id, name: 'Tenant2 250', price: 3000,
+    businessId: ctx.branch2.businessId, branchId: ctx.branch2.id, name: 'Tenant2 250', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', freezeLimitDays: 14,
   });
   otherBranch = await factories.createBranch(db1, ctx.listing1.id, { name: 'N250 Other Branch' });
@@ -185,7 +185,7 @@ describe('NEW-250: staff Cancel', () => {
 
   test('cancel queues the device sync for the member (member removed from the access devices)', async () => {
     await registry.createDevice({
-      organizationId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.gymId || null,
+      organizationId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.businessId || null,
       name: 'N250 Door', direction: 'in', importFirst: false, createdBy: personas.owner.user.id,
     });
     expect(await triggers.hasDevices(db1.sequelize)).toBe(true);

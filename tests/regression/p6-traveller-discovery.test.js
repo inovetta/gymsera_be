@@ -38,15 +38,15 @@ describe('Phase 7 P6: traveller discovery', () => {
   const makeVisible = async (tenantDb, organizationId, { cityId, gymName, branchName, imagesJson, currency }) => {
     const listing = await GymListing.findOne({ where: { organizationId } });
     await listing.update({ status: 'ACTIVE', cityId });
-    const branch = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
+    const branch = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
     await branch.update({
       status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false,
       cityId, branchName, imagesJson, currency,
     });
-    const gym = await tenantDb.models.Gym.findByPk(branch.gymId);
+    const gym = await tenantDb.models.Gym.findByPk(branch.businessId);
     await gym.update({ name: gymName, coverImageUrl: null, imagesJson: null, logoUrl: null, description: null });
     await tenantDb.models.MembershipPlan.create({
-      gymId: gym.id, branchId: branch.id, name: 'Monthly', price: 2500,
+      businessId: gym.id, branchId: branch.id, name: 'Monthly', price: 2500,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     return { organizationId, branch, gym, listing };
@@ -120,8 +120,8 @@ describe('Phase 7 P6: traveller discovery', () => {
     let reviewer;
     beforeAll(async () => {
       reviewer = await User.findOne({ where: { email: 'owner@tenant2.test' } });
-      await GymReview.create({ gymListingId: t1.listing.id, branchId: t1.branch.id, userId: reviewer.id, organizationId: t1.organizationId, rating: 4, title: 'ok', body: 'ok', status: 'APPROVED' });
-      await GymReview.create({ gymListingId: t1.listing.id, branchId: t1.branch.id, userId: personas.member.user.id, organizationId: t1.organizationId, rating: 1, title: 'no', body: 'no', status: 'PENDING' });
+      await GymReview.create({ businessId: t1.listing.id, branchId: t1.branch.id, userId: reviewer.id, organizationId: t1.organizationId, rating: 4, title: 'ok', body: 'ok', status: 'APPROVED' });
+      await GymReview.create({ businessId: t1.listing.id, branchId: t1.branch.id, userId: personas.member.user.id, organizationId: t1.organizationId, rating: 1, title: 'no', body: 'no', status: 'PENDING' });
     });
 
     test('list, detail and organization carry averageRating and reviewCount of approved reviews', async () => {

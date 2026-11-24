@@ -72,7 +72,7 @@ const withBranchPendingArea = async (req, result) => {
 // ── GET /gyms/branches ────────────────────────────────────────────────────────
 const listBranches = async (req, res, next) => {
   try {
-    const businessId = req.params.gymId || req.params.listingId || req.query.businessId || req.query.gymId;
+    const businessId = req.params.businessId || req.params.listingId || req.query.businessId || req.query.businessId;
     const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1';
     // NEW-44: a team member sees only the branches they hold a grant at (null = every branch).
     const branchIds = await branchIdsWithAnyGrant(req);

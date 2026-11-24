@@ -28,7 +28,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   const book = (persona, body) => asPersona(persona).post('/subscriptions', body);
   const quote = (persona, q) => asPersona(persona).get(
-    `/subscriptions/quote?planId=${q.planId}&gymListingId=${q.gymListingId}&branchId=${q.branchId}`
+    `/subscriptions/quote?planId=${q.planId}&businessId=${q.businessId}&branchId=${q.branchId}`
   );
 
   beforeAll(async () => {
@@ -37,7 +37,7 @@ describe('Phase 7 P7a: booking and payment', () => {
     ctx = require('../harness/personas').personaManager.context;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'P7a Monthly',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'P7a Monthly',
       price: '5000.00', joiningFee: '700.00', securityFee: '300.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
@@ -50,7 +50,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   beforeEach(() => cache._resetForTests());
 
-  const body = () => ({ planId: plan.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id });
+  const body = () => ({ planId: plan.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id });
 
   describe('BUG-34 / NEW-150: the total is the server price, no fee, no promo', () => {
     test('quote = plan + joining + security, in the branch currency; booking charges exactly that', async () => {
@@ -91,7 +91,7 @@ describe('Phase 7 P7a: booking and payment', () => {
         expect(res.body.data.price).toBe(5000);
       }
       const anon = await require('supertest')(require('../harness/personas').personaManager.server)
-        .get(`/api/v1/subscriptions/quote?planId=${plan.id}&gymListingId=${ctx.listing1.id}&branchId=${ctx.branch1.id}`);
+        .get(`/api/v1/subscriptions/quote?planId=${plan.id}&businessId=${ctx.listing1.id}&branchId=${ctx.branch1.id}`);
       expect(anon.status).toBe(401);
     });
 

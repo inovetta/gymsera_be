@@ -72,7 +72,7 @@ beforeAll(async () => {
   const { Branch, MembershipPlan, ExpenseCategory } = tenantDb.models;
 
   const listing = await GymListing.findOne({ where: { organizationId } });
-  const a = await Branch.findOne({ where: { gymId: listing.id } });
+  const a = await Branch.findOne({ where: { businessId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
   branches = { a, b, c };
@@ -81,7 +81,7 @@ beforeAll(async () => {
   for (const letter of LETTERS) {
     const br = branches[letter];
     plans[letter] = await MembershipPlan.create({
-      gymId: br.gymId || br.id, branchId: br.id, name: `N52 Monthly ${letter}`, price: 5000, priceMinor: 500000,
+      businessId: br.businessId || br.id, branchId: br.id, name: `N52 Monthly ${letter}`, price: 5000, priceMinor: 500000,
       durationType: 'MONTHLY', durationValue: 1, isPublic: true, status: 'ACTIVE',
     });
   }

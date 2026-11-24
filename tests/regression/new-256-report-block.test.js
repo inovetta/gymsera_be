@@ -49,7 +49,7 @@ const newConversation = (userId, tid = organizationId) =>
 
 const newReview = (userId, status = 'APPROVED', extra = {}) =>
   GymReview.create({
-    gymListingId: ctx.listing1.id,
+    businessId: ctx.listing1.id,
     branchId: ctx.branch1.id,
     organizationId,
     userId,

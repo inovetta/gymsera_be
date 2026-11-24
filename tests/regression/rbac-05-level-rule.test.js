@@ -25,7 +25,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     organizationId = personas.owner.organizationId;
     listing = await GymListing.findOne({ where: { organizationId } });
     const { Branch } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymId: listing.id } });
+    branch = await Branch.findOne({ where: { businessId: listing.id } });
     appServer = await startTestServer();
   });
 

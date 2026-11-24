@@ -105,7 +105,7 @@ const enforceBranchBillingLocksForTenant = async (organizationId, tenantDb, { tr
       await b.update({ billingLockedAt: null, billingLockReason: null });
       await subscriptionQuotaService.recordCapacityEvent({
         organizationId,
-        listingId: b.gymId || null,
+        listingId: b.businessId || null,
         branchId: b.id,
         action: 'BRANCH_BILLING_UNLOCKED',
         delta: 0,
@@ -156,7 +156,7 @@ const enforceBranchBillingLocksForTenant = async (organizationId, tenantDb, { tr
         });
         await subscriptionQuotaService.recordCapacityEvent({
           organizationId,
-          listingId: branch.gymId || null,
+          listingId: branch.businessId || null,
           branchId: branch.id,
           action: 'BRANCH_BILLING_LOCKED',
           delta: 0,
@@ -174,7 +174,7 @@ const enforceBranchBillingLocksForTenant = async (organizationId, tenantDb, { tr
         });
         await subscriptionQuotaService.recordCapacityEvent({
           organizationId,
-          listingId: branch.gymId || null,
+          listingId: branch.businessId || null,
           branchId: branch.id,
           action: 'BRANCH_BILLING_UNLOCKED',
           delta: 0,

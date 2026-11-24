@@ -47,7 +47,7 @@ const gymsTabCalls = () => [
   '/host/listings',
   '/host/branches',
   '/host/branch-quota',
-  `/host/branch-quota?businessId=${team.branchA.gymListingId}`,
+  `/host/branch-quota?businessId=${team.branchA.businessId}`,
   '/subscriptions/staff?status=PENDING&limit=1',
   '/notifications/unread-count',
   `/host/branches/${team.branchA.id}/dashboard`,

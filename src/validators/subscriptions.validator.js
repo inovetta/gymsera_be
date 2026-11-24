@@ -7,9 +7,9 @@ const subscribe = [
   body('planId')
     .notEmpty().withMessage('planId is required')
     .isUUID(4).withMessage('planId must be a valid UUID'),
-  body('gymListingId')
-    .notEmpty().withMessage('gymListingId is required')
-    .isUUID(4).withMessage('gymListingId must be a valid UUID'),
+  body('businessId')
+    .notEmpty().withMessage('businessId is required')
+    .isUUID(4).withMessage('businessId must be a valid UUID'),
   body('branchId')
     .notEmpty().withMessage('branchId is required')
     .isUUID(4).withMessage('branchId must be a valid UUID'),
@@ -26,9 +26,9 @@ const quote = [
   query('planId')
     .notEmpty().withMessage('planId is required')
     .isUUID(4).withMessage('planId must be a valid UUID'),
-  query('gymListingId')
-    .notEmpty().withMessage('gymListingId is required')
-    .isUUID(4).withMessage('gymListingId must be a valid UUID'),
+  query('businessId')
+    .notEmpty().withMessage('businessId is required')
+    .isUUID(4).withMessage('businessId must be a valid UUID'),
   query('branchId')
     .notEmpty().withMessage('branchId is required')
     .isUUID(4).withMessage('branchId must be a valid UUID'),

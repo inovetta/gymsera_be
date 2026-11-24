@@ -31,7 +31,7 @@ describe('NEW-283: the brand byline only for an account with exactly one live br
     ctx = require('../harness/personas').personaManager.context;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'N283 Monthly', price: '3000.00',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'N283 Monthly', price: '3000.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     await Tenant.update({ organizationName: 'Iron Brand' }, { where: { id: ctx.tenant1.id } });

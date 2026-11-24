@@ -62,8 +62,8 @@ const gymsValidators = {
   ],
 
   createBranch: [
-    // SEC-06: the organization the branch is built in (gym.service#createBranch reads data.gymListingId)
-    body('gymListingId').optional({ nullable: true }).isUUID(4).withMessage('gymListingId must be a valid UUID'),
+    // SEC-06: the organization the branch is built in (gym.service#createBranch reads data.businessId)
+    body('businessId').optional({ nullable: true }).isUUID(4).withMessage('businessId must be a valid UUID'),
     body('branchName')
       .trim()
       .notEmpty()

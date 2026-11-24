@@ -12,16 +12,10 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      gymId: {
+      businessId: {
         field: 'business_id', // R-120 NEW-306 (tenant 030)
         type: DataTypes.UUID,
         allowNull: false,
-      },
-      // R-120 NEW-308 (option S): the business id IS the business_listings id, so the copy column is gone (tenant 031).
-      // Read-only alias kept for the response JSON until the API rename (NEW-309). Never use it in a `where`.
-      gymListingId: {
-        type: DataTypes.VIRTUAL,
-        get() { return this.getDataValue('gymId') || null; },
       },
       branchName: {
         type: DataTypes.STRING(200),

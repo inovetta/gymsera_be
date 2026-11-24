@@ -40,11 +40,11 @@ const REASONS = {
 /** The refund policy of the gym the branch belongs to (the tenant's first gym when the branch has none). */
 const policyFor = async (tenantDb, branchId) => {
   const { Gym, Branch } = tenantDb.models;
-  const branch = branchId ? await Branch.findByPk(branchId, { attributes: ['id', 'gymId', 'timezone'] }) : null;
-  let gym = branch && branch.gymId ? await Gym.findByPk(branch.gymId) : null;
+  const branch = branchId ? await Branch.findByPk(branchId, { attributes: ['id', 'businessId', 'timezone'] }) : null;
+  let gym = branch && branch.businessId ? await Gym.findByPk(branch.businessId) : null;
   if (!gym) gym = await Gym.findOne({ order: [['createdAt', 'ASC']] });
   return {
-    gymId: gym ? gym.id : null,
+    businessId: gym ? gym.id : null,
     refundsAllowed: Boolean(gym && gym.refundsAllowed),
     refundWindowDays: gym && gym.refundWindowDays != null ? Number(gym.refundWindowDays) : null,
     timezone: (branch && branch.timezone) || 'Asia/Karachi',
@@ -55,7 +55,7 @@ const policyFor = async (tenantDb, branchId) => {
 const updatePolicy = async (ctx, branchId, { refundsAllowed, refundWindowDays }) => {
   const { Gym } = ctx.tenantDb.models;
   const current = await policyFor(ctx.tenantDb, branchId);
-  if (!current.gymId) throw createError('Gym not found', 404);
+  if (!current.businessId) throw createError('Gym not found', 404);
   const changes = {};
   if (refundsAllowed !== undefined) {
     if (typeof refundsAllowed !== 'boolean') throw coded('refundsAllowed must be true or false', 422, 'invalid_refund_policy');
@@ -66,16 +66,16 @@ const updatePolicy = async (ctx, branchId, { refundsAllowed, refundWindowDays })
     if (!ok) throw coded('refundWindowDays must be empty (no limit) or a whole number of days from 1 to 3650', 422, 'invalid_refund_policy');
     changes.refundWindowDays = refundWindowDays;
   }
-  await Gym.update(changes, { where: { id: current.gymId } });
+  await Gym.update(changes, { where: { id: current.businessId } });
   const next = await policyFor(ctx.tenantDb, branchId);
   await auditService.record(ctx, {
     action: 'refunds.policy.update',
     targetType: 'gym',
-    targetId: current.gymId,
+    targetId: current.businessId,
     before: { refundsAllowed: current.refundsAllowed, refundWindowDays: current.refundWindowDays },
     after: { refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays },
   });
-  return { gymId: next.gymId, refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays };
+  return { businessId: next.businessId, refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays };
 };
 
 const _days = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);

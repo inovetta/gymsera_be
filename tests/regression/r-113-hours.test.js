@@ -174,7 +174,7 @@ describe('H6: every branch object reads the schedule', () => {
   beforeAll(async () => {
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'R113 Monthly', price: '3000.00',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'R113 Monthly', price: '3000.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     await Branch().update({ hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' }, { where: { id: ctx.branch1.id } });

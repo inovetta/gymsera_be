@@ -75,7 +75,7 @@ describe('AUTH-07: account deletion request, preflight and undo', () => {
     await UserGymMembership.create({
       userId: member.id,
       organizationId: tenant.id,
-      gymListingId: listing.id,
+      businessId: listing.id,
       subscriptionId: uuidv4(),
       gymName: 'Test Gym',
       planName: 'Monthly',

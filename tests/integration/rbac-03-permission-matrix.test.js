@@ -31,7 +31,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
   let personas;
   let tenant1Id;
   let branch1Id;
-  let gymId;
+  let businessId;
   let planId;
   let categoryId;
   let ledgerDayId;
@@ -43,11 +43,11 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
 
     const branch1 = await dbHarness.tenant1.models.Branch.findOne();
     branch1Id = branch1.id;
-    gymId = branch1.gymId;
+    businessId = branch1.businessId;
 
     // Create an active MembershipPlan for member enrollment commands
     const plan = await dbHarness.tenant1.models.MembershipPlan.create({
-      gymId,
+      businessId,
       branchId: branch1Id,
       name: 'Standard Monthly',
       price: 3000,

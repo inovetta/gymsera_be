@@ -33,13 +33,13 @@ describe('FLOW-06: Read-Only Check Script for Historical Subscription Date Defec
 
     gym = await Gym.create({ name: 'FLOW-06 Check Gym' });
     branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Karachi Central',
       timezone: 'Asia/Karachi',
     });
 
     plan = await MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'Monthly Standard',
       durationType: 'MONTHLY',
