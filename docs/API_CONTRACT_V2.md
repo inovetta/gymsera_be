@@ -227,7 +227,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 43 | GET | `/tenants/me` | **`/organizations/me`** |  |  |
 | 44 | PATCH | `/tenants/me` | **`/organizations/me`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` |  |
 | 45 | POST | `/tenants/register` | **`/organizations/register`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` | new organization codes `ORG-` (D-5, F8) |
-| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (was `gymDescription`), `firstBranch` (`FirstBranch`, A2 H2 / A3 J10) |  |
+| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (optional; was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (was `gymDescription`), `firstBranch` (`FirstBranch`, A2 H2 / A3 J10), `genderType`, `logoUrl`, `coverImageUrl` (optional) |  |
 | 47 | POST | `/tenants/:id/select-package` | **`/organizations/:organizationId/select-package`** | `packageId` |  |
 | 48 | POST | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** |  |  |
 | 49 | PUT | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** | `imagesJson` |  |
@@ -1265,6 +1265,14 @@ route** and no server draft: the server first sees the business when `POST /host
 - **Stateless:** the server stores the files (under the caller's own folder) and returns the URLs. It saves **nothing** about a business, an organization or a draft: no row, no link. The client keeps the URLs on the phone and sends them as `imagesJson` of `firstBranch` (A2 H2) or as `logoUrl` / `coverImageUrl` when it submits.
 - `POST /host/businesses/staging-images` (§4 row 254) is unchanged: the same upload for an existing organization (stored under its folder).
 
+### J14. First-business body (owner, final; replaces the key list in J10 and §4 row 46)
+
+`POST /organizations/:organizationId/first-business` body: `organizationName` (optional), `firstBusinessName`,
+`firstBusinessDescription`, `firstBranch` (`FirstBranch`, A2 H2), and optional `genderType`, `logoUrl`, `coverImageUrl`.
+**`kycDocumentsJson` is removed** from this body (and from the Organization object's writable keys): a business's
+documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 H3). Any other key is refused (422
+`validation_error`, `unknown_field`).
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1274,4 +1282,4 @@ route** and no server draft: the server first sees the business when `POST /host
 | 2026-11-22 | Amendment A2 (§11, owner): notification types `organization_*`, `FirstBranch` schema and nested Add Business body, business `kycDocuments` item (no storage keys; admin documents use it), `applyToAllBranches` on the refund-policy PUT, branch detail aligned with §3; new code `first_branch_already_built`. | Claude Code (Opus 5.5), session 166 |
 | 2026-11-23 | Amendment A3 (§12, owner): `organization_reactivated`; list keys `branches` / `businesses`; my-subscriptions rows with `branchId` + `businessId`; error-table rows listed; HostStatus key `area`; inbox `business { id, name }` + `branchName`; staff roles scoped ORG / BRANCH (`/me/staff-status`, staff invite) with the report of other responses; Add Business nested `firstBranch`. | Claude Code (Sonnet 5.5), session 166 |
 | 2026-11-23 | Amendment A3 addendum (§12 J10-J12, owner): one `FirstBranch` schema for first-business, Add Business and first-branch edit; business KYC list is `{ documents: [...] }`; first-time host drafts are phone-only (no partial-save contract). | Claude Code (Sonnet 5.5), session 167 |
-| 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName`, `firstBusinessName`, `firstBusinessDescription`, `firstBranch` only; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
+| 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName` (optional), `firstBusinessName`, `firstBusinessDescription`, `firstBranch`, optional `genderType`, `logoUrl`, `coverImageUrl`; `kycDocumentsJson` removed; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
