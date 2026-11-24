@@ -1,6 +1,8 @@
 const tenantService = require('../services/tenant.service');
 const storageService = require('../services/storage.service');
-const { sendSuccess, createError } = require('../utils/response.utils');
+const { sendSuccess: sendSuccessRaw, createError } = require('../utils/response.utils');
+const { toOrganizationKeys } = require('../utils/organization-keys');
+const sendSuccess = (res, data, ...rest) => sendSuccessRaw(res, toOrganizationKeys(data), ...rest);
 const { KycDocumentType } = require('../constants/subscription-status');
 const { normalizeKycDocuments } = require('../services/kyc-storage.service');
 

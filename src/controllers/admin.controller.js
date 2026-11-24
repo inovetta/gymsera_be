@@ -1,5 +1,7 @@
 const adminService = require('../services/admin.service');
-const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
+const { sendSuccess: sendSuccessRaw, parsePagination, createError } = require('../utils/response.utils');
+const { toOrganizationKeys } = require('../utils/organization-keys');
+const sendSuccess = (res, data, ...rest) => sendSuccessRaw(res, toOrganizationKeys(data), ...rest);
 
 // ── POST /admin/organizations ───────────────────────────────────────────────────────
 const createTenant = async (req, res, next) => {
