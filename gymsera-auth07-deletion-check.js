@@ -56,7 +56,7 @@ const LIVE_TENANT = new Set(['APPROVED', 'ACTIVE', 'SUSPENDED']);
 const FINISHED_TENANT = new Set(['PENDING_DELETION', 'DELETED']);
 
 /** Same rule as tenant-provisioning.service.js#buildDbName. */
-const dbNameFor = (tenantCode) => `gymsera_${String(tenantCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+const dbNameFor = (organizationCode) => `gymsera_${String(organizationCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
 
 /**
  * Pure classification.
@@ -106,7 +106,7 @@ function classify({ users, tenants, databases, now = new Date() }) {
       add({
         kind: 'TENANT',
         id: t.id,
-        tenantCode: t.tenant_code,
+        organizationCode: t.tenant_code,
         status: t.status,
         dbName,
         dbExists: dbSet.has(dbName),
@@ -201,7 +201,7 @@ async function main() {
       );
     } else {
       console.log(
-        `  tenant=${f.id} code=${f.tenantCode} status=${f.status} db=${f.dbName} dbExists=${f.dbExists}` +
+        `  tenant=${f.id} code=${f.organizationCode} status=${f.status} db=${f.dbName} dbExists=${f.dbExists}` +
           `${f.ageDays !== null ? ` rejectedDaysAgo=${f.ageDays} eligibleToDrop=${f.eligibleToDrop}` : ''}  → ${f.verdicts.join(', ')}`
       );
     }

@@ -167,7 +167,7 @@ async function auditTenantDatabase(conn, dbName, tenant) {
   if (!hasRoleAssignments || !hasBranches || !hasJunction) {
     return {
       dbName,
-      tenantId: tenant ? tenant.id : null,
+      organizationId: tenant ? tenant.id : null,
       tenantName: tenant ? (tenant.business_name || tenant.name) : null,
       skipped: true,
       reason: 'Missing RBAC or branch tables',
@@ -271,7 +271,7 @@ async function auditTenantDatabase(conn, dbName, tenant) {
 
   return {
     dbName,
-    tenantId: tenant ? tenant.id : null,
+    organizationId: tenant ? tenant.id : null,
     tenantName: tenant ? (tenant.business_name || tenant.name) : null,
     totalScanned: assignments.size,
     issues,
@@ -341,7 +341,7 @@ async function main() {
 
     console.log('STALE ASSIGNMENTS BREAKDOWN:\n');
     for (const item of summary) {
-      console.log(`Database: ${item.dbName} (Tenant: ${item.tenantName || 'Unknown'} / ${item.tenantId || 'N/A'})`);
+      console.log(`Database: ${item.dbName} (Tenant: ${item.tenantName || 'Unknown'} / ${item.organizationId || 'N/A'})`);
       for (const issue of item.issues) {
         console.log(
           `  - Assignment ID: ${issue.assignmentId} | User ID: ${issue.userId || 'N/A'} | Role: ${issue.roleKey}`

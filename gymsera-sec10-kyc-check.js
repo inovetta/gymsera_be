@@ -130,7 +130,7 @@ async function main() {
         if (hasDocs) {
           overdueRetentionCount++;
           findings.push({
-            tenantCode: r.tenant_code || r.id,
+            organizationCode: r.tenant_code || r.id,
             businessName: r.business_name,
             status: r.status,
             kycStatus: r.kyc_status,
@@ -144,7 +144,7 @@ async function main() {
         }
       } else if (tenantExposed > 0) {
         findings.push({
-          tenantCode: r.tenant_code || r.id,
+          organizationCode: r.tenant_code || r.id,
           businessName: r.business_name,
           status: r.status,
           kycStatus: r.kyc_status,
@@ -169,7 +169,7 @@ async function main() {
     if (findings.length > 0) {
       console.log('TENANTS REQUIRING ATTENTION:');
       for (const f of findings) {
-        console.log(`  - [${f.tenantCode}] "${f.businessName}" (${f.status}/${f.kycStatus}): ${f.issue} (Docs: ${f.docCount})`);
+        console.log(`  - [${f.organizationCode}] "${f.businessName}" (${f.status}/${f.kycStatus}): ${f.issue} (Docs: ${f.docCount})`);
       }
       console.log('\nRECOMMENDED ACTIONS:');
       if (overdueRetentionCount > 0) {

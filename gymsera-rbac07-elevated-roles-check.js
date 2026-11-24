@@ -260,7 +260,7 @@ async function main() {
     let orgIndexRows = [];
     if (await tableExists(conn, platformDb, 'user_organization_index')) {
       [orgIndexRows] = await conn.query(
-        `SELECT user_id, tenant_id, role_key, status FROM ${q(platformDb)}.user_organization_index WHERE user_id IN (?)`,
+        `SELECT user_id, organization_id, role_key, status FROM ${q(platformDb)}.user_organization_index WHERE user_id IN (?)`,
         [suspectIds]
       );
     }
@@ -307,7 +307,7 @@ async function main() {
 
       console.log(`  owns tenants: ${ownedTenants.length ? ownedTenants.map((t) => `${t.tenant_code} [${t.status}]`).join(', ') : 'none'}`);
       if (orgIndex.length) {
-        console.log(`  user_organization_index: ${orgIndex.map((r) => `${tenantById.get(r.tenant_id)?.tenant_code || r.tenant_id} ${r.role_key}/${r.status}`).join(', ')}`);
+        console.log(`  user_organization_index: ${orgIndex.map((r) => `${tenantById.get(r.organization_id)?.tenant_code || r.organization_id} ${r.role_key}/${r.status}`).join(', ')}`);
       } else {
         console.log('  user_organization_index: none');
       }

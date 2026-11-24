@@ -12,7 +12,7 @@ async function sync() {
     for (const tenant of tenants) {
       if (tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
         const connUrl = decrypt(tenant.connectionStringEncrypted);
-        console.log(`Syncing database for tenant ${tenant.tenantCode}...`);
+        console.log(`Syncing database for tenant ${tenant.organizationCode}...`);
         const tenantSeq = new Sequelize(connUrl, {
           dialect: 'mysql',
           logging: false,
@@ -21,14 +21,14 @@ async function sync() {
           await tenantSeq.authenticate();
           registerTenantModels(tenantSeq);
           await tenantSeq.sync({ force: false, alter: true });
-          console.log(`Successfully synced database for tenant ${tenant.tenantCode}`);
+          console.log(`Successfully synced database for tenant ${tenant.organizationCode}`);
         } catch (err) {
-          console.error(`Failed to sync database for tenant ${tenant.tenantCode}:`, err.message);
+          console.error(`Failed to sync database for tenant ${tenant.organizationCode}:`, err.message);
         } finally {
           await tenantSeq.close();
         }
       } else {
-        console.log(`Tenant ${tenant.tenantCode} is pending provisioning. Skipping.`);
+        console.log(`Tenant ${tenant.organizationCode} is pending provisioning. Skipping.`);
       }
     }
     console.log('All database sync operations completed.');

@@ -142,7 +142,7 @@ async function auditPlatformDatabase(config, platformDb) {
           severity: 'INFO',
           check: 'SEC-13',
           description: `${legacyBankDetails.length} tenant(s) have bank details configured without an updated_at timestamp.`,
-          details: legacyBankDetails.map((t) => ({ id: t.id, tenantCode: t.tenant_code })),
+          details: legacyBankDetails.map((t) => ({ id: t.id, organizationCode: t.tenant_code })),
         });
       }
 

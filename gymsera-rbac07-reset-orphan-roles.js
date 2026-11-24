@@ -121,7 +121,7 @@ async function evaluate(conn, platformDb, userIds, { lock = false } = {}) {
   let orgIndexRows = [];
   if (await tableExists(conn, platformDb, 'user_organization_index')) {
     [orgIndexRows] = await conn.query(
-      `SELECT user_id, tenant_id, role_key, status FROM ${q(platformDb)}.user_organization_index WHERE user_id IN (?)`,
+      `SELECT user_id, organization_id, role_key, status FROM ${q(platformDb)}.user_organization_index WHERE user_id IN (?)`,
       [userIds]
     );
   }

@@ -24,9 +24,9 @@ async function main() {
           { where: { status: 'ACTIVE' } }
         );
 
-        console.log(`Updated ${affectedCount} active branches to visible on tenant: ${tenant.tenantCode}`);
+        console.log(`Updated ${affectedCount} active branches to visible on tenant: ${tenant.organizationCode}`);
       } catch (err) {
-        console.error(`Failed to update tenant: ${tenant.tenantCode}: ${err.message}`);
+        console.error(`Failed to update tenant: ${tenant.organizationCode}: ${err.message}`);
       } finally {
         await tenantSeq.close();
       }

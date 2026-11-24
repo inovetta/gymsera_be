@@ -47,7 +47,7 @@ const _getAllActiveBranches = async () => {
         // Map to unified branch object
         const mappedBranch = {
           id: b.id, // primary unit is branch id!
-          tenantId: tenant.id,
+          organizationId: tenant.id,
           branchId: b.id,
           gymId: gym.id,
           cityId: b.cityId || (listing ? listing.cityId : null),
@@ -75,7 +75,7 @@ const _getAllActiveBranches = async () => {
         branchesList.push(mappedBranch);
       }
     } catch (err) {
-      console.error(`Error on tenant ${tenant.tenantCode}: ${err.message}`);
+      console.error(`Error on tenant ${tenant.organizationCode}: ${err.message}`);
     } finally {
       await tenantSeq.close();
     }

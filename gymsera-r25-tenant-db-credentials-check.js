@@ -67,7 +67,7 @@ const q = (name) => {
  */
 function classifyTenants(rows, { appUser, adminUser, platformUser, decrypt }) {
   return rows.map((t) => {
-    const base = { id: t.id, tenantCode: t.tenant_code, status: t.status, user: null, emptyPassword: null };
+    const base = { id: t.id, organizationCode: t.tenant_code, status: t.status, user: null, emptyPassword: null };
     const enc = t.connection_string_encrypted;
     if (!enc || enc === 'PENDING_PROVISIONING') return { ...base, verdict: 'NOT_PROVISIONED' };
     let url;
@@ -140,7 +140,7 @@ async function main() {
   }
   console.log('\nTenants to review (passwords are never shown):');
   for (const r of flagged) {
-    console.log(`  ${r.verdict.padEnd(14)} tenant=${r.id} code=${r.tenantCode} status=${r.status} user=${r.user ?? '-'} emptyPassword=${r.emptyPassword ?? '-'}`);
+    console.log(`  ${r.verdict.padEnd(14)} tenant=${r.id} code=${r.organizationCode} status=${r.status} user=${r.user ?? '-'} emptyPassword=${r.emptyPassword ?? '-'}`);
   }
   console.log('\nNothing was changed. Moving a tenant to the app user is a data correction for the owner to decide.');
   return 1;

@@ -7,13 +7,13 @@ const gymService = require('./src/services/gym.service');
 async function main() {
   await initPlatformDb();
   const tenant = await Tenant.findOne({
-    where: { tenantCode: 'IRONPEAK' }
+    where: { organizationCode: 'IRONPEAK' }
   });
   if (!tenant) {
     console.log('IRONPEAK tenant not found');
     process.exit(1);
   }
-  console.log('Found tenant:', tenant.id, tenant.tenantCode);
+  console.log('Found tenant:', tenant.id, tenant.organizationCode);
 
   const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
   console.log('Connected to tenant DB');

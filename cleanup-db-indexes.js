@@ -11,12 +11,12 @@ async function run() {
 
     for (const tenant of tenants) {
       console.log(`\n----------------------------------------`);
-      console.log(`Processing Tenant: ${tenant.tenantCode} (${tenant.id})`);
+      console.log(`Processing Tenant: ${tenant.organizationCode} (${tenant.id})`);
 
       const connUrl = decrypt(tenant.connectionStringEncrypted);
       const matches = connUrl.match(/mysql:\/\/([^:]+):([^@]*)@([^:]+):(\d+)\/(.+)/);
       if (!matches) {
-        console.error(`Invalid connection URL for tenant ${tenant.tenantCode}`);
+        console.error(`Invalid connection URL for tenant ${tenant.organizationCode}`);
         continue;
       }
 
@@ -100,7 +100,7 @@ async function run() {
           }
         }
       } catch (dbErr) {
-        console.error(`Error processing database for tenant ${tenant.tenantCode}:`, dbErr.message);
+        console.error(`Error processing database for tenant ${tenant.organizationCode}:`, dbErr.message);
       } finally {
         if (conn) await conn.end();
       }

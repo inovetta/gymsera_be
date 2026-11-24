@@ -70,7 +70,7 @@ const q = (name) => {
 };
 
 /** Same rule as tenant-provisioning.service.js#buildDbName. */
-const dbNameFor = (tenantCode) => `gymsera_${String(tenantCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+const dbNameFor = (organizationCode) => `gymsera_${String(organizationCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
 
 const normTitle = (title) => String(title ?? '').trim().toLowerCase();
 
@@ -81,8 +81,8 @@ const DOUBLE_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
  * Pure classification.
  * @param {object} data
  *   tenants:   [{ id, tenant_code, status, db_name, has_connection, provisioning_state? }]
- *   listings:  [{ tenant_id, title, created_at }]
- *   planCounts: { [tenantId]: n }
+ *   listings:  [{ organization_id, title, created_at }]
+ *   planCounts: { [organizationId]: n }
  *   databases: string[]                          gymsera_* databases on the tenant server
  *   tenantDbs: { [dbName]: { gyms, gymsSharingListing, branchesWithoutListing } | { error } }
  *              gymsSharingListing = gym rows whose gym_listing_id is also on another gym row
@@ -91,7 +91,7 @@ const DOUBLE_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 function classify({ tenants, listings, planCounts, databases, tenantDbs, platformDb }) {
   const dbSet = new Set(databases);
   const listingsByTenant = {};
-  for (const l of listings) (listingsByTenant[l.tenant_id] = listingsByTenant[l.tenant_id] || []).push(l);
+  for (const l of listings) (listingsByTenant[l.organization_id] = listingsByTenant[l.organization_id] || []).push(l);
 
   const findings = [];
   const expectedDbs = new Map();
@@ -131,7 +131,7 @@ function classify({ tenants, listings, planCounts, databases, tenantDbs, platfor
       findings.push({
         kind: 'TENANT',
         id: t.id,
-        tenantCode: t.tenant_code,
+        organizationCode: t.tenant_code,
         status: t.status,
         provisioningState: t.provisioning_state ?? null,
         dbName,
@@ -151,7 +151,7 @@ function classify({ tenants, listings, planCounts, databases, tenantDbs, platfor
     if (db === platformDb) continue;
     const t = expectedDbs.get(db);
     if (!t || !LIVE_STATUSES.has(t.status)) {
-      findings.push({ kind: 'DATABASE', dbName: db, tenantId: t?.id || null, tenantStatus: t?.status || null, verdicts: ['ORPHAN_DATABASE'] });
+      findings.push({ kind: 'DATABASE', dbName: db, organizationId: t?.id || null, tenantStatus: t?.status || null, verdicts: ['ORPHAN_DATABASE'] });
     }
   }
   return findings;
@@ -200,14 +200,14 @@ async function main() {
       'SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?', [platformDb, 'business_listings']
     );
     [listings] = await pconn.query(Number(renamed.n) > 0
-      ? `SELECT tenant_id, name AS title, created_at FROM ${q(platformDb)}.business_listings`
-      : `SELECT tenant_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
-    [plans] = await pconn.query(`SELECT tenant_id, COUNT(*) AS n FROM ${q(platformDb)}.organization_subscriptions GROUP BY tenant_id`);
+      ? `SELECT organization_id, name AS title, created_at FROM ${q(platformDb)}.business_listings`
+      : `SELECT organization_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
+    [plans] = await pconn.query(`SELECT organization_id, COUNT(*) AS n FROM ${q(platformDb)}.organization_subscriptions GROUP BY organization_id`);
     await pconn.query('ROLLBACK');
   } finally {
     await pconn.end().catch(() => {});
   }
-  const planCounts = Object.fromEntries(plans.map((p) => [p.tenant_id, Number(p.n)]));
+  const planCounts = Object.fromEntries(plans.map((p) => [p.organization_id, Number(p.n)]));
   tenants = tenants.map((t) => ({ ...t, has_connection: Boolean(Number(t.has_connection)) }));
 
   const tconn = await mysql.createConnection(tenantCfg);
@@ -268,12 +268,12 @@ async function main() {
   for (const f of findings) {
     if (f.kind === 'TENANT') {
       console.log(
-        `  tenant=${f.id} code=${f.tenantCode} status=${f.status} state=${f.provisioningState ?? '-'} db=${f.dbName} dbExists=${f.dbExists} ` +
+        `  tenant=${f.id} code=${f.organizationCode} status=${f.status} state=${f.provisioningState ?? '-'} db=${f.dbName} dbExists=${f.dbExists} ` +
           `listings=${f.listings} plans=${f.plans} gyms=${f.gyms ?? '-'} gymsSharingListing=${f.gymsSharingListing ?? '-'} branchesWithoutListing=${f.branchesWithoutListing ?? '-'}` +
           `${f.error ? ` error=${f.error}` : ''}  → ${f.verdicts.join(', ')}`
       );
     } else {
-      console.log(`  database=${f.dbName} tenant=${f.tenantId ?? '-'} tenantStatus=${f.tenantStatus ?? '-'}  → ${f.verdicts.join(', ')}`);
+      console.log(`  database=${f.dbName} tenant=${f.organizationId ?? '-'} tenantStatus=${f.tenantStatus ?? '-'}  → ${f.verdicts.join(', ')}`);
     }
   }
   console.log('\nNothing was changed. Resume (re-approve) finishes STUCK_* tenants after Prompt 1G; anything else is a data correction for the owner to decide.');
