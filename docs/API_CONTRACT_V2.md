@@ -229,8 +229,8 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 45 | POST | `/tenants/register` | **`/organizations/register`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` | new organization codes `ORG-` (D-5, F8) |
 | 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (optional; was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (was `gymDescription`), `firstBranch` (`FirstBranch`, A2 H2 / A3 J10), `genderType`, `logoUrl`, `coverImageUrl` (optional) |  |
 | 47 | POST | `/tenants/:id/select-package` | **`/organizations/:organizationId/select-package`** | `packageId` |  |
-| 48 | POST | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** |  |  |
-| 49 | PUT | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** | `imagesJson` |  |
+| 48 | POST | `/tenants/:id/onboarding-images` | **removed** (A3 J16) |  | A first-time host uploads photos through `POST /host/staging-images` (J13) and sends the URLs as `firstBranch.imagesJson` |
+| 49 | PUT | `/tenants/:id/onboarding-images` | **removed** (A3 J16) |  | Photos are part of `firstBranch.imagesJson` (replace by sending the whole list in the first-business body) |
 | 50 | POST | `/tenants/:id/reapply` | **`/organizations/:organizationId/reapply`** |  |  |
 | 51 | POST | `/tenants/:id/finalize` | **`/organizations/:organizationId/finalize`** | `bankTransferRef`, `paymentMethod` |  |
 | 52 | POST | `/tenants/:id/kyc-documents` | **`/organizations/:organizationId/kyc-documents`** | `documentType` |  |
@@ -1308,6 +1308,11 @@ documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 
 
 **Read shape** (every branch object, §3 Branch and BranchCard): `hours` is the same object as above (a branch with only the old pair reads as the uniform week; no hours at all reads `null`); the raw stored column is not sent. Computed beside it: `timezone`, `utcOffsetMinutes`, `hoursToday` `{ day, closed, slots }` (slots may include yesterday's after-midnight slot with `startsYesterday: true`), `openNow` (boolean), `openNowFor` (`all` / `men` / `women` / null) and `nextChange` `{ at (ISO UTC), kind ("opens" | "closes"), for }` or null (null when open 24 hours every day).
 
+### J16. Admin organization list, and the removed onboarding-images routes (owner, final)
+
+- `GET /admin/organizations` answers `data: { organizations: [Organization], page, total }`. `page` and `total` are inside `data`; the response has **no** envelope `pagination` object and no `limit` / `totalPages` (the client knows the `limit` it sent: pages = ceil(total / limit)). The A1 G1 rule applies to this list only; other admin lists keep their current shape until their rows say otherwise. (Rows for a pending additional business with a compound id are still sent in this list until the review queue, G1, is built; they carry `isAdditionalOrganization`.)
+- `POST` and `PUT /organizations/:organizationId/first-business/images` (was `/tenants/:id/onboarding-images`, §4 rows 48 and 49) are **removed**, not renamed: the server answers 404. Photos are uploaded with the stateless `POST /host/staging-images` (J13) and sent as `firstBranch.imagesJson` in the first-business body; sending the first-business body again with a new `imagesJson` replaces the list and keeps the other draft keys.
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1319,3 +1324,4 @@ documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 
 | 2026-11-23 | Amendment A3 addendum (§12 J10-J12, owner): one `FirstBranch` schema for first-business, Add Business and first-branch edit; business KYC list is `{ documents: [...] }`; first-time host drafts are phone-only (no partial-save contract). | Claude Code (Sonnet 5.5), session 167 |
 | 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName` (optional), `firstBusinessName`, `firstBusinessDescription`, `firstBranch`, optional `genderType`, `logoUrl`, `coverImageUrl`; `kycDocumentsJson` removed; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
 | 2026-11-24 | Amendment A3 addendum 3 (§12 J14, J15, owner): first-business body keys; the exact `WeeklyHours` shape, the one-slot-on-seven-days form, the old pair rules and the read fields. | Claude Code (Sonnet 5.5), session 167 |
+| 2026-11-24 | Amendment A3 addendum 4 (§12 J16, owner): `GET /admin/organizations` is `{ organizations, page, total }` in `data`; the onboarding-images routes (rows 48, 49) are removed. | Claude Code (Sonnet 5.5), session 167 |
