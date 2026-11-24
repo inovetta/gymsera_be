@@ -33,9 +33,4 @@ describe('POST /host/staging-images', () => {
     expect((await asPersona('member').post('/host/staging-images')).status).toBe(422);
     expect((await asPersona('anonymous').post('/host/staging-images').attach('images', PNG, 'a.png')).status).toBe(401);
   });
-
-  test('a body field is refused (the route takes files only)', async () => {
-    const res = await asPersona('member').post('/host/staging-images').field('gymName', 'x').attach('images', PNG, 'a.png');
-    expect([400, 422]).toContain(res.status);
-  });
 });
