@@ -70,8 +70,8 @@ User.hasMany(Conversation, { foreignKey: 'userId', as: 'conversations', onDelete
 Conversation.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // GymListing ↔ Conversation
-GymListing.hasMany(Conversation, { foreignKey: 'branchId', sourceKey: 'branchId', as: 'conversations', constraints: false });
-Conversation.belongsTo(GymListing, { foreignKey: 'branchId', targetKey: 'branchId', as: 'gymListing', constraints: false });
+GymListing.hasMany(Conversation, { foreignKey: 'branchId', sourceKey: 'primaryBranchId', as: 'conversations', constraints: false });
+Conversation.belongsTo(GymListing, { foreignKey: 'branchId', targetKey: 'primaryBranchId', as: 'gymListing', constraints: false });
 
 // User ↔ Notification
 User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications', onDelete: 'CASCADE' });
