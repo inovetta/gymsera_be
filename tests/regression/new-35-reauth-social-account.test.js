@@ -166,7 +166,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     });
 
     test('social-only account with valid fresh social token is ACCEPTED (200)', async () => {
-      const { user, tenant } = await createSocialHost({ provider: 'GOOGLE' });
+      const { user, tenant, listing } = await createSocialHost({ provider: 'GOOGLE' });
 
       const spy = jest.spyOn(authService, 'verifyReauthCredential').mockResolvedValue(true);
 
@@ -193,7 +193,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
     });
 
     test('social-only account with invalid social token is REJECTED (401)', async () => {
-      const { user, tenant } = await createSocialHost({ provider: 'GOOGLE' });
+      const { user, tenant, listing } = await createSocialHost({ provider: 'GOOGLE' });
 
       jest.spyOn(authService, 'verifyReauthCredential').mockRejectedValue(
         Object.assign(new Error('That Google account does not match your GymsEra account'), { statusCode: 401 })
