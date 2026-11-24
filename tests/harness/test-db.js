@@ -189,6 +189,7 @@ async function setupTestDatabases() {
 
   // Initialize Platform models
   const { sequelize: platformSequelize, connect: connectPlatform } = require('../../src/database/platform');
+  require('../../src/models/platform'); // the models must be registered before sync (every table was just dropped)
   // R-120 NEW-309: the test databases persist between runs and sync({ force }) only drops tables that have a model, so
   // a table made by raw DDL in a migration (access_devices, device_commands, ...) could survive in a half-migrated
   // state and make the next run disagree with a fresh database. Every table of the platform test database goes first.
