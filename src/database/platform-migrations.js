@@ -1592,6 +1592,22 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 36,
+    name: 'p036_member_index_branch_id',
+    description:
+      'R-120 NEW-309 (API contract v2 A3 J3): member_subscription_index.branch_id, the branch of the subscription, written with the row. No backfill (R-120): rows made before it keep NULL.',
+    // ROLLBACK: ALTER TABLE `member_subscription_index` DROP COLUMN `branch_id`; DELETE FROM `schema_migrations` WHERE `version` = 36.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      if (!(await r.tableExists(sequelize, 'member_subscription_index'))) return null;
+      if (!(await r.columnInfo(sequelize, 'member_subscription_index', 'branch_id'))) {
+        await sequelize.query('ALTER TABLE `member_subscription_index` ADD COLUMN `branch_id` CHAR(36) BINARY NULL COMMENT \'The branch of the subscription.\', ALGORITHM=INPLACE, LOCK=NONE');
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

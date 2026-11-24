@@ -267,6 +267,7 @@ const subscribe = async (userId, { planId, businessId, branchId, autoRenew, sour
     userId,
     organizationId,
     businessId: gymListing.id,
+    branchId: branchIdToUse,
     subscriptionId: subscription.id,
     businessName: gymListing.name,
     planName: plan.name,

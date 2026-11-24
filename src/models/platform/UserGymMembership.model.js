@@ -36,6 +36,12 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      // R-120 NEW-309 (contract A3 J3): the branch the subscription is at (tenant database branch id); p036.
+      branchId: {
+        field: 'branch_id',
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
       // MemberSubscription UUID in the tenant DB
       subscriptionId: {
         type: DataTypes.UUID,
