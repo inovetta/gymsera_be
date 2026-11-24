@@ -110,7 +110,7 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
   test('PATCH /gyms/profile renames only its own organization (the first one), not every one of the tenant', async () => {
     const res = await asPersona('owner').patch('/gyms/profile', { name: 'P5 Profile Name' });
     expect(res.status).toBe(200);
-    const titles = (await GymListing.findAll({ where: { organizationId: personas.owner.organizationId } })).map((l) => l.title);
+    const titles = (await GymListing.findAll({ where: { organizationId: personas.owner.organizationId } })).map((l) => l.name);
     expect(titles.filter((t) => t === 'P5 Profile Name')).toHaveLength(1);
     expect((await GymListing.findByPk(primary.id)).name).toBe('P5 Profile Name');
     expect((await GymListing.findByPk(orgA.id)).name).toBe('P5 Org A');
