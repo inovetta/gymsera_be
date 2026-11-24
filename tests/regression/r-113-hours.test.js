@@ -199,7 +199,7 @@ describe('H6: every branch object reads the schedule', () => {
 
   test('the traveller list items', async () => {
     const res = await asPersona('member').get('/discovery/branches?page=1&limit=50');
-    const item = res.body.data.gyms.find((g) => g.id === ctx.branch1.id);
+    const item = res.body.data.branches.find((g) => g.id === ctx.branch1.id);
     expect(item).toBeDefined();
     for (const f of ['hoursToday', 'openNow', 'openNowFor', 'nextChange', 'timezone']) expect(item).toHaveProperty(f);
   });
@@ -326,7 +326,7 @@ describe('H7: what audience=women|men keeps, on list, nearby and map', () => {
     const get = async (q) => {
       const res = await asPersona('anonymous').get(routes[route](q));
       expect(res.status).toBe(200);
-      return ours(res.body.data.gyms);
+      return ours(res.body.data.branches);
     };
     expect(await get('')).toEqual(['allOnly', 'men', 'women']);
     expect(await get('&audience=women')).toEqual(['women']);

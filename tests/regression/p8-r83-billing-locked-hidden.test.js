@@ -18,7 +18,7 @@ describe('R-83: a billing-locked branch is hidden from travellers', () => {
   let ctx; let plan; let memberSubId;
 
   const get = (path) => asPersona('member').get(`/discovery${path}`);
-  const listedIds = async () => (await get('/gyms?page=1&limit=50')).body.data.gyms.map((g) => g.id);
+  const listedIds = async () => (await get('/branches?page=1&limit=50')).body.data.branches.map((g) => g.id);
   const lock = () => ctx.tenant1Db.models.Branch.update(
     { billingLockedAt: new Date(), billingLockReason: 'test' }, { where: { id: ctx.branch1.id } }
   );

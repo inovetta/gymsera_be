@@ -644,8 +644,10 @@ const getBusinessPublic = async (businessId) => {
 };
 
 const getBranchDetail = async (branchId) => {
-  const card = (await _getAllActiveBranches()).find((b) => b.id === branchId);
+  const cards = await _getAllActiveBranches();
+  const card = cards.find((b) => b.id === branchId);
   if (!card) throw createError('This gym is not available right now.', 404, 'gym_not_available');
+  const currencyOf = new Map(cards.map((b) => [b.id, b.currency]));
   const { business, membershipPlans } = await getBusinessPublic(card.businessId);
   const { branches: _branches, ...businessOnly } = business;
   return {
@@ -656,7 +658,7 @@ const getBranchDetail = async (branchId) => {
       .filter((p) => p.branchId == null || p.branchId === branchId)
       .map((p) => {
         const plain = typeof p.toJSON === 'function' ? p.toJSON() : { ...p };
-        return { ...plain, currency: plain.branchId ? plain.currency : card.currency };
+        return { ...plain, currency: (plain.branchId && currencyOf.get(plain.branchId)) || card.currency };
       }),
   };
 };
