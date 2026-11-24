@@ -90,7 +90,7 @@ describe('API-06: ETag, 304 and Cache-Control', () => {
   });
 
   test('mutations are never answered 304', async () => {
-    const r = await asPersona('owner').post('/host/listings', { gymName: 'Etag Org', branchSource: 'none', cityId: 1 });
+    const r = await asPersona('owner').post('/host/listings', { businessName: 'Etag Org', branchSource: 'none', cityId: 1 });
     expect(r.status).not.toBe(304);
   });
 });

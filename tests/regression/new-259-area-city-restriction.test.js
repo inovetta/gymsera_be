@@ -283,7 +283,7 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
 
   test('POST /host/listings (new organization)', async () => {
     expectNotListed(await asPersona('owner').post('/host/listings').send({
-      gymName: 'Area Org 259', cityId: peshawar.id, areaId: gulberg.id, packages: [{ name: 'Monthly', price: 50 }],
+      businessName: 'Area Org 259', cityId: peshawar.id, areaId: gulberg.id, packages: [{ name: 'Monthly', price: 50 }],
     }));
   });
 

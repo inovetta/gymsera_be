@@ -285,7 +285,7 @@ describe('A4: host listing and branch routes', () => {
   test('POST /host/listings with areaRequestId writes two links (listing and its first branch) and the listing marker (R-109, F5)', async () => {
     const r = await makeRequest(ownerUserId, peshawar, 'Two Links Town');
     const res = await asPersona('owner').post('/host/listings').send({
-      gymName: `Org 265 ${Date.now()}`, cityId: peshawar.id, areaRequestId: r.id, packages: [{ name: 'Monthly', price: 50 }],
+      businessName: `Org 265 ${Date.now()}`, cityId: peshawar.id, areaRequestId: r.id, packages: [{ name: 'Monthly', price: 50 }],
     });
     expect(res.status).toBe(201);
     const listingId = res.body.data.id;
@@ -309,7 +309,7 @@ describe('A4: host listing and branch routes', () => {
     const r = await makeRequest(ownerUserId, peshawar, 'Listing Town');
     expect((await asPersona('owner').put(`/host/listings/${listing1.id}`).send({ cityId: peshawar.id, areaRequestId: r.id })).status).toBe(200);
     expect(await GymListing.findByPk(listing1.id)).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
-    expect((await asPersona('owner').patch(`/host/listings/${listing1.id}`).send({ gymName: 'Renamed' })).status).toBe(200);
+    expect((await asPersona('owner').patch(`/host/listings/${listing1.id}`).send({ businessName: 'Renamed' })).status).toBe(200);
     expect(await linkOf('business', ctx.tenant1.id, listing1.id)).toMatchObject({ areaRequestId: r.id });
     expect((await asPersona('owner').patch(`/host/listings/${listing1.id}`).send({ areaId: hayatabad.id })).status).toBe(200);
     expect(await GymListing.findByPk(listing1.id)).toMatchObject({ areaId: hayatabad.id, areaStatus: null, areaRequestId: null });

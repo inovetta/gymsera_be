@@ -46,7 +46,7 @@ describe('NEW-85: gym member with a tenant-scoped token', () => {
       organizationId: team.organizationId,
       businessId: listing.id,
       subscriptionId: uuidv4(),
-      gymName: 'Gym',
+      businessName: 'Gym',
       planName: 'Monthly',
       status: 'ACTIVE',
     });

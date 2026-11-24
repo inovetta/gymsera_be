@@ -84,7 +84,7 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
     const res = await asPersona('owner')
       .post('/host/listings')
       .send({
-        gymName: 'Second Org', gymDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
+        businessName: 'Second Org', businessDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
         address: 'MM Alam Road', latitude: 31.51, longitude: 74.34, googlePlaceId: PLACE,
         packages: [{ name: 'Monthly', price: 3000, durationType: 'MONTHLY', durationValue: 1 }],
       });
@@ -97,7 +97,7 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
     const res = await asPersona('owner')
       .post('/host/listings')
       .send({
-        gymName: 'Bad Org', gymDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
+        businessName: 'Bad Org', businessDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
         address: 'x', googlePlaceId: 'not a place id; drop table',
         packages: [{ name: 'Monthly', price: 3000 }],
       });

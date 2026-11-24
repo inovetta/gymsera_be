@@ -208,7 +208,7 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
       organizationId: T1,
       businessId: listing.id,
       subscriptionId: uuidv4(),
-      gymName: 'Gym',
+      businessName: 'Gym',
       planName: 'Monthly',
       status: 'ACTIVE',
     });

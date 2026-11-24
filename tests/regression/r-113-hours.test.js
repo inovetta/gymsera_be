@@ -96,7 +96,7 @@ describe('H4: the writes that take a weekly schedule', () => {
 
   test('POST /host/listings (another organisation) gives its first branch the week', async () => {
     const res = await asPersona('owner').post('/host/listings').send({
-      gymName: `R113 Org ${Date.now()}`, packages: [{ name: 'Monthly', price: 50 }], hours: WEEKLY,
+      businessName: `R113 Org ${Date.now()}`, packages: [{ name: 'Monthly', price: 50 }], hours: WEEKLY,
     });
     expect(res.status).toBe(201);
     const row = await Branch().findByPk(res.body.data.branch.id);

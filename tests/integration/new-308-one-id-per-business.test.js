@@ -44,7 +44,7 @@ describe('NEW-308: the business id is the listing id', () => {
   test('POST /host/listings builds the business with the listing id, and its branch under it', async () => {
     await approvePending();
     const res = await asPersona('owner').post('/host/listings', {
-      gymName: 'N308 Org', branchSource: 'new', cityId: 1,
+      businessName: 'N308 Org', branchSource: 'new', cityId: 1,
       packages: [{ name: 'Monthly', price: 1500, durationType: 'MONTHLY', durationValue: 1 }],
     });
     expect(res.status).toBe(201);

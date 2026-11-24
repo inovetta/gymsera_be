@@ -67,7 +67,7 @@ describe('GLB-09: GET /me/data-export', () => {
     await models.AttendanceLog.create({ branchId: gym.branch.id, userId: member.id, memberSubscriptionId: sub.id, attendanceType: 'CHECK_IN', entryMethod: 'MANUAL', checkInAt: new Date(), notes: `checkin-${tag}` });
     // P9c (A): a stored proof is a private-store key; the API (and so the export) shows it as the proof route, never the key.
     const payment = await factories.createPayment(db, gym.branch.id, { userId: member.id, amount: 3000, notes: `paynote-${tag}`, proofUrl: `private:tenants/${gym.tenant.id}/payment-proofs/${tag}.jpg`, referenceEntityId: sub.id });
-    await UserGymMembership.create({ userId: member.id, organizationId: gym.tenant.id, businessId: gym.listing.id, subscriptionId: sub.id, gymName: 'Test Gym', planName: 'Monthly', startDate: sub.startDate, endDate: sub.endDate, status: 'ACTIVE' });
+    await UserGymMembership.create({ userId: member.id, organizationId: gym.tenant.id, businessId: gym.listing.id, subscriptionId: sub.id, businessName: 'Test Gym', planName: 'Monthly', startDate: sub.startDate, endDate: sub.endDate, status: 'ACTIVE' });
     await RefreshToken.create({ userId: member.id, familyId: uuidv4(), token: `refresh-secret-${tag}`, expiresAt: new Date(Date.now() + DAY), isRevoked: false });
     await DeviceToken.create({ userId: member.id, token: `fcm-secret-${tag}`, platform: 'ios', appVersion: '1.2.3', locale: 'en', timezone: 'Asia/Karachi' });
     await SavedGym.create({ userId: member.id, businessId: gym.listing.id });
@@ -154,7 +154,7 @@ describe('GLB-09: GET /me/data-export', () => {
     const gym = await seedGym(db.encryptedConnStr);
     const { member } = await seedMember(gym, 'erin');
     const broken = await seedGym('PENDING_PROVISIONING-not-a-real-connection');
-    await UserGymMembership.create({ userId: member.id, organizationId: broken.tenant.id, businessId: broken.listing.id, subscriptionId: uuidv4(), gymName: 'Broken Gym', planName: 'X', startDate: new Date(), endDate: new Date(Date.now() + DAY), status: 'ACTIVE' });
+    await UserGymMembership.create({ userId: member.id, organizationId: broken.tenant.id, businessId: broken.listing.id, subscriptionId: uuidv4(), businessName: 'Broken Gym', planName: 'X', startDate: new Date(), endDate: new Date(Date.now() + DAY), status: 'ACTIVE' });
 
     const data = (await api('/me/data-export', member)).body.data;
 

@@ -285,7 +285,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
 
     // Two parallel requests to create a new organization competing for the single donor slot
     const createReq1 = asPersona('owner').post('/host/listings', {
-      gymName: 'Contender Org 1',
+      businessName: 'Contender Org 1',
       branchSource: 'new',
       branchName: 'Contender Branch 1',
       address: '101 Street',
@@ -293,7 +293,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     });
 
     const createReq2 = asPersona('owner').post('/host/listings', {
-      gymName: 'Contender Org 2',
+      businessName: 'Contender Org 2',
       branchSource: 'new',
       branchName: 'Contender Branch 2',
       address: '102 Street',

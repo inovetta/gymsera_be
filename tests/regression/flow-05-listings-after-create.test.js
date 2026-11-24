@@ -36,7 +36,7 @@ describe('FLOW-05: a created organization is in the next GET /host/listings', ()
     const beforeIds = before.body.data.map((l) => l.id);
 
     const created = await asPersona('owner').post('/host/listings', {
-      gymName: 'Flow05 New Org',
+      businessName: 'Flow05 New Org',
       branchSource: 'new',
       packages: [{ name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
     });
@@ -65,7 +65,7 @@ describe('FLOW-05: a created organization is in the next GET /host/listings', ()
     try {
       created = await request(server).post('/api/v1/host/listings')
         .set('Authorization', `Bearer ${noTenantToken}`)
-        .send({ gymName: 'Flow05 Tenantless Org', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }] }); // NEW-168: never an empty organization
+        .send({ businessName: 'Flow05 Tenantless Org', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }] }); // NEW-168: never an empty organization
       expect(created.status).toBe(201);
 
       const list = await request(server).get('/api/v1/host/listings').set('Authorization', `Bearer ${noTenantToken}`);

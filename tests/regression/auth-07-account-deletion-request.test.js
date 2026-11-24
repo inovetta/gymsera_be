@@ -77,7 +77,7 @@ describe('AUTH-07: account deletion request, preflight and undo', () => {
       organizationId: tenant.id,
       businessId: listing.id,
       subscriptionId: uuidv4(),
-      gymName: 'Test Gym',
+      businessName: 'Test Gym',
       planName: 'Monthly',
       startDate: new Date(),
       endDate: new Date(Date.now() + 30 * DAY),

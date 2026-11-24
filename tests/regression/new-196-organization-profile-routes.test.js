@@ -96,8 +96,8 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     const before = (await GymListing.findByPk(firstOrg.id)).toJSON();
     for (const [who, token] of allowed()) {
       const res = await call('patch', `/host/listings/${secondOrg.id}`, token, {
-        gymName: `Second Organization (${who})`,
-        gymDescription: 'Edited from the CMS',
+        businessName: `Second Organization (${who})`,
+        businessDescription: 'Edited from the CMS',
         contactEmail: 'second@gymsera.test',
         website: 'https://second.gymsera.test',
         genderType: 'FEMALE_ONLY',
@@ -126,7 +126,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     ['patch', 'save'],
   ])('Branch Manager and Front Desk cannot %s an organization (403)', async (method) => {
     for (const [, token] of refused()) {
-      const res = await call(method, `/host/listings/${secondOrg.id}`, token, method === 'patch' ? { gymDescription: 'x' } : undefined);
+      const res = await call(method, `/host/listings/${secondOrg.id}`, token, method === 'patch' ? { businessDescription: 'x' } : undefined);
       expect(res.status).toBe(403);
     }
   });
@@ -142,7 +142,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     for (const organizationId of [other.organizationId, team.organizationId]) {
       const read = await call('get', `/host/listings/${secondOrg.id}`, other.token, undefined, organizationId);
       expect([403, 404]).toContain(read.status);
-      const write = await call('patch', `/host/listings/${secondOrg.id}`, other.token, { gymDescription: 'hijack' }, organizationId);
+      const write = await call('patch', `/host/listings/${secondOrg.id}`, other.token, { businessDescription: 'hijack' }, organizationId);
       expect([403, 404]).toContain(write.status);
     }
     await secondGym.reload();
@@ -151,7 +151,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
 
   test('no token is 401', async () => {
     expect((await call('get', `/host/listings/${secondOrg.id}`)).status).toBe(401);
-    expect((await call('patch', `/host/listings/${secondOrg.id}`, null, { gymDescription: 'x' })).status).toBe(401);
+    expect((await call('patch', `/host/listings/${secondOrg.id}`, null, { businessDescription: 'x' })).status).toBe(401);
     expect((await call('post', '/host/listings/staging-images')).status).toBe(401);
   });
 
@@ -159,7 +159,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     const t = branchScoped.token;
     expect((await call('get', '/host/listings', t)).status).toBe(403);
     expect((await call('get', `/host/listings/${secondOrg.id}`, t)).status).toBe(403);
-    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'branch scoped' })).status).toBe(403);
+    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { businessDescription: 'branch scoped' })).status).toBe(403);
     expect((await call('post', '/host/listings/staging-images', t)).status).toBe(403);
     await secondGym.reload();
     expect(secondGym.description).not.toBe('branch scoped');
@@ -169,7 +169,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
     for (const organizationId of [personas.otherTenantOwner.organizationId, team.organizationId]) {
       const t = otherTenantOrgAdmin.token;
       expect([403, 404]).toContain((await call('get', `/host/listings/${secondOrg.id}`, t, undefined, organizationId)).status);
-      expect([403, 404]).toContain((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'cross tenant' }, organizationId)).status);
+      expect([403, 404]).toContain((await call('patch', `/host/listings/${secondOrg.id}`, t, { businessDescription: 'cross tenant' }, organizationId)).status);
     }
     await secondGym.reload();
     expect(secondGym.description).not.toBe('cross tenant');
@@ -178,7 +178,7 @@ describe('NEW-196 organization profile routes: who may use them', () => {
   test('a platform admin gets nothing on these host routes (deny by default; the admin area has its own)', async () => {
     const t = personas.platformAdmin.token;
     expect((await call('get', `/host/listings/${secondOrg.id}`, t)).status).toBe(403);
-    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'platform admin' })).status).toBe(403);
+    expect((await call('patch', `/host/listings/${secondOrg.id}`, t, { businessDescription: 'platform admin' })).status).toBe(403);
     await secondGym.reload();
     expect(secondGym.description).not.toBe('platform admin');
   });
@@ -191,7 +191,7 @@ describe('NEW-196 every organization edit is in the audit log with its actor', (
   test('owner and Org Admin edits each write a row: actor, organization, tenant, changed fields, no values', async () => {
     const seen = new Set((await auditRows()).map((r) => r.id));
     await call('patch', `/host/listings/${secondOrg.id}`, team.ownerToken, { website: 'https://owner.example.test' }).expect(200);
-    await call('put', `/host/listings/${secondOrg.id}`, team.orgAdmin.token, { contactEmail: 'audit@gymsera.test', gymDescription: 'by org admin' }).expect(200);
+    await call('put', `/host/listings/${secondOrg.id}`, team.orgAdmin.token, { contactEmail: 'audit@gymsera.test', businessDescription: 'by org admin' }).expect(200);
     const rows = (await auditRows()).filter((r) => !seen.has(r.id));
     expect(rows).toHaveLength(2);
     const byOwner = rows.find((r) => r.actorUserId === personas.owner.user.id);
@@ -207,7 +207,7 @@ describe('NEW-196 every organization edit is in the audit log with its actor', (
   test('an edit that cannot be audited is not saved', async () => {
     const spy = jest.spyOn(PlatformAuditLog, 'create').mockRejectedValueOnce(new Error('audit table down'));
     try {
-      const res = await call('patch', `/host/listings/${secondOrg.id}`, team.ownerToken, { gymName: 'Not audited' });
+      const res = await call('patch', `/host/listings/${secondOrg.id}`, team.ownerToken, { businessName: 'Not audited' });
       expect(res.status).toBe(500);
     } finally {
       spy.mockRestore();

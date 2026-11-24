@@ -80,7 +80,7 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
 
   test('POST /host/listings (another organisation) gives its first branch the amenities', async () => {
     const res = await asPersona('owner').post('/host/listings').send({
-      gymName: `Org 266 ${Date.now()}`, facilitiesJson: AMENITIES, packages: [{ name: 'Monthly', price: 50 }],
+      businessName: `Org 266 ${Date.now()}`, facilitiesJson: AMENITIES, packages: [{ name: 'Monthly', price: 50 }],
     });
     expect(res.status).toBe(201);
     const branch = await personaManager.context.tenant1Db.models.Branch.findByPk(res.body.data.branch.id);

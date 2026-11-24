@@ -49,7 +49,7 @@ const makeSub = async ({ status = 'ACTIVE', planRow = plan, branch = ctx.branch1
   const listing = await GymListing.findOne({ where: { organizationId } });
   await UserGymMembership.create({
     userId: member.id, organizationId, businessId: listing.id, subscriptionId: sub.id,
-    gymName: listing.name, planName: planRow.name, startDate: sub.startDate, endDate: sub.endDate, status,
+    businessName: listing.name, planName: planRow.name, startDate: sub.startDate, endDate: sub.endDate, status,
   });
   return { sub, member };
 };

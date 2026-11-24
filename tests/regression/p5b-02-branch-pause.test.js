@@ -118,7 +118,7 @@ describe('P5b item 2: pause and resume', () => {
       organizationId: ctx.tenant1.id,
       businessId: ctx.listing1.id,
       subscriptionId: uuidv4(),
-      gymName: 'Alpha Fitness Club',
+      businessName: 'Alpha Fitness Club',
       planName: 'Public',
       status: 'ACTIVE',
     });

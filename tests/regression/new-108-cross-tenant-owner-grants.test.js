@@ -60,7 +60,7 @@ beforeAll(async () => {
     organizationId: gymBId,
     businessId: listingB.id,
     subscriptionId: uuidv4(),
-    gymName: 'Alpha Fitness Club',
+    businessName: 'Alpha Fitness Club',
     planName: 'Monthly',
     status: 'PENDING',
   });
@@ -150,7 +150,7 @@ describe('NEW-108: GYM_HOST with a PENDING booking at gym B gets 403 on gym B st
     ['POST /host/branches', (c) => c.post('/host/branches', { branchName: 'Planted', businessId: team.branchA.businessId })],
     ['PATCH /host/branches/:id/listing-content', (c) => c.patch(`/host/branches/${team.branchA.id}/listing-content`, { tagline: 'pwned' })],
     ['POST /host/branches/:id/restore', (c) => c.post(`/host/branches/${team.branchA.id}/restore`, {})],
-    ['POST /host/listings', (c) => c.post('/host/listings', { gymName: 'Planted Org' })],
+    ['POST /host/listings', (c) => c.post('/host/listings', { businessName: 'Planted Org' })],
   ];
 
   test.each(cases)('%s with X-Organization-Id: gym B → 403', async (_name, call) => {

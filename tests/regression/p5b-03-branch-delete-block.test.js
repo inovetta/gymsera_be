@@ -84,7 +84,7 @@ const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), 
       organizationId: ctx.tenant1.id,
       businessId: branch.businessId,
       subscriptionId: sub.id,
-      gymName: 'Alpha Fitness Club',
+      businessName: 'Alpha Fitness Club',
       planName: plan.name,
       status,
     });

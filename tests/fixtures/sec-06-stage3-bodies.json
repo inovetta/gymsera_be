@@ -173,14 +173,14 @@
     "areaId",
     "cityId",
     "contactPhone",
+    "description",
     "facilitiesJson",
     "genderType",
     "isFeatured",
     "latitude",
     "longitude",
-    "shortDescription",
+    "name",
     "status",
-    "title",
     "website"
    ],
    "clientKeys": [
@@ -192,9 +192,9 @@
     "isFeatured",
     "latitude",
     "longitude",
-    "shortDescription",
+    "description",
     "status",
-    "title",
+    "name",
     "website"
    ]
   },
@@ -205,12 +205,12 @@
     "areaId",
     "cityId",
     "contactPhone",
+    "description",
     "facilitiesJson",
     "genderType",
     "latitude",
     "longitude",
-    "shortDescription",
-    "title",
+    "name",
     "website"
    ],
    "clientKeys": [
@@ -220,8 +220,8 @@
     "genderType",
     "latitude",
     "longitude",
-    "shortDescription",
-    "title",
+    "description",
+    "name",
     "website"
    ]
   },

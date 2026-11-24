@@ -44,7 +44,7 @@ const approvePending = () =>
 
 const newOrg = async (gymName, packages = [plan(`${gymName} Monthly`)]) => {
   await approvePending();
-  const res = await asPersona('owner').post('/host/listings', { gymName, branchSource: 'new', cityId: 1, packages });
+  const res = await asPersona('owner').post('/host/listings', { businessName, branchSource: 'new', cityId: 1, packages });
   expect(res.status).toBe(201);
   await approvePending();
   return res.body.data;
@@ -74,8 +74,8 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
 
   test('PUT /host/listings/:id changes that organization and its gym, never the other one', async () => {
     const res = await asPersona('owner').put(`/host/listings/${orgB.id}`, {
-      gymName: 'P5 Org B Renamed',
-      gymDescription: 'B description',
+      businessName: 'P5 Org B Renamed',
+      businessDescription: 'B description',
       category: 'CrossFit',
       establishedYear: 2019,
       contactEmail: 'b@example.com',

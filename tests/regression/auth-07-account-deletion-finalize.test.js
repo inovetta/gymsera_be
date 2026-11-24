@@ -109,7 +109,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       organizationId: tenant.id,
       businessId: listing.id,
       subscriptionId: sub.id,
-      gymName: 'Test Gym',
+      businessName: 'Test Gym',
       planName: 'Monthly',
       startDate: sub.startDate,
       endDate: sub.endDate,
@@ -253,7 +253,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       expect(member.email).toBe(m.member.email);
       const membership = await UserGymMembership.findOne({ where: { userId: m.member.id, organizationId: gym.tenant.id } });
       expect(membership.status).toBe('CANCELLED');
-      expect(membership.gymName).toBe('Test Gym'); // the gym's name stays on their history
+      expect(membership.businessName).toBe('Test Gym'); // the gym's name stays on their history
     });
 
     test('the listing is INACTIVE and its contact details are removed', async () => {

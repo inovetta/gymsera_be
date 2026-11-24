@@ -38,7 +38,7 @@ const approvePending = () =>
 
 const newOrg = async (gymName, packages = [plan(`${gymName} Monthly`)]) => {
   await approvePending();
-  const res = await asPersona('owner').post('/host/listings', { gymName, branchSource: 'new', cityId: 1, packages });
+  const res = await asPersona('owner').post('/host/listings', { businessName, branchSource: 'new', cityId: 1, packages });
   expect(res.status).toBe(201);
   await approvePending();
   return res.body.data;
@@ -63,7 +63,7 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
     await approvePending();
     const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
     const res = await asPersona('owner').post('/host/listings', {
-      gymName: 'P5 Hidden Org', branchSource: 'new', cityId: 1, packages: [plan('Hidden', false)],
+      businessName: 'P5 Hidden Org', branchSource: 'new', cityId: 1, packages: [plan('Hidden', false)],
     });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('visible_plan_required');
