@@ -180,7 +180,7 @@ describe('NEW-124 run-sql-check: against the test databases', () => {
     expect(text).toMatch(/Grid 1 \(line \d+\)/);
     expect(text).toMatch(/Grid 2 \(line \d+\)/);
     // Grid 1 header row and the tenant below v19
-    expect(text).toMatch(/\|\s*tenant_id\s*\|\s*organization_code\s*\|\s*first_business_name\s*\|\s*db_name\s*\|/);
+    expect(text).toMatch(/\|\s*organization_id\s*\|\s*organization_code\s*\|\s*first_business_name\s*\|\s*db_name\s*\|/);
     const [tenant] = await h.platform.sequelize.query('SELECT organization_code, db_name FROM organizations WHERE id = :id', {
       replacements: { id: team.organizationId },
       type: h.platform.sequelize.QueryTypes.SELECT,
