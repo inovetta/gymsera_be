@@ -50,16 +50,16 @@ describe('R-83: a billing-locked branch is hidden from travellers', () => {
 
   test('unlocked: listed and its detail opens', async () => {
     expect(await listedIds()).toContain(ctx.branch1.id);
-    expect((await get(`/gyms/${ctx.branch1.id}`)).status).toBe(200);
+    expect((await get(`/branches/${ctx.branch1.id}`)).status).toBe(200);
   });
 
   test('locked: not in lists or the organization branches; detail 404 gym_not_available', async () => {
     await lock();
     expect(await listedIds()).not.toContain(ctx.branch1.id);
-    const branches = await get(`/organizations/${ctx.branch1.businessId}/branches`);
+    const branches = await get(`/businesses/${ctx.branch1.businessId}/branches`);
     const ids = branches.status === 200 ? (branches.body.data.branches || []).map((b) => b.id) : [];
     expect(ids).not.toContain(ctx.branch1.id);
-    const detail = await get(`/gyms/${ctx.branch1.id}`);
+    const detail = await get(`/branches/${ctx.branch1.id}`);
     expect(detail.status).toBe(404);
     expect(detail.body.code).toBe('gym_not_available');
   });
