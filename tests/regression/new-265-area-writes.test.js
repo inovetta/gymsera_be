@@ -122,7 +122,7 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     const tenant = await Tenant.findOne({ where: { ownerUserId: h.user.id } });
     expect(tenant).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
     expect(await linkOf('organization', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
-    expect(res.body.data.tenant.pendingArea).toEqual({ requestId: r.id, name: 'Register Town', status: 'pending_review', rejectReason: null });
+    expect(res.body.data.organization.pendingArea).toEqual({ requestId: r.id, name: 'Register Town', status: 'pending_review', rejectReason: null });
   });
 
   test('POST /tenants/register with areaId keeps working as before (builds 21 to 24)', async () => {
@@ -183,8 +183,8 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { areaRequestId: r2.id } });
     const res = await h.as().get('/organizations/me');
     expect(res.status).toBe(200);
-    expect(res.body.data.tenant.pendingArea).toEqual({ requestId: r1.id, name: 'Org Town', status: 'pending_review', rejectReason: null });
-    expect(res.body.data.tenant.firstBranchDraft.pendingArea).toEqual({ requestId: r2.id, name: 'Draft Branch Town', status: 'pending_review', rejectReason: null });
+    expect(res.body.data.organization.pendingArea).toEqual({ requestId: r1.id, name: 'Org Town', status: 'pending_review', rejectReason: null });
+    expect(res.body.data.organization.firstBranchDraft.pendingArea).toEqual({ requestId: r2.id, name: 'Draft Branch Town', status: 'pending_review', rejectReason: null });
   });
 });
 
@@ -201,7 +201,7 @@ describe('A4: PATCH /tenants/me area (R-109, F3)', () => {
     expect(pending.status).toBe(200);
     expect(await Tenant.findByPk(tenant.id)).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
     expect(await linkOf('organization', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
-    expect(pending.body.data.tenant.pendingArea).toMatchObject({ requestId: r.id, status: 'pending_review' });
+    expect(pending.body.data.organization.pendingArea).toMatchObject({ requestId: r.id, status: 'pending_review' });
 
     await h.as().patch('/organizations/me').send({ areaId: hayatabad.id });
     expect(await Tenant.findByPk(tenant.id)).toMatchObject({ areaId: hayatabad.id, areaStatus: null, areaRequestId: null });
@@ -255,7 +255,7 @@ describe('A4: "Choose your area again" (rejected marker, GET /host/status)', () 
     expect(status.status).toBe(200);
     expect(status.body.data.area).toEqual({ status: 'rejected', name: 'Soon Refused Town', rejectReason: 'Not in Peshawar', target: 'organization' });
     const me = await h.as().get('/organizations/me');
-    expect(me.body.data.tenant.pendingArea).toEqual({ requestId: r.id, name: 'Soon Refused Town', status: 'rejected', rejectReason: 'Not in Peshawar' });
+    expect(me.body.data.organization.pendingArea).toEqual({ requestId: r.id, name: 'Soon Refused Town', status: 'rejected', rejectReason: 'Not in Peshawar' });
 
     await h.as().patch('/organizations/me').send({ areaId: hayatabad.id });
     expect(await Tenant.findByPk(tenant.id)).toMatchObject({ areaStatus: null, areaRequestId: null, areaId: hayatabad.id });

@@ -84,15 +84,15 @@ describe('GET /admin/organizations', () => {
   test('response keys the clients read are unchanged', async () => {
     const { res } = await list('?page=1&limit=20');
     expect(res.body.success).toBe(true);
-    expect(Array.isArray(res.body.data.tenants)).toBe(true);
+    expect(Array.isArray(res.body.data.organizations)).toBe(true);
     expect(res.body.pagination).toEqual(expect.objectContaining({
       page: 1, limit: 20, total: expect.any(Number), totalPages: expect.any(Number),
     }));
-    const row = res.body.data.tenants.find((t) => !t.isAdditionalOrganization);
+    const row = res.body.data.organizations.find((t) => !t.isAdditionalOrganization);
     for (const k of ['id', 'organizationCode', 'organizationName', 'status', 'email', 'createdAt', 'owner', 'city']) {
       expect(row).toHaveProperty(k);
     }
-    const additional = res.body.data.tenants.find((t) => t.isAdditionalOrganization);
+    const additional = res.body.data.organizations.find((t) => t.isAdditionalOrganization);
     expect(additional).toBeDefined();
     for (const k of ['id', 'organizationName', 'status', 'firstBusinessName', 'gymListing', 'owner', 'user', 'city', 'ownerUserId']) {
       expect(additional).toHaveProperty(k);
@@ -106,7 +106,7 @@ describe('GET /admin/organizations', () => {
     expect(res.status).toBe(200);
     expect(res.body.pagination.page).toBe(1);
     expect(res.body.pagination.limit).toBe(20);
-    expect(res.body.data.tenants.length).toBe(20);
+    expect(res.body.data.organizations.length).toBe(20);
   });
 
   test('total counts tenants plus pending additional organizations', async () => {
@@ -118,7 +118,7 @@ describe('GET /admin/organizations', () => {
     for (;;) {
       const r = await asPersona('platformAdmin').get(`/admin/organizations?page=${page}&limit=100`);
       total = r.body.pagination.total;
-      r.body.data.tenants.forEach((t) => ids.add(t.id));
+      r.body.data.organizations.forEach((t) => ids.add(t.id));
       if (page >= r.body.pagination.totalPages) break;
       page += 1;
     }
@@ -130,7 +130,7 @@ describe('GET /admin/organizations', () => {
   test('ordering is newest first across tenants and additional organizations, stable between pages', async () => {
     const a = await list('?page=1&limit=10');
     const b = await list('?page=2&limit=10');
-    const rows = [...a.res.body.data.tenants, ...b.res.body.data.tenants];
+    const rows = [...a.res.body.data.organizations, ...b.res.body.data.organizations];
     const times = rows.map((r) => new Date(r.createdAt).getTime());
     expect([...times].sort((x, y) => y - x)).toEqual(times);
     expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
@@ -140,7 +140,7 @@ describe('GET /admin/organizations', () => {
     const capped = await list('?limit=1000');
     expect(capped.res.status).toBe(200);
     expect(capped.res.body.pagination.limit).toBe(100);
-    expect(capped.res.body.data.tenants.length).toBeLessThanOrEqual(100);
+    expect(capped.res.body.data.organizations.length).toBeLessThanOrEqual(100);
 
     for (const bad of ['?page=0', '?page=-3', '?page=abc', '?limit=0', '?limit=-5']) {
       const r = await list(bad);
@@ -152,17 +152,17 @@ describe('GET /admin/organizations', () => {
     const total = capped.res.body.pagination.total;
     const last = Math.ceil(total / 20);
     const lastPage = await list(`?page=${last}&limit=20`);
-    expect(lastPage.res.body.data.tenants.length).toBe(total - (last - 1) * 20);
+    expect(lastPage.res.body.data.organizations.length).toBe(total - (last - 1) * 20);
     const beyond = await list(`?page=${last + 1}&limit=20`);
     expect(beyond.res.status).toBe(200);
-    expect(beyond.res.body.data.tenants).toEqual([]);
+    expect(beyond.res.body.data.organizations).toEqual([]);
     expect(beyond.res.body.pagination.total).toBe(total);
   });
 
   test('status filter keeps working with pagination', async () => {
     const pending = await list('?status=PENDING_REVIEW&limit=100');
     expect(pending.res.status).toBe(200);
-    for (const t of pending.res.body.data.tenants) expect(t.status).toBe('PENDING_REVIEW');
+    for (const t of pending.res.body.data.organizations) expect(t.status).toBe('PENDING_REVIEW');
     const bad = await list('?status=NOT_A_STATUS');
     expect(bad.res.status).toBe(400);
   });

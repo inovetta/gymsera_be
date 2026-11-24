@@ -61,7 +61,7 @@ describe('P9b item 0: the released app build against the P9 API', () => {
     await upload(undefined);
     const res = await asPersona('owner').get('/organizations/me');
     expect(res.status).toBe(200);
-    const docs = res.body.data.tenant.kycDocumentsJson;
+    const docs = res.body.data.organization.kycDocumentsJson;
     expect(Array.isArray(docs)).toBe(true);
     expect(docs.length).toBeGreaterThan(0);
     for (const d of docs) expect(typeof d).toBe('string');

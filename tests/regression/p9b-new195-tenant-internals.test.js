@@ -21,8 +21,8 @@ describe('NEW-195: a host tenant answer has no database internals', () => {
   test('GET /tenants/me sends no connection string and no database name', async () => {
     const res = await asPersona('owner').get('/organizations/me');
     expect(res.status).toBe(200);
-    expect(res.body.data.tenant.id).toBeDefined();
-    expect(res.body.data.tenant).not.toHaveProperty('connectionStringEncrypted');
-    expect(res.body.data.tenant).not.toHaveProperty('dbName');
+    expect(res.body.data.organization.id).toBeDefined();
+    expect(res.body.data.organization).not.toHaveProperty('connectionStringEncrypted');
+    expect(res.body.data.organization).not.toHaveProperty('dbName');
   });
 });

@@ -312,7 +312,7 @@ describe('FLOW-02: HTTP approve endpoint', () => {
 
     const view = await request(app).get(`/api/v1/admin/organizations/${tenant.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect(view.status).toBe(200);
-    expect(view.body.data.tenant.provisioning).toMatchObject({ state: 'LISTING_CREATED', step: 3, inProgress: true });
+    expect(view.body.data.organization.provisioning).toMatchObject({ state: 'LISTING_CREATED', step: 3, inProgress: true });
     expect(JSON.stringify(view.body)).not.toContain('44444444-4444-4444-8444-444444444444');
   });
 });

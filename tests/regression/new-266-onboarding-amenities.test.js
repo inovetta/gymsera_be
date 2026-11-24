@@ -51,7 +51,7 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
     await tenant.reload();
     expect(tenant.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
     // GET /tenants/me returns them for resume.
-    expect((await as().get('/organizations/me')).body.data.tenant.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
+    expect((await as().get('/organizations/me')).body.data.organization.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
   });
 
   test('a list of names only: not a list, a non-text item or an over-long name → 422, nothing saved', async () => {

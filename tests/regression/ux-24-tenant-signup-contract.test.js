@@ -87,7 +87,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         cityId: 1,
       });
     expect(res.status).toBeLessThan(300);
-    const organizationId = res.body.data.tenant.id;
+    const organizationId = res.body.data.organization.id;
     const token = signToken({
       sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true, organizationId,
     });

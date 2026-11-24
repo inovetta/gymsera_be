@@ -57,7 +57,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
     const tenant = await pendingTenant('list');
     const res = await asPersona('platformAdmin').get(`/admin/organizations/${tenant.id}`);
     expect(res.status).toBe(200);
-    expect(res.body.data.tenant.approvalPhotos).toEqual([
+    expect(res.body.data.organization.approvalPhotos).toEqual([
       { url: 'https://cdn.gymsera.test/logo.png', kind: 'logo' },
       { url: 'https://cdn.gymsera.test/cover.jpg', kind: 'cover' },
       { url: PHOTOS[0], kind: 'gallery' },

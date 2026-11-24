@@ -299,8 +299,8 @@ describe('NEW-26: Suspended Tenant Full Blocking and Admin Exception', () => {
       const tenantRes = await asPersona('platformAdmin').get(`/admin/organizations/${tenant1Record}`);
       expect(tenantRes.status).toBe(200);
       expect(tenantRes.body.success).toBe(true);
-      expect(tenantRes.body.data.tenant.id).toBe(tenant1Record);
-      expect(tenantRes.body.data.tenant.status).toBe(TenantStatus.SUSPENDED);
+      expect(tenantRes.body.data.organization.id).toBe(tenant1Record);
+      expect(tenantRes.body.data.organization.status).toBe(TenantStatus.SUSPENDED);
 
       // 2. Admin reads tenant branches
       const branchesRes = await asPersona('platformAdmin').get(`/admin/organizations/${tenant1Record}/branches`);

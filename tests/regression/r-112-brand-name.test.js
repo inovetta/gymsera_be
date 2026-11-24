@@ -81,7 +81,7 @@ describe('R-112: brand name', () => {
     await tenant.reload();
     expect(tenant.organizationName).toBe('Iron Works');
     expect(tenant.firstBusinessName).toBe('Iron Works Saddar');
-    const me = (await as().get('/organizations/me')).body.data.tenant;
+    const me = (await as().get('/organizations/me')).body.data.organization;
     expect(me.organizationName).toBe('Iron Works');
     expect(me.firstBusinessName).toBe('Iron Works Saddar');
   });
@@ -140,7 +140,7 @@ describe('R-112: brand name', () => {
 
     const res = await asPersona('owner').patch('/organizations/me').send({ organizationName: 'Renamed Brand' });
     expect(res.status).toBe(200);
-    expect(res.body.data.tenant.organizationName).toBe('Renamed Brand');
+    expect(res.body.data.organization.organizationName).toBe('Renamed Brand');
     const audit = await PlatformAuditLog.findOne({ where: { action: 'tenant.brand_renamed', targetId: organizationId }, order: [['createdAt', 'DESC']] });
     expect(audit).not.toBeNull();
     expect(audit.actorUserId).toBe(personaManager.personas.owner.user.id);

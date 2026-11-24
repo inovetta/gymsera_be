@@ -52,7 +52,7 @@ describe('FLOW-04: re-apply after rejection', () => {
     const { tenant, token } = await rejectedHost();
     const res = await reapply(tenant.id, token);
     expect(res.status).toBe(200);
-    expect(res.body.data.tenant.id).toBe(tenant.id);
+    expect(res.body.data.organization.id).toBe(tenant.id);
     const row = await Tenant.findByPk(tenant.id);
     expect(row.status).toBe('DRAFT');
     expect(row.firstBusinessName).toBe('Iron Works');

@@ -120,6 +120,6 @@ describe('BUG-09: Become a Host says which currency the first branch will get', 
     expect(res.status).toBe(200);
     const { firstBranchCurrency } = require('../../src/utils/currency.utils');
     expect(firstBranchCurrency()).toBe('PKR');
-    expect(res.body.data.tenant.firstBranchCurrency).toBe(firstBranchCurrency());
+    expect(res.body.data.organization.firstBranchCurrency).toBe(firstBranchCurrency());
   });
 });
