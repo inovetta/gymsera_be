@@ -77,7 +77,7 @@ module.exports = (sequelize) => {
       organizationId: {
         type: DataTypes.UUID,
         allowNull: true,
-        field: 'tenant_id',
+        field: 'organization_id',
       },
     },
     {

@@ -50,7 +50,7 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { name: 'conversations_tenant_id', fields: ['tenant_id'] },
+        { name: 'conversations_organization_id', fields: ['organization_id'] },
         { name: 'conversations_branch_id', fields: ['branch_id'] },
         { name: 'conversations_user_id', fields: ['user_id'] },
         { name: 'conversations_last_message_at', fields: ['last_message_at'] },

@@ -179,7 +179,7 @@ const connect = async () => {
         \`status\` ENUM('PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED') NOT NULL DEFAULT 'PENDING',
         \`expires_at\` DATETIME NOT NULL,
         \`accepted_at\` DATETIME NULL,
-        \`tenant_id\` CHAR(36) NULL,
+        \`organization_id\` CHAR(36) NULL,
         \`created_at\` DATETIME NOT NULL,
         \`updated_at\` DATETIME NOT NULL,
         PRIMARY KEY (\`id\`),
@@ -388,7 +388,7 @@ const connect = async () => {
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS capacity_events (
         id CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
-        tenant_id CHAR(36) NOT NULL,
+        organization_id CHAR(36) NOT NULL,
         business_id CHAR(36) NULL,
         branch_id CHAR(36) NULL,
         action ENUM('BRANCH_DELETED','BRANCH_RESTORED','SLOT_TRANSFERRED','SLOT_TRIMMED_DOWNGRADE','SLOT_ATTRIBUTED_UPGRADE','SLOT_CONSUMED_BUILD','BUSINESS_DELETED','BUSINESS_BRANCHES_MOVED','BRANCH_BILLING_LOCKED','BRANCH_BILLING_UNLOCKED') NOT NULL,
@@ -401,7 +401,7 @@ const connect = async () => {
         idempotency_key VARCHAR(255) NOT NULL,
         created_at DATETIME NOT NULL,
         UNIQUE INDEX capacity_events_idempotency_key (idempotency_key),
-        INDEX capacity_events_tenant_id (tenant_id),
+        INDEX capacity_events_organization_id (organization_id),
         INDEX capacity_events_business_id (business_id)
       );
     `);

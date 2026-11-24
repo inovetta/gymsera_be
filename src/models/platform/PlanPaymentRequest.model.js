@@ -43,7 +43,7 @@ module.exports = (sequelize) => {
       tableName: 'plan_payment_requests',
       underscored: true,
       timestamps: true,
-      indexes: [{ fields: ['tenant_id', 'status'] }, { fields: ['status', 'created_at'] }],
+      indexes: [{ fields: ['organization_id', 'status'] }, { fields: ['status', 'created_at'] }],
     }
   );
   PlanPaymentRequest.STATUSES = STATUSES;

@@ -82,7 +82,7 @@ module.exports = (sequelize) => {
       timestamps: true,
       updatedAt: false,
       indexes: [
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['business_id'] },
         { unique: true, fields: ['idempotency_key'] },
       ],

@@ -1545,6 +1545,49 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 35,
+    name: 'p035_organization_id_columns',
+    description:
+      'R-120 NEW-309 (docs/NAMING_AND_DATA_DICTIONARY.md B2): tenant_id is organization_id in every platform table that holds the organization foreign key; the indexes that carried tenant in their name follow. Metadata-only CHANGE COLUMN / RENAME INDEX, the definition is kept.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run. BACKUP: mysqldump of the platform database first.
+    // DEPLOY: after p034, BEFORE the API build that reads organization_id.
+    // ROLLBACK (previous API build FIRST): the reverse CHANGE COLUMN / RENAME INDEX of every step, then DELETE FROM `schema_migrations` WHERE `version` = 35.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const tables = [
+        'area_request_links', 'audit_logs', 'billing_events', 'capacity_events', 'content_reports', 'conversations',
+        'devices', 'device_members', 'business_listings', 'business_reviews', 'payout_accounts', 'plan_payment_requests',
+        'platform_invoices', 'organization_invitations', 'organization_subscriptions', 'user_blocks',
+        'member_subscription_index', 'user_organization_index', 'access_devices',
+      ];
+      const steps = tables.map((table) => [r.renameColumn, { table, from: 'tenant_id', to: 'organization_id', comment: 'The organization (organizations.id).' }]);
+      const idx = (table, from, to) => [r.renameIndex, { table, from, to }];
+      steps.push(
+        idx('organization_subscriptions', 'organization_subscriptions_tenant_id', 'organization_subscriptions_organization_id'),
+        idx('platform_invoices', 'platform_invoices_tenant_id', 'platform_invoices_organization_id'),
+        idx('business_listings', 'business_listings_tenant_id', 'business_listings_organization_id'),
+        idx('member_subscription_index', 'member_subscription_index_tenant_id', 'member_subscription_index_organization_id'),
+        idx('devices', 'devices_tenant_id', 'devices_organization_id'),
+        idx('device_members', 'device_members_tenant_id', 'device_members_organization_id'),
+        idx('conversations', 'conversations_tenant_id', 'conversations_organization_id'),
+        idx('user_organization_index', 'user_organization_index_tenant_id_status', 'user_organization_index_organization_id_status'),
+        idx('capacity_events', 'capacity_events_tenant_id', 'capacity_events_organization_id'),
+        idx('billing_events', 'billing_events_tenant_status', 'billing_events_organization_status'),
+        idx('audit_logs', 'audit_logs_tenant_id', 'audit_logs_organization_id'),
+        idx('payout_accounts', 'payout_accounts_tenant_scope_provider', 'payout_accounts_organization_scope_provider'),
+        idx('plan_payment_requests', 'plan_payment_requests_tenant_id_status', 'plan_payment_requests_organization_id_status'),
+        idx('user_blocks', 'user_blocks_tenant_id', 'user_blocks_organization_id'),
+      );
+      const out = await r.applyAll(sequelize, steps);
+      if (out.skipped.length) {
+        console.warn(`[PlatformMigration] SKIPPING p035_organization_id_columns (not recorded): ${JSON.stringify(out.skipped)}. Resolve by hand, then re-run.`);
+        return { skipped: true, reason: 'rename_conflict', conflicts: out.skipped };
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

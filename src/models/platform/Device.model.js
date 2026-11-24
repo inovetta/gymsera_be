@@ -63,7 +63,7 @@ module.exports = (sequelize) => {
       timestamps: true,
       indexes: [
         { name: 'devices_serial_number_unique', unique: true, fields: ['serial_number'] },
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['branch_id'] },
         { fields: ['status'] },
       ],

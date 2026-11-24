@@ -28,7 +28,7 @@ module.exports = (sequelize) =>
       underscored: true,
       timestamps: true,
       indexes: [
-        { name: 'area_request_links_target', unique: true, fields: ['target', 'tenant_id', 'target_id'] },
+        { name: 'area_request_links_target', unique: true, fields: ['target', 'organization_id', 'target_id'] },
         { name: 'area_request_links_area_request_id', fields: ['area_request_id'] },
       ],
     }

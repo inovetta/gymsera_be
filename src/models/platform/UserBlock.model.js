@@ -22,8 +22,8 @@ module.exports = (sequelize) =>
       underscored: true,
       timestamps: true,
       indexes: [
-        { name: 'user_blocks_pair_side', unique: true, fields: ['user_id', 'tenant_id', 'blocked_by'] },
-        { name: 'user_blocks_tenant_id', fields: ['tenant_id'] },
+        { name: 'user_blocks_pair_side', unique: true, fields: ['user_id', 'organization_id', 'blocked_by'] },
+        { name: 'user_blocks_organization_id', fields: ['organization_id'] },
       ],
     }
   );

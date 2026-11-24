@@ -33,10 +33,10 @@ async function planTokenMode({ to, apply = false, organizationId = null, deviceI
   if (!['enforce', 'log'].includes(to)) throw new Error('--to must be enforce or log');
   const where = ['status <> \'removed\''];
   const rep = [];
-  if (organizationId) { where.push('tenant_id = ?'); rep.push(organizationId); }
+  if (organizationId) { where.push('organization_id = ?'); rep.push(organizationId); }
   if (deviceIds && deviceIds.length) { where.push('id IN (?)'); rep.push(deviceIds); }
   const rows = await platformDb.query(
-    `SELECT id, tenant_id, status, token_mode, last_token_state, last_seen_at, device_type, cookie_seen_at FROM access_devices WHERE ${where.join(' AND ')} ORDER BY created_at`,
+    `SELECT id, organization_id, status, token_mode, last_token_state, last_seen_at, device_type, cookie_seen_at FROM access_devices WHERE ${where.join(' AND ')} ORDER BY created_at`,
     { replacements: utc(rep), type: QueryTypes.SELECT }
   );
   const seenSince = now.getTime() - getDeviceConfig().tokenSeenHours * 3600000;
@@ -51,7 +51,7 @@ async function planTokenMode({ to, apply = false, organizationId = null, deviceI
       if (!r.cookie_seen_at) { out.skip.push({ id: r.id, reason: 'never_sent_cookie' }); continue; }
       if (!r.last_seen_at || new Date(r.last_seen_at).getTime() < seenSince) { out.skip.push({ id: r.id, reason: 'not_seen_recently' }); continue; }
     }
-    out.switch.push({ id: r.id, organizationId: r.tenant_id });
+    out.switch.push({ id: r.id, organizationId: r.organization_id });
   }
   if (apply && out.switch.length) {
     // Only rows still in the state that qualified them (a device that sent a bad token since is left alone).

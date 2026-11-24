@@ -19,7 +19,7 @@ if (!organizationId) {
     await sequelize.authenticate();
     const [rows] = await sequelize.query(
       `SELECT action, delta, reserved_slots_before, reserved_slots_after, actor_type, reason, idempotency_key, created_at
-       FROM capacity_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 15`,
+       FROM capacity_events WHERE organization_id = ? ORDER BY created_at DESC LIMIT 15`,
       { replacements: [organizationId] }
     );
     console.log(`--- Last ${rows.length} capacity_events for tenant ${organizationId} ---\n`);

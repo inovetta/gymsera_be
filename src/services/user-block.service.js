@@ -2,7 +2,7 @@
 /**
  * NEW-256: blocking in chat (App Store 1.2, Google Play UGC policy).
  *
- * Chat is between a traveller (`conversations.user_id`) and a gym (`conversations.tenant_id`), so a
+ * Chat is between a traveller (`conversations.user_id`) and a gym (`conversations.organization_id`), so a
  * block is between those two: the traveller blocks the gym (blocked_by USER) or the gym blocks the
  * traveller (blocked_by TENANT). While either row exists:
  *   - no message is accepted in either direction (inbox.service calls assertCanMessage on every send);

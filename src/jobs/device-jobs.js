@@ -34,11 +34,11 @@ const exec = (db, sql, replacements) => db.sequelize.query(sql, { replacements: 
 
 /** [{ organizationId, db }] for every tenant with a device that is not removed. */
 async function tenantsWithDevices() {
-  const rows = await platformDb.query('SELECT DISTINCT tenant_id FROM access_devices WHERE status <> \'removed\'', { type: QueryTypes.SELECT });
+  const rows = await platformDb.query('SELECT DISTINCT organization_id FROM access_devices WHERE status <> \'removed\'', { type: QueryTypes.SELECT });
   const { Tenant } = require('../models/platform');
   const TenantDbManager = require('../database/TenantDbManager');
   const out = [];
-  for (const { tenant_id: organizationId } of rows) {
+  for (const { organization_id: organizationId } of rows) {
     const t = await Tenant.findOne({ where: { id: organizationId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
     if (!t || !t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
     try {
@@ -92,7 +92,7 @@ async function watchdogTenant({ organizationId, db }, now = new Date()) {
 
   // Offline: no contact for DEVICE_OFFLINE_MINUTES. One owner notification per incident.
   const devices = await platformDb.query(
-    'SELECT id, last_seen_at, status FROM access_devices WHERE tenant_id = ? AND status = \'active\'',
+    'SELECT id, last_seen_at, status FROM access_devices WHERE organization_id = ? AND status = \'active\'',
     { replacements: utc([organizationId]), type: QueryTypes.SELECT }
   );
   const limit = now.getTime() - cfg.offlineMinutes * 60000;
@@ -132,7 +132,7 @@ async function watchdogTenant({ organizationId, db }, now = new Date()) {
 async function finishWipes({ organizationId, db }, now = new Date()) {
   const cfg = getDeviceConfig();
   const registry = require('../services/devices/device-registry.service');
-  const rows = await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'wiping\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT });
+  const rows = await platformDb.query('SELECT id FROM access_devices WHERE organization_id = ? AND status = \'wiping\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT });
   let n = 0;
   for (const { id } of rows) {
     const [first] = await select(db, 'SELECT MIN(created_at) AS at FROM device_commands WHERE device_id = ? AND kind = \'wipe\'', [id]);
@@ -169,7 +169,7 @@ const parseJson = (text) => {
 async function deviceAlerts({ organizationId, db }, now = new Date()) {
   const cfg = getDeviceConfig();
   const out = { errors: 0, capacity: 0, serial: 0 };
-  const active = await platformDb.query('SELECT id, serial_mismatch_at FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT });
+  const active = await platformDb.query('SELECT id, serial_mismatch_at FROM access_devices WHERE organization_id = ? AND status = \'active\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT });
   for (const { id, serial_mismatch_at: mismatchAt } of active) {
     const [det] = await select(db, 'SELECT id, name, enabled, capabilities_json, counts_json, alerts_json FROM access_device_details WHERE id = ?', [id]);
     if (!det || !Number(det.enabled)) continue;
@@ -332,7 +332,7 @@ async function auditTenant({ organizationId, db }, now = new Date()) {
     [now, new Date(now.getTime() - 6 * 3600000)]);
   counts.incomplete = typeof meta === 'number' ? meta : meta?.affectedRows || 0;
 
-  const active = new Set((await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT })).map((r) => r.id));
+  const active = new Set((await platformDb.query('SELECT id FROM access_devices WHERE organization_id = ? AND status = \'active\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT })).map((r) => r.id));
   for (const device of await sync.devicesOf(db)) {
     if (!active.has(device.id)) continue;
     const tz = device.branch_timezone || 'Asia/Karachi';

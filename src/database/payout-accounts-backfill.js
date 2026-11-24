@@ -74,7 +74,7 @@ const planPayoutAccountBackfill = async (sequelize) => {
   const existing = new Set();
   if (await _hasTable(sequelize, 'payout_accounts')) {
     const have = await sequelize.query(
-      'SELECT tenant_id AS organizationId FROM payout_accounts WHERE scope_key = ? AND provider = ?',
+      'SELECT organization_id AS organizationId FROM payout_accounts WHERE scope_key = ? AND provider = ?',
       { replacements: [TENANT_SCOPE, PROVIDER], type: QueryTypes.SELECT }
     );
     have.forEach((r) => existing.add(r.organizationId));
@@ -100,7 +100,7 @@ const applyPayoutAccountBackfill = async (sequelize, plan) => {
   for (const item of plan.copy) {
     await sequelize.query(
       `INSERT IGNORE INTO payout_accounts
-         (id, tenant_id, business_id, scope_key, provider, status, details_json, details_updated_at, created_at, updated_at)
+         (id, organization_id, business_id, scope_key, provider, status, details_json, details_updated_at, created_at, updated_at)
        VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())`,
       { replacements: [crypto.randomUUID(), item.organizationId, TENANT_SCOPE, PROVIDER, JSON.stringify(item.detailsJson), item.detailsUpdatedAt] }
     );

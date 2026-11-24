@@ -27,7 +27,7 @@ if (!organizationId) {
               external_original_transaction_id, external_transaction_id, environment,
               amount, billing_cycle, start_date, end_date, auto_renew, over_quota_count,
               status_note, last_verified_at, created_at, updated_at
-       FROM organization_subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 20`,
+       FROM organization_subscriptions WHERE organization_id = ? ORDER BY created_at DESC LIMIT 20`,
       { replacements: [organizationId] }
     );
 
@@ -48,7 +48,7 @@ if (!organizationId) {
     });
 
     const [listings] = await sequelize.query(
-      'SELECT id, name AS title, status, reserved_slots FROM business_listings WHERE tenant_id = ? ORDER BY created_at ASC', // R-120 (p033)
+      'SELECT id, name AS title, status, reserved_slots FROM business_listings WHERE organization_id = ? ORDER BY created_at ASC', // R-120 (p033)
       { replacements: [organizationId] }
     );
     console.log(`=== GymListings (reservedSlots) for tenant ${organizationId} ===`);
@@ -61,7 +61,7 @@ if (!organizationId) {
 
     const [events] = await sequelize.query(
       `SELECT action, delta, reserved_slots_before, reserved_slots_after, actor_type, reason, idempotency_key, created_at
-       FROM capacity_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 15`,
+       FROM capacity_events WHERE organization_id = ? ORDER BY created_at DESC LIMIT 15`,
       { replacements: [organizationId] }
     );
     console.log(`=== Last ${events.length} capacity_events for tenant ${organizationId} ===`);

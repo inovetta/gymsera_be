@@ -161,7 +161,7 @@ module.exports = (sequelize) => {
       timestamps: true,
       indexes: [
         { fields: ['city_id', 'area_id', 'status'] },
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['is_featured'] },
         { fields: ['gender_type'] },
       ],

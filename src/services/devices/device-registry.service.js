@@ -580,7 +580,7 @@ async function createDevice({ organizationId, tenantDb, branchId, businessId, na
     const key = newDeviceKey();
     try {
       await platformDb.query(
-        `INSERT INTO access_devices (id, device_key, serial_number, tenant_id, business_id, branch_id, link_mode, comm_key,
+        `INSERT INTO access_devices (id, device_key, serial_number, organization_id, business_id, branch_id, link_mode, comm_key,
            registry_code, session_id, token_mode, status, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_connection', ?, ?, ?)`,
         {
@@ -615,7 +615,7 @@ async function createDevice({ organizationId, tenantDb, branchId, businessId, na
 
 /** One device of this tenant, not removed; null otherwise (a 404 for the caller). */
 async function getDevice({ organizationId, tenantDb, deviceId }) {
-  const [row] = await q(platformDb, 'SELECT * FROM access_devices WHERE id = ? AND tenant_id = ? AND status <> \'removed\'', [deviceId, organizationId]);
+  const [row] = await q(platformDb, 'SELECT * FROM access_devices WHERE id = ? AND organization_id = ? AND status <> \'removed\'', [deviceId, organizationId]);
   if (!row) return null;
   const det = await detailsOf(tenantDb, deviceId);
   if (!det) return null;
@@ -627,8 +627,8 @@ async function getDevice({ organizationId, tenantDb, deviceId }) {
 async function listDevices({ organizationId, tenantDb, branchIds = null }) {
   if (Array.isArray(branchIds) && branchIds.length === 0) return [];
   const rows = Array.isArray(branchIds)
-    ? await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' AND branch_id IN (?) ORDER BY created_at', [organizationId, branchIds])
-    : await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' ORDER BY created_at', [organizationId]);
+    ? await q(platformDb, 'SELECT * FROM access_devices WHERE organization_id = ? AND status <> \'removed\' AND branch_id IN (?) ORDER BY created_at', [organizationId, branchIds])
+    : await q(platformDb, 'SELECT * FROM access_devices WHERE organization_id = ? AND status <> \'removed\' ORDER BY created_at', [organizationId]);
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const dets = await q(tenantDb.sequelize, 'SELECT * FROM access_device_details WHERE id IN (?)', [ids]);
@@ -707,8 +707,8 @@ async function setEnabled({ organizationId, tenantDb, deviceId, enabled }) {
     replacements: utc([enabled ? 1 : 0, now, deviceId]),
   });
   const sql = enabled
-    ? 'UPDATE access_devices SET status = IF(registered_at IS NULL, \'awaiting_connection\', \'active\'), updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\''
-    : 'UPDATE access_devices SET status = \'disabled\', updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\'';
+    ? 'UPDATE access_devices SET status = IF(registered_at IS NULL, \'awaiting_connection\', \'active\'), updated_at = ? WHERE id = ? AND organization_id = ? AND status <> \'removed\''
+    : 'UPDATE access_devices SET status = \'disabled\', updated_at = ? WHERE id = ? AND organization_id = ? AND status <> \'removed\'';
   await platformDb.query(sql, { replacements: utc([now, deviceId, organizationId]) });
   if (enabled) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'device_enabled');
   return getDevice({ organizationId, tenantDb, deviceId });
@@ -727,7 +727,7 @@ async function repairDevice({ organizationId, tenantDb = null, deviceId }) {
            previous_serial_number = COALESCE(serial_number, previous_serial_number), serial_number = NULL,
            status = IF(status = 'disabled', 'disabled', 'awaiting_connection'), registered_at = NULL,
            serial_mismatch_at = NULL, serial_mismatch_value = NULL, last_token_state = NULL, updated_at = ?
-         WHERE id = ? AND tenant_id = ? AND status <> 'removed' AND link_mode <> 'serial'`,
+         WHERE id = ? AND organization_id = ? AND status <> 'removed' AND link_mode <> 'serial'`,
         { replacements: utc([newDeviceKey(), protocol.newRegistryCode(), protocol.newSessionId(), now, deviceId, organizationId]) }
       );
       break;
@@ -776,7 +776,7 @@ async function unpairDevice({ organizationId, tenantDb, deviceId, wipe = false }
         { replacements: utc([deviceId, JSON.stringify(args), new Date(now.getTime() - 1000), now, now]) }
       );
     }
-    await platformDb.query('UPDATE access_devices SET status = \'wiping\', updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\'', {
+    await platformDb.query('UPDATE access_devices SET status = \'wiping\', updated_at = ? WHERE id = ? AND organization_id = ? AND status <> \'removed\'', {
       replacements: utc([now, deviceId, organizationId]),
     });
     return { status: 'wiping', wipe: true, wipeCommands: plan.length };
@@ -788,7 +788,7 @@ async function unpairDevice({ organizationId, tenantDb, deviceId, wipe = false }
 async function markRemoved({ organizationId, tenantDb, deviceId, now = new Date() }) {
   await platformDb.query(
     `UPDATE access_devices SET status = 'removed', previous_serial_number = COALESCE(serial_number, previous_serial_number),
-       serial_number = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+       serial_number = NULL, updated_at = ? WHERE id = ? AND organization_id = ?`,
     { replacements: utc([now, deviceId, organizationId]) }
   );
   await tenantDb.sequelize.query('UPDATE access_device_details SET enabled = 0, removed_at = ?, updated_at = ? WHERE id = ?', {
@@ -831,7 +831,7 @@ async function moveDevice({ organizationId, tenantDb, deviceId, branchId }) {
   const branch = await branchOf(tenantDb, branchId);
   if (!branch) throw createError('Branch not found.', 404, 'branch_not_found');
   const now = new Date();
-  await platformDb.query('UPDATE access_devices SET branch_id = ?, business_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?', {
+  await platformDb.query('UPDATE access_devices SET branch_id = ?, business_id = ?, updated_at = ? WHERE id = ? AND organization_id = ?', {
     replacements: utc([branchId, branch.gym_id || null, now, deviceId, organizationId]),
   });
   await tenantDb.sequelize.query('UPDATE access_device_details SET branch_id = ?, last_sweep_at = NULL, updated_at = ? WHERE id = ?', {

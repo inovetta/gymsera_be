@@ -193,7 +193,7 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['status'] },
         { fields: ['end_date'] },
         { fields: ['external_original_transaction_id'] },

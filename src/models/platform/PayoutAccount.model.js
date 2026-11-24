@@ -53,7 +53,7 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { unique: true, name: 'payout_accounts_tenant_scope_provider', fields: ['tenant_id', 'scope_key', 'provider'] },
+        { unique: true, name: 'payout_accounts_organization_scope_provider', fields: ['organization_id', 'scope_key', 'provider'] },
         { name: 'payout_accounts_business_id', fields: ['business_id'] },
       ],
       hooks: {

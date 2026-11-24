@@ -96,7 +96,7 @@ async function queueQuery(db, deviceId, kind, args, now) {
 async function startImport(db, { organizationId, deviceId, byUserId = null, now = new Date(), ...opts }) {
   const registry = require('./device-registry.service');
   const platform = await registry.findById(deviceId);
-  if (!platform || platform.tenant_id !== organizationId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
+  if (!platform || platform.organization_id !== organizationId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
   if (platform.status === 'wiping') throw createError('This device is being wiped.', 409, 'device_wiping');
   if (platform.status !== 'active') {
     throw createError('The device has not connected yet. Type the server address on it first, then import.', 409, 'device_not_connected');
@@ -334,7 +334,7 @@ async function rereadDone(db, imp, now, outcome) {
 async function reread(db, { organizationId, deviceId, importId, byUserId = null, now = new Date() }) {
   const registry = require('./device-registry.service');
   const platform = await registry.findById(deviceId);
-  if (!platform || platform.tenant_id !== organizationId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
+  if (!platform || platform.organization_id !== organizationId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
   const det = await detailsOf(db, deviceId);
   if (String(det?.device_type || '').toLowerCase() !== 'att') {
     throw createError('Only a T&A PUSH device is read again this way.', 422, 'not_att_device');

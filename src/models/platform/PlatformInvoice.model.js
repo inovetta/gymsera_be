@@ -77,7 +77,7 @@ module.exports = (sequelize) => {
       timestamps: true,
       indexes: [
         { name: 'platform_invoices_invoice_no_unique', unique: true, fields: ['invoice_no'] },
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { name: 'platform_invoices_organization_subscription_id', fields: ['organization_subscription_id'] },
         { fields: ['status'] },
         { fields: ['due_date'] },

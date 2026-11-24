@@ -78,7 +78,7 @@ module.exports = (sequelize) => {
       indexes: [
         { unique: true, fields: ['provider', 'provider_event_id'], name: 'billing_events_provider_event' },
         { fields: ['status'] },
-        { fields: ['tenant_id', 'status', 'received_at'], name: 'billing_events_tenant_status' },
+        { fields: ['organization_id', 'status', 'received_at'], name: 'billing_events_organization_status' },
       ],
     }
   );
