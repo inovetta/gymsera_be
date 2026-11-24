@@ -42,6 +42,39 @@ const createMessageOnce = async (attrs, rawClientMessageId) => {
   }
 };
 
+/**
+ * API contract v2 A3 J6: a conversation nests `business { id, name }` (was `gymListing { id, title, logoUrl, branchId }`) and
+ * `branchName` (read from the organization's database; null when it cannot be read). The conversation's own
+ * `branchId` and `organizationId` stay. Takes one conversation or a list (model rows or plain objects).
+ */
+const shapeConversations = async (input) => {
+  const list = Array.isArray(input) ? input : [input];
+  const plain = list.map((c) => (c && typeof c.toJSON === 'function' ? c.toJSON() : { ...c }));
+  const idsByOrg = new Map();
+  for (const c of plain) {
+    if (!c.organizationId || !c.branchId) continue;
+    if (!idsByOrg.has(c.organizationId)) idsByOrg.set(c.organizationId, new Set());
+    idsByOrg.get(c.organizationId).add(c.branchId);
+  }
+  const names = new Map();
+  const { Tenant } = require('../models/platform');
+  const TenantDbManager = require('../database/TenantDbManager');
+  await Promise.all([...idsByOrg].map(async ([organizationId, ids]) => {
+    try {
+      const org = await Tenant.findByPk(organizationId, { attributes: ['id', 'connectionStringEncrypted'] });
+      if (!org || !org.connectionStringEncrypted || org.connectionStringEncrypted === 'PENDING_PROVISIONING') return;
+      const db = await TenantDbManager.getConnection(org.id, org.connectionStringEncrypted);
+      const rows = await db.models.Branch.findAll({ where: { id: [...ids] }, attributes: ['id', 'branchName'] });
+      for (const r of rows) names.set(r.id, r.branchName);
+    } catch (_) { /* the name is a convenience; the conversation still reads */ }
+  }));
+  const shaped = plain.map((c) => {
+    const { gymListing, ...rest } = c;
+    return { ...rest, business: gymListing ? { id: gymListing.id, name: gymListing.name } : null, branchName: names.get(c.branchId) || null };
+  });
+  return Array.isArray(input) ? shaped : shaped[0];
+};
+
 const listInquiries = async (organizationId) => {
   // NEW-256: a traveller this gym blocked is hidden from the gym's inbox.
   const blockedUserIds = await userBlocks.userIdsBlockedByTenant(organizationId);
@@ -571,6 +604,7 @@ const setHostBlock = async (conversationId, organizationId, actorUserId, blocked
 };
 
 module.exports = {
+  shapeConversations,
   setTravelerBlock,
   setHostBlock,
   listInquiries,

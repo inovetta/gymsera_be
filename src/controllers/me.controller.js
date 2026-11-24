@@ -257,7 +257,7 @@ const dataExport = async (req, res, next) => {
 // ── GET /me/inbox ──────────────────────────────────────────────────────────────
 const listMyInbox = async (req, res, next) => {
   try {
-    const conversations = await inboxService.listTravelerConversations(req.user.sub);
+    const conversations = await inboxService.shapeConversations(await inboxService.listTravelerConversations(req.user.sub));
     return sendSuccess(res, { conversations });
   } catch (err) {
     next(err);
@@ -271,7 +271,7 @@ const getMyConversation = async (req, res, next) => {
       req.params.conversationId,
       req.user.sub
     );
-    return sendSuccess(res, result);
+    return sendSuccess(res, { ...result, conversation: await inboxService.shapeConversations(result.conversation) });
   } catch (err) {
     next(err);
   }

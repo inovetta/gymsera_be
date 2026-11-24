@@ -1587,7 +1587,7 @@ const listInquiries = async (req, res, next) => {
     if (!organizationId) {
       return sendSuccess(res, [], 'No inquiries found');
     }
-    const inquiries = await inboxService.listInquiries(organizationId);
+    const inquiries = await inboxService.shapeConversations(await inboxService.listInquiries(organizationId));
     return sendSuccess(res, inquiries, 'Inquiries retrieved');
   } catch (err) {
     next(err);
@@ -1599,7 +1599,7 @@ const getInquiryDetail = async (req, res, next) => {
     const organizationId = req.user.organizationId;
     const { inquiryId } = req.params;
     const result = await inboxService.getInquiryDetail(inquiryId, organizationId);
-    return sendSuccess(res, result, 'Inquiry details retrieved');
+    return sendSuccess(res, { ...result, conversation: await inboxService.shapeConversations(result.conversation) }, 'Inquiry details retrieved');
   } catch (err) {
     next(err);
   }
