@@ -20,7 +20,7 @@
  * (devices.push_result), by the first poll that sees it finished or by the watchdog.
  *
  * Polling, not a held request: it works the same on web and mobile and is safe with iisnode.
- * `db` = a tenant connection { sequelize, models, tenantId }.
+ * `db` = a tenant connection { sequelize, models, organizationId }.
  */
 const crypto = require('crypto');
 const { QueryTypes } = require('sequelize');
@@ -77,7 +77,7 @@ async function usableDevices(db, { permittedBranchIds = null, branchId = null, d
     if (branchIds !== null && !branchIds.includes(branchId)) return [];
     branchIds = [branchId];
   }
-  const views = (await registry().listDevices({ tenantId: db.tenantId, tenantDb: db, branchIds }))
+  const views = (await registry().listDevices({ organizationId: db.organizationId, tenantDb: db, branchIds }))
     .filter((v) => v.enabled && v.status !== 'removed' && v.status !== 'wiping');
   // Phase 4: a device in import hold takes no member commands. Asked for by name: say why.
   if (deviceIds && views.some((v) => v.importHold && deviceIds.includes(v.id))) {
@@ -406,7 +406,7 @@ async function statusOf(db, requestId, { permittedBranchIds = null, now = new Da
   const [request] = await select(db, 'SELECT * FROM device_push_requests WHERE id = ?', [requestId]);
   if (!request) throw createError('Push request not found.', 404, 'push_request_not_found');
   const ids = parse(request.device_ids_json, []) || [];
-  const views = new Map((await registry().listDevices({ tenantId: db.tenantId, tenantDb: db, branchIds: null })).map((v) => [v.id, v]));
+  const views = new Map((await registry().listDevices({ organizationId: db.organizationId, tenantDb: db, branchIds: null })).map((v) => [v.id, v]));
   const visible = ids.filter((id) => permittedBranchIds === null || (views.get(id) && permittedBranchIds.includes(views.get(id).branchId)));
   if (!visible.length) throw createError('Push request not found.', 404, 'push_request_not_found');
   const plan = new Map((parse(request.plan_json, []) || []).map((p) => [p.deviceId, p]));

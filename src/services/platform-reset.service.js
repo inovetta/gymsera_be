@@ -107,7 +107,7 @@ const planReset = async (conn, { keepAdmins }) => {
     const [rows] = orgTable === 'organizations'
       ? await conn.query('SELECT id, organization_code AS code, status, db_name FROM `organizations` ORDER BY id')
       : await conn.query('SELECT id, tenant_code AS code, status, db_name FROM `tenants` ORDER BY id');
-    plan.tenants = rows.map((r) => ({ id: r.id, tenantCode: r.code, status: r.status, dbName: r.db_name }));
+    plan.tenants = rows.map((r) => ({ id: r.id, organizationCode: r.code, status: r.status, dbName: r.db_name }));
   }
   return plan;
 };
@@ -155,7 +155,7 @@ const runReset = async ({
     tables: plan.tables,
     users: plan.users,
     adminIdsKept: plan.keepIds,
-    tenantDatabases: tenantDbs.map((t) => ({ tenantId: t.id, tenantCode: t.tenantCode, status: t.status, dbName: t.dbName, droppable: t.ok })),
+    tenantDatabases: tenantDbs.map((t) => ({ organizationId: t.id, organizationCode: t.organizationCode, status: t.status, dbName: t.dbName, droppable: t.ok })),
   });
 
   const result = { mode, plan, log, removed: [], droppedDatabases: [], leftInPlace: [] };
@@ -192,20 +192,20 @@ const runReset = async ({
   for (const t of tenantDbs) {
     if (!dropTenantDatabases || !adminConn) {
       result.leftInPlace.push(t.dbName);
-      log.write({ event: 'tenant_database_left_in_place', tenantId: t.id, dbName: t.dbName });
+      log.write({ event: 'tenant_database_left_in_place', organizationId: t.id, dbName: t.dbName });
       continue;
     }
     if (!t.ok) {
       result.leftInPlace.push(t.dbName);
-      log.write({ event: 'tenant_database_refused', tenantId: t.id, dbName: t.dbName, reason: 'name is not a safe tenant database name' });
+      log.write({ event: 'tenant_database_refused', organizationId: t.id, dbName: t.dbName, reason: 'name is not a safe tenant database name' });
       continue;
     }
     try {
       await adminConn.query('DROP DATABASE IF EXISTS ??', [t.dbName]);
       result.droppedDatabases.push(t.dbName);
-      log.write({ event: 'tenant_database_dropped', tenantId: t.id, dbName: t.dbName });
+      log.write({ event: 'tenant_database_dropped', organizationId: t.id, dbName: t.dbName });
     } catch (err) {
-      log.write({ event: 'failed', where: 'drop_tenant_database', tenantId: t.id, dbName: t.dbName, error: err.message });
+      log.write({ event: 'failed', where: 'drop_tenant_database', organizationId: t.id, dbName: t.dbName, error: err.message });
       throw err;
     }
   }

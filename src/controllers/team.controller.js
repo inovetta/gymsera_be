@@ -15,7 +15,7 @@ const { getRolesForClient, assignableRolesFor, ROLE_META, presetFor } = require(
 /** Build the service context every team operation needs. */
 const buildCtx = (req) => ({
   tenantDb: req.tenantDb,
-  tenantId: req.tenantId || req.tenantDb.tenantId || req.user.tenantId,
+  organizationId: req.organizationId || req.tenantDb.organizationId || req.user.organizationId,
   userId: req.user.id || req.user.sub,
   branchId: req.branchId || null,
   grants: req.grants,
@@ -55,7 +55,7 @@ const listTeam = async (req, res, next) => {
 const getMember = async (req, res, next) => {
   try {
     const ctx = buildCtx(req);
-    const member = await teamService.getAssignment(req.tenantDb, ctx.tenantId, req.params.assignmentId);
+    const member = await teamService.getAssignment(req.tenantDb, ctx.organizationId, req.params.assignmentId);
     return sendSuccess(res, member, 'Team member retrieved');
   } catch (err) {
     return next(err);

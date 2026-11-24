@@ -278,7 +278,7 @@ const APPLE_STATUS = { 1: 'ACTIVE', 2: 'EXPIRED', 3: 'ON_HOLD', 4: 'GRACE', 5: '
  * an upgrade's new capacity lands; without it reconcileCapacity falls back to
  * the tenant's oldest organization.
  */
-const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { originListingId = null } = {}) => {
+const syncSubscriptionFromTransaction = async (organizationId, decodedTransaction, { originListingId = null } = {}) => {
   const plan = await findPlanForProductId(decodedTransaction.productId);
 
   const expiresAt = decodedTransaction.expiresDate ? new Date(Number(decodedTransaction.expiresDate)) : null;
@@ -342,7 +342,7 @@ const syncSubscriptionFromTransaction = async (tenantId, decodedTransaction, { o
     lastVerifiedAt: new Date(),
   };
 
-  return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
+  return subscriptionMigrationService.applyVerifiedSubscription(organizationId, values, {
     originListingId,
     idempotencyPrefix: values.externalTransactionId,
     // The tenant id the app sent as applicationUserName (BILL-01).
@@ -411,16 +411,16 @@ const _assertOurBundle = (decodedTransaction) => {
  * notification processor (billing-event.service.js) use: re-fetch Apple's
  * truth, then apply it through syncSubscriptionFromTransaction.
  *
- * `tenantId` is the caller's tenant for /sync. Without one (a notification,
+ * `organizationId` is the caller's tenant for /sync. Without one (a notification,
  * the daily sweep) the owner is resolved from the existing row or the
  * transaction's appAccountToken; returns null when no tenant owns it.
  * `environment` (a notification's, a stored row's) is asked first, when known.
  */
-const syncFromApple = async ({ transactionId, tenantId = null, originListingId = null, environment = null }) => {
+const syncFromApple = async ({ transactionId, organizationId = null, originListingId = null, environment = null }) => {
   const decodedTransaction = await appleApi.getLatestTransaction(transactionId, { environment });
   _assertOurBundle(decodedTransaction);
   const owner =
-    tenantId ||
+    organizationId ||
     (await subscriptionMigrationService.resolveSubscriptionOwner(
       'IOS',
       decodedTransaction.originalTransactionId,

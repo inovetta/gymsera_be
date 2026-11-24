@@ -12,7 +12,7 @@ const inMemorySeenNonces = new Map();
 
 /**
  * Generate a rotating, cryptographically signed QR token.
- * Payload: { subscriptionId, userId, tenantId, branchId }
+ * Payload: { subscriptionId, userId, organizationId, branchId }
  */
 const generateAttendanceQrToken = (payload, ttlSeconds = QR_TOKEN_TTL_SECONDS) => {
   if (!jwtConfig.secret) throw new Error('JWT_SECRET is not set');
@@ -22,7 +22,7 @@ const generateAttendanceQrToken = (payload, ttlSeconds = QR_TOKEN_TTL_SECONDS) =
       type: 'ATTENDANCE_QR',
       subscriptionId: payload.subscriptionId,
       userId: payload.userId,
-      tenantId: payload.tenantId,
+      organizationId: payload.organizationId,
       branchId: payload.branchId,
       nonce,
     },

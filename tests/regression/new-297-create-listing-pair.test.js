@@ -21,7 +21,7 @@ let ctx;
 let seq = 0;
 const listingBody = (extra = {}) => ({ gymName: `NEW297 Org ${Date.now()}-${(seq += 1)}`, packages: [{ name: 'Monthly', price: 50 }], ...extra });
 const Branch = () => ctx.tenant1Db.models.Branch;
-const listingCount = () => GymListing.count({ where: { tenantId: ctx.tenant1.id } });
+const listingCount = () => GymListing.count({ where: { organizationId: ctx.tenant1.id } });
 // One organisation at a time may be DRAFT / PENDING (the sequential gate): each one made here is set
 // INACTIVE once checked, so the next create is judged on its hours only.
 const create = async (body) => {

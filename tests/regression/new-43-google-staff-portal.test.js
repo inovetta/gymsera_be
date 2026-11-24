@@ -63,12 +63,12 @@ const makeTenant = (ownerUserId, over = {}) => factories.createTenant({ ownerUse
 
 /** An assignment written the way production writes it, then the routing index synced. */
 const assign = async (tenant, userId, { roleKey = 'DESK', status = 'ACTIVE' } = {}) => {
-  const db = { ...tenantDb, tenantId: tenant.id };
+  const db = { ...tenantDb, organizationId: tenant.id };
   const row = await factories.createRoleAssignment(db, {
     userId,
     roleKey,
     scopeType: 'ORG',
-    overrides: { status, tenantId: tenant.id },
+    overrides: { status, organizationId: tenant.id },
   });
   await membershipService.syncUserOrgIndex(tenant.id, userId, tenantDb);
   return row;

@@ -27,7 +27,7 @@ describe('OBS-07: admin audit log view', () => {
   const action = (over = {}) =>
     PlatformAuditLog.create({ actorUserId: admin.id, action: 'TENANT_APPROVED', targetType: 'TENANT', targetId: uuidv4(), createdAt: new Date(), ...over });
   const http = (over = {}) =>
-    AuditLog.create({ userId: admin.id, tenantId: tenantA.id, method: 'POST', path: '/api/v1/payments', statusCode: 201, ipAddress: '203.0.113.9', userAgent: 'Secret-UA/1.0', durationMs: 12, createdAt: new Date(), ...over });
+    AuditLog.create({ userId: admin.id, organizationId: tenantA.id, method: 'POST', path: '/api/v1/payments', statusCode: 201, ipAddress: '203.0.113.9', userAgent: 'Secret-UA/1.0', durationMs: 12, createdAt: new Date(), ...over });
   const get = (qs = '', token = adminToken) => request(app).get(`/api/v1/admin/audit-logs${qs}`).set('Authorization', `Bearer ${token}`);
 
   beforeAll(async () => {
@@ -42,7 +42,7 @@ describe('OBS-07: admin audit log view', () => {
     admin = await factories.createUser({ role: 'PLATFORM_ADMIN' });
     adminToken = signToken({ sub: admin.id, id: admin.id, role: 'PLATFORM_ADMIN', isVerified: true });
     tenantA = await factories.createTenant({ gymName: 'Alpha Fitness' });
-    hostToken = signToken({ sub: tenantA.ownerUserId, id: tenantA.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenantA.id });
+    hostToken = signToken({ sub: tenantA.ownerUserId, id: tenantA.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenantA.id });
   });
 
   test('401 without a token, 403 for a gym host', async () => {
@@ -72,7 +72,7 @@ describe('OBS-07: admin audit log view', () => {
     const res = await get('?source=requests');
     expect(res.status).toBe(200);
     const row = res.body.data[0];
-    expect(row).toMatchObject({ source: 'requests', userId: admin.id, tenantId: tenantA.id, method: 'POST', statusCode: 201, durationMs: 12 });
+    expect(row).toMatchObject({ source: 'requests', userId: admin.id, organizationId: tenantA.id, method: 'POST', statusCode: 201, durationMs: 12 });
     const body = JSON.stringify(res.body);
     for (const leaked of ['203.0.113.9', 'Secret-UA', 'reset-secret-1', 'leak@example.test']) expect(body).not.toContain(leaked);
     expect(row.ipAddress).toBeUndefined();
@@ -94,19 +94,19 @@ describe('OBS-07: admin audit log view', () => {
     expect(await names(`?to=${encodeURIComponent(min(90).toISOString())}`)).toEqual(['A3']);
   });
 
-  test('filters for requests: userId, tenantId, method', async () => {
+  test('filters for requests: userId, organizationId, method', async () => {
     const other = await factories.createTenant({ gymName: 'Beta Fitness' });
     await http({ path: '/a', method: 'POST' });
     await http({ path: '/b', method: 'DELETE' });
-    await http({ path: '/c', tenantId: other.id });
+    await http({ path: '/c', organizationId: other.id });
     const paths = async (qs) => (await get(`?source=requests&${qs}`)).body.data.map((r) => r.path).sort();
-    expect(await paths(`tenantId=${other.id}`)).toEqual(['/c']);
+    expect(await paths(`organizationId=${other.id}`)).toEqual(['/c']);
     expect(await paths('method=DELETE')).toEqual(['/b']);
-    expect(await paths(`userId=${admin.id}&tenantId=${tenantA.id}&method=POST`)).toEqual(['/a']);
+    expect(await paths(`userId=${admin.id}&organizationId=${tenantA.id}&method=POST`)).toEqual(['/a']);
   });
 
   test('invalid filters are a 422, not an empty list or a 500', async () => {
-    for (const qs of ['?source=other', '?userId=nope', '?tenantId=nope&source=requests', '?from=yesterday', '?method=TRACE&source=requests', `?action=${'x'.repeat(101)}`]) {
+    for (const qs of ['?source=other', '?userId=nope', '?organizationId=nope&source=requests', '?from=yesterday', '?method=TRACE&source=requests', `?action=${'x'.repeat(101)}`]) {
       expect((await get(qs)).status).toBe(422);
     }
   });

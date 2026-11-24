@@ -8,22 +8,22 @@ const { GymListing } = require('../../src/models/platform');
 
 describe('NEW-103: admin branch edit saves position and facilities', () => {
   let db;
-  let tenantId;
+  let organizationId;
   let branch;
 
   beforeAll(async () => {
     const h = await setupTestDatabases();
     const personas = await setupPersonas(h);
     db = h.tenant1;
-    tenantId = personas.owner.tenantId;
-    const listing = await GymListing.findOne({ where: { tenantId } });
+    organizationId = personas.owner.organizationId;
+    const listing = await GymListing.findOne({ where: { organizationId } });
     branch = await db.models.Branch.findOne({ where: { gymId: listing.id } });
   });
   afterAll(async () => {
     await teardownTestDatabases();
   });
 
-  const patch = (body) => asPersona('platformAdmin').patch(`/admin/tenants/${tenantId}/branches/${branch.id}`, body);
+  const patch = (body) => asPersona('platformAdmin').patch(`/admin/tenants/${organizationId}/branches/${branch.id}`, body);
 
   test('latitude and longitude are saved', async () => {
     const res = await patch({ latitude: 24.8607, longitude: 67.0011 });

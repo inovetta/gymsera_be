@@ -40,7 +40,7 @@ const subscriptionQuotaService = require('../services/subscription-quota.service
         const realBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
 
         const listings = await GymListing.findAll({
-          where: { tenantId: tenant.id, status: { [require('sequelize').Op.ne]: 'INACTIVE' } },
+          where: { organizationId: tenant.id, status: { [require('sequelize').Op.ne]: 'INACTIVE' } },
           order: [['createdAt', 'ASC']],
         });
         if (listings.length === 0) continue;
@@ -52,7 +52,7 @@ const subscriptionQuotaService = require('../services/subscription-quota.service
           const target = listings[0]; // oldest organization — where the original purchase happened
           await subscriptionQuotaService.recordCapacityEvent(
             {
-              tenantId: tenant.id,
+              organizationId: tenant.id,
               listingId: target.id,
               action: 'SLOT_ATTRIBUTED_UPGRADE',
               delta: unattributed,

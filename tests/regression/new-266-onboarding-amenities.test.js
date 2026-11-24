@@ -65,10 +65,10 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
   });
 
   test('approval copies them to the first branch', async () => {
-    const tenantCode = `test_n266_${Date.now().toString(36)}`;
-    dbNames.push(`gymsera_${tenantCode}`);
+    const organizationCode = `test_n266_${Date.now().toString(36)}`;
+    dbNames.push(`gymsera_${organizationCode}`);
     const tenant = await factories.createTenant({
-      tenantCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
+      organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
       mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }], facilitiesJson: AMENITIES },
     });
     await require('../../src/services/admin.service').approveTenant(tenant.id, admin.id);

@@ -2,10 +2,10 @@
  * NEW-86 — staff sockets join tenant and branch rooms (spec §9.2).
  *
  * Every token here comes from a real POST /auth/login. A team member's token
- * has role MEMBER and tenantId null, so the gateway has to derive the orgs from
- * verified staff relationships. The earlier room tests signed `tenantId` into
+ * has role MEMBER and organizationId null, so the gateway has to derive the orgs from
+ * verified staff relationships. The earlier room tests signed `organizationId` into
  * their tokens by hand, which real logins never carry, so they could not see
- * this. The one hand-signed token below is the "foreign tenantId claim" case.
+ * this. The one hand-signed token below is the "foreign organizationId claim" case.
  */
 const http = require('http');
 const request = require('supertest');
@@ -45,7 +45,7 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
     team = await buildTwoBranchTeam(dbHarness, personas);
-    T1 = team.tenantId;
+    T1 = team.organizationId;
     T2 = require('../harness/personas').personaManager.context.tenant2.id;
     const tenant = await Tenant.findByPk(T1);
     team.ownerUser = await User.findByPk(tenant.ownerUserId);
@@ -111,41 +111,41 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
     const sockets = await socketGateway.getIO().in(`user:${userId}`).fetchSockets();
     return [...new Set(sockets.flatMap((s) => [...s.rooms]))].filter((r) => r !== sockets[0]?.id).sort();
   };
-  const tenantRoomsOf = async (userId) => (await roomsOf(userId)).filter((r) => r.startsWith('tenant:'));
+  const tenantRoomsOf = async (userId) => (await roomsOf(userId)).filter((r) => r.startsWith('organization:'));
 
-  const ledgerAt = (tenantId, branchId) => () =>
-    ledgerService.notifyLedgerUpdated(tenantId, branchId, '2026-10-16');
+  const ledgerAt = (organizationId, branchId) => () =>
+    ledgerService.notifyLedgerUpdated(organizationId, branchId, '2026-10-16');
 
   const settle = () => new Promise((r) => setTimeout(r, 300));
 
-  test('owner: exactly user:{id} and tenant:{T}, no branch or org room', async () => {
+  test('owner: exactly user:{id} and organization:{T}, no branch or org room', async () => {
     const token = await login(team.ownerUser.email);
     await connect(token);
     expect(await roomsOf(team.ownerUser.id)).toEqual(
-      [`tenant:${T1}`, `user:${team.ownerUser.id}`].sort()
+      [`organization:${T1}`, `user:${team.ownerUser.id}`].sort()
     );
   });
 
-  test('branch manager (token tenantId null) joins tenant:{T} and its branch only', async () => {
+  test('branch manager (token organizationId null) joins organization:{T} and its branch only', async () => {
     const token = await login(team.managerA.user.email);
-    expect(JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString()).tenantId).toBeNull();
+    expect(JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString()).organizationId).toBeNull();
     await connect(token);
     expect(await tenantRoomsOf(team.managerA.user.id)).toEqual(
-      [`tenant:${T1}`, `tenant:${T1}:branch:${team.branchA.id}`].sort()
+      [`organization:${T1}`, `organization:${T1}:branch:${team.branchA.id}`].sort()
     );
   });
 
-  test('front desk joins tenant:{T} and its branch only', async () => {
+  test('front desk joins organization:{T} and its branch only', async () => {
     await connect(await login(team.frontDeskOff.user.email));
     expect(await tenantRoomsOf(team.frontDeskOff.user.id)).toEqual(
-      [`tenant:${T1}`, `tenant:${T1}:branch:${team.branchA.id}`].sort()
+      [`organization:${T1}`, `organization:${T1}:branch:${team.branchA.id}`].sort()
     );
   });
 
-  test('org-wide admin joins tenant:{T} and the org room, no branch rooms', async () => {
+  test('org-wide admin joins organization:{T} and the org room, no branch rooms', async () => {
     await connect(await login(team.orgAdmin.user.email));
     expect(await tenantRoomsOf(team.orgAdmin.user.id)).toEqual(
-      [`tenant:${T1}`, `tenant:${T1}:org`].sort()
+      [`organization:${T1}`, `organization:${T1}:org`].sort()
     );
   });
 
@@ -168,15 +168,15 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
     beforeAll(async () => {
       multi = await teamMember({
         tenantDb: dbHarness.tenant1,
-        tenantId: T1,
+        organizationId: T1,
         email: 'multi@new86.test',
         roleKey: 'MANAGER',
         scopeType: 'BRANCH',
         branchIds: [team.branchA.id],
       });
       await factories.createRoleAssignment(
-        { ...dbHarness.tenant2, tenantId: T2 },
-        { userId: multi.user.id, roleKey: 'ORG_ADMIN', scopeType: 'ORG', overrides: { tenantId: T2 } }
+        { ...dbHarness.tenant2, organizationId: T2 },
+        { userId: multi.user.id, roleKey: 'ORG_ADMIN', scopeType: 'ORG', overrides: { organizationId: T2 } }
       );
       await membershipService.syncUserOrgIndex(T2, multi.user.id, dbHarness.tenant2);
     });
@@ -184,28 +184,28 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
     test('joins the rooms of every org they are staff of', async () => {
       await connect(await login(multi.user.email));
       expect(await tenantRoomsOf(multi.user.id)).toEqual(
-        [`tenant:${T1}`, `tenant:${T1}:branch:${team.branchA.id}`, `tenant:${T2}`, `tenant:${T2}:org`].sort()
+        [`organization:${T1}`, `organization:${T1}:branch:${team.branchA.id}`, `organization:${T2}`, `organization:${T2}:org`].sort()
       );
     });
 
-    test('a handshake tenantId narrows to that org', async () => {
-      await connect(await login(multi.user.email), { tenantId: T2 });
-      expect(await tenantRoomsOf(multi.user.id)).toEqual([`tenant:${T2}`, `tenant:${T2}:org`].sort());
+    test('a handshake organizationId narrows to that org', async () => {
+      await connect(await login(multi.user.email), { organizationId: T2 });
+      expect(await tenantRoomsOf(multi.user.id)).toEqual([`organization:${T2}`, `organization:${T2}:org`].sort());
     });
 
-    test('a handshake tenantId for an org they are not staff of joins nothing', async () => {
-      await connect(await login(team.managerA.user.email), { tenantId: T2 });
+    test('a handshake organizationId for an org they are not staff of joins nothing', async () => {
+      await connect(await login(team.managerA.user.email), { organizationId: T2 });
       expect(await tenantRoomsOf(team.managerA.user.id)).toEqual([]);
     });
   });
 
   test('a gym member (membership row only) joins no staff room', async () => {
     const { UserGymMembership, GymListing } = require('../../src/models/platform');
-    const listing = await GymListing.findOne({ where: { tenantId: T1 } });
+    const listing = await GymListing.findOne({ where: { organizationId: T1 } });
     const member = await factories.createUser({ email: 'member@new86.test', role: 'MEMBER' });
     await UserGymMembership.create({
       userId: member.id,
-      tenantId: T1,
+      organizationId: T1,
       gymListingId: listing.id,
       subscriptionId: uuidv4(),
       gymName: 'Gym',
@@ -219,7 +219,7 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
 
   test('a revoked assignment joins nothing on a fresh connect', async () => {
     const gone = await teamMember({
-      tenantDb: dbHarness.tenant1, tenantId: T1, email: 'revoked@new86.test',
+      tenantDb: dbHarness.tenant1, organizationId: T1, email: 'revoked@new86.test',
       roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [team.branchA.id],
     });
     await gone.assignment.update({ status: 'REVOKED', revokedAt: new Date() });
@@ -230,7 +230,7 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
 
   test('a suspended assignment joins nothing on a fresh connect', async () => {
     const paused = await teamMember({
-      tenantDb: dbHarness.tenant1, tenantId: T1, email: 'suspended@new86.test',
+      tenantDb: dbHarness.tenant1, organizationId: T1, email: 'suspended@new86.test',
       roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [team.branchA.id],
     });
     await paused.assignment.update({ status: 'SUSPENDED' });
@@ -241,11 +241,11 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
 
   test('an assignment suspended while connected removes the rooms live', async () => {
     const live = await teamMember({
-      tenantDb: dbHarness.tenant1, tenantId: T1, email: 'live@new86.test',
+      tenantDb: dbHarness.tenant1, organizationId: T1, email: 'live@new86.test',
       roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [team.branchA.id],
     });
     await connect(await login(live.user.email));
-    expect(await tenantRoomsOf(live.user.id)).toContain(`tenant:${T1}`);
+    expect(await tenantRoomsOf(live.user.id)).toContain(`organization:${T1}`);
 
     await live.assignment.update({ status: 'SUSPENDED' });
     await membershipService.syncUserOrgIndex(T1, live.user.id, dbHarness.tenant1);
@@ -256,19 +256,19 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
 
   test('an org joined while connected is picked up on grants.changed', async () => {
     const late = await teamMember({
-      tenantDb: dbHarness.tenant1, tenantId: T1, email: 'late@new86.test',
+      tenantDb: dbHarness.tenant1, organizationId: T1, email: 'late@new86.test',
       roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [team.branchA.id],
     });
     await connect(await login(late.user.email));
     await factories.createRoleAssignment(
-      { ...dbHarness.tenant2, tenantId: T2 },
-      { userId: late.user.id, roleKey: 'ORG_ADMIN', scopeType: 'ORG', overrides: { tenantId: T2 } }
+      { ...dbHarness.tenant2, organizationId: T2 },
+      { userId: late.user.id, roleKey: 'ORG_ADMIN', scopeType: 'ORG', overrides: { organizationId: T2 } }
     );
     await membershipService.syncUserOrgIndex(T2, late.user.id, dbHarness.tenant2);
     await accessService.bumpUserPermissionVersion(late.user.id);
     await settle();
     expect(await tenantRoomsOf(late.user.id)).toEqual(
-      expect.arrayContaining([`tenant:${T2}`, `tenant:${T2}:org`])
+      expect.arrayContaining([`organization:${T2}`, `organization:${T2}:org`])
     );
   });
 
@@ -278,12 +278,12 @@ describe('NEW-86: staff socket rooms from verified membership', () => {
       id: team.managerA.user.id,
       role: 'MEMBER',
       isVerified: true,
-      tenantId: T2,
+      organizationId: T2,
     });
     await connect(forged);
     const rooms = await tenantRoomsOf(team.managerA.user.id);
-    expect(rooms.filter((r) => r.startsWith(`tenant:${T2}`))).toEqual([]);
+    expect(rooms.filter((r) => r.startsWith(`organization:${T2}`))).toEqual([]);
     // The rooms still come from verified membership: tenant 1, branch A.
-    expect(rooms).toEqual([`tenant:${T1}`, `tenant:${T1}:branch:${team.branchA.id}`].sort());
+    expect(rooms).toEqual([`organization:${T1}`, `organization:${T1}:branch:${team.branchA.id}`].sort());
   });
 });

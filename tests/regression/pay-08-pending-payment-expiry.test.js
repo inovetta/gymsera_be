@@ -47,7 +47,7 @@ describe('PAY-08: pending member payments expire; only the verified server path 
     post: (path, body, headers = {}) => {
       const req = request(server()).post(`/api/v1${path}`)
         .set('Authorization', `Bearer ${token}`).set('Accept', 'application/json')
-        .set('X-Tenant-Id', ctx.tenant1.id);
+        .set('X-Organization-Id', ctx.tenant1.id);
       for (const [k, v] of Object.entries(headers)) req.set(k, v);
       return req.send(body);
     },

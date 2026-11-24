@@ -86,8 +86,8 @@ const getTenantDbConfig = (env = process.env) => {
  * Sanitise a tenant code into a valid MySQL database name.
  * Format: gymsera_gym_XXXXXXXX  (lowercase, hyphens → underscores)
  */
-const buildDbName = (tenantCode) => {
-  const safe = tenantCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+const buildDbName = (organizationCode) => {
+  const safe = organizationCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
   return `gymsera_${safe}`;
 };
 
@@ -171,9 +171,9 @@ const provisioningSummary = (tenant, now = new Date()) => {
   };
 };
 
-const lockLost = (tenantId) => {
+const lockLost = (organizationId) => {
   const err = new Error(
-    `Provisioning of tenant ${tenantId} stopped: another run took over, or the tenant is no longer APPROVED.`
+    `Provisioning of tenant ${organizationId} stopped: another run took over, or the tenant is no longer APPROVED.`
   );
   err.code = 'PROVISIONING_LOCK_LOST';
   return err;
@@ -182,14 +182,14 @@ const lockLost = (tenantId) => {
 const leaseUntil = () => new Date(Date.now() + PROVISIONING_LEASE_MS);
 
 /** Takes the lease if nobody holds a live one. Returns the token, or null. */
-const claimLease = async (tenantId) => {
+const claimLease = async (organizationId) => {
   const token = crypto.randomUUID();
   const now = new Date();
   const [affected] = await Tenant.update(
     { provisioningLockToken: token, provisioningLockedUntil: leaseUntil() },
     {
       where: {
-        id: tenantId,
+        id: organizationId,
         status: TenantStatus.APPROVED,
         [Op.or]: [
           { provisioningLockToken: null },
@@ -203,20 +203,20 @@ const claimLease = async (tenantId) => {
 };
 
 /** Writes `fields` only while this run still holds the lease on an APPROVED tenant. */
-const writeUnderLease = async (tenantId, token, fields) => {
-  const where = { id: tenantId, provisioningLockToken: token, status: TenantStatus.APPROVED };
+const writeUnderLease = async (organizationId, token, fields) => {
+  const where = { id: organizationId, provisioningLockToken: token, status: TenantStatus.APPROVED };
   const [affected] = await Tenant.update(fields, { where });
   // MySQL counts changed rows: a renewal within the same second (DATETIME has
   // 1-second precision) changes nothing, so confirm the lease is still ours.
-  if (affected !== 1 && (await Tenant.count({ where })) !== 1) throw lockLost(tenantId);
+  if (affected !== 1 && (await Tenant.count({ where })) !== 1) throw lockLost(organizationId);
 };
 
-const releaseLease = async (tenantId, token, error) => {
+const releaseLease = async (organizationId, token, error) => {
   const message = redactString(String(error?.message || error || 'Unknown error')).slice(0, 500);
   await Tenant.update(
     { provisioningLockToken: null, provisioningLockedUntil: null, provisioningError: message },
-    { where: { id: tenantId, provisioningLockToken: token } }
-  ).catch((err) => console.warn(`[Provisioning] Could not release the lease for tenant ${tenantId}:`, err.message));
+    { where: { id: organizationId, provisioningLockToken: token } }
+  ).catch((err) => console.warn(`[Provisioning] Could not release the lease for tenant ${organizationId}:`, err.message));
 };
 
 const onboardingBranchData = (tenant) => {
@@ -227,8 +227,8 @@ const onboardingBranchData = (tenant) => {
   return b;
 };
 
-const firstListing = (tenantId) =>
-  GymListing.findOne({ where: { tenantId }, order: [['createdAt', 'ASC']] });
+const firstListing = (organizationId) =>
+  GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC']] });
 
 /**
  * Per-run context. The tenant DB connection is opened lazily, so a resumed run
@@ -236,7 +236,7 @@ const firstListing = (tenantId) =>
  */
 const createRunContext = (tenant) => {
   const dbConfig = getTenantDbConfig();
-  const dbName = buildDbName(tenant.tenantCode);
+  const dbName = buildDbName(tenant.organizationCode);
   const ctx = {
     tenant,
     dbConfig,
@@ -283,7 +283,7 @@ const createRunContext = (tenant) => {
       if (!ctx.models) {
         ctx.models = registerTenantModels(seq);
         seq.models = ctx.models;
-        seq.tenantId = tenant.id;
+        seq.organizationId = tenant.id;
       }
       return seq;
     },
@@ -366,7 +366,7 @@ const resolveTenantCityId = async (tenant) => {
   return null;
 };
 
-// ── Step 3: GymListing on the platform DB (found by tenantId, else created) ──
+// ── Step 3: GymListing on the platform DB (found by organizationId, else created) ──
 const stepCreateListing = async (ctx) => {
   const { tenant } = ctx;
   let existingListing = await firstListing(tenant.id);
@@ -393,7 +393,7 @@ const stepCreateListing = async (ctx) => {
     // Not swallowed (FLOW-02): without a listing the branch below would be
     // built unattached and the tenant activated with no public listing.
     existingListing = await GymListing.create({
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       cityId: safeCityId,
       areaId: safeAreaId,
       title: tenant.gymName,
@@ -651,10 +651,10 @@ const stepLinkSubscription = async (ctx) => {
   await require('./subscription-migration.service').planForApproval(tenant);
 
   // Legacy package plan when the tenant still has no plan row at all (found
-  // by tenantId). Not swallowed any more (FLOW-02): a tenant must not become
+  // by organizationId). Not swallowed any more (FLOW-02): a tenant must not become
   // ACTIVE without its plan.
   if (tenant.selectedPackageId) {
-    const existingSub = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
+    const existingSub = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
     if (!existingSub) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
       if (pkg) {
@@ -667,7 +667,7 @@ const stepLinkSubscription = async (ctx) => {
         else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
 
         await TenantSubscription.create({
-          tenantId: tenant.id,
+          organizationId: tenant.id,
           platformPackageId: pkg.id,
           startDate: start.toISOString().split('T')[0],
           endDate: end.toISOString().split('T')[0],
@@ -698,7 +698,7 @@ const stepLinkSubscription = async (ctx) => {
       await GymListing.sequelize.transaction(async (transaction) => {
         const { applied } = await subscriptionQuotaService.recordCapacityEvent(
           {
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             listingId: listing.id,
             action: 'SLOT_ATTRIBUTED_UPGRADE',
             delta: extraSlots,
@@ -724,7 +724,7 @@ const stepActivate = async (ctx, token) => {
   const { tenant, dbName } = ctx;
   const seq = await ctx.tenantDb();
   const { runTenantMigrations, missingTenantMigrations, MIGRATIONS } = require('../database/tenant-migration-runner');
-  await runTenantMigrations(seq, { tenantId: tenant.id, gymName: tenant.gymName });
+  await runTenantMigrations(seq, { organizationId: tenant.id, gymName: tenant.gymName });
   // NEW-127: a skipped migration ("resolve it by hand") is not recorded; the tenant must not go
   // live below target. It stays APPROVED at SUBSCRIPTION_LINKED and the admin's Resume retries.
   const missing = await missingTenantMigrations(seq);
@@ -785,7 +785,7 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
         title: 'Host Application Approved',
         message: `Your organization ${tenant.gymName || tenant.businessName} has been approved.`,
         deepLink: '/host/profile',
-        metadataJson: { tenantId: tenant.id }
+        metadataJson: { organizationId: tenant.id }
       });
     }
   } catch (notifErr) {
@@ -797,64 +797,64 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
 
 /**
  * Provision (or resume provisioning) an APPROVED tenant.
- * @param {string} tenantId
+ * @param {string} organizationId
  * @returns {Promise<{ activated?: boolean, alreadyActive?: boolean, inProgress?: boolean }>}
  *   `inProgress`: another run holds the lease; nothing was done.
  * @throws the step's error (the tenant stays APPROVED at the last finished step).
  */
-const processTenantProvisioning = async (tenantId) => {
-  console.log(`[Provisioning] Starting for tenant ${tenantId}`);
+const processTenantProvisioning = async (organizationId) => {
+  console.log(`[Provisioning] Starting for tenant ${organizationId}`);
 
-  const current = await Tenant.findByPk(tenantId);
-  if (!current) throw new Error(`Tenant ${tenantId} not found in platform DB`);
+  const current = await Tenant.findByPk(organizationId);
+  if (!current) throw new Error(`Tenant ${organizationId} not found in platform DB`);
   if (current.status === TenantStatus.ACTIVE && current.connectionStringEncrypted) {
-    console.log(`[Provisioning] Tenant ${tenantId} is already ACTIVE — skipping`);
+    console.log(`[Provisioning] Tenant ${organizationId} is already ACTIVE — skipping`);
     return { alreadyActive: true };
   }
   if (current.status !== TenantStatus.APPROVED) {
-    throw new Error(`Tenant ${tenantId} is ${current.status}, not APPROVED — nothing to provision`);
+    throw new Error(`Tenant ${organizationId} is ${current.status}, not APPROVED — nothing to provision`);
   }
 
   // Credentials are checked before the lease is taken: a server that is not
   // configured must not leave a lease behind (R-25).
   getTenantDbConfig();
 
-  const token = await claimLease(tenantId);
+  const token = await claimLease(organizationId);
   if (!token) {
-    console.log(`[Provisioning] Tenant ${tenantId} is being provisioned by another run — not starting a second one`);
+    console.log(`[Provisioning] Tenant ${organizationId} is being provisioned by another run — not starting a second one`);
     return { inProgress: true };
   }
 
-  const tenant = await Tenant.findByPk(tenantId, {
+  const tenant = await Tenant.findByPk(organizationId, {
     include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email'] }],
   });
   const ctx = createRunContext(tenant);
   let connectionStringEncrypted;
   try {
     const done = stepNumber(tenant.provisioningState); // 0 = nothing done yet
-    if (done > 0) console.log(`[Provisioning] Resuming tenant ${tenantId} after step ${done}/6 (${tenant.provisioningState})`);
+    if (done > 0) console.log(`[Provisioning] Resuming tenant ${organizationId} after step ${done}/6 (${tenant.provisioningState})`);
 
     for (const step of PROVISIONING_STEPS.slice(done)) {
       await runHook(step, 'before');
-      await writeUnderLease(tenantId, token, { provisioningLockedUntil: leaseUntil() });
+      await writeUnderLease(organizationId, token, { provisioningLockedUntil: leaseUntil() });
       if (step === 'ACTIVE') {
         connectionStringEncrypted = await stepActivate(ctx, token);
       } else {
         await STEP_WORK[step](ctx);
         await runHook(step, 'after');
-        await writeUnderLease(tenantId, token, { provisioningState: step, provisioningLockedUntil: leaseUntil() });
-        console.log(`[Provisioning] Tenant ${tenantId}: step ${stepNumber(step)}/6 ${step} done`);
+        await writeUnderLease(organizationId, token, { provisioningState: step, provisioningLockedUntil: leaseUntil() });
+        console.log(`[Provisioning] Tenant ${organizationId}: step ${stepNumber(step)}/6 ${step} done`);
       }
     }
   } catch (err) {
-    if (err.code !== 'PROVISIONING_LOCK_LOST') await releaseLease(tenantId, token, err);
+    if (err.code !== 'PROVISIONING_LOCK_LOST') await releaseLease(organizationId, token, err);
     throw err;
   } finally {
     await ctx.close();
   }
 
   await afterActivation(tenant, connectionStringEncrypted);
-  console.log(`[Provisioning] ✅ Tenant ${tenantId} fully provisioned and ACTIVE`);
+  console.log(`[Provisioning] ✅ Tenant ${organizationId} fully provisioned and ACTIVE`);
   return { activated: true };
 };
 

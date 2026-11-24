@@ -18,7 +18,7 @@ beforeAll(async () => {
   const personas = await setupPersonas(dbHarness);
   team = await buildTwoBranchTeam(dbHarness, personas);
   const { Tenant } = require('../../src/models/platform');
-  await require('../harness/factories').setPayoutAccount(team.tenantId, BANK); // P7b (R-94): the payout account store
+  await require('../harness/factories').setPayoutAccount(team.organizationId, BANK); // P7b (R-94): the payout account store
   app = await startTestServer();
 });
 
@@ -28,7 +28,7 @@ afterAll(async () => {
 });
 
 const profile = (token) =>
-  request(app).get('/api/v1/gyms/profile').set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId);
+  request(app).get('/api/v1/gyms/profile').set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
 describe('NEW-45: bank details on GET /gyms/profile', () => {
   test.each([

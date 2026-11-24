@@ -30,7 +30,7 @@ const hostStatusService = require('../services/host-status.service');
  * only its links. Permissions are resolved per branch because they genuinely can
  * differ — the same person may add members at one branch and only view at another.
  */
-const branchesForUser = async (tenantDb, tenantId, userId, isOwner) => {
+const branchesForUser = async (tenantDb, organizationId, userId, isOwner) => {
   const { Branch, RoleAssignment, RoleAssignmentBranch } = tenantDb.models;
 
   let branchIds;
@@ -57,7 +57,7 @@ const branchesForUser = async (tenantDb, tenantId, userId, isOwner) => {
 
   return Promise.all(
     branches.map(async (b) => {
-      const grants = await accessService.resolve(tenantDb, tenantId, userId, b.id);
+      const grants = await accessService.resolve(tenantDb, organizationId, userId, b.id);
       return {
         id: b.id,
         name: b.branchName,
@@ -94,17 +94,17 @@ const buildContext = async (userId) => {
   });
 
   const tenantIds = [
-    ...new Set([...ownedTenants.map((t) => t.id), ...memberships.map((m) => m.tenantId)]),
+    ...new Set([...ownedTenants.map((t) => t.id), ...memberships.map((m) => m.organizationId)]),
   ];
 
   const organizations = [];
   const tenantsById = {};
   let pendingApprovals = 0;
 
-  for (const tenantId of tenantIds) {
+  for (const organizationId of tenantIds) {
     const tenant =
-      ownedTenants.find((t) => t.id === tenantId) ||
-      (await Tenant.findByPk(tenantId, {
+      ownedTenants.find((t) => t.id === organizationId) ||
+      (await Tenant.findByPk(organizationId, {
         attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status', 'ownerUserId'],
       }));
 
@@ -114,20 +114,20 @@ const buildContext = async (userId) => {
 
     let tenantDb;
     try {
-      tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+      tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
     } catch (err) {
       // One unreachable tenant must not break the whole app shell.
-      console.warn(`[context] tenant ${tenantId} unreachable:`, err.message);
+      console.warn(`[context] tenant ${organizationId} unreachable:`, err.message);
       continue;
     }
 
-    const isOwner = tenant.ownerUserId === userId || ownedTenants.some((t) => t.id === tenantId);
-    const membership = memberships.find((m) => m.tenantId === tenantId);
+    const isOwner = tenant.ownerUserId === userId || ownedTenants.some((t) => t.id === organizationId);
+    const membership = memberships.find((m) => m.organizationId === organizationId);
     const roleKey = isOwner ? 'OWNER' : membership ? membership.roleKey : null;
     if (!roleKey) continue;
 
-    const orgGrants = await accessService.resolve(tenantDb, tenantId, userId, null);
-    const branches = await branchesForUser(tenantDb, tenantId, userId, isOwner);
+    const orgGrants = await accessService.resolve(tenantDb, organizationId, userId, null);
+    const branches = await branchesForUser(tenantDb, organizationId, userId, isOwner);
 
     const decidableBranchIds =
       isOwner || orgGrants.isOwner || (membership && membership.scopeType === 'ORG')
@@ -138,10 +138,10 @@ const buildContext = async (userId) => {
       .catch(() => 0);
     pendingApprovals += pending;
 
-    tenantsById[tenantId] = { status: tenant.status, name: tenant.gymName || tenant.businessName };
+    tenantsById[organizationId] = { status: tenant.status, name: tenant.gymName || tenant.businessName };
 
     organizations.push({
-      tenantId,
+      organizationId,
       name: tenant.gymName || tenant.businessName,
       isOwner,
       role: {
@@ -192,7 +192,7 @@ const getContext = async (req, res, next) => {
  * request (API-03, spec §10.2).
  *
  * SEC-02: the tenant is never taken from input. `organizations` comes from the
- * caller's own verified memberships (buildContext); X-Tenant-Id may only
+ * caller's own verified memberships (buildContext); X-Organization-Id may only
  * SELECT one of those. A header naming any other tenant is answered 404, the
  * same as tenantContext, without saying whether that tenant exists.
  *
@@ -210,13 +210,13 @@ const getBootstrap = async (req, res, next) => {
     // Verify any selector against the caller's memberships BEFORE building
     // anything: the same check tenantContext uses (owner, membership index, or
     // a live role assignment — which also repairs a lagging index).
-    const header = req.headers['x-tenant-id'];
+    const header = req.headers['x-organization-id'];
     if (header && !(await userBelongsToTenant(userId, header))) return notFound();
-    const claimedTenantId = !header && req.user.tenantId ? req.user.tenantId : null;
+    const claimedTenantId = !header && req.user.organizationId ? req.user.organizationId : null;
     const claimValid = claimedTenantId ? await userBelongsToTenant(userId, claimedTenantId) : false;
 
     const { tenantsById, ...context } = await buildContext(userId);
-    const orgIds = context.organizations.map((o) => o.tenantId);
+    const orgIds = context.organizations.map((o) => o.organizationId);
 
     let activeTenantId;
     if (header) {
@@ -230,7 +230,7 @@ const getBootstrap = async (req, res, next) => {
       activeTenantId = orgIds[0] || null;
     }
 
-    const org = activeTenantId ? context.organizations.find((o) => o.tenantId === activeTenantId) : null;
+    const org = activeTenantId ? context.organizations.find((o) => o.organizationId === activeTenantId) : null;
     const tenantStatus = org ? tenantsById[activeTenantId]?.status : null;
 
     const [unread, quota, hostStatus] = await Promise.all([
@@ -241,7 +241,7 @@ const getBootstrap = async (req, res, next) => {
       hostStatusService.getHostStatus(userId),
     ]);
 
-    res.vary('X-Tenant-Id');
+    res.vary('X-Organization-Id');
     return sendSuccess(
       res,
       {
@@ -253,7 +253,7 @@ const getBootstrap = async (req, res, next) => {
         app: appConfig(),
         activeTenant: org
           ? {
-            tenantId: org.tenantId,
+            organizationId: org.organizationId,
             name: org.name,
             status: tenantStatus,
             isOwner: org.isOwner,

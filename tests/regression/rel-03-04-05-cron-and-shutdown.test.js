@@ -93,7 +93,7 @@ describe('Prompt 2A: REL-03 and REL-04 Reliability', () => {
 
       // Create a tenant in ACTIVE status
       activeTenant = await Tenant.create({
-        tenantCode: 'TEN-REL04-' + Date.now(),
+        organizationCode: 'TEN-REL04-' + Date.now(),
         businessName: 'Rel04 Gym',
         ownerUserId: owner.id,
         email: owner.email,
@@ -106,7 +106,7 @@ describe('Prompt 2A: REL-03 and REL-04 Reliability', () => {
       const pastStart = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       expiredSub = await TenantSubscription.create({
-        tenantId: activeTenant.id,
+        organizationId: activeTenant.id,
         platform: 'MANUAL',
         status: 'ACTIVE',
         startDate: pastStart,

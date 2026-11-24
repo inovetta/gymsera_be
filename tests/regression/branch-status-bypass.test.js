@@ -22,7 +22,7 @@ describe('Regression §9.1: updateBranch status bypass', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     const personas = await setupPersonas(dbHarness);
-    tenant = personas.owner.tenantId;
+    tenant = personas.owner.organizationId;
 
     listing = await factories.createGymListing(tenant, { title: 'Bypass Test Org' });
     branch = await factories.createBranch(dbHarness.tenant1, listing.id, {

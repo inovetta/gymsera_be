@@ -85,15 +85,15 @@ describe('P7c items 1 and 2: a lapsed plan locks branches after the 7-day grace'
     });
     return {
       truth,
-      buy: () => appleBilling.syncFromApple({ transactionId: 'apple-1', tenantId: tenant.id }),
-      sync: () => appleBilling.syncFromApple({ transactionId: 'apple-1', tenantId: tenant.id }),
+      buy: () => appleBilling.syncFromApple({ transactionId: 'apple-1', organizationId: tenant.id }),
+      sync: () => appleBilling.syncFromApple({ transactionId: 'apple-1', organizationId: tenant.id }),
     };
   };
   const google = () => {
     const { truth } = fakes.installGoogleFakes({ tok: fakes.googlePurchase({ productId: plan5.androidProductId }) });
     return {
       truth,
-      sync: () => googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', tenantId: tenant.id }),
+      sync: () => googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', organizationId: tenant.id }),
     };
   };
 
@@ -189,7 +189,7 @@ describe('P7c items 1 and 2: a lapsed plan locks branches after the 7-day grace'
       expect(await lockedCount()).toBe(0);
 
       await lapse();
-      const row = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
+      const row = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
       expect(row.status).toBe(status);
       // Unbuilt slots go first (EXPIRED included, item 2).
       expect(await reservedSlots()).toBe(0);
@@ -226,7 +226,7 @@ describe('P7c items 1 and 2: a lapsed plan locks branches after the 7-day grace'
 
       // A plan that entitles again unlocks every branch.
       await recover();
-      expect((await TenantSubscription.findOne({ where: { tenantId: tenant.id } })).status).toBe('ACTIVE');
+      expect((await TenantSubscription.findOne({ where: { organizationId: tenant.id } })).status).toBe('ACTIVE');
       expect(await lockedCount()).toBe(0);
     });
   });
@@ -248,7 +248,7 @@ describe('P7c items 1 and 2: a lapsed plan locks branches after the 7-day grace'
       startDate: new Date(start - 40 * DAY), endDate: new Date(start - 2 * DAY),
     });
     await runExpiryCheck();
-    const row = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
+    const row = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
     expect(row.status).toBe('EXPIRED');
     expect(await reservedSlots()).toBe(0);
     expect(await lockedCount()).toBe(0);

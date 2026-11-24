@@ -26,7 +26,7 @@ describe('NEW-187: host lists send the real plan name or null, never an invented
     personas = await setupPersonas(h);
     app = await startTestServer();
     const { Branch, MembershipPlan, MemberSubscription, AttendanceLog } = h.tenant1.models;
-    const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
     branch = await Branch.findOne({ where: { gymId: listing.id } });
     plan = await MembershipPlan.create({
       gymId: branch.gymId, branchId: branch.id, name: 'Gold Monthly', price: 3000,
@@ -69,7 +69,7 @@ describe('NEW-187: host lists send the real plan name or null, never an invented
 
   const get = async (path) => {
     const res = await request(app).get(`/api/v1/host/branches/${branch.id}${path}`)
-      .set('Authorization', `Bearer ${personas.owner.token}`).set('X-Tenant-Id', personas.owner.tenantId);
+      .set('Authorization', `Bearer ${personas.owner.token}`).set('X-Organization-Id', personas.owner.organizationId);
     expect(res.status).toBe(200);
     return res.body.data;
   };

@@ -133,7 +133,7 @@ describe('FLOW-06: Read-Only Check Script for Historical Subscription Date Defec
     // Execute check script
     const result = await processTenantSubscriptionDatesCheck(
       tenantSeq,
-      { tenantId: 'test-tenant-flow06', gymName: 'Test Gym' },
+      { organizationId: 'test-tenant-flow06', gymName: 'Test Gym' },
       { quiet: true, todayOverride: fixedToday }
     );
 
@@ -205,7 +205,7 @@ describe('FLOW-06: Read-Only Check Script for Historical Subscription Date Defec
     try {
       const result = await processTenantSubscriptionDatesCheck(
         tenantSeq,
-        { tenantId: 'test-tenant-verbose', gymName: 'Vitality Fit Studio' },
+        { organizationId: 'test-tenant-verbose', gymName: 'Vitality Fit Studio' },
         { verbose: true, quiet: false, todayOverride: fixedToday }
       );
 

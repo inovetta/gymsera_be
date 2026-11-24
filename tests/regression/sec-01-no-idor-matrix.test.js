@@ -103,7 +103,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     });
     await UserGymMembership.create({
       userId: tenant1Member.id,
-      tenantId: ctx.tenant1.id,
+      organizationId: ctx.tenant1.id,
       gymListingId: ctx.listing1.id,
       subscriptionId: tenant1SubBranch1.id,
       status: 'ACTIVE',
@@ -119,7 +119,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     });
     await UserGymMembership.create({
       userId: tenant1Member.id,
-      tenantId: ctx.tenant1.id,
+      organizationId: ctx.tenant1.id,
       gymListingId: ctx.listing1.id,
       subscriptionId: tenant1SubBranch2.id,
       status: 'ACTIVE',
@@ -135,7 +135,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     });
     await UserGymMembership.create({
       userId: tenant2Member.id,
-      tenantId: ctx.tenant2.id,
+      organizationId: ctx.tenant2.id,
       gymListingId: ctx.listing2.id,
       subscriptionId: tenant2Sub.id,
       status: 'ACTIVE',

@@ -4,7 +4,7 @@
  *
  * The released build:
  * - uploads with POST /tenants/:id/kyc-documents and NO `documentType` (verification_docs_screen.dart
- *   calls uploadKycDocuments(tenantId, [path])), so the API stores its default BUSINESS_LICENSE;
+ *   calls uploadKycDocuments(organizationId, [path])), so the API stores its default BUSINESS_LICENSE;
  * - reads the upload answer as `data.kycDocuments` (tenants_repository.dart); a list in `data` makes
  *   Dart throw, so the host sees an error although the upload was stored (NEW-198, left as is: the
  *   answer is the SEC-10 contract other tests and the P9 build rely on);
@@ -19,13 +19,13 @@ const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = 
 const { stopTestServer } = require('../harness/test-server');
 const { Tenant } = require('../../src/models/platform');
 
-let tenantId;
+let organizationId;
 const pdf = () => Buffer.from('%PDF-1.5 a document');
 
 beforeAll(async () => {
   const h = await setupTestDatabases();
   await setupPersonas(h);
-  tenantId = h.tenant1.tenantId || '11111111-1111-4111-8111-111111111111';
+  organizationId = h.tenant1.organizationId || '11111111-1111-4111-8111-111111111111';
 });
 
 afterAll(async () => {
@@ -34,7 +34,7 @@ afterAll(async () => {
 });
 
 const upload = (documentType) => {
-  const req = asPersona('owner').post(`/tenants/${tenantId}/kyc-documents`);
+  const req = asPersona('owner').post(`/tenants/${organizationId}/kyc-documents`);
   if (documentType !== undefined) req.field('documentType', documentType);
   return req.attach('documents', pdf(), { filename: 'licence.pdf', contentType: 'application/pdf' });
 };
@@ -43,7 +43,7 @@ describe('P9b item 0: the released app build against the P9 API', () => {
   test('an upload with no type is accepted and stored as BUSINESS_LICENSE', async () => {
     const res = await upload(undefined);
     expect(res.status).toBe(201);
-    const stored = (await Tenant.findByPk(tenantId)).kycDocumentsJson;
+    const stored = (await Tenant.findByPk(organizationId)).kycDocumentsJson;
     expect(stored[stored.length - 1].documentType).toBe('BUSINESS_LICENSE');
   });
 
@@ -81,7 +81,7 @@ describe('P9b item 0: the released app build against the P9 API', () => {
   });
 
   test('the owner still gets every document with its type from the list route', async () => {
-    const res = await asPersona('owner').get(`/tenants/${tenantId}/kyc-documents`);
+    const res = await asPersona('owner').get(`/tenants/${organizationId}/kyc-documents`);
     expect(res.status).toBe(200);
     expect(res.body.data.map((d) => d.documentType)).toEqual(expect.arrayContaining(['BUSINESS_LICENSE', 'OWNER_ID']));
   });

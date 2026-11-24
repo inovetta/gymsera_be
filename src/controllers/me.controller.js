@@ -328,7 +328,7 @@ const getStaffStatus = async (req, res, next) => {
 
     for (const membership of memberships) {
       try {
-        const tenant = await Tenant.findByPk(membership.tenantId, {
+        const tenant = await Tenant.findByPk(membership.organizationId, {
           attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status'],
         });
         if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
@@ -364,7 +364,7 @@ const getStaffStatus = async (req, res, next) => {
         for (const branch of branchRows) {
           branches.push({
             branchId: branch.id,
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             branchName: branch.branchName,
             gymName: tenant.gymName || tenant.businessName,
             designation,
@@ -372,7 +372,7 @@ const getStaffStatus = async (req, res, next) => {
         }
       } catch (err) {
         // One unreachable tenant must not break the whole status check.
-        console.warn(`[staff-status] tenant ${membership.tenantId} unreachable:`, err.message);
+        console.warn(`[staff-status] tenant ${membership.organizationId} unreachable:`, err.message);
       }
     }
 

@@ -47,7 +47,7 @@ describe('BILL-05: subscriber price follows the provider\'s actual charge', () =
     plan5 = await factories.createBillingPlan({
       branchCount: 5, sortOrder: 5, monthlyPrice: 4999, annualPrice: 49999, stripeMonthlyPriceId: 'price_5m',
     });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const rowFor = (externalId) => TenantSubscription.findOne({ where: { externalOriginalTransactionId: externalId } });
@@ -64,7 +64,7 @@ describe('BILL-05: subscriber price follows the provider\'s actual charge', () =
 
     // Admin edits the catalog: the subscriber's amount must not move.
     await catalog.updatePlan(plan5.id, { monthlyPrice: 3999 });
-    await appleBilling.syncFromApple({ transactionId: '5000001', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: '5000001', organizationId: tenant.id });
     row = await rowFor('5000001');
     expect(Number(row.amount)).toBe(4999);
 
@@ -84,11 +84,11 @@ describe('BILL-05: subscriber price follows the provider\'s actual charge', () =
     const { truth } = fakes.installAppleFakes({
       5000002: fakes.appleTransaction({ originalTransactionId: '5000002', productId: plan5.iosMonthlyProductId, price: 4999000, currency: 'PKR' }),
     });
-    await appleBilling.syncFromApple({ transactionId: '5000002', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: '5000002', organizationId: tenant.id });
     truth['5000002'] = fakes.appleTransaction({
       originalTransactionId: '5000002', transactionId: '5000002-2', productId: plan5.iosMonthlyProductId, price: 19990, currency: 'USD',
     });
-    await appleBilling.syncFromApple({ transactionId: '5000002', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: '5000002', organizationId: tenant.id });
     const row = await rowFor('5000002');
     expect(Number(row.amount)).toBe(19.99);
     expect(row.currency).toBe('USD');
@@ -98,13 +98,13 @@ describe('BILL-05: subscriber price follows the provider\'s actual charge', () =
     const { truth } = fakes.installGoogleFakes({
       'tok-p': fakes.googlePurchase({ productId: plan5.androidProductId, recurringPrice: { currencyCode: 'PKR', units: '4999', nanos: 0 } }),
     });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-p', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-p', organizationId: tenant.id });
     expect(Number((await rowFor('tok-p')).amount)).toBe(4999);
 
     truth['tok-p'] = fakes.googlePurchase({
       productId: plan5.androidProductId, latestOrderId: 'GPA.2', recurringPrice: { currencyCode: 'PKR', units: '5499', nanos: 500000000 },
     });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-p', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-p', organizationId: tenant.id });
     const row = await rowFor('tok-p');
     expect(Number(row.amount)).toBe(5499.5);
     expect(row.currency).toBe('PKR');
@@ -112,7 +112,7 @@ describe('BILL-05: subscriber price follows the provider\'s actual charge', () =
 
   test('Stripe: a price migration on the same subscription updates the amount from Stripe', async () => {
     const { truth } = fakes.installStripeFakes({
-      subscriptions: { sub_p: fakes.stripeSubscription({ id: 'sub_p', priceId: 'price_5m', tenantId: tenant.id, unitAmount: 499900 }) },
+      subscriptions: { sub_p: fakes.stripeSubscription({ id: 'sub_p', priceId: 'price_5m', organizationId: tenant.id, unitAmount: 499900 }) },
     });
     const send = (id) => request(app).post('/api/v1/billing/webhooks/stripe')
       .send({ id, type: 'customer.subscription.updated', data: { object: { id: 'sub_p' } } });
@@ -120,7 +120,7 @@ describe('BILL-05: subscriber price follows the provider\'s actual charge', () =
     expect(Number((await rowFor('sub_p')).amount)).toBe(4999);
     expect((await rowFor('sub_p')).currency).toBe('PKR');
 
-    truth.subscriptions.sub_p = fakes.stripeSubscription({ id: 'sub_p', priceId: 'price_5m', tenantId: tenant.id, unitAmount: 549900 });
+    truth.subscriptions.sub_p = fakes.stripeSubscription({ id: 'sub_p', priceId: 'price_5m', organizationId: tenant.id, unitAmount: 549900 });
     await send('evt_p2');
     expect(Number((await rowFor('sub_p')).amount)).toBe(5499);
   });
@@ -129,14 +129,14 @@ describe('BILL-05: subscriber price follows the provider\'s actual charge', () =
     const { truth } = fakes.installAppleFakes({
       5000003: fakes.appleTransaction({ originalTransactionId: '5000003', productId: plan5.iosMonthlyProductId }),
     });
-    await appleBilling.syncFromApple({ transactionId: '5000003', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: '5000003', organizationId: tenant.id });
     let row = await rowFor('5000003');
     expect(Number(row.amount)).toBe(4999); // catalog price at purchase, the only number available
     expect(row.currency).toBe('PKR'); // the catalog's currency
 
     await catalog.updatePlan(plan5.id, { monthlyPrice: 3999 });
     truth['5000003'] = fakes.appleTransaction({ originalTransactionId: '5000003', transactionId: '5000003-2', productId: plan5.iosMonthlyProductId });
-    await appleBilling.syncFromApple({ transactionId: '5000003', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: '5000003', organizationId: tenant.id });
     row = await rowFor('5000003');
     expect(Number(row.amount)).toBe(4999);
   });

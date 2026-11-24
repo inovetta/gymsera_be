@@ -144,7 +144,7 @@ describe('capacity counts what the device holds', () => {
     const door = await w.device(w.db1, { branch, registryBody: REG, name: 'Full Door' });
     await Notification.destroy({ where: { userId: w.owner.user.id, type: 'device_capacity' } });
     await door.sim.upload('options', 'UserCount=9,FPCount=0,FaceCount=0');
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     const sent = await Notification.findAll({ where: { userId: w.owner.user.id, type: 'device_capacity' }, raw: true });
     expect(sent).toHaveLength(1);
     expect(sent[0].message).toMatch(/Full Door is at 90% of its user capacity \(9 of 10\)/);

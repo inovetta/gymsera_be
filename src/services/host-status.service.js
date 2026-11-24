@@ -2,7 +2,7 @@
  * Where a host stands: one answer for every client (Phase 7 P2, BUG-11/12/13/18/24).
  *
  * Before this, each host tab guessed from a different source — /host/today-summary's
- * A/B/C state (read from the JWT's tenantId), the listings' statuses, constants on
+ * A/B/C state (read from the JWT's organizationId), the listings' statuses, constants on
  * Host Profile — so one host saw "under review" on one tab and "Verified, Growth Plan"
  * on another while their payment was still due. The status here is derived only from
  * stored facts: the tenant the caller OWNS (never a selector the client sends), its
@@ -77,7 +77,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
     return {
       status: HostStatus.NONE,
       nextAction: NextAction.BECOME_HOST,
-      tenantId: null,
+      organizationId: null,
       gymName: null,
       applicationSubmitted: false,
       listingComplete: false,
@@ -128,7 +128,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
   return {
     status,
     nextAction,
-    tenantId: tenant.id,
+    organizationId: tenant.id,
     gymName: tenant.gymName || tenant.businessName || null,
     // R-112 (C5): the brand the host typed (null until Step 2 saves it).
     brandName: tenant.businessName || null,

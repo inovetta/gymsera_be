@@ -17,7 +17,7 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   const personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
+  const listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
   branch = await factories.createBranch(tenantDb, listing.id, { name: 'Hours branch' });
   await branch.update({ openingTime: '06:00', closingTime: '22:30' });
   await factories.makeBranchLive(tenantDb, branch);

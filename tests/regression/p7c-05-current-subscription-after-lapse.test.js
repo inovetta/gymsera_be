@@ -42,7 +42,7 @@ describe('P7c item 5: the current subscription after a lapse', () => {
     const listing = await factories.createGymListing(tenant.id);
     await factories.createBranch(dbHarness.tenant1, listing.id);
     await factories.createBranch(dbHarness.tenant1, listing.id);
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const current = () => request(app).get('/api/v1/host/subscription/current').set('Authorization', `Bearer ${token}`);

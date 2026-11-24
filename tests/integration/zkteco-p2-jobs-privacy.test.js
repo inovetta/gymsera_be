@@ -47,7 +47,7 @@ describe('layer 1: watchdog', () => {
       const p = await d.sim.poll(); // the device takes the commands and never answers
       expect(p.commands.length).toBe(2);
       const now = new Date(Date.now() + 61000);
-      await jobs.watchdogTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, now);
+      await jobs.watchdogTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, now);
       const [c] = await w.q(w.db1, 'SELECT * FROM device_commands WHERE device_id = ? AND member_id = ? ORDER BY id LIMIT 1', [d.id, u.id]);
       if (c.status === 'queued') waits.push(Math.round((new Date(c.not_before).getTime() - now.getTime()) / 1000));
     }
@@ -68,16 +68,16 @@ describe('layer 1: watchdog', () => {
     // While it is offline a member joins.
     const u = await w.member('Joined While Offline');
     await w.subscribe(w.db1, { user: u, branch });
-    let r = await jobs.watchdogTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 });
+    let r = await jobs.watchdogTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 });
     expect(r.offline).toBe(1);
     expect(await notes()).toBe(before + 1);
-    r = await jobs.watchdogTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 });
+    r = await jobs.watchdogTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 });
     expect(r.offline).toBe(0);
     expect(await notes()).toBe(before + 1); // once per incident
     // Back: it polls, gets the member, and the watchdog clears the incident.
     await d.sim.drain();
     expect(d.sim.holds(await w.pinOf(w.db1, u.id)).user).not.toBeNull();
-    r = await jobs.watchdogTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 });
+    r = await jobs.watchdogTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 });
     expect(r.online).toBe(1);
     expect((await w.q(w.db1, 'SELECT offline_since, offline_notified_at FROM access_device_details WHERE id = ?', [d.id]))[0]).toEqual({ offline_since: null, offline_notified_at: null });
   });
@@ -90,7 +90,7 @@ describe('layer 1: watchdog', () => {
     await d.sim.drain();
     await privacy.giveConsent(w.db1, { memberId: u.id, method: 'in_person' });
     const { commandId } = await privacy.requestEnrollment(w.db1, { deviceId: d.id, memberId: u.id });
-    await jobs.watchdogTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, new Date(Date.now() + 3 * 60000));
+    await jobs.watchdogTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, new Date(Date.now() + 3 * 60000));
     expect((await w.commands(w.db1, d.id, 'id = ?', [commandId]))[0].status).toBe('expired');
   });
 });
@@ -133,11 +133,11 @@ describe('layer 3: nightly audit', () => {
     // Today in Karachi (UTC+5) at 02:00 + stagger - 1 minute → not yet; + 1 minute → requested; again → nothing.
     const at = (minutes) => new Date(new Date(`${day(0)}T00:00:00Z`).getTime() - 5 * 3600000 + (120 + stagger + minutes) * 60000);
     const mine = async () => (await w.q(w.db1, 'SELECT COUNT(*) AS n FROM device_audits WHERE device_id = ?', [d.id]))[0].n;
-    await jobs.auditTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, at(-1));
+    await jobs.auditTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, at(-1));
     expect(await mine()).toBe(0);
-    await jobs.auditTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, at(1));
+    await jobs.auditTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, at(1));
     expect(await mine()).toBe(1);
-    await jobs.auditTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, at(90));
+    await jobs.auditTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, at(90));
     expect(await mine()).toBe(1);
   });
 });
@@ -329,7 +329,7 @@ describe('security (§14)', () => {
   });
 
   test('tenant isolation: a tenant 2 device never gets tenant 1 members; each tenant has its own PIN sequence', async () => {
-    const d2 = await w.device(w.db2, { branch: w.ctx.branch2, registryBody: REG, tenantId: w.ctx.tenant2.id });
+    const d2 = await w.device(w.db2, { branch: w.ctx.branch2, registryBody: REG, organizationId: w.ctx.tenant2.id });
     const u2 = await w.member('Tenant Two Member');
     await w.subscribe(w.db2, { user: u2, branch: w.ctx.branch2 });
     const got = await d2.sim.drain();

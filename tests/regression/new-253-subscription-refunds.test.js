@@ -24,17 +24,17 @@ const payoutService = require('../../src/services/payout.service');
 
 let app; let personas; let ctx; let db1; let plan; let tenant2Plan; let gym1;
 let seq = 0;
-const T1 = () => personas.owner.tenantId;
+const T1 = () => personas.owner.organizationId;
 
-const makeSub = async ({ status = 'ACTIVE', branch = ctx.branch1, db = db1, tenantId = T1(), planRow = plan, user = null, pay = '3000.00', paidDaysAgo = 0 } = {}) => {
+const makeSub = async ({ status = 'ACTIVE', branch = ctx.branch1, db = db1, organizationId = T1(), planRow = plan, user = null, pay = '3000.00', paidDaysAgo = 0 } = {}) => {
   const member = user || await factories.createUser({ email: `n253-${++seq}@new253.test`, fullName: `N253 Member ${seq}`, role: 'MEMBER' });
   const sub = await db.models.MemberSubscription.create({
     userId: member.id, membershipPlanId: planRow.id, branchId: branch.id, status,
     startDate: daysFromToday(-1), endDate: daysFromToday(29),
   });
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
   await UserGymMembership.create({
-    userId: member.id, tenantId, gymListingId: listing.id, subscriptionId: sub.id,
+    userId: member.id, organizationId, gymListingId: listing.id, subscriptionId: sub.id,
     gymName: listing.title, planName: planRow.name, startDate: sub.startDate, endDate: sub.endDate, status,
   });
   let payment = null;
@@ -48,14 +48,14 @@ const makeSub = async ({ status = 'ACTIVE', branch = ctx.branch1, db = db1, tena
   return { sub, member, payment };
 };
 
-const as = (persona, method, path, body, { tenantId = T1(), key = null } = {}) => {
+const as = (persona, method, path, body, { organizationId = T1(), key = null } = {}) => {
   let r = request(app)[method](`/api/v1/subscriptions/${path}`).set('Authorization', `Bearer ${persona.token}`);
-  if (tenantId) r = r.set('X-Tenant-Id', tenantId);
+  if (organizationId) r = r.set('X-Organization-Id', organizationId);
   if (key) r = r.set('Idempotency-Key', key);
   return method === 'get' ? r : r.send(body || {});
 };
 const cancelWithRefund = (persona, sub, extra = {}, opts) => as(persona, 'post', `staff/${sub.id}/cancel`, { refund: true, ...extra }, opts);
-const memberCall = (member, method, sub, body) => as(member, method, `${sub.id}/refund-request`, body, { tenantId: null });
+const memberCall = (member, method, sub, body) => as(member, method, `${sub.id}/refund-request`, body, { organizationId: null });
 const reversalsOf = (payment) => db1.models.LedgerAdjustment.findAll({ where: { relatedPaymentId: payment.id, type: 'REVERSAL' } });
 const setPolicy = (refundsAllowed, refundWindowDays = null) => gym1.update({ refundsAllowed, refundWindowDays });
 const expectedSuggestion = (q) => Math.floor((300000 * q.unusedDays) / q.periodDays) / 100;
@@ -205,7 +205,7 @@ describe('NEW-253 A: staff cancel with refund', () => {
     expect(approval).toMatchObject({ actionKey: 'payments.refund', status: 'PENDING' });
 
     const ok = await request(app).post(`/api/v1/approvals/${approval.id}/approve`)
-      .set('Authorization', `Bearer ${personas.owner.token}`).set('X-Tenant-Id', T1()).send({});
+      .set('Authorization', `Bearer ${personas.owner.token}`).set('X-Organization-Id', T1()).send({});
     expect(ok.status).toBe(200);
     const rev = await reversalsOf(payment);
     expect(rev).toHaveLength(1);
@@ -255,7 +255,7 @@ describe('NEW-253 A: staff cancel with refund', () => {
   });
 
   test('another tenant\'s subscription: 404, untouched', async () => {
-    const { sub } = await makeSub({ db: ctx.tenant2Db, branch: ctx.branch2, planRow: tenant2Plan, tenantId: ctx.tenant2.id });
+    const { sub } = await makeSub({ db: ctx.tenant2Db, branch: ctx.branch2, planRow: tenant2Plan, organizationId: ctx.tenant2.id });
     expect((await cancelWithRefund(personas.owner, sub)).status).toBe(404);
     expect((await as(personas.owner, 'get', `staff/${sub.id}/refund-quote`)).status).toBe(404);
     expect((await sub.reload()).status).toBe('ACTIVE');
@@ -263,7 +263,7 @@ describe('NEW-253 A: staff cancel with refund', () => {
 
   test('cancel with refund queues the device sync for the member', async () => {
     await registry.createDevice({
-      tenantId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.gymId || null,
+      organizationId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.gymId || null,
       name: 'N253 Door', direction: 'in', importFirst: false, createdBy: personas.owner.user.id,
     });
     const { sub, member } = await makeSub();
@@ -414,7 +414,7 @@ describe('NEW-253 B: member asks for a refund', () => {
     const { sub } = await memberSub();
     await memberCancel(sub);
     const reqId = (await memberCall(personas.member, 'post', sub, {})).body.data.request.id;
-    const other = await as(personas.owner, 'post', `staff/refund-requests/${reqId}/decide`, { decision: 'APPROVE' }, { tenantId: ctx.tenant2.id });
+    const other = await as(personas.owner, 'post', `staff/refund-requests/${reqId}/decide`, { decision: 'APPROVE' }, { organizationId: ctx.tenant2.id });
     expect([403, 404]).toContain(other.status);
     expect((await db1.models.RefundRequest.findByPk(reqId)).status).toBe('PENDING');
   });

@@ -444,7 +444,7 @@ async function inspectTenantSchema(sequelize) {
  * Dry run unless `apply: true`. Refuses (writes nothing) when `inspectTenantSchema` finds a refusal.
  * @returns {Promise<{ applied: boolean, refused: boolean, inspection: object, migrationResult?: object, missingAfter?: number[] }>}
  */
-async function repairTenantSchema(sequelize, { apply = false, tenantId, tenantCode, gymName } = {}) {
+async function repairTenantSchema(sequelize, { apply = false, organizationId, organizationCode, gymName } = {}) {
   const inspection = await inspectTenantSchema(sequelize);
   if (inspection.refusals.length) return { applied: false, refused: true, inspection };
   if (!apply) return { applied: false, refused: false, inspection };
@@ -461,7 +461,7 @@ async function repairTenantSchema(sequelize, { apply = false, tenantId, tenantCo
     }
   });
 
-  const migrationResult = await runTenantMigrations(sequelize, { tenantId, tenantCode, gymName });
+  const migrationResult = await runTenantMigrations(sequelize, { organizationId, organizationCode, gymName });
   const missingAfter = await missingTenantMigrations(sequelize);
   return { applied: true, refused: false, inspection, migrationResult, missingAfter };
 }

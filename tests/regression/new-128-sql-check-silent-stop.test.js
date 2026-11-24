@@ -29,7 +29,7 @@ beforeAll(async () => {
   await h.tenant1.sequelize.query('DROP TABLE `schema_migrations`');
   await h.tenant1.sequelize.query('ALTER TABLE `branches` DROP COLUMN `currency`');
   [tenant] = await h.platform.sequelize.query('SELECT organization_code, db_name FROM organizations WHERE id = :id', {
-    replacements: { id: team.tenantId },
+    replacements: { id: team.organizationId },
     type: h.platform.sequelize.QueryTypes.SELECT,
   });
 });

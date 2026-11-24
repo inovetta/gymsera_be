@@ -1555,7 +1555,7 @@ const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length -
  */
 const runPlatformMigrations = (sequelize, options = {}) =>
   runTenantMigrations(sequelize, {
-    tenantId: 'platform',
+    organizationId: 'platform',
     gymName: 'Platform DB',
     migrations: PLATFORM_MIGRATIONS,
     targetVersion: options.targetVersion,

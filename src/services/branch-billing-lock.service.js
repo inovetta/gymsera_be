@@ -13,7 +13,7 @@ const subscriptionQuotaService = require('./subscription-quota.service');
  *   A downgrade counts from when the provider applied it; a lapse from when the plan stopped
  *   entitling (TenantSubscription.entitlementEndedAt).
  * - After grace expires, exactly overQuotaCount branches are locked:
- *   1. Branches NOT in getBranchesToKeep(tenantId) first (most recently created first).
+ *   1. Branches NOT in getBranchesToKeep(organizationId) first (most recently created first).
  *   2. Otherwise the most recently created first.
  * - A locked branch:
  *   - Data stays visible (GET requests).
@@ -36,13 +36,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * @returns {Promise<{ subscription: object|null, lapsed: boolean, overQuotaCount: number,
  *   graceStartedAt: Date|null, graceEndsAt: Date|null, inGrace: boolean, remainingDays: number|null }>}
  */
-const getOverQuotaState = async (tenantId, tenantDb, { transaction, readOnly = false } = {}) => {
+const getOverQuotaState = async (organizationId, tenantDb, { transaction, readOnly = false } = {}) => {
   const graceDays = overquotaGraceDays();
   const notOver = (subscription, lapsed) => ({
     subscription, lapsed, overQuotaCount: 0, graceStartedAt: null, graceEndsAt: null, inGrace: false, remainingDays: null,
   });
 
-  let subscription = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction });
+  let subscription = await subscriptionQuotaService.getActiveSubscription(organizationId, { transaction });
   let lapsed = false;
   let overQuotaCount;
   let graceStartedAt;
@@ -52,7 +52,7 @@ const getOverQuotaState = async (tenantId, tenantDb, { transaction, readOnly = f
     const change = subscription.pendingChange;
     graceStartedAt = change?.appliedAt ? new Date(change.appliedAt) : new Date(subscription.updatedAt);
   } else {
-    subscription = await subscriptionQuotaService.getLapsedSubscription(tenantId, { transaction });
+    subscription = await subscriptionQuotaService.getLapsedSubscription(organizationId, { transaction });
     if (!subscription) return notOver(null, false);
     lapsed = true;
     overQuotaCount = tenantDb ? await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }) : subscription.overQuotaCount || 0;
@@ -81,16 +81,16 @@ const getOverQuotaState = async (tenantId, tenantDb, { transaction, readOnly = f
 /**
  * Evaluates and applies/removes branch billing locks for a tenant.
  *
- * @param {string} tenantId
+ * @param {string} organizationId
  * @param {object} tenantDb
  * @param {object} [opts]
  * @param {import('sequelize').Transaction} [opts.transaction] - the platform transaction that just wrote
  *   the plan (reconcileCapacity): the state is read inside it, so the sweep sees the new status.
  * @returns {Promise<{ overQuotaCount: number, lockedCount: number, unlockedCount: number, inGrace: boolean, remainingDays: number|null, lapsed: boolean }>}
  */
-const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb, { transaction } = {}) => {
+const enforceBranchBillingLocksForTenant = async (organizationId, tenantDb, { transaction } = {}) => {
   const { Branch } = tenantDb.models;
-  const state = await getOverQuotaState(tenantId, tenantDb, { transaction });
+  const state = await getOverQuotaState(organizationId, tenantDb, { transaction });
   const { overQuotaCount, lapsed } = state;
 
   // 1. If not over quota, unlock any previously locked branches
@@ -104,7 +104,7 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb, { transact
     for (const b of lockedBranches) {
       await b.update({ billingLockedAt: null, billingLockReason: null });
       await subscriptionQuotaService.recordCapacityEvent({
-        tenantId,
+        organizationId,
         listingId: b.gymId || null,
         branchId: b.id,
         action: 'BRANCH_BILLING_UNLOCKED',
@@ -130,7 +130,7 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb, { transact
     order: [['createdAt', 'DESC']],
   });
 
-  const keepBranchIds = await subscriptionQuotaService.getBranchesToKeep(tenantId, { transaction });
+  const keepBranchIds = await subscriptionQuotaService.getBranchesToKeep(organizationId, { transaction });
   const keepSet = new Set(Array.isArray(keepBranchIds) ? keepBranchIds : []);
 
   // Partition: not in keep list first (newest first), then in keep list (newest first)
@@ -155,7 +155,7 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb, { transact
             : 'Account over branch capacity following subscription change',
         });
         await subscriptionQuotaService.recordCapacityEvent({
-          tenantId,
+          organizationId,
           listingId: branch.gymId || null,
           branchId: branch.id,
           action: 'BRANCH_BILLING_LOCKED',
@@ -173,7 +173,7 @@ const enforceBranchBillingLocksForTenant = async (tenantId, tenantDb, { transact
           billingLockReason: null,
         });
         await subscriptionQuotaService.recordCapacityEvent({
-          tenantId,
+          organizationId,
           listingId: branch.gymId || null,
           branchId: branch.id,
           action: 'BRANCH_BILLING_UNLOCKED',

@@ -16,7 +16,7 @@ const { SubscriptionStatus } = require('../../src/constants/subscription-status'
 
 describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -26,14 +26,14 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
 
     const { Branch, Gym } = tenantDb.models;
     activeGym = await Gym.findOne();
     if (!activeGym) {
-      const listing = await factories.createGymListing(tenantId, {
+      const listing = await factories.createGymListing(organizationId, {
         title: 'Audit Locked Gym Listing',
         status: 'ACTIVE',
         reservedSlots: 0,
@@ -253,7 +253,7 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
 
       const ctx = {
         tenantDb,
-        tenantId,
+        organizationId,
         grants: {
           isOwner: true,
           assignmentIds: [],

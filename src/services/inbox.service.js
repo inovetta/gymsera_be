@@ -42,11 +42,11 @@ const createMessageOnce = async (attrs, rawClientMessageId) => {
   }
 };
 
-const listInquiries = async (tenantId) => {
+const listInquiries = async (organizationId) => {
   // NEW-256: a traveller this gym blocked is hidden from the gym's inbox.
-  const blockedUserIds = await userBlocks.userIdsBlockedByTenant(tenantId);
+  const blockedUserIds = await userBlocks.userIdsBlockedByTenant(organizationId);
   return Conversation.findAll({
-    where: { tenantId, ...(blockedUserIds.length ? { userId: { [Op.notIn]: blockedUserIds } } : {}) },
+    where: { organizationId, ...(blockedUserIds.length ? { userId: { [Op.notIn]: blockedUserIds } } : {}) },
     include: [
       {
         model: User,
@@ -67,17 +67,17 @@ const listInquiries = async (tenantId) => {
  * NEW-257: the gym side of the inbox always scopes to the caller's tenant. No tenant (a GYM_HOST
  * token without one) used to drop the filter and reach any gym's conversation; now it finds none.
  */
-const _gymConversationWhere = (conversationId, tenantId) => {
-  if (!tenantId) {
+const _gymConversationWhere = (conversationId, organizationId) => {
+  if (!organizationId) {
     const err = new Error('Conversation not found');
     err.statusCode = 404;
     throw err;
   }
-  return { id: conversationId, tenantId };
+  return { id: conversationId, organizationId };
 };
 
-const getInquiryDetail = async (conversationId, tenantId) => {
-  const whereClause = _gymConversationWhere(conversationId, tenantId);
+const getInquiryDetail = async (conversationId, organizationId) => {
+  const whereClause = _gymConversationWhere(conversationId, organizationId);
   const conversation = await Conversation.findOne({
     where: whereClause,
     include: [
@@ -108,8 +108,8 @@ const getInquiryDetail = async (conversationId, tenantId) => {
   return { conversation, messages, block: await userBlocks.blockStateFor(conversation, BlockSide.ORGANIZATION) };
 };
 
-const replyToInquiry = async (conversationId, senderId, text, tenantId, options = {}) => {
-  const whereClause = _gymConversationWhere(conversationId, tenantId);
+const replyToInquiry = async (conversationId, senderId, text, organizationId, options = {}) => {
+  const whereClause = _gymConversationWhere(conversationId, organizationId);
   const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
@@ -118,7 +118,7 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
   }
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
-  await userBlocks.assertCanMessage(conversation.userId, conversation.tenantId, BlockSide.ORGANIZATION);
+  await userBlocks.assertCanMessage(conversation.userId, conversation.organizationId, BlockSide.ORGANIZATION);
   await moderationWords.assertClean(text);
 
   const { message, created } = await createMessageOnce(
@@ -181,8 +181,8 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
   return message;
 };
 
-const markInquiryRead = async (conversationId, tenantId) => {
-  const whereClause = _gymConversationWhere(conversationId, tenantId);
+const markInquiryRead = async (conversationId, organizationId) => {
+  const whereClause = _gymConversationWhere(conversationId, organizationId);
   const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
@@ -230,7 +230,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
   const finalBranchId = listing.branchId || branchIdOrGymId;
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
-  await userBlocks.assertCanMessage(userId, listing.tenantId, BlockSide.USER);
+  await userBlocks.assertCanMessage(userId, listing.organizationId, BlockSide.USER);
   await moderationWords.assertClean(text);
 
   // Find or create Conversation
@@ -238,7 +238,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
     where: {
       userId,
       branchId: finalBranchId,
-      tenantId: listing.tenantId,
+      organizationId: listing.organizationId,
     },
     defaults: {
       type: 'INQUIRY',
@@ -282,9 +282,9 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
       message: messagePayload,
       conversationId: conversation.id,
     });
-    if (listing && listing.tenantId) {
+    if (listing && listing.organizationId) {
       // Only the staff of this conversation's branch (NEW-84).
-      socketGateway.emitToBranch(listing.tenantId, conversation.branchId, 'new_message', {
+      socketGateway.emitToBranch(listing.organizationId, conversation.branchId, 'new_message', {
         message: messagePayload,
         conversationId: conversation.id,
       });
@@ -301,7 +301,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
   try {
     const { Tenant, User: PlatformUser } = require('../models/platform');
     const notificationsService = require('./notifications.service');
-    const tenant = await Tenant.findByPk(listing.tenantId);
+    const tenant = await Tenant.findByPk(listing.organizationId);
 
     const travelerUser = await PlatformUser.findByPk(userId);
     const travelerName = travelerUser ? travelerUser.fullName : 'Traveler';
@@ -330,7 +330,7 @@ const listTravelerConversations = async (userId) => {
   // NEW-256: a gym this traveller blocked is hidden from the traveller's inbox.
   const blockedTenantIds = await userBlocks.tenantIdsBlockedByUser(userId);
   return Conversation.findAll({
-    where: { userId, ...(blockedTenantIds.length ? { tenantId: { [Op.notIn]: blockedTenantIds } } : {}) },
+    where: { userId, ...(blockedTenantIds.length ? { organizationId: { [Op.notIn]: blockedTenantIds } } : {}) },
     include: [
       {
         model: GymListing,
@@ -377,7 +377,7 @@ const replyAsUser = async (conversationId, userId, text, options = {}) => {
   }
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
-  await userBlocks.assertCanMessage(conversation.userId, conversation.tenantId, BlockSide.USER);
+  await userBlocks.assertCanMessage(conversation.userId, conversation.organizationId, BlockSide.USER);
   await moderationWords.assertClean(text);
 
   const { message, created } = await createMessageOnce(
@@ -442,7 +442,7 @@ const markTravelerRead = async (conversationId, userId) => {
   return { success: true };
 };
 
-const findOrCreateHostConversation = async (tenantId, userId, branchId, initialMessage = null) => {
+const findOrCreateHostConversation = async (organizationId, userId, branchId, initialMessage = null) => {
   const user = await User.findByPk(userId);
   if (!user) {
     const err = new Error('Member user not found');
@@ -465,19 +465,19 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
   }
 
   if (!listing) {
-    listing = await GymListing.findOne({ where: { tenantId } });
+    listing = await GymListing.findOne({ where: { organizationId } });
     if (listing && listing.branchId && !finalBranchId) {
       finalBranchId = listing.branchId;
     }
   }
 
   if (!finalBranchId) {
-    finalBranchId = listing ? listing.branchId : tenantId;
+    finalBranchId = listing ? listing.branchId : organizationId;
   }
 
   // NEW-256: an opening message is a message (blocked pair, listed word).
   if (initialMessage) {
-    await userBlocks.assertCanMessage(userId, tenantId, BlockSide.ORGANIZATION);
+    await userBlocks.assertCanMessage(userId, organizationId, BlockSide.ORGANIZATION);
     await moderationWords.assertClean(initialMessage);
   }
 
@@ -485,7 +485,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
   let conversation = await Conversation.findOne({
     where: {
       userId,
-      tenantId,
+      organizationId,
       branchId: finalBranchId,
     },
     include: [
@@ -505,7 +505,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
   if (!conversation) {
     conversation = await Conversation.create({
       userId,
-      tenantId,
+      organizationId,
       branchId: finalBranchId,
       type: 'MEMBER',
       lastMessageText: initialMessage || 'Conversation started',
@@ -517,7 +517,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
     if (initialMessage) {
       await Message.create({
         conversationId: conversation.id,
-        senderId: tenantId,
+        senderId: organizationId,
         senderType: 'HOST',
         text: initialMessage,
         isRead: false,
@@ -561,9 +561,9 @@ const setTravelerBlock = async (conversationId, userId, blocked) => {
 };
 
 /** The gym blocks (or unblocks) the traveller of one of its conversations. */
-const setHostBlock = async (conversationId, tenantId, actorUserId, blocked) => {
-  if (!tenantId) throw _notFound();
-  const conversation = await Conversation.findOne({ where: { id: conversationId, tenantId } });
+const setHostBlock = async (conversationId, organizationId, actorUserId, blocked) => {
+  if (!organizationId) throw _notFound();
+  const conversation = await Conversation.findOne({ where: { id: conversationId, organizationId } });
   if (!conversation) throw _notFound();
   if (blocked) await userBlocks.block(conversation, BlockSide.ORGANIZATION, actorUserId);
   else await userBlocks.unblock(conversation, BlockSide.ORGANIZATION);

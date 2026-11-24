@@ -32,7 +32,7 @@ describe('discovery gym reviews: unknown gym', () => {
 
   test('existing listing: reviews is 200 with a list', async () => {
     const { GymListing } = require('../../src/models/platform');
-    const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
     const res = await request(server).get(`/api/v1/discovery/gyms/${listing.id}/reviews?page=1&limit=10`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data.reviews)).toBe(true);

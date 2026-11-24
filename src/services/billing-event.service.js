@@ -162,12 +162,12 @@ const processEvent = async (event) => {
   try {
     const payload = JSON.parse(event.rawPayload);
     const { outcome, note = null } = await PROCESSORS[event.provider](payload);
-    const tenantId = event.tenantId || (await resolveTenantId(event));
-    await event.update({ status: outcome, attempts, lastError: note, processedAt: new Date(), tenantId });
+    const organizationId = event.organizationId || (await resolveTenantId(event));
+    await event.update({ status: outcome, attempts, lastError: note, processedAt: new Date(), organizationId });
   } catch (err) {
     const message = String(err?.message || err).slice(0, 500);
-    const tenantId = event.tenantId || (await resolveTenantId(event));
-    await event.update({ status: 'FAILED', attempts, lastError: message, tenantId });
+    const organizationId = event.organizationId || (await resolveTenantId(event));
+    await event.update({ status: 'FAILED', attempts, lastError: message, organizationId });
     const log = attempts >= ALERT_AFTER_ATTEMPTS ? console.error : console.warn;
     log(
       `[BillingEvent]${attempts >= ALERT_AFTER_ATTEMPTS ? ' ALERT' : ''} ${event.provider} event ${event.providerEventId} ` +
@@ -214,14 +214,14 @@ const refreshStoreSubscription = async (row) => {
   if (row.platform === 'IOS') {
     return require('./apple-billing.service').syncFromApple({
       transactionId: row.externalOriginalTransactionId,
-      tenantId: row.tenantId,
+      organizationId: row.organizationId,
       environment: row.environment || null,
     });
   }
   if (row.platform === 'ANDROID') {
     return require('./google-play-billing.service').syncFromGoogle({
       purchaseToken: row.externalOriginalTransactionId,
-      tenantId: row.tenantId,
+      organizationId: row.organizationId,
     });
   }
   if (row.platform === 'STRIPE') {
@@ -253,7 +253,7 @@ const reconcileStoreSubscriptions = async () => {
         { status: 'EXPIRED', entitlementEndedAt: { [Op.gte]: since } },
       ],
     },
-    attributes: ['id', 'tenantId', 'platform', 'externalOriginalTransactionId', 'environment'],
+    attributes: ['id', 'organizationId', 'platform', 'externalOriginalTransactionId', 'environment'],
   });
   let failed = 0;
   for (const row of rows) {
@@ -293,9 +293,9 @@ const sweepGoogleVoidedPurchases = async ({ windowDays = 3 } = {}) => {
  * provider. Never returns `rawPayload` (receipts, signed provider data). `stuck` is true for the
  * rows the alerts are about: RECEIVED for over 10 minutes, or FAILED past the retry threshold.
  */
-const listEvents = async ({ tenantId, status, provider, limit = 20, offset = 0 } = {}) => {
+const listEvents = async ({ organizationId, status, provider, limit = 20, offset = 0 } = {}) => {
   const where = {};
-  if (tenantId) where.tenantId = tenantId === 'none' ? null : tenantId;
+  if (organizationId) where.organizationId = organizationId === 'none' ? null : organizationId;
   if (status) where.status = status;
   if (provider) where.provider = provider;
   const { rows, count } = await BillingEvent.findAndCountAll({
@@ -305,7 +305,7 @@ const listEvents = async ({ tenantId, status, provider, limit = 20, offset = 0 }
     limit,
     offset,
   });
-  const tenantIds = [...new Set(rows.map((r) => r.tenantId).filter(Boolean))];
+  const tenantIds = [...new Set(rows.map((r) => r.organizationId).filter(Boolean))];
   const tenants = tenantIds.length ? await Tenant.findAll({ where: { id: tenantIds }, attributes: ['id', 'gymName'] }) : [];
   const nameById = new Map(tenants.map((t) => [t.id, t.gymName]));
   const now = Date.now();
@@ -317,8 +317,8 @@ const listEvents = async ({ tenantId, status, provider, limit = 20, offset = 0 }
     status: r.status,
     attempts: r.attempts,
     lastError: r.lastError ? redactString(r.lastError) : null,
-    tenantId: r.tenantId,
-    tenantName: r.tenantId ? nameById.get(r.tenantId) || null : null,
+    organizationId: r.organizationId,
+    tenantName: r.organizationId ? nameById.get(r.organizationId) || null : null,
     receivedAt: r.receivedAt,
     processedAt: r.processedAt,
     stuck:
@@ -330,13 +330,13 @@ const listEvents = async ({ tenantId, status, provider, limit = 20, offset = 0 }
 
 // Counts and ids for an alert: provider split, distinct known tenants (ids only), unattributed events.
 const _eventAlertFields = (rows) => {
-  const tenantIds = [...new Set(rows.map((r) => r.tenantId).filter(Boolean))];
+  const tenantIds = [...new Set(rows.map((r) => r.organizationId).filter(Boolean))];
   const byProvider = (p) => rows.filter((r) => r.provider === p).length;
   return {
     eventCount: rows.length,
     tenantCount: tenantIds.length,
     tenantIds,
-    unattributedEventCount: rows.filter((r) => !r.tenantId).length,
+    unattributedEventCount: rows.filter((r) => !r.organizationId).length,
     appleCount: byProvider('APPLE'),
     googleCount: byProvider('GOOGLE'),
     stripeCount: byProvider('STRIPE'),
@@ -363,7 +363,7 @@ const sweepBillingAlerts = async () => {
     const now = Date.now();
     const stuck = await BillingEvent.findAll({
       where: { status: 'RECEIVED', receivedAt: { [Op.lt]: new Date(now - UNPROCESSED_ALERT_AFTER_MS) } },
-      attributes: ['provider', 'tenantId', 'receivedAt'],
+      attributes: ['provider', 'organizationId', 'receivedAt'],
       order: [['receivedAt', 'ASC']],
       limit: 5000,
     });
@@ -376,7 +376,7 @@ const sweepBillingAlerts = async () => {
 
     const failed = await BillingEvent.findAll({
       where: { status: 'FAILED', attempts: { [Op.gte]: ALERT_AFTER_ATTEMPTS } },
-      attributes: ['provider', 'tenantId', 'attempts'],
+      attributes: ['provider', 'organizationId', 'attempts'],
       limit: 5000,
     });
     if (failed.length) {
@@ -386,9 +386,9 @@ const sweepBillingAlerts = async () => {
       });
     }
 
-    const duplicates = await TenantSubscription.findAll({ where: { duplicateBilling: true }, attributes: ['tenantId'], limit: 5000 });
+    const duplicates = await TenantSubscription.findAll({ where: { duplicateBilling: true }, attributes: ['organizationId'], limit: 5000 });
     if (duplicates.length) {
-      const tenantIds = [...new Set(duplicates.map((r) => r.tenantId))];
+      const tenantIds = [...new Set(duplicates.map((r) => r.organizationId))];
       await send('BILLING_DUPLICATE_BILLING', { tenantCount: tenantIds.length, tenantIds });
     }
   } catch (err) {

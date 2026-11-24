@@ -20,7 +20,7 @@ const q = require('../src/services/subscription-quota.service');
 
     console.log('\n=== SUBSCRIPTION ROWS (newest first) ===');
     const subs = await TenantSubscription.findAll({
-      where: { tenantId: id },
+      where: { organizationId: id },
       include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches'] }],
       order: [['createdAt', 'DESC']],
     });
@@ -52,7 +52,7 @@ const q = require('../src/services/subscription-quota.service');
       const used = await q.getUsedCapacity(id, db);
       const active = await db.models.Branch.count({ where: { status: 'ACTIVE' } });
       console.log('\n=== ORGANIZATIONS ===');
-      const ls = await GymListing.findAll({ where: { tenantId: id }, attributes: ['id', 'title', 'status', 'reservedSlots'] });
+      const ls = await GymListing.findAll({ where: { organizationId: id }, attributes: ['id', 'title', 'status', 'reservedSlots'] });
       for (const l of ls) {
         const b = await db.models.Branch.count({ where: { status: 'ACTIVE', gymId: l.id } });
         console.log(' ', (l.title || l.id), '|', l.status, '| activeBranches=' + b, '| reservedSlots=' + l.reservedSlots);

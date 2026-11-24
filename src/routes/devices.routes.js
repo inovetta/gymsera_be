@@ -23,14 +23,14 @@ const adminRouter = Router();
 
 adminRouter.use(authenticate, authorize('PLATFORM_ADMIN'));
 
-// List all devices (optionally filter by tenantId query param)
+// List all devices (optionally filter by organizationId query param)
 adminRouter.get('/', ctrl.listDevices);
 
 // Register a new device
 adminRouter.post(
   '/',
   validate.strict([
-    body('tenantId').isUUID().withMessage('Valid tenantId UUID required'),
+    body('organizationId').isUUID().withMessage('Valid organizationId UUID required'),
     body('branchId').isUUID().withMessage('Valid branchId UUID required'),
     body('serialNumber').notEmpty().withMessage('serialNumber is required'),
     body('name').notEmpty().withMessage('Device name is required'),

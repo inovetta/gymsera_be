@@ -24,7 +24,7 @@ const { GymListing, City, TenantSubscription } = require('../../src/models/platf
 const { whyNotLive, formatReport } = require('../../src/scripts/why-not-live');
 
 describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () => {
-  let server; let h; let tenantId; let branch; let city;
+  let server; let h; let organizationId; let branch; let city;
 
   const listedIds = async () => {
     const res = await request(server).get('/api/v1/discovery/gyms?page=1&limit=50');
@@ -38,8 +38,8 @@ describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () =>
   };
   const detailStatus = async () => (await request(server).get(`/api/v1/discovery/gyms/${branch.id}`)).status;
   const onlySubscription = async (fields) => {
-    await TenantSubscription.destroy({ where: { tenantId } });
-    return createTenantSubscription(tenantId, { branchCount: 10, ...fields });
+    await TenantSubscription.destroy({ where: { organizationId } });
+    return createTenantSubscription(organizationId, { branchCount: 10, ...fields });
   };
   const report = async () => {
     const reports = await whyNotLive(branch.id);
@@ -52,9 +52,9 @@ describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () =>
     h = await setupTestDatabases();
     const personas = await setupPersonas(h);
     server = await startTestServer();
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     city = await City.create({ name: 'P10 Sandbox City', isActive: true });
-    const listing = await GymListing.findOne({ where: { tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId } });
     await listing.update({ status: 'ACTIVE', cityId: city.id });
     branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
     await branch.update({
@@ -99,7 +99,7 @@ describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () =>
 
   test('the host is still entitled by the Sandbox row (store review and testers can use the host flow)', async () => {
     const sandbox = await onlySubscription({ status: 'ACTIVE', platform: 'IOS', environment: 'SANDBOX' });
-    const active = await getActiveSubscription(tenantId);
+    const active = await getActiveSubscription(organizationId);
     expect(active && active.id).toBe(sandbox.id);
   });
 
@@ -119,7 +119,7 @@ describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () =>
 
   test('a Sandbox row next to a PRODUCTION one: live (the paid row counts)', async () => {
     await onlySubscription({ status: 'ACTIVE', platform: 'IOS', environment: 'PRODUCTION' });
-    await createTenantSubscription(tenantId, { branchCount: 10, status: 'ACTIVE', platform: 'IOS', environment: 'SANDBOX' });
+    await createTenantSubscription(organizationId, { branchCount: 10, status: 'ACTIVE', platform: 'IOS', environment: 'SANDBOX' });
     expect(await isLiveForTravellers(branch.id, { fresh: true })).toBe(true);
     const r = await report();
     expect(r.live).toBe(true);
@@ -128,7 +128,7 @@ describe('NEW-179 (R-87): a Sandbox entitlement never makes a gym public', () =>
 
   test('an ended PRODUCTION row next to an entitling Sandbox one: not live', async () => {
     await onlySubscription({ status: 'EXPIRED', platform: 'IOS', environment: 'PRODUCTION' });
-    await createTenantSubscription(tenantId, { branchCount: 10, status: 'ACTIVE', platform: 'IOS', environment: 'SANDBOX' });
+    await createTenantSubscription(organizationId, { branchCount: 10, status: 'ACTIVE', platform: 'IOS', environment: 'SANDBOX' });
     expect(await isLiveForTravellers(branch.id, { fresh: true })).toBe(false);
     expect((await report()).failing).toEqual(['subscription']);
   });

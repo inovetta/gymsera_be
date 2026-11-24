@@ -55,7 +55,7 @@ async function checkHistoricalData(options = {}) {
           reviewId: rev.id,
           userId: rev.user_id,
           branchId: rev.branch_id,
-          tenantId: rev.tenant_id,
+          organizationId: rev.tenant_id,
           status: rev.status,
           reason: 'NO_VALID_SUBSCRIPTION_FOUND',
         });
@@ -69,7 +69,7 @@ async function checkHistoricalData(options = {}) {
   let tenantDbsToInspect = [];
   if (options.tenantDbs) {
     tenantDbsToInspect = options.tenantDbs.map((tdb, idx) => ({
-      code: tdb.tenantCode || tdb.code || `TENANT_${idx + 1}`,
+      code: tdb.organizationCode || tdb.code || `TENANT_${idx + 1}`,
       sequelize: tdb.sequelize,
     }));
   } else {
@@ -105,7 +105,7 @@ async function checkHistoricalData(options = {}) {
       if (legacyInvites.length > 0) {
         results.staffInvites.legacyInvitesCount += legacyInvites.length;
         results.staffInvites.details.push({
-          tenantCode: tenant.code,
+          organizationCode: tenant.code,
           count: legacyInvites.length,
           sampleIds: legacyInvites.slice(0, 5).map((s) => s.id),
         });
@@ -123,7 +123,7 @@ async function checkHistoricalData(options = {}) {
       if (staticSubs.length > 0) {
         results.attendanceQr.staticQrSubscriptionsCount += staticSubs.length;
         results.attendanceQr.details.push({
-          tenantCode: tenant.code,
+          organizationCode: tenant.code,
           count: staticSubs.length,
           sampleSubIds: staticSubs.slice(0, 5).map((s) => s.id),
         });
@@ -142,7 +142,7 @@ async function checkHistoricalData(options = {}) {
       if (missedDays.length > 0) {
         results.ledger.missedOpenDaysCount += missedDays.length;
         results.ledger.details.push({
-          tenantCode: tenant.code,
+          organizationCode: tenant.code,
           type: 'MISSED_OPEN_DAYS',
           days: missedDays,
         });

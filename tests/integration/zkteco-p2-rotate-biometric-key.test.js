@@ -23,7 +23,7 @@ test('dry run, apply, re-run; old values readable only through the new key after
   const u = await w.member('Rotating Member');
   await biometrics.recordConsent(w.db1, { memberId: u.id, method: 'in_person' });
   await biometrics.storeTemplates(w.db1, { memberId: u.id, deviceId: null, templates: [{ pin: '1', type: 9, no: 0, index: 0, valid: 1, duress: 0, majorVer: '40', minorVer: '1', format: 0, tmp: fx.TEMPLATE }] });
-  await biometrics.storePhoto(w.db1, { tenantId: w.ctx.tenant1.id, memberId: u.id, deviceId: null, photo: { pin: '1', type: 9, kind: 'biophoto', content: fx.PHOTO } });
+  await biometrics.storePhoto(w.db1, { organizationId: w.ctx.tenant1.id, memberId: u.id, deviceId: null, photo: { pin: '1', type: 9, kind: 'biophoto', content: fx.PHOTO } });
 
   process.env.BIOMETRIC_DATA_KEY = `2:${K2},1:${K1}`;
   const dry = await rotateTenant(w.db1, { apply: false });

@@ -92,10 +92,10 @@ const entitlesTravellers = (row) =>
 const _liveTenants = async (attributes) => {
   const entitled = await TenantSubscription.findAll({
     where: { status: { [Op.in]: ENTITLING_STATUSES }, ...travellerEnvironmentWhere() },
-    attributes: ['tenantId'],
+    attributes: ['organizationId'],
     raw: true,
   });
-  const ids = [...new Set(entitled.map((r) => r.tenantId))];
+  const ids = [...new Set(entitled.map((r) => r.organizationId))];
   if (ids.length === 0) return [];
   return Tenant.findAll({ where: { status: 'ACTIVE', id: { [Op.in]: ids } }, attributes });
 };
@@ -107,8 +107,8 @@ const _liveTenants = async (attributes) => {
 const isLiveForTravellers = async (id, { fresh = false } = {}) => {
   const live = await _getAllActiveBranches({ fresh });
   if (live.some((b) => b.id === id)) return true;
-  const listing = await GymListing.findByPk(id, { attributes: ['tenantId', 'status'] });
-  return !!listing && listing.status === 'ACTIVE' && live.some((b) => b.tenantId === listing.tenantId);
+  const listing = await GymListing.findByPk(id, { attributes: ['organizationId', 'status'] });
+  return !!listing && listing.status === 'ACTIVE' && live.some((b) => b.organizationId === listing.organizationId);
 };
 
 /** NEW-159: a booking (or its quote) is for a branch that is live right now (fresh: it authorizes a write). */
@@ -218,7 +218,7 @@ const _buildAllActiveBranches = async () => {
           // Map to unified branch object
           const mappedBranch = {
             id: b.id, // primary unit is branch id!
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             branchId: b.id,
             gymId: gym.id,
             cityId: finalCityId,
@@ -406,7 +406,7 @@ const _tenantsBranchOwnerFirst = async (tenants, branchId) => {
     const snapshot = await _getAllActiveBranches();
     const hit = snapshot.find((b) => b.id === branchId || b.branchId === branchId);
     if (!hit) return tenants;
-    return [...tenants.filter((t) => t.id === hit.tenantId), ...tenants.filter((t) => t.id !== hit.tenantId)];
+    return [...tenants.filter((t) => t.id === hit.organizationId), ...tenants.filter((t) => t.id !== hit.organizationId)];
   } catch (_) {
     return tenants;
   }
@@ -485,7 +485,7 @@ const getGym = async (id) => {
   let branches = [];
   try {
     const tenant = await Tenant.findOne({
-      where: { id: listing.tenantId, status: 'ACTIVE' },
+      where: { id: listing.organizationId, status: 'ACTIVE' },
       attributes: ['id', 'connectionStringEncrypted'],
     });
 
@@ -538,7 +538,7 @@ const getGym = async (id) => {
 
       // Resolve branchId -> gymListingId mapping
       const tenantListings = await GymListing.findAll({
-        where: { tenantId: listing.tenantId, status: 'ACTIVE' },
+        where: { organizationId: listing.organizationId, status: 'ACTIVE' },
         attributes: ['id', 'branchId'],
       });
 
@@ -611,8 +611,8 @@ const getGym = async (id) => {
   const normalizedGym = _normalizeFacilities(listing);
   // NEW-283: the brand is the account's (R-112). With two or more live organisations it would show the
   // first brand's name under another brand's gyms, so it is sent only for exactly one live organisation.
-  if (normalizedGym.tenant && normalizedGym.tenantId) {
-    const liveBrands = await GymListing.count({ where: { tenantId: normalizedGym.tenantId, status: 'ACTIVE' } });
+  if (normalizedGym.tenant && normalizedGym.organizationId) {
+    const liveBrands = await GymListing.count({ where: { organizationId: normalizedGym.organizationId, status: 'ACTIVE' } });
     if (liveBrands !== 1) normalizedGym.tenant = { ...normalizedGym.tenant, businessName: null };
   }
   return { gym: { ...normalizedGym, branches }, membershipPlans };
@@ -732,7 +732,7 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
   const branches = await _getAllActiveBranches();
   const byGym = new Map();
   for (const b of branches) {
-    const key = `${b.tenantId}:${b.gymId}`;
+    const key = `${b.organizationId}:${b.gymId}`;
     if (!byGym.has(key)) byGym.set(key, []);
     byGym.get(key).push(b);
   }
@@ -747,7 +747,7 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
     return {
       id: first.gymId,
       gymId: first.gymId,
-      tenantId: first.tenantId,
+      organizationId: first.organizationId,
       name: org.name,
       description: org.description,
       logoUrl: org.logoUrl,
@@ -795,7 +795,7 @@ const getGymListingByIdentifier = async (identifier) => {
   if (matched) {
     return {
       id: matched.gymListingId || matched.id,
-      tenantId: matched.tenantId,
+      organizationId: matched.organizationId,
       title: matched.title,
       averageRating: matched.averageRating || 0,
       _isSynthetic: true,
@@ -892,16 +892,16 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
   // NEW-256: the word filter runs before anything else is looked up or stored.
   await require('./moderation-words.service').assertClean(title, body);
 
-  // Find the tenantId of this branch (fresh: this read authorizes a write)
+  // Find the organizationId of this branch (fresh: this read authorizes a write)
   const branches = await _getAllActiveBranches({ fresh: true });
   const matched = branches.find(b => b.id === branchId || b.branchId === branchId);
   if (!matched) throw createError('Branch not found', 404);
 
-  const tenantId = matched.tenantId;
+  const organizationId = matched.organizationId;
 
   // Retrieve the tenant DB connection to query its source-of-truth subscriptions table
   const tenant = await Tenant.findOne({
-    where: { id: tenantId, status: 'ACTIVE' },
+    where: { id: organizationId, status: 'ACTIVE' },
   });
   if (!tenant || !tenant.connectionStringEncrypted) {
     throw createError('Gym organization database is not active', 403);
@@ -951,7 +951,7 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
       gymListingId: gymListingId || null,
       branchId,
       userId,
-      tenantId,
+      organizationId,
       rating,
       title: title || null,
       body: body || null,
@@ -1095,7 +1095,7 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
     const notificationsService = require('./notifications.service');
     const listing = await GymListing.findByPk(review.gymListingId);
     const branchName = listing ? listing.title : 'Gym';
-    const tenant = await Tenant.findByPk(review.tenantId);
+    const tenant = await Tenant.findByPk(review.organizationId);
 
     if (action === 'approve') {
       await notificationsService.createNotification({
@@ -1140,8 +1140,8 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
 
 
 const _resolveTenantId = async (id) => {
-  const listing = await GymListing.findByPk(id, { attributes: ['tenantId'] });
-  if (listing) return listing.tenantId;
+  const listing = await GymListing.findByPk(id, { attributes: ['organizationId'] });
+  if (listing) return listing.organizationId;
 
   // Search by branch ID
   const tenants = await Tenant.findAll({
@@ -1207,18 +1207,18 @@ const travellerPaymentDetails = (json) => {
 };
 
 const getPaymentDetails = async (gymListingId) => {
-  const tenantId = await _resolveTenantId(gymListingId);
-  if (!tenantId || !(await isLiveForTravellers(gymListingId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
+  const organizationId = await _resolveTenantId(gymListingId);
+  if (!organizationId || !(await isLiveForTravellers(gymListingId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
 
   // P7b (R-94): the payout account of this organization (or of the branch's organization), else
   // the tenant default. `id` is an organization (gym listing) id or a branch id.
   const payoutAccountService = require('./payout-account.service');
-  const listing = await GymListing.findByPk(gymListingId, { attributes: ['id', 'tenantId'] });
-  const account = listing && listing.tenantId === tenantId
-    ? await payoutAccountService.resolve({ tenantId, businessId: listing.id })
+  const listing = await GymListing.findByPk(gymListingId, { attributes: ['id', 'organizationId'] });
+  const account = listing && listing.organizationId === organizationId
+    ? await payoutAccountService.resolve({ organizationId, businessId: listing.id })
     : await payoutAccountService.resolveForBranch(
-      await TenantDbManager.getConnection(tenantId, (await Tenant.findByPk(tenantId, { attributes: ['connectionStringEncrypted'] })).connectionStringEncrypted),
-      tenantId,
+      await TenantDbManager.getConnection(organizationId, (await Tenant.findByPk(organizationId, { attributes: ['connectionStringEncrypted'] })).connectionStringEncrypted),
+      organizationId,
       gymListingId
     );
 
@@ -1230,13 +1230,13 @@ const getPaymentDetails = async (gymListingId) => {
 const listTopHosts = async () => {
   const branches = await _getAllActiveBranches();
 
-  // Group branches by tenantId
+  // Group branches by organizationId
   const tenantBranchesMap = {};
   for (const b of branches) {
-    if (!tenantBranchesMap[b.tenantId]) {
-      tenantBranchesMap[b.tenantId] = [];
+    if (!tenantBranchesMap[b.organizationId]) {
+      tenantBranchesMap[b.organizationId] = [];
     }
-    tenantBranchesMap[b.tenantId].push(b);
+    tenantBranchesMap[b.organizationId].push(b);
   }
 
   // Get active tenants with owners
@@ -1254,19 +1254,19 @@ const listTopHosts = async () => {
   // Fetch approved review stats for tenants
   const reviewStats = await GymReview.findAll({
     attributes: [
-      'tenantId',
+      'organizationId',
       [fn('AVG', col('rating')), 'avgRating'],
       [fn('COUNT', col('id')), 'reviewCount'],
     ],
     where: { status: 'APPROVED' },
-    group: ['tenantId'],
+    group: ['organizationId'],
     raw: true,
   });
 
   const ratingMap = new Map(
-    reviewStats.map((r) => [r.tenantId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
+    reviewStats.map((r) => [r.organizationId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
   );
-  const reviewCountMap = new Map(reviewStats.map((r) => [r.tenantId, Number(r.reviewCount) || 0]));
+  const reviewCountMap = new Map(reviewStats.map((r) => [r.organizationId, Number(r.reviewCount) || 0]));
 
   const topHosts = tenants
     .map((tenant) => {
@@ -1279,7 +1279,7 @@ const listTopHosts = async () => {
 
       return {
         id: tenant.id,
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         businessName: tenant.businessName,
         ownerName: tenant.owner ? tenant.owner.fullName : null,
         logoUrl,

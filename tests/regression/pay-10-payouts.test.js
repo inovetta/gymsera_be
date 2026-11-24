@@ -41,7 +41,7 @@ describe('PAY-10: Ledger-Derived Payouts and Balance (spec §6.3, §12)', () => 
     // Set the tenant default payout account (P7b, R-94), changed 48h ago so the cooling period is inactive
     const pastDate = new Date(Date.now() - 48 * 60 * 60 * 1000); // 48h ago
     await require('../harness/factories').setPayoutAccount(
-      personas.owner.tenantId,
+      personas.owner.organizationId,
       {
         bankName: 'Meezan Bank',
         accountTitle: 'Alpha Fitness Club',

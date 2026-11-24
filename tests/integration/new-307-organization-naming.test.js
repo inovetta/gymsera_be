@@ -222,13 +222,13 @@ describe('NEW-307 organization naming (p034)', () => {
     it('after p034 (organizations, organization_code)', async () => {
       const p = await plan('CREATE TABLE organizations (id INT PRIMARY KEY, organization_code VARCHAR(50), status VARCHAR(20), db_name VARCHAR(100))',
         'INSERT INTO organizations VALUES (1, \'ORG-AAAA1111\', \'ACTIVE\', \'gymsera_org_a\')');
-      expect(p.tenants).toEqual([{ id: 1, tenantCode: 'ORG-AAAA1111', status: 'ACTIVE', dbName: 'gymsera_org_a' }]);
+      expect(p.tenants).toEqual([{ id: 1, organizationCode: 'ORG-AAAA1111', status: 'ACTIVE', dbName: 'gymsera_org_a' }]);
     });
 
     it('before p034 (tenants, tenant_code)', async () => {
       const p = await plan('CREATE TABLE tenants (id INT PRIMARY KEY, tenant_code VARCHAR(50), status VARCHAR(20), db_name VARCHAR(100))',
         'INSERT INTO tenants VALUES (1, \'GYM-AAAA1111\', \'ACTIVE\', \'gymsera_gym_a\')');
-      expect(p.tenants).toEqual([{ id: 1, tenantCode: 'GYM-AAAA1111', status: 'ACTIVE', dbName: 'gymsera_gym_a' }]);
+      expect(p.tenants).toEqual([{ id: 1, organizationCode: 'GYM-AAAA1111', status: 'ACTIVE', dbName: 'gymsera_gym_a' }]);
     });
   });
 

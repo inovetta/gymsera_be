@@ -7,14 +7,14 @@
  * staging test plan (STAGING_TEST_PLAN.md) asks for after every scenario.
  * Makes no writes.
  *
- * Usage: node src/scripts/check-tenant-entitlement.js <tenantId>
+ * Usage: node src/scripts/check-tenant-entitlement.js <organizationId>
  */
 require('dotenv').config();
 const { sequelize } = require('../database/platform');
 
-const tenantId = process.argv[2];
-if (!tenantId) {
-  console.error('Usage: node src/scripts/check-tenant-entitlement.js <tenantId>');
+const organizationId = process.argv[2];
+if (!organizationId) {
+  console.error('Usage: node src/scripts/check-tenant-entitlement.js <organizationId>');
   process.exit(1);
 }
 
@@ -28,12 +28,12 @@ if (!tenantId) {
               amount, billing_cycle, start_date, end_date, auto_renew, over_quota_count,
               status_note, last_verified_at, created_at, updated_at
        FROM organization_subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 20`,
-      { replacements: [tenantId] }
+      { replacements: [organizationId] }
     );
 
     const activeCount = subs.filter((s) => s.status === 'ACTIVE').length;
 
-    console.log(`\n=== TenantSubscription rows for tenant ${tenantId} ===`);
+    console.log(`\n=== TenantSubscription rows for tenant ${organizationId} ===`);
     console.log(`ACTIVE row count: ${activeCount}  ${activeCount === 1 ? '(OK — exactly one)' : activeCount === 0 ? '(no active entitlement)' : '*** VIOLATION: more than one ACTIVE row ***'}\n`);
     subs.forEach((s) => {
       console.log(
@@ -49,9 +49,9 @@ if (!tenantId) {
 
     const [listings] = await sequelize.query(
       'SELECT id, name AS title, status, reserved_slots FROM business_listings WHERE tenant_id = ? ORDER BY created_at ASC', // R-120 (p033)
-      { replacements: [tenantId] }
+      { replacements: [organizationId] }
     );
-    console.log(`=== GymListings (reservedSlots) for tenant ${tenantId} ===`);
+    console.log(`=== GymListings (reservedSlots) for tenant ${organizationId} ===`);
     let reservedTotal = 0;
     listings.forEach((l) => {
       if (l.status !== 'INACTIVE') reservedTotal += l.reserved_slots;
@@ -62,9 +62,9 @@ if (!tenantId) {
     const [events] = await sequelize.query(
       `SELECT action, delta, reserved_slots_before, reserved_slots_after, actor_type, reason, idempotency_key, created_at
        FROM capacity_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 15`,
-      { replacements: [tenantId] }
+      { replacements: [organizationId] }
     );
-    console.log(`=== Last ${events.length} capacity_events for tenant ${tenantId} ===`);
+    console.log(`=== Last ${events.length} capacity_events for tenant ${organizationId} ===`);
     events.forEach((r) => {
       console.log(`${r.created_at}  ${r.action}  delta=${r.delta}  ${r.reserved_slots_before}->${r.reserved_slots_after}  actor=${r.actor_type}`);
       console.log(`   key=${r.idempotency_key}`);

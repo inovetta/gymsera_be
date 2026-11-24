@@ -26,7 +26,7 @@
  *             "remove" are deleted from the device, the hold ends, every matched member is reconciled, an
  *             audit is asked (it removes matched members GymsEra does not admit, and lists the rest).
  *
- * Nothing here logs or returns a template. `db` = a tenant connection { sequelize, models, tenantId }.
+ * Nothing here logs or returns a template. `db` = a tenant connection { sequelize, models, organizationId }.
  */
 const { utc } = require('./sql-time');
 const crypto = require('crypto');
@@ -93,10 +93,10 @@ async function queueQuery(db, deviceId, kind, args, now) {
  * Starts (or returns the open) import of a device: puts it in hold, queues the queries.
  * → { import, reused }
  */
-async function startImport(db, { tenantId, deviceId, byUserId = null, now = new Date(), ...opts }) {
+async function startImport(db, { organizationId, deviceId, byUserId = null, now = new Date(), ...opts }) {
   const registry = require('./device-registry.service');
   const platform = await registry.findById(deviceId);
-  if (!platform || platform.tenant_id !== tenantId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
+  if (!platform || platform.tenant_id !== organizationId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
   if (platform.status === 'wiping') throw createError('This device is being wiped.', 409, 'device_wiping');
   if (platform.status !== 'active') {
     throw createError('The device has not connected yet. Type the server address on it first, then import.', 409, 'device_not_connected');
@@ -331,10 +331,10 @@ async function rereadDone(db, imp, now, outcome) {
  * one read-only CHECK asks it to fetch them, and the import waits for the new upload. Nothing that changes the
  * device is queued. → { import }
  */
-async function reread(db, { tenantId, deviceId, importId, byUserId = null, now = new Date() }) {
+async function reread(db, { organizationId, deviceId, importId, byUserId = null, now = new Date() }) {
   const registry = require('./device-registry.service');
   const platform = await registry.findById(deviceId);
-  if (!platform || platform.tenant_id !== tenantId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
+  if (!platform || platform.tenant_id !== organizationId || platform.status === 'removed') throw createError('Device not found.', 404, 'device_not_found');
   const det = await detailsOf(db, deviceId);
   if (String(det?.device_type || '').toLowerCase() !== 'att') {
     throw createError('Only a T&A PUSH device is read again this way.', 422, 'not_att_device');
@@ -788,9 +788,9 @@ async function heldOwnerOfPin(db, deviceId, pin) {
 }
 
 /** The per-device checklist (imported, matched, verified, unmatched PINs) for leaving GymBioSync. */
-async function cutover(db, { tenantId, deviceId, now = new Date() }) {
+async function cutover(db, { organizationId, deviceId, now = new Date() }) {
   const registry = require('./device-registry.service');
-  const found = await registry.getDevice({ tenantId, tenantDb: db, deviceId });
+  const found = await registry.getDevice({ organizationId, tenantDb: db, deviceId });
   if (!found) throw createError('Device not found.', 404, 'device_not_found');
   const det = found.details;
   let imp = await latestImport(db, deviceId);
@@ -857,12 +857,12 @@ async function cutover(db, { tenantId, deviceId, now = new Date() }) {
  * Go live: the end of the import. → the cut-over checklist.
  * removeUnmatched: also delete every unmatched device user that is not a device admin.
  */
-async function goLive(db, { tenantId, deviceId, byUserId = null, removeUnmatched = false, now = new Date() }) {
+async function goLive(db, { organizationId, deviceId, byUserId = null, removeUnmatched = false, now = new Date() }) {
   const sync = require('./device-sync.service');
   const imp0 = await latestImport(db, deviceId);
   if (!imp0) throw createError('Import the device first.', 409, 'import_not_applied');
   const imp = await refresh(db, imp0, now);
-  if (imp.status === 'live') return cutover(db, { tenantId, deviceId, now });
+  if (imp.status === 'live') return cutover(db, { organizationId, deviceId, now });
   if (imp.status !== 'applied') throw createError('Apply the import before you go live.', 409, 'import_not_applied');
   const users = await classified(db, imp);
   // A PIN given to someone else since apply would now clash: check again.
@@ -911,12 +911,12 @@ async function goLive(db, { tenantId, deviceId, byUserId = null, removeUnmatched
   for (const memberId of matched) await sync.reconcileMember(db, memberId, 'import_live', { priority: 2, now });
   await sync.reconcileDevice(db, deviceId, 'import_live', { priority: 2, now });
   await require('../../jobs/device-jobs').requestAudit(db, deviceId, now);
-  return cutover(db, { tenantId, deviceId, now });
+  return cutover(db, { organizationId, deviceId, now });
 }
 
-async function markGbsStopped(db, { tenantId, deviceId, now = new Date() }) {
+async function markGbsStopped(db, { organizationId, deviceId, now = new Date() }) {
   await exec(db, 'UPDATE access_device_details SET gbs_stopped_at = COALESCE(gbs_stopped_at, ?), updated_at = ? WHERE id = ?', [now, now, deviceId]);
-  return cutover(db, { tenantId, deviceId, now });
+  return cutover(db, { organizationId, deviceId, now });
 }
 
 async function listImports(db, deviceId) {

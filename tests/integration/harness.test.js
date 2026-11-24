@@ -57,7 +57,7 @@ describe('Integration Test Harness & Factories', () => {
       scopeType: 'BRANCH',
       scopeId: branch.id,
       branchIds: [branch.id],
-      tenantId: tenant.id,
+      organizationId: tenant.id,
     });
     expect(assignment.roleKey).toBe('MANAGER');
     expect(assignment.roleLevel).toBe(60);

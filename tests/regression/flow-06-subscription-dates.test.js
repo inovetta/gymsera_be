@@ -43,7 +43,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
     platformSeq = dbHarness.platform.sequelize;
     platformModels = require('../../src/models/platform');
 
-    testTenantId = personaManager.personas.owner.tenantId;
+    testTenantId = personaManager.personas.owner.organizationId;
     ownerId = personaManager.personas.owner.user.id;
 
     const { Gym, Branch, MembershipPlan } = models;
@@ -111,7 +111,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
       await UserGymMembership.create({
         userId: user.id,
         gymListingId: listing.id,
-        tenantId: testTenantId,
+        organizationId: testTenantId,
         subscriptionId: sub.id,
         gymName: 'Flow06 Fitness',
         planName: plan.name,
@@ -155,7 +155,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
       await UserGymMembership.create({
         userId: user.id,
         gymListingId: listing.id,
-        tenantId: testTenantId,
+        organizationId: testTenantId,
         subscriptionId: expiredSub.id,
         gymName: 'Flow06 Fitness',
         planName: plan.name,
@@ -195,7 +195,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
       await UserGymMembership.create({
         userId: user.id,
         gymListingId: listing.id,
-        tenantId: testTenantId,
+        organizationId: testTenantId,
         subscriptionId: activeSub.id,
         gymName: 'Flow06 Fitness',
         planName: plan.name,
@@ -235,7 +235,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
       await UserGymMembership.create({
         userId: user.id,
         gymListingId: listing.id,
-        tenantId: testTenantId,
+        organizationId: testTenantId,
         subscriptionId: frozenSub.id,
         gymName: 'Flow06 Fitness',
         planName: plan.name,

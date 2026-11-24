@@ -3,7 +3,7 @@ const jwtConfig = require('../config/jwt.config');
 
 /**
  * Sign an access token (short-lived).
- * Payload should include: { sub, email, role, isVerified, tenantId?, branchId? }
+ * Payload should include: { sub, email, role, isVerified, organizationId?, branchId? }
  */
 const signToken = (payload) => {
   if (!jwtConfig.secret) throw new Error('JWT_SECRET is not set');

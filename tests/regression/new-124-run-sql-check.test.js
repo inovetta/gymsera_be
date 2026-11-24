@@ -182,7 +182,7 @@ describe('NEW-124 run-sql-check: against the test databases', () => {
     // Grid 1 header row and the tenant below v19
     expect(text).toMatch(/\|\s*tenant_id\s*\|\s*organization_code\s*\|\s*first_business_name\s*\|\s*db_name\s*\|/);
     const [tenant] = await h.platform.sequelize.query('SELECT organization_code, db_name FROM organizations WHERE id = :id', {
-      replacements: { id: team.tenantId },
+      replacements: { id: team.organizationId },
       type: h.platform.sequelize.QueryTypes.SELECT,
     });
     const grid1Row = text.split('\n').find((l) => l.includes(` ${tenant.db_name} `) && /\|\s*0\s*\|\s*$/.test(l.trimEnd()));

@@ -34,11 +34,11 @@ const PHOTOS = ['https://cdn.gymsera.test/a.jpg', 'https://cdn.gymsera.test/scre
 
 const pendingTenant = async (key) => {
   const user = await factories.createUser({ email: `${key}@p9r84.test`, role: 'GYM_HOST', isHost: true });
-  const tenantCode = `test_p9r84_${key}_${Date.now().toString(36)}`;
-  dbNames.push(`gymsera_${tenantCode}`);
+  const organizationCode = `test_p9r84_${key}_${Date.now().toString(36)}`;
+  dbNames.push(`gymsera_${organizationCode}`);
   return factories.createTenant({
     ownerUserId: user.id,
-    tenantCode,
+    organizationCode,
     status: 'PENDING_REVIEW',
     connectionStringEncrypted: null,
     paymentMethod: 'BANK_TRANSFER',

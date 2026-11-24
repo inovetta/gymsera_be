@@ -94,8 +94,8 @@ describe('hold: a device added "import first"', () => {
 
   test('reconcile, sweep, audit and Push now leave it alone', async () => {
     expect(await sync.reconcileMember(w.db1, m.sara.id, 'test')).not.toHaveProperty(door.id);
-    await jobs.syncTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, new Date());
-    await jobs.auditTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, new Date(Date.now() + 23 * 3600000));
+    await jobs.syncTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, new Date());
+    await jobs.auditTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, new Date(Date.now() + 23 * 3600000));
     const push = await owner().post(`/host/members/${m.sara.id}/device-push`, { deviceIds: [door.id] });
     expect(push.status).toBe(409);
     expect(code(push)).toBe('device_in_import');

@@ -47,8 +47,8 @@ const daysAgo = (n) => {
 const dateOnly = (d) => d.toISOString().slice(0, 10);
 
 // Invoice numbers: INV-TENANTCODE-000001
-const makeInvoiceNo = (tenantCode, n) =>
-  `INV-${tenantCode}-${String(n).padStart(6, '0')}`;
+const makeInvoiceNo = (organizationCode, n) =>
+  `INV-${organizationCode}-${String(n).padStart(6, '0')}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-tenant seed definitions
@@ -412,7 +412,7 @@ const MEMBER_PROFILES = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
-  const code = tenant.tenantCode;
+  const code = tenant.organizationCode;
   const def  = TENANT_SEEDS[code];
 
   if (!def) {
@@ -575,7 +575,7 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
       // seed.js uses uuidv4() as a placeholder — overwrite it here with the actual sub.id.
       await UserGymMembership.update(
         { subscriptionId: sub.id, status: subStatus, startDate: dateOnly(startDate), endDate: dateOnly(endDate), planName: plan.name },
-        { where: { userId: memberUser.id, tenantId: tenant.id } }
+        { where: { userId: memberUser.id, organizationId: tenant.id } }
       );
 
       if (subCreated && plan.price > 0) {
@@ -699,7 +699,7 @@ async function main() {
       status: 'ACTIVE',
       kycStatus: 'APPROVED',
     };
-    if (targetCode) whereClause.tenantCode = targetCode;
+    if (targetCode) whereClause.organizationCode = targetCode;
 
     const tenants = await Tenant.findAll({ where: whereClause });
 
@@ -710,16 +710,16 @@ async function main() {
 
     const unprovisioned = tenants.filter(t => t.connectionStringEncrypted === 'PENDING_PROVISIONING');
     if (unprovisioned.length > 0) {
-      console.log(`⚠️  ${unprovisioned.length} tenant(s) not yet provisioned: ${unprovisioned.map(t => t.tenantCode).join(', ')}`);
+      console.log(`⚠️  ${unprovisioned.length} tenant(s) not yet provisioned: ${unprovisioned.map(t => t.organizationCode).join(', ')}`);
       console.log('   Run: node src/scripts/provision-seeded-tenants.js\n');
       process.exit(1);
     }
 
     const ready = tenants.filter(t => t.connectionStringEncrypted !== 'PENDING_PROVISIONING');
-    console.log(`📋  Seeding ${ready.length} tenant(s): ${ready.map(t => t.tenantCode).join(', ')}\n`);
+    console.log(`📋  Seeding ${ready.length} tenant(s): ${ready.map(t => t.organizationCode).join(', ')}\n`);
 
     for (const tenant of ready) {
-      console.log(`🔧  Seeding ${tenant.tenantCode}...`);
+      console.log(`🔧  Seeding ${tenant.organizationCode}...`);
       await seedTenant(tenant, platformUsers, cityMap, areaMap);
     }
 

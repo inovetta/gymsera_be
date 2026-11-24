@@ -111,7 +111,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
 
   describe('Behavioral Guard: RoleAssignment is the single source of truth for access', () => {
     let dbHarness;
-    let tenantId;
+    let organizationId;
     let personas;
     let appServer;
     let branchId;
@@ -119,7 +119,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
     beforeAll(async () => {
       dbHarness = await setupTestDatabases();
       personas = await setupPersonas(dbHarness);
-      tenantId = personas.owner.tenantId;
+      organizationId = personas.owner.organizationId;
       appServer = await startTestServer();
 
       const { Branch } = dbHarness.tenant1.models;
@@ -175,7 +175,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       const paymentRes = await request(appServer)
         .post('/api/v1/payments')
         .set('Authorization', `Bearer ${token}`)
-        .set('X-Tenant-Id', tenantId)
+        .set('X-Organization-Id', organizationId)
         .send({
           branchId,
           userId: personas.member.user.id,
@@ -264,7 +264,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       const gymService = require('../../src/services/gym.service');
 
       // Create a test branch using factories
-      const branch2 = await factories.createBranch(dbHarness.tenant1, tenantId, {
+      const branch2 = await factories.createBranch(dbHarness.tenant1, organizationId, {
         branchName: 'Branch To Delete For RBAC',
       });
 

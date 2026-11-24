@@ -28,7 +28,7 @@ describe('P9c D: host plan payment by bank transfer, approved by a platform admi
   let plan2;
   let jpeg;
   const saved = {};
-  const tenantId = () => ctx.tenant1.id;
+  const organizationId = () => ctx.tenant1.id;
 
   const submit = (fields = {}, { persona = 'owner', withProof = true } = {}) => {
     const req = asPersona(persona).post('/host/plan-payments');
@@ -38,11 +38,11 @@ describe('P9c D: host plan payment by bank transfer, approved by a platform admi
     return req;
   };
   const approve = (id) => asPersona('platformAdmin').post(`/admin/plan-payments/${id}/approve`, {});
-  const entitling = () => TenantSubscription.findAll({ where: { tenantId: tenantId(), status: ENTITLING_STATUSES } });
+  const entitling = () => TenantSubscription.findAll({ where: { organizationId: organizationId(), status: ENTITLING_STATUSES } });
   const resetTenant = async (rows = []) => {
     await PlanPaymentRequest.destroy({ where: {} });
-    await TenantSubscription.destroy({ where: { tenantId: tenantId() } });
-    for (const r of rows) await createTenantSubscription(tenantId(), r);
+    await TenantSubscription.destroy({ where: { organizationId: organizationId() } });
+    for (const r of rows) await createTenantSubscription(organizationId(), r);
   };
 
   beforeAll(async () => {
@@ -254,7 +254,7 @@ describe('P9c D: host plan payment by bank transfer, approved by a platform admi
       // A request sent before the store purchase cannot be approved afterwards either.
       const early = await submit();
       expect(early.status).toBe(201);
-      await createTenantSubscription(tenantId(), storeRow({ status: 'ACTIVE', autoRenew: true }));
+      await createTenantSubscription(organizationId(), storeRow({ status: 'ACTIVE', autoRenew: true }));
 
       const view = await asPersona('owner').get('/host/plan-payments');
       expect(view.body.data.blocked).toMatchObject({ code: 'store_plan_active', platform });
@@ -267,7 +267,7 @@ describe('P9c D: host plan payment by bank transfer, approved by a platform admi
       expect(res.body.code).toBe('store_plan_active');
 
       const pending = await PlanPaymentRequest.create({
-        tenantId: tenantId(), requestedByUserId: personas.owner.user.id,
+        organizationId: organizationId(), requestedByUserId: personas.owner.user.id,
         billingPlanId: plan2.id, branchCount: 2, billingCycle: 'MONTHLY', amount: 2999, currency: 'PKR',
       });
       const ap = await approve(pending.id);

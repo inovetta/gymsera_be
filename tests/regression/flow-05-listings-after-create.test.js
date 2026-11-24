@@ -6,7 +6,7 @@
  * (GET /host/listings) with the same token. NOT REPRODUCED: the new PENDING
  * organization is in the very next list.
  *
- * Reproduced only with an abnormal token: a GYM_HOST token without tenantId
+ * Reproduced only with an abnormal token: a GYM_HOST token without organizationId
  * creates through tenantContext's fallback tenant but lists nothing (the JWT
  * lead). The fix is proposed in docs/changes/FLOW-05.md, not applied. The
  * diagnostic logs carry no ids or personal data.
@@ -54,8 +54,8 @@ describe('FLOW-05: a created organization is in the next GET /host/listings', ()
 
   test('REPRODUCED only with a tenant-less host token: create succeeds, the list stays empty', async () => {
     // GET /host/listings reads the raw token claim (host.routes.js, no tenantContext);
-    // POST /host/listings goes through tenantContext, which fills req.user.tenantId
-    // from the header / the user's default tenant. A GYM_HOST token without tenantId
+    // POST /host/listings goes through tenantContext, which fills req.user.organizationId
+    // from the header / the user's default tenant. A GYM_HOST token without organizationId
     // (auth.service.js#_buildTokenPayload swallows a lookup error into null) splits them.
     const owner2 = personas.otherTenantOwner.user;
     const noTenantToken = signToken({ sub: owner2.id, id: owner2.id, email: owner2.email, role: 'GYM_HOST', isVerified: true });
@@ -93,7 +93,7 @@ describe('FLOW-05: a created organization is in the next GET /host/listings', ()
       expect(res.status).toBe(200);
       const lines = log.mock.calls.map((c) => c.join(' ')).filter((l) => l.includes('[FLOW-05]'));
       expect(lines).toHaveLength(1);
-      expect(lines[0]).toMatch(/listing\(s\) \{.*"PENDING":1.*\}; X-Tenant-Id matches/);
+      expect(lines[0]).toMatch(/listing\(s\) \{.*"PENDING":1.*\}; X-Organization-Id matches/);
       expect(lines[0]).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
       expect(lines[0]).not.toContain('Flow05 New Org');
     } finally {

@@ -19,7 +19,7 @@ beforeAll(async () => {
   await setupPersonas(dbHarness);
   ctx = require('../harness/personas').personaManager.context;
   const { TenantSubscription } = require('../../src/models/platform');
-  plan = await TenantSubscription.findOne({ where: { tenantId: ctx.tenant1.id } });
+  plan = await TenantSubscription.findOne({ where: { organizationId: ctx.tenant1.id } });
 });
 
 afterAll(async () => {

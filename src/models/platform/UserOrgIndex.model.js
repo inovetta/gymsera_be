@@ -29,7 +29,7 @@ module.exports = (sequelize) => {
         primaryKey: true,
         field: 'user_id',
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
         primaryKey: true,

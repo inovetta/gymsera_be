@@ -189,20 +189,20 @@ const branchCoverage = async (tenantDb, userId) => {
  * Resolve the effective permission set for a user in a branch.
  *
  * @param {object}  tenantDb  from TenantDbManager — { sequelize, models }
- * @param {string}  tenantId
+ * @param {string}  organizationId
  * @param {string}  userId
  * @param {string|null} branchId  null resolves org-wide grants only
  * @param {object}  [opts]
  * @param {boolean} [opts.skipCache=false]
  * @returns {Promise<Grants>}
  */
-const resolve = async (tenantDb, tenantId, userId, branchId = null, opts = {}) => {
-  if (!userId || !tenantId) return emptyGrants();
+const resolve = async (tenantDb, organizationId, userId, branchId = null, opts = {}) => {
+  if (!userId || !organizationId) return emptyGrants();
 
   const { Tenant, User } = require('../models/platform');
 
   // ── 1. Owner short-circuit ────────────────────────────────────────────────
-  const tenant = await Tenant.findByPk(tenantId, {
+  const tenant = await Tenant.findByPk(organizationId, {
     attributes: ['id', 'ownerUserId', 'permissionVersion'],
   });
   if (!tenant) return emptyGrants();
@@ -215,7 +215,7 @@ const resolve = async (tenantDb, tenantId, userId, branchId = null, opts = {}) =
   if (!opts.skipCache) {
     const user = await User.findByPk(userId, { attributes: ['id', 'permissionVersion'] });
     if (!user) return emptyGrants();
-    cacheKey = `perm:t${tenant.permissionVersion}:u${user.permissionVersion}:${tenantId}:${userId}:${branchId || 'org'}`;
+    cacheKey = `perm:t${tenant.permissionVersion}:u${user.permissionVersion}:${organizationId}:${userId}:${branchId || 'org'}`;
     const cached = await safeRedisGet(cacheKey);
     if (cached) {
       try {
@@ -289,7 +289,7 @@ const resolve = async (tenantDb, tenantId, userId, branchId = null, opts = {}) =
   for (const key of denied) delete map[key];
 
   // ── 6. Cap by subscription entitlements ───────────────────────────────────
-  const allowedModules = await entitledModules(tenantId);
+  const allowedModules = await entitledModules(organizationId);
   if (allowedModules) {
     for (const key of Object.keys(map)) {
       const perm = getPermission(key);
@@ -310,8 +310,8 @@ const resolve = async (tenantDb, tenantId, userId, branchId = null, opts = {}) =
 };
 
 /** Convenience: resolve then test a single key. */
-const can = async (tenantDb, tenantId, userId, permissionKey, branchId = null) => {
-  const grants = await resolve(tenantDb, tenantId, userId, branchId);
+const can = async (tenantDb, organizationId, userId, permissionKey, branchId = null) => {
+  const grants = await resolve(tenantDb, organizationId, userId, branchId);
   return grants.has(permissionKey);
 };
 
@@ -351,10 +351,10 @@ const bumpUserPermissionVersion = async (userId) => {
  *
  * For changes with org-wide blast radius: entitlement changes, custom role edits.
  */
-const bumpTenantPermissionVersion = async (tenantId) => {
-  if (!tenantId) return;
+const bumpTenantPermissionVersion = async (organizationId) => {
+  if (!organizationId) return;
   const { Tenant } = require('../models/platform');
-  await Tenant.increment('permissionVersion', { where: { id: tenantId } }).catch(() => {});
+  await Tenant.increment('permissionVersion', { where: { id: organizationId } }).catch(() => {});
 };
 
 // ── Guardrails ───────────────────────────────────────────────────────────────

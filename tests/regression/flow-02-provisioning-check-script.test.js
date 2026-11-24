@@ -123,12 +123,12 @@ describe('classify', () => {
 describe('the script against real databases', () => {
   test('lists each case, inside READ ONLY transactions, and changes nothing', async () => {
     const conn = await getAdminConnection();
-    const stuckNoDb = await factories.createTenant({ tenantCode: 'test_f02chk_a', status: 'APPROVED', connectionStringEncrypted: null });
-    const stuckPartial = await factories.createTenant({ tenantCode: 'test_f02chk_b', status: 'APPROVED', connectionStringEncrypted: null });
+    const stuckNoDb = await factories.createTenant({ organizationCode: 'test_f02chk_a', status: 'APPROVED', connectionStringEncrypted: null });
+    const stuckPartial = await factories.createTenant({ organizationCode: 'test_f02chk_b', status: 'APPROVED', connectionStringEncrypted: null });
     await conn.query('CREATE DATABASE IF NOT EXISTS `gymsera_test_f02chk_b`');
-    const activeBare = await factories.createTenant({ tenantCode: 'test_f02chk_c', status: 'ACTIVE' });
+    const activeBare = await factories.createTenant({ organizationCode: 'test_f02chk_c', status: 'ACTIVE' });
     // A real duplicate: one organization (one listing) with two gym rows on it, and a branch on no listing.
-    const activeDup = await factories.createTenant({ tenantCode: 'test_f02chk_d', status: 'ACTIVE' });
+    const activeDup = await factories.createTenant({ organizationCode: 'test_f02chk_d', status: 'ACTIVE' });
     const dupListing = await factories.createGymListing(activeDup.id, { title: 'Dup Gym' });
     await factories.createTenantSubscription(activeDup.id);
     await conn.query('CREATE DATABASE IF NOT EXISTS `gymsera_test_f02chk_d`');
@@ -140,7 +140,7 @@ describe('the script against real databases', () => {
     // The normal multi-organization tenant (host.controller.js:534, :598-613): each organization
     // has its own listing AND its own gym row, here created in the same second like seed data.
     // It must NOT be listed.
-    const multiOrg = await factories.createTenant({ tenantCode: 'test_f02chk_e', status: 'ACTIVE' });
+    const multiOrg = await factories.createTenant({ organizationCode: 'test_f02chk_e', status: 'ACTIVE' });
     const orgA = await factories.createGymListing(multiOrg.id, { title: 'Multi Org — DHA' });
     const orgB = await factories.createGymListing(multiOrg.id, { title: 'Multi Org — Clifton' });
     const orgC = await factories.createGymListing(multiOrg.id, { title: 'Multi Org — E-11' });
@@ -153,7 +153,7 @@ describe('the script against real databases', () => {
 
     // A double approval: the same listing title twice within seconds; and three gym rows for
     // two listings, on an old schema without gyms.gym_listing_id (the count rule still works).
-    const doubled = await factories.createTenant({ tenantCode: 'test_f02chk_f', status: 'ACTIVE' });
+    const doubled = await factories.createTenant({ organizationCode: 'test_f02chk_f', status: 'ACTIVE' });
     await factories.createGymListing(doubled.id, { title: 'Doubled Gym' });
     await factories.createGymListing(doubled.id, { title: 'Doubled Gym' });
     await factories.createTenantSubscription(doubled.id);

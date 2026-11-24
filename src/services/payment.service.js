@@ -295,13 +295,13 @@ const recordPayment = async (tenantDb, staffUserId, creatorRole, data, isDirect 
     return { payment: createdPayment, invoice: createdInvoice };
   });
 
-  if (data.branchId) ledgerService.notifyLedgerUpdated(tenantDb.tenantId, data.branchId, businessDate);
+  if (data.branchId) ledgerService.notifyLedgerUpdated(tenantDb.organizationId, data.branchId, businessDate);
 
   if (!autoComplete) {
     try {
       const { Tenant, User } = require('../models/platform');
       const notificationsService = require('./notifications.service');
-      const tenant = await Tenant.findByPk(tenantDb.tenantId);
+      const tenant = await Tenant.findByPk(tenantDb.organizationId);
 
       const staffUser = await User.findByPk(staffUserId);
       const staffName = staffUser ? staffUser.fullName : 'Staff';
@@ -495,7 +495,7 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
 
   const finalBusinessDate = payment.businessDate || updatePayload.businessDate;
   if (payment.branchId && finalBusinessDate) {
-    require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, finalBusinessDate);
+    require('./ledger.service').notifyLedgerUpdated(tenantDb.organizationId, payment.branchId, finalBusinessDate);
   }
 
   if (payment.referenceEntityId) {
@@ -551,7 +551,7 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
   try {
     const { Tenant, User } = require('../models/platform');
     const notificationsService = require('./notifications.service');
-    const tenant = await Tenant.findByPk(tenantDb.tenantId);
+    const tenant = await Tenant.findByPk(tenantDb.organizationId);
 
     // Load helper objects to construct friendly notification texts
     const travelerUser = await User.findByPk(payment.userId);
@@ -610,7 +610,7 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
           title: 'Subscription Verified',
           message: `Subscription verified: ${memberName} → ${planName} at ${branchName} (Host: ${hostName}).`,
           deepLink: `/admin/tenants/${tenant.id}`,
-          metadataJson: { subscriptionId: payment.referenceEntityId, tenantId: tenant.id },
+          metadataJson: { subscriptionId: payment.referenceEntityId, organizationId: tenant.id },
         });
       }
     }
@@ -672,7 +672,7 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
       notes: notes || payment.notes,
     });
     if (payment.branchId && payment.businessDate) {
-      require('./ledger.service').notifyLedgerUpdated(tenantDb.tenantId, payment.branchId, payment.businessDate);
+      require('./ledger.service').notifyLedgerUpdated(tenantDb.organizationId, payment.branchId, payment.businessDate);
     }
 
   } else if (action === 'verify') {
@@ -697,7 +697,7 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
     try {
       const { Tenant, User, MemberSubscription, MembershipPlan } = require('../models/platform');
       const notificationsService = require('./notifications.service');
-      const tenant = await Tenant.findByPk(tenantDb.tenantId);
+      const tenant = await Tenant.findByPk(tenantDb.organizationId);
 
       const travelerUser = await User.findByPk(payment.userId);
       const memberName = travelerUser ? travelerUser.fullName : 'Member';
@@ -765,7 +765,7 @@ const verifyOrRejectPayment = async (tenantDb, paymentId, actorUserId, actorRole
 };
 
 // ── POST /payments/:id/proof — upload proof image ─────────────────────────────
-const uploadPaymentProof = async (tenantDb, paymentId, file, tenantId = tenantDb.tenantId) => {
+const uploadPaymentProof = async (tenantDb, paymentId, file, organizationId = tenantDb.organizationId) => {
   const { Payment } = tenantDb.models;
 
   const payment = await Payment.findByPk(paymentId);
@@ -775,7 +775,7 @@ const uploadPaymentProof = async (tenantDb, paymentId, file, tenantId = tenantDb
   }
 
   // P9c (A): the file is stored (private store) before the row points at it.
-  await require('./payment-proof.service').storeProof({ tenantId, payment, file });
+  await require('./payment-proof.service').storeProof({ organizationId, payment, file });
   return payment.reload();
 };
 

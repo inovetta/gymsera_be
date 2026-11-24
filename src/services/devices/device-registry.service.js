@@ -551,7 +551,7 @@ async function branchOf(tenantDb, branchId) {
  * Adds a device to a branch. Returns { device, setup } (setup = the card the host types on the device).
  * Mode C (serial) only when DEVICE_SERIAL_PAIRING allows it (D-2).
  */
-async function createDevice({ tenantId, tenantDb, branchId, businessId, name, direction = 'in', linkMode, serialNumber, importFirst = false, createdBy = null }) {
+async function createDevice({ organizationId, tenantDb, branchId, businessId, name, direction = 'in', linkMode, serialNumber, importFirst = false, createdBy = null }) {
   const cfg = getDeviceConfig();
   const mode = linkMode || cfg.defaultLinkMode;
   if (!LINK_MODES.includes(mode)) throw createError('Choose how the device connects: host, path or serial.', 422, 'invalid_link_mode');
@@ -585,7 +585,7 @@ async function createDevice({ tenantId, tenantDb, branchId, businessId, name, di
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_connection', ?, ?, ?)`,
         {
           replacements: utc([
-            id, key, sn, tenantId, businessId || branch.gym_id || null, branchId, mode, commKey,
+            id, key, sn, organizationId, businessId || branch.gym_id || null, branchId, mode, commKey,
             protocol.newRegistryCode(), protocol.newSessionId(), cfg.tokenMode, createdBy, now, now,
           ]),
         }
@@ -614,8 +614,8 @@ async function createDevice({ tenantId, tenantDb, branchId, businessId, name, di
 }
 
 /** One device of this tenant, not removed; null otherwise (a 404 for the caller). */
-async function getDevice({ tenantId, tenantDb, deviceId }) {
-  const [row] = await q(platformDb, 'SELECT * FROM access_devices WHERE id = ? AND tenant_id = ? AND status <> \'removed\'', [deviceId, tenantId]);
+async function getDevice({ organizationId, tenantDb, deviceId }) {
+  const [row] = await q(platformDb, 'SELECT * FROM access_devices WHERE id = ? AND tenant_id = ? AND status <> \'removed\'', [deviceId, organizationId]);
   if (!row) return null;
   const det = await detailsOf(tenantDb, deviceId);
   if (!det) return null;
@@ -624,11 +624,11 @@ async function getDevice({ tenantId, tenantDb, deviceId }) {
 }
 
 /** branchIds null = every branch the tenant has. */
-async function listDevices({ tenantId, tenantDb, branchIds = null }) {
+async function listDevices({ organizationId, tenantDb, branchIds = null }) {
   if (Array.isArray(branchIds) && branchIds.length === 0) return [];
   const rows = Array.isArray(branchIds)
-    ? await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' AND branch_id IN (?) ORDER BY created_at', [tenantId, branchIds])
-    : await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' ORDER BY created_at', [tenantId]);
+    ? await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' AND branch_id IN (?) ORDER BY created_at', [organizationId, branchIds])
+    : await q(platformDb, 'SELECT * FROM access_devices WHERE tenant_id = ? AND status <> \'removed\' ORDER BY created_at', [organizationId]);
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const dets = await q(tenantDb.sequelize, 'SELECT * FROM access_device_details WHERE id IN (?)', [ids]);
@@ -642,7 +642,7 @@ async function listDevices({ tenantId, tenantDb, branchIds = null }) {
 const VALIDITY_MODES = ['none', 'datetime', 'seconds'];
 const USER_FORMS = ['user', 'userinfo'];
 
-async function updateDevice({ tenantId, tenantDb, deviceId, name, direction, attOptions, pollDelaySeconds }) {
+async function updateDevice({ organizationId, tenantDb, deviceId, name, direction, attOptions, pollDelaySeconds }) {
   if (attOptions !== undefined || pollDelaySeconds !== undefined) {
     // Phase 5: per-device options of a T&A PUSH device (null = back to the default).
     const det = await detailsOf(tenantDb, deviceId);
@@ -680,7 +680,7 @@ async function updateDevice({ tenantId, tenantDb, deviceId, name, direction, att
       if (attOptions !== undefined) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'att_options_changed');
     }
   }
-  if (name === undefined && direction === undefined) return getDevice({ tenantId, tenantDb, deviceId });
+  if (name === undefined && direction === undefined) return getDevice({ organizationId, tenantDb, deviceId });
   let clean = null;
   if (name !== undefined) {
     clean = String(name || '').trim().slice(0, 100);
@@ -697,11 +697,11 @@ async function updateDevice({ tenantId, tenantDb, deviceId, name, direction, att
     );
   }
   if (direction !== undefined) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'direction_changed');
-  return getDevice({ tenantId, tenantDb, deviceId });
+  return getDevice({ organizationId, tenantDb, deviceId });
 }
 
 /** Disable stops all traffic (§10.3); enable returns it to active, or awaiting when it never registered. */
-async function setEnabled({ tenantId, tenantDb, deviceId, enabled }) {
+async function setEnabled({ organizationId, tenantDb, deviceId, enabled }) {
   const now = new Date();
   await tenantDb.sequelize.query('UPDATE access_device_details SET enabled = ?, updated_at = ? WHERE id = ?', {
     replacements: utc([enabled ? 1 : 0, now, deviceId]),
@@ -709,16 +709,16 @@ async function setEnabled({ tenantId, tenantDb, deviceId, enabled }) {
   const sql = enabled
     ? 'UPDATE access_devices SET status = IF(registered_at IS NULL, \'awaiting_connection\', \'active\'), updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\''
     : 'UPDATE access_devices SET status = \'disabled\', updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\'';
-  await platformDb.query(sql, { replacements: utc([now, deviceId, tenantId]) });
+  await platformDb.query(sql, { replacements: utc([now, deviceId, organizationId]) });
   if (enabled) require('./device-triggers').reconcileDeviceSoon(tenantDb, deviceId, 'device_enabled');
-  return getDevice({ tenantId, tenantDb, deviceId });
+  return getDevice({ organizationId, tenantDb, deviceId });
 }
 
 /**
  * Re-pair (§4.2 rule 3): new key, new RegistryCode and SessionID, serial unbound (kept as
  * previous_serial_number). The old key stops working at once. A disabled device stays disabled.
  */
-async function repairDevice({ tenantId, tenantDb = null, deviceId }) {
+async function repairDevice({ organizationId, tenantDb = null, deviceId }) {
   const now = new Date();
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
@@ -728,7 +728,7 @@ async function repairDevice({ tenantId, tenantDb = null, deviceId }) {
            status = IF(status = 'disabled', 'disabled', 'awaiting_connection'), registered_at = NULL,
            serial_mismatch_at = NULL, serial_mismatch_value = NULL, last_token_state = NULL, updated_at = ?
          WHERE id = ? AND tenant_id = ? AND status <> 'removed' AND link_mode <> 'serial'`,
-        { replacements: utc([newDeviceKey(), protocol.newRegistryCode(), protocol.newSessionId(), now, deviceId, tenantId]) }
+        { replacements: utc([newDeviceKey(), protocol.newRegistryCode(), protocol.newSessionId(), now, deviceId, organizationId]) }
       );
       break;
     } catch (err) {
@@ -737,7 +737,7 @@ async function repairDevice({ tenantId, tenantDb = null, deviceId }) {
   }
   const row = await findById(deviceId);
   if (!tenantDb) return { device: { id: row.id, deviceKey: row.device_key, status: row.status }, setup: setupFor(row) };
-  const found = await getDevice({ tenantId, tenantDb, deviceId });
+  const found = await getDevice({ organizationId, tenantDb, deviceId });
   return { device: found.view, setup: found.setup };
 }
 
@@ -751,7 +751,7 @@ async function repairDevice({ tenantId, tenantDb = null, deviceId }) {
  * A device that never connected has nothing of ours: it is removed at once.
  * → { status: 'removed' | 'wiping', wipe: boolean, wipeCommands? , wipeSkipped? }
  */
-async function unpairDevice({ tenantId, tenantDb, deviceId, wipe = false }) {
+async function unpairDevice({ organizationId, tenantDb, deviceId, wipe = false }) {
   const now = new Date();
   const row = await findById(deviceId);
   if (wipe && Number((await detailsOf(tenantDb, deviceId))?.import_hold)) {
@@ -777,19 +777,19 @@ async function unpairDevice({ tenantId, tenantDb, deviceId, wipe = false }) {
       );
     }
     await platformDb.query('UPDATE access_devices SET status = \'wiping\', updated_at = ? WHERE id = ? AND tenant_id = ? AND status <> \'removed\'', {
-      replacements: utc([now, deviceId, tenantId]),
+      replacements: utc([now, deviceId, organizationId]),
     });
     return { status: 'wiping', wipe: true, wipeCommands: plan.length };
   }
-  await markRemoved({ tenantId, tenantDb, deviceId, now });
+  await markRemoved({ organizationId, tenantDb, deviceId, now });
   return wipe ? { status: 'removed', wipe: false, wipeSkipped: 'never_connected' } : { status: 'removed', wipe: false };
 }
 
-async function markRemoved({ tenantId, tenantDb, deviceId, now = new Date() }) {
+async function markRemoved({ organizationId, tenantDb, deviceId, now = new Date() }) {
   await platformDb.query(
     `UPDATE access_devices SET status = 'removed', previous_serial_number = COALESCE(serial_number, previous_serial_number),
        serial_number = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-    { replacements: utc([now, deviceId, tenantId]) }
+    { replacements: utc([now, deviceId, organizationId]) }
   );
   await tenantDb.sequelize.query('UPDATE access_device_details SET enabled = 0, removed_at = ?, updated_at = ? WHERE id = ?', {
     replacements: utc([now, now, deviceId]),
@@ -804,12 +804,12 @@ async function markRemoved({ tenantId, tenantDb, deviceId, now = new Date() }) {
  * A wiping device whose deletes are all answered (or `force`: the wait is over) is removed; what
  * GymsEra knew about it (sync rows) goes with it. → true when removed now
  */
-async function finishWipe({ tenantId, tenantDb, deviceId, force = false, now = new Date() }) {
+async function finishWipe({ organizationId, tenantDb, deviceId, force = false, now = new Date() }) {
   const row = await findById(deviceId);
   if (!row || row.status !== 'wiping') return false;
   const [open] = await q(tenantDb.sequelize, 'SELECT COUNT(*) AS n FROM device_commands WHERE device_id = ? AND kind = \'wipe\' AND status IN (\'queued\', \'sent\')', [deviceId]);
   if (Number(open.n) && !force) return false;
-  await markRemoved({ tenantId, tenantDb, deviceId, now });
+  await markRemoved({ organizationId, tenantDb, deviceId, now });
   await tenantDb.sequelize.query('DELETE FROM device_member_sync WHERE device_id = ?', { replacements: utc([deviceId]) });
   return true;
 }
@@ -820,8 +820,8 @@ async function finishWipe({ tenantId, tenantDb, deviceId, force = false, now = n
  * grace: the old branch's members are removed, the new branch's sent. Not while it is wiping or imported.
  * → { device, setup, sync: counts }
  */
-async function moveDevice({ tenantId, tenantDb, deviceId, branchId }) {
-  const found = await getDevice({ tenantId, tenantDb, deviceId });
+async function moveDevice({ organizationId, tenantDb, deviceId, branchId }) {
+  const found = await getDevice({ organizationId, tenantDb, deviceId });
   if (!found) throw createError('Device not found.', 404, 'device_not_found');
   if (found.row.status === 'wiping') throw createError('This device is being wiped.', 409, 'device_wiping');
   if (Number(found.details.import_hold)) {
@@ -832,7 +832,7 @@ async function moveDevice({ tenantId, tenantDb, deviceId, branchId }) {
   if (!branch) throw createError('Branch not found.', 404, 'branch_not_found');
   const now = new Date();
   await platformDb.query('UPDATE access_devices SET branch_id = ?, business_id = ?, updated_at = ? WHERE id = ? AND tenant_id = ?', {
-    replacements: utc([branchId, branch.gym_id || null, now, deviceId, tenantId]),
+    replacements: utc([branchId, branch.gym_id || null, now, deviceId, organizationId]),
   });
   await tenantDb.sequelize.query('UPDATE access_device_details SET branch_id = ?, last_sweep_at = NULL, updated_at = ? WHERE id = ?', {
     replacements: utc([branchId, now, deviceId]),
@@ -848,7 +848,7 @@ async function moveDevice({ tenantId, tenantDb, deviceId, branchId }) {
     { replacements: utc([deviceId]) }
   );
   const counts = await require('./device-sync.service').reconcileDevice(tenantDb, deviceId, 'device_moved', { noGrace: true, priority: 1, now });
-  const after = await getDevice({ tenantId, tenantDb, deviceId });
+  const after = await getDevice({ organizationId, tenantDb, deviceId });
   return { device: after.view, setup: after.setup, sync: counts };
 }
 

@@ -124,7 +124,7 @@ const _statusFromSubscriptionState = (subscriptionState, expiresAt) => {
  * used to fetch it, so the caller (who already has it) always supplies it.
  */
 const syncSubscriptionFromPurchase = async (
-  tenantId,
+  organizationId,
   purchase,
   purchaseToken,
   { originListingId = null, revoked = false, upcomingOverride = undefined } = {}
@@ -194,7 +194,7 @@ const syncSubscriptionFromPurchase = async (
     lastVerifiedAt: new Date(),
   };
 
-  return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
+  return subscriptionMigrationService.applyVerifiedSubscription(organizationId, values, {
     originListingId,
     idempotencyPrefix: values.externalTransactionId,
     // Google's own subscriptionsv2 response says exactly which prior
@@ -324,7 +324,7 @@ const UNPAID_STATES = {
   SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED: 'PAYMENT_CANCELLED',
 };
 
-const syncFromGoogle = async ({ purchaseToken, tenantId = null, originListingId = null, revoked = false, throwOnAckFailure = false }) => {
+const syncFromGoogle = async ({ purchaseToken, organizationId = null, originListingId = null, revoked = false, throwOnAckFailure = false }) => {
   const purchase = await playApi.getSubscriptionPurchase(purchaseToken);
   if (UNPAID_STATES[purchase.subscriptionState] && !revoked) {
     return { pending: true, paymentState: UNPAID_STATES[purchase.subscriptionState] };
@@ -332,7 +332,7 @@ const syncFromGoogle = async ({ purchaseToken, tenantId = null, originListingId 
   // Without a caller tenant (RTDN, daily sweep): the existing row's owner, or
   // the tenant named by obfuscatedExternalAccountId; null when nobody owns it.
   const owner =
-    tenantId ||
+    organizationId ||
     (await subscriptionMigrationService.resolveSubscriptionOwner(
       'ANDROID',
       purchaseToken,

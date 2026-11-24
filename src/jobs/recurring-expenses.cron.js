@@ -6,7 +6,7 @@ const { addPlanDuration, DEFAULT_TIMEZONE } = require('../utils/business-date.ut
 /**
  * Process recurring expenses for a single tenant.
  */
-const processTenantRecurringExpenses = async (tenantId, tenantDb) => {
+const processTenantRecurringExpenses = async (organizationId, tenantDb) => {
   const { Expense } = tenantDb.models;
   if (!Expense) return;
 
@@ -58,7 +58,7 @@ const processTenantRecurringExpenses = async (tenantId, tenantDb) => {
       });
 
       console.log(
-        `[Recurring Expenses Cron] Generated instance for template "${template.title}" (${template.id}) in tenant ${tenantId}`
+        `[Recurring Expenses Cron] Generated instance for template "${template.title}" (${template.id}) in tenant ${organizationId}`
       );
     }
   }

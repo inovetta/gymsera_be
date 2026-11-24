@@ -12,7 +12,7 @@ const { asPersona } = require('../harness');
 const biometrics = require('../../src/services/devices/biometric.service');
 
 let w; let home; let away; let homeDoor; let awayDoor; let member; let importId; let bioId;
-const PA = { 'X-Tenant-Id': null };
+const PA = { 'X-Organization-Id': null };
 const code = (res) => res.body.error?.code || res.body.code;
 
 beforeAll(async () => {
@@ -30,7 +30,7 @@ beforeAll(async () => {
   const res = await asPersona('owner').post(`/host/devices/${homeDoor.id}/imports`, {});
   importId = res.body.data.import.id;
   await homeDoor.sim.drain();
-  PA['X-Tenant-Id'] = w.ctx.tenant1.id;
+  PA['X-Organization-Id'] = w.ctx.tenant1.id;
 });
 afterAll(async () => { await w.settled(); await require('../harness').teardownTestDatabases(); });
 

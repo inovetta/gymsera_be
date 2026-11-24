@@ -65,7 +65,7 @@ const ignoreBodyDestination = (req, _res, next) => {
     for (const k of dropped) delete body[k];
     console.warn(
       `[Payouts] NEW-232: ignored ${dropped.join(', ')} in the POST /host/payouts body; ` +
-        `the payout goes to the saved payout account (tenant ${req.tenantId || '-'}, user ${req.user?.id || req.user?.sub || '-'})`
+        `the payout goes to the saved payout account (tenant ${req.organizationId || '-'}, user ${req.user?.id || req.user?.sub || '-'})`
     );
   }
   return next();
@@ -77,7 +77,7 @@ const ignoreBodyDestination = (req, _res, next) => {
 const requestPayout = async (req, res, next) => {
   try {
     const { branchId, amount, notes } = req.body || {};
-    const tenantId = req.tenantId || req.user?.tenantId || req.tenant?.id;
+    const organizationId = req.organizationId || req.user?.organizationId || req.tenant?.id;
     const userId = req.user.id || req.user.sub;
 
     const idempotencyKey =
@@ -88,11 +88,11 @@ const requestPayout = async (req, res, next) => {
       null;
 
     const grants =
-      req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, branchId || null));
+      req.grants || (await accessService.resolve(req.tenantDb, organizationId, userId, branchId || null));
 
     const ctx = {
       tenantDb: req.tenantDb,
-      tenantId,
+      organizationId,
       userId,
       branchId: branchId || null,
       grants,
@@ -159,17 +159,17 @@ const _readDetails = (details) => {
  * NEW-228 (R-97): every platform-admin read of a payout account is recorded with the admin's id
  * and the gym. No entry, no answer (as admin.member_contact_revealed): a failure refuses the read.
  */
-const _auditAdminRead = async (req, tenantId, account) => {
+const _auditAdminRead = async (req, organizationId, account) => {
   const { PlatformAuditLog, Tenant } = require('../models/platform');
   try {
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'gymName'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'gymName'] });
     await PlatformAuditLog.create({
       actorUserId: req.user.id || req.user.sub,
       action: 'admin.payout_account_viewed',
       targetType: 'tenant',
-      targetId: tenantId,
+      targetId: organizationId,
       details: {
-        tenantId,
+        organizationId,
         gymName: tenant ? tenant.gymName : null,
         payoutAccountId: account ? account.id : null,
         route: `${req.method} ${req.baseUrl}${req.path}`,
@@ -187,11 +187,11 @@ const _auditAdminRead = async (req, tenantId, account) => {
  */
 const getPayoutAccount = async (req, res, next) => {
   try {
-    const tenantId = req.tenantId || req.user?.tenantId;
-    const account = await payoutAccountService.getTenantDefault(tenantId);
+    const organizationId = req.organizationId || req.user?.organizationId;
+    const account = await payoutAccountService.getTenantDefault(organizationId);
     if (isPlatformAdmin(req)) {
       // NEW-228 (R-97): masked, and only after the read is on the platform audit trail.
-      await _auditAdminRead(req, tenantId, account);
+      await _auditAdminRead(req, organizationId, account);
       return sendSuccess(res, { account: payoutAccountService.maskViewForAdmin(account) });
     }
     return sendSuccess(res, { account });
@@ -206,7 +206,7 @@ const getPayoutAccount = async (req, res, next) => {
  */
 const savePayoutAccount = async (req, res, next) => {
   try {
-    const tenantId = req.tenantId || req.user?.tenantId;
+    const organizationId = req.organizationId || req.user?.organizationId;
     const userId = req.user.id || req.user.sub;
     const details = _readDetails(req.body?.details);
     const { password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
@@ -215,7 +215,7 @@ const savePayoutAccount = async (req, res, next) => {
       provider: provider || reauthProvider,
       idToken: idToken || reauthIdToken,
     });
-    const account = await payoutAccountService.saveTenantDefault(tenantId, details);
+    const account = await payoutAccountService.saveTenantDefault(organizationId, details);
     return sendSuccess(res, { account }, 'Payout account saved');
   } catch (err) {
     next(err);

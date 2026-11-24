@@ -1,8 +1,8 @@
 /**
  * NEW-257 (security, found during NEW-256): the gym side of the inbox skipped its tenant check when
  * the caller had no tenant. inbox.service.js getInquiryDetail, replyToInquiry and markInquiryRead
- * built `{ id }` and added `tenantId` only `if (tenantId)`, so a GYM_HOST whose token carries no
- * tenant (req.user.tenantId undefined) could read, answer and mark read ANY gym's conversation by
+ * built `{ id }` and added `organizationId` only `if (organizationId)`, so a GYM_HOST whose token carries no
+ * tenant (req.user.organizationId undefined) could read, answer and mark read ANY gym's conversation by
  * id. Fix: fail closed — no tenant, no conversation (404, nothing written).
  */
 const { v4: uuidv4 } = require('uuid');
@@ -24,7 +24,7 @@ beforeAll(async () => {
   personas = await setupPersonas(h);
   ctx = require('../harness/personas').personaManager.context;
   conversation = await Conversation.create({
-    id: uuidv4(), tenantId: personas.owner.tenantId, branchId: ctx.branch1.id, userId: personas.member.user.id,
+    id: uuidv4(), organizationId: personas.owner.organizationId, branchId: ctx.branch1.id, userId: personas.member.user.id,
     type: 'INQUIRY', unreadCountHost: 3, lastMessageText: 'private question',
   });
   await Message.create({ conversationId: conversation.id, senderId: personas.member.user.id, senderType: 'USER', text: 'private question' });

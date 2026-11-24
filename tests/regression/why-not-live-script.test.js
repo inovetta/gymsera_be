@@ -20,14 +20,14 @@ const { GymListing, City, Tenant, TenantSubscription } = require('../../src/mode
 const { whyNotLive, formatReport, parseArgs } = require('../../src/scripts/why-not-live');
 
 describe('why-not-live: every live-gym condition, and which one fails', () => {
-  let h; let personas; let tenantId; let branch; let plan; let city;
+  let h; let personas; let organizationId; let branch; let plan; let city;
 
   beforeAll(async () => {
     h = await setupTestDatabases();
     personas = await setupPersonas(h);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     city = await City.create({ name: 'WNL City', isActive: true });
-    const listing = await GymListing.findOne({ where: { tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId } });
     await listing.update({ status: 'ACTIVE', cityId: city.id });
     branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
     await branch.update({
@@ -80,10 +80,10 @@ describe('why-not-live: every live-gym condition, and which one fails', () => {
   });
 
   test.each([
-    ['tenant status', () => Tenant.update({ status: 'SUSPENDED' }, { where: { id: tenantId } }),
-      () => Tenant.update({ status: 'ACTIVE' }, { where: { id: tenantId } })],
-    ['subscription', () => TenantSubscription.update({ status: 'EXPIRED' }, { where: { tenantId } }),
-      () => TenantSubscription.update({ status: 'ACTIVE' }, { where: { tenantId } })],
+    ['tenant status', () => Tenant.update({ status: 'SUSPENDED' }, { where: { id: organizationId } }),
+      () => Tenant.update({ status: 'ACTIVE' }, { where: { id: organizationId } })],
+    ['subscription', () => TenantSubscription.update({ status: 'EXPIRED' }, { where: { organizationId } }),
+      () => TenantSubscription.update({ status: 'ACTIVE' }, { where: { organizationId } })],
     ['branch status', () => branch.update({ status: 'INACTIVE' }), () => branch.update({ status: 'ACTIVE' })],
     ['traveller visibility', () => branch.update({ travelerVisibilityStatus: 'pending' }),
       () => branch.update({ travelerVisibilityStatus: 'active' })],

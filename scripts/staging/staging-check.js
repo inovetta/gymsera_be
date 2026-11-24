@@ -39,11 +39,11 @@ async function main() {
     const { appleApi } = require('../../src/services/apple-billing.service');
     report.purchases = await verifySandboxPurchases({ google, apple, playApi, appleApi });
     if (flag('--apply') && report.purchases.ok) {
-      const tenantId = arg('--tenant');
-      if (!tenantId) throw Object.assign(new Error('--apply needs --tenant <id>'), { refusal: true });
+      const organizationId = arg('--tenant');
+      if (!organizationId) throw Object.assign(new Error('--apply needs --tenant <id>'), { refusal: true });
       const sync = [];
-      if (google) sync.push(['GOOGLE', () => require('../../src/services/google-play-billing.service').syncFromGoogle({ purchaseToken: google.purchaseToken, tenantId })]);
-      if (apple) sync.push(['APPLE', () => require('../../src/services/apple-billing.service').syncFromApple({ transactionId: apple.transactionId, tenantId })]);
+      if (google) sync.push(['GOOGLE', () => require('../../src/services/google-play-billing.service').syncFromGoogle({ purchaseToken: google.purchaseToken, organizationId })]);
+      if (apple) sync.push(['APPLE', () => require('../../src/services/apple-billing.service').syncFromApple({ transactionId: apple.transactionId, organizationId })]);
       report.purchases.applied = [];
       for (const [provider, fn] of sync) {
         const sub = await fn();

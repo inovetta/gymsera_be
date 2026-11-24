@@ -45,7 +45,7 @@ describe('OBS-05: admin billing events view', () => {
     adminToken = signToken({ sub: admin.id, id: admin.id, role: 'PLATFORM_ADMIN', isVerified: true });
     tenantA = await factories.createTenant({ gymName: 'Alpha Fitness' });
     tenantB = await factories.createTenant({ gymName: 'Beta Fitness' });
-    hostToken = signToken({ sub: tenantA.ownerUserId, id: tenantA.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenantA.id });
+    hostToken = signToken({ sub: tenantA.ownerUserId, id: tenantA.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenantA.id });
   });
 
   test('401 without a token, 403 for a gym host', async () => {
@@ -54,36 +54,36 @@ describe('OBS-05: admin billing events view', () => {
   });
 
   test('lists events newest first with tenant name, status and age; never the raw payload', async () => {
-    await mk({ tenantId: tenantA.id, providerEventId: 'old', receivedAt: new Date(Date.now() - 3600 * 1000) });
-    await mk({ tenantId: tenantA.id, providerEventId: 'new', status: 'FAILED', attempts: 2, lastError: 'Apple API down' });
+    await mk({ organizationId: tenantA.id, providerEventId: 'old', receivedAt: new Date(Date.now() - 3600 * 1000) });
+    await mk({ organizationId: tenantA.id, providerEventId: 'new', status: 'FAILED', attempts: 2, lastError: 'Apple API down' });
     const res = await get();
     expect(res.status).toBe(200);
     const rows = res.body.data;
     expect(rows.map((r) => r.providerEventId)).toEqual(['new', 'old']);
-    expect(rows[0]).toMatchObject({ tenantId: tenantA.id, tenantName: tenantA.gymName, status: 'FAILED', attempts: 2, provider: 'APPLE' });
+    expect(rows[0]).toMatchObject({ organizationId: tenantA.id, tenantName: tenantA.gymName, status: 'FAILED', attempts: 2, provider: 'APPLE' });
     expect(JSON.stringify(res.body)).not.toContain('receipt-data-123');
     expect(rows[0].rawPayload).toBeUndefined();
   });
 
   test('filters by tenant, by status, by provider, and combinations', async () => {
-    await mk({ tenantId: tenantA.id, providerEventId: 'a-ok' });
-    await mk({ tenantId: tenantA.id, providerEventId: 'a-fail', status: 'FAILED' });
-    await mk({ tenantId: tenantB.id, providerEventId: 'b-fail', status: 'FAILED', provider: 'STRIPE' });
-    await mk({ tenantId: null, providerEventId: 'orphan', status: 'RECEIVED' });
+    await mk({ organizationId: tenantA.id, providerEventId: 'a-ok' });
+    await mk({ organizationId: tenantA.id, providerEventId: 'a-fail', status: 'FAILED' });
+    await mk({ organizationId: tenantB.id, providerEventId: 'b-fail', status: 'FAILED', provider: 'STRIPE' });
+    await mk({ organizationId: null, providerEventId: 'orphan', status: 'RECEIVED' });
 
     const ids = async (qs) => (await get(qs)).body.data.map((r) => r.providerEventId).sort();
-    expect(await ids(`?tenantId=${tenantA.id}`)).toEqual(['a-fail', 'a-ok']);
+    expect(await ids(`?organizationId=${tenantA.id}`)).toEqual(['a-fail', 'a-ok']);
     expect(await ids('?status=FAILED')).toEqual(['a-fail', 'b-fail']);
-    expect(await ids(`?tenantId=${tenantB.id}&status=FAILED`)).toEqual(['b-fail']);
+    expect(await ids(`?organizationId=${tenantB.id}&status=FAILED`)).toEqual(['b-fail']);
     expect(await ids('?provider=STRIPE')).toEqual(['b-fail']);
     expect(await ids('?status=RECEIVED')).toEqual(['orphan']);
-    expect(await ids('?tenantId=none')).toEqual(['orphan']);
+    expect(await ids('?organizationId=none')).toEqual(['orphan']);
   });
 
   test('invalid filters are a 422, not an empty list or a 500', async () => {
     expect((await get('?status=BOGUS')).status).toBe(422);
     expect((await get('?provider=PAYPAL')).status).toBe(422);
-    expect((await get('?tenantId=not-a-uuid')).status).toBe(422);
+    expect((await get('?organizationId=not-a-uuid')).status).toBe(422);
   });
 
   test('pages with total and limit capped at 100', async () => {

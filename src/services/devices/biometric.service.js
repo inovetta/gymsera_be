@@ -173,13 +173,13 @@ async function templatesForDelivery(db, ids) {
 const storage = () => require('../kyc-storage.service');
 
 /** A photo a device sent: encrypted, private store, one per (member, kind, type). → row id */
-async function storePhoto(db, { tenantId, memberId, deviceId, photo, now = new Date() }) {
+async function storePhoto(db, { organizationId, memberId, deviceId, photo, now = new Date() }) {
   const cfg = getDeviceConfig();
   const consented = Boolean(await activeConsent(db, memberId));
   // The base64 text exactly as the device sent it (what a device gets back), encrypted.
   const bytes = Buffer.from(photo.content, 'utf8');
   const enc = bioCrypto.encrypt(bytes);
-  const key = `biometrics/${tenantId}/${memberId}/${photo.kind}-${photo.type}-${crypto.randomUUID()}.bin`;
+  const key = `biometrics/${organizationId}/${memberId}/${photo.kind}-${photo.type}-${crypto.randomUUID()}.bin`;
   await storage().putPrivateObject({ buffer: enc, mimetype: 'application/octet-stream', key });
   const [old] = await select(db, 'SELECT id, storage_key FROM member_biometric_photos WHERE member_id = ? AND kind = ? AND bio_type = ?', [memberId, photo.kind, photo.type]);
   const pendingUntil = consented ? null : new Date(now.getTime() + cfg.consentPendingDays * 86400000);

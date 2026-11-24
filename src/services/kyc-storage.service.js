@@ -105,12 +105,12 @@ async function putPrivateObject({ buffer, mimetype, key }) {
  * @param {object} params
  * @param {Buffer} params.buffer
  * @param {string} params.mimetype
- * @param {string} params.tenantId
+ * @param {string} params.organizationId
  * @param {string} [params.originalName]
  * @param {string} [params.documentType]
  * @returns {Promise<object>} document descriptor
  */
-async function uploadKycDocument({ buffer, mimetype, tenantId, originalName = 'document', documentType = 'BUSINESS_LICENSE' }) {
+async function uploadKycDocument({ buffer, mimetype, organizationId, originalName = 'document', documentType = 'BUSINESS_LICENSE' }) {
   const normMime = (mimetype || '').toLowerCase().trim();
   if (!ALLOWED_MIME_TYPES.has(normMime)) {
     const err = new Error(`Unsupported KYC document MIME type: ${normMime}. Allowed: PDF, JPEG, PNG, WEBP.`);
@@ -126,7 +126,7 @@ async function uploadKycDocument({ buffer, mimetype, tenantId, originalName = 'd
 
   const ext = normMime === 'application/pdf' ? 'pdf' : normMime.split('/')[1].replace('jpeg', 'jpg');
   const docId = `doc_${crypto.randomBytes(12).toString('hex')}`;
-  const key = `tenants/${tenantId}/kyc/${docId}-${Date.now()}.${ext}`;
+  const key = `tenants/${organizationId}/kyc/${docId}-${Date.now()}.${ext}`;
 
   await putPrivateObject({ buffer, mimetype: normMime, key });
 

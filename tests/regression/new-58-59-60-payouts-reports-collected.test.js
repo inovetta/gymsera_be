@@ -27,7 +27,7 @@ const { PaymentStatus } = require('../../src/constants/payment-status');
 let app;
 let dbHarness;
 let personas;
-let tenantId;
+let organizationId;
 let branches; // { a, b, c }
 let managerThree;
 let managerOne;
@@ -41,11 +41,11 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
   ownerToken = personas.owner.token;
   const { Branch } = tenantDb.models;
 
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
   const a = await Branch.findOne({ where: { gymId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
@@ -69,7 +69,7 @@ beforeAll(async () => {
   // Manager of 3 branches (A, B, C)
   managerThree = await teamMember({
     tenantDb,
-    tenantId,
+    organizationId,
     email: 'mgr-three@new585960.test',
     roleKey: 'MANAGER',
     scopeType: 'BRANCH',
@@ -79,7 +79,7 @@ beforeAll(async () => {
   // Manager of 1 branch (A only)
   managerOne = await teamMember({
     tenantDb,
-    tenantId,
+    organizationId,
     email: 'mgr-one@new585960.test',
     roleKey: 'MANAGER',
     scopeType: 'BRANCH',
@@ -89,7 +89,7 @@ beforeAll(async () => {
   // Front Desk at A with revenue OFF (default DESK has revenue OFF)
   frontDeskOff = await teamMember({
     tenantDb,
-    tenantId,
+    organizationId,
     email: 'fd-off@new585960.test',
     roleKey: 'DESK',
     scopeType: 'BRANCH',
@@ -99,7 +99,7 @@ beforeAll(async () => {
   // Org Admin (ORG scope) - no payouts.view by default
   orgAdmin = await teamMember({
     tenantDb,
-    tenantId,
+    organizationId,
     email: 'org-admin@new585960.test',
     roleKey: 'ORG_ADMIN',
     scopeType: 'ORG',
@@ -113,7 +113,7 @@ afterAll(async () => {
 });
 
 const get = (path, token) =>
-  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', tenantId);
+  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', organizationId);
 
 describe('NEW-60: monthly report and exports require dashboard.revenue.view and scope by branch', () => {
   const routes = [

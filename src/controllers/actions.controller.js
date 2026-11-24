@@ -37,7 +37,7 @@ const perform = async (req, res, next) => {
 
     const ctx = {
       tenantDb: req.tenantDb,
-      tenantId: req.tenantId,
+      organizationId: req.organizationId,
       userId: req.user.id || req.user.sub,
       branchId: req.branchId,
       grants: req.grants,

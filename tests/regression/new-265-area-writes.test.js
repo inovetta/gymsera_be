@@ -48,7 +48,7 @@ const makeRequest = (userId, city, name, status = 'pending_review', extra = {}) 
     openKey: status === 'pending_review' ? `${userId}:${city.id}:${key}` : null, ...extra,
   });
 };
-const linkOf = (target, tenantId, targetId) => AreaRequestLink.findOne({ where: { target, tenantId, targetId: String(targetId) } });
+const linkOf = (target, organizationId, targetId) => AreaRequestLink.findOne({ where: { target, organizationId, targetId: String(targetId) } });
 
 const expectCode = (res, status, code) => {
   expect({ status: res.status, code: res.body.code }).toEqual({ status, code });

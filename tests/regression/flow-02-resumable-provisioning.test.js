@@ -62,10 +62,10 @@ afterAll(async () => {
 /** A submitted application with no plan row yet (bank transfer): approval creates the plan. */
 const pendingTenant = async (overrides = {}) => {
   seq += 1;
-  const tenantCode = `test_f02_${Date.now().toString(36)}_${seq}`;
-  createdDbs.push(`gymsera_${tenantCode}`);
+  const organizationCode = `test_f02_${Date.now().toString(36)}_${seq}`;
+  createdDbs.push(`gymsera_${organizationCode}`);
   return factories.createTenant({
-    tenantCode,
+    organizationCode,
     status: 'PENDING_REVIEW',
     connectionStringEncrypted: null,
     selectedPackageId: twoBranchPackage.id,
@@ -78,7 +78,7 @@ const pendingTenant = async (overrides = {}) => {
 const tenantDbExists = async (tenant) => {
   const conn = await getAdminConnection();
   const [rows] = await conn.query('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?', [
-    `gymsera_${tenant.tenantCode}`,
+    `gymsera_${tenant.organizationCode}`,
   ]);
   return rows.length === 1;
 };
@@ -86,7 +86,7 @@ const tenantDbExists = async (tenant) => {
 /** Everything provisioning creates, counted where it lives. */
 const counts = async (tenant) => {
   const conn = await getAdminConnection();
-  const db = `gymsera_${tenant.tenantCode}`;
+  const db = `gymsera_${tenant.organizationCode}`;
   const one = async (sql) => {
     try {
       const [[row]] = await conn.query(sql);
@@ -98,12 +98,12 @@ const counts = async (tenant) => {
   };
   return {
     databases: (await tenantDbExists(tenant)) ? 1 : 0,
-    listings: await GymListing.count({ where: { tenantId: tenant.id } }),
+    listings: await GymListing.count({ where: { organizationId: tenant.id } }),
     gyms: await one(`SELECT COUNT(*) AS n FROM \`${db}\`.businesses`), // R-120: table renamed by tenant migration 030
     branches: await one(`SELECT COUNT(*) AS n FROM \`${db}\`.branches`),
     plans: await one(`SELECT COUNT(*) AS n FROM \`${db}\`.membership_plans`),
-    subscriptions: await TenantSubscription.count({ where: { tenantId: tenant.id } }),
-    capacityEvents: await CapacityEvent.count({ where: { tenantId: tenant.id } }),
+    subscriptions: await TenantSubscription.count({ where: { organizationId: tenant.id } }),
+    capacityEvents: await CapacityEvent.count({ where: { organizationId: tenant.id } }),
   };
 };
 
@@ -117,7 +117,7 @@ const expectFullyProvisioned = async (tenant) => {
   expect(tenant.provisioningError).toBeNull();
   expect(tenant.connectionStringEncrypted).toBeTruthy();
   expect(await counts(tenant)).toEqual(EXACTLY_ONE);
-  const listing = await GymListing.findOne({ where: { tenantId: tenant.id } });
+  const listing = await GymListing.findOne({ where: { organizationId: tenant.id } });
   expect(listing.reservedSlots).toBe(1);
 };
 
@@ -197,7 +197,7 @@ describe('FLOW-02: a failure at any step is resumed to exactly one of everything
     await expect(adminService.approveTenant(tenant.id, admin.id)).rejects.toMatchObject({ statusCode: 502 });
     await tenant.reload();
     expect(tenant.status).toBe('APPROVED');
-    expect(await TenantSubscription.count({ where: { tenantId: tenant.id } })).toBe(0);
+    expect(await TenantSubscription.count({ where: { organizationId: tenant.id } })).toBe(0);
 
     spy.mockRestore();
     await adminService.approveTenant(tenant.id, admin.id);
@@ -350,7 +350,7 @@ describe('FLOW-02: the daily sweep resumes stalled provisioning', () => {
 describe('FLOW-02: resuming into a half-made, mixed-collation tenant database', () => {
   test('a database left by an earlier run (general_ci default, one table already there) is finished, not duplicated', async () => {
     const tenant = await pendingTenant();
-    const db = `gymsera_${tenant.tenantCode}`;
+    const db = `gymsera_${tenant.organizationCode}`;
     const conn = await getAdminConnection();
     // What an interrupted older run can leave on a server whose default is general_ci.
     await conn.query(`CREATE DATABASE \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci`);
@@ -448,7 +448,7 @@ describe('FLOW-02: a tenant app user with no server-wide privileges', () => {
       password: limitedPass,
     });
     try {
-      const [[own]] = await asApp.query(`SELECT COUNT(*) AS n FROM \`gymsera_${tenant.tenantCode}\`.branches`);
+      const [[own]] = await asApp.query(`SELECT COUNT(*) AS n FROM \`gymsera_${tenant.organizationCode}\`.branches`);
       expect(Number(own.n)).toBe(1);
       await expect(asApp.query(`SELECT COUNT(*) AS n FROM \`${process.env.PLATFORM_DB_NAME}\`.tenants`)).rejects.toMatchObject({
         code: expect.stringMatching(/ER_TABLEACCESS_DENIED_ERROR|ER_DBACCESS_DENIED_ERROR/),

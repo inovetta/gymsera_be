@@ -27,13 +27,13 @@ const { SubscriptionStatus } = require('../constants/subscription-status');
 
 // ── Resolve tenant DB from device ─────────────────────────────────────────────
 const _getTenantDb = async (device) => {
-  const cacheKey = `tenant:${device.tenantId}:connStr`;
+  const cacheKey = `tenant:${device.organizationId}:connStr`;
   let encryptedConnStr = await safeRedisGet(cacheKey);
 
   if (!encryptedConnStr) {
     const { Tenant } = require('../models/platform');
     const tenant = await Tenant.findOne({
-      where: { id: device.tenantId, status: 'ACTIVE' },
+      where: { id: device.organizationId, status: 'ACTIVE' },
       attributes: ['id', 'connectionStringEncrypted'],
     });
     if (!tenant || !tenant.connectionStringEncrypted) return null;
@@ -41,7 +41,7 @@ const _getTenantDb = async (device) => {
     await safeRedisSetex(cacheKey, 3600, encryptedConnStr);
   }
 
-  return TenantDbManager.getConnection(device.tenantId, encryptedConnStr);
+  return TenantDbManager.getConnection(device.organizationId, encryptedConnStr);
 };
 
 // ── Parse ATTLOG plain-text body ──────────────────────────────────────────────

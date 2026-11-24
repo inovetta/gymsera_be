@@ -7,11 +7,11 @@ const { factories } = require('./index');
 const { signToken } = require('../../src/utils/jwt.utils');
 const membershipService = require('../../src/services/membership.service');
 
-const teamMember = async ({ tenantDb, tenantId, email, roleKey, scopeType, branchIds = [], allow = [] }) => {
+const teamMember = async ({ tenantDb, organizationId, email, roleKey, scopeType, branchIds = [], allow = [] }) => {
   const user = await factories.createUser({ email, role: 'MEMBER', fullName: email.split('@')[0] });
   const assignment = await factories.createRoleAssignment(
-    { ...tenantDb, tenantId },
-    { userId: user.id, roleKey, scopeType, branchIds, overrides: { tenantId } }
+    { ...tenantDb, organizationId },
+    { userId: user.id, roleKey, scopeType, branchIds, overrides: { organizationId } }
   );
   for (const permissionKey of allow) {
     await tenantDb.models.AssignmentOverride.create({
@@ -21,8 +21,8 @@ const teamMember = async ({ tenantDb, tenantId, email, roleKey, scopeType, branc
       createdBy: user.id,
     });
   }
-  await membershipService.syncUserOrgIndex(tenantId, user.id, tenantDb);
-  const token = signToken({ sub: user.id, id: user.id, email, role: 'MEMBER', isVerified: true, tenantId });
+  await membershipService.syncUserOrgIndex(organizationId, user.id, tenantDb);
+  const token = signToken({ sub: user.id, id: user.id, email, role: 'MEMBER', isVerified: true, organizationId });
   return { user, token, assignment };
 };
 
@@ -36,8 +36,8 @@ const teamMember = async ({ tenantDb, tenantId, email, roleKey, scopeType, branc
 const buildTwoBranchTeam = async (dbHarness, personas) => {
   const { GymListing } = require('../../src/models/platform');
   const tenantDb = dbHarness.tenant1;
-  const tenantId = personas.owner.tenantId;
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  const organizationId = personas.owner.organizationId;
+  const listing = await GymListing.findOne({ where: { organizationId } });
   const branchA = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
   const branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
 
@@ -46,10 +46,10 @@ const buildTwoBranchTeam = async (dbHarness, personas) => {
   await factories.createPayment(tenantDb, branchB.id, { amount: 7000, paidAt: now });
 
   const make = (email, roleKey, scopeType, branchIds, allow) =>
-    teamMember({ tenantDb, tenantId, email, roleKey, scopeType, branchIds, allow });
+    teamMember({ tenantDb, organizationId, email, roleKey, scopeType, branchIds, allow });
 
   return {
-    tenantId,
+    organizationId,
     branchA,
     branchB,
     ownerToken: personas.owner.token,

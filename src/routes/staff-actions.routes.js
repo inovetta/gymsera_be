@@ -159,7 +159,7 @@ router.post('/branches/:branchId/action-requests', validate.allowBody(['actionTy
         message: notifMessage,
         priority: 'normal',
         deepLink: `/host/gyms/${branchId}/staff-requests`,
-        metadataJson: { requestId: request.id, branchId, tenantId: tenant.id }
+        metadataJson: { requestId: request.id, branchId, organizationId: tenant.id }
       });
     } catch (notifErr) {
       console.warn('[Staff Request Notification] Failed to notify Host:', notifErr.message);
@@ -343,7 +343,7 @@ router.post('/host/action-requests/:requestId/approve', validate.allowBody([]), 
           message: `Your request to ${_getActionText(request.actionType)} at ${branchName} was approved by the Host.`,
           priority: 'normal',
           deepLink: '/staff/dashboard',
-          metadataJson: { requestId: request.id, branchId: request.branchId, tenantId: tenant.id }
+          metadataJson: { requestId: request.id, branchId: request.branchId, organizationId: tenant.id }
         });
       }
     } catch (notifErr) {
@@ -395,7 +395,7 @@ router.post('/host/action-requests/:requestId/reject', validate.allowBody(['reje
           message: `Your request to ${_getActionText(request.actionType)} at ${branchName} was rejected by the Host.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
           priority: 'normal',
           deepLink: '/staff/dashboard',
-          metadataJson: { requestId: request.id, branchId: request.branchId, tenantId: tenant.id }
+          metadataJson: { requestId: request.id, branchId: request.branchId, organizationId: tenant.id }
         });
       }
     } catch (notifErr) {

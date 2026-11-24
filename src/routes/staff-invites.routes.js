@@ -12,7 +12,7 @@ router.use(authenticate);
 
 // Helper to find staff and its tenant connection
 const _resolveStaffAndTenant = async (staffIdOrToken, requestedTenantId) => {
-  let tenantId = requestedTenantId;
+  let organizationId = requestedTenantId;
   let targetStaff = null;
   let targetTenant = null;
 
@@ -42,14 +42,14 @@ const _resolveStaffAndTenant = async (staffIdOrToken, requestedTenantId) => {
     return staff;
   };
 
-  if (tenantId) {
-    targetTenant = await Tenant.findByPk(tenantId);
+  if (organizationId) {
+    targetTenant = await Tenant.findByPk(organizationId);
     if (targetTenant) {
       try {
         const tenantDb = await TenantDbManager.getConnection(targetTenant.id, targetTenant.connectionStringEncrypted);
         targetStaff = await findStaffOnDb(tenantDb);
       } catch (err) {
-        console.warn('[Staff Invite] Failed to connect using provided tenantId:', err.message);
+        console.warn('[Staff Invite] Failed to connect using provided organizationId:', err.message);
       }
     }
   }
@@ -109,7 +109,7 @@ const _assertInviteValid = (staff, reqUser) => {
 // GET /staff-invites/:staffId
 router.get('/:staffId', async (req, res, next) => {
   try {
-    const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.query.tenantId);
+    const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.query.organizationId);
     const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
     const branch = await tenantDb.models.Branch.findByPk(staff.branchId);
 
@@ -149,9 +149,9 @@ router.get('/:staffId', async (req, res, next) => {
 });
 
 // POST /staff-invites/:staffId/accept
-router.post('/:staffId/accept', validate.allowBody(['tenantId']), async (req, res, next) => {
+router.post('/:staffId/accept', validate.allowBody(['organizationId']), async (req, res, next) => {
   try {
-    const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.tenantId || req.query.tenantId);
+    const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.organizationId || req.query.organizationId);
     
     // Ensure invite is pending, not expired, and assigned to this user/email
     _assertInviteValid(staff, req.user);
@@ -170,7 +170,7 @@ router.post('/:staffId/accept', validate.allowBody(['tenantId']), async (req, re
     const teamService = require('../services/team.service');
     await teamService.acceptStaffInvite({
       tenantDb,
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       userId: req.user.id,
       email: req.user.email,
       branchId: staff.branchId,
@@ -208,7 +208,7 @@ router.post('/:staffId/accept', validate.allowBody(['tenantId']), async (req, re
         message: `${user?.fullName || 'A staff member'} has accepted the invite to join ${branchName} as staff.`,
         priority: 'normal',
         deepLink: `/host/gyms/${staff.branchId}/staff`,
-        metadataJson: { staffId: staff.id, branchId: staff.branchId, tenantId: tenant.id }
+        metadataJson: { staffId: staff.id, branchId: staff.branchId, organizationId: tenant.id }
       });
     } catch (err) {
       console.warn('[Staff Invite] Failed to notify host:', err.message);
@@ -221,9 +221,9 @@ router.post('/:staffId/accept', validate.allowBody(['tenantId']), async (req, re
 });
 
 // POST /staff-invites/:staffId/decline
-router.post('/:staffId/decline', validate.allowBody(['tenantId']), async (req, res, next) => {
+router.post('/:staffId/decline', validate.allowBody(['organizationId']), async (req, res, next) => {
   try {
-    const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.tenantId || req.query.tenantId);
+    const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.body.organizationId || req.query.organizationId);
 
     // Validate invite is pending, not expired, and assigned to this user/email
     _assertInviteValid(staff, req.user);
@@ -264,7 +264,7 @@ router.post('/:staffId/decline', validate.allowBody(['tenantId']), async (req, r
         message: `${user?.fullName || 'An invitee'} has declined the invite to join ${branchName} as staff.`,
         priority: 'normal',
         deepLink: `/host/gyms/${staff.branchId}/staff`,
-        metadataJson: { branchId: staff.branchId, tenantId: tenant.id }
+        metadataJson: { branchId: staff.branchId, organizationId: tenant.id }
       });
     } catch (err) {
       console.warn('[Staff Invite] Failed to notify host:', err.message);

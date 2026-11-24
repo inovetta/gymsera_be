@@ -107,7 +107,7 @@ function generateMarkdown() {
   lines.push('Endpoints enforce permissions using two complementary mechanisms:');
   lines.push('');
   lines.push('1. **Direct Route Middleware (`can(permissionKey, opts)`):**');
-  lines.push('   Resolves effective grants for `(tenantId, userId, branchId)` against active `RoleAssignment`s.');
+  lines.push('   Resolves effective grants for `(organizationId, userId, branchId)` against active `RoleAssignment`s.');
   lines.push('   - `can(\'ledger.today.view\')`');
   lines.push('   - `can(\'team.invite\', { orgWide: true })`');
   lines.push('   - `can.any([\'approvals.view\', \'approvals.decide\'])`');

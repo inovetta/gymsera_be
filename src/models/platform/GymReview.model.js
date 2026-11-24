@@ -25,7 +25,7 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       // The tenant the user is subscribed to (for verification)
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
       },

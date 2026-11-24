@@ -47,14 +47,14 @@ describe('NEW-06: POST /host/subscription/upgrade grants nothing', () => {
       id: tenant.ownerUserId,
       role: 'GYM_HOST',
       isVerified: true,
-      tenantId: tenant.id,
+      organizationId: tenant.id,
     });
   });
 
   const upgrade = () =>
     request(app).post('/api/v1/host/subscription/upgrade').set('Authorization', `Bearer ${token}`).send({ planId: pkg.id });
   const snapshot = async () => ({
-    rows: (await TenantSubscription.findAll({ where: { tenantId: tenant.id }, order: [['id', 'ASC']] })).map(
+    rows: (await TenantSubscription.findAll({ where: { organizationId: tenant.id }, order: [['id', 'ASC']] })).map(
       (r) => `${r.id}:${r.status}:${r.paymentStatus}`
     ),
     maxBranches: await quota.resolveMaxBranches(await Tenant.findByPk(tenant.id), await quota.getActiveSubscription(tenant.id)),
@@ -72,7 +72,7 @@ describe('NEW-06: POST /host/subscription/upgrade grants nothing', () => {
 
   test('a host on a lapsed or pending-payment plan cannot replace it with a PAID one', async () => {
     await TenantSubscription.create({
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       platformPackageId: pkg.id,
       startDate: daysFromToday(-30),
       endDate: daysFromToday(335),

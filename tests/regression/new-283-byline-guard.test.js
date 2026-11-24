@@ -51,7 +51,7 @@ describe('NEW-283: the brand byline only for an account with exactly one live br
   };
 
   test('one live organisation: the brand is sent', async () => {
-    expect(await GymListing.count({ where: { tenantId: ctx.tenant1.id, status: 'ACTIVE' } })).toBe(1);
+    expect(await GymListing.count({ where: { organizationId: ctx.tenant1.id, status: 'ACTIVE' } })).toBe(1);
     expect(await brandOnDetail()).toBe('Iron Brand');
   });
 

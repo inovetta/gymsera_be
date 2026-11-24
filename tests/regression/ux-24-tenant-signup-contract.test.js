@@ -87,11 +87,11 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         cityId: 1,
       });
     expect(res.status).toBeLessThan(300);
-    const tenantId = res.body.data.tenant.id;
+    const organizationId = res.body.data.tenant.id;
     const token = signToken({
-      sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true, tenantId,
+      sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true, organizationId,
     });
-    return { user, tenantId, token };
+    return { user, organizationId, token };
   };
 
   const baseProfile = {
@@ -117,8 +117,8 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
 
   describe('register', () => {
     test('promotes the caller to host and creates a DRAFT tenant at step 1', async () => {
-      const { user, tenantId } = await registerHost('reg');
-      const tenant = await Tenant.findByPk(tenantId);
+      const { user, organizationId } = await registerHost('reg');
+      const tenant = await Tenant.findByPk(organizationId);
       expect(tenant.status).toBe('DRAFT');
       expect(tenant.onboardingStep).toBe(1);
       await user.reload();
@@ -148,30 +148,30 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
 
   describe('M1: web shape (gym-profile without plans) cannot finalize', () => {
     test('finalize BANK_TRANSFER is refused with 400 when no membership plan was sent', async () => {
-      const { tenantId, token } = await registerHost('web');
+      const { organizationId, token } = await registerHost('web');
 
       // Exactly what gym-owner-register.tsx sends: no mainBranchData.plans.
       const profile = await request(app)
-        .post(`${API}/tenants/${tenantId}/gym-profile`)
+        .post(`${API}/tenants/${organizationId}/gym-profile`)
         .set('Authorization', `Bearer ${token}`)
         .send({ ...baseProfile, mainBranchData: mainBranch() });
       expect(profile.status).toBe(200);
 
       const select = await request(app)
-        .post(`${API}/tenants/${tenantId}/select-package`)
+        .post(`${API}/tenants/${organizationId}/select-package`)
         .set('Authorization', `Bearer ${token}`)
         .send({ packageId: pkg.id });
       expect(select.status).toBe(200);
 
       const finalize = await request(app)
-        .post(`${API}/tenants/${tenantId}/finalize`)
+        .post(`${API}/tenants/${organizationId}/finalize`)
         .set('Authorization', `Bearer ${token}`)
         .send({ paymentMethod: 'BANK_TRANSFER', bankTransferRef: 'TXN-1' });
 
       expect(finalize.status).toBe(400);
       expect(finalize.body.message).toMatch(/at least 1 membership plan/i);
 
-      const tenant = await Tenant.findByPk(tenantId);
+      const tenant = await Tenant.findByPk(organizationId);
       expect(tenant.status).toBe('DRAFT');
     });
   });
@@ -180,22 +180,22 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
     test.each(['BANK_TRANSFER', 'PAY_LATER'])(
       'register -> gym-profile(plans) -> select-package -> finalize %s submits for review',
       async (paymentMethod) => {
-        const { tenantId, token } = await registerHost(`web_${paymentMethod}`);
+        const { organizationId, token } = await registerHost(`web_${paymentMethod}`);
 
         const profile = await request(app)
-          .post(`${API}/tenants/${tenantId}/gym-profile`)
+          .post(`${API}/tenants/${organizationId}/gym-profile`)
           .set('Authorization', `Bearer ${token}`)
           .send({ ...baseProfile, mainBranchData: mainBranch({ plans: [MOBILE_PLAN] }) });
         expect(profile.status).toBe(200);
 
         const select = await request(app)
-          .post(`${API}/tenants/${tenantId}/select-package`)
+          .post(`${API}/tenants/${organizationId}/select-package`)
           .set('Authorization', `Bearer ${token}`)
           .send({ packageId: pkg.id });
         expect(select.status).toBe(200);
 
         const finalize = await request(app)
-          .post(`${API}/tenants/${tenantId}/finalize`)
+          .post(`${API}/tenants/${organizationId}/finalize`)
           .set('Authorization', `Bearer ${token}`)
           .send({
             paymentMethod,
@@ -203,7 +203,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
           });
         expect(finalize.status).toBe(200);
 
-        const tenant = await Tenant.findByPk(tenantId);
+        const tenant = await Tenant.findByPk(organizationId);
         expect(tenant.status).toBe('PENDING_REVIEW');
         expect(tenant.paymentMethod).toBe(paymentMethod);
         expect(tenant.selectedPackageId).toBe(pkg.id);
@@ -213,10 +213,10 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
 
   describe('mobile shape', () => {
     test('three gym-profile saves, then finalize IN_APP_PURCHASE with no select-package', async () => {
-      const { tenantId, token } = await registerHost('mobile');
+      const { organizationId, token } = await registerHost('mobile');
       const post = (body) =>
         request(app)
-          .post(`${API}/tenants/${tenantId}/gym-profile`)
+          .post(`${API}/tenants/${organizationId}/gym-profile`)
           .set('Authorization', `Bearer ${token}`)
           .send(body);
 
@@ -253,7 +253,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       expect(s5.status).toBe(200);
 
       // Plans survive the merge; later saves do not drop earlier fields.
-      const stored = await Tenant.findByPk(tenantId);
+      const stored = await Tenant.findByPk(organizationId);
       const branch = typeof stored.mainBranchDataJson === 'string'
         ? JSON.parse(stored.mainBranchDataJson)
         : stored.mainBranchDataJson;
@@ -262,33 +262,33 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       expect(stored.genderType).toBe('FEMALE_ONLY');
 
       const finalize = await request(app)
-        .post(`${API}/tenants/${tenantId}/finalize`)
+        .post(`${API}/tenants/${organizationId}/finalize`)
         .set('Authorization', `Bearer ${token}`)
         .send({ paymentMethod: 'IN_APP_PURCHASE' });
       expect(finalize.status).toBe(200);
 
-      const done = await Tenant.findByPk(tenantId);
+      const done = await Tenant.findByPk(organizationId);
       expect(done.status).toBe('PENDING_REVIEW');
       expect(done.paymentMethod).toBe('IN_APP_PURCHASE');
       expect(done.selectedPackageId).toBeNull();
     });
 
     test('onboarding-images PUT replaces the staged list and keeps plans', async () => {
-      const { tenantId, token } = await registerHost('images');
+      const { organizationId, token } = await registerHost('images');
       await request(app)
-        .post(`${API}/tenants/${tenantId}/gym-profile`)
+        .post(`${API}/tenants/${organizationId}/gym-profile`)
         .set('Authorization', `Bearer ${token}`)
         .send({ ...baseProfile, mainBranchData: mainBranch({ plans: [MOBILE_PLAN] }) })
         .expect(200);
 
       const urls = ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'];
       const put = await request(app)
-        .put(`${API}/tenants/${tenantId}/onboarding-images`)
+        .put(`${API}/tenants/${organizationId}/onboarding-images`)
         .set('Authorization', `Bearer ${token}`)
         .send({ imagesJson: urls });
       expect(put.status).toBe(200);
 
-      const stored = await Tenant.findByPk(tenantId);
+      const stored = await Tenant.findByPk(organizationId);
       const branch = typeof stored.mainBranchDataJson === 'string'
         ? JSON.parse(stored.mainBranchDataJson)
         : stored.mainBranchDataJson;
@@ -299,27 +299,27 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
 
   describe('request validation both clients rely on', () => {
     test('gym-profile rejects an unknown genderType (422)', async () => {
-      const { tenantId, token } = await registerHost('gender');
+      const { organizationId, token } = await registerHost('gender');
       const res = await request(app)
-        .post(`${API}/tenants/${tenantId}/gym-profile`)
+        .post(`${API}/tenants/${organizationId}/gym-profile`)
         .set('Authorization', `Bearer ${token}`)
         .send({ ...baseProfile, genderType: 'EVERYONE' });
       expect(res.status).toBe(422);
     });
 
     test('gym-profile rejects a plan with a negative price (422)', async () => {
-      const { tenantId, token } = await registerHost('price');
+      const { organizationId, token } = await registerHost('price');
       const res = await request(app)
-        .post(`${API}/tenants/${tenantId}/gym-profile`)
+        .post(`${API}/tenants/${organizationId}/gym-profile`)
         .set('Authorization', `Bearer ${token}`)
         .send({ ...baseProfile, mainBranchData: mainBranch({ plans: [{ ...MOBILE_PLAN, price: -1 }] }) });
       expect(res.status).toBe(422);
     });
 
     test('select-package rejects a non-UUID packageId (422)', async () => {
-      const { tenantId, token } = await registerHost('pkgid');
+      const { organizationId, token } = await registerHost('pkgid');
       const res = await request(app)
-        .post(`${API}/tenants/${tenantId}/select-package`)
+        .post(`${API}/tenants/${organizationId}/select-package`)
         .set('Authorization', `Bearer ${token}`)
         .send({ packageId: 'starter' });
       expect(res.status).toBe(422);
@@ -329,7 +329,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       const a = await registerHost('ownerA');
       const b = await registerHost('ownerB');
       const res = await request(app)
-        .post(`${API}/tenants/${a.tenantId}/gym-profile`)
+        .post(`${API}/tenants/${a.organizationId}/gym-profile`)
         .set('Authorization', `Bearer ${b.token}`)
         .send(baseProfile);
       expect(res.status).toBe(404);

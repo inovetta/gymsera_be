@@ -47,7 +47,7 @@ describe('BILL-01: store purchases are bound to one tenant', () => {
     await factories.createGymListing(tenantA.id);
     await factories.createGymListing(tenantB.id);
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5 });
-    const tokenFor = (t) => signToken({ sub: t.ownerUserId, id: t.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: t.id });
+    const tokenFor = (t) => signToken({ sub: t.ownerUserId, id: t.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: t.id });
     tokenA = tokenFor(tenantA);
     tokenB = tokenFor(tenantB);
   });
@@ -73,7 +73,7 @@ describe('BILL-01: store purchases are bound to one tenant', () => {
 
     expect((await TenantSubscription.findAll()).map((r) => r.toJSON())).toEqual(before);
     const row = await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '4000001' } });
-    expect(row.tenantId).toBe(tenantA.id);
+    expect(row.organizationId).toBe(tenantA.id);
     expect(row.status).toBe('ACTIVE');
     expect(await entitlement(tenantA)).toBe(5);
     expect(await quota.getActiveSubscription(tenantB.id)).toBeNull();
@@ -89,7 +89,7 @@ describe('BILL-01: store purchases are bound to one tenant', () => {
 
     expect((await iosSync(tokenA, '4000002')).status).toBe(200);
     const row = await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '4000002' } });
-    expect(row.tenantId).toBe(tenantA.id);
+    expect(row.organizationId).toBe(tenantA.id);
   });
 
   test('Google: obfuscatedExternalAccountId naming tenant A → tenant B gets 409', async () => {
@@ -122,7 +122,7 @@ describe('BILL-01: store purchases are bound to one tenant', () => {
 
     const row = await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '4000004' } });
     expect(row).not.toBeNull();
-    expect(row.tenantId).toBe(tenantA.id);
+    expect(row.organizationId).toBe(tenantA.id);
     expect((await BillingEvent.findOne({ where: { providerEventId: 'uuid-bound' } })).status).toBe('PROCESSED');
   });
 

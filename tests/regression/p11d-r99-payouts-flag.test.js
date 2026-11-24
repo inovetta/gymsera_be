@@ -63,7 +63,7 @@ beforeAll(async () => {
   ({ Payout, ApprovalRequest } = ctx.tenant1Db.models);
   await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
+  await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
   await ctx.tenant1Db.models.Payment.create({
     userId: personas.member.user.id,
     branchId: ctx.branch1.id,
@@ -102,7 +102,7 @@ describe.each([
 
   test.each(PAYOUT_ROUTES)('every persona: %s %s → 404', async (method, path) => {
     for (const persona of PERSONAS) {
-      expectNotAvailable(await call(persona, method, path, persona === 'platformAdmin' ? { 'X-Tenant-Id': ctx.tenant1.id } : {}));
+      expectNotAvailable(await call(persona, method, path, persona === 'platformAdmin' ? { 'X-Organization-Id': ctx.tenant1.id } : {}));
     }
     expectNotAvailable(await anonymous(method, path));
   });
@@ -162,7 +162,7 @@ describe('PAYOUTS_ENABLED "true": payouts behave as before', () => {
 
   test('the usual refusals are unchanged: traveller 403, platform admin 403', async () => {
     expect((await call('member', 'get', '/host/payouts')).status).toBe(403);
-    const admin = await call('platformAdmin', 'post', '/host/payouts', { 'X-Tenant-Id': ctx.tenant1.id });
+    const admin = await call('platformAdmin', 'post', '/host/payouts', { 'X-Organization-Id': ctx.tenant1.id });
     expect(admin.status).toBe(403);
     expect(admin.body.code).toBe('payout_request_not_for_platform_admins');
   });

@@ -10,7 +10,7 @@
  * Schema for `audit_logs` (Platform DB):
  *   id            UUID PK
  *   userId        UUID | null
- *   tenantId      UUID | null
+ *   organizationId      UUID | null
  *   method        VARCHAR(10)
  *   path          VARCHAR(500)
  *   statusCode    SMALLINT
@@ -61,7 +61,7 @@ const auditLog = (req, res, next) => {
   res.json = function (body) {
     const entry = {
       userId:     req.user?.id   || null,
-      tenantId:   req.user?.tenantId || null,
+      organizationId:   req.user?.organizationId || null,
       method:     req.method,
       path:       req.originalUrl,
       statusCode: res.statusCode,

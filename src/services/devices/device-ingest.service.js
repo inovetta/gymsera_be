@@ -261,11 +261,11 @@ async function ingestUserRows(db, device, rows, now = new Date()) {
   return rows.length;
 }
 
-async function ingestTemplates(db, tenantId, device, table, body, now = new Date()) {
-  return ingestTemplateRecords(db, tenantId, device, rules.templatesFrom(table, body), now);
+async function ingestTemplates(db, organizationId, device, table, body, now = new Date()) {
+  return ingestTemplateRecords(db, organizationId, device, rules.templatesFrom(table, body), now);
 }
 
-async function ingestTemplateRecords(db, tenantId, device, records, now = new Date()) {
+async function ingestTemplateRecords(db, organizationId, device, records, now = new Date()) {
   const byPin = new Map();
   for (const t of records) {
     if (!byPin.has(t.pin)) byPin.set(t.pin, []);
@@ -287,11 +287,11 @@ async function ingestTemplateRecords(db, tenantId, device, records, now = new Da
   return count;
 }
 
-async function ingestPhotos(db, tenantId, device, table, body, now = new Date()) {
+async function ingestPhotos(db, organizationId, device, table, body, now = new Date()) {
   const name = String(table).toLowerCase();
   if (name === 'attphoto') {
     // D-6: stored only when the branch opted in; otherwise counted and dropped.
-    await require('./device-screens.service').storeCapturePhotos(db, tenantId, device, body, now);
+    await require('./device-screens.service').storeCapturePhotos(db, organizationId, device, body, now);
     return protocol.recordCount(body);
   }
   const photos = rules.photosFrom(name, body);
@@ -301,7 +301,7 @@ async function ingestPhotos(db, tenantId, device, table, body, now = new Date())
       if (!owner) await sync.noteUnlinked(db, device.id, { pin: p.pin, source: 'upload' }, now);
       continue;
     }
-    await biometrics.storePhoto(db, { tenantId, memberId: owner.memberId, deviceId: device.id, photo: p, now });
+    await biometrics.storePhoto(db, { organizationId, memberId: owner.memberId, deviceId: device.id, photo: p, now });
     if (await biometrics.activeConsent(db, owner.memberId)) await sync.reconcileMember(db, owner.memberId, 'photo_from_device', { now });
   }
   return photos.length;
@@ -317,7 +317,7 @@ async function ingestPhotos(db, tenantId, device, table, body, now = new Date())
  *   OPLOG         admin operations: counted only
  * → { users, templates, oplog }
  */
-async function ingestAttUploads(db, tenantId, device, table, body, now = new Date()) {
+async function ingestAttUploads(db, organizationId, device, table, body, now = new Date()) {
   const t = String(table).toUpperCase();
   let users = [];
   let templates = [];
@@ -341,7 +341,7 @@ async function ingestAttUploads(db, tenantId, device, table, body, now = new Dat
     await feedAudit(db, device.id, users.map((u) => u.pin));
     await ingestUserRows(db, device, users.map((u) => ({ pin: u.pin, name: u.name, cardno: u.cardno, privilege: u.privilege })), now);
   }
-  if (templates.length) await ingestTemplateRecords(db, tenantId, device, templates, now);
+  if (templates.length) await ingestTemplateRecords(db, organizationId, device, templates, now);
   return out;
 }
 

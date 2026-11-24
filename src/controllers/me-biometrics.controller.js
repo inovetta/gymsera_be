@@ -4,7 +4,7 @@
  * 2026-12-05 store release.
  *
  *   GET    /me/biometric-consents            gyms where the member has consent or biometric data
- *   DELETE /me/biometric-consents/:tenantId  withdraw at that gym (templates and photos deleted,
+ *   DELETE /me/biometric-consents/:organizationId  withdraw at that gym (templates and photos deleted,
  *                                            removed from every device of that gym)
  *
  * Only the caller's own records: the member id is always the authenticated user. Never template data.
@@ -26,8 +26,8 @@ async function gymsOf(userId) {
       { replacements: [userId, userId], type: QueryTypes.SELECT }
     ).catch(() => [{ n: 0 }]);
     if (!Number(seen?.n)) continue;
-    const tenant = await Tenant.findByPk(t.tenantId, { attributes: ['id', 'gymName'] });
-    out.push({ tenantId: t.tenantId, gymName: tenant?.gymName || null, db: t.db, consent: await biometrics.consentStatus(t.db, userId) });
+    const tenant = await Tenant.findByPk(t.organizationId, { attributes: ['id', 'gymName'] });
+    out.push({ organizationId: t.organizationId, gymName: tenant?.gymName || null, db: t.db, consent: await biometrics.consentStatus(t.db, userId) });
   }
   return out;
 }
@@ -35,7 +35,7 @@ async function gymsOf(userId) {
 const list = async (req, res, next) => {
   try {
     const gyms = await gymsOf(userIdOf(req));
-    return sendSuccess(res, { gyms: gyms.map((g) => ({ tenantId: g.tenantId, gymName: g.gymName, consent: g.consent })) });
+    return sendSuccess(res, { gyms: gyms.map((g) => ({ organizationId: g.organizationId, gymName: g.gymName, consent: g.consent })) });
   } catch (err) {
     return next(err);
   }
@@ -44,7 +44,7 @@ const list = async (req, res, next) => {
 const withdraw = async (req, res, next) => {
   try {
     const userId = userIdOf(req);
-    const gym = (await gymsOf(userId)).find((g) => g.tenantId === req.params.tenantId);
+    const gym = (await gymsOf(userId)).find((g) => g.organizationId === req.params.organizationId);
     if (!gym) throw createError('No biometric consent at this gym.', 404, 'consent_not_found');
     const result = await require('../services/devices/device-privacy.service').withdrawConsent(gym.db, { memberId: userId, byUserId: userId });
     const audit = require('../services/audit.service');
@@ -52,7 +52,7 @@ const withdraw = async (req, res, next) => {
       action: 'biometrics.consent_withdrawn_by_member', targetType: 'member', targetId: userId,
       after: { templatesDeleted: result.templatesDeleted, photosDeleted: result.photosDeleted },
     });
-    return sendSuccess(res, { tenantId: gym.tenantId, templatesDeleted: result.templatesDeleted, photosDeleted: result.photosDeleted },
+    return sendSuccess(res, { organizationId: gym.organizationId, templatesDeleted: result.templatesDeleted, photosDeleted: result.photosDeleted },
       'Consent withdrawn. Your face, fingerprint and palm data is deleted at this gym and from its devices.');
   } catch (err) {
     return next(err);

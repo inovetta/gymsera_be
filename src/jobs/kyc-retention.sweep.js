@@ -63,8 +63,8 @@ async function runKycRetentionSweep({ sequelize, dryRun = false, olderThanDays =
     if (docs.length === 0) continue;
 
     details.push({
-      tenantId: tenant.id,
-      tenantCode: tenant.tenantCode,
+      organizationId: tenant.id,
+      organizationCode: tenant.organizationCode,
       status: tenant.status,
       rejectedAt: tenant.rejectedAt,
       documentCount: docs.length,

@@ -218,7 +218,7 @@ async function setupTestDatabases() {
   const tenant1Models = registerTenantModels(tenant1Sequelize);
   await dropLegacyTables(tenant1Sequelize, LEGACY_TENANT_TABLES);
   await tenant1Sequelize.sync({ force: true });
-  await runTenantMigrations(tenant1Sequelize, { tenantId: 'test-tenant-1' });
+  await runTenantMigrations(tenant1Sequelize, { organizationId: 'test-tenant-1' });
 
   // Initialize Tenant 2
   const t2Url = `mysql://${tenantUser}:${tenantPass}@${tenantHost}:${tenantPort}/${TENANT_2_TEST_DB}`;
@@ -237,7 +237,7 @@ async function setupTestDatabases() {
   const tenant2Models = registerTenantModels(tenant2Sequelize);
   await dropLegacyTables(tenant2Sequelize, LEGACY_TENANT_TABLES);
   await tenant2Sequelize.sync({ force: true });
-  await runTenantMigrations(tenant2Sequelize, { tenantId: 'test-tenant-2' });
+  await runTenantMigrations(tenant2Sequelize, { organizationId: 'test-tenant-2' });
 
   return {
     platform: {

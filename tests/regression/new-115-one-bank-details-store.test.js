@@ -34,7 +34,7 @@ describe('NEW-115: one store for bank details (NOT REPRODUCED, locked here)', ()
     const save = await asPersona('owner').patch('/gyms/profile', { paymentDetailsJson: details, password: 'Test@12345' });
     expect(save.status).toBe(200);
 
-    const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
     const res = await asPersona('member').get(`/discovery/gyms/${listing.id}/payment-details`);
     expect(res.status).toBe(200);
     expect(res.body.data.paymentDetails).toEqual(details);

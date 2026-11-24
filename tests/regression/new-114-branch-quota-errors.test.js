@@ -31,7 +31,7 @@ const ownerOfUnreachableGym = async () => {
   });
   personaManager.personas.Unreachable = {
     user,
-    token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isHost: true, isVerified: true, tenantId: tenant.id }),
+    token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isHost: true, isVerified: true, organizationId: tenant.id }),
     ownTenantId: tenant.id,
   };
   return tenant;
@@ -42,8 +42,8 @@ beforeAll(ownerOfUnreachableGym);
 describe('NEW-114: branch quota never turns a failure into zeros', () => {
   test('getBranchQuota rejects when the tenant database cannot be reached', async () => {
     const branchQuotaService = require('../../src/services/branch-quota.service');
-    const tenantId = personaManager.personas.Unreachable.ownTenantId;
-    await expect(branchQuotaService.getBranchQuota(tenantId)).rejects.toThrow();
+    const organizationId = personaManager.personas.Unreachable.ownTenantId;
+    await expect(branchQuotaService.getBranchQuota(organizationId)).rejects.toThrow();
   });
 
   test('GET /host/branch-quota answers an error, not "0 used"', async () => {

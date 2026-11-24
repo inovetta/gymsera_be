@@ -72,7 +72,7 @@ describe('NEW-123: every 5xx is kept with its reference id', () => {
       code: 'database_error',
       method: 'GET',
       path: '/api/v1/host/branches',
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
     });
     expect(line.userId).toBeTruthy();
     expect(typeof line.time).toBe('string');

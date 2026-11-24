@@ -25,8 +25,8 @@ async function precheck() {
   const withDbName = await Tenant.count({ where: { dbName: { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }] } } });
   const tenants = (await Tenant.findAll({
     where: { status: { [Op.in]: MIGRATABLE_TENANT_STATUSES }, connectionStringEncrypted: { [Op.ne]: null } },
-    attributes: ['id', 'tenantCode', 'status', 'connectionStringEncrypted'],
-    order: [['tenantCode', 'ASC']],
+    attributes: ['id', 'organizationCode', 'status', 'connectionStringEncrypted'],
+    order: [['organizationCode', 'ASC']],
   })).filter((t) => t.connectionStringEncrypted !== 'PENDING_PROVISIONING');
 
   const rows = [];
@@ -43,7 +43,7 @@ async function precheck() {
       );
       const names = cols.map((r) => r.c);
       if (!names.includes('opening_time')) {
-        rows.push({ tenantCode: t.tenantCode, status: t.status, branches: 0, equalPairs: 0, hoursJsonColumn: false, note: 'no branches table' });
+        rows.push({ organizationCode: t.organizationCode, status: t.status, branches: 0, equalPairs: 0, hoursJsonColumn: false, note: 'no branches table' });
         continue;
       }
       const hasHours = names.includes('hours_json');
@@ -55,7 +55,7 @@ async function precheck() {
         { type: QueryTypes.SELECT }
       );
       rows.push({
-        tenantCode: t.tenantCode,
+        organizationCode: t.organizationCode,
         status: t.status,
         branches: Number(r.branches || 0),
         equalPairs: Number(r.equalPairs || 0),
@@ -64,7 +64,7 @@ async function precheck() {
       });
     } catch (err) {
       // The error's class only: a driver message can name the host or the user.
-      rows.push({ tenantCode: t.tenantCode, status: t.status, error: err && err.name ? err.name : 'Error' });
+      rows.push({ organizationCode: t.organizationCode, status: t.status, error: err && err.name ? err.name : 'Error' });
     } finally {
       if (seq) await seq.close().catch(() => {});
     }
@@ -80,11 +80,11 @@ function report(result, write = (s) => process.stdout.write(s)) {
   for (const r of result.tenants) {
     if (r.error) {
       unreadable += 1;
-      write(`UNREADABLE ${r.tenantCode} (${r.status}): ${r.error}\n`);
+      write(`UNREADABLE ${r.organizationCode} (${r.status}): ${r.error}\n`);
       continue;
     }
     equal += r.equalPairs;
-    write(`${r.tenantCode} (${r.status}): ${r.branches} branch(es), ${r.equalPairs} with an equal opening / closing pair`
+    write(`${r.organizationCode} (${r.status}): ${r.branches} branch(es), ${r.equalPairs} with an equal opening / closing pair`
       + `${r.hoursJsonColumn ? `, ${r.equalPairsNoSchedule} of them with no schedule; hours_json present` : '; hours_json NOT present (migration 029 not applied)'}`
       + `${r.note ? ` (${r.note})` : ''}\n`);
   }

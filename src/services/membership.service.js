@@ -26,20 +26,20 @@ const STATUS_RANK = { REVOKED: 0, INVITED: 1, SUSPENDED: 2, ACTIVE: 3 };
  * Call after any write to role_assignments. Cheap — one indexed query plus one
  * upsert — and idempotent, so calling it twice costs nothing.
  *
- * @param {string} tenantId
+ * @param {string} organizationId
  * @param {string} userId
  * @param {object} tenantDb  optional, saves a connection lookup when the caller has one
  */
-const syncUserOrgIndex = async (tenantId, userId, tenantDb = null) => {
-  if (!tenantId || !userId) return null;
+const syncUserOrgIndex = async (organizationId, userId, tenantDb = null) => {
+  if (!organizationId || !userId) return null;
 
   const { UserOrgIndex, Tenant } = require('../models/platform');
 
   let db = tenantDb;
   if (!db) {
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'connectionStringEncrypted'] });
     if (!tenant || !tenant.connectionStringEncrypted) return null;
-    db = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    db = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
   }
 
   const { RoleAssignment, RoleAssignmentBranch } = db.models;
@@ -50,7 +50,7 @@ const syncUserOrgIndex = async (tenantId, userId, tenantDb = null) => {
   });
 
   if (assignments.length === 0) {
-    await UserOrgIndex.destroy({ where: { userId, tenantId } });
+    await UserOrgIndex.destroy({ where: { userId, organizationId } });
     await safeRedisDel(`uoi:${userId}`);
     return null;
   }
@@ -72,7 +72,7 @@ const syncUserOrgIndex = async (tenantId, userId, tenantDb = null) => {
 
   const row = {
     userId,
-    tenantId,
+    organizationId,
     roleKey: best.roleKey,
     roleLevel: getRoleLevel(best.roleKey),
     scopeType: isOrgScoped ? 'ORG' : 'BRANCH',
@@ -142,12 +142,12 @@ const hasPortalAccess = async (userId) => {
  *
  * Picks their highest-level active membership, which is nearly always the right
  * answer: a host with one org, or a staff member at one gym. Where a user holds
- * roles in several orgs the client is expected to send X-Tenant-Id — the context
+ * roles in several orgs the client is expected to send X-Organization-Id — the context
  * switcher in the app exists precisely for this.
  */
 const resolveDefaultTenantForUser = async (userId, { memberRoute = false } = {}) => {
   const memberships = await listUserTenants(userId, { activeOnly: true });
-  if (memberships.length > 0) return memberships[0].tenantId;
+  if (memberships.length > 0) return memberships[0].organizationId;
 
   const { Tenant, UserGymMembership } = require('../models/platform');
   const owned = await Tenant.findOne({
@@ -165,9 +165,9 @@ const resolveDefaultTenantForUser = async (userId, { memberRoute = false } = {})
   const memberGym = await UserGymMembership.findOne({
     where: { userId },
     order: [['createdAt', 'DESC']],
-    attributes: ['tenantId'],
+    attributes: ['organizationId'],
   });
-  return memberGym ? memberGym.tenantId : null;
+  return memberGym ? memberGym.organizationId : null;
 };
 
 /**
@@ -195,7 +195,7 @@ const ownsInactiveTenant = async (userId) => {
 const resolveTenantForBranch = async (branchId) => {
   if (!branchId) return null;
 
-  const cacheKey = `branch:${branchId}:tenantId`;
+  const cacheKey = `branch:${branchId}:organizationId`;
   const cached = await safeRedisGet(cacheKey);
   if (cached) return cached;
 
@@ -230,7 +230,7 @@ const resolveTenantForBranch = async (branchId) => {
  *
  * Returns the number of assignments claimed.
  */
-const claimInvitesForUser = async (tenantDb, tenantId, user) => {
+const claimInvitesForUser = async (tenantDb, organizationId, user) => {
   if (!user || !user.email) return 0;
   const { RoleAssignment } = tenantDb.models;
   const userId = user.id || user.sub;
@@ -252,7 +252,7 @@ const claimInvitesForUser = async (tenantDb, tenantId, user) => {
     await a.update({ userId, status: 'ACTIVE', acceptedAt: a.acceptedAt || now });
   }
 
-  await syncUserOrgIndex(tenantId, userId, tenantDb);
+  await syncUserOrgIndex(organizationId, userId, tenantDb);
   return pending.length;
 };
 
@@ -262,7 +262,7 @@ const claimInvitesForUser = async (tenantDb, tenantId, user) => {
  * The repair path. Safe to run at any time — the index is derived data, so
  * rebuilding it can only bring it back into agreement with the tenant DB.
  */
-const rebuildIndexForTenant = async (tenantId, tenantDb) => {
+const rebuildIndexForTenant = async (organizationId, tenantDb) => {
   const { RoleAssignment } = tenantDb.models;
   const rows = await RoleAssignment.findAll({
     where: { userId: { [Op.ne]: null } },
@@ -272,7 +272,7 @@ const rebuildIndexForTenant = async (tenantId, tenantDb) => {
 
   let synced = 0;
   for (const r of rows) {
-    await syncUserOrgIndex(tenantId, r.userId, tenantDb);
+    await syncUserOrgIndex(organizationId, r.userId, tenantDb);
     synced += 1;
   }
   return synced;

@@ -100,9 +100,9 @@ const getTenantBranches = async (req, res, next) => {
 const listBillingEvents = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { tenantId, status, provider } = req.query;
+    const { organizationId, status, provider } = req.query;
     const { items, total } = await require('../services/billing-event.service').listEvents({
-      tenantId, status, provider, limit, offset,
+      organizationId, status, provider, limit, offset,
     });
     return sendSuccess(res, items, 'OK', 200, { total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err) {
@@ -314,7 +314,7 @@ const updateTenantInvoice = async (req, res, next) => {
 const sendInvoiceReminder = async (req, res, next) => {
   try {
     const { PlatformInvoice, Tenant, User } = require('../models/platform');
-    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, tenantId: req.params.id } });
+    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, organizationId: req.params.id } });
     if (!invoice) return next(require('../utils/response.utils').createError('Invoice not found', 404));
     if (!['ISSUED', 'OVERDUE'].includes(invoice.status)) {
       return next(require('../utils/response.utils').createError('Reminder can only be sent for ISSUED or OVERDUE invoices', 400));
@@ -338,7 +338,7 @@ const sendInvoiceReminder = async (req, res, next) => {
 const sendInvoiceConfirmation = async (req, res, next) => {
   try {
     const { PlatformInvoice, Tenant, User } = require('../models/platform');
-    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, tenantId: req.params.id } });
+    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, organizationId: req.params.id } });
     if (!invoice) return next(require('../utils/response.utils').createError('Invoice not found', 404));
     if (invoice.status !== 'PAID') {
       return next(require('../utils/response.utils').createError('Confirmation can only be sent for PAID invoices', 400));

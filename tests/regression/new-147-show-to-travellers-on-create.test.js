@@ -21,9 +21,9 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  primary = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId }, order: [['createdAt', 'ASC']] });
+  primary = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId }, order: [['createdAt', 'ASC']] });
   // Room for the organizations and branches these tests build.
-  const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { tenantId: personas.owner.tenantId } });
+  const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { organizationId: personas.owner.organizationId } });
   expect(updated).toBeGreaterThan(0);
 });
 
@@ -34,7 +34,7 @@ afterAll(async () => {
 
 // A PENDING organization blocks creating the next one until an admin approves it.
 const approvePending = () =>
-  GymListing.update({ status: 'ACTIVE' }, { where: { tenantId: personas.owner.tenantId, status: 'PENDING' } });
+  GymListing.update({ status: 'ACTIVE' }, { where: { organizationId: personas.owner.organizationId, status: 'PENDING' } });
 
 const newOrg = async (gymName, packages = [plan(`${gymName} Monthly`)]) => {
   await approvePending();
@@ -61,13 +61,13 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
 
   test('New Organization: every plan hidden = 422 visible_plan_required, nothing created', async () => {
     await approvePending();
-    const before = await GymListing.count({ where: { tenantId: personas.owner.tenantId } });
+    const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
     const res = await asPersona('owner').post('/host/listings', {
       gymName: 'P5 Hidden Org', branchSource: 'new', cityId: 1, packages: [plan('Hidden', false)],
     });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('visible_plan_required');
-    expect(await GymListing.count({ where: { tenantId: personas.owner.tenantId } })).toBe(before);
+    expect(await GymListing.count({ where: { organizationId: personas.owner.organizationId } })).toBe(before);
     expect(await tenantDb.models.Branch.count({ where: { branchName: 'P5 Hidden Org' } })).toBe(0);
     expect(await tenantDb.models.Gym.count({ where: { name: 'P5 Hidden Org' } })).toBe(0);
   });

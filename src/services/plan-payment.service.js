@@ -60,8 +60,8 @@ const addMonths = (dateStr, months) => {
 const storeRenewsSentence = (platform) => `Your plan is billed by ${STORE_NAMES[platform]} and renews automatically.`;
 
 /** Why the bank-transfer form is refused now, or null. */
-const storeBlock = async (tenantId) => {
-  const current = await subscriptionQuotaService.getActiveSubscription(tenantId);
+const storeBlock = async (organizationId) => {
+  const current = await subscriptionQuotaService.getActiveSubscription(organizationId);
   // NEW-281 (R-114): a store test purchase (SANDBOX) never blocks a real plan.
   if (current && STORE_PLATFORMS.includes(current.platform) && current.autoRenew !== false && current.environment !== 'SANDBOX') {
     return {
@@ -80,11 +80,11 @@ const _plans = async () =>
   BillingPlan.findAll({ where: { isActive: true }, order: [['sortOrder', 'ASC'], ['branchCount', 'ASC']] });
 
 /** What the host's Subscription & Billing page needs to offer the flow. */
-const getOverview = async (tenantId) => {
+const getOverview = async (organizationId) => {
   const [plans, requests, block] = await Promise.all([
     _plans(),
-    PlanPaymentRequest.findAll({ where: { tenantId }, order: [['createdAt', 'DESC']], limit: 20 }),
-    storeBlock(tenantId),
+    PlanPaymentRequest.findAll({ where: { organizationId }, order: [['createdAt', 'DESC']], limit: 20 }),
+    storeBlock(organizationId),
   ]);
   const pending = requests.find((r) => r.status === PlanPaymentRequest.STATUSES.PENDING) || null;
   const methodList = methods.listMethods().map((m) => {
@@ -106,15 +106,15 @@ const getOverview = async (tenantId) => {
   };
 };
 
-const _ownerTenant = async (tenantId, userId) => {
-  const tenant = tenantId ? await Tenant.findByPk(tenantId) : null;
+const _ownerTenant = async (organizationId, userId) => {
+  const tenant = organizationId ? await Tenant.findByPk(organizationId) : null;
   if (!tenant) throw err(404, 'tenant_not_found', 'Tenant not found');
   if (tenant.ownerUserId !== userId) throw err(403, 'owner_only', 'Only the owner of this business can pay for its plan.');
   return tenant;
 };
 
-const submit = async ({ tenantId, userId, billingPlanId, billingCycle, method = 'BANK_TRANSFER', payerReference = null, file = null }) => {
-  const tenant = await _ownerTenant(tenantId, userId);
+const submit = async ({ organizationId, userId, billingPlanId, billingCycle, method = 'BANK_TRANSFER', payerReference = null, file = null }) => {
+  const tenant = await _ownerTenant(organizationId, userId);
   if (tenant.status !== 'ACTIVE') throw err(409, 'tenant_not_active', 'Your business must be approved and active to pay for a plan here.');
 
   const m = methods.getMethod(method);
@@ -130,7 +130,7 @@ const submit = async ({ tenantId, userId, billingPlanId, billingCycle, method = 
   const block = await storeBlock(tenant.id);
   if (block) throw err(409, block.code, block.message, { platform: block.platform, manageUrl: block.manageUrl });
 
-  const pending = await PlanPaymentRequest.findOne({ where: { tenantId: tenant.id, status: PlanPaymentRequest.STATUSES.PENDING } });
+  const pending = await PlanPaymentRequest.findOne({ where: { organizationId: tenant.id, status: PlanPaymentRequest.STATUSES.PENDING } });
   if (pending) throw err(409, 'plan_payment_pending', 'A payment is already waiting for review.', { requestId: pending.id });
 
   if (m.requiresProof && !file) throw err(422, 'proof_required', 'Upload the transfer receipt.');
@@ -144,7 +144,7 @@ const submit = async ({ tenantId, userId, billingPlanId, billingCycle, method = 
 
   const request = await PlanPaymentRequest.create({
     id,
-    tenantId: tenant.id,
+    organizationId: tenant.id,
     requestedByUserId: userId,
     billingPlanId: plan.id,
     branchCount: plan.branchCount,
@@ -169,7 +169,7 @@ const submit = async ({ tenantId, userId, billingPlanId, billingCycle, method = 
         title: 'Plan payment to check',
         message: `${tenant.businessName || 'A host'} sent a bank transfer for a ${plan.branchCount}-branch plan (${billingCycle.toLowerCase()}).`,
         deepLink: '/admin/plan-payments',
-        metadataJson: { tenantId: tenant.id, requestId: request.id },
+        metadataJson: { organizationId: tenant.id, requestId: request.id },
       });
     }
   } catch (notifyErr) {
@@ -178,17 +178,17 @@ const submit = async ({ tenantId, userId, billingPlanId, billingCycle, method = 
   return request;
 };
 
-const listForAdmin = async ({ status = null, tenantId = null } = {}) => {
+const listForAdmin = async ({ status = null, organizationId = null } = {}) => {
   const where = {};
   if (status) where.status = status;
-  if (tenantId) where.tenantId = tenantId;
+  if (organizationId) where.organizationId = organizationId;
   const rows = await PlanPaymentRequest.findAll({ where, order: [['createdAt', 'DESC']], limit: 200 });
   const tenants = await Tenant.findAll({
-    where: { id: { [Op.in]: [...new Set(rows.map((r) => r.tenantId))] } },
+    where: { id: { [Op.in]: [...new Set(rows.map((r) => r.organizationId))] } },
     attributes: ['id', 'businessName', 'gymName'],
   });
   const names = new Map(tenants.map((t) => [t.id, t.businessName || t.gymName || null]));
-  return rows.map((r) => ({ ...r.toJSON(), tenantName: names.get(r.tenantId) || null }));
+  return rows.map((r) => ({ ...r.toJSON(), tenantName: names.get(r.organizationId) || null }));
 };
 
 const _pendingOr409 = async (requestId) => {
@@ -201,8 +201,8 @@ const _pendingOr409 = async (requestId) => {
 };
 
 /** The period an approval grants (R-95): from the end of a running PAID plan, else from today. */
-const periodFor = async (tenantId, months, today = isoDate(new Date())) => {
-  const current = await subscriptionQuotaService.getActiveSubscription(tenantId);
+const periodFor = async (organizationId, months, today = isoDate(new Date())) => {
+  const current = await subscriptionQuotaService.getActiveSubscription(organizationId);
   // NEW-281 (R-114): a store test purchase (SANDBOX) is not a paid period to extend from.
   const paid = current && current.environment !== 'SANDBOX' &&
     (current.paymentStatus === 'PAID' || STORE_PLATFORMS.includes(current.platform));
@@ -213,13 +213,13 @@ const periodFor = async (tenantId, months, today = isoDate(new Date())) => {
 
 const approve = async ({ requestId, adminUserId }) => {
   const request = await _pendingOr409(requestId);
-  const block = await storeBlock(request.tenantId);
+  const block = await storeBlock(request.organizationId);
   if (block) throw err(409, block.code, block.message, { platform: block.platform });
 
   const plan = await BillingPlan.findByPk(request.billingPlanId);
   const months = catalog.CYCLE_TERMS[request.billingCycle]?.months;
   if (!plan || !months) throw err(409, 'invalid_plan', 'The plan of this request no longer exists in the catalog.');
-  const period = await periodFor(request.tenantId, months);
+  const period = await periodFor(request.organizationId, months);
 
   // Claim the request first: a second admin approving at the same moment gets 409.
   const [claimed] = await PlanPaymentRequest.update(
@@ -231,7 +231,7 @@ const approve = async ({ requestId, adminUserId }) => {
   try {
     const externalId = `plan-payment:${request.id}`;
     const subscription = await require('./subscription-migration.service').applyVerifiedSubscription(
-      request.tenantId,
+      request.organizationId,
       {
         platform: 'MANUAL',
         externalOriginalTransactionId: externalId,
@@ -259,7 +259,7 @@ const approve = async ({ requestId, adminUserId }) => {
       targetType: 'PlanPaymentRequest',
       targetId: request.id,
       details: {
-        tenantId: request.tenantId, tenantSubscriptionId: subscription.id, billingPlanId: request.billingPlanId,
+        organizationId: request.organizationId, tenantSubscriptionId: subscription.id, billingPlanId: request.billingPlanId,
         billingCycle: request.billingCycle, amount: String(request.amount), currency: request.currency,
         periodStart: period.start, periodEnd: period.end, extendedFrom: period.extendedFrom,
       },
@@ -290,7 +290,7 @@ const reject = async ({ requestId, adminUserId, reason }) => {
     action: 'PLAN_PAYMENT_REJECTED',
     targetType: 'PlanPaymentRequest',
     targetId: request.id,
-    details: { tenantId: request.tenantId, reason: text.slice(0, 500) },
+    details: { organizationId: request.organizationId, reason: text.slice(0, 500) },
     createdAt: new Date(),
   });
   return PlanPaymentRequest.findByPk(request.id);
@@ -306,7 +306,7 @@ const openProof = async ({ requestId, adminUserId }) => {
     action: 'PLAN_PAYMENT_PROOF_ACCESSED',
     targetType: 'PlanPaymentRequest',
     targetId: request.id,
-    details: { tenantId: request.tenantId },
+    details: { organizationId: request.organizationId },
     createdAt: new Date(),
   });
   const { stream } = await privateStore.getKycStream(request.proofKey);

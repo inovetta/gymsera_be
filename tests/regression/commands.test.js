@@ -74,7 +74,7 @@ describe('members.create command', () => {
     jest.doMock('../../src/services/gym.service', () => ({ enrollMember }));
     const freshCmd = require('../../src/services/commands').get('members.create');
 
-    const ctx = { branchId: 'branch-9', tenantId: 'tenant-1', userId: 'user-1', tenantDb: {} };
+    const ctx = { branchId: 'branch-9', organizationId: 'tenant-1', userId: 'user-1', tenantDb: {} };
     await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1' });
 
     expect(enrollMember).toHaveBeenCalledWith(
@@ -93,7 +93,7 @@ describe('members.create command', () => {
     jest.doMock('../../src/services/gym.service', () => ({ enrollMember }));
     const freshCmd = require('../../src/services/commands').get('members.create');
 
-    const ctx = { branchId: 'branch-ctx', tenantId: 'tenant-1', userId: 'user-1', tenantDb: {} };
+    const ctx = { branchId: 'branch-ctx', organizationId: 'tenant-1', userId: 'user-1', tenantDb: {} };
     await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1', branchId: 'branch-explicit' });
 
     expect(enrollMember).toHaveBeenCalledWith(

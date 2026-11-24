@@ -79,7 +79,7 @@ describe('NEW-124: the Gyms tab on a tenant database below schema v19', () => {
   });
 
   test('after the tenant migration runner, every Gyms tab call answers 200 with the real branches', async () => {
-    const res = await runTenantMigrations(h.tenant1.sequelize, { tenantId: team.tenantId });
+    const res = await runTenantMigrations(h.tenant1.sequelize, { organizationId: team.organizationId });
     expect(res.applied).toContain('019_add_branch_currency');
     expect(res.finalVersion).toBe(TARGET_SCHEMA_VERSION);
 

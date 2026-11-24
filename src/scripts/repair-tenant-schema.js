@@ -41,27 +41,27 @@ const printInspection = (write, inspection) => {
  * @returns {Promise<number>} exit code
  */
 async function main(argv, { write = (s) => process.stdout.write(s), connectPlatform } = {}) {
-  const tenantCode = argValue(argv, '--tenant');
+  const organizationCode = argValue(argv, '--tenant');
   const apply = argv.includes('--apply');
   const confirm = argValue(argv, '--confirm');
-  if (!tenantCode) {
+  if (!organizationCode) {
     write('Usage: node src/scripts/repair-tenant-schema.js --tenant <TENANT_CODE> [--apply --confirm <TENANT_CODE>]\n');
     return 2;
   }
-  if (apply && confirm !== tenantCode) {
-    write(`REFUSED: --apply needs --confirm ${tenantCode} (the exact tenant code). Nothing was changed.\n`);
+  if (apply && confirm !== organizationCode) {
+    write(`REFUSED: --apply needs --confirm ${organizationCode} (the exact tenant code). Nothing was changed.\n`);
     return 2;
   }
 
   if (connectPlatform) await connectPlatform();
   const { Tenant } = require('../models/platform');
-  const tenant = await Tenant.findOne({ where: { tenantCode } });
+  const tenant = await Tenant.findOne({ where: { organizationCode } });
   if (!tenant) {
-    write(`REFUSED: no tenant with code ${tenantCode}. Nothing was changed.\n`);
+    write(`REFUSED: no tenant with code ${organizationCode}. Nothing was changed.\n`);
     return 2;
   }
   if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
-    write(`REFUSED: tenant ${tenantCode} has no provisioned database. Nothing was changed.\n`);
+    write(`REFUSED: tenant ${organizationCode} has no provisioned database. Nothing was changed.\n`);
     return 2;
   }
 
@@ -74,7 +74,7 @@ async function main(argv, { write = (s) => process.stdout.write(s), connectPlatf
   try {
     await seq.authenticate();
     const [{ db }] = await seq.query('SELECT DATABASE() AS db', { type: Sequelize.QueryTypes.SELECT });
-    write(`Tenant ${tenantCode} (status ${tenant.status}), database ${db}, target schema v${TARGET_SCHEMA_VERSION}\n`);
+    write(`Tenant ${organizationCode} (status ${tenant.status}), database ${db}, target schema v${TARGET_SCHEMA_VERSION}\n`);
     write(`Mode: ${apply ? 'APPLY' : 'DRY RUN (nothing is changed)'}\n\n`);
 
     const inspection = await inspectTenantSchema(seq);
@@ -93,11 +93,11 @@ async function main(argv, { write = (s) => process.stdout.write(s), connectPlatf
     if (!apply) {
       write(`Would record ${baseline.length} migration(s) as already applied (no schema change): ${baseline.join(', ') || 'none'}\n`);
       write(`Would run ${toApply.length} migration(s): ${toApply.join(', ') || 'none'}\n`);
-      write(`DRY RUN complete. Nothing was changed. To apply: node src/scripts/repair-tenant-schema.js --tenant ${tenantCode} --apply --confirm ${tenantCode}\n`);
+      write(`DRY RUN complete. Nothing was changed. To apply: node src/scripts/repair-tenant-schema.js --tenant ${organizationCode} --apply --confirm ${organizationCode}\n`);
       return 0;
     }
 
-    const result = await repairTenantSchema(seq, { apply: true, tenantId: tenant.id, tenantCode, gymName: tenantCode });
+    const result = await repairTenantSchema(seq, { apply: true, organizationId: tenant.id, organizationCode, gymName: organizationCode });
     if (result.refused) {
       // The schema changed between the two reads: report, change nothing.
       write('REFUSED on the second read. Nothing was changed:\n');
@@ -110,7 +110,7 @@ async function main(argv, { write = (s) => process.stdout.write(s), connectPlatf
       write(`INCOMPLETE: still not recorded: ${result.missingAfter.map(label).join(', ')}. See the [TenantMigration] lines above.\n`);
       return 1;
     }
-    write(`DONE: tenant ${tenantCode} is at v${TARGET_SCHEMA_VERSION}, every migration recorded.\n`);
+    write(`DONE: tenant ${organizationCode} is at v${TARGET_SCHEMA_VERSION}, every migration recorded.\n`);
     return 0;
   } finally {
     await seq.close().catch(() => {});

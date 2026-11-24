@@ -12,7 +12,7 @@ const { GymListing, CapacityEvent } = require('../../src/models/platform');
 
 describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -20,7 +20,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
   });
@@ -33,7 +33,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     const { Branch, CapacityOutbox } = tenantDb.models;
 
     // Create an organization and an active branch
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Outbox Test Org 1',
       status: 'ACTIVE',
       reservedSlots: 0,
@@ -96,7 +96,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     const { Branch, CapacityOutbox } = tenantDb.models;
 
     // Create an organization and an active branch
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Outbox Test Org 2',
       status: 'ACTIVE',
       reservedSlots: 0,
@@ -184,7 +184,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     expect(listing.reservedSlots).toBe(1);
 
     // 8. Verify auditCapacity reports no drift
-    const audit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDb);
+    const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
     expect(audit.driftedListings.filter(l => l.listingId === listing.id)).toHaveLength(0);
     expect(audit.totalDrift).toBe(0);
   });

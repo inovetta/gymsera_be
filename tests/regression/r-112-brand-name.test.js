@@ -129,29 +129,29 @@ describe('R-112: brand name', () => {
   });
 
   test('C4: PATCH /tenants/me (live gym) checks the rules and audits the change', async () => {
-    const tenantId = personaManager.context.tenant1.id;
-    const before = (await Tenant.findByPk(tenantId)).businessName;
+    const organizationId = personaManager.context.tenant1.id;
+    const before = (await Tenant.findByPk(organizationId)).businessName;
     for (const [name, code] of BAD_NAMES) {
       const res = await asPersona('owner').patch('/tenants/me').send({ businessName: name });
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(code);
     }
-    expect((await Tenant.findByPk(tenantId)).businessName).toBe(before);
+    expect((await Tenant.findByPk(organizationId)).businessName).toBe(before);
 
     const res = await asPersona('owner').patch('/tenants/me').send({ businessName: 'Renamed Brand' });
     expect(res.status).toBe(200);
     expect(res.body.data.tenant.businessName).toBe('Renamed Brand');
-    const audit = await PlatformAuditLog.findOne({ where: { action: 'tenant.brand_renamed', targetId: tenantId }, order: [['createdAt', 'DESC']] });
+    const audit = await PlatformAuditLog.findOne({ where: { action: 'tenant.brand_renamed', targetId: organizationId }, order: [['createdAt', 'DESC']] });
     expect(audit).not.toBeNull();
     expect(audit.actorUserId).toBe(personaManager.personas.owner.user.id);
     const details = typeof audit.details === 'string' ? JSON.parse(audit.details) : audit.details;
     expect(details).toEqual({ from: before, to: 'Renamed Brand' });
 
     // The same name again changes nothing and writes no second row.
-    const count = await PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: tenantId } });
+    const count = await PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: organizationId } });
     await asPersona('owner').patch('/tenants/me').send({ businessName: 'Renamed Brand' });
-    expect(await PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: tenantId } })).toBe(count);
-    await Tenant.update({ businessName: before }, { where: { id: tenantId } });
+    expect(await PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: organizationId } })).toBe(count);
+    await Tenant.update({ businessName: before }, { where: { id: organizationId } });
   });
 
   test('C5: GET /host/status returns brandName (null while empty)', async () => {
@@ -167,11 +167,11 @@ describe('R-112: brand name', () => {
   });
 
   test('C4 / C7: an old stored name sent back unchanged is not re-checked (the host can still edit the e-mail)', async () => {
-    const tenantId = personaManager.context.tenant1.id;
-    const before = await Tenant.findByPk(tenantId);
+    const organizationId = personaManager.context.tenant1.id;
+    const before = await Tenant.findByPk(organizationId);
     const legacy = 'Legacy Brand Name That Is Much Longer Than Sixty Characters Allowed Now';
     await before.update({ businessName: legacy });
-    const audits = () => PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: tenantId } });
+    const audits = () => PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: organizationId } });
     const auditsBefore = await audits();
     const res = await asPersona('owner').patch('/tenants/me').send({ businessName: legacy, phone: '' });
     expect(res.status).toBe(200);
@@ -179,6 +179,6 @@ describe('R-112: brand name', () => {
     // A real change to it is checked as usual.
     const changed = await asPersona('owner').patch('/tenants/me').send({ businessName: `${legacy} 2` });
     expect(changed.status).toBe(422);
-    await Tenant.update({ businessName: before.businessName }, { where: { id: tenantId } });
+    await Tenant.update({ businessName: before.businessName }, { where: { id: organizationId } });
   });
 });

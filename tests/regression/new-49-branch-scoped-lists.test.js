@@ -24,7 +24,7 @@ const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar d
 let app;
 let dbHarness;
 let personas;
-let tenantId;
+let organizationId;
 let branches; // { a, b, c }
 let rec; // per-route seeded record ids, keyed by branch letter
 let managerThree;
@@ -39,10 +39,10 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
   const { Branch, MembershipPlan, MemberSubscription, AttendanceLog, Trainer, AssignmentOverride } = tenantDb.models;
 
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
   const a = await Branch.findOne({ where: { gymId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
@@ -90,11 +90,11 @@ beforeAll(async () => {
   }
 
   managerThree = await teamMember({
-    tenantDb, tenantId, email: 'mgr-three@new49.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
+    tenantDb, organizationId, email: 'mgr-three@new49.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
     branchIds: [a.id, b.id, c.id],
   });
   managerOne = await teamMember({
-    tenantDb, tenantId, email: 'mgr-one@new49.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
+    tenantDb, organizationId, email: 'mgr-one@new49.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
     branchIds: [a.id],
   });
 
@@ -103,13 +103,13 @@ beforeAll(async () => {
     const slug = key.replace('.', '-');
     const user = await factories.createUser({ email: `fd-${slug}@new49.test`, role: 'MEMBER', fullName: `FD ${slug}` });
     const assignment = await factories.createRoleAssignment(
-      { ...tenantDb, tenantId },
-      { userId: user.id, roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [a.id], overrides: { tenantId } }
+      { ...tenantDb, organizationId },
+      { userId: user.id, roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [a.id], overrides: { organizationId } }
     );
     await AssignmentOverride.create({ assignmentId: assignment.id, permissionKey: key, effect: 'DENY', createdBy: user.id });
-    await membershipService.syncUserOrgIndex(tenantId, user.id, tenantDb);
+    await membershipService.syncUserOrgIndex(organizationId, user.id, tenantDb);
     keyOff[key] = {
-      token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true, tenantId }),
+      token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true, organizationId }),
     };
   }
 });
@@ -120,7 +120,7 @@ afterAll(async () => {
 });
 
 const get = (path, token, query = '') =>
-  request(app).get(`${path}${query}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', tenantId);
+  request(app).get(`${path}${query}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', organizationId);
 
 // Each route: how to call it, which key guards it, and how to read the ids of the
 // seeded records out of the response.

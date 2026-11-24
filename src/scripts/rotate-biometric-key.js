@@ -72,7 +72,7 @@ async function main() {
   await connect();
   const { Tenant } = require('../models/platform');
   const TenantDbManager = require('../database/TenantDbManager');
-  const tenants = await Tenant.findAll({ attributes: ['id', 'tenantCode', 'connectionStringEncrypted'] });
+  const tenants = await Tenant.findAll({ attributes: ['id', 'organizationCode', 'connectionStringEncrypted'] });
   let failed = 0;
   console.log(`[rotate-biometric-key] ${apply ? 'APPLY' : 'dry run'}; current key version ${bioCrypto.currentVersion()}`);
   for (const t of tenants) {
@@ -81,10 +81,10 @@ async function main() {
       const db = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
       const r = await rotateTenant(db, { apply });
       if (r.unreadable) failed += 1;
-      console.log(`  ${t.tenantCode}: ${r.templates} templates, ${r.photos} photos on an older key; ${r.rotated} rotated; ${r.unreadable} unreadable`);
+      console.log(`  ${t.organizationCode}: ${r.templates} templates, ${r.photos} photos on an older key; ${r.rotated} rotated; ${r.unreadable} unreadable`);
     } catch (err) {
       failed += 1;
-      console.log(`  ${t.tenantCode}: skipped (${err.message})`);
+      console.log(`  ${t.organizationCode}: skipped (${err.message})`);
     }
   }
   await sequelize.close().catch(() => {});

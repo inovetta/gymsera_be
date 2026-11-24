@@ -6,9 +6,9 @@ const TenantDbManager = require('../database/TenantDbManager');
  * Phase 7 P9, NEW-158 / R-84: the photos an approval would publish, so the admin can look at them,
  * remove any that is not a real photo of the gym, and confirm before approving.
  *
- * - A first application (`tenantId`): the tenant's logo and cover and the main branch photos it sent
+ * - A first application (`organizationId`): the tenant's logo and cover and the main branch photos it sent
  *   (`mainBranchDataJson.imagesJson`, which provisioning copies onto the first branch).
- * - An additional organization (`tenantId:listingId`): the listing's cover and photos and the photos
+ * - An additional organization (`organizationId:listingId`): the listing's cover and photos and the photos
  *   of its branches in the tenant database.
  */
 
@@ -19,7 +19,7 @@ const parseJson = (v) => {
 
 const urls = (list) => (Array.isArray(list) ? list.filter((u) => typeof u === 'string' && u) : []);
 
-const splitId = (tenantId) => (tenantId.includes(':') ? tenantId.split(':') : [tenantId, undefined]);
+const splitId = (organizationId) => (organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined]);
 
 const listingBranches = async (tenant, listingId) => {
   if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') return [];
@@ -28,8 +28,8 @@ const listingBranches = async (tenant, listingId) => {
 };
 
 /** @returns {Promise<Array<{ url: string, kind: 'logo'|'cover'|'gallery', branchId?: string }>>} */
-const listApprovalPhotos = async (tenantId) => {
-  const [actualTenantId, listingId] = splitId(tenantId);
+const listApprovalPhotos = async (organizationId) => {
+  const [actualTenantId, listingId] = splitId(organizationId);
   const tenant = await Tenant.findByPk(actualTenantId);
   if (!tenant) throw createError('Tenant not found', 404);
 
@@ -42,7 +42,7 @@ const listApprovalPhotos = async (tenantId) => {
   }
 
   const listing = await GymListing.findByPk(listingId);
-  if (!listing || listing.tenantId !== tenant.id) throw createError('Gym listing not found', 404);
+  if (!listing || listing.organizationId !== tenant.id) throw createError('Gym listing not found', 404);
   const branches = await listingBranches(tenant, listingId);
   return [
     ...(listing.coverImageUrl ? [{ url: listing.coverImageUrl, kind: 'cover' }] : []),
@@ -52,8 +52,8 @@ const listApprovalPhotos = async (tenantId) => {
 };
 
 /** Takes one photo off the application (or the listing / its branch). Audited. */
-const removeApprovalPhoto = async (tenantId, imageUrl, adminUserId) => {
-  const [actualTenantId, listingId] = splitId(tenantId);
+const removeApprovalPhoto = async (organizationId, imageUrl, adminUserId) => {
+  const [actualTenantId, listingId] = splitId(organizationId);
   const tenant = await Tenant.findByPk(actualTenantId);
   if (!tenant) throw createError('Tenant not found', 404);
 
@@ -72,7 +72,7 @@ const removeApprovalPhoto = async (tenantId, imageUrl, adminUserId) => {
     }
   } else {
     const listing = await GymListing.findByPk(listingId);
-    if (!listing || listing.tenantId !== tenant.id) throw createError('Gym listing not found', 404);
+    if (!listing || listing.organizationId !== tenant.id) throw createError('Gym listing not found', 404);
     if (listing.coverImageUrl === imageUrl) {
       await listing.update({ coverImageUrl: null });
       removedFrom = 'cover';
@@ -105,9 +105,9 @@ const removeApprovalPhoto = async (tenantId, imageUrl, adminUserId) => {
  * Records that the admin looked at the photos (R-84). Written before the approval changes anything;
  * if it cannot be written, the approval does not go ahead.
  */
-const recordPhotosChecked = async (tenantId, adminUserId) => {
-  const [actualTenantId, listingId] = splitId(tenantId);
-  const photos = await listApprovalPhotos(tenantId);
+const recordPhotosChecked = async (organizationId, adminUserId) => {
+  const [actualTenantId, listingId] = splitId(organizationId);
+  const photos = await listApprovalPhotos(organizationId);
   try {
     await PlatformAuditLog.create({
       actorUserId: adminUserId,

@@ -2,12 +2,12 @@
  * tenantContext — resolves the Sequelize instance for the current request's tenant.
  *
  * Requires `authenticate` to have run first. Attaches:
- *   req.tenantDb  { sequelize, models, tenantId }
- *   req.tenantId
+ *   req.tenantDb  { sequelize, models, organizationId }
+ *   req.organizationId
  *
  * ── Resolution order ─────────────────────────────────────────────────────────
- *   1. JWT tenantId claim
- *   2. X-Tenant-Id header / query / body  (the app's context switcher)
+ *   1. JWT organizationId claim
+ *   2. X-Organization-Id header / query / body  (the app's context switcher)
  *   3. branchId → cached branch→tenant mapping
  *   4. user_org_index → the user's highest-level active membership
  *
@@ -43,20 +43,20 @@ const newRequestMemo = () => ({ activeTenants: new Map(), belongs: new Map() });
  * request. Carries everything the middleware needs from the platform tenants
  * table: owner, connection string, status.
  */
-const loadActiveTenant = (memo, tenantId) => {
+const loadActiveTenant = (memo, organizationId) => {
   const { Tenant } = require('../models/platform');
   const query = () =>
     Tenant.findOne({
-      where: { id: tenantId, status: 'ACTIVE' },
+      where: { id: organizationId, status: 'ACTIVE' },
       attributes: ['id', 'ownerUserId', 'connectionStringEncrypted', 'status'],
     });
   if (!memo) return query();
-  if (!memo.activeTenants.has(tenantId)) {
+  if (!memo.activeTenants.has(organizationId)) {
     const p = query();
-    memo.activeTenants.set(tenantId, p);
-    p.catch(() => memo.activeTenants.delete(tenantId));
+    memo.activeTenants.set(organizationId, p);
+    p.catch(() => memo.activeTenants.delete(organizationId));
   }
-  return memo.activeTenants.get(tenantId);
+  return memo.activeTenants.get(organizationId);
 };
 
 /**
@@ -73,7 +73,7 @@ const loadActiveTenant = (memo, tenantId) => {
  *
  * Delete this function once every route uses `can()`.
  */
-const applyLegacyRoleShim = async (req, tenantDb, tenantId, memo = null) => {
+const applyLegacyRoleShim = async (req, tenantDb, organizationId, memo = null) => {
   const user = req.user;
   if (!user) return;
 
@@ -95,8 +95,8 @@ const applyLegacyRoleShim = async (req, tenantDb, tenantId, memo = null) => {
   // The tenant is ACTIVE here (tenantContext just resolved it), so the memoized
   // row answers; anything else keeps the original unconditional lookup.
   const { Tenant } = require('../models/platform');
-  const tenant = (await loadActiveTenant(memo, tenantId))
-    || (await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId'] }));
+  const tenant = (await loadActiveTenant(memo, organizationId))
+    || (await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId'] }));
 
   if (tenant && tenant.ownerUserId === userId) {
     user.role = 'GYM_HOST';
@@ -138,11 +138,11 @@ const applyLegacyRoleShim = async (req, tenantDb, tenantId, memo = null) => {
 /**
  * Verify whether an authenticated user belongs to the requested tenant.
  * @param {string} userId
- * @param {string} tenantId
+ * @param {string} organizationId
  * @returns {Promise<boolean>}
  */
-const userBelongsToTenant = async (userId, tenantId, memo = null) =>
-  (await tenantRelation(userId, tenantId, memo)) !== null;
+const userBelongsToTenant = async (userId, organizationId, memo = null) =>
+  (await tenantRelation(userId, organizationId, memo)) !== null;
 
 /**
  * How the user is linked to the tenant: 'OWNER', 'STAFF' (membership index or a
@@ -150,11 +150,11 @@ const userBelongsToTenant = async (userId, tenantId, memo = null) =>
  * tenantContext keeps it on req.tenantRelation so a traveller never gets staff or
  * owner handling in that tenant (NEW-108).
  */
-const tenantRelation = (userId, tenantId, memo = null) => {
-  if (!userId || !tenantId) return Promise.resolve(null);
-  if (!memo) return _tenantRelation(userId, tenantId, null);
-  const key = `${userId}:${tenantId}`;
-  if (!memo.belongs.has(key)) memo.belongs.set(key, _tenantRelation(userId, tenantId, memo));
+const tenantRelation = (userId, organizationId, memo = null) => {
+  if (!userId || !organizationId) return Promise.resolve(null);
+  if (!memo) return _tenantRelation(userId, organizationId, null);
+  const key = `${userId}:${organizationId}`;
+  if (!memo.belongs.has(key)) memo.belongs.set(key, _tenantRelation(userId, organizationId, memo));
   return memo.belongs.get(key);
 };
 
@@ -163,22 +163,22 @@ const tenantRelation = (userId, tenantId, memo = null) => {
  * team role there? A paying gym member (UserGymMembership) is not. Realtime
  * staff rooms use this, never userBelongsToTenant (NEW-85).
  */
-const userIsTenantStaff = (userId, tenantId) => {
-  if (!userId || !tenantId) return Promise.resolve(false);
-  return _tenantRelation(userId, tenantId, null).then((r) => r === 'OWNER' || r === 'STAFF');
+const userIsTenantStaff = (userId, organizationId) => {
+  if (!userId || !organizationId) return Promise.resolve(false);
+  return _tenantRelation(userId, organizationId, null).then((r) => r === 'OWNER' || r === 'STAFF');
 };
 
-const _tenantRelation = async (userId, tenantId, memo) => {
+const _tenantRelation = async (userId, organizationId, memo) => {
   const { UserOrgIndex, UserGymMembership } = require('../models/platform');
 
   // 1. Direct tenant ownership (an ACTIVE tenant whose owner is this user)
-  const ownedTenant = await loadActiveTenant(memo, tenantId);
+  const ownedTenant = await loadActiveTenant(memo, organizationId);
   if (ownedTenant && ownedTenant.ownerUserId === userId) return 'OWNER';
 
   // 2. Active membership in UserOrgIndex (staff / team)
   const inIndex = await UserOrgIndex.findOne({
-    where: { userId, tenantId, status: 'ACTIVE' },
-    attributes: ['tenantId'],
+    where: { userId, organizationId, status: 'ACTIVE' },
+    attributes: ['organizationId'],
   });
   if (inIndex) return 'STAFF';
 
@@ -186,14 +186,14 @@ const _tenantRelation = async (userId, tenantId, memo) => {
   try {
     const tenant = ownedTenant;
     if (tenant && tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
-      const db = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+      const db = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
       if (db?.models?.RoleAssignment) {
         const assignment = await db.models.RoleAssignment.findOne({
           where: { userId, status: 'ACTIVE' },
           attributes: ['id'],
         });
         if (assignment) {
-          await membershipService.syncUserOrgIndex(tenantId, userId, db).catch(() => {});
+          await membershipService.syncUserOrgIndex(organizationId, userId, db).catch(() => {});
           return 'STAFF';
         }
       }
@@ -205,7 +205,7 @@ const _tenantRelation = async (userId, tenantId, memo) => {
   // 4. Gym member in UserGymMembership (a traveller, any status): reaches the
   //    member routes of that gym only. Never staff, never owner (NEW-85, NEW-108).
   const inMemberIndex = await UserGymMembership.findOne({
-    where: { userId, tenantId },
+    where: { userId, organizationId },
     attributes: ['id'],
   });
   if (inMemberIndex) return 'MEMBER';
@@ -224,9 +224,9 @@ const resolveTenantId = async (req, memo = null, { memberRoute = false } = {}) =
   const userId = user?.id || user?.sub;
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
-  // 1. Header-based tenant selector (X-Tenant-Id)
+  // 1. Header-based tenant selector (X-Organization-Id)
   // Validated against tenants the user actually belongs to.
-  const headerTenantId = req.headers['x-tenant-id'];
+  const headerTenantId = req.headers['x-organization-id'];
   if (headerTenantId) {
     if (isPlatformAdmin) {
       const exists = await loadActiveTenant(memo, headerTenantId);
@@ -236,11 +236,11 @@ const resolveTenantId = async (req, memo = null, { memberRoute = false } = {}) =
     return belongs ? headerTenantId : null;
   }
 
-  // 2. Token-scoped tenantId (if present in JWT)
-  if (user?.tenantId) {
-    if (isPlatformAdmin) return user.tenantId;
-    const belongs = await userBelongsToTenant(userId, user.tenantId, memo);
-    if (belongs) return user.tenantId;
+  // 2. Token-scoped organizationId (if present in JWT)
+  if (user?.organizationId) {
+    if (isPlatformAdmin) return user.organizationId;
+    const belongs = await userBelongsToTenant(userId, user.organizationId, memo);
+    if (belongs) return user.organizationId;
   }
 
   // 3. Infer from branch being operated on (URL params or query only, never body!)
@@ -268,7 +268,7 @@ const resolveTenantId = async (req, memo = null, { memberRoute = false } = {}) =
  * @param {boolean} [opts.memberRoute]  traveller member routes: may fall back to a booked gym.
  * @param {boolean} [opts.noTenantIsForbidden]  team-only routes (NEW-221): a caller who is part of no
  *   gym's team gets 403, not 400 `missing_tenant_context`. A platform admin keeps the 400: they may
- *   act in a tenant once one is chosen with X-Tenant-Id, so "choose a gym" is the right answer.
+ *   act in a tenant once one is chosen with X-Organization-Id, so "choose a gym" is the right answer.
  */
 const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } = {}) => async (req, res, next) => {
   try {
@@ -284,13 +284,13 @@ const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } 
       return r.status(404).json({ success: false, message: 'Tenant not found or not active' });
     };
 
-    // 1. If client provided a tenantId in request body:
+    // 1. If client provided a organizationId in request body:
     //    It must NEVER select tenant. If caller forged an out-of-scope tenant ID,
     //    reject immediately with 404 (without leaking existence).
     //    If caller belongs to it, delete it so body is never the authority.
-    if (req.body && req.body.tenantId !== undefined) {
-      const bodyTenantId = req.body.tenantId;
-      delete req.body.tenantId;
+    if (req.body && req.body.organizationId !== undefined) {
+      const bodyTenantId = req.body.organizationId;
+      delete req.body.organizationId;
 
       if (!isPlatformAdmin) {
         const belongs = await userBelongsToTenant(userId, bodyTenantId, memo);
@@ -300,9 +300,9 @@ const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } 
       }
     }
 
-    // 2. If client provided X-Tenant-Id header for an out-of-scope tenant:
+    // 2. If client provided X-Organization-Id header for an out-of-scope tenant:
     //    Must be rejected with 404 without leaking existence.
-    const headerTenantId = req.headers['x-tenant-id'];
+    const headerTenantId = req.headers['x-organization-id'];
     if (headerTenantId) {
       if (isPlatformAdmin) {
         const exists = await loadActiveTenant(memo, headerTenantId);
@@ -317,9 +317,9 @@ const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } 
       }
     }
 
-    const tenantId = await resolveTenantId(req, memo, { memberRoute });
+    const organizationId = await resolveTenantId(req, memo, { memberRoute });
 
-    if (!tenantId) {
+    if (!organizationId) {
       // BUG-14/15: a host whose own gym is not live yet gets a clear code the
       // clients map to "your gym isn't live yet", never a developer sentence.
       if (userId && !isPlatformAdmin && (await membershipService.ownsInactiveTenant(userId))) {
@@ -332,11 +332,11 @@ const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } 
     }
 
     // ── Connection string, cached ───────────────────────────────────────────
-    const cacheKey = `tenant:${tenantId}:connStr`;
+    const cacheKey = `tenant:${organizationId}:connStr`;
     let encryptedConnStr = await safeRedisGet(cacheKey);
 
     if (!encryptedConnStr) {
-      const tenant = await loadActiveTenant(memo, tenantId);
+      const tenant = await loadActiveTenant(memo, organizationId);
 
       if (!tenant) {
         return rejectTenantNotFound(res);
@@ -354,21 +354,21 @@ const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } 
       await safeRedisSetex(cacheKey, CACHE_TTL_SECONDS, encryptedConnStr);
     }
 
-    req.tenantRelation = isPlatformAdmin ? null : await tenantRelation(userId, tenantId, memo);
+    req.tenantRelation = isPlatformAdmin ? null : await tenantRelation(userId, organizationId, memo);
 
-    req.tenantDb = await TenantDbManager.getConnection(tenantId, encryptedConnStr);
-    req.tenantDb.tenantId = tenantId;
-    req.tenantId = tenantId;
+    req.tenantDb = await TenantDbManager.getConnection(organizationId, encryptedConnStr);
+    req.tenantDb.organizationId = organizationId;
+    req.organizationId = organizationId;
     if (req.user) {
-      req.user.tenantId = tenantId;
+      req.user.organizationId = organizationId;
     }
 
     // Claim any invite addressed to this email but issued before they signed up.
-    await membershipService.claimInvitesForUser(req.tenantDb, tenantId, req.user).catch((err) => {
+    await membershipService.claimInvitesForUser(req.tenantDb, organizationId, req.user).catch((err) => {
       console.warn('[tenantContext] invite claim failed:', err.message);
     });
 
-    await applyLegacyRoleShim(req, req.tenantDb, tenantId, memo).catch((err) => {
+    await applyLegacyRoleShim(req, req.tenantDb, organizationId, memo).catch((err) => {
       console.warn('[tenantContext] legacy role shim failed:', err.message);
     });
 

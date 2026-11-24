@@ -150,26 +150,26 @@ const _finalizeTenantData = async (tenant, now) => {
     );
   }
 
-  const listings = await GymListing.findAll({ where: { tenantId: tenant.id }, attributes: ['id', 'logoUrl', 'coverImageUrl'] });
+  const listings = await GymListing.findAll({ where: { organizationId: tenant.id }, attributes: ['id', 'logoUrl', 'coverImageUrl'] });
   await _deleteFiles(listings.flatMap((l) => [l.logoUrl, l.coverImageUrl]));
   await GymListing.update(
     { status: 'INACTIVE', contactPhone: null, website: null, logoUrl: null, coverImageUrl: null, imagesJson: null },
-    { where: { tenantId: tenant.id } }
+    { where: { organizationId: tenant.id } }
   );
-  await UserGymMembership.update({ status: 'CANCELLED' }, { where: { tenantId: tenant.id, status: { [Op.in]: ACTIVE_MEMBERSHIP_STATUSES } } });
-  await UserOrgIndex.destroy({ where: { tenantId: tenant.id } });
+  await UserGymMembership.update({ status: 'CANCELLED' }, { where: { organizationId: tenant.id, status: { [Op.in]: ACTIVE_MEMBERSHIP_STATUSES } } });
+  await UserOrgIndex.destroy({ where: { organizationId: tenant.id } });
 
   // The gym's chats with travelers go with it.
-  const conversations = await Conversation.findAll({ where: { tenantId: tenant.id }, attributes: ['id'] });
+  const conversations = await Conversation.findAll({ where: { organizationId: tenant.id }, attributes: ['id'] });
   if (conversations.length > 0) {
     await Message.destroy({ where: { conversationId: { [Op.in]: conversations.map((c) => c.id) } } });
-    await Conversation.destroy({ where: { tenantId: tenant.id } });
+    await Conversation.destroy({ where: { organizationId: tenant.id } });
   }
-  await _scrubInvitations({ tenantId: tenant.id });
+  await _scrubInvitations({ organizationId: tenant.id });
 
   // A Stripe subscription that failed to cancel at request time is retried here.
   const live = await TenantSubscription.findAll({
-    where: { tenantId: tenant.id, platform: 'STRIPE', status: { [Op.in]: LIVE_SUBSCRIPTION_STATUSES } },
+    where: { organizationId: tenant.id, platform: 'STRIPE', status: { [Op.in]: LIVE_SUBSCRIPTION_STATUSES } },
   });
   for (const sub of live.filter((s) => s.externalOriginalTransactionId)) {
     await stripeBilling.cancelAtPeriodEnd(sub.externalOriginalTransactionId);
@@ -199,8 +199,8 @@ const _finalizeTenantData = async (tenant, now) => {
 /** The person: every tenant they belong to, then the platform rows, then the user row itself. */
 const _finalizeUser = async (user, now) => {
   const memberTenantIds = new Set([
-    ...(await UserGymMembership.findAll({ where: { userId: user.id }, attributes: ['tenantId'], raw: true })).map((r) => r.tenantId),
-    ...(await UserOrgIndex.findAll({ where: { userId: user.id }, attributes: ['tenantId'], raw: true })).map((r) => r.tenantId),
+    ...(await UserGymMembership.findAll({ where: { userId: user.id }, attributes: ['organizationId'], raw: true })).map((r) => r.organizationId),
+    ...(await UserOrgIndex.findAll({ where: { userId: user.id }, attributes: ['organizationId'], raw: true })).map((r) => r.organizationId),
   ]);
   const tenants = await Tenant.findAll({
     where: { id: { [Op.in]: [...memberTenantIds] }, status: { [Op.ne]: TenantStatus.DELETED }, ownerUserId: { [Op.ne]: user.id } },
@@ -268,7 +268,7 @@ const runDeletionFinalizeSweep = async ({ dryRun = false, now = new Date() } = {
 
   const result = {
     dryRun,
-    tenants: dueTenants.map((t) => ({ id: t.id, tenantCode: t.tenantCode, scheduledFor: t.deletionScheduledFor })),
+    tenants: dueTenants.map((t) => ({ id: t.id, organizationCode: t.organizationCode, scheduledFor: t.deletionScheduledFor })),
     users: dueUsers.map((u) => ({ id: u.id, scheduledFor: u.deletionScheduledFor })),
     finalizedTenants: [],
     finalizedUsers: [],

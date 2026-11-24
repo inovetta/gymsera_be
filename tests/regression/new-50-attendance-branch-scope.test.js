@@ -24,7 +24,7 @@ const subscriptionService = require('../../src/services/subscription.service');
 let app;
 let dbHarness;
 let personas;
-let tenantId;
+let organizationId;
 let branches; // { a, b, c }
 let member; // one member with check-ins at every branch
 let firstLog; // branch letter -> id of one seeded log
@@ -41,10 +41,10 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
   const { Branch, AttendanceLog, AssignmentOverride } = tenantDb.models;
 
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
   const a = await Branch.findOne({ where: { gymId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
@@ -66,25 +66,25 @@ beforeAll(async () => {
   }
 
   managerThree = await teamMember({
-    tenantDb, tenantId, email: 'mgr-three@new50.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
+    tenantDb, organizationId, email: 'mgr-three@new50.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
     branchIds: [a.id, b.id, c.id],
   });
   managerOne = await teamMember({
-    tenantDb, tenantId, email: 'mgr-one@new50.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
+    tenantDb, organizationId, email: 'mgr-one@new50.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
     branchIds: [a.id],
   });
 
   const makeDesk = async (email, denyKey) => {
     const user = await factories.createUser({ email, role: 'MEMBER', fullName: email });
     const assignment = await factories.createRoleAssignment(
-      { ...tenantDb, tenantId },
-      { userId: user.id, roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [a.id], overrides: { tenantId } }
+      { ...tenantDb, organizationId },
+      { userId: user.id, roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [a.id], overrides: { organizationId } }
     );
     if (denyKey) {
       await AssignmentOverride.create({ assignmentId: assignment.id, permissionKey: denyKey, effect: 'DENY', createdBy: user.id });
     }
-    await membershipService.syncUserOrgIndex(tenantId, user.id, tenantDb);
-    return { token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true, tenantId }) };
+    await membershipService.syncUserOrgIndex(organizationId, user.id, tenantDb);
+    return { token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true, organizationId }) };
   };
   deskOn = await makeDesk('fd-on@new50.test', null);
   deskOff = await makeDesk('fd-off@new50.test', 'checkins.view');
@@ -100,7 +100,7 @@ const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString().s
 const get = (path, token, params = {}) => {
   const qs = new URLSearchParams(params).toString();
   const sep = path.includes('?') ? '&' : '?';
-  return request(app).get(`${path}${qs ? sep + qs : ''}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', tenantId);
+  return request(app).get(`${path}${qs ? sep + qs : ''}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', organizationId);
 };
 
 // Each route: how to call it and how to reduce a response to what it exposes.
@@ -183,7 +183,7 @@ describe('NEW-50: listForStaff early exits return the normal response shape', ()
 
   test('GET /subscriptions/staff?branchId=<inactive branch> answers 200 with subscriptions: []', async () => {
     const { Branch } = dbHarness.tenant1.models;
-    const listing = await GymListing.findOne({ where: { tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId } });
     const inactive = await factories.createBranch(dbHarness.tenant1, listing.id, { name: 'Branch Closed' });
     await Branch.update({ status: 'INACTIVE' }, { where: { id: inactive.id } });
     const res = await get('/api/v1/subscriptions/staff', personas.owner.token, { branchId: inactive.id });

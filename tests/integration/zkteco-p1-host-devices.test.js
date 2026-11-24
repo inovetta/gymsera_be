@@ -178,7 +178,7 @@ describe('permissions (§12)', () => {
   });
 
   test('platform admin: reads with a gym chosen, never writes', async () => {
-    const h = { 'X-Tenant-Id': ctx.tenant1.id };
+    const h = { 'X-Organization-Id': ctx.tenant1.id };
     expect((await asPersona('platformAdmin', h).get('/host/devices')).status).toBe(200);
     expect((await asPersona('platformAdmin', h).get(`/host/devices/${deviceA.id}`)).status).toBe(200);
     const writes = [

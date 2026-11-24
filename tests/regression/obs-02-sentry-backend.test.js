@@ -160,7 +160,7 @@ describe('OBS-02: the release is never guessed from the CI or hosting environmen
 describe('OBS-02: what leaves the process', () => {
   const req = () => ({
     id: 'req-77',
-    tenantId: 'tenant-9',
+    organizationId: 'tenant-9',
     method: 'POST',
     baseUrl: '/api/v1',
     route: { path: '/payments/:id' },
@@ -178,7 +178,7 @@ describe('OBS-02: what leaves the process', () => {
     await settle();
     const ev = t.events()[0];
     expect(ev.user).toEqual({ id: 'user-1' });
-    expect(ev.tags).toMatchObject({ requestId: 'req-77', tenantId: 'tenant-9', route: '/api/v1/payments/:id' });
+    expect(ev.tags).toMatchObject({ requestId: 'req-77', organizationId: 'tenant-9', route: '/api/v1/payments/:id' });
   });
 
   test('no e-mail, name, phone, IP, header, cookie, body, query string, hostname or local path in the event', async () => {
@@ -263,7 +263,7 @@ describe('OBS-02: Sentry never changes a response', () => {
     app.use(requestId);
     app.use((req, _res, next) => {
       req.user = user;
-      req.tenantId = 'tenant-9';
+      req.organizationId = 'tenant-9';
       next();
     });
     app.get('/ok', (_req, res) => res.json({ ok: true }));
@@ -305,7 +305,7 @@ describe('OBS-02: Sentry never changes a response', () => {
     await settle();
     const ev = t.events()[0];
     expect(ev.user).toEqual({ id: 'user-1' });
-    expect(ev.tags).toMatchObject({ requestId: 'req-500', tenantId: 'tenant-9', route: '/boom' });
+    expect(ev.tags).toMatchObject({ requestId: 'req-500', organizationId: 'tenant-9', route: '/boom' });
     expect(JSON.stringify(ev)).not.toContain('jane@example.test');
   });
 

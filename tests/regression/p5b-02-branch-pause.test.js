@@ -115,20 +115,20 @@ describe('P5b item 2: pause and resume', () => {
     const { personaManager } = require('../harness/personas');
     await UserGymMembership.create({
       userId: personaManager.personas.member.user.id,
-      tenantId: ctx.tenant1.id,
+      organizationId: ctx.tenant1.id,
       gymListingId: ctx.listing1.id,
       subscriptionId: uuidv4(),
       gymName: 'Alpha Fitness Club',
       planName: 'Public',
       status: 'ACTIVE',
     });
-    const res = await asPersona('member', { 'X-Tenant-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
+    const res = await asPersona('member', { 'X-Organization-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
     expect(res.status).toBe(403);
     expect((await reload()).pausedAt).toBeNull();
   });
 
   test('another tenant\'s owner cannot reach it (404), branch not paused', async () => {
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
     expect(res.status).toBe(404);
     expect((await reload()).pausedAt).toBeNull();
   });

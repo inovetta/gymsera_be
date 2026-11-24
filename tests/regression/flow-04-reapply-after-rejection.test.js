@@ -43,7 +43,7 @@ describe('FLOW-04: re-apply after rejection', () => {
       connectionStringEncrypted: null,
       ...over,
     });
-    const token = signToken({ sub: owner.id, id: owner.id, email: owner.email, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    const token = signToken({ sub: owner.id, id: owner.id, email: owner.email, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
     return { owner, tenant, token };
   };
   const reapply = (id, token) => request(app).post(`${API}/tenants/${id}/reapply`).set('Authorization', `Bearer ${token}`).send({});
@@ -116,7 +116,7 @@ describe('FLOW-04: re-apply after rejection', () => {
     const stillRejected = await rejectedHost();
     expect((await reapply(reopened.tenant.id, reopened.token)).status).toBe(200);
     const sweep = await runKycRetentionSweep({ dryRun: true });
-    const ids = sweep.details.map((d) => d.tenantId);
+    const ids = sweep.details.map((d) => d.organizationId);
     expect(ids).toContain(stillRejected.tenant.id);
     expect(ids).not.toContain(reopened.tenant.id);
   });

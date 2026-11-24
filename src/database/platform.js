@@ -505,7 +505,7 @@ const connect = async () => {
 
         if (users.length > 0 && tenants.length > 0) {
           for (const tenant of tenants) {
-            const listings = await GymListing.findAll({ where: { tenantId: tenant.id } });
+            const listings = await GymListing.findAll({ where: { organizationId: tenant.id } });
             for (const listing of listings) {
               if (!listing.branchId) continue;
               
@@ -514,7 +514,7 @@ const connect = async () => {
                 const dummy = dummyConversations[i];
                 
                 const conversation = await Conversation.create({
-                  tenantId: tenant.id,
+                  organizationId: tenant.id,
                   branchId: listing.branchId,
                   userId: user.id,
                   type: dummy.type,

@@ -15,7 +15,7 @@ let personas;
 beforeAll(async () => {
   h = await setupTestDatabases();
   personas = await setupPersonas(h);
-  await TenantSubscription.update({ branchCount: 50 }, { where: { tenantId: personas.owner.tenantId } });
+  await TenantSubscription.update({ branchCount: 50 }, { where: { organizationId: personas.owner.organizationId } });
 });
 
 afterAll(async () => {
@@ -24,7 +24,7 @@ afterAll(async () => {
 });
 
 const approvePending = () =>
-  GymListing.update({ status: 'ACTIVE' }, { where: { tenantId: personas.owner.tenantId, status: 'PENDING' } });
+  GymListing.update({ status: 'ACTIVE' }, { where: { organizationId: personas.owner.organizationId, status: 'PENDING' } });
 
 describe('NEW-308: the business id is the listing id', () => {
   test('tenant migration 031 left no gym_listing_id column on businesses or branches (and the models do not map one)', async () => {
@@ -59,7 +59,7 @@ describe('NEW-308: the business id is the listing id', () => {
 
   test('guard: every tenant business has the id of a platform listing of that organization, every branch a business', async () => {
     const { Gym, Branch } = h.tenant1.models;
-    const listings = await GymListing.findAll({ where: { tenantId: personas.owner.tenantId }, attributes: ['id'], raw: true });
+    const listings = await GymListing.findAll({ where: { organizationId: personas.owner.organizationId }, attributes: ['id'], raw: true });
     const listingIds = new Set(listings.map((l) => l.id));
     const gyms = await Gym.findAll({ attributes: ['id'], raw: true });
     expect(gyms.length).toBeGreaterThan(0);

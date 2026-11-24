@@ -47,7 +47,7 @@ describe('NEW-277: Apple transactions from another app are refused', () => {
     tenant = await factories.createTenant({ connectionStringEncrypted: dbHarness.tenant1.encryptedConnStr });
     await factories.createGymListing(tenant.id);
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5 });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const iosSync = (transactionId) =>

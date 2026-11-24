@@ -32,20 +32,20 @@ describe('NEW-38: Organization deletion re-authentication', () => {
   let server;
   let tenant1;
 
-  const api = (method, path, { token, tenantId, body } = {}) => {
+  const api = (method, path, { token, organizationId, body } = {}) => {
     const req = request(server)[method](`/api/v1${path}`).set('Accept', 'application/json');
     if (token) req.set('Authorization', `Bearer ${token}`);
-    if (tenantId) req.set('X-Tenant-Id', tenantId);
+    if (organizationId) req.set('X-Organization-Id', organizationId);
     return body === undefined ? req : req.send(body);
   };
 
-  const tokenFor = (user, tenantId) =>
+  const tokenFor = (user, organizationId) =>
     signToken({
       sub: user.id,
       id: user.id,
       email: user.email,
       role: user.role,
-      tenantId: tenantId || user.tenantId,
+      organizationId: organizationId || user.organizationId,
       isVerified: true,
     });
 
@@ -130,7 +130,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {},
       });
 
@@ -147,7 +147,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {},
       });
 
@@ -170,7 +170,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {},
       });
 
@@ -196,7 +196,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {},
       });
 
@@ -214,7 +214,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
       // Host A attempts to delete Host B's listing with no credentials
       const res = await api('delete', `/host/listings/${hostB.listing.id}`, {
         token: tokenFor(hostA.user, hostA.tenant.id),
-        tenantId: hostA.tenant.id,
+        organizationId: hostA.tenant.id,
         body: {},
       });
 
@@ -230,7 +230,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           strategy: 'deleteBranches',
         },
@@ -248,7 +248,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           cascade: true,
         },
@@ -266,7 +266,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           password: 'some-random-made-up-password',
         },
@@ -285,7 +285,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           password: 'WrongPassword@123',
         },
@@ -303,7 +303,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           password: PASSWORD,
         },
@@ -323,7 +323,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           provider: 'GOOGLE',
           idToken: 'valid-fresh-google-id-token',
@@ -348,7 +348,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           reauthProvider: 'APPLE',
           reauthIdToken: 'valid-fresh-apple-id-token',
@@ -375,7 +375,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           provider: 'GOOGLE',
           idToken: 'wrong-google-token',
@@ -394,7 +394,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           strategy: 'deleteBranches',
         },
@@ -416,7 +416,7 @@ describe('NEW-38: Organization deletion re-authentication', () => {
 
       const res = await api('delete', `/host/listings/${listing.id}`, {
         token: tokenFor(user, tenant.id),
-        tenantId: tenant.id,
+        organizationId: tenant.id,
         body: {
           password: PASSWORD,
           strategy: 'deleteBranches',

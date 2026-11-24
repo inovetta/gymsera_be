@@ -35,7 +35,7 @@ describe('P5b item 8: Move branch is gone', () => {
 
   test('POST /host/branches/:branchId/move answers 404 and the branch stays in its organization', async () => {
     const { GymListing } = require('../../src/models/platform');
-    const target = await GymListing.create({ tenantId: ctx.tenant1.id, title: 'P5b Move Target', status: 'ACTIVE', cityId: 1 });
+    const target = await GymListing.create({ organizationId: ctx.tenant1.id, title: 'P5b Move Target', status: 'ACTIVE', cityId: 1 });
     const res = await asPersona('owner').post(`/host/branches/${ctx.branch1.id}/move`, { targetListingId: target.id });
     expect(res.status).toBe(404);
     const branch = await dbHarness.tenant1.models.Branch.findByPk(ctx.branch1.id);

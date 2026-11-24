@@ -7,7 +7,7 @@ const { decrypt } = require('../utils/crypto.utils');
 
 async function syncTenant(tenant) {
   const connUrl = decrypt(tenant.connectionStringEncrypted);
-  console.log(`\n🔄 Syncing schema for tenant: '${tenant.tenantCode}'...`);
+  console.log(`\n🔄 Syncing schema for tenant: '${tenant.organizationCode}'...`);
 
   const tenantSeq = new Sequelize(connUrl, {
     dialect: 'mysql',
@@ -19,9 +19,9 @@ async function syncTenant(tenant) {
     await tenantSeq.authenticate();
     registerTenantModels(tenantSeq);
     await tenantSeq.sync({ force: false, alter: true });
-    console.log(`   ✅ Schema synced successfully for '${tenant.tenantCode}'`);
+    console.log(`   ✅ Schema synced successfully for '${tenant.organizationCode}'`);
   } catch (err) {
-    console.error(`   ❌ Failed to sync '${tenant.tenantCode}':`, err);
+    console.error(`   ❌ Failed to sync '${tenant.organizationCode}':`, err);
   } finally {
     await tenantSeq.close();
   }

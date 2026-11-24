@@ -14,7 +14,7 @@ const { Tenant } = require('../../src/models/platform');
 const { safeRedisDel } = require('../../src/config/redis.config');
 
 describe('tenantContext: per-request memo', () => {
-  let personas; let tenantId;
+  let personas; let organizationId;
   let seen = [];
   const origQuery = Sequelize.prototype.query;
 
@@ -22,7 +22,7 @@ describe('tenantContext: per-request memo', () => {
     const h = await setupTestDatabases();
     personas = await setupPersonas(h);
     await startTestServer();
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     Sequelize.prototype.query = async function spy(sql, ...a) {
       seen.push(typeof sql === 'string' ? sql : (sql && sql.query) || '');
       return origQuery.call(this, sql, ...a);
@@ -43,7 +43,7 @@ describe('tenantContext: per-request memo', () => {
   };
 
   test('owner: one tenants read per request instead of four', async () => {
-    await safeRedisDel(`tenant:${tenantId}:connStr`);
+    await safeRedisDel(`tenant:${organizationId}:connStr`);
     const { res, tenantReads: n } = await run('owner', '/gyms/branches');
     expect(res.status).toBe(200);
     expect(n).toBeLessThanOrEqual(1);
@@ -80,14 +80,14 @@ describe('tenantContext: per-request memo', () => {
     const memberBefore = await asPersona('manager').get('/gyms/branches');
     expect(memberBefore.status).toBe(200);
 
-    await adminService.suspendTenant(tenantId, personas.platformAdmin.user.id, 'perf memo test');
+    await adminService.suspendTenant(organizationId, personas.platformAdmin.user.id, 'perf memo test');
 
     const after = await asPersona('owner').get('/gyms/branches');
     expect([403, 404]).toContain(after.status);
     const memberAfter = await asPersona('manager').get('/gyms/branches');
     expect([403, 404]).toContain(memberAfter.status);
 
-    const row = await Tenant.findByPk(tenantId);
+    const row = await Tenant.findByPk(organizationId);
     expect(row.status).toBe('SUSPENDED');
   });
 });

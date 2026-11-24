@@ -142,8 +142,8 @@ describe('reset-platform-data', () => {
   test('the plan lists each tenant_code with the db_name read from tenants (NEW-136)', async () => {
     const r = await run();
     expect(r.plan.tenants).toEqual([
-      { id: 1, tenantCode: 'GYM-RESETA', status: 'ACTIVE', dbName: TENANT_A },
-      { id: 2, tenantCode: 'GYM-RESETB', status: 'PROVISIONING_FAILED', dbName: TENANT_B },
+      { id: 1, organizationCode: 'GYM-RESETA', status: 'ACTIVE', dbName: TENANT_A },
+      { id: 2, organizationCode: 'GYM-RESETB', status: 'PROVISIONING_FAILED', dbName: TENANT_B },
     ]);
   });
 

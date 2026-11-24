@@ -28,7 +28,7 @@ afterAll(async () => {
 
 const names = (res) => res.body.data.branches.map((b) => b.id).sort();
 const list = (path, token) =>
-  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId);
+  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
 describe('NEW-44: the branches list is scoped to the caller', () => {
   test('a Front Desk clerk at branch A sees only A', async () => {
@@ -45,7 +45,7 @@ describe('NEW-44: the branches list is scoped to the caller', () => {
   test('a team member assigned to B only sees only B', async () => {
     const atB = await teamMember({
       tenantDb: dbHarness.tenant1,
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
       email: 'desk-b@new44.test',
       roleKey: 'DESK',
       scopeType: 'BRANCH',
@@ -76,7 +76,7 @@ describe('NEW-44: the branches list is scoped to the caller', () => {
     const { RoleAssignment } = dbHarness.tenant1.models;
     const revoked = await teamMember({
       tenantDb: dbHarness.tenant1,
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
       email: 'revoked@new44.test',
       roleKey: 'DESK',
       scopeType: 'BRANCH',

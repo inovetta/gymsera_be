@@ -48,9 +48,9 @@ describe('P7c item 3: the nightly re-check covers store rows that expired in the
     const { truth, latest } = fakes.installAppleFakes({
       'apple-1': fakes.appleTransaction({ originalTransactionId: 'apple-1', productId: plan5.iosMonthlyProductId }),
     });
-    await appleBilling.syncFromApple({ transactionId: 'apple-1', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: 'apple-1', organizationId: tenant.id });
     // The renewal webhook never arrived: the row still holds yesterday's end date.
-    const row = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
+    const row = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
     await row.update({ endDate: new Date(Date.now() - 2 * DAY).toISOString().split('T')[0] });
 
     // Night 1: Apple is down, so the re-fetch fails and the expiry pass expires the row.

@@ -52,7 +52,7 @@ describe('Regression §9.7: tenant list rows', () => {
 
     // Filter to rows matching this tenant
     const matchingRows = result.tenants.filter(
-      (t) => t.id === tenant.id || t.tenantId === tenant.id || t.id.startsWith(`${tenant.id}:`)
+      (t) => t.id === tenant.id || t.organizationId === tenant.id || t.id.startsWith(`${tenant.id}:`)
     );
 
     // §9.7 invariant: ACTIVE organizations must never be synthesized as duplicate top-level tenant rows

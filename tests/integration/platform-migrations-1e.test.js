@@ -227,7 +227,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
       await createTenantDbBefore1E();
       const before = await snapshot(tenantSeq);
       const res = await runTenantMigrations(tenantSeq, {
-        tenantId: 'scratch-tenant',
+        organizationId: 'scratch-tenant',
         dryRun: true,
         targetVersion: 11,
       });
@@ -240,7 +240,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
     test('apply creates idempotency_records table on tenant DB', async () => {
       await createTenantDbBefore1E();
       const res = await runTenantMigrations(tenantSeq, {
-        tenantId: 'scratch-tenant',
+        organizationId: 'scratch-tenant',
         targetVersion: 11,
       });
       expect(res.finalVersion).toBe(11);
@@ -253,7 +253,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
 
       // Second run is idempotent
       const res2 = await runTenantMigrations(tenantSeq, {
-        tenantId: 'scratch-tenant',
+        organizationId: 'scratch-tenant',
         targetVersion: 11,
       });
       expect(res2.applied).toHaveLength(0);
@@ -266,11 +266,11 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
 
     test('--dry-run writes nothing to tenant DB', async () => {
       await createTenantDbBefore1E();
-      await runTenantMigrations(tenantSeq, { tenantId: 'scratch-tenant', targetVersion: 11 });
+      await runTenantMigrations(tenantSeq, { organizationId: 'scratch-tenant', targetVersion: 11 });
       const before = await snapshot(tenantSeq);
 
       const res = await runTenantMigrations(tenantSeq, {
-        tenantId: 'scratch-tenant',
+        organizationId: 'scratch-tenant',
         dryRun: true,
         targetVersion: 12,
       });
@@ -282,7 +282,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
 
     test('012 skips cleanly when table exists without amount column', async () => {
       await createTenantDbBefore1E();
-      await runTenantMigrations(tenantSeq, { tenantId: 'scratch-tenant', targetVersion: 11 });
+      await runTenantMigrations(tenantSeq, { organizationId: 'scratch-tenant', targetVersion: 11 });
       await tenantSeq.query(`
         CREATE TABLE IF NOT EXISTS payouts (
           id CHAR(36) NOT NULL PRIMARY KEY,
@@ -292,7 +292,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
 
       const before = await snapshot(tenantSeq);
       const res = await runTenantMigrations(tenantSeq, {
-        tenantId: 'scratch-tenant',
+        organizationId: 'scratch-tenant',
         targetVersion: 12,
       });
       expect(res.applied).not.toContain(M012);
@@ -306,10 +306,10 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
 
     test('apply creates payouts table on tenant DB and is idempotent', async () => {
       await createTenantDbBefore1E();
-      await runTenantMigrations(tenantSeq, { tenantId: 'scratch-tenant', targetVersion: 11 });
+      await runTenantMigrations(tenantSeq, { organizationId: 'scratch-tenant', targetVersion: 11 });
 
       const res = await runTenantMigrations(tenantSeq, {
-        tenantId: 'scratch-tenant',
+        organizationId: 'scratch-tenant',
         targetVersion: 12,
       });
       expect(res.finalVersion).toBe(12);
@@ -323,7 +323,7 @@ describe('Prompt 1E Migrations (p011/p012 & 011/012)', () => {
 
       // Second run is idempotent
       const res2 = await runTenantMigrations(tenantSeq, {
-        tenantId: 'scratch-tenant',
+        organizationId: 'scratch-tenant',
         targetVersion: 12,
       });
       expect(res2.applied).toHaveLength(0);

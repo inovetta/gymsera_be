@@ -206,7 +206,7 @@ const main = async () => {
   const totals = { created: 0, skipped: 0, users: 0, branchLinks: 0, failed: 0 };
 
   for (const tenant of tenants) {
-    const label = tenant.tenantCode || tenant.gymName || tenant.id;
+    const label = tenant.organizationCode || tenant.gymName || tenant.id;
     if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
       console.log(`  ${label}: skipped — not provisioned`);
       continue;

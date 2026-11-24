@@ -18,7 +18,7 @@ const socketGateway = require('../../src/socket');
 describe('RT-08: grants.changed is emitted to the affected user on team writes', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let app;
   let targetUser;
   let assignment;
@@ -31,7 +31,7 @@ describe('RT-08: grants.changed is emitted to the affected user on team writes',
     const { User } = require('../../src/models/platform');
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     app = await startTestServer();
 
     targetUser = await User.create({
@@ -66,7 +66,7 @@ describe('RT-08: grants.changed is emitted to the affected user on team writes',
   });
 
   const asOwner = (req) =>
-    req.set('Authorization', `Bearer ${personas.owner.token}`).set('X-Tenant-Id', tenantId);
+    req.set('Authorization', `Bearer ${personas.owner.token}`).set('X-Organization-Id', organizationId);
 
   test('PATCH /team/:id (update) emits grants.changed to the assignee, once, with no grants in the payload', async () => {
     const res = await asOwner(request(app).patch(`/api/v1/team/${assignment.id}`)).send({

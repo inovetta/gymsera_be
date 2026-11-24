@@ -25,7 +25,7 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      tenantId: { type: DataTypes.UUID, allowNull: false },
+      organizationId: { type: DataTypes.UUID, allowNull: false },
       listingId: {
         field: 'business_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,

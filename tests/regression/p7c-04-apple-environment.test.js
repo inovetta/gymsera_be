@@ -131,7 +131,7 @@ describe('P7c item 4: Apple Production first, Sandbox on transaction-not-found',
     });
     jest.spyOn(require('../../src/services/subscription-migration.service'), 'resolveSubscriptionOwner').mockResolvedValue(null);
     const event = {
-      provider: 'APPLE', providerEventId: 'n-1', attempts: 0, tenantId: null,
+      provider: 'APPLE', providerEventId: 'n-1', attempts: 0, organizationId: null,
       rawPayload: JSON.stringify({
         signedPayload: JSON.stringify({
           notificationType: 'DID_RENEW',

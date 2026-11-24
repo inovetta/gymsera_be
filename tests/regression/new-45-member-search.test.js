@@ -20,7 +20,7 @@ beforeAll(async () => {
   const personas = await setupPersonas(dbHarness);
   team = await buildTwoBranchTeam(dbHarness, personas);
   await factories.createUser({ email: LOOKUP, fullName: 'Someone Else', phone: '+923009990000' });
-  const base = { tenantDb: dbHarness.tenant1, tenantId: team.tenantId, scopeType: 'BRANCH', branchIds: [team.branchA.id] };
+  const base = { tenantDb: dbHarness.tenant1, organizationId: team.organizationId, scopeType: 'BRANCH', branchIds: [team.branchA.id] };
   trainer = await teamMember({ ...base, email: 'trainer@new45s.test', roleKey: 'TRAINER' });
   support = await teamMember({ ...base, email: 'support@new45s.test', roleKey: 'SUPPORT' });
   app = await startTestServer();
@@ -36,7 +36,7 @@ const search = (token) =>
     .get('/api/v1/gyms/members/search')
     .query({ email: LOOKUP })
     .set('Authorization', `Bearer ${token}`)
-    .set('X-Tenant-Id', team.tenantId);
+    .set('X-Organization-Id', team.organizationId);
 
 describe('NEW-45: member search needs members.create', () => {
   test.each([

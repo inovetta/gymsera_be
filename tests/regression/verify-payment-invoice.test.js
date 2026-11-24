@@ -41,7 +41,7 @@ describe('paymentService.verifyPayment — invoice backfill', () => {
     const planRow = { id: 'plan-1', price: '2000.00', joiningFee: '0', securityFee: '0', name: 'Monthly' };
 
     return {
-      tenantId: 'tenant-1',
+      organizationId: 'tenant-1',
       models: {
         Payment: { findByPk: jest.fn().mockResolvedValue(paymentRow) },
         // Zero rows updated — the exact scenario that used to leave a

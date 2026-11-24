@@ -6,7 +6,7 @@
  *   (tenant.service.js registerTenant).
  * - tenantContext accepted a gym where the user is only a traveller (any
  *   UserGymMembership row, a PENDING booking included) as a tenant the user
- *   "belongs" to, so `X-Tenant-Id: <that gym>` was accepted. With no header, the
+ *   "belongs" to, so `X-Organization-Id: <that gym>` was accepted. With no header, the
  *   default-tenant fallback picked that gym by itself when the host's own tenant was
  *   not ACTIVE (membership.service.js resolveDefaultTenantForUser).
  * - hasAllBranches returned true for any req.user.role === 'GYM_HOST' / isHost,
@@ -38,7 +38,7 @@ beforeAll(async () => {
   dbHarness = await setupTestDatabases();
   personas = await setupPersonas(dbHarness);
   team = await buildTwoBranchTeam(dbHarness, personas);
-  gymBId = team.tenantId;
+  gymBId = team.organizationId;
   orgAdminAssignmentId = team.orgAdmin.assignment.id;
 
   const { Tenant, GymListing, UserGymMembership } = require('../../src/models/platform');
@@ -46,7 +46,7 @@ beforeAll(async () => {
   // Host A: account role GYM_HOST (set by registerTenant), owns a DRAFT tenant.
   hostA = await factories.createUser({ email: 'host-a@new108.test', role: 'GYM_HOST', isHost: true, fullName: 'Host A' });
   hostADraftTenant = await factories.createTenant({
-    tenantCode: 'GYM-NEW108A',
+    organizationCode: 'GYM-NEW108A',
     gymName: 'Host A Draft Gym',
     ownerUserId: hostA.id,
     status: 'DRAFT',
@@ -54,10 +54,10 @@ beforeAll(async () => {
   });
 
   // Host A, as a traveller, sent a booking request to gym B: a PENDING membership row.
-  const listingB = await GymListing.findOne({ where: { tenantId: gymBId } });
+  const listingB = await GymListing.findOne({ where: { organizationId: gymBId } });
   await UserGymMembership.create({
     userId: hostA.id,
-    tenantId: gymBId,
+    organizationId: gymBId,
     gymListingId: listingB.id,
     subscriptionId: uuidv4(),
     gymName: 'Alpha Fitness Club',
@@ -77,7 +77,7 @@ beforeAll(async () => {
     status: 'PAID',
   });
 
-  // The token auth.service issues to host A: role GYM_HOST, tenantId = own DRAFT tenant.
+  // The token auth.service issues to host A: role GYM_HOST, organizationId = own DRAFT tenant.
   hostAToken = signToken({
     sub: hostA.id,
     id: hostA.id,
@@ -85,7 +85,7 @@ beforeAll(async () => {
     role: 'GYM_HOST',
     isHost: true,
     isVerified: true,
-    tenantId: hostADraftTenant.id,
+    organizationId: hostADraftTenant.id,
   });
   personas.hostA = { user: hostA, token: hostAToken };
 
@@ -100,7 +100,7 @@ afterAll(async () => {
 });
 
 const asHostA = (headers = {}) => asPersona('hostA', headers);
-const atGymB = () => asHostA({ 'X-Tenant-Id': gymBId });
+const atGymB = () => asHostA({ 'X-Organization-Id': gymBId });
 
 // Runs first: the attack cases below would revoke the ORG_ADMIN on the old code.
 describe('NEW-108: real owners, real staff and the traveller path still work', () => {
@@ -111,13 +111,13 @@ describe('NEW-108: real owners, real staff and the traveller path still work', (
 
   test('ORG_ADMIN team member of gym B still lists the team', async () => {
     const { personaManager } = require('../harness/personas');
-    personaManager.personas.teamOrgAdmin = { token: team.orgAdmin.token, tenantId: gymBId };
+    personaManager.personas.teamOrgAdmin = { token: team.orgAdmin.token, organizationId: gymBId };
     const res = await asPersona('teamOrgAdmin').get('/team');
     expect(res.status).toBe(200);
   });
 
   test('other tenant owner is still refused at gym B (404, existence not leaked)', async () => {
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': gymBId }).get('/team');
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': gymBId }).get('/team');
     expect(res.status).toBe(404);
   });
 
@@ -153,7 +153,7 @@ describe('NEW-108: GYM_HOST with a PENDING booking at gym B gets 403 on gym B st
     ['POST /host/listings', (c) => c.post('/host/listings', { gymName: 'Planted Org' })],
   ];
 
-  test.each(cases)('%s with X-Tenant-Id: gym B → 403', async (_name, call) => {
+  test.each(cases)('%s with X-Organization-Id: gym B → 403', async (_name, call) => {
     const res = await call(atGymB());
     expect(res.status).toBe(403);
   });
@@ -176,9 +176,9 @@ describe('NEW-108: GYM_HOST with a PENDING booking at gym B gets 403 on gym B st
 
   test('hasAllBranches is false for a GYM_HOST whose request resolved to a tenant they do not own', async () => {
     const req = {
-      user: { id: hostA.id, role: 'GYM_HOST', isHost: true, tenantId: gymBId },
+      user: { id: hostA.id, role: 'GYM_HOST', isHost: true, organizationId: gymBId },
       tenantDb: dbHarness.tenant1,
-      tenantId: gymBId,
+      organizationId: gymBId,
     };
     expect(await hasAllBranches(req)).toBe(false);
   });
@@ -189,7 +189,7 @@ describe('NEW-108: without a header the unpaid host is never placed in gym B', (
     const res = await asHostA().get('/team');
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('tenant_not_active');
-    expect(JSON.stringify(res.body)).not.toContain('X-Tenant-Id');
+    expect(JSON.stringify(res.body)).not.toContain('X-Organization-Id');
   });
 
   test('a member route still finds gym B (as a member) without a header', async () => {

@@ -18,7 +18,7 @@ const subscriptionQuotaService = require('../../src/services/subscription-quota.
 
 describe('NEW-282: brand and branch creates are idempotent', () => {
   let tenantDb;
-  let tenantId;
+  let organizationId;
   let seq = 0;
   const key = () => `new282-${Date.now()}-${(seq += 1)}`;
 
@@ -26,10 +26,10 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
     const h = await setupTestDatabases();
     await setupPersonas(h);
     tenantDb = h.tenant1;
-    tenantId = personaManager.personas.owner.tenantId;
-    const sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    organizationId = personaManager.personas.owner.organizationId;
+    const sub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     if (sub) await sub.update({ branchCount: 50, overQuotaCount: 0 });
-    else await factories.createTenantSubscription(tenantId, { branchCount: 50, overQuotaCount: 0 });
+    else await factories.createTenantSubscription(organizationId, { branchCount: 50, overQuotaCount: 0 });
   });
   afterAll(async () => {
     await teardownTestDatabases();
@@ -44,7 +44,7 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
   // A new organisation waits for admin review and the API refuses another one until then (403);
   // approve each one, as an admin would, so the next create in the test is allowed.
   const approvePending = () =>
-    GymListing.update({ status: 'ACTIVE' }, { where: { tenantId, status: { [Op.in]: ['PENDING', 'DRAFT'] } } });
+    GymListing.update({ status: 'ACTIVE' }, { where: { organizationId, status: { [Op.in]: ['PENDING', 'DRAFT'] } } });
   const send = async (path, body, k) => {
     const req = asPersona('owner').post(path);
     if (k) req.set('Idempotency-Key', k);

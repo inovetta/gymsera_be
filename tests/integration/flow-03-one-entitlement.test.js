@@ -51,10 +51,10 @@ describe('FLOW-03: one entitlement across card-at-registration and approval', ()
 
   const pendingTenant = async () => {
     seq += 1;
-    const tenantCode = `test_f03_${Date.now().toString(36)}_${seq}`;
-    createdDbs.push(`gymsera_${tenantCode}`);
+    const organizationCode = `test_f03_${Date.now().toString(36)}_${seq}`;
+    createdDbs.push(`gymsera_${organizationCode}`);
     return factories.createTenant({
-      tenantCode,
+      organizationCode,
       status: 'DRAFT',
       connectionStringEncrypted: null,
       mainBranchDataJson: { plans: [{ name: 'Monthly', price: 3000, durationDays: 30 }] },
@@ -63,13 +63,13 @@ describe('FLOW-03: one entitlement across card-at-registration and approval', ()
   const stripeEvent = (id, subId) =>
     request(app).post('/api/v1/billing/webhooks/stripe')
       .send({ id, type: 'customer.subscription.updated', data: { object: { id: subId } } });
-  const entitlingRows = (tenantId) =>
-    TenantSubscription.findAll({ where: { tenantId, status: ENTITLING_STATUSES } });
+  const entitlingRows = (organizationId) =>
+    TenantSubscription.findAll({ where: { organizationId, status: ENTITLING_STATUSES } });
 
   test('card paid at registration → approval re-verifies that Stripe row and creates nothing else', async () => {
     const tenant = await pendingTenant();
     const { truth, retrieve } = fakes.installStripeFakes({
-      subscriptions: { sub_card: fakes.stripeSubscription({ id: 'sub_card', priceId: 'price_3m', tenantId: tenant.id }) },
+      subscriptions: { sub_card: fakes.stripeSubscription({ id: 'sub_card', priceId: 'price_3m', organizationId: tenant.id }) },
     });
     await stripeEvent('evt_card', 'sub_card');
     await tenantService.finalizeApplication(tenant.id, tenant.ownerUserId, { paymentMethod: 'PAY_LATER' });
@@ -79,7 +79,7 @@ describe('FLOW-03: one entitlement across card-at-registration and approval', ()
     await adminService.approveTenant(tenant.id, admin.id);
 
     expect(retrieve).toHaveBeenCalledWith('sub_card');
-    const all = await TenantSubscription.findAll({ where: { tenantId: tenant.id } });
+    const all = await TenantSubscription.findAll({ where: { organizationId: tenant.id } });
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ platform: 'STRIPE', status: 'GRACE', branchCount: 3 });
   });
@@ -87,14 +87,14 @@ describe('FLOW-03: one entitlement across card-at-registration and approval', ()
   test('a provider-backed row that is not entitling (card declined) is linked — no free pay-later plan on top', async () => {
     const tenant = await pendingTenant();
     fakes.installStripeFakes({
-      subscriptions: { sub_decl: fakes.stripeSubscription({ id: 'sub_decl', priceId: 'price_3m', tenantId: tenant.id, status: 'unpaid' }) },
+      subscriptions: { sub_decl: fakes.stripeSubscription({ id: 'sub_decl', priceId: 'price_3m', organizationId: tenant.id, status: 'unpaid' }) },
     });
     await stripeEvent('evt_decl', 'sub_decl');
     await tenantService.finalizeApplication(tenant.id, tenant.ownerUserId, { paymentMethod: 'PAY_LATER' });
 
     await adminService.approveTenant(tenant.id, admin.id);
 
-    const all = await TenantSubscription.findAll({ where: { tenantId: tenant.id } });
+    const all = await TenantSubscription.findAll({ where: { organizationId: tenant.id } });
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ platform: 'STRIPE', status: 'ON_HOLD' });
     expect(await entitlingRows(tenant.id)).toHaveLength(0);
@@ -104,11 +104,11 @@ describe('FLOW-03: one entitlement across card-at-registration and approval', ()
     const tenant = await pendingTenant();
     await tenantService.finalizeApplication(tenant.id, tenant.ownerUserId, { paymentMethod: 'PAY_LATER' });
     await adminService.approveTenant(tenant.id, admin.id);
-    const manual = await TenantSubscription.findOne({ where: { tenantId: tenant.id, platform: 'MANUAL' } });
+    const manual = await TenantSubscription.findOne({ where: { organizationId: tenant.id, platform: 'MANUAL' } });
     expect(manual.status).toBe('GRACE');
 
     fakes.installStripeFakes({
-      subscriptions: { sub_late: fakes.stripeSubscription({ id: 'sub_late', priceId: 'price_3m', tenantId: tenant.id }) },
+      subscriptions: { sub_late: fakes.stripeSubscription({ id: 'sub_late', priceId: 'price_3m', organizationId: tenant.id }) },
     });
     await stripeEvent('evt_late', 'sub_late');
 

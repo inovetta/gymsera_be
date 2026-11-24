@@ -184,7 +184,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   describe('NEW-159: a gym that is not live cannot be opened or booked', () => {
     afterEach(async () => {
-      await TenantSubscription.update({ status: 'ACTIVE' }, { where: { tenantId: ctx.tenant1.id } });
+      await TenantSubscription.update({ status: 'ACTIVE' }, { where: { organizationId: ctx.tenant1.id } });
       await ctx.tenant1Db.models.Branch.update({ travelerVisibilityStatus: 'active' }, { where: { id: ctx.branch1.id } });
     });
 
@@ -196,7 +196,7 @@ describe('Phase 7 P7a: booking and payment', () => {
     });
 
     test('no entitled subscription: detail 404, payment details 404, quote and booking 409 gym_not_bookable', async () => {
-      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { tenantId: ctx.tenant1.id } });
+      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { organizationId: ctx.tenant1.id } });
       const gone = await detail(ctx.branch1.id);
       expect(gone.status).toBe(404);
       expect(gone.body.code).toBe('gym_not_available');
@@ -220,7 +220,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
     test('the listing of another tenant stays open while this one is not live', async () => {
       await makeBranchLive(ctx.tenant2Db, ctx.branch2.id);
-      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { tenantId: ctx.tenant1.id } });
+      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { organizationId: ctx.tenant1.id } });
       expect((await detail(ctx.branch2.id)).status).toBe(200);
       const listing2 = await GymListing.findByPk(ctx.listing2.id);
       expect(listing2.status).toBe('ACTIVE');

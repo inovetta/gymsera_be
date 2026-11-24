@@ -138,22 +138,22 @@ const lines = (...l) => `${l.flat().join('\n')}\n`;
 const OK = lines('OK');
 
 // ── Resolve the caller ────────────────────────────────────────────────────────
-const tenantCache = new Map(); // tenantId → { enc, at }  (connection string only; 60 s)
+const tenantCache = new Map(); // organizationId → { enc, at }  (connection string only; 60 s)
 
-async function tenantDbFor(tenantId) {
-  const cached = tenantCache.get(tenantId);
+async function tenantDbFor(organizationId) {
+  const cached = tenantCache.get(organizationId);
   let enc = cached && Date.now() - cached.at < 60000 ? cached.enc : null;
   if (!enc) {
     const { Tenant } = require('../models/platform');
-    const tenant = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+    const tenant = await Tenant.findOne({ where: { id: organizationId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
     if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
-      tenantCache.delete(tenantId);
+      tenantCache.delete(organizationId);
       return null;
     }
     enc = tenant.connectionStringEncrypted;
-    tenantCache.set(tenantId, { enc, at: Date.now() });
+    tenantCache.set(organizationId, { enc, at: Date.now() });
   }
-  return require('../database/TenantDbManager').getConnection(tenantId, enc);
+  return require('../database/TenantDbManager').getConnection(organizationId, enc);
 }
 
 async function isLegacySerial(sn) {
@@ -237,7 +237,7 @@ async function handleWiping(c, { device, tenantDb }) {
     const results = protocol.parseDevicecmd(c.body);
     c.logCount = results.length;
     if (results.length) await registry.recordResults(tenantDb, device, results);
-    await registry.finishWipe({ tenantId: device.tenant_id, tenantDb, deviceId: device.id });
+    await registry.finishWipe({ organizationId: device.tenant_id, tenantDb, deviceId: device.id });
     return [200, OK];
   }
   if (c.endpoint === 'registry') return [200, lines(`RegistryCode=${device.registry_code}`)];
@@ -276,7 +276,7 @@ async function handleDevice(c, { device, tenantDb }) {
           // to take them (device-import.service#stageUploads), or they are dropped.
           const imports = require('../services/devices/device-import.service');
           if (!(await imports.latestImport(tenantDb, device.id))) {
-            await imports.startImport(tenantDb, { tenantId: device.tenant_id, deviceId: device.id, askDevice: false });
+            await imports.startImport(tenantDb, { organizationId: device.tenant_id, deviceId: device.id, askDevice: false });
           }
         }
         // Echo (or zero), then a re-read's forced OPERLOG / BIODATA 0 while the device is in import hold (NEW-242).

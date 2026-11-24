@@ -89,7 +89,7 @@ describe('GET /admin/tenants', () => {
       page: 1, limit: 20, total: expect.any(Number), totalPages: expect.any(Number),
     }));
     const row = res.body.data.tenants.find((t) => !t.isAdditionalOrganization);
-    for (const k of ['id', 'tenantCode', 'businessName', 'status', 'email', 'createdAt', 'owner', 'city']) {
+    for (const k of ['id', 'organizationCode', 'businessName', 'status', 'email', 'createdAt', 'owner', 'city']) {
       expect(row).toHaveProperty(k);
     }
     const additional = res.body.data.tenants.find((t) => t.isAdditionalOrganization);

@@ -65,7 +65,7 @@ describe('reactivateTenant Migration Enforcement (Step 2.10)', () => {
     // 2. Create a SUSPENDED tenant in platform DB pointing to this fixture DB
     const tenant = await createTenant({
       id: '44444444-4444-4444-8444-444444444444',
-      tenantCode: 'REACTIVATE_TEST',
+      organizationCode: 'REACTIVATE_TEST',
       gymName: 'Reactivation Gym',
       ownerUserId: hostUser.id,
       status: 'SUSPENDED',

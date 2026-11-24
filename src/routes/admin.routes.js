@@ -317,10 +317,10 @@ router.get(
   validate([
     query('status').optional().isIn(['RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED']).withMessage('Invalid status'),
     query('provider').optional().isIn(['APPLE', 'GOOGLE', 'STRIPE']).withMessage('Invalid provider'),
-    query('tenantId')
+    query('organizationId')
       .optional()
       .custom((v) => v === 'none' || /^[0-9a-fA-F-]{36}$/.test(String(v)))
-      .withMessage('tenantId must be a tenant id or "none"'),
+      .withMessage('organizationId must be a tenant id or "none"'),
   ]),
   adminController.listBillingEvents
 );
@@ -332,7 +332,7 @@ router.get(
   validate([
     query('source').optional().isIn(['actions', 'requests']).withMessage('source must be actions or requests'),
     query('userId').optional().matches(ID36).withMessage('userId must be a user id'),
-    query('tenantId').optional().matches(ID36).withMessage('tenantId must be a tenant id'),
+    query('organizationId').optional().matches(ID36).withMessage('organizationId must be a tenant id'),
     query('action').optional().isString().isLength({ max: 100 }).withMessage('action is too long'),
     query('targetType').optional().isString().isLength({ max: 50 }).withMessage('targetType is too long'),
     query('targetId').optional().isString().isLength({ max: 100 }).withMessage('targetId is too long'),

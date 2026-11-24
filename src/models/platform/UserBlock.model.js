@@ -13,7 +13,7 @@ module.exports = (sequelize) =>
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
       userId: { type: DataTypes.UUID, allowNull: false },
-      tenantId: { type: DataTypes.UUID, allowNull: false },
+      organizationId: { type: DataTypes.UUID, allowNull: false },
       blockedBy: { type: DataTypes.STRING(16), allowNull: false }, // R-120 NEW-307: 16 (was 8, F6); values USER | ORGANIZATION
       createdByUserId: { type: DataTypes.UUID, allowNull: false },
     },

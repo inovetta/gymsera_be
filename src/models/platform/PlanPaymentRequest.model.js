@@ -20,7 +20,7 @@ module.exports = (sequelize) => {
     'PlanPaymentRequest',
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-      tenantId: { type: DataTypes.UUID, allowNull: false },
+      organizationId: { type: DataTypes.UUID, allowNull: false },
       requestedByUserId: { type: DataTypes.UUID, allowNull: false },
       billingPlanId: { type: DataTypes.UUID, allowNull: false },
       branchCount: { type: DataTypes.INTEGER, allowNull: false },

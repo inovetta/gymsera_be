@@ -5,8 +5,8 @@ const { connect: connectPlatform } = require('../database/platform');
 async function main() {
   process.env.NODE_ENV = 'development';
   await connectPlatform();
-  const tenantId = '8a4b6e17-69ff-4fb8-bfb6-160ad8ae31f7';
-  const tenant = await Tenant.findOne({ where: { id: tenantId } });
+  const organizationId = '8a4b6e17-69ff-4fb8-bfb6-160ad8ae31f7';
+  const tenant = await Tenant.findOne({ where: { id: organizationId } });
   if (!tenant) {
     console.error('Tenant not found in platform DB');
     process.exit(1);

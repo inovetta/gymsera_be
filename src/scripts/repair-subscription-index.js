@@ -33,12 +33,12 @@ async function main() {
   for (const mem of memberships) {
     try {
       const tenant = await Tenant.findOne({
-        where: { id: mem.tenantId, status: 'ACTIVE' },
+        where: { id: mem.organizationId, status: 'ACTIVE' },
         attributes: ['id', 'connectionStringEncrypted'],
       });
 
       if (!tenant) {
-        console.log(`  ⚠️  Tenant ${mem.tenantId} not found/active — skipping`);
+        console.log(`  ⚠️  Tenant ${mem.organizationId} not found/active — skipping`);
         failed++;
         continue;
       }
@@ -67,7 +67,7 @@ async function main() {
           ?? await Branch.findOne({ order: [['created_at', 'ASC']] });
 
         if (!plan || !branch) {
-          console.log(`  ⚠️  Cannot create subscription for user ${mem.userId} — no plan or branch in tenant ${mem.tenantId}`);
+          console.log(`  ⚠️  Cannot create subscription for user ${mem.userId} — no plan or branch in tenant ${mem.organizationId}`);
           failed++;
           continue;
         }
@@ -88,7 +88,7 @@ async function main() {
         });
 
         await mem.update({ subscriptionId: newSub.id });
-        console.log(`  ✅  Created + linked subscription ${newSub.id} for user ${mem.userId} in tenant ${mem.tenantId}`);
+        console.log(`  ✅  Created + linked subscription ${newSub.id} for user ${mem.userId} in tenant ${mem.organizationId}`);
         fixed++;
         continue;
       }

@@ -11,7 +11,7 @@ const { startTestServer, stopTestServer } = require('../harness/test-server');
 describe('FLOW-12: Legacy staff-invites single-use expiring token & access control', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let appServer;
   let branch;
   let member2User;
@@ -20,7 +20,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
 
     const { Branch } = dbHarness.tenant1.models;
     branch = await Branch.findOne({ where: { status: 'ACTIVE' } });
@@ -61,7 +61,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     const res = await request(appServer)
       .post(`/api/v1/staff-invites/${staffInvite.id}/accept`)
       .set('Authorization', `Bearer ${personas.member.token}`)
-      .send({ tenantId });
+      .send({ organizationId });
 
     expect(res.status).toBe(403);
     expect(res.body.message || res.body.error?.message).toMatch(/not assigned to your account/i);
@@ -84,7 +84,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     const res1 = await request(appServer)
       .post(`/api/v1/staff-invites/${staffInvite.id}/accept`)
       .set('Authorization', `Bearer ${personas.member.token}`)
-      .send({ tenantId });
+      .send({ organizationId });
 
     expect(res1.status).toBe(200);
     expect(res1.body.data.status).toBe('active');
@@ -93,7 +93,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     const res2 = await request(appServer)
       .post(`/api/v1/staff-invites/${staffInvite.id}/accept`)
       .set('Authorization', `Bearer ${personas.member.token}`)
-      .send({ tenantId });
+      .send({ organizationId });
 
     expect([400, 409]).toContain(res2.status);
     expect(res2.body.message || res2.body.error?.message).toMatch(/already.*accepted|not pending/i);
@@ -116,7 +116,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     const res = await request(appServer)
       .post(`/api/v1/staff-invites/${staffInvite.id}/accept`)
       .set('Authorization', `Bearer ${member2Token}`)
-      .send({ tenantId });
+      .send({ organizationId });
 
     expect([400, 410]).toContain(res.status);
     expect(res.body.message || res.body.error?.message).toMatch(/expired/i);
@@ -137,7 +137,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     const res = await request(appServer)
       .post(`/api/v1/staff-invites/${staffInvite.id}/accept`)
       .set('Authorization', `Bearer ${member2Token}`)
-      .send({ tenantId });
+      .send({ organizationId });
 
     expect([400, 403, 409]).toContain(res.status);
     expect(res.body.message || res.body.error?.message).toMatch(/declined|revoked|not pending|no longer pending/i);
@@ -168,7 +168,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     const res = await request(appServer)
       .post(`/api/v1/staff-invites/${staffInvite.id}/accept`)
       .set('Authorization', `Bearer ${member2Token}`)
-      .send({ tenantId });
+      .send({ organizationId });
 
     expect(res.status).toBe(200);
 
@@ -234,7 +234,7 @@ describe('FLOW-12: Legacy staff-invites single-use expiring token & access contr
     const res = await request(appServer)
       .post(`/api/v1/staff-invites/${rawToken}/accept`)
       .set('Authorization', `Bearer ${member3Token}`)
-      .send({ tenantId });
+      .send({ organizationId });
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('active');

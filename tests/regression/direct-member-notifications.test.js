@@ -112,7 +112,7 @@ describe('Direct Member Notifications (Option B - Redis/Bull removed for member 
     await UserGymMembership.create({
       id: uuidv4(),
       userId: member.id,
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       branchId: branch.id,
       gymListingId: gymListing.id,
       subscriptionId: sub.id,
@@ -182,7 +182,7 @@ describe('Direct Member Notifications (Option B - Redis/Bull removed for member 
     await UserGymMembership.create({
       id: uuidv4(),
       userId: member.id,
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       branchId: branch.id,
       gymListingId: gymListing.id,
       subscriptionId: sub.id,

@@ -35,13 +35,13 @@ let _io = null;
 const authorizeConversation = async (user, conversationId) => {
   if (!conversationId || typeof conversationId !== 'string') return null;
   const { Conversation } = require('../models/platform');
-  const conversation = await Conversation.findByPk(conversationId, { attributes: ['id', 'tenantId', 'userId'] });
+  const conversation = await Conversation.findByPk(conversationId, { attributes: ['id', 'organizationId', 'userId'] });
   if (!conversation) return null;
 
   const role = (user.role || '').toUpperCase();
-  if (role === 'GYM_HOST' && user.tenantId && conversation.tenantId === user.tenantId) {
+  if (role === 'GYM_HOST' && user.organizationId && conversation.organizationId === user.organizationId) {
     const { userBelongsToTenant } = require('../middleware/tenantContext');
-    if (await userBelongsToTenant(user.id, conversation.tenantId)) return { conversation, side: 'HOST' };
+    if (await userBelongsToTenant(user.id, conversation.organizationId)) return { conversation, side: 'HOST' };
   }
   if (conversation.userId === user.id) return { conversation, side: 'USER' };
   return null;
@@ -118,12 +118,12 @@ const init = (httpServer) => {
     // Auto-join user-specific room
     socket.join(`user:${userId}`);
     // Readable from RemoteSocket too, so grants.changed can re-sync rooms.
-    // An optional handshake `tenantId` only narrows the orgs (NEW-86).
-    const selector = socket.handshake.auth?.tenantId;
+    // An optional handshake `organizationId` only narrows the orgs (NEW-86).
+    const selector = socket.handshake.auth?.organizationId;
     socket.data.tenantSelector = typeof selector === 'string' && selector ? selector : null;
 
     // Staff rooms (NEW-86): derived on the server from the user's verified
-    // relationships, not from the token's tenantId claim (team tokens carry
+    // relationships, not from the token's organizationId claim (team tokens carry
     // none). Tenant room per org they are staff of, plus branch / org rooms
     // from live assignments (NEW-84). Re-synced on grants.changed.
     syncTenantRooms(socket, userId, socket.data.tenantSelector).catch((err) =>
@@ -185,7 +185,7 @@ const init = (httpServer) => {
             conversationId,
             userId,
             text.trim(),
-            access.conversation.tenantId,
+            access.conversation.organizationId,
             { tempId, clientMessageId }
           );
         } else {
@@ -255,7 +255,7 @@ const init = (httpServer) => {
         const access = await authorizeConversation(user, conversationId);
         if (!access) return;
         if (access.side === 'HOST') {
-          await inboxService.markInquiryRead(conversationId, access.conversation.tenantId);
+          await inboxService.markInquiryRead(conversationId, access.conversation.organizationId);
         } else {
           await inboxService.markTravelerRead(conversationId, userId);
         }
@@ -299,12 +299,12 @@ const emitToUser = (userId, event, data) => {
  * (owners hold no branch rooms). Without a branchId there is nothing to scope
  * by, so it is the whole tenant room.
  */
-const branchAudienceRooms = async (tenantId, branchId) => {
-  if (!branchId) return [`tenant:${tenantId}`]; // nothing to scope by
-  const rooms = [branchRoom(tenantId, branchId), orgRoom(tenantId)];
+const branchAudienceRooms = async (organizationId, branchId) => {
+  if (!branchId) return [`organization:${organizationId}`]; // nothing to scope by
+  const rooms = [branchRoom(organizationId, branchId), orgRoom(organizationId)];
   try {
     const { Tenant } = require('../models/platform');
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['ownerUserId'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['ownerUserId'] });
     if (tenant && tenant.ownerUserId) rooms.push(`user:${tenant.ownerUserId}`);
   } catch (_) {
     // Owner lookup failed: branch and org rooms still get the event.
@@ -316,9 +316,9 @@ const branchAudienceRooms = async (tenantId, branchId) => {
  * Emit to the staff of one branch. One emit, so a socket in two of the
  * audience rooms gets the event once.
  */
-const emitToBranch = async (tenantId, branchId, event, data) => {
-  if (!_io || !tenantId) return;
-  _io.to(await branchAudienceRooms(tenantId, branchId)).emit(event, data);
+const emitToBranch = async (organizationId, branchId, event, data) => {
+  if (!_io || !organizationId) return;
+  _io.to(await branchAudienceRooms(organizationId, branchId)).emit(event, data);
 };
 
 /**
@@ -348,9 +348,9 @@ const emitToConversation = (conversationId, event, data) => {
 /**
  * Emit event to all host staff/owner of a tenant.
  */
-const emitToTenant = (tenantId, event, data) => {
-  if (!_io || !tenantId) return;
-  _io.to(`tenant:${tenantId}`).emit(event, data);
+const emitToTenant = (organizationId, event, data) => {
+  if (!_io || !organizationId) return;
+  _io.to(`organization:${organizationId}`).emit(event, data);
 };
 
 /**
@@ -378,7 +378,7 @@ const emitConversationUpdated = async (conversationId, extraData = {}) => {
     // socket in several of these gets the event once.
     const rooms = [`conversation:${conversationId}`];
     if (conv.userId) rooms.push(`user:${conv.userId}`);
-    if (conv.tenantId) rooms.push(...(await branchAudienceRooms(conv.tenantId, conv.branchId)));
+    if (conv.organizationId) rooms.push(...(await branchAudienceRooms(conv.organizationId, conv.branchId)));
     _io.to(rooms).emit('conversation_updated', payload);
   } catch (err) {
     console.warn('[Socket emitConversationUpdated warning]:', err.message);

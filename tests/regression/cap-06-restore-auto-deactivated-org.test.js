@@ -10,7 +10,7 @@ const { GymListing, CapacityEvent } = require('../../src/models/platform');
 
 describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -18,7 +18,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
   });
@@ -31,7 +31,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
     const { Branch, Gym, MembershipPlan } = tenantDb.models;
 
     // 1. Create a dedicated organization and its single active branch
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Auto Deactivated Org',
       status: 'ACTIVE',
       reservedSlots: 0,
@@ -59,7 +59,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
       isDeactivated: false,
     });
 
-    const usedBeforeDelete = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const usedBeforeDelete = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
 
     // 2. Delete the branch with confirmOrganizationDeletion = true
     await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, {
@@ -76,7 +76,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
     expect(listing.reservedSlots).toBe(1);
 
     // 3. Restore the branch
-    const restoreResult = await gymService.restoreBranch(tenantDb, tenantId, branch.id, hostUser.id);
+    const restoreResult = await gymService.restoreBranch(tenantDb, organizationId, branch.id, hostUser.id);
     expect(restoreResult.branch).toBeDefined();
 
     // 4. Verify branch is now ACTIVE
@@ -92,13 +92,13 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
     expect(listing.reservedSlots).toBe(0);
 
     // 7. Verify usedCapacity after restore equals usedBeforeDelete (no fresh capacity leaked)
-    const usedAfterRestore = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const usedAfterRestore = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     expect(usedAfterRestore).toBe(usedBeforeDelete);
 
     // 8. Verify CapacityEvent was recorded for the restoration with delta -1
     const restoreEvent = await CapacityEvent.findOne({
       where: {
-        tenantId,
+        organizationId,
         branchId: branch.id,
         action: 'BRANCH_RESTORED',
       },
@@ -110,7 +110,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
     expect(restoreEvent.reservedSlotsAfter).toBe(0);
 
     // 9. Verify capacity audit passes with zero drift
-    const audit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDb);
+    const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
     expect(audit.ok).toBe(true);
     expect(audit.driftedListings.length).toBe(0);
     expect(audit.totalDrift).toBe(0);

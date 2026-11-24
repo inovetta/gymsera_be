@@ -8,9 +8,9 @@ const { hasBranchAccess, branchIdsWithAnyGrant, branchIdsWithPermission, hasAllB
 // (payouts.bank.manage: the owner). One rule for the GET answer, the PATCH answer and the PATCH write.
 const mayManageBankDetails = async (req) => {
   const accessService = require('../services/access.service');
-  const tenantId = req.user.tenantId || req.tenantId;
+  const organizationId = req.user.organizationId || req.organizationId;
   const userId = req.user.id || req.user.sub;
-  const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, null));
+  const grants = req.grants || (await accessService.resolve(req.tenantDb, organizationId, userId, null));
   return Boolean(grants.isOwner || (await hasAllBranches(req)) || grants.has('payouts.bank.manage'));
 };
 const hideBankDetails = (result) => {
@@ -22,7 +22,7 @@ const hideBankDetails = (result) => {
 // ── GET /gyms/profile ─────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
   try {
-    const result = await gymService.getProfile(req.tenantDb, req.user.tenantId);
+    const result = await gymService.getProfile(req.tenantDb, req.user.organizationId);
     if (!(await mayManageBankDetails(req))) hideBankDetails(result);
     return sendSuccess(res, result);
   } catch (err) {
@@ -33,7 +33,7 @@ const getProfile = async (req, res, next) => {
 // ── PATCH /gyms/profile ───────────────────────────────────────────────────────
 const updateProfile = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId || req.tenantId;
+    const organizationId = req.user.organizationId || req.organizationId;
     const userId = req.user.id || req.user.sub;
 
     // SEC-13: If updating payment/bank details, require permission & re-auth
@@ -52,7 +52,7 @@ const updateProfile = async (req, res, next) => {
       });
     }
 
-    const result = await gymService.updateProfile(req.tenantDb, tenantId, req.body);
+    const result = await gymService.updateProfile(req.tenantDb, organizationId, req.body);
     // NEW-231: the answer carries the bank details only for someone who may manage them, as GET.
     if (!mayManageBank) hideBankDetails(result);
     return sendSuccess(res, result, 'Gym profile updated successfully');
@@ -62,10 +62,10 @@ const updateProfile = async (req, res, next) => {
 };
 
 // NEW-265 (A4): who writes a branch's area request, and the branch read with its `pendingArea`.
-const areaCaller = (req) => ({ tenantId: req.user.tenantId || null, userId: req.user.sub || req.user.id });
+const areaCaller = (req) => ({ organizationId: req.user.organizationId || null, userId: req.user.sub || req.user.id });
 const withBranchPendingArea = async (req, result) => {
   if (!result || !result.branch) return result;
-  const [branch] = await areaRequests.withPendingAreas('branch', req.user.tenantId, [result.branch]);
+  const [branch] = await areaRequests.withPendingAreas('branch', req.user.organizationId, [result.branch]);
   return { ...result, branch };
 };
 
@@ -76,7 +76,7 @@ const listBranches = async (req, res, next) => {
     const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1';
     // NEW-44: a team member sees only the branches they hold a grant at (null = every branch).
     const branchIds = await branchIdsWithAnyGrant(req);
-    const result = await gymService.listBranches(req.tenantDb, req.user.tenantId, businessId, { includeInactive, branchIds });
+    const result = await gymService.listBranches(req.tenantDb, req.user.organizationId, businessId, { includeInactive, branchIds });
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -86,7 +86,7 @@ const listBranches = async (req, res, next) => {
 // ── POST /gyms/branches ───────────────────────────────────────────────────────
 const createBranch = async (req, res, next) => {
   try {
-    const result = await gymService.createBranch(req.tenantDb, req.user.tenantId, req.body, req.user.sub || req.user.id);
+    const result = await gymService.createBranch(req.tenantDb, req.user.organizationId, req.body, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch created successfully', 201);
   } catch (err) {
     next(err);
@@ -178,7 +178,7 @@ const assignStaff = async (req, res, next) => {
     try {
       const { Tenant } = require('../models/platform');
       const notificationsService = require('../services/notifications.service');
-      const tenant = await Tenant.findByPk(req.tenantDb.tenantId);
+      const tenant = await Tenant.findByPk(req.tenantDb.organizationId);
       if (tenant && tenant.ownerUserId) {
         await notificationsService.createNotification({
           userId: tenant.ownerUserId,
@@ -215,10 +215,10 @@ const removeStaff = async (req, res, next) => {
 const uploadLogo = async (req, res, next) => {
   try {
     if (!req.file) throw createError('Image file is required', 422);
-    const { gym } = await gymService.getProfile(req.tenantDb, req.user.tenantId);
+    const { gym } = await gymService.getProfile(req.tenantDb, req.user.organizationId);
     if (gym.logoUrl) await storageService.deleteImage(gym.logoUrl).catch(() => { });
-    const logoUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/logos', `gym-${req.user.tenantId}`);
-    await gymService.updateProfile(req.tenantDb, req.user.tenantId, { logoUrl });
+    const logoUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/logos', `gym-${req.user.organizationId}`);
+    await gymService.updateProfile(req.tenantDb, req.user.organizationId, { logoUrl });
     return sendSuccess(res, { logoUrl }, 'Logo uploaded');
   } catch (err) {
     next(err);
@@ -229,10 +229,10 @@ const uploadLogo = async (req, res, next) => {
 const uploadCover = async (req, res, next) => {
   try {
     if (!req.file) throw createError('Image file is required', 422);
-    const { gym } = await gymService.getProfile(req.tenantDb, req.user.tenantId);
+    const { gym } = await gymService.getProfile(req.tenantDb, req.user.organizationId);
     if (gym.coverImageUrl) await storageService.deleteImage(gym.coverImageUrl).catch(() => { });
-    const coverImageUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/covers', `gym-${req.user.tenantId}`);
-    await gymService.updateProfile(req.tenantDb, req.user.tenantId, { coverImageUrl });
+    const coverImageUrl = await storageService.uploadImage(req.file.buffer, req.file.mimetype, 'gyms/covers', `gym-${req.user.organizationId}`);
+    await gymService.updateProfile(req.tenantDb, req.user.organizationId, { coverImageUrl });
     return sendSuccess(res, { coverImageUrl }, 'Cover image uploaded');
   } catch (err) {
     next(err);
@@ -243,8 +243,8 @@ const uploadCover = async (req, res, next) => {
 const uploadGymImages = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
-    const urls = await storageService.uploadImages(req.files, `gyms/${req.user.tenantId}/images`);
-    const result = await gymService.addGymImages(req.tenantDb, req.user.tenantId, urls);
+    const urls = await storageService.uploadImages(req.files, `gyms/${req.user.organizationId}/images`);
+    const result = await gymService.addGymImages(req.tenantDb, req.user.organizationId, urls);
     return sendSuccess(res, { gym: result.gym, uploadedUrls: urls }, 'Images uploaded');
   } catch (err) {
     next(err);
@@ -257,7 +257,7 @@ const deleteGymImage = async (req, res, next) => {
     const { imageUrl } = req.body;
     if (!imageUrl) throw createError('imageUrl is required', 422);
     await storageService.deleteImage(imageUrl).catch(() => { });
-    const result = await gymService.removeGymImage(req.tenantDb, req.user.tenantId, imageUrl);
+    const result = await gymService.removeGymImage(req.tenantDb, req.user.organizationId, imageUrl);
     return sendSuccess(res, { gym: result.gym }, 'Image removed');
   } catch (err) {
     next(err);
@@ -308,7 +308,7 @@ const listMembers = async (req, res, next) => {
         : await branchIdsWithPermission(req, 'members.view');
     }
 
-    const result = await gymService.listMembers(req.tenantDb, req.user.tenantId, {
+    const result = await gymService.listMembers(req.tenantDb, req.user.organizationId, {
       q,
       status,
       membershipStatus,
@@ -348,17 +348,17 @@ const enrollMember = async (req, res, next) => {
     const accessService = require('../services/access.service');
     const approvalService = require('../services/approval.service');
     const userId = req.user.id || req.user.sub;
-    const tenantId = req.tenantDb.tenantId || req.user.tenantId;
+    const organizationId = req.tenantDb.organizationId || req.user.organizationId;
 
     // A host account was never limited by permissions here; keep that. Everyone else
     // is resolved at the branch they are enrolling into.
     const grants = (await hasAllBranches(req))
       ? accessService.ownerGrants()
-      : await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+      : await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
 
     const ctx = {
       tenantDb: req.tenantDb,
-      tenantId,
+      organizationId,
       userId,
       branchId,
       grants,

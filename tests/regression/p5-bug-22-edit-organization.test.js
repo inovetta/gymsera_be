@@ -22,14 +22,14 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  primary = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId }, order: [['createdAt', 'ASC']] });
+  primary = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId }, order: [['createdAt', 'ASC']] });
   // Room for the organizations and branches these tests build.
   // The onboarding organization and its gym are older than anything these tests build (MySQL keeps
   // whole seconds, so rows made in one test run would otherwise tie).
   const { sequelize: platformSql } = GymListing;
   await platformSql.query('UPDATE business_listings SET created_at = ? WHERE id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
   await tenantDb.models.Gym.sequelize.query('UPDATE businesses SET created_at = ? WHERE id = ?', { replacements: ['2026-01-01 00:00:00', primary.id] });
-  const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { tenantId: personas.owner.tenantId } });
+  const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { organizationId: personas.owner.organizationId } });
   expect(updated).toBeGreaterThan(0);
 });
 
@@ -40,7 +40,7 @@ afterAll(async () => {
 
 // A PENDING organization blocks creating the next one until an admin approves it.
 const approvePending = () =>
-  GymListing.update({ status: 'ACTIVE' }, { where: { tenantId: personas.owner.tenantId, status: 'PENDING' } });
+  GymListing.update({ status: 'ACTIVE' }, { where: { organizationId: personas.owner.organizationId, status: 'PENDING' } });
 
 const newOrg = async (gymName, packages = [plan(`${gymName} Monthly`)]) => {
   await approvePending();
@@ -110,7 +110,7 @@ describe('BUG-22 L8: Edit Organization reads and writes only that organization',
   test('PATCH /gyms/profile renames only its own organization (the first one), not every one of the tenant', async () => {
     const res = await asPersona('owner').patch('/gyms/profile', { name: 'P5 Profile Name' });
     expect(res.status).toBe(200);
-    const titles = (await GymListing.findAll({ where: { tenantId: personas.owner.tenantId } })).map((l) => l.title);
+    const titles = (await GymListing.findAll({ where: { organizationId: personas.owner.organizationId } })).map((l) => l.title);
     expect(titles.filter((t) => t === 'P5 Profile Name')).toHaveLength(1);
     expect((await GymListing.findByPk(primary.id)).title).toBe('P5 Profile Name');
     expect((await GymListing.findByPk(orgA.id)).title).toBe('P5 Org A');

@@ -85,7 +85,7 @@ describe('gymsera-rbac09-stale-branch-assignments-check.js', () => {
     const connStr = `mysql://${dbUser}:${dbPass}@${dbHost}:${testPort}/${SCRATCH_DB}`;
     testTenant = await factories.createTenant({
       businessName: 'RBAC09 Test Gym',
-      tenantCode: 'RBAC09-CHK',
+      organizationCode: 'RBAC09-CHK',
       status: 'ACTIVE',
       connectionStringEncrypted: encrypt(connStr),
       dbName: SCRATCH_DB,

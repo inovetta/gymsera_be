@@ -23,7 +23,7 @@ const later = (seconds) => new Date(Date.now() + seconds * 1000);
 const mail = (tag) => `att-audit-${tag}-${crypto.randomBytes(3).toString('hex')}@gymseratest.com`;
 
 async function realAttDevice(name, on = branch) {
-  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: on.id, businessId: on.gymId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
+  const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: on.id, businessId: on.gymId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
   const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true, realFirmware: true });
   await sim.connectAtt();
   await w.settled();
@@ -118,7 +118,7 @@ describe('audit of a T&A PUSH device (real firmware codes)', () => {
     dev.sim.users.set(pin.missing, { pin: pin.missing, name: 'Audit missing', cardNo: '', privilege: '0' });
     const r = await jobs.requestAudit(w.db1, dev.id);
     await dev.sim.drain();
-    const counts = await jobs.watchdogTenant({ tenantId: w.db1.tenantId, db: w.db1 }, later(31));
+    const counts = await jobs.watchdogTenant({ organizationId: w.db1.organizationId, db: w.db1 }, later(31));
     expect(counts.attAuditsCompared).toBe(1);
     expect((await audit(r.auditId)).status).toBe('compared');
 

@@ -430,7 +430,7 @@
    "method": "POST",
    "path": "/api/v1/staff-invites/:p/accept",
    "allowed": [
-    "tenantId"
+    "organizationId"
    ],
    "clientKeys": []
   },
@@ -438,7 +438,7 @@
    "method": "POST",
    "path": "/api/v1/staff-invites/:p/decline",
    "allowed": [
-    "tenantId"
+    "organizationId"
    ],
    "clientKeys": []
   },

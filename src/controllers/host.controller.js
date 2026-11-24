@@ -42,7 +42,7 @@ const _weeklyCheckins = async (AttendanceLog, where, todayStr, timezone) => {
 /**
  * GET /host/status — where the caller stands as a host (Phase 7 P2). Only
  * `authenticate`: the answer is about the gym the caller owns, found by ownership,
- * so a token issued before they became a host (role MEMBER, no tenantId) still gets
+ * so a token issued before they became a host (role MEMBER, no organizationId) still gets
  * the right answer (BUG-11). A non-host gets NONE.
  */
 /**
@@ -96,13 +96,13 @@ const getHostStatus = async (req, res, next) => {
 
 const getTodaySummary = async (req, res, next) => {
   try {
-    // P2 / BUG-11: the host's own tenant by ownership, not the token's tenantId, which
+    // P2 / BUG-11: the host's own tenant by ownership, not the token's organizationId, which
     // is null in a token issued before the tenant existed and then answered "DRAFT"
     // for a host already under review.
     const hostStatus = await hostStatusService.getHostStatus(req.user.id || req.user.sub);
-    const tenantId = hostStatus.tenantId;
+    const organizationId = hostStatus.organizationId;
 
-    if (!tenantId) {
+    if (!organizationId) {
       return sendSuccess(res, {
         state: 'A',
         applicationStatus: 'DRAFT',
@@ -111,7 +111,7 @@ const getTodaySummary = async (req, res, next) => {
       });
     }
 
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     if (!tenant || tenant.status === 'DRAFT') {
       return sendSuccess(res, {
         state: 'A',
@@ -135,9 +135,9 @@ const getTodaySummary = async (req, res, next) => {
     // until the app was reloaded (BUG-11).
     let tenantDb;
     try {
-      tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+      tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
     } catch (err) {
-      console.warn(`[today-summary] tenant ${tenantId} database unavailable: ${err.message}`);
+      console.warn(`[today-summary] tenant ${organizationId} database unavailable: ${err.message}`);
       const unavailable = createError('We could not load your gym right now. Please try again.', 503);
       unavailable.code = 'tenant_unavailable';
       throw unavailable;
@@ -242,7 +242,7 @@ const getTodaySummary = async (req, res, next) => {
     // 6. Membership inquiries unanswered: query platform database
     let pendingInquiries = 0;
     try {
-      pendingInquiries = await inboxService.countPendingInquiries(tenantId);
+      pendingInquiries = await inboxService.countPendingInquiries(organizationId);
     } catch (e) {
       pendingInquiries = 0;
     }
@@ -270,10 +270,10 @@ const getTodaySummary = async (req, res, next) => {
 
 const getBranchQuota = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    const organizationId = req.user.organizationId;
     const { businessId } = req.query;
 
-    if (!tenantId) {
+    if (!organizationId) {
       return sendSuccess(res, {
         maxBranches: 1,
         usedBranches: 0,
@@ -281,7 +281,7 @@ const getBranchQuota = async (req, res, next) => {
       });
     }
 
-    const data = await branchQuotaService.getBranchQuota(tenantId, { businessId });
+    const data = await branchQuotaService.getBranchQuota(organizationId, { businessId });
     return sendSuccess(res, data);
   } catch (err) {
     next(err);
@@ -290,8 +290,8 @@ const getBranchQuota = async (req, res, next) => {
 
 const getOrganizationQuota = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
+    const organizationId = req.user.organizationId;
+    if (!organizationId) {
       return sendSuccess(res, {
         maxOrganizations: 1,
         usedOrganizations: 0,
@@ -301,15 +301,15 @@ const getOrganizationQuota = async (req, res, next) => {
       });
     }
 
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     if (!tenant) throw createError('Tenant not found', 404);
 
-    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub);
 
     const allListings = await GymListing.findAll({
       where: {
-        tenantId,
+        organizationId,
         status: { [Op.ne]: 'INACTIVE' }
       },
       attributes: ['id', 'status'],
@@ -361,11 +361,11 @@ const getOrganizationQuota = async (req, res, next) => {
 
 const getListings = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
+    const organizationId = req.user.organizationId;
+    if (!organizationId) {
       // FLOW-05 diagnostic: the only way this endpoint answers an empty list
       // to a host. Seen right after onboarding, it means a stale token.
-      console.warn('[FLOW-05] GET /host/listings: token has no tenantId; returning an empty list');
+      console.warn('[FLOW-05] GET /host/listings: token has no organizationId; returning an empty list');
       return sendSuccess(res, []);
     }
 
@@ -375,7 +375,7 @@ const getListings = async (req, res, next) => {
     // disappear from here the same way a deleted branch disappears from
     // its own list.
     const listings = await GymListing.findAll({
-      where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
+      where: { organizationId, status: { [Op.ne]: 'INACTIVE' } },
       order: [['updated_at', 'DESC']]
     });
 
@@ -383,13 +383,13 @@ const getListings = async (req, res, next) => {
     if (process.env.DEBUG_FLOW05 === 'true') {
       const byStatus = {};
       for (const l of listings) byStatus[l.status] = (byStatus[l.status] || 0) + 1;
-      const header = req.headers['x-tenant-id'];
-      const headerVsToken = !header ? 'absent' : (header === tenantId ? 'matches' : 'differs');
-      console.log(`[FLOW-05] GET /host/listings: ${listings.length} listing(s) ${JSON.stringify(byStatus)}; X-Tenant-Id ${headerVsToken}`);
+      const header = req.headers['x-organization-id'];
+      const headerVsToken = !header ? 'absent' : (header === organizationId ? 'matches' : 'differs');
+      console.log(`[FLOW-05] GET /host/listings: ${listings.length} listing(s) ${JSON.stringify(byStatus)}; X-Organization-Id ${headerVsToken}`);
     }
 
     // NEW-265 (A4 reads): each organization's pending or rejected area request.
-    return sendSuccess(res, await areaRequests.withPendingAreas('business', tenantId, listings));
+    return sendSuccess(res, await areaRequests.withPendingAreas('business', organizationId, listings));
   } catch (err) {
     next(err);
   }
@@ -413,11 +413,11 @@ const getListings = async (req, res, next) => {
  */
 const uploadListingStagingImages = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
 
-    const urls = await storageService.uploadImages(req.files, `hosts/${tenantId}/organizations/staging`);
+    const urls = await storageService.uploadImages(req.files, `hosts/${organizationId}/organizations/staging`);
     return sendSuccess(res, { urls }, 'Images uploaded');
   } catch (err) {
     next(err);
@@ -442,8 +442,8 @@ const uploadStagingImages = async (req, res, next) => {
 
 const createListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     // R-113 H4: the first branch's week, checked before the organisation is created.
     // NEW-297 (R-117): the old opening / closing pair too (H5), checked by the same rules, never dropped.
     const hoursBody = {};
@@ -456,7 +456,7 @@ const createListing = async (req, res, next) => {
     const platformTx = await Tenant.sequelize.transaction();
     try {
       // Lock tenant row in platform DB to serialize creations
-      const tenant = await Tenant.findByPk(tenantId, {
+      const tenant = await Tenant.findByPk(organizationId, {
         lock: true,
         transaction: platformTx,
       });
@@ -477,12 +477,12 @@ const createListing = async (req, res, next) => {
       }
 
       // Check organization quota and sequential approval gate
-      const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+      const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId, { transaction: platformTx });
       const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub, { transaction: platformTx });
 
       const existingListings = await GymListing.findAll({
         where: {
-          tenantId,
+          organizationId,
           status: { [Op.ne]: 'INACTIVE' },
         },
         attributes: ['id', 'status'],
@@ -515,7 +515,7 @@ const createListing = async (req, res, next) => {
       const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
         cityId: req.body.areaRequestId ? (cityId || tenant.cityId) : cityId,
         userId: req.user.sub || req.user.id,
-        tenantId,
+        organizationId,
       });
       const areaValues = areaRequests.rowValues(areaChoice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
@@ -558,7 +558,7 @@ const createListing = async (req, res, next) => {
 
       if (branchSource !== 'none') {
         const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-        const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, req.tenantDb, { transaction: platformTx });
+        const usedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, req.tenantDb, { transaction: platformTx });
         if (usedCapacity >= maxBranches) {
           // Every paid unit is allocated — but "allocated" includes unbuilt
           // reservedSlots parked on other organizations, and one of those is
@@ -578,7 +578,7 @@ const createListing = async (req, res, next) => {
           // either way and the subscription's limit is never exceeded.
           slotDonorListing = await GymListing.findOne({
             where: {
-              tenantId,
+              organizationId,
               status: { [Op.ne]: 'INACTIVE' },
               reservedSlots: { [Op.gt]: 0 },
             },
@@ -598,7 +598,7 @@ const createListing = async (req, res, next) => {
       }
 
       const listing = await GymListing.create({
-        tenantId,
+        organizationId,
         cityId: targetCityId,
         ...areaValues,
         title: gymName,
@@ -613,7 +613,7 @@ const createListing = async (req, res, next) => {
         reservedSlots: branchSource === 'reserve' ? 1 : 0,
       }, { transaction: platformTx });
 
-      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'business', targetId: listing.id }, { transaction: platformTx });
+      await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction: platformTx });
 
       if (branchSource === 'reserve') {
         // Drawing 1 unit of already-available tenant-wide capacity (checked
@@ -622,7 +622,7 @@ const createListing = async (req, res, next) => {
         // trail treatment.
         await subscriptionQuotaService.recordCapacityEvent(
           {
-            tenantId,
+            organizationId,
             listingId: listing.id,
             action: 'SLOT_ATTRIBUTED_UPGRADE',
             delta: 1,
@@ -645,7 +645,7 @@ const createListing = async (req, res, next) => {
         // Keyed on the new listing so a retried create can never release two.
         const { applied } = await subscriptionQuotaService.recordCapacityEvent(
           {
-            tenantId,
+            organizationId,
             listingId: slotDonorListing.id,
             action: 'SLOT_TRANSFERRED',
             delta: -1,
@@ -686,7 +686,7 @@ const createListing = async (req, res, next) => {
         // and capacity already verified/settled above.
         const branchResult = await gymService.createBranch(
           req.tenantDb,
-          tenantId,
+          organizationId,
           {
             branchName: gymName,
             address,
@@ -737,12 +737,12 @@ const _organizationGym = async (tenantDb, listing) => tenantDb.models.Gym.findBy
  */
 const getListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
-    const listing = await GymListing.findOne({ where: { id: req.params.id, tenantId } });
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
+    const listing = await GymListing.findOne({ where: { id: req.params.id, organizationId } });
     if (!listing) throw createError('Organization not found or access denied', 404);
     const gym = await _organizationGym(req.tenantDb, listing);
-    const pendingArea = await areaRequests.pendingAreaFor('business', tenantId, listing.id); // NEW-265
+    const pendingArea = await areaRequests.pendingAreaFor('business', organizationId, listing.id); // NEW-265
     return sendSuccess(res, { ...listing.toJSON(), pendingArea, gym: gym ? gym.toJSON() : null });
   } catch (err) {
     next(err);
@@ -751,14 +751,14 @@ const getListing = async (req, res, next) => {
 
 const updateListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
 
     const { id } = req.params;
     if (!id) throw createError('Organization ID is required', 400);
 
     const listing = await GymListing.findOne({
-      where: { id, tenantId }
+      where: { id, organizationId }
     });
 
     if (!listing) {
@@ -774,11 +774,11 @@ const updateListing = async (req, res, next) => {
     // NEW-265 (A4, R-109 F1): an area request, kept when neither key is sent, cleared by null or a real area.
     const nextCityId = cityId !== undefined ? cityId : listing.cityId;
     const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
-      cityId: nextCityId, userId: req.user.sub || req.user.id, tenantId,
+      cityId: nextCityId, userId: req.user.sub || req.user.id, organizationId,
     });
     if (areaChoice.kind === 'keep' && cityId !== undefined) {
       await assertAreaInCity({ cityId: nextCityId, areaId: listing.areaId });
-      await areaRequests.assertKeptLinkInCity({ tenantId, target: 'business', targetId: listing.id, cityId: nextCityId });
+      await areaRequests.assertKeptLinkInCity({ organizationId, target: 'business', targetId: listing.id, cityId: nextCityId });
     }
 
     const updates = {};
@@ -804,13 +804,13 @@ const updateListing = async (req, res, next) => {
       .filter((f) => req.body[f] !== undefined);
     await GymListing.sequelize.transaction(async (transaction) => {
       await listing.update(updates, { transaction });
-      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'business', targetId: listing.id }, { transaction });
+      await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction });
       await PlatformAuditLog.create({
         actorUserId: req.user.id || req.user.sub,
         action: 'organization.profile_updated',
         targetType: 'GymListing',
         targetId: listing.id,
-        details: { tenantId, fields, asOwner: req.user.isOwner === true },
+        details: { organizationId, fields, asOwner: req.user.isOwner === true },
         createdAt: new Date(),
       }, { transaction });
     });
@@ -842,7 +842,7 @@ const updateListing = async (req, res, next) => {
  * Body:
  *   Re-auth (required unless exempt): { password } or { provider, idToken } / { reauthProvider, reauthIdToken }
  *     - Exempt ONLY if ALL of these hold (NEW-38 rollback window):
- *       1. Belongs to caller (listing.tenantId === tenantId)
+ *       1. Belongs to caller (listing.organizationId === organizationId)
  *       2. Zero branches (zero ACTIVE or INACTIVE in tenant DB)
  *       3. Created < 5 minutes ago
  *       4. No strategy/cascade flag set
@@ -851,8 +851,8 @@ const updateListing = async (req, res, next) => {
  */
 const deleteListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     const { id } = req.params;
     const { strategy, password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
 
@@ -860,7 +860,7 @@ const deleteListing = async (req, res, next) => {
 
     // Check exemption from re-auth: empty organization rollback within 5 minutes of creation
     const listing = await GymListing.findByPk(id);
-    const belongsToCaller = Boolean(listing && listing.tenantId === tenantId && listing.status !== 'INACTIVE');
+    const belongsToCaller = Boolean(listing && listing.organizationId === organizationId && listing.status !== 'INACTIVE');
 
     let hasZeroBranches = false;
     if (belongsToCaller && req.tenantDb && req.tenantDb.models && req.tenantDb.models.Branch) {
@@ -892,7 +892,7 @@ const deleteListing = async (req, res, next) => {
       });
     }
 
-    const result = await gymService.deleteOrganization(req.tenantDb, tenantId, id, {
+    const result = await gymService.deleteOrganization(req.tenantDb, organizationId, id, {
       strategy,
       deletedByUserId: userId,
     });
@@ -933,11 +933,11 @@ const resumeBranch = async (req, res, next) => {
  */
 const restoreBranch = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     const { branchId } = req.params;
 
-    const result = await gymService.restoreBranch(req.tenantDb, tenantId, branchId, req.user.sub || req.user.id);
+    const result = await gymService.restoreBranch(req.tenantDb, organizationId, branchId, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch restored successfully');
   } catch (err) {
     next(err);
@@ -955,14 +955,14 @@ const restoreBranch = async (req, res, next) => {
  */
 const transferReservedSlots = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     const { id } = req.params;
     const { toListingId, count } = req.body;
     if (!toListingId) throw createError('toListingId is required', 400);
 
     const result = await gymService.transferReservedSlots(
-      tenantId,
+      organizationId,
       id,
       toListingId,
       count ? parseInt(count, 10) : 1,
@@ -976,8 +976,8 @@ const transferReservedSlots = async (req, res, next) => {
 
 const getCurrentSubscription = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
 
     // Read-only (NEW-15, owner decision R-21): this endpoint never creates a
     // plan. It used to create a 30-day ACTIVE/PAID row whenever there was no
@@ -986,20 +986,20 @@ const getCurrentSubscription = async (req, res, next) => {
     // The entitling row: ACTIVE, or GRACE while a failed renewal is retried —
     // then `paymentIssue` carries the provider's own page to fix the payment
     // (BILL-04, spec §7.4). Null otherwise.
-    const subscription = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const subscription = await subscriptionQuotaService.getActiveSubscription(organizationId);
 
     if (!subscription) {
       // P7c item 5 (NEW-174, R-82): a plan that ended, is on hold, paused or refunded is still
       // this host's plan: answered as it is (entitled: false, why, where to fix it, when the
       // branches lock), never as "no subscription". 404 only when there never was one.
-      const lapsed = await subscriptionQuotaService.getLapsedSubscription(tenantId);
+      const lapsed = await subscriptionQuotaService.getLapsedSubscription(organizationId);
       if (!lapsed) throw createError('No active subscription found', 404);
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'status', 'connectionStringEncrypted'] });
+      const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'status', 'connectionStringEncrypted'] });
       const tenantDb =
         tenant?.status === 'ACTIVE' && tenant.connectionStringEncrypted
-          ? await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted)
+          ? await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted)
           : null;
-      const state = await require('../services/branch-billing-lock.service').getOverQuotaState(tenantId, tenantDb, {
+      const state = await require('../services/branch-billing-lock.service').getOverQuotaState(organizationId, tenantDb, {
         readOnly: true,
       });
       return sendSuccess(res, {
@@ -1024,7 +1024,7 @@ const getCurrentSubscription = async (req, res, next) => {
 
     // BILL-09: Check if any superseded subscription for this tenant is still billing at the store
     const duplicateRow = await TenantSubscription.findOne({
-      where: { tenantId, duplicateBilling: true },
+      where: { organizationId, duplicateBilling: true },
       attributes: ['id', 'platform', 'externalOriginalTransactionId'],
     });
 
@@ -1167,8 +1167,8 @@ const getBranchDashboard = async (req, res, next) => {
     if (req.user.role !== 'GYM_HOST' && req.user.isHost !== true) {
       try {
         const userId = req.user.id || req.user.sub;
-        const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
-        const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+        const organizationId = req.user.organizationId || req.tenantDb?.organizationId;
+        const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
         canSeeRevenue = grants.has('dashboard.revenue.view');
       } catch (err) {
         console.warn('[dashboard] revenue-permission check failed, defaulting to hidden:', err.message);
@@ -1539,7 +1539,7 @@ const createBranchMember = async (req, res, next) => {
     const { branchId } = req.params;
     const result = await gymService.enrollMember(
       req.tenantDb,
-      req.user.tenantId,
+      req.user.organizationId,
       { ...req.body, branchId },
       req.user
     );
@@ -1584,11 +1584,11 @@ const resubmitBranchReview = async (req, res, next) => {
 
 const listInquiries = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
+    const organizationId = req.user.organizationId;
+    if (!organizationId) {
       return sendSuccess(res, [], 'No inquiries found');
     }
-    const inquiries = await inboxService.listInquiries(tenantId);
+    const inquiries = await inboxService.listInquiries(organizationId);
     return sendSuccess(res, inquiries, 'Inquiries retrieved');
   } catch (err) {
     next(err);
@@ -1597,9 +1597,9 @@ const listInquiries = async (req, res, next) => {
 
 const getInquiryDetail = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    const organizationId = req.user.organizationId;
     const { inquiryId } = req.params;
-    const result = await inboxService.getInquiryDetail(inquiryId, tenantId);
+    const result = await inboxService.getInquiryDetail(inquiryId, organizationId);
     return sendSuccess(res, result, 'Inquiry details retrieved');
   } catch (err) {
     next(err);
@@ -1608,13 +1608,13 @@ const getInquiryDetail = async (req, res, next) => {
 
 const replyToInquiry = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    const organizationId = req.user.organizationId;
     const { inquiryId } = req.params;
     const { text } = req.body;
     if (!text || !text.trim()) {
       throw createError('Message text is required', 400);
     }
-    const message = await inboxService.replyToInquiry(inquiryId, req.user.id, text.trim(), tenantId, {
+    const message = await inboxService.replyToInquiry(inquiryId, req.user.id, text.trim(), organizationId, {
       clientMessageId: req.body.clientMessageId ?? req.body.client_message_id,
     });
     return sendSuccess(res, message, 'Reply sent successfully', 201);
@@ -1625,9 +1625,9 @@ const replyToInquiry = async (req, res, next) => {
 
 const markInquiryRead = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    const organizationId = req.user.organizationId;
     const { inquiryId } = req.params;
-    const result = await inboxService.markInquiryRead(inquiryId, tenantId);
+    const result = await inboxService.markInquiryRead(inquiryId, organizationId);
     return sendSuccess(res, result, 'Inquiry marked as read');
   } catch (err) {
     next(err);
@@ -1640,12 +1640,12 @@ const findOrCreateConversation = async (req, res, next) => {
     if (!userId) {
       throw createError('userId is required to start a conversation', 400);
     }
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
+    const organizationId = req.user.organizationId;
+    if (!organizationId) {
       throw createError('Tenant not found for host', 404);
     }
     const conversation = await inboxService.findOrCreateHostConversation(
-      tenantId,
+      organizationId,
       userId,
       branchId,
       initialMessage

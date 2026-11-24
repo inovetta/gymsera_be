@@ -80,8 +80,8 @@ describe('the script itself', () => {
     legacyOwner = await factories.createUser({ role: 'GYM_HOST', status: 'INACTIVE', email: 'legacy.owner@gymseratest.com', fullName: 'Legacy Person' });
     legacy = await factories.createTenant({ ownerUserId: legacyOwner.id, status: 'ACTIVE' });
     for (const db of DBS) await conn.query(`CREATE DATABASE IF NOT EXISTS \`${db}\``);
-    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 100 * DAY), tenantCode: 'A07CHK-OLD', dbName: DBS[0] });
-    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 5 * DAY), tenantCode: 'A07CHK-NEW', dbName: DBS[1] });
+    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 100 * DAY), organizationCode: 'A07CHK-OLD', dbName: DBS[0] });
+    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 5 * DAY), organizationCode: 'A07CHK-NEW', dbName: DBS[1] });
   });
 
   afterAll(async () => {

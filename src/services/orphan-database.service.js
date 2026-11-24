@@ -103,7 +103,7 @@ const dropOrphanTenantDatabase = async ({ dbName, adminConn, apply = false, conf
   const tenant = await _findTenant(dbName);
   const paymentRows = tenant ? await _countMoneyRows(adminConn, dbName) : 0;
   const verdict = assessOrphanDrop({ tenant, paymentRows, now });
-  const base = { dbName, tenantId: tenant?.id || null, tenantCode: tenant?.tenantCode || null, tenantStatus: tenant?.status || null };
+  const base = { dbName, organizationId: tenant?.id || null, organizationCode: tenant?.organizationCode || null, tenantStatus: tenant?.status || null };
 
   if (!apply) return { ...base, ...verdict, dropped: false, dryRun: true };
   if (!verdict.eligible) throw new Error(`Refusing to drop ${dbName}: ${verdict.reason}`);

@@ -32,19 +32,19 @@ const rules = require('../services/devices/sync-rules');
 const select = (db, sql, replacements) => db.sequelize.query(sql, { replacements: utc(replacements), type: QueryTypes.SELECT });
 const exec = (db, sql, replacements) => db.sequelize.query(sql, { replacements: utc(replacements) });
 
-/** [{ tenantId, db }] for every tenant with a device that is not removed. */
+/** [{ organizationId, db }] for every tenant with a device that is not removed. */
 async function tenantsWithDevices() {
   const rows = await platformDb.query('SELECT DISTINCT tenant_id FROM access_devices WHERE status <> \'removed\'', { type: QueryTypes.SELECT });
   const { Tenant } = require('../models/platform');
   const TenantDbManager = require('../database/TenantDbManager');
   const out = [];
-  for (const { tenant_id: tenantId } of rows) {
-    const t = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+  for (const { tenant_id: organizationId } of rows) {
+    const t = await Tenant.findOne({ where: { id: organizationId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
     if (!t || !t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
     try {
-      out.push({ tenantId, db: await TenantDbManager.getConnection(tenantId, t.connectionStringEncrypted) });
+      out.push({ organizationId, db: await TenantDbManager.getConnection(organizationId, t.connectionStringEncrypted) });
     } catch (err) {
-      console.warn(`[device-jobs] tenant ${tenantId}: no connection (${err.message})`);
+      console.warn(`[device-jobs] tenant ${organizationId}: no connection (${err.message})`);
     }
   }
   return out;
@@ -58,14 +58,14 @@ async function eachTenant(name, fn) {
       for (const [k, v] of Object.entries(r || {})) totals[k] = (totals[k] || 0) + (Number(v) || 0);
     } catch (err) {
       totals.tenantErrors = (totals.tenantErrors || 0) + 1;
-      console.error(`[device-jobs] ${name} failed for tenant ${t.tenantId}: ${err.message}`);
+      console.error(`[device-jobs] ${name} failed for tenant ${t.organizationId}: ${err.message}`);
     }
   }
   return totals;
 }
 
 // ── Layer 1: watchdog ─────────────────────────────────────────────────────────
-async function watchdogTenant({ tenantId, db }, now = new Date()) {
+async function watchdogTenant({ organizationId, db }, now = new Date()) {
   const cfg = getDeviceConfig();
   const sync = require('../services/devices/device-sync.service');
   const counts = { requeued: 0, failed: 0, expired: 0, offline: 0, online: 0 };
@@ -93,7 +93,7 @@ async function watchdogTenant({ tenantId, db }, now = new Date()) {
   // Offline: no contact for DEVICE_OFFLINE_MINUTES. One owner notification per incident.
   const devices = await platformDb.query(
     'SELECT id, last_seen_at, status FROM access_devices WHERE tenant_id = ? AND status = \'active\'',
-    { replacements: utc([tenantId]), type: QueryTypes.SELECT }
+    { replacements: utc([organizationId]), type: QueryTypes.SELECT }
   );
   const limit = now.getTime() - cfg.offlineMinutes * 60000;
   for (const d of devices) {
@@ -105,7 +105,7 @@ async function watchdogTenant({ tenantId, db }, now = new Date()) {
     }
     if (silent && !det.offline_notified_at) {
       // The incident is recorded either way; the owner is told only when the branch keeps alerts on.
-      if (await alertsOn(db, d.id)) await notifyOwnerOffline(tenantId, det, d.last_seen_at);
+      if (await alertsOn(db, d.id)) await notifyOwnerOffline(organizationId, det, d.last_seen_at);
       await exec(db, 'UPDATE access_device_details SET offline_notified_at = ? WHERE id = ?', [now, d.id]);
       counts.offline += 1;
     }
@@ -118,26 +118,26 @@ async function watchdogTenant({ tenantId, db }, now = new Date()) {
   // Phase 3: manual push requests nobody polled to the end, wipes, per-device owner alerts.
   counts.pushClosed = await require('../services/devices/device-push.service').closeExpired(db, now)
     .catch((err) => { console.warn(`[device-jobs] push requests: ${err.message}`); return 0; });
-  counts.wipesFinished = await finishWipes({ tenantId, db }, now);
+  counts.wipesFinished = await finishWipes({ organizationId, db }, now);
   // T&A PUSH audits (requestAttAudit): compared once every query is answered.
   const att = await finishAttAudits(db, now).catch((err) => { console.warn(`[device-jobs] att audits: ${err.message}`); return { compared: 0, incomplete: 0 }; });
   counts.attAuditsCompared = att.compared;
-  const alerted = await deviceAlerts({ tenantId, db }, now);
+  const alerted = await deviceAlerts({ organizationId, db }, now);
   counts.errorAlerts = alerted.errors;
   counts.capacityAlerts = alerted.capacity;
   return counts;
 }
 
 /** Wiping devices (§10.3): removed when the deletes are answered, or when the wait is over. */
-async function finishWipes({ tenantId, db }, now = new Date()) {
+async function finishWipes({ organizationId, db }, now = new Date()) {
   const cfg = getDeviceConfig();
   const registry = require('../services/devices/device-registry.service');
-  const rows = await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'wiping\'', { replacements: utc([tenantId]), type: QueryTypes.SELECT });
+  const rows = await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'wiping\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT });
   let n = 0;
   for (const { id } of rows) {
     const [first] = await select(db, 'SELECT MIN(created_at) AS at FROM device_commands WHERE device_id = ? AND kind = \'wipe\'', [id]);
     const waited = !first?.at || new Date(first.at).getTime() < now.getTime() - cfg.wipeWaitDays * 86400000;
-    if (await registry.finishWipe({ tenantId, tenantDb: db, deviceId: id, force: waited, now })) n += 1;
+    if (await registry.finishWipe({ organizationId, tenantDb: db, deviceId: id, force: waited, now })) n += 1;
   }
   return n;
 }
@@ -166,10 +166,10 @@ const parseJson = (text) => {
  *   serial      another device presented this device's key (Phase 4, §14 point 4), once per incident
  * When each went out is kept in access_device_details.alerts_json.
  */
-async function deviceAlerts({ tenantId, db }, now = new Date()) {
+async function deviceAlerts({ organizationId, db }, now = new Date()) {
   const cfg = getDeviceConfig();
   const out = { errors: 0, capacity: 0, serial: 0 };
-  const active = await platformDb.query('SELECT id, serial_mismatch_at FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([tenantId]), type: QueryTypes.SELECT });
+  const active = await platformDb.query('SELECT id, serial_mismatch_at FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT });
   for (const { id, serial_mismatch_at: mismatchAt } of active) {
     const [det] = await select(db, 'SELECT id, name, enabled, capabilities_json, counts_json, alerts_json FROM access_device_details WHERE id = ?', [id]);
     if (!det || !Number(det.enabled)) continue;
@@ -182,7 +182,7 @@ async function deviceAlerts({ tenantId, db }, now = new Date()) {
     const lastErr = state.errorRateAt ? new Date(state.errorRateAt).getTime() : 0;
     if (errorCount >= cfg.alertErrorsPerHour && now.getTime() - lastErr >= 86400000) {
       if (on) {
-        await notifyOwner(tenantId, det, 'device_error_rate', 'Access device reporting errors',
+        await notifyOwner(organizationId, det, 'device_error_rate', 'Access device reporting errors',
           `${det.name} reported ${errorCount} errors in the last hour. Open the device's Errors tab to see what failed.`);
         out.errors += 1;
       }
@@ -194,7 +194,7 @@ async function deviceAlerts({ tenantId, db }, now = new Date()) {
     // serial is on the device page, not in the notification.
     if (mismatchAt && (!state.serialMismatchAt || new Date(mismatchAt).getTime() > new Date(state.serialMismatchAt).getTime())) {
       if (on) {
-        await notifyOwner(tenantId, det, 'device_serial_mismatch', 'Access device key used by another device',
+        await notifyOwner(organizationId, det, 'device_serial_mismatch', 'Access device key used by another device',
           `Another device tried to connect with the key of ${det.name}. If you replaced the device, re-pair it on its page; if not, re-pair it now so the old key stops working.`);
         out.serial += 1;
       }
@@ -205,7 +205,7 @@ async function deviceAlerts({ tenantId, db }, now = new Date()) {
     const percent = use ? Math.round(use.ratio * 100) : null;
     if (use && use.ratio >= cfg.capacityAlertPercent / 100 && !state.capacityAt) {
       if (on) {
-        await notifyOwner(tenantId, det, 'device_capacity', 'Access device almost full',
+        await notifyOwner(organizationId, det, 'device_capacity', 'Access device almost full',
           `${det.name} is at ${percent}% of its ${use.what} capacity (${use.used} of ${use.max}). Remove old users or add a device.`);
         out.capacity += 1;
       }
@@ -244,10 +244,10 @@ async function capacityUse(db, deviceId, caps, counts = {}) {
   return candidates.map((c) => ({ ...c, ratio: c.used / c.max })).sort((a, b) => b.ratio - a.ratio)[0];
 }
 
-async function notifyOwner(tenantId, det, type, title, message) {
+async function notifyOwner(organizationId, det, type, title, message) {
   try {
     const { Tenant } = require('../models/platform');
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId'] });
     if (!tenant?.ownerUserId) return;
     await require('../services/notifications.service').createNotification({
       userId: tenant.ownerUserId, role: 'host', type, title, message, deepLink: '/host/devices', metadataJson: { deviceId: det.id },
@@ -257,10 +257,10 @@ async function notifyOwner(tenantId, det, type, title, message) {
   }
 }
 
-async function notifyOwnerOffline(tenantId, det, lastSeenAt) {
+async function notifyOwnerOffline(organizationId, det, lastSeenAt) {
   try {
     const { Tenant } = require('../models/platform');
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId'] });
     if (!tenant?.ownerUserId) return;
     await require('../services/notifications.service').createNotification({
       userId: tenant.ownerUserId,
@@ -322,7 +322,7 @@ const runSync = (now = new Date()) => eachTenant('device-sync', (t) => syncTenan
 /** Minutes after DEVICE_AUDIT_HOUR this device starts (0 to 59), so devices do not all ask at once. */
 const staggerOf = (deviceId) => crypto.createHash('sha256').update(String(deviceId)).digest()[0] % 60;
 
-async function auditTenant({ tenantId, db }, now = new Date()) {
+async function auditTenant({ organizationId, db }, now = new Date()) {
   const cfg = getDeviceConfig();
   const sync = require('../services/devices/device-sync.service');
   const { computeBusinessDate } = require('../services/ledger.service');
@@ -332,7 +332,7 @@ async function auditTenant({ tenantId, db }, now = new Date()) {
     [now, new Date(now.getTime() - 6 * 3600000)]);
   counts.incomplete = typeof meta === 'number' ? meta : meta?.affectedRows || 0;
 
-  const active = new Set((await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([tenantId]), type: QueryTypes.SELECT })).map((r) => r.id));
+  const active = new Set((await platformDb.query('SELECT id FROM access_devices WHERE tenant_id = ? AND status = \'active\'', { replacements: utc([organizationId]), type: QueryTypes.SELECT })).map((r) => r.id));
   for (const device of await sync.devicesOf(db)) {
     if (!active.has(device.id)) continue;
     const tz = device.branch_timezone || 'Asia/Karachi';

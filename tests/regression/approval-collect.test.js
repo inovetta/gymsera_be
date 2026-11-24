@@ -37,7 +37,7 @@ describe('approval.service — markCollected', () => {
 
   it('404s when the request does not exist', async () => {
     const tenantDb = buildTenantDb(null);
-    const ctx = { tenantDb, tenantId: 't1', userId: 'u1' };
+    const ctx = { tenantDb, organizationId: 't1', userId: 'u1' };
 
     await expect(approvalService.markCollected(ctx, 'missing')).rejects.toThrow(/not found/);
   });
@@ -45,7 +45,7 @@ describe('approval.service — markCollected', () => {
   it('rejects an action key with nothing to collect', async () => {
     const request = { id: 'r1', status: 'PENDING', actionKey: 'expenses.create', branchId: 'b1' };
     const tenantDb = buildTenantDb(request);
-    const ctx = { tenantDb, tenantId: 't1', userId: 'u1' };
+    const ctx = { tenantDb, organizationId: 't1', userId: 'u1' };
 
     await expect(approvalService.markCollected(ctx, 'r1')).rejects.toThrow(/has no payment to collect/);
   });
@@ -53,7 +53,7 @@ describe('approval.service — markCollected', () => {
   it('rejects a request that has already been decided', async () => {
     const request = { id: 'r1', status: 'APPROVED', actionKey: 'members.create', branchId: 'b1' };
     const tenantDb = buildTenantDb(request);
-    const ctx = { tenantDb, tenantId: 't1', userId: 'u1' };
+    const ctx = { tenantDb, organizationId: 't1', userId: 'u1' };
 
     await expect(approvalService.markCollected(ctx, 'r1')).rejects.toThrow(/already been approved/);
   });
@@ -62,7 +62,7 @@ describe('approval.service — markCollected', () => {
     accessService.resolve.mockResolvedValue(grantsWith([])); // e.g. a Trainer
     const request = { id: 'r1', status: 'PENDING', actionKey: 'members.create', branchId: 'b1' };
     const tenantDb = buildTenantDb(request);
-    const ctx = { tenantDb, tenantId: 't1', userId: 'u1' };
+    const ctx = { tenantDb, organizationId: 't1', userId: 'u1' };
 
     await expect(approvalService.markCollected(ctx, 'r1')).rejects.toThrow(/do not have permission/);
     expect(tenantDb.models.ApprovalRequest.update).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('approval.service — markCollected', () => {
       reload: jest.fn().mockResolvedValue(undefined),
     };
     const tenantDb = buildTenantDb(request);
-    const ctx = { tenantDb, tenantId: 't1', userId: 'desk-1' };
+    const ctx = { tenantDb, organizationId: 't1', userId: 'desk-1' };
 
     await approvalService.markCollected(ctx, 'r1', { method: 'CASH', notes: 'Paid at counter' });
 
@@ -93,7 +93,7 @@ describe('approval.service — markCollected', () => {
     const request = { id: 'r1', status: 'PENDING', actionKey: 'members.create', branchId: 'b1' };
     const tenantDb = buildTenantDb(request);
     tenantDb.models.ApprovalRequest.update.mockResolvedValue([0]); // someone else's collect already won
-    const ctx = { tenantDb, tenantId: 't1', userId: 'desk-2' };
+    const ctx = { tenantDb, organizationId: 't1', userId: 'desk-2' };
 
     await expect(approvalService.markCollected(ctx, 'r1')).rejects.toThrow(/already marked collected/);
   });
@@ -108,7 +108,7 @@ describe('approval.service — markCollected', () => {
     };
     const tenantDb = buildTenantDb(request);
     accessService.resolve.mockResolvedValue(grantsWith([], { isOwner: true }));
-    const ctx = { tenantDb, tenantId: 't1', userId: 'owner-1' };
+    const ctx = { tenantDb, organizationId: 't1', userId: 'owner-1' };
 
     await expect(approvalService.markCollected(ctx, 'r1')).resolves.toBeDefined();
   });
@@ -124,7 +124,7 @@ describe('members.create command — pre-collected attribution', () => {
     const freshCmd = require('../../src/services/commands').get('members.create');
 
     const ctx = {
-      tenantId: 'tenant-1',
+      organizationId: 'tenant-1',
       tenantDb: {},
       userId: 'approver-1', // the approver deciding the request
       branchId: 'branch-1',
@@ -150,7 +150,7 @@ describe('members.create command — pre-collected attribution', () => {
     jest.doMock('../../src/services/gym.service', () => ({ enrollMember }));
     const freshCmd = require('../../src/services/commands').get('members.create');
 
-    const ctx = { tenantId: 'tenant-1', tenantDb: {}, userId: 'host-1', branchId: 'branch-1' };
+    const ctx = { organizationId: 'tenant-1', tenantDb: {}, userId: 'host-1', branchId: 'branch-1' };
     await freshCmd.execute(ctx, { fullName: 'Ahmed', email: 'a@b.com', planId: 'p1' });
 
     expect(enrollMember).toHaveBeenCalledWith(

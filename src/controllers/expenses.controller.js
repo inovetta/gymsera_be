@@ -79,10 +79,10 @@ const hasExpenseAccess = async (req, branchId, permissionKey) => {
   }
 
   const userId = req.user.id || req.user.sub;
-  const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
-  if (userId && tenantId && req.tenantDb) {
+  const organizationId = req.user.organizationId || req.tenantDb?.organizationId;
+  if (userId && organizationId && req.tenantDb) {
     try {
-      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+      const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
       if (grants.has(permissionKey)) return true;
     } catch (err) {
       console.warn('[expenses] permission resolution failed, falling back to legacy check:', err.message);
@@ -95,7 +95,7 @@ const hasExpenseAccess = async (req, branchId, permissionKey) => {
 /**
  * Helper to enrich expense models with creator user information and resolved role (Owner/Admin/Staff)
  */
-const enrichExpensesWithCreator = async (expenses, tenantDb, tenantId) => {
+const enrichExpensesWithCreator = async (expenses, tenantDb, organizationId) => {
   if (!expenses || expenses.length === 0) return expenses;
 
   const userIds = [...new Set(expenses.map((e) => (e.createdBy || (e.toJSON && e.toJSON().createdBy))).filter(Boolean))];
@@ -117,8 +117,8 @@ const enrichExpensesWithCreator = async (expenses, tenantDb, tenantId) => {
   }
 
   let ownerUserId = null;
-  if (tenantId) {
-    const tenant = await Tenant.findByPk(tenantId);
+  if (organizationId) {
+    const tenant = await Tenant.findByPk(organizationId);
     if (tenant) ownerUserId = tenant.ownerUserId;
   }
 
@@ -223,7 +223,7 @@ const listExpenses = async (req, res, next) => {
     const enrichedExpenses = await enrichExpensesWithCreator(
       rows,
       req.tenantDb,
-      req.user.tenantId
+      req.user.organizationId
     );
 
     return sendSuccess(
@@ -314,7 +314,7 @@ const createExpense = async (req, res, next) => {
       const [enriched] = await enrichExpensesWithCreator(
         [reloaded],
         req.tenantDb,
-        req.user.tenantId
+        req.user.organizationId
       );
 
       return sendSuccess(res, enriched, 'Expense created successfully', 201);
@@ -366,7 +366,7 @@ const createExpense = async (req, res, next) => {
     try {
       const { Tenant } = require('../models/platform');
       const notificationsService = require('../services/notifications.service');
-      const tenant = await Tenant.findByPk(branch.tenantId || req.user.tenantId);
+      const tenant = await Tenant.findByPk(branch.organizationId || req.user.organizationId);
       if (tenant && tenant.ownerUserId) {
         await notificationsService.createNotification({
           userId: tenant.ownerUserId,
@@ -379,7 +379,7 @@ const createExpense = async (req, res, next) => {
           metadataJson: {
             requestId: staffAction.id,
             branchId,
-            tenantId: tenant.id,
+            organizationId: tenant.id,
           },
         });
       }
@@ -426,7 +426,7 @@ const getExpenseDetail = async (req, res, next) => {
     const [enriched] = await enrichExpensesWithCreator(
       [expense],
       req.tenantDb,
-      req.user.tenantId
+      req.user.organizationId
     );
 
     return sendSuccess(res, enriched, 'Expense details retrieved');
@@ -519,7 +519,7 @@ const updateExpense = async (req, res, next) => {
     const [enriched] = await enrichExpensesWithCreator(
       [reloaded],
       req.tenantDb,
-      req.user.tenantId
+      req.user.organizationId
     );
 
     return sendSuccess(res, enriched, 'Expense updated successfully');

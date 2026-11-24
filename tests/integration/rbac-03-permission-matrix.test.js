@@ -39,7 +39,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenant1Id = dbHarness.tenant1.tenantId || '11111111-1111-4111-8111-111111111111';
+    tenant1Id = dbHarness.tenant1.organizationId || '11111111-1111-4111-8111-111111111111';
 
     const branch1 = await dbHarness.tenant1.models.Branch.findOne();
     branch1Id = branch1.id;
@@ -129,7 +129,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('forbids Member (404/403)', async () => {
-        const res = await asPersona('member', { 'X-Tenant-Id': tenant1Id }).post('/actions/members.create', {
+        const res = await asPersona('member', { 'X-Organization-Id': tenant1Id }).post('/actions/members.create', {
           branchId: branch1Id,
           planId,
         });
@@ -137,7 +137,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('rejects Other Tenant Owner with 404 (cross-tenant)', async () => {
-        const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': tenant1Id }).post('/actions/members.create', {
+        const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': tenant1Id }).post('/actions/members.create', {
           branchId: branch1Id,
           planId,
         });
@@ -258,7 +258,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
           });
           expect(res.status).toBe(403);
         }
-        const memberRes = await asPersona('member', { 'X-Tenant-Id': tenant1Id }).post('/team/invites', {
+        const memberRes = await asPersona('member', { 'X-Organization-Id': tenant1Id }).post('/team/invites', {
           email: 'member-invite@test.com',
           roleKey: 'DESK',
         });
@@ -266,7 +266,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('rejects Other Tenant Owner with 404 (cross-tenant)', async () => {
-        const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': tenant1Id }).post('/team/invites', {
+        const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': tenant1Id }).post('/team/invites', {
           email: 'cross-tenant-invite@test.com',
           roleKey: 'DESK',
         });
@@ -311,7 +311,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('rejects Other Tenant Owner with 404 (cross-tenant)', async () => {
-        const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': tenant1Id }).post(
+        const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': tenant1Id }).post(
           '/approvals/00000000-0000-0000-0000-000000000000/approve',
           {}
         );

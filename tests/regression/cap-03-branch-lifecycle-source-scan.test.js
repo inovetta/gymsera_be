@@ -87,13 +87,13 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
 
   describe('Lifecycle Enforcement: createAdminTenantBranch and createListing', () => {
     let dbHarness;
-    let tenantId;
+    let organizationId;
     let personas;
 
     beforeAll(async () => {
       dbHarness = await setupTestDatabases();
       personas = await setupPersonas(dbHarness);
-      tenantId = personas.owner.tenantId;
+      organizationId = personas.owner.organizationId;
     });
 
     afterAll(async () => {
@@ -102,16 +102,16 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
 
     test('createAdminTenantBranch enforces subscription capacity via createBranch', async () => {
       // Set platform subscription branchCount to 1, currently 1 active branch
-      let sub = await TenantSubscription.findOne({ where: { tenantId } });
+      let sub = await TenantSubscription.findOne({ where: { organizationId } });
       if (sub) {
         await sub.update({ branchCount: 1 });
       } else {
-        await factories.createTenantSubscription(tenantId, { branchCount: 1, status: 'ACTIVE' });
+        await factories.createTenantSubscription(organizationId, { branchCount: 1, status: 'ACTIVE' });
       }
 
       // Attempting to create a 2nd branch via adminService.createAdminTenantBranch should throw 403 / capacity exceeded
       await expect(
-        adminService.createAdminTenantBranch(tenantId, {
+        adminService.createAdminTenantBranch(organizationId, {
           branchName: 'Admin Branch Over Capacity',
           address: '123 Test St',
         }, personas.platformAdmin.user.id)
@@ -119,11 +119,11 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
     });
 
     test('createListing with branchSource: new consumes capacity or donor slots via createBranch', async () => {
-      let sub = await TenantSubscription.findOne({ where: { tenantId } });
+      let sub = await TenantSubscription.findOne({ where: { organizationId } });
       if (sub) {
         await sub.update({ branchCount: 2 });
       } else {
-        await factories.createTenantSubscription(tenantId, { branchCount: 2, status: 'ACTIVE' });
+        await factories.createTenantSubscription(organizationId, { branchCount: 2, status: 'ACTIVE' });
       }
 
       // Host creates listing with branchSource: 'new'

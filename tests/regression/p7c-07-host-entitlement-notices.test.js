@@ -73,30 +73,30 @@ describe('P7c item 7: the host is told when entitlement changes', () => {
 
   test('Google on hold → one "on hold" push and email; the same state again sends nothing', async () => {
     const { truth } = fakes.installGoogleFakes({ tok: fakes.googlePurchase({ productId: plan5.androidProductId }) });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', organizationId: tenant.id });
     expect(push).not.toHaveBeenCalled();
 
     truth.tok = fakes.googlePurchase({ productId: plan5.androidProductId, state: 'SUBSCRIPTION_STATE_ON_HOLD', expiresInDays: -1 });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', tenantId: tenant.id });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', organizationId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', organizationId: tenant.id });
     expectOne('on_hold');
   });
 
   test('Apple refund → one "refunded" push and email', async () => {
     const tx = fakes.appleTransaction({ originalTransactionId: 'a-1', productId: plan5.iosMonthlyProductId });
     const { truth } = fakes.installAppleFakes({ 'a-1': tx });
-    await appleBilling.syncFromApple({ transactionId: 'a-1', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: 'a-1', organizationId: tenant.id });
     truth['a-1'] = { ...tx, revocationDate: Date.now() };
-    await appleBilling.syncFromApple({ transactionId: 'a-1', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: 'a-1', organizationId: tenant.id });
     expectOne('refunded');
   });
 
   test('Apple applies a downgrade (5 → 2 branches) → one "downgraded" push and email', async () => {
     const tx = fakes.appleTransaction({ originalTransactionId: 'a-2', productId: plan5.iosMonthlyProductId });
     const { truth } = fakes.installAppleFakes({ 'a-2': tx });
-    await appleBilling.syncFromApple({ transactionId: 'a-2', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: 'a-2', organizationId: tenant.id });
     truth['a-2'] = fakes.appleTransaction({ originalTransactionId: 'a-2', transactionId: 'a-2-2', productId: plan2.iosMonthlyProductId });
-    await appleBilling.syncFromApple({ transactionId: 'a-2', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: 'a-2', organizationId: tenant.id });
     expectOne('downgraded');
     expect(changedEmail).toHaveBeenCalledWith(owner.email, owner.fullName, expect.objectContaining({ branchCount: 2 }));
   });
@@ -104,9 +104,9 @@ describe('P7c item 7: the host is told when entitlement changes', () => {
   test('Apple reports expired → one "expired" push and the expired template', async () => {
     const tx = fakes.appleTransaction({ originalTransactionId: 'a-3', productId: plan5.iosMonthlyProductId });
     const { truth } = fakes.installAppleFakes({ 'a-3': tx });
-    await appleBilling.syncFromApple({ transactionId: 'a-3', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: 'a-3', organizationId: tenant.id });
     truth['a-3'] = { ...fakes.appleTransaction({ originalTransactionId: 'a-3', productId: plan5.iosMonthlyProductId, expiresInDays: -1 }), subscriptionStatus: 2 };
-    await appleBilling.syncFromApple({ transactionId: 'a-3', tenantId: tenant.id });
+    await appleBilling.syncFromApple({ transactionId: 'a-3', organizationId: tenant.id });
     expectOne('expired');
   });
 

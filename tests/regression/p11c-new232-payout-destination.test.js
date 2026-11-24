@@ -4,7 +4,7 @@
  * Before: POST /host/payouts took `destinationJson` from the request body and it replaced the
  * saved payout account (`payout.commands.js` validate and execute: `payload.destinationJson ||
  * account.details`). A payout request could name any account, without the re-authentication and
- * the 24-hour wait that PUT /host/payout-account enforces; a platform admin with X-Tenant-Id could
+ * the 24-hour wait that PUT /host/payout-account enforces; a platform admin with X-Organization-Id could
  * send it too (`hasAllBranches`).
  *
  * Now:
@@ -13,7 +13,7 @@
  *    still succeeds (older clients); the saved account is never written by this route;
  *  - no saved account: 409 `no_payout_destination` with a clear message;
  *  - an account changed in the last 24 hours: refused (422 `cooling_period_active`, SEC-13);
- *  - a platform admin: 403 `payout_request_not_for_platform_admins`, with or without X-Tenant-Id,
+ *  - a platform admin: 403 `payout_request_not_for_platform_admins`, with or without X-Organization-Id,
  *    on POST /host/payouts and on POST /actions/payouts.request;
  *  - a payout waiting for approval that was submitted with a body destination pays the saved
  *    account when it is approved (the stored payload is not trusted either).
@@ -36,11 +36,11 @@ let seq = 0;
 
 const post = (persona, body, headers = {}) =>
   asPersona(persona, { 'Idempotency-Key': `p11c-${persona}-${Date.now()}-${(seq += 1)}`, ...headers }).post('/host/payouts', body);
-const saved = async () => (await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, businessId: null } }))?.detailsJson;
+const saved = async () => (await PayoutAccount.findOne({ where: { organizationId: ctx.tenant1.id, businessId: null } }))?.detailsJson;
 const noHacker = (body) => expect(JSON.stringify(body)).not.toContain(HACKER.accountNumber);
 const resetAccount = async (detailsUpdatedAt = OLD) => {
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: SAVED, detailsUpdatedAt });
+  await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: null, detailsJson: SAVED, detailsUpdatedAt });
 };
 
 beforeAll(async () => {
@@ -144,17 +144,17 @@ describe('NEW-232: the payout always goes to the saved payout account', () => {
 
 describe('NEW-232: platform admins get 403', () => {
   test.each([
-    ['with X-Tenant-Id', true],
-    ['without X-Tenant-Id', false],
+    ['with X-Organization-Id', true],
+    ['without X-Organization-Id', false],
   ])('POST /host/payouts %s → 403, nothing created', async (_label, withTenant) => {
-    const res = await post('platformAdmin', { amount: 100, branchId: ctx.branch1.id, destinationJson: HACKER }, withTenant ? { 'X-Tenant-Id': ctx.tenant1.id } : {});
+    const res = await post('platformAdmin', { amount: 100, branchId: ctx.branch1.id, destinationJson: HACKER }, withTenant ? { 'X-Organization-Id': ctx.tenant1.id } : {});
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('payout_request_not_for_platform_admins');
     expect(await Payout.count()).toBe(0);
   });
 
-  test('POST /actions/payouts.request with X-Tenant-Id → 403, nothing created', async () => {
-    const res = await asPersona('platformAdmin', { 'X-Tenant-Id': ctx.tenant1.id, 'Idempotency-Key': `p11c-act-${Date.now()}` })
+  test('POST /actions/payouts.request with X-Organization-Id → 403, nothing created', async () => {
+    const res = await asPersona('platformAdmin', { 'X-Organization-Id': ctx.tenant1.id, 'Idempotency-Key': `p11c-act-${Date.now()}` })
       .post('/actions/payouts.request', { amount: 100, branchId: ctx.branch1.id, destinationJson: HACKER });
     expect(res.status).toBe(403);
     expect(await Payout.count()).toBe(0);

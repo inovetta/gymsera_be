@@ -48,7 +48,7 @@ class PersonaManager {
     });
     const tenant1Record = await createTenant({
       id: '11111111-1111-4111-8111-111111111111',
-      tenantCode: 'GYM-TENANT1',
+      organizationCode: 'GYM-TENANT1',
       gymName: 'Alpha Fitness Club',
       ownerUserId: ownerUser.id,
       connectionStringEncrypted: tenant1.encryptedConnStr,
@@ -69,7 +69,7 @@ class PersonaManager {
     });
     const tenant2Record = await createTenant({
       id: '22222222-2222-4222-8222-222222222222',
-      tenantCode: 'GYM-TENANT2',
+      organizationCode: 'GYM-TENANT2',
       gymName: 'Beta Gym',
       ownerUserId: otherOwnerUser.id,
       connectionStringEncrypted: tenant2.encryptedConnStr,
@@ -93,7 +93,7 @@ class PersonaManager {
       roleKey: 'ORGANIZATION_ADMIN',
       scopeType: 'ORGANIZATION',
       scopeId: listing1.id,
-      tenantId: tenant1Record.id,
+      organizationId: tenant1Record.id,
     });
 
     // 4. Branch Manager
@@ -108,7 +108,7 @@ class PersonaManager {
       scopeType: 'BRANCH',
       scopeId: branch1.id,
       branchIds: [branch1.id],
-      tenantId: tenant1Record.id,
+      organizationId: tenant1Record.id,
     });
 
     // 5. Front Desk
@@ -123,7 +123,7 @@ class PersonaManager {
       scopeType: 'BRANCH',
       scopeId: branch1.id,
       branchIds: [branch1.id],
-      tenantId: tenant1Record.id,
+      organizationId: tenant1Record.id,
     });
 
     // 6. Trainer
@@ -138,7 +138,7 @@ class PersonaManager {
       scopeType: 'BRANCH',
       scopeId: branch1.id,
       branchIds: [branch1.id],
-      tenantId: tenant1Record.id,
+      organizationId: tenant1Record.id,
     });
 
     // 7. Cleaner
@@ -153,7 +153,7 @@ class PersonaManager {
       scopeType: 'BRANCH',
       scopeId: branch1.id,
       branchIds: [branch1.id],
-      tenantId: tenant1Record.id,
+      organizationId: tenant1Record.id,
     });
 
     // 8. Member
@@ -185,77 +185,77 @@ class PersonaManager {
     this.personas = {
       owner: {
         user: ownerUser,
-        tenantId: tenant1Record.id,
+        organizationId: tenant1Record.id,
         token: signToken({
           sub: ownerUser.id,
           id: ownerUser.id,
           email: ownerUser.email,
           role: 'GYM_HOST',
           isVerified: true,
-          tenantId: tenant1Record.id,
+          organizationId: tenant1Record.id,
         }),
       },
       orgAdmin: {
         user: orgAdminUser,
-        tenantId: tenant1Record.id,
+        organizationId: tenant1Record.id,
         token: signToken({
           sub: orgAdminUser.id,
           id: orgAdminUser.id,
           email: orgAdminUser.email,
           role: 'BRANCH_MANAGER',
           isVerified: true,
-          tenantId: tenant1Record.id,
+          organizationId: tenant1Record.id,
         }),
       },
       manager: {
         user: managerUser,
-        tenantId: tenant1Record.id,
+        organizationId: tenant1Record.id,
         token: signToken({
           sub: managerUser.id,
           id: managerUser.id,
           email: managerUser.email,
           role: 'BRANCH_MANAGER',
           isVerified: true,
-          tenantId: tenant1Record.id,
+          organizationId: tenant1Record.id,
           branchId: branch1.id,
         }),
       },
       frontDesk: {
         user: frontDeskUser,
-        tenantId: tenant1Record.id,
+        organizationId: tenant1Record.id,
         token: signToken({
           sub: frontDeskUser.id,
           id: frontDeskUser.id,
           email: frontDeskUser.email,
           role: 'BRANCH_MANAGER',
           isVerified: true,
-          tenantId: tenant1Record.id,
+          organizationId: tenant1Record.id,
           branchId: branch1.id,
         }),
       },
       trainer: {
         user: trainerUser,
-        tenantId: tenant1Record.id,
+        organizationId: tenant1Record.id,
         token: signToken({
           sub: trainerUser.id,
           id: trainerUser.id,
           email: trainerUser.email,
           role: 'BRANCH_MANAGER',
           isVerified: true,
-          tenantId: tenant1Record.id,
+          organizationId: tenant1Record.id,
           branchId: branch1.id,
         }),
       },
       cleaner: {
         user: cleanerUser,
-        tenantId: tenant1Record.id,
+        organizationId: tenant1Record.id,
         token: signToken({
           sub: cleanerUser.id,
           id: cleanerUser.id,
           email: cleanerUser.email,
           role: 'BRANCH_MANAGER',
           isVerified: true,
-          tenantId: tenant1Record.id,
+          organizationId: tenant1Record.id,
           branchId: branch1.id,
         }),
       },
@@ -281,14 +281,14 @@ class PersonaManager {
       },
       otherTenantOwner: {
         user: otherOwnerUser,
-        tenantId: tenant2Record.id,
+        organizationId: tenant2Record.id,
         token: signToken({
           sub: otherOwnerUser.id,
           id: otherOwnerUser.id,
           email: otherOwnerUser.email,
           role: 'GYM_HOST',
           isVerified: true,
-          tenantId: tenant2Record.id,
+          organizationId: tenant2Record.id,
         }),
       },
       anonymous: {
@@ -319,8 +319,8 @@ class PersonaManager {
     if (persona?.token) {
       defaultHeaders.Authorization = `Bearer ${persona.token}`;
     }
-    if (persona?.tenantId && !defaultHeaders['X-Tenant-Id']) {
-      defaultHeaders['X-Tenant-Id'] = persona.tenantId;
+    if (persona?.organizationId && !defaultHeaders['X-Organization-Id']) {
+      defaultHeaders['X-Organization-Id'] = persona.organizationId;
     }
 
     const formatPath = (path) => (path.startsWith('/api/v1') ? path : `/api/v1${path.startsWith('/') ? path : `/${path}`}`);

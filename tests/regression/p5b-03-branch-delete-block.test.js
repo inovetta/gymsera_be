@@ -81,7 +81,7 @@ const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), 
     const { UserGymMembership } = require('../../src/models/platform');
     await UserGymMembership.create({
       userId: member.id,
-      tenantId: ctx.tenant1.id,
+      organizationId: ctx.tenant1.id,
       gymListingId: branch.gymListingId,
       subscriptionId: sub.id,
       gymName: 'Alpha Fitness Club',

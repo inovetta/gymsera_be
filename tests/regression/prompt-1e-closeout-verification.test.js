@@ -65,7 +65,7 @@ describe('Prompt 1E Close-Out Verification: Integration Risks', () => {
 
     const tenantRecord = await createTenant({
       id: '44444444-4444-4444-8444-444444444444',
-      tenantCode: 'GYM-CLOSEOUT',
+      organizationCode: 'GYM-CLOSEOUT',
       gymName: 'Closeout Gym',
       ownerUserId: testUser.id,
       connectionStringEncrypted: tenant1.encryptedConnStr,
@@ -104,7 +104,7 @@ describe('Prompt 1E Close-Out Verification: Integration Risks', () => {
       // 2. Run actual repair tool in APPLY mode
       const repairResult = await processTenantPaymentRepair(
         tenantSeq,
-        { tenantId: 'test-closeout-tenant', gymName: 'Closeout Gym' },
+        { organizationId: 'test-closeout-tenant', gymName: 'Closeout Gym' },
         { apply: true, quiet: true }
       );
 

@@ -26,7 +26,7 @@ describe('SEC-17: pii-mask', () => {
 });
 
 describe('SEC-17: admin Members tab', () => {
-  let h; let personas; let server; let tenantId; let member; let outsider;
+  let h; let personas; let server; let organizationId; let member; let outsider;
   const EMAIL = 'sec17.member@example.test';
   const PHONE = '+923001234567';
 
@@ -34,9 +34,9 @@ describe('SEC-17: admin Members tab', () => {
     h = await setupTestDatabases();
     personas = await setupPersonas(h);
     server = await startTestServer();
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     const { Branch, MembershipPlan, MemberSubscription } = h.tenant1.models;
-    const listing = await GymListing.findOne({ where: { tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId } });
     const branch = await Branch.findOne({ where: { gymId: listing.id } });
     const plan = await MembershipPlan.create({ gymId: branch.gymId, branchId: branch.id, name: 'SEC17', price: 1000, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE' });
     member = await factories.createUser({ email: EMAIL, phone: PHONE, fullName: 'Sec Seventeen', role: 'MEMBER' });
@@ -48,8 +48,8 @@ describe('SEC-17: admin Members tab', () => {
     await teardownTestDatabases();
   });
 
-  const list = () => asPersona('platformAdmin').get(`/admin/tenants/${tenantId}/members`);
-  const reveal = (userId, body = {}, persona = 'platformAdmin') => asPersona(persona).post(`/admin/tenants/${tenantId}/members/${userId}/reveal`).send(body);
+  const list = () => asPersona('platformAdmin').get(`/admin/tenants/${organizationId}/members`);
+  const reveal = (userId, body = {}, persona = 'platformAdmin') => asPersona(persona).post(`/admin/tenants/${organizationId}/members/${userId}/reveal`).send(body);
   const auditRows = () => PlatformAuditLog.findAll({ where: { action: 'admin.member_contact_revealed' } });
 
   test('the list masks e-mail and phone and says so; other fields stay', async () => {
@@ -74,7 +74,7 @@ describe('SEC-17: admin Members tab', () => {
     const rows = await auditRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorUserId: personas.platformAdmin.user.id, targetType: 'user', targetId: member.id });
-    expect(rows[0].details).toEqual({ tenantId, fields: ['email', 'phone'], reason: 'Member asked support to confirm the number' });
+    expect(rows[0].details).toEqual({ organizationId, fields: ['email', 'phone'], reason: 'Member asked support to confirm the number' });
     const stored = JSON.stringify(rows[0].toJSON());
     expect(stored).not.toContain(EMAIL);
     expect(stored).not.toContain('1234567');
@@ -111,7 +111,7 @@ describe('SEC-17: admin Members tab', () => {
   test('admin only: a gym owner and an anonymous caller are refused and no row is written', async () => {
     const before = (await auditRows()).length;
     expect([401, 403]).toContain((await reveal(member.id, {}, 'owner')).status);
-    const anon = await request(server).post(`/api/v1/admin/tenants/${tenantId}/members/${member.id}/reveal`).send({});
+    const anon = await request(server).post(`/api/v1/admin/tenants/${organizationId}/members/${member.id}/reveal`).send({});
     expect(anon.status).toBe(401);
     expect((await auditRows()).length).toBe(before);
   });

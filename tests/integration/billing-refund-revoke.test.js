@@ -56,7 +56,7 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
     await factories.createBranch(dbHarness.tenant1, listing.id);
     await factories.createBranch(dbHarness.tenant1, listing.id);
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5, stripeMonthlyPriceId: 'price_5m' });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const maxBranches = async () => {
@@ -75,7 +75,7 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
     expect(row.status).toBe('REVOKED');
     expect(await maxBranches()).toBe(0);
     expect(await reservedSlots()).toBe(0);
-    const trims = await CapacityEvent.count({ where: { tenantId: tenant.id, action: 'SLOT_TRIMMED_DOWNGRADE' } });
+    const trims = await CapacityEvent.count({ where: { organizationId: tenant.id, action: 'SLOT_TRIMMED_DOWNGRADE' } });
     expect(trims).toBeGreaterThan(0);
   };
 
@@ -127,7 +127,7 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
     await expectRevoked('tok-void');
 
     // A later resync of the same (unchanged) period must not resurrect it.
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', organizationId: tenant.id });
     expect((await TenantSubscription.findOne({ where: { externalOriginalTransactionId: 'tok-void' } })).status).toBe('REVOKED');
   });
 
@@ -151,7 +151,7 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
     let retrieveCharge;
 
     beforeEach(async () => {
-      const live = fakes.stripeSubscription({ id: 'sub_r', priceId: 'price_5m', tenantId: tenant.id });
+      const live = fakes.stripeSubscription({ id: 'sub_r', priceId: 'price_5m', organizationId: tenant.id });
       fakes.installStripeFakes({ subscriptions: { sub_r: live } });
       await request(app).post('/api/v1/billing/webhooks/stripe')
         .send({ id: 'evt_start', type: 'customer.subscription.created', data: { object: live } });

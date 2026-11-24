@@ -14,7 +14,7 @@ const createReport = async (req, res, next) => {
     const { targetType, targetId, reason, note } = req.body;
     const { report, created } = await contentReports.createReport({
       reporterUserId: userIdOf(req),
-      reporterTenantId: req.user.tenantId || null,
+      reporterTenantId: req.user.organizationId || null,
       targetType,
       targetId,
       reason,
@@ -52,7 +52,7 @@ const listMyBlocks = async (req, res, next) => {
 // ── Host: /host/inbox/inquiries/:inquiryId/block, /host/inbox/blocks ──────────
 const hostBlock = (blocked) => async (req, res, next) => {
   try {
-    const block = await inboxService.setHostBlock(req.params.inquiryId, req.user.tenantId, userIdOf(req), blocked);
+    const block = await inboxService.setHostBlock(req.params.inquiryId, req.user.organizationId, userIdOf(req), blocked);
     return sendSuccess(res, { block }, blocked ? 'Blocked' : 'Unblocked');
   } catch (err) {
     next(err);
@@ -61,7 +61,7 @@ const hostBlock = (blocked) => async (req, res, next) => {
 
 const listHostBlocks = async (req, res, next) => {
   try {
-    const blocks = req.user.tenantId ? await userBlocks.listForTenant(req.user.tenantId) : [];
+    const blocks = req.user.organizationId ? await userBlocks.listForTenant(req.user.organizationId) : [];
     return sendSuccess(res, { blocks });
   } catch (err) {
     next(err);

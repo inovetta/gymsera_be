@@ -8,7 +8,7 @@ const userId = (req) => req.user?.id || req.user?.sub;
 // ── Host (owner): GET /host/plan-payments ──────────────────────────────────────
 const getOverview = async (req, res, next) => {
   try {
-    return sendSuccess(res, await planPaymentService.getOverview(req.user.tenantId));
+    return sendSuccess(res, await planPaymentService.getOverview(req.user.organizationId));
   } catch (err) {
     next(err);
   }
@@ -18,7 +18,7 @@ const getOverview = async (req, res, next) => {
 const submit = async (req, res, next) => {
   try {
     const request = await planPaymentService.submit({
-      tenantId: req.user.tenantId,
+      organizationId: req.user.organizationId,
       userId: userId(req),
       billingPlanId: req.body.billingPlanId,
       billingCycle: req.body.billingCycle,
@@ -32,12 +32,12 @@ const submit = async (req, res, next) => {
   }
 };
 
-// ── Admin: GET /admin/plan-payments?status=&tenantId= ───────────────────────────
+// ── Admin: GET /admin/plan-payments?status=&organizationId= ───────────────────────────
 const adminList = async (req, res, next) => {
   try {
     const status = ['PENDING', 'APPROVED', 'REJECTED'].includes(req.query.status) ? req.query.status : null;
-    const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId : null;
-    return sendSuccess(res, { requests: await planPaymentService.listForAdmin({ status, tenantId }) });
+    const organizationId = typeof req.query.organizationId === 'string' ? req.query.organizationId : null;
+    return sendSuccess(res, { requests: await planPaymentService.listForAdmin({ status, organizationId }) });
   } catch (err) {
     next(err);
   }

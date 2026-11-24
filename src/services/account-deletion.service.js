@@ -61,7 +61,7 @@ const _liveSubscriptions = async (tenantIds) =>
   tenantIds.length === 0
     ? []
     : TenantSubscription.findAll({
-        where: { tenantId: { [Op.in]: tenantIds }, status: { [Op.in]: LIVE_SUBSCRIPTION_STATUSES } },
+        where: { organizationId: { [Op.in]: tenantIds }, status: { [Op.in]: LIVE_SUBSCRIPTION_STATUSES } },
       });
 
 /**
@@ -80,7 +80,7 @@ const getDeletionPreflight = async (userId) => {
     .map((s) => ({
       type: 'STORE_SUBSCRIPTION',
       platform: s.platform,
-      tenantId: s.tenantId,
+      organizationId: s.organizationId,
       manageUrl: STORE_MANAGE_URLS[s.platform],
       message:
         s.platform === 'IOS'
@@ -92,7 +92,7 @@ const getDeletionPreflight = async (userId) => {
   return {
     canDelete: blockers.length === 0 && user.role !== 'PLATFORM_ADMIN',
     blockers,
-    willCancelAutomatically: stripeSubscriptions.map((s) => ({ type: 'STRIPE_SUBSCRIPTION', tenantId: s.tenantId })),
+    willCancelAutomatically: stripeSubscriptions.map((s) => ({ type: 'STRIPE_SUBSCRIPTION', organizationId: s.organizationId })),
     tenants: tenants.map((t) => ({ id: t.id, businessName: t.businessName, status: t.status })),
     windowDays: DELETION_WINDOW_DAYS,
     deletionPending: user.status === 'PENDING_DELETION' ? { scheduledFor: user.deletionScheduledFor } : null,
@@ -103,14 +103,14 @@ const _audit = (action, userId, targetType, targetId, details) =>
   PlatformAuditLog.create({ actorUserId: userId, action, targetType, targetId, details, createdAt: new Date() });
 
 /** After the status change commits: close the tenant's cached connection and members' pool. */
-const _closeTenantConnections = async (tenantId) => {
-  await safeRedisDel(`tenant:${tenantId}:connStr`);
-  await TenantDbManager.release(tenantId).catch(() => {});
+const _closeTenantConnections = async (organizationId) => {
+  await safeRedisDel(`tenant:${organizationId}:connStr`);
+  await TenantDbManager.release(organizationId).catch(() => {});
 };
 
 const _notifyMembers = async (tenant) => {
   const memberships = await UserGymMembership.findAll({
-    where: { tenantId: tenant.id, status: 'ACTIVE' },
+    where: { organizationId: tenant.id, status: 'ACTIVE' },
     attributes: ['userId'],
     group: ['userId'],
   });
@@ -125,7 +125,7 @@ const _notifyMembers = async (tenant) => {
           'This gym has asked to close its GymsEra account. Its owner can still cancel the request for 30 days; after that your ' +
           'membership here will end. Your receipts and history stay available in your account.',
         priority: 'high',
-        metadataJson: { event: 'gym_closing', tenantId: tenant.id },
+        metadataJson: { event: 'gym_closing', organizationId: tenant.id },
       })
       .catch((err) => console.warn(`[AccountDeletion] Could not notify member ${userId}:`, err.message));
   }
@@ -196,17 +196,17 @@ const requestDeletion = async (userId, credential = {}) => {
       tenants: owned,
       stripeIds: subs
         .filter((s) => s.platform === 'STRIPE' && s.externalOriginalTransactionId)
-        .map((s) => ({ tenantId: s.tenantId, id: s.externalOriginalTransactionId })),
+        .map((s) => ({ organizationId: s.organizationId, id: s.externalOriginalTransactionId })),
     };
   });
 
   // Outside the transaction: a provider call must never sit inside one that could roll back.
-  for (const { tenantId, id } of stripeIds) {
+  for (const { organizationId, id } of stripeIds) {
     try {
       await stripeBilling.cancelAtPeriodEnd(id);
     } catch (err) {
-      console.error(`[AccountDeletion] Stripe cancel failed for tenant ${tenantId}:`, err.message);
-      await _audit('ACCOUNT_DELETION_STRIPE_CANCEL_FAILED', userId, 'Tenant', tenantId, { reason: String(err.message).slice(0, 200) })
+      console.error(`[AccountDeletion] Stripe cancel failed for tenant ${organizationId}:`, err.message);
+      await _audit('ACCOUNT_DELETION_STRIPE_CANCEL_FAILED', userId, 'Tenant', organizationId, { reason: String(err.message).slice(0, 200) })
         .catch(() => {});
     }
   }

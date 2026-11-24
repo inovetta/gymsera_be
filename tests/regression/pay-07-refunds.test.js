@@ -129,7 +129,7 @@ describe('PAY-07: Member Payment Refunds (spec §6.3, §12)', () => {
 
     await UserGymMembership.create({
       userId: memberUserId,
-      tenantId: personas.owner.tenantId,
+      organizationId: personas.owner.organizationId,
       gymListingId: branch.gymListingId,
       subscriptionId: sub.id,
       status: 'ACTIVE',

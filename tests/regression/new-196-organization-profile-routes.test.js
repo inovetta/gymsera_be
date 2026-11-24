@@ -38,17 +38,17 @@ beforeAll(async () => {
   dbHarness = await setupTestDatabases();
   personas = await setupPersonas(dbHarness);
   team = await buildTwoBranchTeam(dbHarness, personas);
-  firstOrg = await GymListing.findOne({ where: { tenantId: team.tenantId }, order: [['createdAt', 'ASC']] });
-  secondOrg = await factories.createGymListing(team.tenantId, { title: 'Second Organization' });
+  firstOrg = await GymListing.findOne({ where: { organizationId: team.organizationId }, order: [['createdAt', 'ASC']] });
+  secondOrg = await factories.createGymListing(team.organizationId, { title: 'Second Organization' });
   secondGym = await dbHarness.tenant1.models.Gym.create({ name: 'Second Organization', id: secondOrg.id, genderType: 'MIXED' });
   // listing.manage granted at one branch only: a Front Desk at branch A with an ALLOW override.
   branchScoped = await teamMember({
-    tenantDb: dbHarness.tenant1, tenantId: team.tenantId, email: 'branch-listing@new196.test',
+    tenantDb: dbHarness.tenant1, organizationId: team.organizationId, email: 'branch-listing@new196.test',
     roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [team.branchA.id], allow: ['listing.manage'],
   });
   // An Org Admin with listing.manage in the other tenant.
   otherTenantOrgAdmin = await teamMember({
-    tenantDb: dbHarness.tenant2, tenantId: personas.otherTenantOwner.tenantId, email: 'other-orgadmin@new196.test',
+    tenantDb: dbHarness.tenant2, organizationId: personas.otherTenantOwner.organizationId, email: 'other-orgadmin@new196.test',
     roleKey: 'ORG_ADMIN', scopeType: 'ORG', branchIds: [],
   });
   app = await startTestServer();
@@ -59,8 +59,8 @@ afterAll(async () => {
   await teardownTestDatabases();
 });
 
-const call = (method, path, token, body, tenantId = team.tenantId) => {
-  let r = request(app)[method](`/api/v1${path}`).set('X-Tenant-Id', tenantId);
+const call = (method, path, token, body, organizationId = team.organizationId) => {
+  let r = request(app)[method](`/api/v1${path}`).set('X-Organization-Id', organizationId);
   if (token) r = r.set('Authorization', `Bearer ${token}`);
   return body ? r.send(body) : r;
 };
@@ -139,10 +139,10 @@ describe('NEW-196 organization profile routes: who may use them', () => {
 
   test('another tenant\'s owner cannot read or change this tenant\'s organization', async () => {
     const other = personas.otherTenantOwner;
-    for (const tenantId of [other.tenantId, team.tenantId]) {
-      const read = await call('get', `/host/listings/${secondOrg.id}`, other.token, undefined, tenantId);
+    for (const organizationId of [other.organizationId, team.organizationId]) {
+      const read = await call('get', `/host/listings/${secondOrg.id}`, other.token, undefined, organizationId);
       expect([403, 404]).toContain(read.status);
-      const write = await call('patch', `/host/listings/${secondOrg.id}`, other.token, { gymDescription: 'hijack' }, tenantId);
+      const write = await call('patch', `/host/listings/${secondOrg.id}`, other.token, { gymDescription: 'hijack' }, organizationId);
       expect([403, 404]).toContain(write.status);
     }
     await secondGym.reload();
@@ -166,10 +166,10 @@ describe('NEW-196 organization profile routes: who may use them', () => {
   });
 
   test('another tenant\'s Org Admin (listing.manage there) is refused here, with either tenant header', async () => {
-    for (const tenantId of [personas.otherTenantOwner.tenantId, team.tenantId]) {
+    for (const organizationId of [personas.otherTenantOwner.organizationId, team.organizationId]) {
       const t = otherTenantOrgAdmin.token;
-      expect([403, 404]).toContain((await call('get', `/host/listings/${secondOrg.id}`, t, undefined, tenantId)).status);
-      expect([403, 404]).toContain((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'cross tenant' }, tenantId)).status);
+      expect([403, 404]).toContain((await call('get', `/host/listings/${secondOrg.id}`, t, undefined, organizationId)).status);
+      expect([403, 404]).toContain((await call('patch', `/host/listings/${secondOrg.id}`, t, { gymDescription: 'cross tenant' }, organizationId)).status);
     }
     await secondGym.reload();
     expect(secondGym.description).not.toBe('cross tenant');
@@ -197,9 +197,9 @@ describe('NEW-196 every organization edit is in the audit log with its actor', (
     const byOwner = rows.find((r) => r.actorUserId === personas.owner.user.id);
     const byOrgAdmin = rows.find((r) => r.actorUserId === team.orgAdmin.user.id);
     expect(byOwner.targetType).toBe('GymListing');
-    expect(byOwner.details).toMatchObject({ tenantId: team.tenantId, fields: ['website'], asOwner: true });
+    expect(byOwner.details).toMatchObject({ organizationId: team.organizationId, fields: ['website'], asOwner: true });
     expect(byOrgAdmin.targetType).toBe('GymListing');
-    expect(byOrgAdmin.details).toMatchObject({ tenantId: team.tenantId, asOwner: false });
+    expect(byOrgAdmin.details).toMatchObject({ organizationId: team.organizationId, asOwner: false });
     expect([...byOrgAdmin.details.fields].sort()).toEqual(['contactEmail', 'gymDescription']);
     expect(JSON.stringify(rows.map((r) => r.details))).not.toContain('audit@gymsera.test');
   });

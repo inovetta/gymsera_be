@@ -4,9 +4,9 @@ const { sendSuccess, parsePagination } = require('../utils/response.utils');
 // ── Admin: list all devices (platform-wide) ───────────────────────────────────
 const listDevices = async (req, res, next) => {
   try {
-    const { tenantId } = req.query;
+    const { organizationId } = req.query;
     const { page, limit, offset } = parsePagination(req.query);
-    const result = await deviceService.listDevices({ tenantId: tenantId || null, page, limit, offset });
+    const result = await deviceService.listDevices({ organizationId: organizationId || null, page, limit, offset });
     return sendSuccess(res, result, 'Devices retrieved', 200, result.pagination);
   } catch (err) {
     next(err);
@@ -16,8 +16,8 @@ const listDevices = async (req, res, next) => {
 // ── Admin: create device ──────────────────────────────────────────────────────
 const createDevice = async (req, res, next) => {
   try {
-    const { tenantId, branchId, serialNumber, name, model, ipAddress } = req.body;
-    const result = await deviceService.createDevice({ tenantId, branchId, serialNumber, name, model, ipAddress });
+    const { organizationId, branchId, serialNumber, name, model, ipAddress } = req.body;
+    const result = await deviceService.createDevice({ organizationId, branchId, serialNumber, name, model, ipAddress });
     return sendSuccess(res, result, 'Device registered', 201);
   } catch (err) {
     next(err);
@@ -88,7 +88,7 @@ const removeDeviceMember = async (req, res, next) => {
 // ── Host: list own devices summary ────────────────────────────────────────────
 const myDevices = async (req, res, next) => {
   try {
-    const result = await deviceService.getTenantDeviceSummary(req.user.tenantId);
+    const result = await deviceService.getTenantDeviceSummary(req.user.organizationId);
     return sendSuccess(res, result, 'Devices retrieved');
   } catch (err) {
     next(err);
@@ -100,7 +100,7 @@ const hostCreateDevice = async (req, res, next) => {
   try {
     const { branchId, serialNumber, name, model, ipAddress } = req.body;
     const result = await deviceService.createDevice({
-      tenantId: req.user.tenantId,
+      organizationId: req.user.organizationId,
       branchId,
       serialNumber,
       name,
@@ -116,7 +116,7 @@ const hostCreateDevice = async (req, res, next) => {
 // ── Host: update device ───────────────────────────────────────────────────────
 const hostUpdateDevice = async (req, res, next) => {
   try {
-    const result = await deviceService.updateDevice(req.params.id, req.user.tenantId, req.body);
+    const result = await deviceService.updateDevice(req.params.id, req.user.organizationId, req.body);
     return sendSuccess(res, result, 'Device updated');
   } catch (err) {
     next(err);
@@ -126,7 +126,7 @@ const hostUpdateDevice = async (req, res, next) => {
 // ── Host: delete device ───────────────────────────────────────────────────────
 const hostDeleteDevice = async (req, res, next) => {
   try {
-    await deviceService.deleteDevice(req.params.id, req.user.tenantId);
+    await deviceService.deleteDevice(req.params.id, req.user.organizationId);
     return sendSuccess(res, null, 'Device deleted');
   } catch (err) {
     next(err);
@@ -136,7 +136,7 @@ const hostDeleteDevice = async (req, res, next) => {
 // ── Host: list device members ─────────────────────────────────────────────────
 const hostListDeviceMembers = async (req, res, next) => {
   try {
-    const result = await deviceService.listDeviceMembers(req.params.id, req.user.tenantId);
+    const result = await deviceService.listDeviceMembers(req.params.id, req.user.organizationId);
     return sendSuccess(res, result, 'Device members retrieved');
   } catch (err) {
     next(err);
@@ -147,7 +147,7 @@ const hostListDeviceMembers = async (req, res, next) => {
 const hostAddDeviceMember = async (req, res, next) => {
   try {
     const { userId, zkPin, label } = req.body;
-    const result = await deviceService.addDeviceMember(req.params.id, req.user.tenantId, {
+    const result = await deviceService.addDeviceMember(req.params.id, req.user.organizationId, {
       userId,
       zkPin: parseInt(zkPin),
       label,
@@ -161,7 +161,7 @@ const hostAddDeviceMember = async (req, res, next) => {
 // ── Host: remove member PIN mapping ──────────────────────────────────────────
 const hostRemoveDeviceMember = async (req, res, next) => {
   try {
-    await deviceService.removeDeviceMember(req.params.id, req.params.memberId, req.user.tenantId);
+    await deviceService.removeDeviceMember(req.params.id, req.params.memberId, req.user.organizationId);
     return sendSuccess(res, null, 'Member PIN mapping removed');
   } catch (err) {
     next(err);

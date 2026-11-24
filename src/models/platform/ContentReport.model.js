@@ -17,7 +17,7 @@ module.exports = (sequelize) =>
       targetId: { type: DataTypes.UUID, allowNull: false },
       targetUserId: { type: DataTypes.UUID, allowNull: true },
       conversationId: { type: DataTypes.UUID, allowNull: true },
-      tenantId: { type: DataTypes.UUID, allowNull: true },
+      organizationId: { type: DataTypes.UUID, allowNull: true },
       reason: { type: DataTypes.STRING(32), allowNull: false },
       note: { type: DataTypes.STRING(500), allowNull: true },
       snapshotText: { type: DataTypes.TEXT, allowNull: true },

@@ -21,10 +21,10 @@ async function check(write = (s) => process.stdout.write(s)) {
   const result = await checkTenantSchemaVersions();
   write(`Tenant schema check (target v${TARGET_SCHEMA_VERSION}): ${result.checked} tenant database(s) checked\n`);
   for (const t of result.behind) {
-    const fix = t.hasMigrationTable ? 'node src/scripts/run-tenant-migrations.js --dry-run' : repairCommand(t.tenantCode);
-    write(`BEHIND     ${t.tenantCode} (${t.status}) at v${t.currentVersion}${t.hasMigrationTable ? '' : ', NO schema_migrations table'}; missing ${t.missingVersions.join(', ')}. Fix: ${fix}\n`);
+    const fix = t.hasMigrationTable ? 'node src/scripts/run-tenant-migrations.js --dry-run' : repairCommand(t.organizationCode);
+    write(`BEHIND     ${t.organizationCode} (${t.status}) at v${t.currentVersion}${t.hasMigrationTable ? '' : ', NO schema_migrations table'}; missing ${t.missingVersions.join(', ')}. Fix: ${fix}\n`);
   }
-  for (const f of result.failed) write(`UNCHECKED  ${f.tenantCode || '(tenant list)'}: ${f.error}\n`);
+  for (const f of result.failed) write(`UNCHECKED  ${f.organizationCode || '(tenant list)'}: ${f.error}\n`);
   if (result.behind.length || result.failed.length) {
     write(`FAILED: ${result.behind.length} behind, ${result.failed.length} unchecked.\n`);
     return 1;
@@ -60,7 +60,7 @@ async function main() {
   console.log('-----------------------------------------');
 
   for (const rep of summary.reports) {
-    const tenantLabel = rep.tenantCode ? `[${rep.tenantCode}] ${rep.gymName}` : rep.gymName;
+    const tenantLabel = rep.organizationCode ? `[${rep.organizationCode}] ${rep.gymName}` : rep.gymName;
     if (rep.success) {
       if (isDryRun) {
         const wouldRunCount = rep.wouldRun?.length || 0;

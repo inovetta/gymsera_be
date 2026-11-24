@@ -38,7 +38,7 @@ describe('NEW-84: branch-scoped socket rooms', () => {
     team = await buildTwoBranchTeam(dbHarness, personas);
     staffB = await teamMember({
       tenantDb: dbHarness.tenant1,
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
       email: 'desk-b@new84.test',
       roleKey: 'DESK',
       scopeType: 'BRANCH',
@@ -49,7 +49,7 @@ describe('NEW-84: branch-scoped socket rooms', () => {
       where: { id: 1 },
       defaults: { id: 1, name: 'Karachi', isActive: true },
     });
-    await factories.createGymListing(team.tenantId, { branchId: team.branchB.id });
+    await factories.createGymListing(team.organizationId, { branchId: team.branchB.id });
 
     socketGateway = require('../../src/socket');
     ledgerService = require('../../src/services/ledger.service');
@@ -96,18 +96,18 @@ describe('NEW-84: branch-scoped socket rooms', () => {
 
   const ownerToken = async () => {
     const { Tenant } = require('../../src/models/platform');
-    const tenant = await Tenant.findByPk(team.tenantId);
+    const tenant = await Tenant.findByPk(team.organizationId);
     return signToken({
       sub: tenant.ownerUserId,
       id: tenant.ownerUserId,
       role: 'GYM_HOST',
       isVerified: true,
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
     });
   };
 
   const ledgerAt = (branchId) => () =>
-    ledgerService.notifyLedgerUpdated(team.tenantId, branchId, '2026-10-15');
+    ledgerService.notifyLedgerUpdated(team.organizationId, branchId, '2026-10-15');
 
   const inquiryAt = (branchId) => () =>
     require('../../src/services/inbox.service').createTravelerInquiry(

@@ -151,8 +151,8 @@ describe('P0: Tenant Migration Dry-Run Safety & Migration 004 Isolation', () => 
 
     // Call runner in DRY-RUN mode
     const dryRunResult = await runTenantMigrations(seq, {
-      tenantId: 'dryrun-test-tenant',
-      tenantCode: 'DRYRUN',
+      organizationId: 'dryrun-test-tenant',
+      organizationCode: 'DRYRUN',
       gymName: 'Alpha Fitness',
       dryRun: true,
     });
@@ -268,7 +268,7 @@ describe('P0: Tenant Migration Dry-Run Safety & Migration 004 Isolation', () => 
 
     // Run LIVE Migration up to v4 (non-dry-run)
     const runResult = await runTenantMigrations(seq, {
-      tenantId: 'mig004-test-tenant',
+      organizationId: 'mig004-test-tenant',
       targetVersion: 4,
       dryRun: false,
     });
@@ -314,7 +314,7 @@ describe('P0: Tenant Migration Dry-Run Safety & Migration 004 Isolation', () => 
 
     // Call each migration up() directly with context.dryRun = true
     for (const mig of MIGRATIONS) {
-      await mig.up(seq, { tenantId: 'direct-dryrun-tenant', dryRun: true });
+      await mig.up(seq, { organizationId: 'direct-dryrun-tenant', dryRun: true });
     }
 
     const afterSnapshot = await captureDbSnapshot(seq);

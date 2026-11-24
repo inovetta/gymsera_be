@@ -170,7 +170,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     // Invitation status marked ACCEPTED
     const invitation = await TenantInvitation.findOne({ where: { ownerEmail } });
     expect(invitation.status).toBe('ACCEPTED');
-    expect(invitation.tenantId).toBe(createdTenant.id);
+    expect(invitation.organizationId).toBe(createdTenant.id);
 
     // Acceptance audited
     const audit = await PlatformAuditLog.findOne({

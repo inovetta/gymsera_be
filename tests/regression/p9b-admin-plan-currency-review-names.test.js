@@ -19,7 +19,7 @@ const discoveryCache = require('../../src/services/discovery-cache.service');
 let h;
 let personas;
 let app;
-let tenantId;
+let organizationId;
 let adminToken;
 let branch;
 let listing;
@@ -27,7 +27,7 @@ let listing;
 beforeAll(async () => {
   h = await setupTestDatabases();
   personas = await setupPersonas(h);
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
   const admin = personas.platformAdmin.user;
   adminToken = signToken({ sub: admin.id, id: admin.id, email: admin.email, role: 'PLATFORM_ADMIN', isVerified: true });
 
@@ -40,7 +40,7 @@ beforeAll(async () => {
   });
 
   const { GymListing } = require('../../src/models/platform');
-  listing = await GymListing.findOne({ where: { tenantId } });
+  listing = await GymListing.findOne({ where: { organizationId } });
   app = await startTestServer();
 });
 
@@ -54,7 +54,7 @@ const asAdmin = (path) => request(app).get(`/api/v1${path}`).set('Authorization'
 
 describe('R-80: admin tenant plans carry their currency', () => {
   test('each plan has the currency of its branch', async () => {
-    const res = await asAdmin(`/admin/tenants/${tenantId}/membership-plans`);
+    const res = await asAdmin(`/admin/tenants/${organizationId}/membership-plans`);
     expect(res.status).toBe(200);
     const plan = res.body.data.plans.find((p) => p.name === 'Quarter Pass');
     expect(plan).toBeDefined();
@@ -63,7 +63,7 @@ describe('R-80: admin tenant plans carry their currency', () => {
 
   test('a non-admin cannot read them', async () => {
     const res = await request(app)
-      .get(`/api/v1/admin/tenants/${tenantId}/membership-plans`)
+      .get(`/api/v1/admin/tenants/${organizationId}/membership-plans`)
       .set('Authorization', `Bearer ${personas.owner.token}`);
     expect([401, 403]).toContain(res.status);
   });
@@ -78,8 +78,8 @@ describe('BUG-29: admin reviews name the gym by the traveller rule', () => {
     const { createUser } = require('../harness/factories');
     const a = await createUser({ role: 'MEMBER', email: 'p9b.reviewer.a@gymsera.test', fullName: 'Reviewer A' });
     const b = await createUser({ role: 'MEMBER', email: 'p9b.reviewer.b@gymsera.test', fullName: 'Reviewer B' });
-    liveReview = await GymReview.create({ gymListingId: listing.id, tenantId, userId: a.id, branchId: branch.id, rating: 5, status: 'PENDING' });
-    hiddenReview = await GymReview.create({ gymListingId: listing.id, tenantId, userId: b.id, branchId: '99999999-9999-4999-8999-999999999999', rating: 4, status: 'PENDING' });
+    liveReview = await GymReview.create({ gymListingId: listing.id, organizationId, userId: a.id, branchId: branch.id, rating: 5, status: 'PENDING' });
+    hiddenReview = await GymReview.create({ gymListingId: listing.id, organizationId, userId: b.id, branchId: '99999999-9999-4999-8999-999999999999', rating: 4, status: 'PENDING' });
   });
 
   test('a review of a live branch gets the snapshot title (Organization · Branch)', async () => {

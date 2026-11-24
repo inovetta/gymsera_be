@@ -38,7 +38,7 @@ beforeAll(async () => {
   const { teamMember } = require('../harness/two-branch-team');
 
   // Set bank details on team's tenant
-  await require('../harness/factories').setPayoutAccount(team.tenantId, BANK); // P7b (R-94): the payout account store
+  await require('../harness/factories').setPayoutAccount(team.organizationId, BANK); // P7b (R-94): the payout account store
 
   // Create a tenant owner user whose account role is MEMBER (users.role = 'MEMBER')
   memberRoleOwnerUser = await factories.createUser({
@@ -48,10 +48,10 @@ beforeAll(async () => {
   });
 
   // Transfer tenant ownership to this MEMBER-role user
-  await Tenant.update({ ownerUserId: memberRoleOwnerUser.id }, { where: { id: team.tenantId } });
+  await Tenant.update({ ownerUserId: memberRoleOwnerUser.id }, { where: { id: team.organizationId } });
 
   // Update listing hostUserId to match
-  await GymListing.update({ hostUserId: memberRoleOwnerUser.id }, { where: { tenantId: team.tenantId } });
+  await GymListing.update({ hostUserId: memberRoleOwnerUser.id }, { where: { organizationId: team.organizationId } });
 
   // Sign token for the owner with role: 'MEMBER'
   memberRoleOwnerToken = signToken({
@@ -60,13 +60,13 @@ beforeAll(async () => {
     email: memberRoleOwnerUser.email,
     role: 'MEMBER',
     isVerified: true,
-    tenantId: team.tenantId,
+    organizationId: team.organizationId,
   });
 
   // Create a Trainer at branch A (has no members.create)
   trainer = await teamMember({
     tenantDb: dbHarness.tenant1,
-    tenantId: team.tenantId,
+    organizationId: team.organizationId,
     email: 'trainer@new47.test',
     roleKey: 'TRAINER',
     scopeType: 'BRANCH',
@@ -114,24 +114,24 @@ afterAll(async () => {
 });
 
 const reqGet = (path, token) =>
-  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId);
+  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
 const reqPost = (path, token, body = {}) =>
-  request(app).post(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId).send(body);
+  request(app).post(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
 
 const reqPatch = (path, token, body = {}) =>
-  request(app).patch(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId).send(body);
+  request(app).patch(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
 
 const reqDelete = (path, token, body = {}) =>
-  request(app).delete(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId).send(body);
+  request(app).delete(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body);
 
 describe('NEW-47: tenant owner with account role MEMBER access', () => {
   describe('Direct utility checks', () => {
     test('hasAllBranches returns true for tenant owner with role MEMBER', async () => {
       const req = {
-        user: { id: memberRoleOwnerUser.id, role: 'MEMBER', tenantId: team.tenantId },
+        user: { id: memberRoleOwnerUser.id, role: 'MEMBER', organizationId: team.organizationId },
         tenantDb: dbHarness.tenant1,
-        tenantId: team.tenantId,
+        organizationId: team.organizationId,
       };
       const res = await hasAllBranches(req);
       expect(res).toBe(true);
@@ -139,9 +139,9 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
 
     test('branchIdsWithAnyGrant returns null (all branches) for tenant owner with role MEMBER', async () => {
       const req = {
-        user: { id: memberRoleOwnerUser.id, role: 'MEMBER', tenantId: team.tenantId },
+        user: { id: memberRoleOwnerUser.id, role: 'MEMBER', organizationId: team.organizationId },
         tenantDb: dbHarness.tenant1,
-        tenantId: team.tenantId,
+        organizationId: team.organizationId,
       };
       const res = await branchIdsWithAnyGrant(req);
       expect(res).toBeNull();
@@ -159,7 +159,7 @@ describe('NEW-47: tenant owner with account role MEMBER access', () => {
     test('listBranches directly with req.user.role = MEMBER returns all branches', async () => {
       const { listBranches } = require('../../src/controllers/gyms.controller');
       const req = {
-        user: { id: memberRoleOwnerUser.id, role: 'MEMBER', tenantId: team.tenantId },
+        user: { id: memberRoleOwnerUser.id, role: 'MEMBER', organizationId: team.organizationId },
         tenantDb: dbHarness.tenant1,
         params: {},
         query: {},

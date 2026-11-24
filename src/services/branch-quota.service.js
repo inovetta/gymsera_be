@@ -9,11 +9,11 @@ const { Tenant, GymListing } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
 
-const getBranchQuota = async (tenantId, { businessId = null } = {}) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const getBranchQuota = async (organizationId, { businessId = null } = {}) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
-  const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+  const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId);
   const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
 
   // usedBranches/remainingBranches are always tenant-wide — the branch-
@@ -34,8 +34,8 @@ const getBranchQuota = async (tenantId, { businessId = null } = {}) => {
   // that could not be reached reads as real capacity (UX-08). GET /me/bootstrap
   // already turns a failure into `quota: null`; the host routes answer the error.
   if (tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted) {
-    const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-    usedBranches = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
+    usedBranches = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
 
     if (businessId) {
@@ -43,7 +43,7 @@ const getBranchQuota = async (tenantId, { businessId = null } = {}) => {
         where: { status: 'ACTIVE', gymId: businessId },
       });
       const orgListing = await GymListing.findOne({
-        where: { id: businessId, tenantId },
+        where: { id: businessId, organizationId },
         attributes: ['reservedSlots'],
       });
       businessReservedSlots = orgListing ? orgListing.reservedSlots : 0;

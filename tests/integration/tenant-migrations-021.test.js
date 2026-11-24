@@ -33,7 +33,7 @@ describe('Tenant migration 021 (branches.paused_at / paused_by, P5b item 2)', ()
 
   test('--dry-run lists 021 and writes nothing', async () => {
     await toPre021();
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', dryRun: true, targetVersion: 21 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', dryRun: true, targetVersion: 21 });
     expect(res.wouldRun).toContain(M021);
     expect(await cols()).toEqual({});
     expect(await recorded()).toBeUndefined();
@@ -42,7 +42,7 @@ describe('Tenant migration 021 (branches.paused_at / paused_by, P5b item 2)', ()
   test('skips (not recorded) when branches.paused_at exists with another type', async () => {
     await toPre021();
     await tenantSeq.query('ALTER TABLE `branches` ADD COLUMN `paused_at` INT NULL');
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 21 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 21 });
     expect(res.applied).not.toContain(M021);
     expect(await recorded()).toBeUndefined();
     expect((await cols()).paused_at).toBe('int YES');
@@ -50,13 +50,13 @@ describe('Tenant migration 021 (branches.paused_at / paused_by, P5b item 2)', ()
 
   test('adds both nullable columns (no branch is paused), then a re-run does nothing', async () => {
     await toPre021();
-    const res1 = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 21 });
+    const res1 = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 21 });
     expect(res1.applied).toContain(M021);
     expect(await cols()).toEqual({ paused_at: 'datetime YES', paused_by: 'char YES' });
     const [{ n }] = await tenantSeq.query('SELECT COUNT(*) AS n FROM branches WHERE paused_at IS NOT NULL', { type: QueryTypes.SELECT });
     expect(Number(n)).toBe(0);
 
-    const res2 = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 21 });
+    const res2 = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 21 });
     expect(res2.applied).not.toContain(M021);
   });
 });

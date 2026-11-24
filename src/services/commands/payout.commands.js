@@ -42,7 +42,7 @@ register({
 
     // P7b (R-94): the payout account of the branch's organization, else the tenant default.
     // Its SEC-13 cooling period and its details are the ones that count.
-    const account = await payoutAccountService.resolveForBranch(ctx.tenantDb, ctx.tenantId, payload.branchId || null);
+    const account = await payoutAccountService.resolveForBranch(ctx.tenantDb, ctx.organizationId, payload.branchId || null);
 
     const cooling = checkCoolingPeriod(account);
     if (cooling.active) {
@@ -99,7 +99,7 @@ register({
         throw err;
       }
 
-      const account = await payoutAccountService.resolveForBranch(ctx.tenantDb, ctx.tenantId, payload.branchId || null);
+      const account = await payoutAccountService.resolveForBranch(ctx.tenantDb, ctx.organizationId, payload.branchId || null);
       if (checkCoolingPeriod(account).active) {
         const err = createError('Payout requests are temporarily blocked. Bank payout details were updated within the last 24 hours.', 422);
         err.code = 'cooling_period_active';

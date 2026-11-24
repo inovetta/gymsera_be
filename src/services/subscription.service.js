@@ -36,15 +36,15 @@ const _generateQrToken = () => `GE-${crypto.randomBytes(20).toString('hex').toUp
 
 /**
  * Resolve tenant DB from a GymListing UUID.
- * Returns { models, tenantId, encryptedConnStr }.
+ * Returns { models, organizationId, encryptedConnStr }.
  */
 const _resolveTenant = async (gymListingId) => {
   let listing = await GymListing.findOne({
     where: { id: gymListingId, status: 'ACTIVE' },
-    attributes: ['id', 'tenantId', 'title'],
+    attributes: ['id', 'organizationId', 'title'],
   });
 
-  let tenantId = listing ? listing.tenantId : null;
+  let organizationId = listing ? listing.organizationId : null;
 
   if (!listing) {
     // If listing not found, it could be a branch ID directly
@@ -60,11 +60,11 @@ const _resolveTenant = async (gymListingId) => {
         const { Branch } = tenantDb.models;
         const branch = await Branch.findByPk(gymListingId);
         if (branch) {
-          tenantId = t.id;
+          organizationId = t.id;
           if (branch.gymId) {
             listing = await GymListing.findOne({
               where: { id: branch.gymId, status: 'ACTIVE' },
-              attributes: ['id', 'tenantId', 'title'],
+              attributes: ['id', 'organizationId', 'title'],
             });
           }
           break;
@@ -75,18 +75,18 @@ const _resolveTenant = async (gymListingId) => {
     }
   }
 
-  if (!tenantId) throw createError('Gym not found or not active', 404);
+  if (!organizationId) throw createError('Gym not found or not active', 404);
 
   if (!listing) {
     listing = await GymListing.findOne({
-      where: { tenantId, status: 'ACTIVE' },
-      attributes: ['id', 'tenantId', 'title'],
+      where: { organizationId, status: 'ACTIVE' },
+      attributes: ['id', 'organizationId', 'title'],
     });
   }
   if (!listing) throw createError('Gym listing not found or not active', 404);
 
   const tenant = await Tenant.findOne({
-    where: { id: tenantId, status: 'ACTIVE' },
+    where: { id: organizationId, status: 'ACTIVE' },
     attributes: ['id', 'connectionStringEncrypted', 'ownerUserId'],
   });
   if (!tenant) throw createError('Gym tenant is not available', 503);
@@ -95,7 +95,7 @@ const _resolveTenant = async (gymListingId) => {
     tenant.id,
     tenant.connectionStringEncrypted
   );
-  return { models, tenantId: tenant.id, gymListing: listing };
+  return { models, organizationId: tenant.id, gymListing: listing };
 };
 
 /**
@@ -116,7 +116,7 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
   const resolvedSubscriptionId = index.subscriptionId || subscriptionId;
 
   const tenant = await Tenant.findOne({
-    where: { id: index.tenantId, status: 'ACTIVE' },
+    where: { id: index.organizationId, status: 'ACTIVE' },
     attributes: ['id', 'connectionStringEncrypted'],
   });
   if (!tenant) throw createError('Gym tenant is not available', 503);
@@ -125,7 +125,7 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
     tenant.id,
     tenant.connectionStringEncrypted
   );
-  return { models: tenantDb.models, index, resolvedSubscriptionId, tenantDb, tenantId: tenant.id };
+  return { models: tenantDb.models, index, resolvedSubscriptionId, tenantDb, organizationId: tenant.id };
 };
 
 /**
@@ -206,7 +206,7 @@ const datesOnApproval = async (models, sub, transaction = null) => {
 
 // ── POST /subscriptions ───────────────────────────────────────────────────────
 const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, sourceChannel }) => {
-  const { models, tenantId, gymListing } = await _resolveTenant(gymListingId);
+  const { models, organizationId, gymListing } = await _resolveTenant(gymListingId);
   const { MembershipPlan, MemberSubscription, MemberProfile, Payment, Invoice } = models;
 
   const plan = await MembershipPlan.findOne({ where: { id: planId, status: 'ACTIVE' } });
@@ -265,7 +265,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
   // Write cross-tenant index (PENDING until payment verified)
   await UserGymMembership.create({
     userId,
-    tenantId,
+    organizationId,
     gymListingId: gymListing.id,
     subscriptionId: subscription.id,
     gymName: gymListing.title,
@@ -329,7 +329,7 @@ const subscribe = async (userId, { planId, gymListingId, branchId, autoRenew, so
 
     // 2. Recipient: Host
     const { Tenant } = require('../models/platform');
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     if (tenant && tenant.ownerUserId) {
       await notificationsService.createNotification({
         userId: tenant.ownerUserId,
@@ -897,7 +897,7 @@ const getMySubscriptionDetail = async (userId, subscriptionId) => {
     const rotatingToken = generateAttendanceQrToken({
       subscriptionId: sub.id,
       userId: sub.userId,
-      tenantId: index.tenantId,
+      organizationId: index.organizationId,
       branchId: sub.branchId,
     });
     sub.setDataValue('qrCode', rotatingToken);
@@ -924,7 +924,7 @@ const getSubscriptionQrToken = async (userId, subscriptionId) => {
   const qrToken = generateAttendanceQrToken({
     subscriptionId: sub.id,
     userId: sub.userId,
-    tenantId: index.tenantId,
+    organizationId: index.organizationId,
     branchId: sub.branchId,
   });
 
@@ -943,7 +943,7 @@ const uploadSubscriptionProof = async (userId, subscriptionId, file) => {
   if (!payment) throw createError('No pending payment found for this subscription', 404);
 
   // P9c (A): the file is stored (private store) before the row points at it.
-  await require('./payment-proof.service').storeProof({ tenantId: index.tenantId, payment, file });
+  await require('./payment-proof.service').storeProof({ organizationId: index.organizationId, payment, file });
   return payment.reload();
 };
 

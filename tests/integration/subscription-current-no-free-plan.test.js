@@ -73,7 +73,7 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
       id: tenant.ownerUserId,
       role: 'GYM_HOST',
       isVerified: true,
-      tenantId: tenant.id,
+      organizationId: tenant.id,
     });
   });
 
@@ -105,7 +105,7 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
   const rows = async () =>
     (
       await TenantSubscription.findAll({
-        where: { tenantId: tenant.id },
+        where: { organizationId: tenant.id },
         order: [['createdAt', 'ASC']],
       })
     ).map((r) => `${r.id}:${r.status}`);
@@ -149,7 +149,7 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ status: 'REVOKED', entitled: false });
     expect(
-      await TenantSubscription.count({ where: { tenantId: tenant.id, status: 'ACTIVE' } })
+      await TenantSubscription.count({ where: { organizationId: tenant.id, status: 'ACTIVE' } })
     ).toBe(0);
     expect(await rows()).toEqual(before);
     expect(await maxBranches()).toBe(0);
@@ -182,14 +182,14 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
   );
 
   test('a tenant with no plan history but a selected package gets 404 and nothing is written (R-21)', async () => {
-    expect(await TenantSubscription.count({ where: { tenantId: tenant.id } })).toBe(0);
+    expect(await TenantSubscription.count({ where: { organizationId: tenant.id } })).toBe(0);
 
     const res = await getCurrent();
 
     expect(res.status).toBe(404);
-    expect(await TenantSubscription.count({ where: { tenantId: tenant.id } })).toBe(0);
+    expect(await TenantSubscription.count({ where: { organizationId: tenant.id } })).toBe(0);
     expect((await getCurrent()).status).toBe(404);
-    expect(await TenantSubscription.count({ where: { tenantId: tenant.id } })).toBe(0);
+    expect(await TenantSubscription.count({ where: { organizationId: tenant.id } })).toBe(0);
   });
 
   test('a tenant with no plan history and no selected package gets 404 and nothing is written', async () => {
@@ -198,7 +198,7 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
     const res = await getCurrent();
 
     expect(res.status).toBe(404);
-    expect(await TenantSubscription.count({ where: { tenantId: tenant.id } })).toBe(0);
+    expect(await TenantSubscription.count({ where: { organizationId: tenant.id } })).toBe(0);
   });
 
   test('a tenant with an ACTIVE plan gets that plan and nothing is created', async () => {
@@ -212,6 +212,6 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
 
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(active.id);
-    expect(await TenantSubscription.count({ where: { tenantId: tenant.id } })).toBe(1);
+    expect(await TenantSubscription.count({ where: { organizationId: tenant.id } })).toBe(1);
   });
 });

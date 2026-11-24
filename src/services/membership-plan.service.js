@@ -29,10 +29,10 @@ const _ensureSchema = async (tenantDb) => {
 const _tenantFromGymListing = async (gymListingId) => {
   let listing = await GymListing.findOne({
     where: { id: gymListingId, status: 'ACTIVE' },
-    attributes: ['id', 'tenantId', 'title', 'branchId'],
+    attributes: ['id', 'organizationId', 'title', 'branchId'],
   });
 
-  let tenantId = listing ? listing.tenantId : null;
+  let organizationId = listing ? listing.organizationId : null;
   let branchId = listing ? listing.branchId : null;
 
   if (!listing) {
@@ -49,12 +49,12 @@ const _tenantFromGymListing = async (gymListingId) => {
         const { Branch } = tenantDb.models;
         const branch = await Branch.findByPk(gymListingId);
         if (branch) {
-          tenantId = t.id;
+          organizationId = t.id;
           branchId = branch.id;
           if (branch.gymId) {
             listing = await GymListing.findOne({
               where: { id: branch.gymId, status: 'ACTIVE' },
-              attributes: ['id', 'tenantId', 'title', 'branchId'],
+              attributes: ['id', 'organizationId', 'title', 'branchId'],
             });
           }
           break;
@@ -65,10 +65,10 @@ const _tenantFromGymListing = async (gymListingId) => {
     }
   }
 
-  if (!tenantId) throw createError('Gym not found or not active', 404);
+  if (!organizationId) throw createError('Gym not found or not active', 404);
 
   const tenant = await Tenant.findOne({
-    where: { id: tenantId, status: 'ACTIVE' },
+    where: { id: organizationId, status: 'ACTIVE' },
     attributes: ['id', 'connectionStringEncrypted'],
   });
   if (!tenant) throw createError('Gym tenant not available', 503);
@@ -185,14 +185,14 @@ const getPublic = async (planId, gymListingId) => {
   return withCurrency(tenantDb, plan, branchId);
 };
 
-const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
-  if (!tenantId) return;
+const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
+  if (!organizationId) return;
   try {
     const { MembershipPlan, Branch, Gym } = tenantDb.models;
     const planCount = await MembershipPlan.count();
     if (planCount > 0) return;
 
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     if (!tenant) return;
 
     let b = tenant.mainBranchDataJson;
@@ -207,7 +207,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
 
     let gym = await Gym.findOne();
     if (!gym && tenant.gymName) {
-      const firstListing = await GymListing.findOne({ where: { tenantId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
+      const firstListing = await GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
       gym = await Gym.create({
         ...(firstListing ? { id: firstListing.id } : {}), // option S: the business id is the listing id
         name: tenant.gymName,
@@ -229,7 +229,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
             address: b.address || tenant.address || null,
             cityId: b.cityId || tenant.cityId || null,
           },
-          tenantId,
+          organizationId,
           {
             skipCapacityCheck: true,
             skipCapacityEvent: true,
@@ -278,7 +278,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
               isDeactivated: false,
               status: 'ACTIVE',
             });
-            console.log(`[MembershipPlan] Auto-synced onboarding plan '${p.name}' for tenant ${tenantId}`);
+            console.log(`[MembershipPlan] Auto-synced onboarding plan '${p.name}' for tenant ${organizationId}`);
           } catch (err) {
             console.warn('[MembershipPlan] Auto-sync plan error:', err.message);
           }
@@ -292,9 +292,9 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
 };
 
 // ── Host: list all active and inactive plans for the gym ──────────────────────
-const listForHost = async (tenantDb, branchId, tenantId, branchIds) => {
+const listForHost = async (tenantDb, branchId, organizationId, branchIds) => {
   await _ensureSchema(tenantDb);
-  await _ensureTenantOnboardingPlans(tenantDb, tenantId);
+  await _ensureTenantOnboardingPlans(tenantDb, organizationId);
 
   const { MembershipPlan, Branch } = tenantDb.models;
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });

@@ -14,7 +14,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
   let platformSeq;
   let branchId;
   let listingId;
-  let tenantId;
+  let organizationId;
   let memberUserId;
 
   beforeAll(async () => {
@@ -31,7 +31,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     const listing = await GymListing.findOne();
     listingId = listing.id;
     const tenant = await Tenant.findOne({ where: { status: 'ACTIVE' } });
-    tenantId = tenant.id;
+    organizationId = tenant.id;
     memberUserId = personas.member.user.id;
 
     // 1. Seed legacy staff invite (FLOW-12): pending with null invite_token_hash / token_expires_at
@@ -58,7 +58,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
       gymListingId: listingId,
       branchId,
       userId: nonMemberUser.id,
-      tenantId,
+      organizationId,
       rating: 5,
       title: 'Great Facility',
       body: 'Nice place!',

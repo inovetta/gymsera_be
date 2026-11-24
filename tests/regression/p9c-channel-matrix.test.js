@@ -29,9 +29,9 @@ describe('P9c E: channel matrix — one entitlement, clear messages, duplicate_b
   let jpeg;
   let seq = 0;
   const saved = {};
-  const tenantId = () => ctx.tenant1.id;
+  const organizationId = () => ctx.tenant1.id;
 
-  const entitling = () => TenantSubscription.findAll({ where: { tenantId: tenantId(), status: ENTITLING_STATUSES } });
+  const entitling = () => TenantSubscription.findAll({ where: { organizationId: organizationId(), status: ENTITLING_STATUSES } });
   const expectOneEntitlement = async (platform) => {
     const rows = await entitling();
     expect(rows.map((r) => r.platform)).toEqual([platform]);
@@ -39,14 +39,14 @@ describe('P9c E: channel matrix — one entitlement, clear messages, duplicate_b
   };
   const reset = async (rows = []) => {
     await PlanPaymentRequest.destroy({ where: {} });
-    await TenantSubscription.destroy({ where: { tenantId: tenantId() } });
+    await TenantSubscription.destroy({ where: { organizationId: organizationId() } });
     await ctx.tenant1Db.models.Branch.update({ billingLockedAt: null, billingLockReason: null }, { where: {} });
-    for (const r of rows) await createTenantSubscription(tenantId(), r);
+    for (const r of rows) await createTenantSubscription(organizationId(), r);
   };
   /** What a verified store purchase / renewal writes (apple-billing / google-play-billing → this). */
   const storeSync = (platform, origId, plan, overrides = {}, opts = {}) =>
     applyVerifiedSubscription(
-      tenantId(),
+      organizationId(),
       {
         platform,
         externalOriginalTransactionId: origId,
@@ -104,7 +104,7 @@ describe('P9c E: channel matrix — one entitlement, clear messages, duplicate_b
     await storeSync('IOS', 'IOS-up', plan3);
     const row = await expectOneEntitlement('IOS');
     expect(row.branchCount).toBe(3);
-    expect(await TenantSubscription.count({ where: { tenantId: tenantId() } })).toBe(1);
+    expect(await TenantSubscription.count({ where: { organizationId: organizationId() } })).toBe(1);
     expect((await current()).duplicateBilling).toBe(false);
   });
 
@@ -156,7 +156,7 @@ describe('P9c E: channel matrix — one entitlement, clear messages, duplicate_b
     expect(asked.action).not.toBe('blocked');
     await storeSync(platform, `${platform}-after-bank`, plan3);
     await expectOneEntitlement(platform);
-    const bank = await TenantSubscription.findOne({ where: { tenantId: tenantId(), platform: 'MANUAL' } });
+    const bank = await TenantSubscription.findOne({ where: { organizationId: organizationId(), platform: 'MANUAL' } });
     expect(bank.status).toBe('CANCELLED');
     expect(bank.statusNote).toMatch(new RegExp(`Replaced by a new ${STORE[platform]} subscription .* no action needed`));
     expect((await current()).duplicateBilling).toBe(false);

@@ -30,7 +30,7 @@ const TenantDbManager = require('../database/TenantDbManager');
       if (!tenant.connectionStringEncrypted) continue;
 
       const listings = await GymListing.findAll({
-        where: { tenantId: tenant.id, branchId: { [require('sequelize').Op.ne]: null } },
+        where: { organizationId: tenant.id, branchId: { [require('sequelize').Op.ne]: null } },
       });
       if (listings.length === 0) continue;
 

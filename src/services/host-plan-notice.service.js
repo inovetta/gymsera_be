@@ -46,13 +46,13 @@ const _push = (kind, { storeName, branchCount }) =>
   })[kind];
 
 /**
- * @param {string} tenantId
+ * @param {string} organizationId
  * @param {'on_hold'|'refunded'|'expired'|'downgraded'} kind
  * @param {object} subscription - the TenantSubscription just written.
  */
-const notifyHostOfPlanChange = async (tenantId, kind, subscription) => {
+const notifyHostOfPlanChange = async (organizationId, kind, subscription) => {
   try {
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId', 'businessName', 'gymName'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId', 'businessName', 'gymName'] });
     const owner = tenant?.ownerUserId ? await User.findByPk(tenant.ownerUserId, { attributes: ['id', 'email', 'fullName'] }) : null;
     if (!owner) return;
     const storeName = STORE_NAME[subscription.platform] || null;
@@ -73,7 +73,7 @@ const notifyHostOfPlanChange = async (tenantId, kind, subscription) => {
         deepLink: '/host/subscriptions',
         metadataJson: { event: `host_plan_${kind}`, subscriptionId: subscription.id, status: subscription.status },
       })
-      .catch((err) => console.warn(`[HostPlanNotice] ${kind} notification failed for tenant ${tenantId}:`, err.message));
+      .catch((err) => console.warn(`[HostPlanNotice] ${kind} notification failed for tenant ${organizationId}:`, err.message));
 
     const emailService = require('./email.service');
     const send =
@@ -90,9 +90,9 @@ const notifyHostOfPlanChange = async (tenantId, kind, subscription) => {
             branchCount,
             branchesLockAt,
           });
-    await Promise.resolve(send).catch((err) => console.warn(`[HostPlanNotice] ${kind} email failed for tenant ${tenantId}:`, err.message));
+    await Promise.resolve(send).catch((err) => console.warn(`[HostPlanNotice] ${kind} email failed for tenant ${organizationId}:`, err.message));
   } catch (err) {
-    console.warn(`[HostPlanNotice] ${kind} notice failed for tenant ${tenantId}:`, err.message);
+    console.warn(`[HostPlanNotice] ${kind} notice failed for tenant ${organizationId}:`, err.message);
   }
 };
 

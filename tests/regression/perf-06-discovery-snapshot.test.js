@@ -15,7 +15,7 @@ let queryCount = 0;
 const origQuery = Sequelize.prototype.query;
 
 describe('PERF-06: discovery snapshot cache', () => {
-  let server; let h; let personas; let branch; let listing; let tenantId;
+  let server; let h; let personas; let branch; let listing; let organizationId;
 
   const listIds = async () => {
     const res = await request(server).get('/api/v1/discovery/gyms?page=1&limit=50');
@@ -29,8 +29,8 @@ describe('PERF-06: discovery snapshot cache', () => {
     h = await setupTestDatabases();
     personas = await setupPersonas(h);
     server = await startTestServer();
-    tenantId = personas.owner.tenantId;
-    listing = await GymListing.findOne({ where: { tenantId } });
+    organizationId = personas.owner.organizationId;
+    listing = await GymListing.findOne({ where: { organizationId } });
     await listing.update({ status: 'ACTIVE' });
     branch = await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } });
     await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
@@ -117,7 +117,7 @@ describe('PERF-06: discovery snapshot cache', () => {
       await branch.reload();
       await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
       await listing.update({ status: 'ACTIVE' });
-      await Tenant.update({ status: 'ACTIVE' }, { where: { id: tenantId } });
+      await Tenant.update({ status: 'ACTIVE' }, { where: { id: organizationId } });
     });
 
     test('branch hidden from travelers disappears on the very next read', async () => {
@@ -140,7 +140,7 @@ describe('PERF-06: discovery snapshot cache', () => {
 
     test('suspended tenant disappears on the very next read', async () => {
       expect(await listIds()).toContain(branch.id);
-      await Tenant.update({ status: 'SUSPENDED' }, { where: { id: tenantId } });
+      await Tenant.update({ status: 'SUSPENDED' }, { where: { id: organizationId } });
       expect(await listIds()).not.toContain(branch.id);
     });
 

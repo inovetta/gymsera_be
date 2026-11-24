@@ -197,7 +197,7 @@ describe('OBS-03: request rate, latency and errors by route pattern', () => {
 
 describe('OBS-03: database pools (totals plus the top 10 tenants)', () => {
   const fakePool = (id, using, waiting, size) => ({
-    tenantId: id,
+    organizationId: id,
     lastUsedAt: Date.now(),
     sequelize: { connectionManager: { pool: { size, using, waiting } }, close: async () => {} },
   });

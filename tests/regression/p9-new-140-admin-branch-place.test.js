@@ -13,7 +13,7 @@ const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = 
 const { stopTestServer } = require('../harness/test-server');
 
 let h;
-const tenantId = '11111111-1111-4111-8111-111111111111';
+const organizationId = '11111111-1111-4111-8111-111111111111';
 const PLACE = 'ChIJ2QeB5YMEGTkRYiR-zGy-OsI';
 
 beforeAll(async () => {
@@ -34,7 +34,7 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
   test('PATCH stores googlePlaceId with the picked coordinates', async () => {
     const branch = await firstBranch();
     const res = await asPersona('platformAdmin')
-      .patch(`/admin/tenants/${tenantId}/branches/${branch.id}`)
+      .patch(`/admin/tenants/${organizationId}/branches/${branch.id}`)
       .send({ address: 'Shahrah-e-Faisal, Karachi', latitude: 24.86, longitude: 67.0, googlePlaceId: PLACE });
     expect(res.status).toBe(200);
     await branch.reload();
@@ -49,7 +49,7 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
     const branch = await firstBranch();
     const before = branch[field];
     const res = await asPersona('platformAdmin')
-      .patch(`/admin/tenants/${tenantId}/branches/${branch.id}`)
+      .patch(`/admin/tenants/${organizationId}/branches/${branch.id}`)
       .send({ [field]: value });
     expect(res.status).toBe(422);
     await branch.reload();
@@ -59,14 +59,14 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
   test('PATCH refuses a googlePlaceId that is not a place id', async () => {
     const branch = await firstBranch();
     const res = await asPersona('platformAdmin')
-      .patch(`/admin/tenants/${tenantId}/branches/${branch.id}`)
+      .patch(`/admin/tenants/${organizationId}/branches/${branch.id}`)
       .send({ googlePlaceId: 'not a place id; drop table' });
     expect(res.status).toBe(422);
   });
 
   test('POST creates the branch with its googlePlaceId', async () => {
     const res = await asPersona('platformAdmin')
-      .post(`/admin/tenants/${tenantId}/branches`)
+      .post(`/admin/tenants/${organizationId}/branches`)
       .send({ branchName: 'Clifton', address: 'Clifton Block 5', cityId: 1, latitude: 24.81, longitude: 67.03, googlePlaceId: PLACE });
     expect(res.status).toBe(201);
     const branch = await h.tenant1.models.Branch.findByPk(res.body.data.branch.id);
@@ -75,7 +75,7 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
 
   test('POST refuses latitude out of range', async () => {
     const res = await asPersona('platformAdmin')
-      .post(`/admin/tenants/${tenantId}/branches`)
+      .post(`/admin/tenants/${organizationId}/branches`)
       .send({ branchName: 'Nowhere', address: 'x', cityId: 1, latitude: 99 });
     expect(res.status).toBe(422);
   });

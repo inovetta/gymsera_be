@@ -276,8 +276,8 @@ router.get('/attendance', meController.getMyAttendance);
 // ZKTeco Phase 3 (spec §14): the member's own biometric consent per gym; withdraw at any time.
 router.get('/biometric-consents', require('../controllers/me-biometrics.controller').list);
 router.delete(
-  '/biometric-consents/:tenantId',
-  validate.strict([require('express-validator').param('tenantId').isUUID().withMessage('Unknown gym')], { stage: 2 }),
+  '/biometric-consents/:organizationId',
+  validate.strict([require('express-validator').param('organizationId').isUUID().withMessage('Unknown gym')], { stage: 2 }),
   require('../controllers/me-biometrics.controller').withdraw
 );
 
@@ -340,7 +340,7 @@ router.get('/context', require('../controllers/context.controller').getContext);
  *     summary: App-shell bootstrap — user, contexts, active tenant, quota, unread counts
  *     description: >
  *       One request after sign-in. Tenants come only from the caller's verified
- *       memberships; X-Tenant-Id may only select one of them (404 otherwise).
+ *       memberships; X-Organization-Id may only select one of them (404 otherwise).
  *       Supports ETag / If-None-Match (304). Cache-Control is private.
  *     tags: [Me]
  *     responses:
@@ -349,7 +349,7 @@ router.get('/context', require('../controllers/context.controller').getContext);
  *       304:
  *         description: Unchanged since the supplied ETag
  *       404:
- *         description: X-Tenant-Id names a tenant the caller does not belong to
+ *         description: X-Organization-Id names a tenant the caller does not belong to
  */
 router.get('/bootstrap', require('../controllers/context.controller').getBootstrap);
 

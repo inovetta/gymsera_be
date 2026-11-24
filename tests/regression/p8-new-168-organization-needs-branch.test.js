@@ -26,11 +26,11 @@ describe('NEW-168: no organization without a branch', () => {
   });
 
   test("branchSource 'none': 422 organization_needs_branch and no organization is created", async () => {
-    const before = await GymListing.count({ where: { tenantId: personas.owner.tenantId } });
+    const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
     const res = await asPersona('owner').post('/host/listings', { gymName: 'Empty Org', branchSource: 'none', cityId: 1 });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('organization_needs_branch');
-    expect(await GymListing.count({ where: { tenantId: personas.owner.tenantId } })).toBe(before);
+    expect(await GymListing.count({ where: { organizationId: personas.owner.organizationId } })).toBe(before);
   });
 
   test('the code has user-facing copy in every language', () => {

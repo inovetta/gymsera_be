@@ -1,5 +1,5 @@
 /**
- * NEW-103 (found while listing the SEC-06 tier-1 bodies): POST /billing/purchase-intent took `tenantId` from the
+ * NEW-103 (found while listing the SEC-06 tier-1 bodies): POST /billing/purchase-intent took `organizationId` from the
  * request body with only `authenticate` in front, so any signed-in user could ask about another tenant's
  * subscription (platform, auto-renew, blocker, and the tenant id echoed as `appAccountToken`). SEC-02: the tenant
  * comes from the login, never from input.
@@ -22,17 +22,17 @@ describe('POST /billing/purchase-intent', () => {
   test('another tenant\'s id in the body is ignored: the answer is about the caller\'s own tenant', async () => {
     const res = await asPersona('otherTenantOwner').post('/billing/purchase-intent', {
       platform: 'ios',
-      tenantId: personas.owner.tenantId,
+      organizationId: personas.owner.organizationId,
     });
     expect(res.status).toBe(200);
-    expect(res.body.data.appAccountToken).toBe(personas.otherTenantOwner.tenantId);
-    expect(res.body.data.appAccountToken).not.toBe(personas.owner.tenantId);
+    expect(res.body.data.appAccountToken).toBe(personas.otherTenantOwner.organizationId);
+    expect(res.body.data.appAccountToken).not.toBe(personas.owner.organizationId);
   });
 
   test('a signed-in user with no tenant gets 404 even if the body names one', async () => {
     const res = await asPersona('member').post('/billing/purchase-intent', {
       platform: 'ios',
-      tenantId: personas.owner.tenantId,
+      organizationId: personas.owner.organizationId,
     });
     expect(res.status).toBe(404);
   });
@@ -40,6 +40,6 @@ describe('POST /billing/purchase-intent', () => {
   test('the owner still gets the answer for their own tenant', async () => {
     const res = await asPersona('owner').post('/billing/purchase-intent', { platform: 'android' });
     expect(res.status).toBe(200);
-    expect(res.body.data.appAccountToken).toBe(personas.owner.tenantId);
+    expect(res.body.data.appAccountToken).toBe(personas.owner.organizationId);
   });
 });

@@ -11,9 +11,9 @@ const { Device, DeviceMember, User, Tenant } = require('../models/platform');
 const { createError, buildPagination } = require('../utils/response.utils');
 
 // ── listDevices ───────────────────────────────────────────────────────────────
-const listDevices = async ({ tenantId, page, limit, offset }) => {
+const listDevices = async ({ organizationId, page, limit, offset }) => {
   const where = {};
-  if (tenantId) where.tenantId = tenantId;
+  if (organizationId) where.organizationId = organizationId;
 
   const { count, rows } = await Device.findAndCountAll({
     where,
@@ -28,9 +28,9 @@ const listDevices = async ({ tenantId, page, limit, offset }) => {
 };
 
 // ── getDevice ─────────────────────────────────────────────────────────────────
-const getDevice = async (deviceId, tenantId = null) => {
+const getDevice = async (deviceId, organizationId = null) => {
   const where = { id: deviceId };
-  if (tenantId) where.tenantId = tenantId;
+  if (organizationId) where.organizationId = organizationId;
 
   const device = await Device.findOne({
     where,
@@ -41,8 +41,8 @@ const getDevice = async (deviceId, tenantId = null) => {
 };
 
 // ── createDevice ──────────────────────────────────────────────────────────────
-const createDevice = async ({ tenantId, branchId, serialNumber, name, model, ipAddress }) => {
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'status'] });
+const createDevice = async ({ organizationId, branchId, serialNumber, name, model, ipAddress }) => {
+  const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'status'] });
   if (!tenant) throw createError('Tenant not found', 404);
   if (tenant.status !== 'ACTIVE') throw createError('Tenant is not active', 400);
 
@@ -50,7 +50,7 @@ const createDevice = async ({ tenantId, branchId, serialNumber, name, model, ipA
   if (existing) throw createError(`A device with serial number "${serialNumber}" is already registered`, 409);
 
   const device = await Device.create({
-    tenantId,
+    organizationId,
     branchId,
     serialNumber: serialNumber.trim().toUpperCase(),
     name: name.trim(),
@@ -63,9 +63,9 @@ const createDevice = async ({ tenantId, branchId, serialNumber, name, model, ipA
 };
 
 // ── updateDevice ──────────────────────────────────────────────────────────────
-const updateDevice = async (deviceId, tenantId, { name, model, ipAddress, branchId, status }) => {
+const updateDevice = async (deviceId, organizationId, { name, model, ipAddress, branchId, status }) => {
   const where = { id: deviceId };
-  if (tenantId) where.tenantId = tenantId;
+  if (organizationId) where.organizationId = organizationId;
 
   const device = await Device.findOne({ where });
   if (!device) throw createError('Device not found', 404);
@@ -85,9 +85,9 @@ const updateDevice = async (deviceId, tenantId, { name, model, ipAddress, branch
 };
 
 // ── deleteDevice ──────────────────────────────────────────────────────────────
-const deleteDevice = async (deviceId, tenantId = null) => {
+const deleteDevice = async (deviceId, organizationId = null) => {
   const where = { id: deviceId };
-  if (tenantId) where.tenantId = tenantId;
+  if (organizationId) where.organizationId = organizationId;
 
   const device = await Device.findOne({ where });
   if (!device) throw createError('Device not found', 404);
@@ -97,9 +97,9 @@ const deleteDevice = async (deviceId, tenantId = null) => {
 };
 
 // ── listDeviceMembers ─────────────────────────────────────────────────────────
-const listDeviceMembers = async (deviceId, tenantId = null) => {
+const listDeviceMembers = async (deviceId, organizationId = null) => {
   const deviceWhere = { id: deviceId };
-  if (tenantId) deviceWhere.tenantId = tenantId;
+  if (organizationId) deviceWhere.organizationId = organizationId;
 
   const device = await Device.findOne({ where: deviceWhere });
   if (!device) throw createError('Device not found', 404);
@@ -114,9 +114,9 @@ const listDeviceMembers = async (deviceId, tenantId = null) => {
 };
 
 // ── addDeviceMember ───────────────────────────────────────────────────────────
-const addDeviceMember = async (deviceId, tenantId, { userId, zkPin, label }) => {
+const addDeviceMember = async (deviceId, organizationId, { userId, zkPin, label }) => {
   const deviceWhere = { id: deviceId };
-  if (tenantId) deviceWhere.tenantId = tenantId;
+  if (organizationId) deviceWhere.organizationId = organizationId;
 
   const device = await Device.findOne({ where: deviceWhere });
   if (!device) throw createError('Device not found', 404);
@@ -138,7 +138,7 @@ const addDeviceMember = async (deviceId, tenantId, { userId, zkPin, label }) => 
 
   const member = await DeviceMember.create({
     deviceId,
-    tenantId: device.tenantId,
+    organizationId: device.organizationId,
     userId,
     zkPin,
     label: label || user.fullName,
@@ -148,9 +148,9 @@ const addDeviceMember = async (deviceId, tenantId, { userId, zkPin, label }) => 
 };
 
 // ── removeDeviceMember ────────────────────────────────────────────────────────
-const removeDeviceMember = async (deviceId, memberId, tenantId = null) => {
+const removeDeviceMember = async (deviceId, memberId, organizationId = null) => {
   const deviceWhere = { id: deviceId };
-  if (tenantId) deviceWhere.tenantId = tenantId;
+  if (organizationId) deviceWhere.organizationId = organizationId;
 
   const device = await Device.findOne({ where: deviceWhere });
   if (!device) throw createError('Device not found', 404);
@@ -162,9 +162,9 @@ const removeDeviceMember = async (deviceId, memberId, tenantId = null) => {
 };
 
 // ── getTenantDeviceSummary ────────────────────────────────────────────────────
-const getTenantDeviceSummary = async (tenantId) => {
+const getTenantDeviceSummary = async (organizationId) => {
   const devices = await Device.findAll({
-    where: { tenantId },
+    where: { organizationId },
     attributes: ['id', 'serialNumber', 'name', 'model', 'status', 'lastSeenAt', 'branchId'],
     order: [['name', 'ASC']],
   });

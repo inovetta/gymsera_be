@@ -56,7 +56,7 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(500),
         allowNull: true,
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: true,
         comment: 'OBS-05: the tenant that owns the subscription this event is about, when known. Null when no tenant owns it yet, and on rows from before p022 (not backfilled).',

@@ -24,7 +24,7 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
         comment: 'Denormalized for fast lookup without joining devices table',

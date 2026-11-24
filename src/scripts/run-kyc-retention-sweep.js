@@ -32,7 +32,7 @@ async function main() {
   if (result.details.length > 0) {
     console.log('\nTenants processed:');
     for (const d of result.details) {
-      console.log(` - Tenant [${d.tenantCode || d.tenantId}] (${d.status}, rejected: ${d.rejectedAt}): ${d.documentCount} docs`);
+      console.log(` - Tenant [${d.organizationCode || d.organizationId}] (${d.status}, rejected: ${d.rejectedAt}): ${d.documentCount} docs`);
     }
   }
   console.log('=========================================\n');

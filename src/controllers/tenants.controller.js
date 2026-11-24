@@ -166,7 +166,7 @@ const uploadKycDocuments = async (req, res, next) => {
       throw createError('Choose which document this is: ID, business registration or proof of premises.', 422, 'invalid_document_type');
     }
     const result = await tenantService.uploadKycDocuments({
-      tenantId: req.params.id,
+      organizationId: req.params.id,
       userId: req.user.sub,
       userRole: req.user.role,
       files,
@@ -182,7 +182,7 @@ const uploadKycDocuments = async (req, res, next) => {
 const getKycDocuments = async (req, res, next) => {
   try {
     const result = await tenantService.getKycDocuments({
-      tenantId: req.params.id,
+      organizationId: req.params.id,
       userId: req.user.sub,
       userRole: req.user.role,
     });
@@ -200,7 +200,7 @@ const streamKycDocument = async (req, res, next) => {
       userAgent: req.get('user-agent'),
     };
     const { stream, doc, contentType, contentLength } = await tenantService.getKycDocumentStream({
-      tenantId: req.params.id,
+      organizationId: req.params.id,
       documentId: req.params.documentId,
       userId: req.user.sub,
       userRole: req.user.role,
@@ -231,7 +231,7 @@ const streamKycDocument = async (req, res, next) => {
 const deleteKycDocument = async (req, res, next) => {
   try {
     const result = await tenantService.deleteKycDocument({
-      tenantId: req.params.id,
+      organizationId: req.params.id,
       documentId: req.params.documentId,
       userId: req.user.sub,
       userRole: req.user.role,

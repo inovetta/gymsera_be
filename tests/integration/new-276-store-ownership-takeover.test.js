@@ -53,7 +53,7 @@ describe('NEW-276: store purchase owned by a tenant that no longer exists', () =
     await factories.createGymListing(tenantA.id);
     await factories.createGymListing(tenantB.id);
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5 });
-    const tokenFor = (t) => signToken({ sub: t.ownerUserId, id: t.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: t.id });
+    const tokenFor = (t) => signToken({ sub: t.ownerUserId, id: t.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: t.id });
     tokenA = tokenFor(tenantA);
     tokenB = tokenFor(tenantB);
   });
@@ -76,14 +76,14 @@ describe('NEW-276: store purchase owned by a tenant that no longer exists', () =
 
     expect(res.status).toBe(200);
     const row = await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '5000001' } });
-    expect(row.tenantId).toBe(tenantB.id);
+    expect(row.organizationId).toBe(tenantB.id);
     expect(row.status).toBe('ACTIVE');
     expect(await entitlement(tenantB)).toBe(5);
     const audit = await takeovers();
     expect(audit).toHaveLength(1);
     expect(audit[0].targetId).toBe(row.id);
     expect(audit[0].details).toMatchObject({
-      platform: 'IOS', tenantId: tenantB.id, fromTenantId: GONE_TENANT_ID, reason: 'bound_tenant_gone',
+      platform: 'IOS', organizationId: tenantB.id, fromTenantId: GONE_TENANT_ID, reason: 'bound_tenant_gone',
     });
     // ids only: never the store's transaction id
     expect(JSON.stringify(audit[0].details)).not.toContain('5000001');
@@ -95,7 +95,7 @@ describe('NEW-276: store purchase owned by a tenant that no longer exists', () =
 
     expect((await iosSync(tokenB, '5000002')).status).toBe(200);
     const row = await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '5000002' } });
-    expect(row.tenantId).toBe(tenantB.id);
+    expect(row.organizationId).toBe(tenantB.id);
     expect((await takeovers())[0].details).toMatchObject({ fromTenantId: tenantA.id, reason: 'bound_tenant_gone' });
   });
 
@@ -129,12 +129,12 @@ describe('NEW-276: store purchase owned by a tenant that no longer exists', () =
     expect(res.status).toBe(200);
     const row = await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '5000005' } });
     expect(row.id).not.toBe(old.id);
-    expect(row.tenantId).toBe(tenantB.id);
+    expect(row.organizationId).toBe(tenantB.id);
     expect(row.status).toBe('ACTIVE');
     expect(await entitlement(tenantB)).toBe(5);
 
     await old.reload();
-    expect(old.tenantId).toBe(tenantA.id); // the deleted tenant's history stays its own
+    expect(old.organizationId).toBe(tenantA.id); // the deleted tenant's history stays its own
     expect(old.status).toBe('CANCELLED');
     expect(old.externalOriginalTransactionId).toBe(`released:${old.id}`);
     expect(old.statusNote).toMatch(/taken over/i);
@@ -142,7 +142,7 @@ describe('NEW-276: store purchase owned by a tenant that no longer exists', () =
     const audit = await takeovers();
     expect(audit).toHaveLength(1);
     expect(audit[0].details).toMatchObject({
-      platform: 'IOS', tenantId: tenantB.id, fromTenantId: tenantA.id,
+      platform: 'IOS', organizationId: tenantB.id, fromTenantId: tenantA.id,
       reason: 'owner_tenant_deleted', releasedSubscriptionId: old.id,
     });
   });

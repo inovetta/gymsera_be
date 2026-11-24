@@ -274,8 +274,8 @@ describe('P3: the traveller city list carries each city centre', () => {
     const withCentre = await City.create({ name: 'Centre City', isActive: true, latitude: 33.6844, longitude: 73.0479 });
     const without = await City.create({ name: 'No Centre City', isActive: true });
     // Phase 7 P6 (BUG-26): the list holds only cities with a live gym, so give each one.
-    const liveIn = async (tenantDb, tenantId, cityId) => {
-      const listing = await GymListing.findOne({ where: { tenantId } });
+    const liveIn = async (tenantDb, organizationId, cityId) => {
+      const listing = await GymListing.findOne({ where: { organizationId } });
       await listing.update({ status: 'ACTIVE', cityId });
       const branch = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
       await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false, cityId });
@@ -284,8 +284,8 @@ describe('P3: the traveller city list carries each city centre', () => {
         durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
       });
     };
-    await liveIn(harness.tenant1, personaManager.personas.owner.tenantId, withCentre.id);
-    await liveIn(harness.tenant2, personaManager.personas.otherTenantOwner.tenantId, without.id);
+    await liveIn(harness.tenant1, personaManager.personas.owner.organizationId, withCentre.id);
+    await liveIn(harness.tenant2, personaManager.personas.otherTenantOwner.organizationId, without.id);
     const res = await asPersona('anonymous').get('/discovery/cities');
     expect(res.status).toBe(200);
     const list = res.body.data.cities || res.body.data;

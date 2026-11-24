@@ -34,7 +34,7 @@ describe('PAY-03: Append-Only Ledger and Payment Financial Immutability (spec §
 
     const tenantRecord = await createTenant({
       id: '33333333-3333-4333-8333-333333333333',
-      tenantCode: 'GYM-APPEND',
+      organizationCode: 'GYM-APPEND',
       gymName: 'Append Only Gym',
       ownerUserId: testUser.id,
       connectionStringEncrypted: tenant1.encryptedConnStr,

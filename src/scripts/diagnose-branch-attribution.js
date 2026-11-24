@@ -18,7 +18,7 @@ const TenantDbManager = require('../database/TenantDbManager');
       if (!tenant.connectionStringEncrypted) continue;
 
       const listings = await GymListing.findAll({
-        where: { tenantId: tenant.id },
+        where: { organizationId: tenant.id },
         order: [['createdAt', 'ASC']],
       });
       if (listings.length < 2) continue;

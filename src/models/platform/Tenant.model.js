@@ -11,7 +11,7 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      tenantCode: {
+      organizationCode: {
         field: 'organization_code', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(50),
         allowNull: false,

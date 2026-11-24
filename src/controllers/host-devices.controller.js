@@ -11,7 +11,7 @@ const userIdOf = (req) => req.user?.id || req.user?.sub || null;
 /** Loads :id for this tenant (404 otherwise) and exposes its branch to can({ branch: 'deviceBranchId' }). */
 const loadDevice = async (req, _res, next) => {
   try {
-    const found = await devices.getDevice({ tenantId: req.tenantId || req.tenantDb.tenantId, tenantDb: req.tenantDb, deviceId: req.params.id });
+    const found = await devices.getDevice({ organizationId: req.organizationId || req.tenantDb.organizationId, tenantDb: req.tenantDb, deviceId: req.params.id });
     if (!found) return next(createError('Device not found.', 404, 'device_not_found'));
     req.device = found;
     req.deviceBranchId = found.row.branch_id;
@@ -31,7 +31,7 @@ const listDevices = async (req, res, next) => {
       }
       branchIds = [req.query.branchId];
     }
-    const list = await devices.listDevices({ tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, branchIds });
+    const list = await devices.listDevices({ organizationId: req.tenantDb.organizationId, tenantDb: req.tenantDb, branchIds });
     return sendSuccess(res, { devices: list });
   } catch (err) {
     return next(err);
@@ -42,7 +42,7 @@ const createDevice = async (req, res, next) => {
   try {
     const { branchId, name, direction, linkMode, serialNumber, importFirst } = req.body;
     const result = await devices.createDevice({
-      tenantId: req.tenantDb.tenantId,
+      organizationId: req.tenantDb.organizationId,
       tenantDb: req.tenantDb,
       branchId,
       name,
@@ -62,7 +62,7 @@ const getDevice = (req, res) => sendSuccess(res, { device: req.device.view, setu
 
 const updateDevice = async (req, res, next) => {
   try {
-    const args = { tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, deviceId: req.params.id };
+    const args = { organizationId: req.tenantDb.organizationId, tenantDb: req.tenantDb, deviceId: req.params.id };
     let found = await devices.updateDevice({
       ...args, name: req.body.name, direction: req.body.direction, attOptions: req.body.attOptions, pollDelaySeconds: req.body.pollDelaySeconds,
     });
@@ -75,7 +75,7 @@ const updateDevice = async (req, res, next) => {
 
 const repairDevice = async (req, res, next) => {
   try {
-    const result = await devices.repairDevice({ tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, deviceId: req.params.id });
+    const result = await devices.repairDevice({ organizationId: req.tenantDb.organizationId, tenantDb: req.tenantDb, deviceId: req.params.id });
     return sendSuccess(res, result, 'New device key created. Enter it on the device; the old key no longer works.');
   } catch (err) {
     return next(err);

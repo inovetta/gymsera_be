@@ -234,10 +234,10 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
   });
 
   test('approval gives the first branch the week', async () => {
-    const tenantCode = `test_r113_${Date.now().toString(36)}`;
-    dbNames.push(`gymsera_${tenantCode}`);
+    const organizationCode = `test_r113_${Date.now().toString(36)}`;
+    dbNames.push(`gymsera_${organizationCode}`);
     const tenant = await factories.createTenant({
-      tenantCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER', cityId: 1,
+      organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER', cityId: 1,
       mainBranchDataJson: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
     });
     await require('../../src/services/admin.service').approveTenant(tenant.id, admin.id);
@@ -344,7 +344,7 @@ describe('r113-hours-precheck (read-only counts for the owner)', () => {
     );
     const { precheck, report } = require('../../src/scripts/r113-hours-precheck');
     const result = await precheck();
-    const mine = result.tenants.find((t) => t.tenantCode === ctx.tenant1.tenantCode);
+    const mine = result.tenants.find((t) => t.organizationCode === ctx.tenant1.organizationCode);
     expect(mine).toBeDefined();
     expect(mine.error).toBeUndefined();
     expect(mine.hoursJsonColumn).toBe(true);
@@ -354,7 +354,7 @@ describe('r113-hours-precheck (read-only counts for the owner)', () => {
 
     let out = '';
     report(result, (s) => { out += s; });
-    expect(out).toContain(`${ctx.tenant1.tenantCode} (`);
+    expect(out).toContain(`${ctx.tenant1.organizationCode} (`);
     expect(out).not.toMatch(/mysql:\/\/|password|127\.0\.0\.1|localhost/i);
     const before = await Branch().count();
     await precheck();

@@ -48,7 +48,7 @@ describe('Step 2.10: Mixed Collation Tenant Database Migrations', () => {
 
   test('Migration 004 successfully backfills NULL business_date rows without SQL join when collation is mixed', async () => {
     const { runTenantMigrations } = require('../../src/database/tenant-migration-runner');
-    await runTenantMigrations(fixture.sequelize, { tenantId: 'mixed-tenant', targetVersion: 4 });
+    await runTenantMigrations(fixture.sequelize, { organizationId: 'mixed-tenant', targetVersion: 4 });
 
     const [result] = await fixture.sequelize.query(
       'SELECT COUNT(*) as null_count FROM payments WHERE business_date IS NULL',
@@ -68,7 +68,7 @@ describe('Step 2.10: Mixed Collation Tenant Database Migrations', () => {
     const { runTenantMigrations } = require('../../src/database/tenant-migration-runner');
 
     const result = await runTenantMigrations(fixture.sequelize, {
-      tenantId: 'mixed-tenant',
+      organizationId: 'mixed-tenant',
       dryRun: true,
     });
 
@@ -97,7 +97,7 @@ describe('Step 2.10: Mixed Collation Tenant Database Migrations', () => {
 
     // Run all migrations through v7
     const result = await runTenantMigrations(fixture.sequelize, {
-      tenantId: 'mixed-tenant',
+      organizationId: 'mixed-tenant',
       targetVersion: 7,
     });
 
@@ -137,7 +137,7 @@ describe('Step 2.10: Mixed Collation Tenant Database Migrations', () => {
 
     // Test safe to re-run (idempotency): re-running makes 0 changes
     const rerunResult = await runTenantMigrations(fixture.sequelize, {
-      tenantId: 'mixed-tenant',
+      organizationId: 'mixed-tenant',
       targetVersion: 7,
     });
     expect(rerunResult.applied.length).toBe(0);

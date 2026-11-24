@@ -25,7 +25,7 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
+  listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
   branch1 = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id } });
 });
 
@@ -194,7 +194,7 @@ describe('BUG-05: personas on the hide route', () => {
   });
 
   test('member naming this gym: 404 from tenantContext (not a member; existence not revealed)', async () => {
-    const res = await asPersona('member', { 'X-Tenant-Id': personas.owner.tenantId })
+    const res = await asPersona('member', { 'X-Organization-Id': personas.owner.organizationId })
       .post(`/membership-plans/${only.id}/public`).send({});
     expect(res.status).toBe(404);
   });

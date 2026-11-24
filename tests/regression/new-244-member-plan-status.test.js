@@ -26,7 +26,7 @@ const { daysFromToday } = require('../harness/dates');
 
 let app;
 let personas;
-let tenantId;
+let organizationId;
 let branch;
 let plan;
 const m = {};
@@ -48,8 +48,8 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  organizationId = personas.owner.organizationId;
+  const listing = await GymListing.findOne({ where: { organizationId } });
   branch = await factories.createBranch(tenantDb, listing.id, { name: 'Savvvv Test' });
 
   plan = await tenantDb.models.MembershipPlan.create({
@@ -97,7 +97,7 @@ const getMembers = (query = '') =>
   request(app)
     .get(`/api/v1/gyms/members${query}`)
     .set('Authorization', `Bearer ${personas.owner.token}`)
-    .set('X-Tenant-Id', tenantId);
+    .set('X-Organization-Id', organizationId);
 
 const byId = (res) => new Map(res.body.data.members.map((row) => [row.id, row]));
 const ours = (res) => res.body.data.members.filter((row) => row.email.endsWith('@new244.test'));

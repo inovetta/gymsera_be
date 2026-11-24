@@ -33,7 +33,7 @@ describe('Tenant Migration Runner (spec §6.5)', () => {
 
     // Run migrations on tenant1
     const res1 = await runTenantMigrations(seq, {
-      tenantId: 'test-tenant-1',
+      organizationId: 'test-tenant-1',
       gymName: 'Test Gym 1',
     });
 
@@ -50,7 +50,7 @@ describe('Tenant Migration Runner (spec §6.5)', () => {
 
     // Re-run should be idempotent: 0 applied migrations
     const res2 = await runTenantMigrations(seq, {
-      tenantId: 'test-tenant-1',
+      organizationId: 'test-tenant-1',
       gymName: 'Test Gym 1',
     });
 

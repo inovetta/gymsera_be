@@ -29,7 +29,7 @@ module.exports = (sequelize) => {
     'PayoutAccount',
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-      tenantId: { type: DataTypes.UUID, allowNull: false },
+      organizationId: { type: DataTypes.UUID, allowNull: false },
       businessId: { type: DataTypes.UUID, allowNull: true, field: 'business_id' }, // R-120 NEW-306 (p033)
       scopeKey: { type: DataTypes.STRING(36), allowNull: false },
       provider: { type: DataTypes.STRING(32), allowNull: false, defaultValue: PROVIDERS.BANK_TRANSFER },

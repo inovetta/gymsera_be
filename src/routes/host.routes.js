@@ -21,7 +21,7 @@ const router = Router();
 
 // NEW-108: authorize('GYM_HOST') before tenantContext checks the account role (the
 // user owns *a* gym). After tenantContext, GYM_HOST means the owner of the tenant
-// this request resolved to, so routes that act on req.user.tenantId check again.
+// this request resolved to, so routes that act on req.user.organizationId check again.
 const ownerHere = authorize('GYM_HOST');
 
 // NEW-196 (R-89): an organization's profile (read, save, photo upload) is edited by the owner or by a

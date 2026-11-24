@@ -15,7 +15,7 @@ const { OVERQUOTA_GRACE_DAYS, MEMBER_CHECKIN_GRACE_DAYS } = require('../../src/c
 
 describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -23,7 +23,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
   });
@@ -35,7 +35,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
   test('Downgrade below active count -> during grace period (7 days) countdown is shown, zero branches locked', async () => {
     const { Branch, Gym } = tenantDb.models;
 
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Grace Org',
       status: 'ACTIVE',
       reservedSlots: 0,
@@ -58,9 +58,9 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
 
     // Ensure active subscription with branchCount = 1 (overQuotaCount = 1)
     // and appliedAt = now (day 0 of 7-day grace)
-    let sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    let sub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     if (!sub) {
-      sub = await factories.createTenantSubscription(tenantId, {
+      sub = await factories.createTenantSubscription(organizationId, {
         branchCount: 1,
         overQuotaCount: 1,
         status: 'ACTIVE',
@@ -82,7 +82,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
       });
     }
 
-    const result = await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+    const result = await branchBillingLockService.enforceBranchBillingLocksForTenant(organizationId, tenantDb);
     expect(result.inGrace).toBe(true);
     expect(result.lockedCount).toBe(0);
     expect(result.remainingDays).toBeGreaterThan(0);
@@ -98,7 +98,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     const { Branch, Gym } = tenantDb.models;
 
     // Create 3 active branches with distinct creation times
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Lock Org',
       status: 'ACTIVE',
       reservedSlots: 0,
@@ -131,7 +131,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     // Tenant has 3 branches (plus earlier 2 = 5 active branches total).
     // Let's set subscription to have overQuotaCount = 2, with appliedAt = 8 days ago (grace expired).
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-    const sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const sub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     await sub.update({
       branchCount: 3,
       overQuotaCount: 2,
@@ -144,7 +144,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     // Mock getBranchesToKeep to specify that branchNew should be KEPT
     jest.spyOn(subscriptionQuotaService, 'getBranchesToKeep').mockResolvedValue([branchNew.id]);
 
-    const result = await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+    const result = await branchBillingLockService.enforceBranchBillingLocksForTenant(organizationId, tenantDb);
     expect(result.inGrace).toBe(false);
     expect(result.overQuotaCount).toBe(2);
 
@@ -161,7 +161,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     // CapacityEvent rows created
     const lockEvents = await CapacityEvent.findAll({
       where: {
-        tenantId,
+        organizationId,
         action: 'BRANCH_BILLING_LOCKED',
       },
     });
@@ -170,7 +170,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     expect(lockEvents[0].delta).toBe(0);
 
     // Running the sweep a second time changes nothing (idempotent)
-    const secondResult = await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+    const secondResult = await branchBillingLockService.enforceBranchBillingLocksForTenant(organizationId, tenantDb);
     expect(secondResult.lockedCount).toBe(0);
     expect(secondResult.unlockedCount).toBe(0);
   });
@@ -201,7 +201,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
 
     // 2. Refuse member enrollment
     await expect(
-      gymService.enrollMember(tenantDb, tenantId, {
+      gymService.enrollMember(tenantDb, organizationId, {
         branchId: lockedBranch.id,
         email: 'locked@example.com',
         fullName: 'Locked Member',
@@ -264,7 +264,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     const { Branch } = tenantDb.models;
 
     // Account upgrades: overQuotaCount becomes 0
-    const sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const sub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     await sub.update({
       branchCount: 10,
       overQuotaCount: 0,
@@ -272,7 +272,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     });
 
     // Reconcile/sweep capacity
-    const result = await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb);
+    const result = await branchBillingLockService.enforceBranchBillingLocksForTenant(organizationId, tenantDb);
     expect(result.overQuotaCount).toBe(0);
     expect(result.unlockedCount).toBe(2);
 
@@ -285,7 +285,7 @@ describe('CAP-01: Real Branch Billing Lock on Over-Quota Tenants', () => {
     // CapacityEvent rows written for unlock
     const unlockEvents = await CapacityEvent.findAll({
       where: {
-        tenantId,
+        organizationId,
         action: 'BRANCH_BILLING_UNLOCKED',
       },
     });

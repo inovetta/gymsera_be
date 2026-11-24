@@ -20,7 +20,7 @@ const _uniqueTenantCode = async () => {
   do {
     code = _generateTenantCode();
      
-    const existing = await Tenant.findOne({ where: { tenantCode: code } });
+    const existing = await Tenant.findOne({ where: { organizationCode: code } });
     if (!existing) return code;
     attempts++;
   } while (attempts < 10);
@@ -38,14 +38,14 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
   if (existing) throw createError('You have already registered a gym business', 409);
   // NEW-259: a real area belongs to the city. NEW-265 (A4): or a pending area request of this person.
   const choice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice({ areaId, areaRequestId }), {
-    cityId, userId, tenantId: null,
+    cityId, userId, organizationId: null,
   });
   const area = areaRequests.rowValues(choice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
-  const tenantCode = await _uniqueTenantCode();
+  const organizationCode = await _uniqueTenantCode();
 
   const tenant = await Tenant.create({
-    tenantCode,
+    organizationCode,
     // R-112 (C2): build 26 sends no name here (the column is NOT NULL); Step 2 saves the brand.
     businessName: businessName || '',
     email,
@@ -57,7 +57,7 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
     kycStatus: KycStatus.NOT_SUBMITTED,
     onboardingStep: 1,
   });
-  await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'organization', targetId: tenant.id });
+  await areaRequests.applyChoiceToLink(choice, { organizationId: tenant.id, target: 'organization', targetId: tenant.id });
 
   // Upgrade user role to GYM_HOST and set isHost to true. This is an account flag
   // (the host area, onboarding routes). It grants nothing inside any tenant:
@@ -72,8 +72,8 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
  * Host submits gym profile details and KYC documents.
  * Moves the tenant to step 2 and sets kycStatus to PENDING.
  */
-const submitGymProfile = async (tenantId, userId, profileData) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const submitGymProfile = async (organizationId, userId, profileData) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   if (![TenantStatus.DRAFT, TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW].includes(tenant.status)) {
@@ -119,7 +119,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
   const branchCityId = mergedMainBranchData && mergedMainBranchData.cityId ? mergedMainBranchData.cityId : tenant.cityId;
   let resolvedBranchChoice = { kind: 'keep' };
   if (branchChoice.kind !== 'keep') {
-    resolvedBranchChoice = await areaRequests.resolveAreaChoice(branchChoice, { cityId: branchCityId, userId, tenantId: tenant.id });
+    resolvedBranchChoice = await areaRequests.resolveAreaChoice(branchChoice, { cityId: branchCityId, userId, organizationId: tenant.id });
     const values = areaRequests.rowValues(resolvedBranchChoice);
     mergedMainBranchData.areaId = values.areaId;
     if (values.areaRequestId) {
@@ -132,7 +132,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
   } else if (mainBranchData && mainBranchData.cityId !== undefined) {
     // NEW-259: the main branch's area belongs to its city (the branch's, else the business's).
     await assertAreaInCity({ cityId: branchCityId, areaId: mergedMainBranchData.areaId });
-    await areaRequests.assertKeptLinkInCity({ tenantId: tenant.id, target: 'first_branch_draft', targetId: tenant.id, cityId: branchCityId });
+    await areaRequests.assertKeptLinkInCity({ organizationId: tenant.id, target: 'first_branch_draft', targetId: tenant.id, cityId: branchCityId });
   }
   if (mergedMainBranchData && typeof mergedMainBranchData === 'object') delete mergedMainBranchData.pendingArea; // a read-only view
 
@@ -159,7 +159,7 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
     kycStatus: KycStatus.PENDING,
     onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || mainBranchData !== undefined) ? 3 : 2),
   });
-  await areaRequests.applyChoiceToLink(resolvedBranchChoice, { tenantId: tenant.id, target: 'first_branch_draft', targetId: tenant.id });
+  await areaRequests.applyChoiceToLink(resolvedBranchChoice, { organizationId: tenant.id, target: 'first_branch_draft', targetId: tenant.id });
 
   return { tenant };
 };
@@ -169,8 +169,8 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
  * Host selects or changes their SaaS package.
  * Allowed during onboarding and for active tenants wanting to upgrade/downgrade.
  */
-const selectPackage = async (tenantId, userId, packageId) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const selectPackage = async (organizationId, userId, packageId) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   const allowedStatuses = [
@@ -206,8 +206,8 @@ const selectPackage = async (tenantId, userId, packageId) => {
  * hours. Provisioning reads `imagesJson` off this same blob to seed the real
  * Branch once it exists.
  */
-const updateOnboardingImages = async (tenantId, userId, imagesJson) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const updateOnboardingImages = async (organizationId, userId, imagesJson) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   let existingMainBranch = tenant.mainBranchDataJson;
@@ -222,8 +222,8 @@ const updateOnboardingImages = async (tenantId, userId, imagesJson) => {
 };
 
 /** Newly uploaded URLs appended to whatever's already there — the add half of Step 4. */
-const addOnboardingImages = async (tenantId, userId, newUrls) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const addOnboardingImages = async (organizationId, userId, newUrls) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   let existingMainBranch = tenant.mainBranchDataJson;
@@ -233,7 +233,7 @@ const addOnboardingImages = async (tenantId, userId, newUrls) => {
   const existingImages = Array.isArray(existingMainBranch?.imagesJson) ? existingMainBranch.imagesJson : [];
   const imagesJson = [...existingImages, ...newUrls];
 
-  return updateOnboardingImages(tenantId, userId, imagesJson);
+  return updateOnboardingImages(organizationId, userId, imagesJson);
 };
 
 // ── updateMyTenant ────────────────────────────────────────────────────────────
@@ -255,11 +255,11 @@ const updateMyTenant = async (userId, updates) => {
   }
   if (sendsArea && [TenantStatus.DRAFT, TenantStatus.PENDING_REVIEW].includes(tenant.status)) {
     const choice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(updates), {
-      cityId: tenant.cityId, userId, tenantId: tenant.id,
+      cityId: tenant.cityId, userId, organizationId: tenant.id,
     });
     const values = areaRequests.rowValues(choice);
     if (values) await tenant.update(values); // the other fields stay ACTIVE-only, as before
-    await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'organization', targetId: tenant.id });
+    await areaRequests.applyChoiceToLink(choice, { organizationId: tenant.id, target: 'organization', targetId: tenant.id });
     await tenant.reload({ include: [{ model: City, as: 'city', attributes: ['id', 'name'] }] });
     return { tenant };
   }
@@ -306,8 +306,8 @@ const updateMyTenant = async (userId, updates) => {
  * the 90-day retention sweep (R-16) already removed them, in which case the host uploads them again.
  * Only the owner, only from REJECTED; the next step is the ordinary gym-profile → finalize path.
  */
-const reapplyTenant = async (tenantId, userId) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const reapplyTenant = async (organizationId, userId) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
   if (tenant.status !== TenantStatus.REJECTED) {
     const err = createError('Only a rejected application can be reopened.', 409);
@@ -360,8 +360,8 @@ const mainBranchPlans = (tenant) => {
  * Called when the gym owner completes the payment step during onboarding.
  * Saves payment method + bank reference and creates a pending TenantSubscription.
  */
-const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransferRef }) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const finalizeApplication = async (organizationId, userId, { paymentMethod, bankTransferRef }) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   // Validate that the main branch has at least 1 membership plan configured
@@ -399,7 +399,7 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
         title: 'New Organization Submitted',
         message: `New organization pending review: ${tenant.gymName || tenant.businessName} (Host: ${hostName}).`,
         deepLink: `/admin/tenants/${tenant.id}`,
-        metadataJson: { tenantId: tenant.id },
+        metadataJson: { organizationId: tenant.id },
       });
     }
   } catch (notifErr) {
@@ -410,7 +410,7 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
   // GRACE plan instead (BILL-13, subscription-migration.service.js#startPayLaterGrace).
   // It used to get an ACTIVE plan for the whole package cycle here, unpaid.
   if (tenant.selectedPackageId && tenant.paymentMethod !== 'PAY_LATER') {
-    const existingSub = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
+    const existingSub = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
     if (!existingSub) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
       if (pkg) {
@@ -422,7 +422,7 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
         else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
 
         await TenantSubscription.create({
-          tenantId: tenant.id,
+          organizationId: tenant.id,
           platformPackageId: pkg.id,
           startDate: start.toISOString().split('T')[0],
           endDate: end.toISOString().split('T')[0],
@@ -456,7 +456,7 @@ const getMyTenant = async (userId) => {
   if (!tenant) throw createError('No gym business registered for this account', 404);
 
   const subscription = await TenantSubscription.findOne({
-    where: { tenantId: tenant.id },
+    where: { organizationId: tenant.id },
     order: [['created_at', 'DESC']],
     include: [{ model: PlatformPackage, as: 'package', required: false }],
   });
@@ -467,8 +467,8 @@ const getMyTenant = async (userId) => {
 /**
  * Uploads KYC documents to private storage and updates tenant record (SEC-10).
  */
-const uploadKycDocuments = async ({ tenantId, userId, userRole, files, documentType }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const uploadKycDocuments = async ({ organizationId, userId, userRole, files, documentType }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   // Authorization: must be the tenant owner or PLATFORM_ADMIN
@@ -485,7 +485,7 @@ const uploadKycDocuments = async ({ tenantId, userId, userRole, files, documentT
     const docDescriptor = await kycStorageService.uploadKycDocument({
       buffer: file.buffer,
       mimetype: file.mimetype,
-      tenantId,
+      organizationId,
       originalName: file.originalname,
       documentType,
     });
@@ -525,8 +525,8 @@ const uploadKycDocuments = async ({ tenantId, userId, userRole, files, documentT
 /**
  * Lists KYC documents for a tenant with secure stream URLs.
  */
-const getKycDocuments = async ({ tenantId, userId, userRole }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const getKycDocuments = async ({ organizationId, userId, userRole }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   // Authorization: must be the tenant owner or PLATFORM_ADMIN
@@ -550,8 +550,8 @@ const getKycDocuments = async ({ tenantId, userId, userRole }) => {
 /**
  * Streams a private KYC document with access audit logging (SEC-10).
  */
-const getKycDocumentStream = async ({ tenantId, documentId, userId, userRole, reqInfo }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const getKycDocumentStream = async ({ organizationId, documentId, userId, userRole, reqInfo }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   // Authorization: must be the tenant owner or PLATFORM_ADMIN
@@ -588,8 +588,8 @@ const getKycDocumentStream = async ({ tenantId, documentId, userId, userRole, re
 /**
  * Deletes a KYC document from storage and tenant record.
  */
-const deleteKycDocument = async ({ tenantId, documentId, userId, userRole }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const deleteKycDocument = async ({ organizationId, documentId, userId, userRole }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   if (tenant.ownerUserId !== userId && userRole !== UserRole.PLATFORM_ADMIN) {

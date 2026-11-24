@@ -48,9 +48,9 @@ describe('OBS-05: billing alert sweep', () => {
 
   describe('BILLING_EVENT_UNPROCESSED', () => {
     test('RECEIVED for more than 10 minutes alerts, with counts, the oldest age and tenant ids', async () => {
-      await mk({ tenantId: tenantA.id, receivedAt: new Date(Date.now() - 25 * MIN) });
-      await mk({ tenantId: tenantB.id, provider: 'GOOGLE', receivedAt: new Date(Date.now() - 12 * MIN) });
-      await mk({ tenantId: null, provider: 'STRIPE', receivedAt: new Date(Date.now() - 11 * MIN) });
+      await mk({ organizationId: tenantA.id, receivedAt: new Date(Date.now() - 25 * MIN) });
+      await mk({ organizationId: tenantB.id, provider: 'GOOGLE', receivedAt: new Date(Date.now() - 12 * MIN) });
+      await mk({ organizationId: null, provider: 'STRIPE', receivedAt: new Date(Date.now() - 11 * MIN) });
       const res = await billingEvents.sweepBillingAlerts();
       expect(res.raised).toContain('BILLING_EVENT_UNPROCESSED');
       const [row] = await alerts('BILLING_EVENT_UNPROCESSED');
@@ -72,12 +72,12 @@ describe('OBS-05: billing alert sweep', () => {
 
   describe('BILLING_EVENT_FAILED', () => {
     test('FAILED after the retry threshold alerts; a first or second transient failure does not', async () => {
-      await mk({ status: 'FAILED', attempts: 1, tenantId: tenantA.id });
-      await mk({ status: 'FAILED', attempts: billingEvents.ALERT_AFTER_ATTEMPTS - 1, tenantId: tenantA.id });
+      await mk({ status: 'FAILED', attempts: 1, organizationId: tenantA.id });
+      await mk({ status: 'FAILED', attempts: billingEvents.ALERT_AFTER_ATTEMPTS - 1, organizationId: tenantA.id });
       expect((await billingEvents.sweepBillingAlerts()).raised).toEqual([]);
 
-      await mk({ status: 'FAILED', attempts: billingEvents.ALERT_AFTER_ATTEMPTS, tenantId: tenantA.id, lastError: 'Ali Khan <ali@example.test> bad receipt' });
-      await mk({ status: 'FAILED', attempts: 20, tenantId: null, provider: 'STRIPE' });
+      await mk({ status: 'FAILED', attempts: billingEvents.ALERT_AFTER_ATTEMPTS, organizationId: tenantA.id, lastError: 'Ali Khan <ali@example.test> bad receipt' });
+      await mk({ status: 'FAILED', attempts: 20, organizationId: null, provider: 'STRIPE' });
       const res = await billingEvents.sweepBillingAlerts();
       expect(res.raised).toContain('BILLING_EVENT_FAILED');
       const [row] = await alerts('BILLING_EVENT_FAILED');

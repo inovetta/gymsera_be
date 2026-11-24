@@ -190,7 +190,7 @@ const captureException = (err, { req, tags = {}, extra = {} } = {}) => {
     const contextTags = { ...tags };
     if (req) {
       if (req.id) contextTags.requestId = String(req.id);
-      if (req.tenantId) contextTags.tenantId = String(req.tenantId);
+      if (req.organizationId) contextTags.organizationId = String(req.organizationId);
       contextTags.route = require('../observability/metrics').routeLabel(req);
     }
     client.captureException(err, {

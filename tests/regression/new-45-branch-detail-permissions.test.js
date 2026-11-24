@@ -24,7 +24,7 @@ afterAll(async () => {
 });
 
 const call = (method, path, token, body) => {
-  const r = request(app)[method](`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId);
+  const r = request(app)[method](`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
   return body ? r.send(body) : r;
 };
 

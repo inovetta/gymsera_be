@@ -26,7 +26,7 @@ describe('NEW-26: Suspended Tenant Full Blocking and Admin Exception', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenant1Record = personas.owner.tenantId;
+    tenant1Record = personas.owner.organizationId;
     server = await startTestServer();
     await safeRedisDel(`tenant:${tenant1Record}:connStr`);
   });

@@ -36,7 +36,7 @@ describe('Tenant migration 018 (payments EXPIRED status + expires_at, PAY-08)', 
 
   test('--dry-run lists 018 and writes nothing', async () => {
     await toPre018();
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', dryRun: true, targetVersion: 18 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', dryRun: true, targetVersion: 18 });
     expect(res.wouldRun).toContain(M018);
     expect(await col('expires_at')).toBeUndefined();
     expect((await col('status')).COLUMN_TYPE).not.toContain('EXPIRED');
@@ -46,7 +46,7 @@ describe('Tenant migration 018 (payments EXPIRED status + expires_at, PAY-08)', 
   test('skips (not recorded) when the payments.status ENUM lacks a known value', async () => {
     await toPre018();
     await tenantSeq.query("ALTER TABLE `payments` MODIFY COLUMN `status` ENUM('PENDING','COMPLETED','FAILED','REFUNDED') NOT NULL DEFAULT 'PENDING'");
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 18 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 18 });
     expect(res.applied).not.toContain(M018);
     expect(await recorded()).toBeUndefined();
     expect(await col('expires_at')).toBeUndefined();
@@ -56,7 +56,7 @@ describe('Tenant migration 018 (payments EXPIRED status + expires_at, PAY-08)', 
   test('an ENUM in another order: EXPIRED appended, order, NOT NULL and default kept', async () => {
     await toPre018();
     await tenantSeq.query("ALTER TABLE `payments` MODIFY COLUMN `status` ENUM('PENDING','COMPLETED','FAILED','REFUNDED','STAFF_COLLECTED') NOT NULL DEFAULT 'PENDING'");
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 18 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 18 });
     expect(res.applied).toContain(M018);
     const [c] = await tenantSeq.query(
       "SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'status'",
@@ -70,7 +70,7 @@ describe('Tenant migration 018 (payments EXPIRED status + expires_at, PAY-08)', 
   test('a VARCHAR status (older tenants) is left as is; expires_at is added', async () => {
     await toPre018();
     await tenantSeq.query("ALTER TABLE `payments` MODIFY COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'PENDING'");
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 18 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 18 });
     expect(res.applied).toContain(M018);
     expect((await col('status')).COLUMN_TYPE).toBe('varchar(50)');
     expect((await col('expires_at')).DATA_TYPE).toBe('datetime');
@@ -79,7 +79,7 @@ describe('Tenant migration 018 (payments EXPIRED status + expires_at, PAY-08)', 
   test('skips (not recorded) when payments.expires_at exists with another type', async () => {
     await toPre018();
     await tenantSeq.query('ALTER TABLE `payments` ADD COLUMN `expires_at` INT NULL');
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 18 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 18 });
     expect(res.applied).not.toContain(M018);
     expect(await recorded()).toBeUndefined();
     expect((await col('status')).COLUMN_TYPE).not.toContain('EXPIRED');
@@ -87,13 +87,13 @@ describe('Tenant migration 018 (payments EXPIRED status + expires_at, PAY-08)', 
 
   test('applies, then a re-run does nothing', async () => {
     await toPre018();
-    const res1 = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 18 });
+    const res1 = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 18 });
     expect(res1.applied).toContain(M018);
     expect((await col('status')).COLUMN_TYPE).toBe("enum('PENDING','STAFF_COLLECTED','COMPLETED','FAILED','REFUNDED','EXPIRED')");
     expect((await col('expires_at')).DATA_TYPE).toBe('datetime');
     expect(await recorded()).toBeDefined();
 
-    const res2 = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 18 });
+    const res2 = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 18 });
     expect(res2.applied).not.toContain(M018);
   });
 });

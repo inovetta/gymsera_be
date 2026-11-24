@@ -252,7 +252,7 @@ const createStaffSubscription = async (req, res, next) => {
 
     const result = await gymService.enrollMember(
       req.tenantDb,
-      req.tenantId || req.user.tenantId,
+      req.organizationId || req.user.organizationId,
       {
         email: user.email,
         fullName: user.fullName,
@@ -287,16 +287,16 @@ const staffSubscriptionAction = (actionKey, doneMessage, bodyFields = []) => asy
     const accessService = require('../services/access.service');
     const approvalService = require('../services/approval.service');
     const { User } = require('../models/platform');
-    const tenantId = req.tenantId || req.user?.tenantId;
+    const organizationId = req.organizationId || req.user?.organizationId;
     const userId = req.user.id || req.user.sub;
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, sub.branchId);
+    const grants = await accessService.resolve(req.tenantDb, organizationId, userId, sub.branchId);
     const member = await User.findByPk(sub.userId, { attributes: ['fullName'] });
 
     const payload = { subscriptionId: sub.id, memberName: member?.fullName || null };
     for (const field of bodyFields) payload[field] = req.body[field];
 
     const outcome = await approvalService.perform(
-      { tenantDb: req.tenantDb, tenantId, userId, branchId: sub.branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req },
+      { tenantDb: req.tenantDb, organizationId, userId, branchId: sub.branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req },
       actionKey,
       payload,
       { idempotencyKey: req.headers['idempotency-key'] || null }
@@ -328,10 +328,10 @@ const _staffSubscriptionContext = async (req) => {
   if (!sub) throw createError('Subscription not found', 404);
   if (!(await hasBranchAccess(req, sub.branchId, 'subscriptions.view'))) throw createError('Subscription not found', 404);
   const accessService = require('../services/access.service');
-  const tenantId = req.tenantId || req.user?.tenantId;
+  const organizationId = req.organizationId || req.user?.organizationId;
   const userId = req.user.id || req.user.sub;
-  const grants = await accessService.resolve(req.tenantDb, tenantId, userId, sub.branchId);
-  const ctx = { tenantDb: req.tenantDb, tenantId, userId, branchId: sub.branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
+  const grants = await accessService.resolve(req.tenantDb, organizationId, userId, sub.branchId);
+  const ctx = { tenantDb: req.tenantDb, organizationId, userId, branchId: sub.branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
   return { sub, ctx, grants };
 };
 
@@ -406,10 +406,10 @@ const staffCancelWithRefund = async (req, res, next) => {
 
 // ── Member: GET / POST /subscriptions/:id/refund-request ──────────────────────
 const _memberRefundContext = async (req) => {
-  const { tenantDb, tenantId, resolvedSubscriptionId } = await subscriptionService.resolveOwnSubscription(req.params.id, req.user.id);
+  const { tenantDb, organizationId, resolvedSubscriptionId } = await subscriptionService.resolveOwnSubscription(req.params.id, req.user.id);
   const sub = await tenantDb.models.MemberSubscription.findByPk(resolvedSubscriptionId);
   if (!sub) throw createError('Subscription not found', 404);
-  return { sub, ctx: { tenantDb, tenantId, userId: req.user.id, branchId: sub.branchId, roleKey: 'MEMBER', req } };
+  return { sub, ctx: { tenantDb, organizationId, userId: req.user.id, branchId: sub.branchId, roleKey: 'MEMBER', req } };
 };
 
 const myRefundStatus = async (req, res, next) => {
@@ -450,15 +450,15 @@ const decideRefundRequest = async (req, res, next) => {
     const row = await req.tenantDb.models.RefundRequest.findByPk(req.params.requestId);
     if (!row || !(await hasBranchAccess(req, row.branchId, 'subscriptions.view'))) throw createError('Refund request not found', 404);
     const accessService = require('../services/access.service');
-    const tenantId = req.tenantId || req.user?.tenantId;
+    const organizationId = req.organizationId || req.user?.organizationId;
     const userId = req.user.id || req.user.sub;
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, row.branchId);
+    const grants = await accessService.resolve(req.tenantDb, organizationId, userId, row.branchId);
     if (grants.tierFor('payments.refund') !== 'DIRECT') {
       const err = createError('Only someone who can issue refunds directly can decide a refund request', 403);
       err.code = 'refund_not_permitted';
       throw err;
     }
-    const ctx = { tenantDb: req.tenantDb, tenantId, userId, branchId: row.branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
+    const ctx = { tenantDb: req.tenantDb, organizationId, userId, branchId: row.branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
     const { request, refund } = await refundService.decide(ctx, row.id, {
       decision: req.body.decision, amount: req.body.amount, reason: req.body.reason,
     });
@@ -485,15 +485,15 @@ const updateRefundPolicy = async (req, res, next) => {
     const branchId = req.body.branchId || null;
     if (branchId && !(await hasBranchAccess(req, branchId, 'subscriptions.view'))) throw createError('Branch not found', 404);
     const accessService = require('../services/access.service');
-    const tenantId = req.tenantId || req.user?.tenantId;
+    const organizationId = req.organizationId || req.user?.organizationId;
     const userId = req.user.id || req.user.sub;
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+    const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
     if (grants.tierFor('payments.refund') !== 'DIRECT') {
       const err = createError('Only someone who can issue refunds directly can change the refund policy', 403);
       err.code = 'refund_not_permitted';
       throw err;
     }
-    const ctx = { tenantDb: req.tenantDb, tenantId, userId, branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
+    const ctx = { tenantDb: req.tenantDb, organizationId, userId, branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
     const policy = await refundService.updatePolicy(ctx, branchId, {
       refundsAllowed: req.body.refundsAllowed,
       refundWindowDays: req.body.refundWindowDays,

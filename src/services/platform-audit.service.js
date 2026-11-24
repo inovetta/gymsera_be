@@ -51,13 +51,13 @@ const listActions = async (f, { limit, offset }) => {
 const listRequests = async (f, { limit, offset }) => {
   const where = {};
   if (f.userId) where.userId = f.userId;
-  if (f.tenantId) where.tenantId = f.tenantId;
+  if (f.organizationId) where.organizationId = f.organizationId;
   if (f.method) where.method = f.method;
   const range = dateRange(f);
   if (range) where.createdAt = range;
   const { rows, count } = await AuditLog.findAndCountAll({
     where,
-    attributes: ['id', 'userId', 'tenantId', 'method', 'path', 'statusCode', 'durationMs', 'createdAt'], // no ip_address, no user_agent
+    attributes: ['id', 'userId', 'organizationId', 'method', 'path', 'statusCode', 'durationMs', 'createdAt'], // no ip_address, no user_agent
     order: [['createdAt', 'DESC'], ['id', 'ASC']],
     limit,
     offset,
@@ -68,7 +68,7 @@ const listRequests = async (f, { limit, offset }) => {
       id: r.id,
       source: 'requests',
       userId: r.userId,
-      tenantId: r.tenantId,
+      organizationId: r.organizationId,
       method: r.method,
       path: redactString(r.path || ''),
       statusCode: r.statusCode,

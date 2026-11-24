@@ -51,7 +51,7 @@ const TenantDbManager = require('../src/database/TenantDbManager');
     if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
 
     const deletions = await CapacityEvent.findAll({
-      where: { tenantId: tenant.id, action: 'BRANCH_DELETED' },
+      where: { organizationId: tenant.id, action: 'BRANCH_DELETED' },
       attributes: ['branchId', 'createdAt', 'listingId'],
       order: [['createdAt', 'ASC']],
     });
@@ -83,7 +83,7 @@ const TenantDbManager = require('../src/database/TenantDbManager');
         // status came from the app.
         const laterEvents = await CapacityEvent.findAll({
           where: {
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             branchId: del.branchId,
             createdAt: { [require('sequelize').Op.gt]: del.createdAt },
           },
@@ -94,7 +94,7 @@ const TenantDbManager = require('../src/database/TenantDbManager');
         suspiciousBranches++;
         findings.push({
           tenant: tenant.businessName,
-          tenantId: tenant.id,
+          organizationId: tenant.id,
           branchId: del.branchId,
           branchName: branch.branchName,
           deletedAt: del.createdAt,
@@ -111,7 +111,7 @@ const TenantDbManager = require('../src/database/TenantDbManager');
   if (findings.length) {
     console.log('=== SUSPECT BRANCHES ===');
     for (const f of findings) {
-      console.log(`\n  Tenant   : ${f.tenant} (${f.tenantId})`);
+      console.log(`\n  Tenant   : ${f.tenant} (${f.organizationId})`);
       console.log(`  Branch   : ${f.branchName} (${f.branchId})`);
       console.log(`  Deleted  : ${f.deletedAt.toISOString()}`);
       console.log(`  Later capacity_events: ${f.laterEvents.length ? f.laterEvents.join(', ') : '(none)'}`);

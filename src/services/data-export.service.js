@@ -83,9 +83,9 @@ const buildUserDataExport = async (userId, { now = new Date() } = {}) => {
 
   const [memberships, orgIndex] = await Promise.all([
     UserGymMembership.findAll({ where: { userId }, order: [['createdAt', 'ASC']] }),
-    UserOrgIndex.findAll({ where: { userId }, attributes: ['tenantId'], raw: true }),
+    UserOrgIndex.findAll({ where: { userId }, attributes: ['organizationId'], raw: true }),
   ]);
-  const tenantIds = [...new Set([...memberships.map((m) => m.tenantId), ...orgIndex.map((r) => r.tenantId)])];
+  const tenantIds = [...new Set([...memberships.map((m) => m.organizationId), ...orgIndex.map((r) => r.organizationId)])];
   const tenants = tenantIds.length
     ? await Tenant.findAll({ where: { id: { [Op.in]: tenantIds }, status: { [Op.ne]: TenantStatus.DELETED } } })
     : [];
@@ -95,9 +95,9 @@ const buildUserDataExport = async (userId, { now = new Date() } = {}) => {
   for (const tenant of tenants) {
     try {
       const data = await exportFromTenantDb(tenant, userId);
-      gyms.push({ tenantId: tenant.id, gymName: tenant.gymName || tenant.businessName, ...(data || {}) });
+      gyms.push({ organizationId: tenant.id, gymName: tenant.gymName || tenant.businessName, ...(data || {}) });
     } catch (err) {
-      unavailable.push({ tenantId: tenant.id, gymName: tenant.gymName || tenant.businessName, reason: 'database_unavailable' });
+      unavailable.push({ organizationId: tenant.id, gymName: tenant.gymName || tenant.businessName, reason: 'database_unavailable' });
       console.error(`[DataExport] Tenant ${tenant.id} not readable for user ${userId}:`, err.message);
     }
   }

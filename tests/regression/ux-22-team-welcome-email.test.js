@@ -11,14 +11,14 @@ const WEB = (process.env.APP_URL || process.env.FRONTEND_URL || 'https://gymsera
 
 describe('UX-22: team welcome e-mail', () => {
   let branchId;
-  let tenantId;
+  let organizationId;
   let mail;
 
   beforeAll(async () => {
     const h = await setupTestDatabases();
     const personas = await setupPersonas(h);
-    tenantId = personas.owner.tenantId;
-    const listing = await GymListing.findOne({ where: { tenantId } });
+    organizationId = personas.owner.organizationId;
+    const listing = await GymListing.findOne({ where: { organizationId } });
     branchId = (await h.tenant1.models.Branch.findOne({ where: { gymId: listing.id } })).id;
   });
   afterAll(async () => {

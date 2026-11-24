@@ -27,7 +27,7 @@ describe('SEC-10: KYC Data Protection', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     await setupPersonas(dbHarness);
-    tenant1Id = dbHarness.tenant1.tenantId || '11111111-1111-4111-8111-111111111111';
+    tenant1Id = dbHarness.tenant1.organizationId || '11111111-1111-4111-8111-111111111111';
   });
 
   afterAll(async () => {

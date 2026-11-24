@@ -136,7 +136,7 @@ const listTeam = async (tenantDb, { roleKey, branchId, status, includeRevoked = 
  * The permission editor needs both the preset and the effective result, so the
  * host can see what they are changing from.
  */
-const getAssignment = async (tenantDb, tenantId, assignmentId) => {
+const getAssignment = async (tenantDb, organizationId, assignmentId) => {
   const { RoleAssignment, RoleAssignmentBranch, AssignmentOverride } = tenantDb.models;
 
   const assignment = await RoleAssignment.findByPk(assignmentId, {
@@ -156,7 +156,7 @@ const getAssignment = async (tenantDb, tenantId, assignmentId) => {
     assignment.scopeType === 'ORG' ? null : (assignment.branchLinks || [])[0]?.branchId || null;
 
   const grants = assignment.userId
-    ? await accessService.resolve(tenantDb, tenantId, assignment.userId, probeBranchId, {
+    ? await accessService.resolve(tenantDb, organizationId, assignment.userId, probeBranchId, {
         skipCache: true,
       })
     : accessService.emptyGrants();
@@ -198,7 +198,7 @@ const inviteMember = async (ctx, input) => {
     validUntil = null,
   } = input;
 
-  const { tenantDb, tenantId, grants: actorGrants, userId: actorId } = ctx;
+  const { tenantDb, organizationId, grants: actorGrants, userId: actorId } = ctx;
   const { RoleAssignment, RoleAssignmentBranch, AssignmentOverride, Branch } = tenantDb.models;
   const { User } = require('../models/platform');
 
@@ -325,7 +325,7 @@ const inviteMember = async (ctx, input) => {
 
   // Index + cache, in the same request. Never a background job — a host who adds
   // someone expects them to be able to log in immediately.
-  await membershipService.syncUserOrgIndex(tenantId, user.id, tenantDb);
+  await membershipService.syncUserOrgIndex(organizationId, user.id, tenantDb);
   await accessService.bumpUserPermissionVersion(user.id);
 
   await auditService.record(ctx, {
@@ -356,7 +356,7 @@ const inviteMember = async (ctx, input) => {
  * Change role, branch scope, status or validity.
  */
 const updateAssignment = async (ctx, assignmentId, changes) => {
-  const { tenantDb, tenantId, grants: actorGrants, userId: actorId } = ctx;
+  const { tenantDb, organizationId, grants: actorGrants, userId: actorId } = ctx;
   const { RoleAssignment, RoleAssignmentBranch, Branch } = tenantDb.models;
 
   const assignment = await RoleAssignment.findByPk(assignmentId, {
@@ -438,7 +438,7 @@ const updateAssignment = async (ctx, assignmentId, changes) => {
 
   await assignment.update(patch);
 
-  await membershipService.syncUserOrgIndex(tenantId, assignment.userId, tenantDb);
+  await membershipService.syncUserOrgIndex(organizationId, assignment.userId, tenantDb);
   await accessService.bumpUserPermissionVersion(assignment.userId);
 
   await auditService.record(ctx, {
@@ -461,7 +461,7 @@ const updateAssignment = async (ctx, assignmentId, changes) => {
  * revoked. Send the whole set or send nothing.
  */
 const setOverrides = async (ctx, assignmentId, overrides = [], expectedVersion = null) => {
-  const { tenantDb, tenantId, grants: actorGrants, userId: actorId } = ctx;
+  const { tenantDb, organizationId, grants: actorGrants, userId: actorId } = ctx;
   const { RoleAssignment, AssignmentOverride } = tenantDb.models;
 
   const assignment = await RoleAssignment.findByPk(assignmentId, {
@@ -524,7 +524,7 @@ const setOverrides = async (ctx, assignmentId, overrides = [], expectedVersion =
   }
 
   await accessService.bumpUserPermissionVersion(assignment.userId);
-  await membershipService.syncUserOrgIndex(tenantId, assignment.userId, tenantDb);
+  await membershipService.syncUserOrgIndex(organizationId, assignment.userId, tenantDb);
   await assignment.update({ version: (assignment.version || 1) + 1 });
 
   await auditService.record(ctx, {
@@ -535,7 +535,7 @@ const setOverrides = async (ctx, assignmentId, overrides = [], expectedVersion =
     after: { overrides: overrides.map((o) => ({ permissionKey: o.permissionKey, effect: o.effect, dataScope: o.dataScope })) },
   });
 
-  return getAssignment(tenantDb, tenantId, assignmentId);
+  return getAssignment(tenantDb, organizationId, assignmentId);
 };
 
 /**
@@ -546,7 +546,7 @@ const setOverrides = async (ctx, assignmentId, overrides = [], expectedVersion =
  * answer after the person leaves.
  */
 const revokeAssignment = async (ctx, assignmentId) => {
-  const { tenantDb, tenantId, grants: actorGrants, userId: actorId } = ctx;
+  const { tenantDb, organizationId, grants: actorGrants, userId: actorId } = ctx;
   const { RoleAssignment } = tenantDb.models;
 
   const assignment = await RoleAssignment.findByPk(assignmentId);
@@ -570,7 +570,7 @@ const revokeAssignment = async (ctx, assignmentId) => {
   // Immediate revocation. Bumping the version orphans every cached grant set for
   // this user, so their next request resolves to nothing — no TTL wait.
   await accessService.bumpUserPermissionVersion(assignment.userId);
-  await membershipService.syncUserOrgIndex(tenantId, assignment.userId, tenantDb);
+  await membershipService.syncUserOrgIndex(organizationId, assignment.userId, tenantDb);
 
   await auditService.record(ctx, {
     action: 'team.revoke',
@@ -587,7 +587,7 @@ const revokeAssignment = async (ctx, assignmentId) => {
  * Revoke all active/invited assignments for a user in a tenant.
  */
 const revokeUserAccess = async (ctx, targetUserId) => {
-  const { tenantDb, tenantId, grants: actorGrants, userId: actorId } = ctx;
+  const { tenantDb, organizationId, grants: actorGrants, userId: actorId } = ctx;
   const { RoleAssignment } = tenantDb.models;
 
   const assignments = await RoleAssignment.findAll({
@@ -610,7 +610,7 @@ const revokeUserAccess = async (ctx, targetUserId) => {
     });
     if (a.userId) {
       await accessService.bumpUserPermissionVersion(a.userId);
-      await membershipService.syncUserOrgIndex(tenantId, a.userId, tenantDb);
+      await membershipService.syncUserOrgIndex(organizationId, a.userId, tenantDb);
     }
   }
 
@@ -621,7 +621,7 @@ const revokeUserAccess = async (ctx, targetUserId) => {
  * Revoke branch-scoped assignments when a branch is removed/deleted.
  */
 const revokeBranchAssignments = async (ctx, branchId, { transaction = null } = {}) => {
-  const { tenantDb, tenantId, userId: actorId } = ctx;
+  const { tenantDb, organizationId, userId: actorId } = ctx;
   const { RoleAssignment, RoleAssignmentBranch } = tenantDb.models;
 
   const links = await RoleAssignmentBranch.findAll({ where: { branchId }, transaction });
@@ -649,7 +649,7 @@ const revokeBranchAssignments = async (ctx, branchId, { transaction = null } = {
       if (assignment.userId) {
         await accessService.bumpUserPermissionVersion(assignment.userId);
         if (membershipService && membershipService.syncUserOrgIndex) {
-          await membershipService.syncUserOrgIndex(tenantId, assignment.userId, tenantDb);
+          await membershipService.syncUserOrgIndex(organizationId, assignment.userId, tenantDb);
         }
       }
     }
@@ -661,7 +661,7 @@ const revokeBranchAssignments = async (ctx, branchId, { transaction = null } = {
  * Accept a staff invite: create or activate the RoleAssignment for a staff member.
  * Single authority for staff invite acceptance.
  */
-const acceptStaffInvite = async ({ tenantDb, tenantId, userId, email, branchId, designation, inviterUserId }) => {
+const acceptStaffInvite = async ({ tenantDb, organizationId, userId, email, branchId, designation, inviterUserId }) => {
   const { RoleAssignment, RoleAssignmentBranch } = tenantDb.models;
   const { getRoleLevel } = require('../constants/roles');
   const { mapDesignationToRoleKey } = require('./gym.service');
@@ -673,10 +673,10 @@ const acceptStaffInvite = async ({ tenantDb, tenantId, userId, email, branchId, 
   const inviterId = inviterUserId;
   if (inviterId) {
     const { Tenant } = require('../models/platform');
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     const isOwner = tenant && tenant.ownerUserId === inviterId;
     if (!isOwner) {
-      const inviterGrants = await accessService.resolve(tenantDb, tenantId, inviterId, branchId);
+      const inviterGrants = await accessService.resolve(tenantDb, organizationId, inviterId, branchId);
       accessService.assertCanAssignRole(inviterGrants, roleKey);
     }
   }
@@ -721,7 +721,7 @@ const acceptStaffInvite = async ({ tenantDb, tenantId, userId, email, branchId, 
     }
   }
 
-  await membershipService.syncUserOrgIndex(tenantId, userId, tenantDb);
+  await membershipService.syncUserOrgIndex(organizationId, userId, tenantDb);
   await accessService.bumpUserPermissionVersion(userId);
 
   return assignment;
@@ -732,7 +732,7 @@ const notifyInvitee = async (ctx, user, assignment, branchIds) => {
   const { Tenant } = require('../models/platform');
   const { Branch } = ctx.tenantDb.models;
 
-  const tenant = await Tenant.findByPk(ctx.tenantId, { attributes: ['gymName', 'businessName'] });
+  const tenant = await Tenant.findByPk(ctx.organizationId, { attributes: ['gymName', 'businessName'] });
   const gymName = tenant ? tenant.gymName || tenant.businessName : 'a gym';
   const meta = ROLE_META[assignment.roleKey] || {};
 
@@ -751,7 +751,7 @@ const notifyInvitee = async (ctx, user, assignment, branchIds) => {
     type: 'team_invite',
     title: `You're now ${meta.name || assignment.roleKey} at ${gymName}`,
     message: `You have been given ${meta.name || assignment.roleKey} access to ${scopeText}.`,
-    data: { assignmentId: assignment.id, tenantId: ctx.tenantId, roleKey: assignment.roleKey },
+    data: { assignmentId: assignment.id, organizationId: ctx.organizationId, roleKey: assignment.roleKey },
   });
 
   return { gymName, roleName: meta.name || assignment.roleKey, scopeText };

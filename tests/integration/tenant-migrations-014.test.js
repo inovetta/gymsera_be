@@ -33,7 +33,7 @@ describe('Tenant Migration 014 (create invoice_sequences table) Integration Test
     expect(tableBefore).toBeUndefined();
 
     const res = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       dryRun: true,
       targetVersion: 14,
     });
@@ -68,7 +68,7 @@ describe('Tenant Migration 014 (create invoice_sequences table) Integration Test
     await tenantSeq.query('DELETE FROM schema_migrations WHERE version = 14').catch(() => {});
 
     const res = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 14,
     });
 
@@ -89,7 +89,7 @@ describe('Tenant Migration 014 (create invoice_sequences table) Integration Test
     await tenantSeq.query('DELETE FROM schema_migrations WHERE version = 14').catch(() => {});
 
     const res1 = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 14,
     });
     expect(res1.applied).toContain(M014);
@@ -111,7 +111,7 @@ describe('Tenant Migration 014 (create invoice_sequences table) Integration Test
 
     // Idempotent re-run
     const res2 = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 14,
     });
     expect(res2.applied).not.toContain(M014);

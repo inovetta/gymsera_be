@@ -53,8 +53,8 @@ const _hasContent = (obj) =>
   Object.values(obj).some((v) => (typeof v === 'string' && v.trim() !== '') || typeof v === 'number');
 
 /**
- * @returns {Promise<{ copy: Array<{ tenantId, detailsJson, detailsUpdatedAt, keys: string[] }>,
- *   alreadyHaveDefault: string[], emptyOrUnreadable: Array<{ tenantId, reason }>, tenantsScanned: number }>}
+ * @returns {Promise<{ copy: Array<{ organizationId, detailsJson, detailsUpdatedAt, keys: string[] }>,
+ *   alreadyHaveDefault: string[], emptyOrUnreadable: Array<{ organizationId, reason }>, tenantsScanned: number }>}
  */
 const planPayoutAccountBackfill = async (sequelize) => {
   const plan = { copy: [], alreadyHaveDefault: [], emptyOrUnreadable: [], tenantsScanned: 0 };
@@ -74,22 +74,22 @@ const planPayoutAccountBackfill = async (sequelize) => {
   const existing = new Set();
   if (await _hasTable(sequelize, 'payout_accounts')) {
     const have = await sequelize.query(
-      'SELECT tenant_id AS tenantId FROM payout_accounts WHERE scope_key = ? AND provider = ?',
+      'SELECT tenant_id AS organizationId FROM payout_accounts WHERE scope_key = ? AND provider = ?',
       { replacements: [TENANT_SCOPE, PROVIDER], type: QueryTypes.SELECT }
     );
-    have.forEach((r) => existing.add(r.tenantId));
+    have.forEach((r) => existing.add(r.organizationId));
   }
 
   for (const row of rows) {
     const details = _parse(row.details);
     if (details === undefined) {
-      plan.emptyOrUnreadable.push({ tenantId: row.id, reason: 'not valid JSON' });
+      plan.emptyOrUnreadable.push({ organizationId: row.id, reason: 'not valid JSON' });
     } else if (!_hasContent(details)) {
-      plan.emptyOrUnreadable.push({ tenantId: row.id, reason: 'no bank or wallet value' });
+      plan.emptyOrUnreadable.push({ organizationId: row.id, reason: 'no bank or wallet value' });
     } else if (existing.has(row.id)) {
       plan.alreadyHaveDefault.push(row.id);
     } else {
-      plan.copy.push({ tenantId: row.id, detailsJson: details, detailsUpdatedAt: row.updatedAt || null, keys: Object.keys(details).sort() });
+      plan.copy.push({ organizationId: row.id, detailsJson: details, detailsUpdatedAt: row.updatedAt || null, keys: Object.keys(details).sort() });
     }
   }
   return plan;
@@ -102,7 +102,7 @@ const applyPayoutAccountBackfill = async (sequelize, plan) => {
       `INSERT IGNORE INTO payout_accounts
          (id, tenant_id, business_id, scope_key, provider, status, details_json, details_updated_at, created_at, updated_at)
        VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())`,
-      { replacements: [crypto.randomUUID(), item.tenantId, TENANT_SCOPE, PROVIDER, JSON.stringify(item.detailsJson), item.detailsUpdatedAt] }
+      { replacements: [crypto.randomUUID(), item.organizationId, TENANT_SCOPE, PROVIDER, JSON.stringify(item.detailsJson), item.detailsUpdatedAt] }
     );
   }
   return plan.copy.length;

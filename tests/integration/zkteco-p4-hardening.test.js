@@ -167,8 +167,8 @@ describe('wrong serial', () => {
     await Notification.destroy({ where: { userId: w.owner.user.id, type: 'device_serial_mismatch' } });
     const thief = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: `THIEF${crypto.randomBytes(3).toString('hex')}`, key: d.device.deviceKey });
     expect((await thief.poll()).status).toBe(406);
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     const sent = await Notification.findAll({ where: { userId: w.owner.user.id, type: 'device_serial_mismatch' }, raw: true });
     expect(sent).toHaveLength(1);
     expect(sent[0].message).toMatch(/Serial Door/);

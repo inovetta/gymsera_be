@@ -47,7 +47,7 @@ async function seed() {
   console.log(`Found ${users.length} member users.`);
 
   for (const tenant of tenants) {
-    const listings = await GymListing.findAll({ where: { tenantId: tenant.id } });
+    const listings = await GymListing.findAll({ where: { organizationId: tenant.id } });
     console.log(`Tenant ${tenant.businessName} has ${listings.length} listings.`);
 
     for (const listing of listings) {
@@ -61,7 +61,7 @@ async function seed() {
         // Check if conversation already exists
         let conversation = await Conversation.findOne({
           where: {
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             branchId: listing.branchId,
             userId: user.id,
             type: dummy.type
@@ -70,7 +70,7 @@ async function seed() {
 
         if (!conversation) {
           conversation = await Conversation.create({
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             branchId: listing.branchId,
             userId: user.id,
             type: dummy.type,

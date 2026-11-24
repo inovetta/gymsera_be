@@ -26,7 +26,7 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       // Tenant the subscription lives in
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
       },

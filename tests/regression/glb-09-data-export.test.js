@@ -67,13 +67,13 @@ describe('GLB-09: GET /me/data-export', () => {
     await models.AttendanceLog.create({ branchId: gym.branch.id, userId: member.id, memberSubscriptionId: sub.id, attendanceType: 'CHECK_IN', entryMethod: 'MANUAL', checkInAt: new Date(), notes: `checkin-${tag}` });
     // P9c (A): a stored proof is a private-store key; the API (and so the export) shows it as the proof route, never the key.
     const payment = await factories.createPayment(db, gym.branch.id, { userId: member.id, amount: 3000, notes: `paynote-${tag}`, proofUrl: `private:tenants/${gym.tenant.id}/payment-proofs/${tag}.jpg`, referenceEntityId: sub.id });
-    await UserGymMembership.create({ userId: member.id, tenantId: gym.tenant.id, gymListingId: gym.listing.id, subscriptionId: sub.id, gymName: 'Test Gym', planName: 'Monthly', startDate: sub.startDate, endDate: sub.endDate, status: 'ACTIVE' });
+    await UserGymMembership.create({ userId: member.id, organizationId: gym.tenant.id, gymListingId: gym.listing.id, subscriptionId: sub.id, gymName: 'Test Gym', planName: 'Monthly', startDate: sub.startDate, endDate: sub.endDate, status: 'ACTIVE' });
     await RefreshToken.create({ userId: member.id, familyId: uuidv4(), token: `refresh-secret-${tag}`, expiresAt: new Date(Date.now() + DAY), isRevoked: false });
     await DeviceToken.create({ userId: member.id, token: `fcm-secret-${tag}`, platform: 'ios', appVersion: '1.2.3', locale: 'en', timezone: 'Asia/Karachi' });
     await SavedGym.create({ userId: member.id, gymListingId: gym.listing.id });
     await Notification.create({ userId: member.id, role: 'traveler', type: 'X', title: `title-${tag}`, message: `message-${tag}` });
-    await GymReview.create({ gymListingId: gym.listing.id, userId: member.id, tenantId: gym.tenant.id, rating: 4, title: `review-title-${tag}`, body: `review-body-${tag}` });
-    const convo = await Conversation.create({ tenantId: gym.tenant.id, branchId: gym.branch.id, userId: member.id, type: 'MEMBER', lastMessageText: `chat-${tag}` });
+    await GymReview.create({ gymListingId: gym.listing.id, userId: member.id, organizationId: gym.tenant.id, rating: 4, title: `review-title-${tag}`, body: `review-body-${tag}` });
+    const convo = await Conversation.create({ organizationId: gym.tenant.id, branchId: gym.branch.id, userId: member.id, type: 'MEMBER', lastMessageText: `chat-${tag}` });
     await Message.create({ conversationId: convo.id, senderId: member.id, senderType: 'USER', text: `chat-${tag}` });
     return { member, sub, payment };
   };
@@ -117,7 +117,7 @@ describe('GLB-09: GET /me/data-export', () => {
     }
     expect(data.savedGyms).toHaveLength(1);
     expect(data.gyms).toHaveLength(1);
-    expect(data.gyms[0]).toMatchObject({ tenantId: gym.tenant.id });
+    expect(data.gyms[0]).toMatchObject({ organizationId: gym.tenant.id });
     expect(data.gyms[0].memberProfile.medicalNotes).toBe('asthma-alice');
     expect(data.gyms[0].subscriptions).toHaveLength(1);
     expect(data.gyms[0].payments).toHaveLength(1);
@@ -154,13 +154,13 @@ describe('GLB-09: GET /me/data-export', () => {
     const gym = await seedGym(db.encryptedConnStr);
     const { member } = await seedMember(gym, 'erin');
     const broken = await seedGym('PENDING_PROVISIONING-not-a-real-connection');
-    await UserGymMembership.create({ userId: member.id, tenantId: broken.tenant.id, gymListingId: broken.listing.id, subscriptionId: uuidv4(), gymName: 'Broken Gym', planName: 'X', startDate: new Date(), endDate: new Date(Date.now() + DAY), status: 'ACTIVE' });
+    await UserGymMembership.create({ userId: member.id, organizationId: broken.tenant.id, gymListingId: broken.listing.id, subscriptionId: uuidv4(), gymName: 'Broken Gym', planName: 'X', startDate: new Date(), endDate: new Date(Date.now() + DAY), status: 'ACTIVE' });
 
     const data = (await api('/me/data-export', member)).body.data;
 
     expect(data.complete).toBe(false);
-    expect(data.unavailable.map((u) => u.tenantId)).toEqual([broken.tenant.id]);
-    expect(data.gyms.map((g) => g.tenantId)).toContain(gym.tenant.id);
+    expect(data.unavailable.map((u) => u.organizationId)).toEqual([broken.tenant.id]);
+    expect(data.gyms.map((g) => g.organizationId)).toContain(gym.tenant.id);
   });
 
   test('a gym owner also gets their business record, without credentials', async () => {

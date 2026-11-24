@@ -35,10 +35,10 @@ const makeRequest = (userId, city, name, extra = {}) => M.AreaRequest.create({
   cityId: city.id, name, nameKey: keyOf(name), source: 'typed', status: 'pending_review',
   requestedByUserId: userId, openKey: `${userId}:${city.id}:${keyOf(name)}`, ...extra,
 });
-const link = (request, tenantId, target, targetId) => M.AreaRequestLink.create({
-  areaRequestId: request.id, tenantId, target, targetId: String(targetId),
+const link = (request, organizationId, target, targetId) => M.AreaRequestLink.create({
+  areaRequestId: request.id, organizationId, target, targetId: String(targetId),
 });
-const linkOf = (target, tenantId, targetId) => M.AreaRequestLink.findOne({ where: { target, tenantId, targetId: String(targetId) } });
+const linkOf = (target, organizationId, targetId) => M.AreaRequestLink.findOne({ where: { target, organizationId, targetId: String(targetId) } });
 
 beforeAll(async () => {
   const h = await setupTestDatabases();
@@ -98,9 +98,9 @@ describe('A6: the admin queue', () => {
     expect(g).toMatchObject({ cityId: peshawar.id, cityName: 'Peshawar265a', name: 'Shinwari Town', source: 'typed', gymCount: 4 });
     expect(g.requestedBy.map((u) => u.userId).sort()).toEqual([host2.id, ownerUserId].sort());
     expect(g.gyms).toEqual(expect.arrayContaining([
-      expect.objectContaining({ tenantId: draft.id, listingId: null, branchId: null, title: 'Draft Gym', latitude: 34.01, longitude: 71.51 }),
-      expect.objectContaining({ tenantId: ctx.tenant1.id, listingId: ctx.listing1.id }),
-      expect.objectContaining({ tenantId: ctx.tenant1.id, branchId: ctx.branch1.id }),
+      expect.objectContaining({ organizationId: draft.id, listingId: null, branchId: null, title: 'Draft Gym', latitude: 34.01, longitude: 71.51 }),
+      expect.objectContaining({ organizationId: ctx.tenant1.id, listingId: ctx.listing1.id }),
+      expect.objectContaining({ organizationId: ctx.tenant1.id, branchId: ctx.branch1.id }),
     ]));
     expect(res.body.data.pagination).toMatchObject({ page: 1 });
     expect(Array.isArray(g.similar)).toBe(true);
@@ -231,7 +231,7 @@ describe('A6: the admin queue', () => {
     await link(r, ctx.tenant1.id, 'branch', missingBranchId);
     const res = await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/approve`).send({ name: 'Retry Town', latitude: 34, longitude: 71.5 });
     expect(res.status).toBe(200);
-    expect(res.body.data.failed).toEqual([{ tenantId: ctx.tenant1.id, error: expect.any(String) }]);
+    expect(res.body.data.failed).toEqual([{ organizationId: ctx.tenant1.id, error: expect.any(String) }]);
     const l = await linkOf('branch', ctx.tenant1.id, missingBranchId);
     expect(l.propagatedAt).toBeNull();
     expect(l.propagationError).toBeTruthy();
@@ -276,11 +276,11 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
   });
 
   const pendingTenant = async (key, overrides) => {
-    const tenantCode = `test_n265_${key}_${Date.now().toString(36)}`;
-    dbNames.push(`gymsera_${tenantCode}`);
+    const organizationCode = `test_n265_${key}_${Date.now().toString(36)}`;
+    dbNames.push(`gymsera_${organizationCode}`);
     const owner = await factories.createUser({ email: `${key}-${Date.now()}@new265p.test`, role: 'GYM_HOST' });
     return factories.createTenant({
-      tenantCode, ownerUserId: owner.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
+      organizationCode, ownerUserId: owner.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
       cityId: peshawar.id, gymName: `Gym ${key}`, ...overrides,
     });
   };
@@ -288,7 +288,7 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
     await adminService().approveTenant(tenant.id, admin.id);
     await tenant.reload();
     const db = await TenantDbManager().getConnection(tenant.id, tenant.connectionStringEncrypted);
-    const listing = await M.GymListing.findOne({ where: { tenantId: tenant.id } });
+    const listing = await M.GymListing.findOne({ where: { organizationId: tenant.id } });
     const branch = await db.models.Branch.findOne();
     return { listing, branch };
   };

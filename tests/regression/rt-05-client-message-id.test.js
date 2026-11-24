@@ -32,7 +32,7 @@ describe('RT-05: client_message_id idempotency', () => {
     traveler = await factories.createUser();
     host = await factories.createUser();
     conversation = await Conversation.create({
-      id: uuidv4(), tenantId: tenant.id, branchId: uuidv4(), userId: traveler.id, type: 'INQUIRY',
+      id: uuidv4(), organizationId: tenant.id, branchId: uuidv4(), userId: traveler.id, type: 'INQUIRY',
     });
   });
 

@@ -26,7 +26,7 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
+  listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
   first = await tenantDb.models.Branch.findOne({ where: { gymId: listing.id }, order: [['createdAt', 'ASC']] });
   await first.update({ currency: 'PKR' });
   usd = await factories.createBranch(tenantDb, listing.id, { name: 'USD branch', currency: 'USD' });

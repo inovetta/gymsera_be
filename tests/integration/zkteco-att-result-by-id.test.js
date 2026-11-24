@@ -18,7 +18,7 @@ let n = 0;
 const sn = () => `ARI${RUN}${String(++n).padStart(4, '0')}`;
 
 async function attDevice(name) {
-  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
+  const { device } = await registry.createDevice({ organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
   const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true, realFirmware: true });
   await sim.connectAtt();
   await w.settled();

@@ -21,10 +21,10 @@ const dbNames = [];
 let admin;
 
 const pendingTenant = async (key, mainBranchDataJson) => {
-  const tenantCode = `test_p8n146_${key}_${Date.now().toString(36)}`;
-  dbNames.push(`gymsera_${tenantCode}`);
+  const organizationCode = `test_p8n146_${key}_${Date.now().toString(36)}`;
+  dbNames.push(`gymsera_${organizationCode}`);
   return factories.createTenant({
-    tenantCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
+    organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
     mainBranchDataJson,
   });
 };

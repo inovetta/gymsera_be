@@ -424,7 +424,7 @@ router.post(
  *                           type: string
  *                         role:
  *                           type: string
- *                         tenantId:
+ *                         organizationId:
  *                           type: string
  *                           nullable: true
  *                         isVerified:

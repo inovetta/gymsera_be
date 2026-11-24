@@ -26,11 +26,11 @@ describe('P9d: purchase-intent is the server check before every store purchase (
   let plan3;
   let plan3b; // another catalog plan with the same branch limit as plan3
   let plan5;
-  const tenantId = () => ctx.tenant1.id;
+  const organizationId = () => ctx.tenant1.id;
 
   const reset = async (rows = []) => {
-    await TenantSubscription.destroy({ where: { tenantId: tenantId() } });
-    for (const r of rows) await createTenantSubscription(tenantId(), r);
+    await TenantSubscription.destroy({ where: { organizationId: organizationId() } });
+    for (const r of rows) await createTenantSubscription(organizationId(), r);
   };
   const ask = (plan, platform, extra = {}) =>
     asPersona('owner').post('/billing/purchase-intent', { planId: plan ? plan.id : undefined, platform, ...extra });

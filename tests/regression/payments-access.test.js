@@ -52,7 +52,7 @@ describe('POST /payments/:id/verify — permission-aware, not role-string-only',
 
   it('lets a Branch Manager holding payments.verify actually verify', async () => {
     accessService.resolve.mockResolvedValue(grantsWith(['payments.verify']));
-    const req = baseReq({ id: 'manager-1', tenantId: 'tenant-1', role: 'BRANCH_MANAGER' });
+    const req = baseReq({ id: 'manager-1', organizationId: 'tenant-1', role: 'BRANCH_MANAGER' });
     const res = fakeRes();
     const next = jest.fn();
 
@@ -65,7 +65,7 @@ describe('POST /payments/:id/verify — permission-aware, not role-string-only',
 
   it('rejects a team member who does not hold payments.verify', async () => {
     accessService.resolve.mockResolvedValue(grantsWith([])); // e.g. Front Desk
-    const req = baseReq({ id: 'desk-1', tenantId: 'tenant-1', role: 'BRANCH_MANAGER' });
+    const req = baseReq({ id: 'desk-1', organizationId: 'tenant-1', role: 'BRANCH_MANAGER' });
     const res = fakeRes();
     const next = jest.fn();
 
@@ -80,7 +80,7 @@ describe('POST /payments/:id/verify — permission-aware, not role-string-only',
   it('the owner always passes, without resolving grants', async () => {
     // What tenantContext leaves on an owner's request: the role shim sets isOwner after checking
     // tenants.owner_user_id. The account role alone no longer proves ownership (NEW-108).
-    const req = baseReq({ id: 'owner-1', tenantId: 'tenant-1', role: 'GYM_HOST', isHost: true, isOwner: true });
+    const req = baseReq({ id: 'owner-1', organizationId: 'tenant-1', role: 'GYM_HOST', isHost: true, isOwner: true });
     const res = fakeRes();
     const next = jest.fn();
 
@@ -92,7 +92,7 @@ describe('POST /payments/:id/verify — permission-aware, not role-string-only',
 
   it('404s cleanly when the payment does not exist, before any permission check', async () => {
     const req = baseReq(
-      { id: 'manager-1', tenantId: 'tenant-1', role: 'BRANCH_MANAGER' },
+      { id: 'manager-1', organizationId: 'tenant-1', role: 'BRANCH_MANAGER' },
       { tenantDb: { models: { Payment: { findByPk: jest.fn().mockResolvedValue(null) } } } }
     );
     const res = fakeRes();

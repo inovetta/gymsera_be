@@ -22,9 +22,9 @@ describe('P9c: a legacy package plan is named by its package', () => {
 
   test('GET /host/subscription/current carries the package name and its branch limit', async () => {
     const pkg = await PlatformPackage.create({ name: 'Starter', price: 4999, billingCycle: 'MONTHLY', maxOrganizations: 1, maxBranches: 1, status: 'ACTIVE' });
-    await TenantSubscription.destroy({ where: { tenantId: ctx.tenant1.id } });
+    await TenantSubscription.destroy({ where: { organizationId: ctx.tenant1.id } });
     await TenantSubscription.create({
-      tenantId: ctx.tenant1.id, platformPackageId: pkg.id, platform: 'MANUAL', startDate: new Date(), endDate: new Date(Date.now() + 20 * 86400000),
+      organizationId: ctx.tenant1.id, platformPackageId: pkg.id, platform: 'MANUAL', startDate: new Date(), endDate: new Date(Date.now() + 20 * 86400000),
       amount: 4999, billingCycle: 'MONTHLY', status: 'ACTIVE', autoRenew: true, paymentStatus: 'PENDING',
     });
     const res = await asPersona('owner').get('/host/subscription/current');

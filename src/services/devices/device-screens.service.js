@@ -13,7 +13,7 @@
  *   capture photos   ATTPHOTO stored only for a branch that opted in, 30 days, encrypted
  *
  * Member names come from the platform users table; nothing here returns a template, a photo body
- * in JSON, or a device secret. `db` = a tenant connection { sequelize, models, tenantId }.
+ * in JSON, or a device secret. `db` = a tenant connection { sequelize, models, organizationId }.
  */
 const crypto = require('crypto');
 const { QueryTypes } = require('sequelize');
@@ -299,7 +299,7 @@ async function updateBranchSettings(db, { branchId, capturePhotos, alertsEnabled
 
 // ── Capture photos (D-6) ──────────────────────────────────────────────────────
 /** ATTPHOTO upload → stored when the device's branch opted in; else counted and dropped. → stored count */
-async function storeCapturePhotos(db, tenantId, device, body, now = new Date()) {
+async function storeCapturePhotos(db, organizationId, device, body, now = new Date()) {
   const settings = await branchSettings(db, device.branch_id);
   if (!settings.capturePhotos) return 0;
   let stored = 0;
@@ -318,7 +318,7 @@ async function storeCapturePhotos(db, tenantId, device, body, now = new Date()) 
     const bytes = Buffer.from(f.photo, 'base64');
     if (!bytes.length) continue;
     const enc = bioCrypto().encrypt(bytes);
-    const key = `device-captures/${tenantId}/${device.branch_id}/${crypto.randomUUID()}.bin`;
+    const key = `device-captures/${organizationId}/${device.branch_id}/${crypto.randomUUID()}.bin`;
     await storage().putPrivateObject({ buffer: enc, mimetype: 'application/octet-stream', key });
     const [ev] = local
       ? await select(db, 'SELECT id FROM device_access_events WHERE device_id = ? AND pin = ? AND device_time = ? ORDER BY id DESC LIMIT 1', [device.id, pin, local])

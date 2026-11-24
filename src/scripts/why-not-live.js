@@ -33,9 +33,9 @@ const parseArgs = (argv) => {
 const _day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : 'none');
 const _sub = (s) => `${s.status} (${s.platform}, environment ${s.environment || 'none'}, ends ${_day(s.endDate)})`;
 
-const _subscriptionCheck = async (tenantId) => {
+const _subscriptionCheck = async (organizationId) => {
   const rows = await TenantSubscription.findAll({
-    where: { tenantId },
+    where: { organizationId },
     attributes: ['status', 'platform', 'environment', 'endDate', 'createdAt'],
     order: [['createdAt', 'DESC']],
   });
@@ -108,7 +108,7 @@ const _report = async (tenant, tenantDb, branch) => {
 
 /**
  * @param {string} query - a branch id, or part of a branch name (case ignored).
- * @param {{onSkip?: (tenantId: string, why: string) => void}} [opts]
+ * @param {{onSkip?: (organizationId: string, why: string) => void}} [opts]
  * @returns {Promise<object[]>} one report per matching branch, in every tenant.
  */
 const whyNotLive = async (query, { onSkip = () => {} } = {}) => {
@@ -155,7 +155,7 @@ if (require.main === module) {
     let code = 0;
     try {
       const reports = await whyNotLive(branch, {
-        onSkip: (tenantId, why) => console.warn(`(tenant ${tenantId} skipped: database unreachable: ${why})`),
+        onSkip: (organizationId, why) => console.warn(`(tenant ${organizationId} skipped: database unreachable: ${why})`),
       });
       if (reports.length === 0) {
         console.log(`No branch matches "${branch}".`);

@@ -7,7 +7,7 @@
  *
  * Persona: host A owns tenant 2 (persona otherTenantOwner) and is also a branch MANAGER
  * at tenant 1. Host C owns a gym and has no role at tenant 1 at all. The token is the
- * one auth.service issues (role GYM_HOST, tenantId = the gym the caller owns).
+ * one auth.service issues (role GYM_HOST, organizationId = the gym the caller owns).
  *
  * Routes behind tenantContext get their role rewritten per tenant (applyLegacyRoleShim:
  * GYM_HOST only where the caller is the owner), and routes without it act on the token's
@@ -37,28 +37,28 @@ beforeAll(async () => {
     scopeType: 'BRANCH',
     scopeId: ctx.branch1.id,
     branchIds: [ctx.branch1.id],
-    overrides: { tenantId: ctx.tenant1.id },
+    overrides: { organizationId: ctx.tenant1.id },
   });
 
   // A token for host A that names tenant 1 (stale, or edited by hand): the role in it is
   // still the account role GYM_HOST.
   personas.hostAAtTenant1Token = {
     user: hostA,
-    token: signToken({ sub: hostA.id, id: hostA.id, email: hostA.email, role: 'GYM_HOST', isVerified: true, tenantId: ctx.tenant1.id }),
+    token: signToken({ sub: hostA.id, id: hostA.id, email: hostA.email, role: 'GYM_HOST', isVerified: true, organizationId: ctx.tenant1.id }),
   };
 
   // Host C owns a gym of their own and has no role at tenant 1.
   const hostC = await factories.createUser({ role: 'GYM_HOST', email: 'host-c@p5b.test', fullName: 'Host C' });
   const tenantC = await factories.createTenant({
-    tenantCode: 'GYM-P5BC',
+    organizationCode: 'GYM-P5BC',
     gymName: 'Host C Gym',
     ownerUserId: hostC.id,
     connectionStringEncrypted: dbHarness.tenant2.encryptedConnStr,
   });
   personas.hostC = {
     user: hostC,
-    tenantId: tenantC.id,
-    token: signToken({ sub: hostC.id, id: hostC.id, email: hostC.email, role: 'GYM_HOST', isVerified: true, tenantId: tenantC.id }),
+    organizationId: tenantC.id,
+    token: signToken({ sub: hostC.id, id: hostC.id, email: hostC.email, role: 'GYM_HOST', isVerified: true, organizationId: tenantC.id }),
   };
 });
 
@@ -74,8 +74,8 @@ const listing1Status = async () => {
 };
 
 describe('P5b item 1: a GYM_HOST of another tenant cannot delete tenant 1 branches or organizations', () => {
-  test('host A (manager at tenant 1) with X-Tenant-Id tenant 1: DELETE branch is 403', async () => {
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id })
+  test('host A (manager at tenant 1) with X-Organization-Id tenant 1: DELETE branch is 403', async () => {
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
       .delete(`/gyms/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmOrganizationDeletion: true });
     expect(res.status).toBe(403);
     expect(await branch1Status()).toBe('ACTIVE');
@@ -88,15 +88,15 @@ describe('P5b item 1: a GYM_HOST of another tenant cannot delete tenant 1 branch
     expect(await branch1Status()).toBe('ACTIVE');
   });
 
-  test('host A (manager at tenant 1) with X-Tenant-Id tenant 1: DELETE /host/branches (the app\'s path) is 403', async () => {
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id })
+  test('host A (manager at tenant 1) with X-Organization-Id tenant 1: DELETE /host/branches (the app\'s path) is 403', async () => {
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
       .delete(`/host/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmOrganizationDeletion: true });
     expect(res.status).toBe(403);
     expect(await branch1Status()).toBe('ACTIVE');
   });
 
-  test('host C (no role at tenant 1) with X-Tenant-Id tenant 1: DELETE /host/branches is 404', async () => {
-    const res = await asPersona('hostC', { 'X-Tenant-Id': ctx.tenant1.id })
+  test('host C (no role at tenant 1) with X-Organization-Id tenant 1: DELETE /host/branches is 404', async () => {
+    const res = await asPersona('hostC', { 'X-Organization-Id': ctx.tenant1.id })
       .delete(`/host/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmOrganizationDeletion: true });
     expect(res.status).toBe(404);
     expect(await branch1Status()).toBe('ACTIVE');
@@ -109,18 +109,18 @@ describe('P5b item 1: a GYM_HOST of another tenant cannot delete tenant 1 branch
     expect(await branch1Status()).toBe('ACTIVE');
   });
 
-  test('host A with X-Tenant-Id tenant 1: DELETE organization is 403', async () => {
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id })
+  test('host A with X-Organization-Id tenant 1: DELETE organization is 403', async () => {
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
       .delete(`/host/listings/${ctx.listing1.id}`, { password: PASSWORD });
     expect(res.status).toBe(403);
     expect(await listing1Status()).toBe('ACTIVE');
   });
 
-  test('host C (no role at tenant 1) with X-Tenant-Id tenant 1: 404, existence not leaked', async () => {
-    const branch = await asPersona('hostC', { 'X-Tenant-Id': ctx.tenant1.id })
+  test('host C (no role at tenant 1) with X-Organization-Id tenant 1: 404, existence not leaked', async () => {
+    const branch = await asPersona('hostC', { 'X-Organization-Id': ctx.tenant1.id })
       .delete(`/gyms/branches/${ctx.branch1.id}`, { password: PASSWORD, confirmOrganizationDeletion: true });
     expect(branch.status).toBe(404);
-    const org = await asPersona('hostC', { 'X-Tenant-Id': ctx.tenant1.id })
+    const org = await asPersona('hostC', { 'X-Organization-Id': ctx.tenant1.id })
       .delete(`/host/listings/${ctx.listing1.id}`, { password: PASSWORD });
     expect(org.status).toBe(404);
     expect(await branch1Status()).toBe('ACTIVE');
@@ -129,16 +129,16 @@ describe('P5b item 1: a GYM_HOST of another tenant cannot delete tenant 1 branch
 });
 
 describe('P5b item 1: host routes without tenantContext act on the caller\'s own tenant only', () => {
-  test('GET /host/subscription/current with X-Tenant-Id tenant 1 answers for host A\'s own plan', async () => {
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id }).get('/host/subscription/current');
+  test('GET /host/subscription/current with X-Organization-Id tenant 1 answers for host A\'s own plan', async () => {
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id }).get('/host/subscription/current');
     expect(res.status).toBe(200);
-    expect(res.body.data.tenantId).toBe(ctx.tenant2.id);
+    expect(res.body.data.organizationId).toBe(ctx.tenant2.id);
   });
 
   test('reserved-slot transfer out of a tenant 1 organization is 404', async () => {
     const { GymListing } = require('../../src/models/platform');
     const before = (await GymListing.findByPk(ctx.listing1.id)).reservedSlots;
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id })
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id })
       .post(`/host/listings/${ctx.listing1.id}/reserved-slots/transfer`, { toListingId: ctx.listing2.id, count: 1 });
     expect(res.status).toBe(404);
     expect((await GymListing.findByPk(ctx.listing1.id)).reservedSlots).toBe(before);

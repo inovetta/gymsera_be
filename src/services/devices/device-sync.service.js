@@ -18,7 +18,7 @@
  *     branch-billing-lock.service#assertBranchCheckinAllowed): no adds or updates, removals only.
  *
  * Templates are decrypted only when a command is handed to the device (renderCommands).
- * `db` = a tenant connection { sequelize, models, tenantId? }.
+ * `db` = a tenant connection { sequelize, models, organizationId? }.
  */
 const { utc } = require('./sql-time');
 const crypto = require('crypto');

@@ -11,7 +11,7 @@ const { startTestServer, stopTestServer } = require('../harness/test-server');
 describe('FLOW-10: Review moderation, active/past subscription requirement, and controller argument fixes', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let appServer;
   let branch;
   let gymListing;
@@ -22,13 +22,13 @@ describe('FLOW-10: Review moderation, active/past subscription requirement, and 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
 
     const { Branch, MembershipPlan } = dbHarness.tenant1.models;
     const { GymListing } = require('../../src/models/platform');
 
     branch = await Branch.findOne({ where: { status: 'ACTIVE' } });
-    gymListing = await GymListing.findOne({ where: { tenantId } });
+    gymListing = await GymListing.findOne({ where: { organizationId } });
 
     await branch.update({
       travelerVisibilityStatus: 'active',

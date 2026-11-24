@@ -26,14 +26,14 @@ const { utc } = require('../services/devices/sql-time');
 const REASON_OF_STATE = { absent: 'token_absent', mismatch: 'token_mismatch' };
 
 /**
- * → { apply, to, switch: [{ id, tenantId }], skip: [{ id, reason }] }
- * deviceIds / tenantId narrow the devices looked at (default: every device that is not removed).
+ * → { apply, to, switch: [{ id, organizationId }], skip: [{ id, reason }] }
+ * deviceIds / organizationId narrow the devices looked at (default: every device that is not removed).
  */
-async function planTokenMode({ to, apply = false, tenantId = null, deviceIds = null, now = new Date() } = {}) {
+async function planTokenMode({ to, apply = false, organizationId = null, deviceIds = null, now = new Date() } = {}) {
   if (!['enforce', 'log'].includes(to)) throw new Error('--to must be enforce or log');
   const where = ['status <> \'removed\''];
   const rep = [];
-  if (tenantId) { where.push('tenant_id = ?'); rep.push(tenantId); }
+  if (organizationId) { where.push('tenant_id = ?'); rep.push(organizationId); }
   if (deviceIds && deviceIds.length) { where.push('id IN (?)'); rep.push(deviceIds); }
   const rows = await platformDb.query(
     `SELECT id, tenant_id, status, token_mode, last_token_state, last_seen_at, device_type, cookie_seen_at FROM access_devices WHERE ${where.join(' AND ')} ORDER BY created_at`,
@@ -51,7 +51,7 @@ async function planTokenMode({ to, apply = false, tenantId = null, deviceIds = n
       if (!r.cookie_seen_at) { out.skip.push({ id: r.id, reason: 'never_sent_cookie' }); continue; }
       if (!r.last_seen_at || new Date(r.last_seen_at).getTime() < seenSince) { out.skip.push({ id: r.id, reason: 'not_seen_recently' }); continue; }
     }
-    out.switch.push({ id: r.id, tenantId: r.tenant_id });
+    out.switch.push({ id: r.id, organizationId: r.tenant_id });
   }
   if (apply && out.switch.length) {
     // Only rows still in the state that qualified them (a device that sent a bad token since is left alone).
@@ -72,9 +72,9 @@ async function main() {
   const many = (flag) => args.flatMap((a, i) => (a === flag && args[i + 1] ? [args[i + 1]] : []));
   const to = valueOf('--to');
   const apply = args.includes('--apply');
-  const plan = await planTokenMode({ to, apply, tenantId: valueOf('--tenant'), deviceIds: many('--device') });
+  const plan = await planTokenMode({ to, apply, organizationId: valueOf('--tenant'), deviceIds: many('--device') });
   console.log(`[device-token-mode] ${apply ? 'APPLY' : 'dry run'}: to ${to}; ${plan.switch.length} device(s) ${apply ? 'switched' : 'would switch'}, ${plan.skip.length} skipped`);
-  for (const s of plan.switch) console.log(`  switch  ${s.id} (tenant ${s.tenantId})`);
+  for (const s of plan.switch) console.log(`  switch  ${s.id} (tenant ${s.organizationId})`);
   for (const s of plan.skip) console.log(`  skip    ${s.id}: ${s.reason}`);
   if (!apply && plan.switch.length) console.log('Run again with --apply to switch them.');
 }

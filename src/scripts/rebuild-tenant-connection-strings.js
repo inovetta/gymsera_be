@@ -65,10 +65,10 @@ const canConnect = async (connUrl) => {
 };
 
 /**
- * @param {{ apply?: boolean, env?: object, log?: Function, tenantIds?: string[], tenantCode?: string }} opts
+ * @param {{ apply?: boolean, env?: object, log?: Function, tenantIds?: string[], organizationCode?: string }} opts
  * @returns {Promise<{ applied, toRebuild, alreadyCurrent, otherUser, notProvisioned, failures }>}
  */
-const run = async ({ apply = false, env = process.env, log = console.log, tenantIds, tenantCode } = {}) => {
+const run = async ({ apply = false, env = process.env, log = console.log, tenantIds, organizationCode } = {}) => {
   const appUser = env.TENANT_DB_USER;
   const newPassword = env.TENANT_DB_PASS;
   if (!appUser || newPassword === undefined || newPassword === '') {
@@ -78,19 +78,19 @@ const run = async ({ apply = false, env = process.env, log = console.log, tenant
   const { Tenant } = require('../models/platform');
   const filter = {};
   if (tenantIds) filter.id = tenantIds;
-  if (tenantCode) filter.tenantCode = tenantCode;
+  if (organizationCode) filter.organizationCode = organizationCode;
   const tenants = await Tenant.findAll({
     where: filter,
-    attributes: ['id', 'tenantCode', 'dbName', 'connectionStringEncrypted'],
-    order: [['tenantCode', 'ASC']],
+    attributes: ['id', 'organizationCode', 'dbName', 'connectionStringEncrypted'],
+    order: [['organizationCode', 'ASC']],
   });
 
   log(`Rebuild tenant connection strings (${apply ? 'APPLY' : 'DRY-RUN'}), tenant user ${appUser}, ${tenants.length} tenant(s)`);
   const result = { applied: false, toRebuild: 0, alreadyCurrent: 0, otherUser: 0, notProvisioned: 0, failures: [] };
   const updates = [];
   const fail = (t, reason, detail) => {
-    result.failures.push({ tenantId: t.id, tenantCode: t.tenantCode, reason });
-    log(`  ${t.tenantCode}  FAIL ${reason}${detail ? ` (${detail})` : ''}`);
+    result.failures.push({ organizationId: t.id, organizationCode: t.organizationCode, reason });
+    log(`  ${t.organizationCode}  FAIL ${reason}${detail ? ` (${detail})` : ''}`);
   };
 
   for (const t of tenants) {
@@ -110,7 +110,7 @@ const run = async ({ apply = false, env = process.env, log = console.log, tenant
     }
     if (parts.user !== appUser) {
       result.otherUser += 1;
-      log(`  ${t.tenantCode}  ${where(parts)}  user=${parts.user}  LEFT ALONE (not ${appUser})`);
+      log(`  ${t.organizationCode}  ${where(parts)}  user=${parts.user}  LEFT ALONE (not ${appUser})`);
       continue;
     }
     if (!t.dbName || t.dbName !== parts.database) {
@@ -119,7 +119,7 @@ const run = async ({ apply = false, env = process.env, log = console.log, tenant
     }
     if (parts.password === newPassword) {
       result.alreadyCurrent += 1;
-      log(`  ${t.tenantCode}  ${where(parts)}  user=${parts.user}  ALREADY CURRENT`);
+      log(`  ${t.organizationCode}  ${where(parts)}  user=${parts.user}  ALREADY CURRENT`);
       continue;
     }
     const next = rebuildUrl(current, { password: newPassword });
@@ -139,7 +139,7 @@ const run = async ({ apply = false, env = process.env, log = console.log, tenant
     }
     result.toRebuild += 1;
     updates.push({ id: t.id, encrypted });
-    log(`  ${t.tenantCode}  ${where(parts)}  user=${parts.user}  REBUILD (new password connects)`);
+    log(`  ${t.organizationCode}  ${where(parts)}  user=${parts.user}  REBUILD (new password connects)`);
   }
 
   log(`  ${result.toRebuild} to rebuild, ${result.alreadyCurrent} already current, ${result.otherUser} other user, ${result.notProvisioned} not provisioned, ${result.failures.length} failed`);
@@ -171,7 +171,7 @@ async function main() {
   const { sequelize } = require('../database/platform');
   await sequelize.authenticate();
   try {
-    const result = await run({ apply, tenantCode: tenantArg ? tenantArg.slice('--tenant='.length) : undefined });
+    const result = await run({ apply, organizationCode: tenantArg ? tenantArg.slice('--tenant='.length) : undefined });
     return result.failures.length ? 1 : 0;
   } finally {
     await sequelize.close().catch(() => {});

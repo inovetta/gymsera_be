@@ -4,8 +4,8 @@
  *
  * Before:
  * - No server field said where a host stands. Each host tab guessed from
- *   /host/today-summary "state" A/B/C, which reads the JWT's tenantId: a token
- *   issued before the traveller became a host (tenantId null) answered "A" (DRAFT)
+ *   /host/today-summary "state" A/B/C, which reads the JWT's organizationId: a token
+ *   issued before the traveller became a host (organizationId null) answered "A" (DRAFT)
  *   for a host already under review (host.controller.js getTodaySummary).
  * - Nothing said "payment due", so the Gyms tab told an unpaid (DRAFT) host
  *   "waiting for admin approval" (BUG-12).
@@ -44,8 +44,8 @@ const makeHost = async (key, tenantOverrides = {}, tokenOverrides = {}) => {
     connectionStringEncrypted: 'PENDING_PROVISIONING',
     ...tenantOverrides,
   });
-  const token = hostToken(user, { tenantId: tenant.id, ...tokenOverrides });
-  // Not `tenantId`: the harness would send it as X-Tenant-Id, and host screens send none.
+  const token = hostToken(user, { organizationId: tenant.id, ...tokenOverrides });
+  // Not `organizationId`: the harness would send it as X-Organization-Id, and host screens send none.
   personaManager.personas[key] = { user, token, ownTenantId: tenant.id };
   return { user, tenant };
 };
@@ -189,8 +189,8 @@ describe('GET /host/status', () => {
     expect(res.body.data.verification.verified).toBe(false);
   });
 
-  test('BUG-11: a token issued before the person became a host (role MEMBER, no tenantId) still gets their status', async () => {
-    await makeHost('Stale', { status: 'PENDING_REVIEW', kycStatus: 'PENDING' }, { role: 'MEMBER', isHost: false, tenantId: null });
+  test('BUG-11: a token issued before the person became a host (role MEMBER, no organizationId) still gets their status', async () => {
+    await makeHost('Stale', { status: 'PENDING_REVIEW', kycStatus: 'PENDING' }, { role: 'MEMBER', isHost: false, organizationId: null });
     const res = await asPersona('Stale').get('/host/status');
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('PENDING_REVIEW');
@@ -211,9 +211,9 @@ describe('GET /host/status', () => {
   });
 
   test('never reveals another host\'s tenant: always the caller\'s own', async () => {
-    const res = await asPersona('Unpaid', { 'X-Tenant-Id': personas.owner.tenantId }).get('/host/status');
+    const res = await asPersona('Unpaid', { 'X-Organization-Id': personas.owner.organizationId }).get('/host/status');
     expect(res.status).toBe(200);
-    expect(res.body.data.tenantId).toBe(personaManager.personas.Unpaid.ownTenantId);
+    expect(res.body.data.organizationId).toBe(personaManager.personas.Unpaid.ownTenantId);
   });
 });
 
@@ -231,10 +231,10 @@ describe('GET /me/bootstrap carries the same host status', () => {
 });
 
 describe('GET /host/today-summary', () => {
-  test('BUG-11: resolves the host\'s own tenant, not the token\'s tenantId (stale token said DRAFT)', async () => {
-    // Same person as "Stale", but with a GYM_HOST token that still has no tenantId.
+  test('BUG-11: resolves the host\'s own tenant, not the token\'s organizationId (stale token said DRAFT)', async () => {
+    // Same person as "Stale", but with a GYM_HOST token that still has no organizationId.
     const stale = personaManager.personas.Stale;
-    personaManager.personas.StaleHost = { token: hostToken(stale.user, { tenantId: null }) };
+    personaManager.personas.StaleHost = { token: hostToken(stale.user, { organizationId: null }) };
     const res = await asPersona('StaleHost').get('/host/today-summary');
     expect(res.status).toBe(200);
     expect(res.body.data.applicationStatus).toBe('PENDING_REVIEW');

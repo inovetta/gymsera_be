@@ -25,7 +25,7 @@ async function main() {
   console.log(`  ACCOUNT DELETION SWEEP (${dryRun ? 'DRY-RUN' : 'LIVE'})`);
   console.log('=========================================');
   console.log(`Tenants due: ${result.tenants.length}   Users due: ${result.users.length}`);
-  for (const t of result.tenants) console.log(` - tenant ${t.tenantCode || t.id} (window ended ${t.scheduledFor})`);
+  for (const t of result.tenants) console.log(` - tenant ${t.organizationCode || t.id} (window ended ${t.scheduledFor})`);
   for (const u of result.users) console.log(` - user ${u.id} (window ended ${u.scheduledFor})`);
   if (!dryRun) {
     console.log(`Finalized tenants: ${result.finalizedTenants.length}   Finalized users: ${result.finalizedUsers.length}`);

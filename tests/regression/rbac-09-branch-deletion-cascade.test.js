@@ -12,7 +12,7 @@ const { signToken } = require('../../src/utils/jwt.utils');
 describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.5, §8.3)', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let listing;
   let appServer;
 
@@ -20,8 +20,8 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
     const { GymListing } = require('../../src/models/platform');
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
-    listing = await GymListing.findOne({ where: { tenantId } });
+    organizationId = personas.owner.organizationId;
+    listing = await GymListing.findOne({ where: { organizationId } });
     appServer = await startTestServer();
   });
 
@@ -69,7 +69,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
       sub: staffUser.id,
       email: staffUser.email,
       role: staffUser.role,
-      tenantId,
+      organizationId,
       branchId: branch.id,
       ver: 1,
     });
@@ -92,13 +92,13 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
     const resForbidden = await request(appServer)
       .get(`/api/v1/gyms/branches/${branch.id}/staff`)
       .set('Authorization', `Bearer ${initialToken}`)
-      .set('x-tenant-id', tenantId);
+      .set('x-organization-id', organizationId);
 
     expect(resForbidden.status).toBe(403);
     expect(resForbidden.body.code).toBe('forbidden');
 
     // 7. Restore the branch
-    await gymService.restoreBranch(dbHarness.tenant1, tenantId, branch.id, personas.owner.user.id);
+    await gymService.restoreBranch(dbHarness.tenant1, organizationId, branch.id, personas.owner.user.id);
 
     // 8. Verify the branch is restored to ACTIVE
     await branch.reload();
@@ -113,7 +113,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
       sub: staffUser.id,
       email: staffUser.email,
       role: staffUser.role,
-      tenantId,
+      organizationId,
       branchId: branch.id,
       ver: staffUser.permissionVersion,
     });
@@ -131,7 +131,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
     const resStillForbidden = await request(appServer)
       .get(`/api/v1/gyms/branches/${branch.id}/staff`)
       .set('Authorization', `Bearer ${freshToken}`)
-      .set('x-tenant-id', tenantId);
+      .set('x-organization-id', organizationId);
 
     expect([403, 404]).toContain(resStillForbidden.status);
   });

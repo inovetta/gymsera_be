@@ -207,7 +207,7 @@ describe('version mismatch → comparison photo (§3, §7.1)', () => {
     const u = await w.member('Face Member');
     await biometrics.recordConsent(w.db1, { memberId: u.id, method: 'in_person' });
     await biometrics.storeTemplates(w.db1, { memberId: u.id, deviceId: null, templates: [{ pin: '1', type: 9, no: 0, index: 0, valid: 1, duress: 0, majorVer: '58', minorVer: '1', format: 0, tmp: fx.TEMPLATE }] });
-    await biometrics.storePhoto(w.db1, { tenantId: w.ctx.tenant1.id, memberId: u.id, deviceId: null, photo: { pin: '1', type: 9, kind: 'biophoto', content: fx.PHOTO } });
+    await biometrics.storePhoto(w.db1, { organizationId: w.ctx.tenant1.id, memberId: u.id, deviceId: null, photo: { pin: '1', type: 9, kind: 'biophoto', content: fx.PHOTO } });
     await w.subscribe(w.db1, { user: u, branch });
     const done = await d.sim.drain();
     expect(done.map((c) => c.text.split(' ').slice(0, 3).join(' '))).toEqual(['DATA UPDATE user', 'DATA UPDATE userauthorize', 'DATA UPDATE biophoto']);
@@ -219,7 +219,7 @@ describe('version mismatch → comparison photo (§3, §7.1)', () => {
     const u2 = await w.member('Face Member Two');
     await biometrics.recordConsent(w.db1, { memberId: u2.id, method: 'in_person' });
     await biometrics.storeTemplates(w.db1, { memberId: u2.id, deviceId: null, templates: [{ pin: '1', type: 9, no: 0, index: 0, valid: 1, duress: 0, majorVer: '40', minorVer: '1', format: 0, tmp: fx.TEMPLATE }] });
-    await biometrics.storePhoto(w.db1, { tenantId: w.ctx.tenant1.id, memberId: u2.id, deviceId: null, photo: { pin: '1', type: 9, kind: 'biophoto', content: fx.PHOTO } });
+    await biometrics.storePhoto(w.db1, { organizationId: w.ctx.tenant1.id, memberId: u2.id, deviceId: null, photo: { pin: '1', type: 9, kind: 'biophoto', content: fx.PHOTO } });
     d.sim.forceReturn = (t) => (t.startsWith('DATA UPDATE biodata') ? -30 : null);
     await w.subscribe(w.db1, { user: u2, branch });
     const done2 = await d.sim.drain();
