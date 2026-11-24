@@ -32,7 +32,7 @@ const tenantsValidators = {
   ],
 
   submitGymProfile: [
-    param('id').isUUID(4).withMessage('Invalid tenant ID'),
+    param('organizationId').isUUID(4).withMessage('Invalid tenant ID'),
 
     body('firstBusinessName')
       .trim()
@@ -88,7 +88,7 @@ const tenantsValidators = {
   ],
 
   selectPackage: [
-    param('id').isUUID(4).withMessage('Invalid tenant ID'),
+    param('organizationId').isUUID(4).withMessage('Invalid tenant ID'),
 
     body('packageId')
       .notEmpty()
