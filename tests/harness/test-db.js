@@ -189,7 +189,11 @@ async function setupTestDatabases() {
 
   // Initialize Platform models
   const { sequelize: platformSequelize, connect: connectPlatform } = require('../../src/database/platform');
-  await dropLegacyTables(platformSequelize, LEGACY_PLATFORM_TABLES);
+  // R-120 NEW-309: the test databases persist between runs and sync({ force }) only drops tables that have a model, so
+  // a table made by raw DDL in a migration (access_devices, device_commands, ...) could survive in a half-migrated
+  // state and make the next run disagree with a fresh database. Every table of the platform test database goes first.
+  const [existing] = await platformSequelize.query('SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = \'BASE TABLE\'');
+  await dropLegacyTables(platformSequelize, [...LEGACY_PLATFORM_TABLES, ...existing.map((t) => t.name)]);
   await platformSequelize.sync({ force: true });
   await connectPlatform();
   const { runPlatformMigrations } = require('../../src/database/platform-migrations');
