@@ -55,7 +55,7 @@ SELECT
   s.created_at,
   s.updated_at
 FROM organization_subscriptions s
-JOIN organizations t ON t.id = s.tenant_id
+JOIN organizations t ON t.id = s.organization_id
 WHERE t.organization_code = 'GYM-4814C134'
 ORDER BY s.created_at;
 

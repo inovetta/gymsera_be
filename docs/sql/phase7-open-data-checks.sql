@@ -21,7 +21,7 @@ SET SESSION group_concat_max_len = 1000000;
 -- 0. Every gym (tenant) with its database and city, so the names below can be matched.
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.id            AS tenant_id,
+  t.id            AS organization_id,
   t.tenant_code,
   t.business_name,
   t.gym_name,
@@ -54,18 +54,18 @@ SET @bug21_db := (SELECT db_name FROM tenants WHERE id = @bug21_tenant);
 
 -- 21a. The tenant, its plan rows (what the banner's maximum comes from).
 SELECT
-  t.id AS tenant_id, t.business_name, t.gym_name, t.status AS tenant_status, t.db_name,
+  t.id AS organization_id, t.business_name, t.gym_name, t.status AS tenant_status, t.db_name,
   s.id AS subscription_id, s.status AS subscription_status, s.payment_status, s.platform,
   s.branch_count, s.over_quota_count, s.created_at AS subscription_created_at
 FROM tenants t
-LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
+LEFT JOIN tenant_subscriptions s ON s.organization_id = t.id
 WHERE t.id = @bug21_tenant
 ORDER BY s.created_at DESC;
 
 -- 21b. Its organizations (listings) with the reserved, unbuilt slots each one holds.
 SELECT id AS listing_id, title, status AS listing_status, reserved_slots, created_at, updated_at
 FROM gym_listings
-WHERE tenant_id = @bug21_tenant
+WHERE organization_id = @bug21_tenant
 ORDER BY created_at;
 
 -- 21c. Its branches: status, traveller visibility and which organization each one is filed under
@@ -91,13 +91,13 @@ PREPARE q FROM @sql; EXECUTE q; DEALLOCATE PREPARE q;
 
 -- 28a. Tenant and listing image fields.
 SELECT
-  t.id AS tenant_id, t.business_name, t.gym_name, t.status AS tenant_status, t.db_name,
+  t.id AS organization_id, t.business_name, t.gym_name, t.status AS tenant_status, t.db_name,
   t.cover_image_url AS tenant_cover, t.logo_url AS tenant_logo,
   JSON_EXTRACT(t.main_branch_data_json, '$.imagesJson') AS onboarding_images,
   l.id AS listing_id, l.title AS listing_title, l.status AS listing_status,
   l.cover_image_url AS listing_cover, l.logo_url AS listing_logo, l.images_json AS listing_images
 FROM tenants t
-LEFT JOIN gym_listings l ON l.tenant_id = t.id
+LEFT JOIN gym_listings l ON l.organization_id = t.id
 WHERE LOWER(t.business_name) REGEXP 'inovetta|savesto'
    OR LOWER(t.gym_name) REGEXP 'inovetta|savesto'
    OR LOWER(l.title) REGEXP 'inovetta|savesto'
@@ -131,7 +131,7 @@ SELECT
   l.id AS listing_id, l.title, t.business_name, l.status AS listing_status,
   l.cover_image_url, l.logo_url, l.images_json, l.updated_at
 FROM gym_listings l
-JOIN tenants t ON t.id = l.tenant_id
+JOIN tenants t ON t.id = l.organization_id
 WHERE l.status = 'ACTIVE' AND t.status = 'ACTIVE'
 ORDER BY l.updated_at DESC;
 
@@ -161,7 +161,7 @@ PREPARE q FROM @sql; EXECUTE q; DEALLOCATE PREPARE q;
 SET @sql := (
   SELECT GROUP_CONCAT(
     CONCAT(
-      'SELECT ', QUOTE(t.id), ' AS tenant_id, ', QUOTE(t.business_name), ' AS business_name, ',
+      'SELECT ', QUOTE(t.id), ' AS organization_id, ', QUOTE(t.business_name), ' AS business_name, ',
       QUOTE(t.status), ' AS tenant_status, b.id AS branch_id, b.branch_name, ',
       'b.traveler_visibility_status, ',
       '(SELECT COUNT(*) FROM `', t.db_name, '`.membership_plans p ',
@@ -185,7 +185,7 @@ PREPARE q FROM @sql; EXECUTE q; DEALLOCATE PREPARE q;
 -- and how many are marked visible. Onboarding keeps them in main_branch_data_json.plans
 -- (older drafts: .packages); the key for visibility there is isPublic.
 SELECT
-  t.id AS tenant_id, t.business_name, t.status AS tenant_status,
+  t.id AS organization_id, t.business_name, t.status AS tenant_status,
   JSON_LENGTH(COALESCE(JSON_EXTRACT(t.main_branch_data_json, '$.plans'),
                        JSON_EXTRACT(t.main_branch_data_json, '$.packages'))) AS onboarding_plans,
   JSON_EXTRACT(t.main_branch_data_json, '$.plans[*].isPublic') AS plans_is_public

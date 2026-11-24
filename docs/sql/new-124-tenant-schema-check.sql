@@ -18,7 +18,7 @@
 --    the database have `schema_migrations` at all? has_branches_currency = 0 confirms NEW-124.
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.id         AS tenant_id,
+  t.id         AS organization_id,
   t.organization_code,
   t.first_business_name,
   t.db_name,
