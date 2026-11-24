@@ -96,7 +96,7 @@ router.get('/stats', publicCache, controller.platformStats);
  */
 router.get('/businesses', publicCache, controller.listOrganizations);
 router.get('/businesses/:businessId/branches', publicCache, controller.listOrganizationBranches);
-router.get('/top-businesses', publicCache, controller.getTopHosts);
+router.get('/top-businesses', publicCache, controller.getTopBusinesses);
 router.get('/branches/featured', publicCache, controller.featuredGyms);
 /**
  * @swagger
@@ -266,7 +266,7 @@ router.get('/branches', publicCache, validate(validators.listGyms), controller.l
  *       404:
  *         description: Gym not found
  */
-router.get('/businesses/:businessId', publicCache, validate(validators.getGym), controller.getGym);
+router.get('/businesses/:businessId', publicCache, validate(validators.getGym), controller.getBusiness);
 router.get('/businesses/:businessId/payment-details', authenticate, controller.getPaymentDetails);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -448,9 +448,9 @@ router.get('/branches', publicCache, validate(validators.listGyms), controller.l
  *       404:
  *         description: Gym not found or inactive
  */
-router.get('/businesses/:businessId', publicCache, validate(validators.getGym), controller.getGym);
-// R-120 NEW-309 (contract §3 BranchDetail): `/discovery/branches/:branchId`. Until the BranchDetail shape is built the same handler answers (it accepts a branch id).
-router.get('/branches/:branchId', publicCache, (req, _res, next) => { req.params.businessId = req.params.branchId; next(); }, validate(validators.getGym), controller.getGym);
+router.get('/businesses/:businessId', publicCache, validate(validators.getGym), controller.getBusiness);
+// API contract v2 §3 BranchDetail: { branch, business, membershipPlans }.
+router.get('/branches/:branchId', publicCache, validate(validators.getBranch), controller.getBranch);
 
 router.post(
   '/branches/:branchId/inquiries',

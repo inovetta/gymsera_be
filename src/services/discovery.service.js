@@ -223,15 +223,15 @@ const _buildAllActiveBranches = async () => {
             businessId: gym.id,
             cityId: finalCityId,
             areaId: finalAreaId,
-            title: displayName(gym.name, b.branchName),
+            displayName: displayName(gym.name, b.branchName),
             businessName: gym.name || null,
             branchName: b.branchName || null,
-            shortDescription: gym.description || b.tagline,
+            description: gym.description || b.tagline,
             logoUrl: gym.logoUrl,
             // BUG-28: the branch's first photo, else the organization's cover or first photo, else
             // the listing's cover; null = the client's neutral placeholder.
             coverImageUrl: _firstPhoto(b.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || (listing && listing.coverImageUrl) || null,
-            organization: {
+            business: {
               name: gym.name || null,
               description: gym.description || null,
               logoUrl: gym.logoUrl || null,
@@ -251,7 +251,6 @@ const _buildAllActiveBranches = async () => {
             minPrice,
             // NEW-145: the price is in the branch's currency (GLB-02, BUG-09).
             currency: b.currency || DEFAULT_CURRENCY,
-            businessId: b.businessId || null, // NEW-309 renames the key
             status: 'ACTIVE',
             createdAt: b.createdAt,
             city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
@@ -304,7 +303,7 @@ const filterBranches = (branches, {
   }
   if (search) {
     const s = search.toLowerCase();
-    filtered = filtered.filter(b => b.title?.toLowerCase().includes(s));
+    filtered = filtered.filter(b => b.displayName?.toLowerCase().includes(s));
   }
   if (priceMin !== undefined && priceMin !== null && priceMin !== '') filtered = filtered.filter(b => b.minPrice >= parseFloat(priceMin));
   if (priceMax !== undefined && priceMax !== null && priceMax !== '') filtered = filtered.filter(b => b.minPrice <= parseFloat(priceMax));
@@ -393,7 +392,7 @@ const listGyms = async ({
   const offset = (page - 1) * limit;
   const paginated = sorted.slice(offset, offset + limit);
 
-  return { gyms: paginated, branches: paginated, pagination: buildPagination(sorted.length, page, limit) };
+  return { branches: paginated, pagination: buildPagination(sorted.length, page, limit) };
 };
 
 /**
@@ -522,7 +521,7 @@ const getGym = async (id) => {
       [membershipPlans, branches] = await Promise.all([
         MembershipPlan.findAll({
           where: { status: 'ACTIVE', isPublic: true },
-          attributes: ['id', 'name', 'description', 'durationType', 'durationValue', 'price', 'joiningFee', 'securityFee', 'isTrial', 'branchId', 'freezeLimitDays', 'visitLimit', 'isFeatured'],
+          attributes: ['id', 'businessId', 'name', 'description', 'durationType', 'durationValue', 'price', 'joiningFee', 'securityFee', 'isTrial', 'branchId', 'freezeLimitDays', 'visitLimit', 'isFeatured'],
           order: [['price', 'ASC']],
         }),
         Branch.findAll({
@@ -618,6 +617,44 @@ const getGym = async (id) => {
   return { gym: { ...normalizedGym, branches }, membershipPlans };
 };
 
+// ── getBusinessPublic / getBranchDetail (API contract v2 §3: BusinessPublic, BranchDetail) ───────────────────────
+// One id, one meaning (rule 4): `/discovery/businesses/:businessId` takes a business id, `/discovery/branches/:branchId` a branch id.
+// Both are built from getGym (which also decides "live for travellers"), reshaped to the contract keys. The organization's
+// name, its `tenant` object and its review fields are never sent (D3).
+const BUSINESS_PUBLIC_KEYS = [
+  'id', 'organizationId', 'primaryBranchId', 'cityId', 'areaId', 'name', 'description', 'logoUrl', 'coverImageUrl',
+  'genderType', 'averageRating', 'reviewCount', 'latitude', 'longitude', 'isFeatured', 'contactPhone', 'website',
+  'facilitiesJson', 'imagesJson', 'category', 'establishedYear', 'floorArea', 'postalCode', 'country', 'minPrice',
+  'currency', 'city', 'area',
+];
+const _toBusinessPublic = (gym) => {
+  const out = {};
+  for (const k of BUSINESS_PUBLIC_KEYS) out[k] = gym[k] === undefined ? null : gym[k];
+  const owner = gym.tenant && gym.tenant.owner;
+  out.host = owner ? { id: owner.id, fullName: owner.fullName, profileImageUrl: owner.profileImageUrl, createdAt: owner.createdAt } : null;
+  out.branches = gym.branches || [];
+  return out;
+};
+
+const getBusinessPublic = async (businessId) => {
+  const listing = await GymListing.findByPk(businessId, { attributes: ['id'] });
+  if (!listing) throw createError('Business not found', 404);
+  const { gym, membershipPlans } = await getGym(businessId);
+  return { business: _toBusinessPublic(gym), membershipPlans };
+};
+
+const getBranchDetail = async (branchId) => {
+  const card = (await _getAllActiveBranches()).find((b) => b.id === branchId);
+  if (!card) throw createError('This gym is not available right now.', 404, 'gym_not_available');
+  const { business, membershipPlans } = await getBusinessPublic(card.businessId);
+  const { branches: _branches, ...businessOnly } = business;
+  return {
+    branch: card,
+    business: businessOnly,
+    membershipPlans: membershipPlans.filter((p) => p.branchId == null || p.branchId === branchId),
+  };
+};
+
 // ── listCities ────────────────────────────────────────────────────────────────
 const listCities = async () => {
   const branches = await _getAllActiveBranches();
@@ -689,7 +726,7 @@ const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1, audie
   const offset = (page - 1) * limit;
   const paginated = sorted.slice(offset, offset + parseInt(limit));
 
-  return { gyms: paginated, branches: paginated };
+  return { branches: paginated };
 };
 
 // ── mapGyms ───────────────────────────────────────────────────────────────────
@@ -739,7 +776,7 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
 
   const orgs = [...byGym.values()].map((list) => {
     const first = list[0];
-    const org = first.organization || {};
+    const org = first.business || {};
     const reviewCount = list.reduce((n, b) => n + (b.reviewCount || 0), 0);
     // Weighted by each branch's approved reviews (BUG-27); 0 with none.
     const ratingSum = list.reduce((n, b) => n + (b.averageRating || 0) * (b.reviewCount || 0), 0);
@@ -762,7 +799,7 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
 
   const offset = (page - 1) * limit;
   return {
-    organizations: orgs.slice(offset, offset + parseInt(limit)),
+    businesses: orgs.slice(offset, offset + parseInt(limit)),
     pagination: buildPagination(orgs.length, page, limit),
   };
 };
@@ -773,7 +810,7 @@ const listOrganizationBranches = async (businessId) => {
     .filter((b) => b.businessId === businessId)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   if (branches.length === 0) throw createError('Organization not found', 404);
-  return { gyms: branches, branches };
+  return { branches };
 };
 
 // ── getGymListingByIdentifier (helper) ────────────────────────────────────────
@@ -796,7 +833,7 @@ const getGymListingByIdentifier = async (identifier) => {
     return {
       id: matched.businessId || matched.id,
       organizationId: matched.organizationId,
-      title: matched.title,
+      title: matched.displayName,
       averageRating: matched.averageRating || 0,
       _isSynthetic: true,
     };
@@ -1058,7 +1095,7 @@ const adminListReviews = async ({ businessId, status, page, limit, offset }) => 
   // A branch travellers cannot see is not in the snapshot: the organization's title is used.
   let titles = new Map();
   try {
-    titles = new Map((await _getAllActiveBranches()).map((b) => [b.branchId, b.title]));
+    titles = new Map((await _getAllActiveBranches()).map((b) => [b.branchId, b.displayName]));
   } catch (err) {
     console.warn('[adminListReviews] branch titles unavailable:', err.message);
   }
@@ -1227,74 +1264,34 @@ const getPaymentDetails = async (businessId) => {
   };
 };
 
-const listTopHosts = async () => {
-  const branches = await _getAllActiveBranches();
-
-  // Group branches by organizationId
-  const tenantBranchesMap = {};
-  for (const b of branches) {
-    if (!tenantBranchesMap[b.organizationId]) {
-      tenantBranchesMap[b.organizationId] = [];
-    }
-    tenantBranchesMap[b.organizationId].push(b);
+const listTopBusinesses = async () => {
+  const cards = await _getAllActiveBranches();
+  const byBusiness = new Map();
+  for (const b of cards) {
+    if (!byBusiness.has(b.businessId)) byBusiness.set(b.businessId, []);
+    byBusiness.get(b.businessId).push(b);
   }
-
-  // Get active tenants with owners
-  const tenants = await Tenant.findAll({
-    where: { status: 'ACTIVE' },
-    include: [
-      {
-        model: User,
-        as: 'owner',
-        attributes: ['id', 'fullName', 'profileImageUrl'],
-      },
-    ],
-  });
-
-  // Fetch approved review stats for tenants
-  const reviewStats = await GymReview.findAll({
-    attributes: [
-      'organizationId',
-      [fn('AVG', col('rating')), 'avgRating'],
-      [fn('COUNT', col('id')), 'reviewCount'],
-    ],
-    where: { status: 'APPROVED' },
-    group: ['organizationId'],
-    raw: true,
-  });
-
-  const ratingMap = new Map(
-    reviewStats.map((r) => [r.organizationId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
-  );
-  const reviewCountMap = new Map(reviewStats.map((r) => [r.organizationId, Number(r.reviewCount) || 0]));
-
-  const topHosts = tenants
-    .map((tenant) => {
-      const tenantBranches = tenantBranchesMap[tenant.id] || [];
-      const averageRating = ratingMap.get(tenant.id) || 0.0;
-
-      // Use first branch cover or owner avatar as fallback
-      const coverImageUrl = tenantBranches.length > 0 ? tenantBranches[0].coverImageUrl : null;
-      const logoUrl = tenant.owner ? tenant.owner.profileImageUrl : null;
-
+  // API contract v2 §3 TopBusiness: one row per business (was one per organization with the owner's name).
+  return [...byBusiness.values()]
+    .map((list) => {
+      const first = list[0];
+      const reviewCount = list.reduce((n, b) => n + (b.reviewCount || 0), 0);
+      const ratingSum = list.reduce((n, b) => n + (b.averageRating || 0) * (b.reviewCount || 0), 0);
+      const biz = first.business || {};
       return {
-        id: tenant.id,
-        organizationId: tenant.id,
-        organizationName: tenant.organizationName,
-        ownerName: tenant.owner ? tenant.owner.fullName : null,
-        logoUrl,
-        coverImageUrl,
-        averageRating,
-        // BUG-27: approved reviews; 0 = "New".
-        reviewCount: reviewCountMap.get(tenant.id) || 0,
-        branchCount: tenantBranches.length,
-        branches: tenantBranches,
+        id: first.businessId,
+        businessId: first.businessId,
+        organizationId: first.organizationId,
+        businessName: first.businessName || biz.name || null,
+        logoUrl: biz.logoUrl || null,
+        coverImageUrl: biz.coverImageUrl || list.map((b) => b.coverImageUrl).find(Boolean) || null,
+        averageRating: reviewCount > 0 ? Math.round((ratingSum / reviewCount) * 100) / 100 : 0,
+        reviewCount, // BUG-27: approved reviews; 0 = "New"
+        branchCount: list.length,
+        branches: list,
       };
     })
-    .filter((host) => host.branchCount > 0) // Only hosts with active branches
-    .sort((a, b) => b.averageRating - a.averageRating); // Sort by average rating descending
-
-  return topHosts;
+    .sort((a, b) => b.averageRating - a.averageRating || b.reviewCount - a.reviewCount);
 };
 
 module.exports = {
@@ -1303,6 +1300,9 @@ module.exports = {
   displayName,
   listGyms,
   getGym,
+  getBusinessPublic,
+  getBranchDetail,
+  BUSINESS_PUBLIC_KEYS,
   getPaymentDetails,
   isLiveForTravellers,
   entitlesTravellers,
@@ -1319,7 +1319,7 @@ module.exports = {
   moderateReview,
   getReviewsSummary,
   getGymListingByIdentifier,
-  listTopHosts,
+  listTopBusinesses,
   listOrganizations,
   listOrganizationBranches,
 };

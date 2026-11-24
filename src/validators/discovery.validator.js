@@ -44,6 +44,10 @@ const discoveryValidators = {
       .withMessage('limit must be between 1 and 50'),
   ],
 
+  getBranch: [
+    param('branchId').isUUID(4).withMessage('Invalid branch ID'),
+  ],
+
   getGym: [
     param('businessId').isUUID(4).withMessage('Invalid business ID'),
   ],

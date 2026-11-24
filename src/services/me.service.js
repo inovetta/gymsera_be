@@ -446,7 +446,11 @@ const getSavedGyms = async (userId) => {
         } else {
           raw.facilitiesJson = [];
         }
-        return raw;
+        // API contract v2 A3 J2: the BusinessPublic keys (no `branches`), nothing of the account's own rows.
+        const { BUSINESS_PUBLIC_KEYS } = require('./discovery.service');
+        const out = {};
+        for (const k of BUSINESS_PUBLIC_KEYS) out[k] = raw[k] === undefined ? null : raw[k];
+        return out;
       }
       return null;
     })

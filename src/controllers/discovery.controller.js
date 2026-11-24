@@ -62,7 +62,7 @@ const listGyms = async (req, res, next) => {
       offset,
     });
 
-    return sendSuccess(res, { gyms: result.gyms }, 'OK', 200, result.pagination);
+    return sendSuccess(res, { branches: result.branches }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
   }
@@ -91,7 +91,7 @@ const mapGyms = async (req, res, next) => {
   try {
     const { cityId, audience } = req.query;
     const gyms = await discoveryService.mapGyms({ cityId: cityId || null, audience: audience || null });
-    return sendSuccess(res, { gyms });
+    return sendSuccess(res, { branches: gyms });
   } catch (err) {
     next(err);
   }
@@ -102,7 +102,7 @@ const featuredGyms = async (req, res, next) => {
   try {
     const { limit = 12 } = req.query;
     const gyms = await discoveryService.featuredGyms({ limit });
-    return sendSuccess(res, { gyms });
+    return sendSuccess(res, { branches: gyms });
   } catch (err) {
     next(err);
   }
@@ -113,16 +113,16 @@ const topRatedGyms = async (req, res, next) => {
   try {
     const { cityId, limit = 12 } = req.query;
     const gyms = await discoveryService.topRatedGyms({ cityId: cityId || null, limit });
-    return sendSuccess(res, { gyms });
+    return sendSuccess(res, { branches: gyms });
   } catch (err) {
     next(err);
   }
 };
 
-// ── GET /discovery/gyms/:id ───────────────────────────────────────────────────
-const getGym = async (req, res, next) => {
+// ── GET /discovery/businesses/:businessId ───────────────────────────────────────────────────
+const getBusiness = async (req, res, next) => {
   try {
-    const result = await discoveryService.getGym(req.params.businessId);
+    const result = await discoveryService.getBusinessPublic(req.params.businessId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -130,6 +130,16 @@ const getGym = async (req, res, next) => {
 };
 
 // ── GET /discovery/gyms/:id/payment-details ───────────────────────────────────
+// ── GET /discovery/branches/:branchId ─────────────────────────────────────────
+const getBranch = async (req, res, next) => {
+  try {
+    const result = await discoveryService.getBranchDetail(req.params.branchId);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const getPaymentDetails = async (req, res, next) => {
   try {
     const result = await discoveryService.getPaymentDetails(req.params.businessId);
@@ -283,9 +293,9 @@ const listOrganizationBranches = async (req, res, next) => {
   }
 };
 
-const getTopHosts = async (req, res, next) => {
+const getTopBusinesses = async (req, res, next) => {
   try {
-    const result = await discoveryService.listTopHosts();
+    const result = await discoveryService.listTopBusinesses();
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -300,7 +310,8 @@ module.exports = {
   mapGyms,
   featuredGyms,
   topRatedGyms,
-  getGym,
+  getBusiness,
+  getBranch,
   getPaymentDetails,
   listReviews,
   submitReview,
@@ -312,5 +323,5 @@ module.exports = {
   submitBranchReview,
   listOrganizations,
   listOrganizationBranches,
-  getTopHosts,
+  getTopBusinesses,
 };

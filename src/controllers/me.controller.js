@@ -177,8 +177,8 @@ const uploadPaymentProof = async (req, res, next) => {
 // ── GET /me/saved-gyms ────────────────────────────────────────────────────────
 const getSavedGyms = async (req, res, next) => {
   try {
-    const gyms = await meService.getSavedGyms(req.user.sub);
-    return sendSuccess(res, { gyms }, 'Saved gyms retrieved');
+    const businesses = await meService.getSavedGyms(req.user.sub);
+    return sendSuccess(res, { businesses }, 'Saved businesses retrieved');
   } catch (err) {
     next(err);
   }
