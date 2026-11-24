@@ -36,7 +36,7 @@ describe('2A Blocker 1: Request Timeout & Upload Exemption & Idempotency Protect
       expect(isUploadRoute('/api/v1/me/profile-image')).toBe(true);
       expect(isUploadRoute('/api/v1/users/me/profile/image')).toBe(true);
       expect(isUploadRoute('/api/v1/membership-plans/789/poster')).toBe(true);
-      expect(isUploadRoute('/api/v1/gyms/profile/images')).toBe(true);
+      expect(isUploadRoute('/api/v1/organizations/me/businesses/123/profile/images')).toBe(true);
       expect(isUploadRoute('/api/v1/organizations/123/logo')).toBe(true);
       expect(isUploadRoute('/api/v1/organizations/123/cover')).toBe(true);
 

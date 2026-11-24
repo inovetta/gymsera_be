@@ -133,7 +133,7 @@ afterAll(async () => {
 
 const getMembers = (token, query = '') =>
   request(app)
-    .get(`/api/v1/gyms/members${query}`)
+    .get(`/api/v1/organizations/me/members${query}`)
     .set('Authorization', `Bearer ${token}`)
     .set('X-Organization-Id', organizationId);
 

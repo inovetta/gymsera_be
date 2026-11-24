@@ -95,7 +95,7 @@ afterAll(async () => {
 
 const getMembers = (query = '') =>
   request(app)
-    .get(`/api/v1/gyms/members${query}`)
+    .get(`/api/v1/organizations/me/members${query}`)
     .set('Authorization', `Bearer ${personas.owner.token}`)
     .set('X-Organization-Id', organizationId);
 

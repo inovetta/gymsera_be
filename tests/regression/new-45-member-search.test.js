@@ -33,7 +33,7 @@ afterAll(async () => {
 
 const search = (token) =>
   request(app)
-    .get('/api/v1/gyms/members/search')
+    .get('/api/v1/organizations/me/members/search')
     .query({ email: LOOKUP })
     .set('Authorization', `Bearer ${token}`)
     .set('X-Organization-Id', team.organizationId);

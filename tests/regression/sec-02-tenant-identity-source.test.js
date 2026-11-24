@@ -33,7 +33,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
     test('Host A forging Tenant B ID in body is rejected with 404 (does not leak existence)', async () => {
       // Host A belongs to Tenant 1. Host A calls branch creation with Tenant 2's ID in body.
       const res = await request(appServer)
-        .post('/api/v1/gyms/branches')
+        .post('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${personas.owner.token}`)
         .send({
           organizationId: tenant2Id,
@@ -57,7 +57,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
     test('Host A forging a non-existent tenant ID in body returns identical 404 response', async () => {
       const nonExistentTenantId = '99999999-9999-4999-8999-999999999999';
       const res = await request(appServer)
-        .post('/api/v1/gyms/branches')
+        .post('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${personas.owner.token}`)
         .send({
           organizationId: nonExistentTenantId,
@@ -72,7 +72,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
 
     test('Regular member forging Tenant B in body is rejected with 404 (no leak)', async () => {
       const res = await request(appServer)
-        .post('/api/v1/gyms/branches')
+        .post('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${personas.member.token}`)
         .send({
           organizationId: tenant2Id,
@@ -89,7 +89,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
   describe('2. Header-based X-Organization-Id is only validated against tenants the user belongs to', () => {
     test('Host A sending X-Organization-Id for Tenant B (real tenant) is rejected with 404', async () => {
       const res = await request(appServer)
-        .get('/api/v1/gyms/branches')
+        .get('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${personas.owner.token}`)
         .set('X-Organization-Id', tenant2Id);
 
@@ -101,7 +101,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
     test('Host A sending X-Organization-Id for non-existent tenant returns identical 404', async () => {
       const nonExistentTenantId = '88888888-8888-4888-8888-888888888888';
       const res = await request(appServer)
-        .get('/api/v1/gyms/branches')
+        .get('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${personas.owner.token}`)
         .set('X-Organization-Id', nonExistentTenantId);
 
@@ -112,7 +112,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
 
     test('Host A sending legitimate X-Organization-Id for Tenant 1 succeeds', async () => {
       const res = await request(appServer)
-        .get('/api/v1/gyms/branches')
+        .get('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${personas.owner.token}`)
         .set('X-Organization-Id', tenant1Id);
 
@@ -125,7 +125,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
   describe('3. Tenant identity comes from authentication / legitimate membership', () => {
     test('Legitimate request with organizationId in body succeeds for caller own tenant and strips body.organizationId', async () => {
       const res = await request(appServer)
-        .post('/api/v1/gyms/branches')
+        .post('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${personas.owner.token}`)
         .set('X-Organization-Id', tenant1Id)
         .send({
@@ -193,14 +193,14 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
 
       // Can access Tenant 1 with X-Organization-Id
       const res1 = await request(appServer)
-        .get('/api/v1/gyms/branches')
+        .get('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${multiToken}`)
         .set('X-Organization-Id', tenant1Id);
       expect(res1.status).toBe(200);
 
       // Can access Tenant 2 with X-Organization-Id
       const res2 = await request(appServer)
-        .get('/api/v1/gyms/branches')
+        .get('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${multiToken}`)
         .set('X-Organization-Id', tenant2Id);
       expect(res2.status).toBe(200);
@@ -208,7 +208,7 @@ describe('SEC-02: Tenant identity must come from authentication, never from clie
       // Cannot access third tenant they do not belong to
       const randomTenantId = '77777777-7777-4777-8777-777777777777';
       const res3 = await request(appServer)
-        .get('/api/v1/gyms/branches')
+        .get('/api/v1/organizations/me/branches')
         .set('Authorization', `Bearer ${multiToken}`)
         .set('X-Organization-Id', randomTenantId);
       expect(res3.status).toBe(404);

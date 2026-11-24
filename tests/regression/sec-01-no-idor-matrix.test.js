@@ -334,7 +334,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
   describe('4. Branch IDOR Scoping', () => {
     test('Host A reading Tenant B branch (/organizations/me/branches/:id) returns 404', async () => {
       const res = await request(appServer)
-        .get(`/api/v1/gyms/branches/${tenant2Branch.id}`)
+        .get(`/api/v1/organizations/me/branches/${tenant2Branch.id}`)
         .set('Authorization', `Bearer ${personas.owner.token}`);
 
       expect(res.status).toBe(404);
@@ -344,7 +344,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     test('Branch-scoped Manager reading unassigned branch returns 404 (NOT 200 or 403)', async () => {
       // Manager is assigned to branch1 only; branch2 is in same tenant but unassigned
       const res = await request(appServer)
-        .get(`/api/v1/gyms/branches/${tenant1Branch2.id}`)
+        .get(`/api/v1/organizations/me/branches/${tenant1Branch2.id}`)
         .set('Authorization', `Bearer ${personas.manager.token}`);
 
       expect(res.status).toBe(404);

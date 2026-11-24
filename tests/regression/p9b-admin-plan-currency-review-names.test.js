@@ -83,7 +83,7 @@ describe('BUG-29: admin reviews name the gym by the traveller rule', () => {
   });
 
   test('a review of a live branch gets the snapshot title (Organization · Branch)', async () => {
-    jest.spyOn(discoveryCache, 'getSnapshot').mockResolvedValue([{ branchId: branch.id, title: 'Iron Gym · Uptown' }]);
+    jest.spyOn(discoveryCache, 'getSnapshot').mockResolvedValue([{ branchId: branch.id, displayName: 'Iron Gym · Uptown' }]);
     const res = await asAdmin('/admin/reviews');
     expect(res.status).toBe(200);
     const r = res.body.data.reviews.find((x) => x.id === liveReview.id);

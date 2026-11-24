@@ -77,7 +77,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     });
 
     const res = await request(appServer)
-      .post(`/api/v1/gyms/branches/${branch.id}/staff`)
+      .post(`/api/v1/organizations/me/branches/${branch.id}/staff`)
       .set('Authorization', `Bearer ${personas.manager.token}`)
       .set('X-Organization-Id', organizationId)
       .send({

@@ -47,7 +47,7 @@ afterAll(async () => {
 const enroll = (token, over = {}) => {
   seq += 1;
   const body = { email: `walkin${seq}@new45.test`, fullName: 'Walk In', planId: plan.id, branchId: team.branchA.id, ...over };
-  return { body, call: request(app).post('/api/v1/gyms/members/enroll').set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body) };
+  return { body, call: request(app).post('/api/v1/organizations/me/members/enroll').set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body) };
 };
 
 const subscriptionsFor = async (email) => {

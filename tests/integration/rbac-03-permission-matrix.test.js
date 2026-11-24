@@ -391,8 +391,8 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
     });
   });
 
-  // ── 5. Branch Lifecycle Mutations: /api/v1/gyms/branches ────────────────────
-  describe('Branch Lifecycle: /api/v1/gyms/branches', () => {
+  // ── 5. Branch Lifecycle Mutations: /api/v1/organizations/me/branches ────────────────────
+  describe('Branch Lifecycle: /api/v1/organizations/me/branches', () => {
     it('only allows Host/Owner to create a branch (branch.create)', async () => {
       // Owner is allowed (validation error 422 if input missing, never 403)
       const ownerRes = await asPersona('owner').post('/organizations/me/branches', {

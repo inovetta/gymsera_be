@@ -90,7 +90,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
 
     // 6. Verify previous JWT receives immediate 403 (AUTH-08)
     const resForbidden = await request(appServer)
-      .get(`/api/v1/gyms/branches/${branch.id}/staff`)
+      .get(`/api/v1/organizations/me/branches/${branch.id}/staff`)
       .set('Authorization', `Bearer ${initialToken}`)
       .set('x-organization-id', organizationId);
 
@@ -129,7 +129,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
 
     // b) Accessing branch endpoints rejects access (404 branch access mask per SEC-01)
     const resStillForbidden = await request(appServer)
-      .get(`/api/v1/gyms/branches/${branch.id}/staff`)
+      .get(`/api/v1/organizations/me/branches/${branch.id}/staff`)
       .set('Authorization', `Bearer ${freshToken}`)
       .set('x-organization-id', organizationId);
 

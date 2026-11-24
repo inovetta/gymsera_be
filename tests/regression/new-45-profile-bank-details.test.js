@@ -28,7 +28,7 @@ afterAll(async () => {
 });
 
 const profile = (token) =>
-  request(app).get('/api/v1/gyms/profile').set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
+  request(app).get(`/api/v1/organizations/me/businesses/${team.branchA.businessId}/profile`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
 describe('NEW-45: bank details on GET /organizations/me/businesses/{businessId}/profile', () => {
   test.each([
