@@ -471,7 +471,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 286 | GET | `/host/inbox/inquiries` | (same) |  |  |
 | 287 | POST | `/host/inbox/conversations` | (same) | `branchId`, `initialMessage`, `userId` |  |
 | 288 | GET | `/host/inbox/inquiries/:inquiryId` | (same) |  |  |
-| 289 | POST | `/host/inbox/inquiries/:inquiryId/reply` | (same) | `clientMessageId`, `client_message_id`, `text` |  |
+| 289 | POST | `/host/inbox/inquiries/:inquiryId/reply` | (same) | `clientMessageId` (optional), `text` |  |
 | 290 | PATCH | `/host/inbox/inquiries/:inquiryId/read` | (same) |  |  |
 | 291 | POST | `/host/inbox/inquiries/:inquiryId/block` | (same) |  |  |
 | 292 | DELETE | `/host/inbox/inquiries/:inquiryId/block` | (same) |  |  |
@@ -542,7 +542,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 357 | POST | `/me/cancel-deletion` | (same) |  |  |
 | 358 | GET | `/me/inbox` | (same) |  |  |
 | 359 | GET | `/me/inbox/:conversationId` | (same) |  |  |
-| 360 | POST | `/me/inbox/:conversationId/reply` | (same) | `clientMessageId`, `client_message_id`, `text` |  |
+| 360 | POST | `/me/inbox/:conversationId/reply` | (same) | `clientMessageId` (optional), `text` |  |
 | 361 | PATCH | `/me/inbox/:conversationId/read` | (same) |  |  |
 | 362 | POST | `/me/inbox/:conversationId/block` | (same) |  |  |
 | 363 | DELETE | `/me/inbox/:conversationId/block` | (same) |  |  |
@@ -1313,6 +1313,19 @@ documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 
 - `GET /admin/organizations` answers `data: { organizations: [Organization], page, total }`. `page` and `total` are inside `data`; the response has **no** envelope `pagination` object and no `limit` / `totalPages` (the client knows the `limit` it sent: pages = ceil(total / limit)). The A1 G1 rule applies to this list only; other admin lists keep their current shape until their rows say otherwise. (Rows for a pending additional business with a compound id are still sent in this list until the review queue, G1, is built; they carry `isAdditionalOrganization`.)
 - `POST` and `PUT /organizations/:organizationId/first-business/images` (was `/tenants/:id/onboarding-images`, §4 rows 48 and 49) are **removed**, not renamed: the server answers 404. Photos are uploaded with the stateless `POST /host/staging-images` (J13) and sent as `firstBranch.imagesJson` in the first-business body; sending the first-business body again with a new `imagesJson` replaces the list and keeps the other draft keys.
 
+### J17. `clientMessageId` (owner decision)
+
+`POST /host/inbox/inquiries/:inquiryId/reply` (§4 row 289) and `POST /me/inbox/:conversationId/reply` (row 360) take an
+**optional `clientMessageId`** (string, 1 to 64 characters): the idempotency guard. A retry with the same value in the same
+conversation by the same sender answers the first message and creates no second one. The snake_case spelling
+`client_message_id` is **not accepted** (422 `unknown_field`), here or in the chat socket's `message:send` payload.
+
+### J18. What stays open in the discovery answers until NEW-303
+
+`businessVerified` (BranchCard, BusinessPublic, TopBusiness) is not sent yet: the verified badge is built with the
+enterprise P1 work (NEW-303, D11). Every other key of the BranchCard, BusinessPublic, BranchDetail and TopBusiness
+objects (§3) is sent as specified.
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1325,3 +1338,4 @@ documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 
 | 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName` (optional), `firstBusinessName`, `firstBusinessDescription`, `firstBranch`, optional `genderType`, `logoUrl`, `coverImageUrl`; `kycDocumentsJson` removed; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
 | 2026-11-24 | Amendment A3 addendum 3 (§12 J14, J15, owner): first-business body keys; the exact `WeeklyHours` shape, the one-slot-on-seven-days form, the old pair rules and the read fields. | Claude Code (Sonnet 5.5), session 167 |
 | 2026-11-24 | Amendment A3 addendum 4 (§12 J16, owner): `GET /admin/organizations` is `{ organizations, page, total }` in `data`; the onboarding-images routes (rows 48, 49) are removed. | Claude Code (Sonnet 5.5), session 167 |
+| 2026-11-24 | Amendment A3 addendum 5 (§12 J17, J18, owner): `clientMessageId` (optional) on the two reply routes, snake_case refused; `businessVerified` left to NEW-303. | Claude Code (Sonnet 5.5), session 167 |
