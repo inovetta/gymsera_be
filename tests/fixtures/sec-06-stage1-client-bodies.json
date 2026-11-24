@@ -242,7 +242,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/discovery/gyms/:p/reviews",
+   "path": "/api/v1/discovery/businesses/:p/reviews",
    "clientKeys": [
     "body",
     "rating",

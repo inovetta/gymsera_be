@@ -112,7 +112,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/auth/tenant-invitations/accept",
+   "path": "/api/v1/auth/organization-invitations/accept",
    "allowed": [
     "fullName",
     "password",
@@ -214,7 +214,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/branches",
+   "path": "/api/v1/organizations/me/branches",
    "allowed": [
     "address",
     "addressLine1",
@@ -260,7 +260,7 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/gyms/branches/:p",
+   "path": "/api/v1/organizations/me/branches/:p",
    "allowed": [
     "address",
     "areaId",
@@ -299,7 +299,7 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/gyms/profile",
+   "path": "/api/v1/organizations/me/businesses/:p/profile",
    "allowed": [
     "address",
     "category",

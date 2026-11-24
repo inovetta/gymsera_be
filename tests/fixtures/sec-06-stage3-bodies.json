@@ -301,31 +301,31 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/branches/:p/images",
+   "path": "/api/v1/organizations/me/branches/:p/images",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/profile/cover",
+   "path": "/api/v1/organizations/me/businesses/:p/profile/cover",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/profile/images",
+   "path": "/api/v1/organizations/me/businesses/:p/profile/images",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/profile/logo",
+   "path": "/api/v1/organizations/me/businesses/:p/profile/logo",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/host/listings/staging-images",
+   "path": "/api/v1/host/businesses/staging-images",
    "allowed": [],
    "clientKeys": []
   },

@@ -99,7 +99,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/branches/:p/staff",
+   "path": "/api/v1/organizations/me/branches/:p/staff",
    "clientKeys": [
     "designation",
     "userId"
@@ -107,7 +107,7 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/gyms/branches/:p/staff/:p",
+   "path": "/api/v1/organizations/me/branches/:p/staff/:p",
    "clientKeys": []
   },
   {
