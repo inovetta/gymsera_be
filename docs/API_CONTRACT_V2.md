@@ -1261,7 +1261,7 @@ route** and no server draft: the server first sees the business when `POST /host
 `POST /host/staging-images` (multipart, field `images`, 1 to 10 files; same file types and size limits as every other image upload).
 
 - **Who:** any signed-in user. No organization, no host role and no tenant context needed (a first-time host has none yet). A platform admin is refused (403), as on every host route.
-- **Answer 200:** `{ success: true, message: "Images uploaded", data: { urls: string[] } }`, one URL per file, in the order sent. 422 `validation_failed` when no file is sent; 413 / 422 file errors as the other upload routes.
+- **Answer 200:** `{ success: true, message: "Images uploaded", data: { urls: string[] } }`, one URL per file, in the order sent. 422 ("At least one image is required") when no file is sent; 413 when a file is over 10 MB or more than 10 are sent, as the other upload routes. Body fields are ignored (SEC-06 log mode, as on the other staging route).
 - **Stateless:** the server stores the files (under the caller's own folder) and returns the URLs. It saves **nothing** about a business, an organization or a draft: no row, no link. The client keeps the URLs on the phone and sends them as `imagesJson` of `firstBranch` (A2 H2) or as `logoUrl` / `coverImageUrl` when it submits.
 - `POST /host/businesses/staging-images` (§4 row 254) is unchanged: the same upload for an existing organization (stored under its folder).
 
