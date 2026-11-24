@@ -1099,7 +1099,7 @@ being created or the one in the path). Used as `firstBranch` in `POST /host/busi
 | `googlePlaceId` | string | optional |
 | `latitude`, `longitude` | number | required (map pin) |
 | `phone` | string | required |
-| `hours` | WeeklyHours (R-113) | optional; default every day 06:00–22:00. `openingTime` / `closingTime` accepted as the one-slot form |
+| `hours` | WeeklyHours (A3 J15) | optional; default every day 06:00–22:00. `openingTime` / `closingTime` accepted as the one-slot form |
 | `timezone`, `currency` | string | optional (server defaults) |
 | `tagline`, `description`, `category` | string | optional |
 | `establishedYear`, `floorArea` | int | optional |
@@ -1273,6 +1273,41 @@ route** and no server draft: the server first sees the business when `POST /host
 documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 H3). Any other key is refused (422
 `validation_error`, `unknown_field`).
 
+### J15. WeeklyHours (the `hours` value; R-113 H2, H3, H5, H6, written here because §3 only named it)
+
+**Write shape** (`hours` on `POST /host/branches`, branch edits, admin branch routes and `firstBranch`, A2 H2):
+
+```json
+{ "v": 1,
+  "days": {
+    "mon": { "closed": false, "slots": [ { "open": "06:00", "close": "22:00", "for": "all" } ] },
+    "tue": { "closed": false, "slots": [ ... ] },
+    "wed": ..., "thu": ..., "fri": ..., "sat": ...,
+    "sun": { "closed": true, "slots": [] }
+  } }
+```
+
+| Part | Rule |
+|---|---|
+| `v` | the number `1` (anything else: 422 `hours_invalid`, path `v`) |
+| `days` | an object with **all seven keys**, lower-case: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. A missing day, or any other key, is refused (path `days.<key>`) |
+| `days.<d>.closed` | boolean. `true` means closed all day: `slots` must then be `[]` |
+| `days.<d>.slots` | an array; **1 to 4** slots on an open day. Sent sorted or not; the server returns them sorted by `open` |
+| slot `open` | string `HH:MM`, 24-hour clock, two digits each, `00:00` to `23:59` (not `6:00`, not `6:00 AM`) |
+| slot `close` | string `HH:MM`, `00:00` to `23:59`, or `24:00` (end of that day). A `close` that is not after `open` means after midnight (`22:00` to `02:00`): allowed only on the **last** slot of a day, and up to `12:00` the next day |
+| slot `for` | `all` (default when omitted), `men` or `women` |
+| times | local to the branch's `timezone` (IANA name, e.g. `Asia/Karachi`); no seconds, no offset |
+| overlap | slots of one day may not overlap, and a slot that runs past midnight may not overlap the next day's first slot (`sun` into `mon` included) |
+| open and close equal | refused (`00:00` to `24:00` is the one allowed "open all day") |
+
+**One slot on all seven days** (the website wizard's form) is valid: the same `{ "open", "close", "for": "all" }` slot under each of the seven days, e.g. `06:00` to `22:00`. `for` may be omitted. The server stores it as a uniform week.
+
+**Old pair** (`openingTime`, `closingTime`, both `HH:MM`) is accepted instead of `hours` on create and on edit while the stored week is empty or uniform; it stands for the one-slot form on all seven days. Sending `hours` **and** the pair: 422 `hours_invalid`. The pair on a branch that holds a weekly (non-uniform) schedule: 409 `hours_schedule_newer`. `hours: null` clears the schedule. The same pair sent back unchanged is no change. When `hours` is sent the server writes `openingTime` (the week's earliest open) and `closingTime` (the latest close, `23:59` for a close at `24:00`) as a summary.
+
+**Errors:** 422 `hours_invalid` with `errors: [{ path, message }]` (`path` like `days.mon.slots[0].open`); 409 `hours_schedule_newer`.
+
+**Read shape** (every branch object, §3 Branch and BranchCard): `hours` is the same object as above (a branch with only the old pair reads as the uniform week; no hours at all reads `null`); the raw stored column is not sent. Computed beside it: `timezone`, `utcOffsetMinutes`, `hoursToday` `{ day, closed, slots }` (slots may include yesterday's after-midnight slot with `startsYesterday: true`), `openNow` (boolean), `openNowFor` (`all` / `men` / `women` / null) and `nextChange` `{ at (ISO UTC), kind ("opens" | "closes"), for }` or null (null when open 24 hours every day).
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1283,3 +1318,4 @@ documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 
 | 2026-11-23 | Amendment A3 (§12, owner): `organization_reactivated`; list keys `branches` / `businesses`; my-subscriptions rows with `branchId` + `businessId`; error-table rows listed; HostStatus key `area`; inbox `business { id, name }` + `branchName`; staff roles scoped ORG / BRANCH (`/me/staff-status`, staff invite) with the report of other responses; Add Business nested `firstBranch`. | Claude Code (Sonnet 5.5), session 166 |
 | 2026-11-23 | Amendment A3 addendum (§12 J10-J12, owner): one `FirstBranch` schema for first-business, Add Business and first-branch edit; business KYC list is `{ documents: [...] }`; first-time host drafts are phone-only (no partial-save contract). | Claude Code (Sonnet 5.5), session 167 |
 | 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName` (optional), `firstBusinessName`, `firstBusinessDescription`, `firstBranch`, optional `genderType`, `logoUrl`, `coverImageUrl`; `kycDocumentsJson` removed; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
+| 2026-11-24 | Amendment A3 addendum 3 (§12 J14, J15, owner): first-business body keys; the exact `WeeklyHours` shape, the one-slot-on-seven-days form, the old pair rules and the read fields. | Claude Code (Sonnet 5.5), session 167 |
