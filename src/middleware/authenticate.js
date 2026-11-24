@@ -43,6 +43,15 @@ const authenticate = async (req, _res, next) => {
 
   try {
     const decoded = verifyToken(token);
+    // R-120 NEW-309 (API contract v2 §1 rule 3): the organization claim is `organizationId`. A token still carrying the old
+    // `tenantId` claim was signed before the rename: 401, the client refreshes (the refresh builds the new claim from the database).
+    const has = (k) => Object.prototype.hasOwnProperty.call(decoded, k);
+    if (has('tenantId') && !has('organizationId')) {
+      const outdated = new Error('Your session is out of date. Refresh it or sign in again.');
+      outdated.statusCode = 401;
+      outdated.code = 'unauthorized';
+      return next(outdated);
+    }
     // Normalize: JWT uses `sub` for the user ID; expose it as `id` too
     req.user = decoded;
     if (decoded.sub && !decoded.id) req.user.id = decoded.sub;
