@@ -53,7 +53,7 @@ const changing = (id) => w.commands(w.db1, id, 'kind NOT IN (?)', [registry.READ
  * fingerprints) before it settled: the production state. → { id, sim, imp }
  */
 async function stuckDevice({ partial = 32, name = 'Stuck Door' } = {}) {
-  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, organizationId: branch.gymId, name, direction: 'in', importFirst: true, createdBy: w.owner.user.id });
+  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name, direction: 'in', importFirst: true, createdBy: w.owner.user.id });
   await w.db1.sequelize.query('UPDATE access_device_details SET att_stamps_json = ? WHERE id = ?', { replacements: [STUCK, device.id] });
   const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true, stampAware: true });
   const c = await sim.connectAtt();
@@ -202,7 +202,7 @@ describe('a staging failure in hold is answered with a retry', () => {
   afterEach(() => { if (spy) spy.mockRestore(); spy = null; });
 
   test('503 while staging fails, then the retried post is stored', async () => {
-    const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, organizationId: branch.gymId, name: 'Retry Door', direction: 'in', importFirst: true, createdBy: w.owner.user.id });
+    const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name: 'Retry Door', direction: 'in', importFirst: true, createdBy: w.owner.user.id });
     const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true });
     await sim.connectAtt();
     const body = sim.fixture.userPosts[0];
@@ -217,7 +217,7 @@ describe('a staging failure in hold is answered with a retry', () => {
   });
 
   test('BIODATA too; after DEVICE_ATT_STAGE_RETRIES failures of one body: OK and an error log row (no loop)', env({ DEVICE_ATT_STAGE_RETRIES: '2' }, async () => {
-    const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, organizationId: branch.gymId, name: 'Capped Door', direction: 'in', importFirst: true, createdBy: w.owner.user.id });
+    const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name: 'Capped Door', direction: 'in', importFirst: true, createdBy: w.owner.user.id });
     const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true });
     await sim.connectAtt();
     spy = jest.spyOn(imports, 'stageUploads').mockRejectedValue(new Error('pool timeout'));
@@ -231,7 +231,7 @@ describe('a staging failure in hold is answered with a retry', () => {
   }));
 
   test('not in hold: unchanged (OK, nothing held back)', async () => {
-    const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, organizationId: branch.gymId, name: 'Live Door', direction: 'in', importFirst: false, createdBy: w.owner.user.id });
+    const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name: 'Live Door', direction: 'in', importFirst: false, createdBy: w.owner.user.id });
     const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true });
     await sim.connectAtt();
     spy = jest.spyOn(imports, 'stageUploads').mockRejectedValue(new Error('never called'));

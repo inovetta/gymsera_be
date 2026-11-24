@@ -271,7 +271,7 @@ const getTodaySummary = async (req, res, next) => {
 const getBranchQuota = async (req, res, next) => {
   try {
     const tenantId = req.user.tenantId;
-    const { organizationId } = req.query;
+    const { businessId } = req.query;
 
     if (!tenantId) {
       return sendSuccess(res, {
@@ -281,7 +281,7 @@ const getBranchQuota = async (req, res, next) => {
       });
     }
 
-    const data = await branchQuotaService.getBranchQuota(tenantId, { organizationId });
+    const data = await branchQuotaService.getBranchQuota(tenantId, { businessId });
     return sendSuccess(res, data);
   } catch (err) {
     next(err);

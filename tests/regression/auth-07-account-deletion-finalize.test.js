@@ -62,7 +62,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     const listing = await factories.createGymListing(tenant.id);
     // P7b (R-94): bank details live in payout_accounts (tenant default and an organization override).
     await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000000' });
-    await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000001' }, { organizationId: listing.id });
+    await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000001' }, { businessId: listing.id });
     const branch = await factories.createBranch(tenantDbCtx, listing.id, { name: 'Main' });
     await factories.createTenantSubscription(tenant.id, { platform: 'MANUAL', status: 'ACTIVE' });
     await PlatformInvoice.create({

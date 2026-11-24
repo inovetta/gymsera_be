@@ -4,13 +4,13 @@ const { DataTypes } = require('sequelize');
  * Where a host's money is paid out to (P7b, R-73, R-94). One store for the tenant's payout
  * details: what the traveller is shown at checkout and where a payout request is sent.
  *
- * Scope: a row belongs to a tenant (the business). `organizationId` (a gym_listings id) is
+ * Scope: a row belongs to a tenant (the business). `businessId` (a gym_listings id) is
  * OPTIONAL: null = the tenant default; set = an override for that organization only.
  * Resolution for a branch: its organization's ACTIVE row if one exists, else the tenant
  * default (payout-account.service.js#resolveForBranch). There are no per-branch rows.
  *
  * `scopeKey` exists only so MySQL can enforce one row per (tenant, scope, provider): a UNIQUE
- * key treats NULLs as distinct, so organizationId alone could not. It is set by the hook below
+ * key treats NULLs as distinct, so businessId alone could not. It is set by the hook below
  * and never written by callers.
  *
  * `provider` is the payout abstraction of R-73: BANK_TRANSFER (manual bank / wallet details)
@@ -22,7 +22,7 @@ const TENANT_SCOPE = 'ORGANIZATION'; // R-120 NEW-307 (p034): the stored scope_k
 const PROVIDERS = Object.freeze({ BANK_TRANSFER: 'BANK_TRANSFER' });
 const STATUSES = Object.freeze({ ACTIVE: 'ACTIVE', DISABLED: 'DISABLED' });
 
-const scopeKeyFor = (organizationId) => organizationId || TENANT_SCOPE;
+const scopeKeyFor = (businessId) => businessId || TENANT_SCOPE;
 
 module.exports = (sequelize) => {
   const PayoutAccount = sequelize.define(
@@ -30,7 +30,7 @@ module.exports = (sequelize) => {
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
       tenantId: { type: DataTypes.UUID, allowNull: false },
-      organizationId: { type: DataTypes.UUID, allowNull: true, field: 'business_id' }, // R-120 NEW-306 (p033)
+      businessId: { type: DataTypes.UUID, allowNull: true, field: 'business_id' }, // R-120 NEW-306 (p033)
       scopeKey: { type: DataTypes.STRING(36), allowNull: false },
       provider: { type: DataTypes.STRING(32), allowNull: false, defaultValue: PROVIDERS.BANK_TRANSFER },
       status: { type: DataTypes.STRING(16), allowNull: false, defaultValue: STATUSES.ACTIVE },
@@ -58,7 +58,7 @@ module.exports = (sequelize) => {
       ],
       hooks: {
         beforeValidate: (row) => {
-          row.scopeKey = scopeKeyFor(row.organizationId);
+          row.scopeKey = scopeKeyFor(row.businessId);
         },
       },
     }

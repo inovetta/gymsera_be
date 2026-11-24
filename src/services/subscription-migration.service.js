@@ -947,7 +947,7 @@ const previewDowngrade = async (tenantId, billingPlanId) => {
     keepCount: mustChooseBranches ? plan.branchCount : 0,
     // The provider applies a downgrade at the end of the paid period.
     effectiveAt: current.endDate,
-    branches: branches.map((b) => ({ id: b.id, name: b.branchName, organizationId: b.gymId })),
+    branches: branches.map((b) => ({ id: b.id, name: b.branchName, businessId: b.gymId })),
     pendingChange: current.pendingChange || null,
   };
 };

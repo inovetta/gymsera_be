@@ -1215,7 +1215,7 @@ const getPaymentDetails = async (gymListingId) => {
   const payoutAccountService = require('./payout-account.service');
   const listing = await GymListing.findByPk(gymListingId, { attributes: ['id', 'tenantId'] });
   const account = listing && listing.tenantId === tenantId
-    ? await payoutAccountService.resolve({ tenantId, organizationId: listing.id })
+    ? await payoutAccountService.resolve({ tenantId, businessId: listing.id })
     : await payoutAccountService.resolveForBranch(
       await TenantDbManager.getConnection(tenantId, (await Tenant.findByPk(tenantId, { attributes: ['connectionStringEncrypted'] })).connectionStringEncrypted),
       tenantId,

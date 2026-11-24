@@ -490,7 +490,7 @@ function viewOf(row, det, branchName) {
     key: formatKey(row.device_key),
     branchId: row.branch_id,
     branchName: branchName || null,
-    organizationId: row.business_id, // R-120: column renamed (p033); key renamed with the API (NEW-309)
+    businessId: row.business_id, // R-120: column renamed (p033); key renamed with the API (NEW-309)
     name: det?.name || null,
     direction: det?.direction || null,
     enabled: det ? Boolean(det.enabled) : row.status !== 'disabled',
@@ -551,7 +551,7 @@ async function branchOf(tenantDb, branchId) {
  * Adds a device to a branch. Returns { device, setup } (setup = the card the host types on the device).
  * Mode C (serial) only when DEVICE_SERIAL_PAIRING allows it (D-2).
  */
-async function createDevice({ tenantId, tenantDb, branchId, organizationId, name, direction = 'in', linkMode, serialNumber, importFirst = false, createdBy = null }) {
+async function createDevice({ tenantId, tenantDb, branchId, businessId, name, direction = 'in', linkMode, serialNumber, importFirst = false, createdBy = null }) {
   const cfg = getDeviceConfig();
   const mode = linkMode || cfg.defaultLinkMode;
   if (!LINK_MODES.includes(mode)) throw createError('Choose how the device connects: host, path or serial.', 422, 'invalid_link_mode');
@@ -585,7 +585,7 @@ async function createDevice({ tenantId, tenantDb, branchId, organizationId, name
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_connection', ?, ?, ?)`,
         {
           replacements: utc([
-            id, key, sn, tenantId, organizationId || branch.gym_id || null, branchId, mode, commKey,
+            id, key, sn, tenantId, businessId || branch.gym_id || null, branchId, mode, commKey,
             protocol.newRegistryCode(), protocol.newSessionId(), cfg.tokenMode, createdBy, now, now,
           ]),
         }

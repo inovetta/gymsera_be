@@ -38,7 +38,7 @@ beforeAll(async () => {
   branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Feed Time Branch', timezone: 'Asia/Karachi' });
   member = await w.member('Feed Time Member', { email: `feed-time-${crypto.randomBytes(3).toString('hex')}@gymseratest.com` });
   const { device } = await registry.createDevice({
-    tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, organizationId: branch.gymId, name: 'Feed Door', direction: 'in',
+    tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name: 'Feed Door', direction: 'in',
     importFirst: false, createdBy: w.owner.user.id,
   });
   dev = device;

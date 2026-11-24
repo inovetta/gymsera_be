@@ -3,7 +3,7 @@
  * reference 5bf8b433-bb37-4802-98ff-10baf60168c4).
  *
  * The Gyms tab calls, for an approved host: /host/status (or the /me/bootstrap seed),
- * /host/listings, /host/branches, /host/branch-quota (+ ?organizationId=),
+ * /host/listings, /host/branches, /host/branch-quota (+ ?businessId=),
  * /subscriptions/staff?status=PENDING, /notifications/unread-count and, per branch card,
  * /host/branches/:id/dashboard. Only /host/branches and the dashboard read whole `branches`
  * rows from the tenant database; Branch.findAll selects every model column, including
@@ -47,7 +47,7 @@ const gymsTabCalls = () => [
   '/host/listings',
   '/host/branches',
   '/host/branch-quota',
-  `/host/branch-quota?organizationId=${team.branchA.gymListingId}`,
+  `/host/branch-quota?businessId=${team.branchA.gymListingId}`,
   '/subscriptions/staff?status=PENDING&limit=1',
   '/notifications/unread-count',
   `/host/branches/${team.branchA.id}/dashboard`,

@@ -23,7 +23,7 @@ const later = (seconds) => new Date(Date.now() + seconds * 1000);
 const mail = (tag) => `att-audit-${tag}-${crypto.randomBytes(3).toString('hex')}@gymseratest.com`;
 
 async function realAttDevice(name, on = branch) {
-  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: on.id, organizationId: on.gymId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
+  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: on.id, businessId: on.gymId, name, direction: 'in', importFirst: false, createdBy: w.owner.user.id });
   const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true, realFirmware: true });
   await sim.connectAtt();
   await w.settled();

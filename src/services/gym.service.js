@@ -223,15 +223,15 @@ const updateProfile = async (tenantDb, tenantId, data) => {
 
 // ── Branches ──────────────────────────────────────────────────────────────────
 
-const listBranches = async (tenantDb, tenantId, organizationId, { includeInactive = false, branchIds = null } = {}) => {
+const listBranches = async (tenantDb, tenantId, businessId, { includeInactive = false, branchIds = null } = {}) => {
   const { Gym, Branch } = tenantDb.models;
   let gym = await Gym.findOne();
 
   let whereClause = {};
 
-  if (organizationId) {
+  if (businessId) {
     whereClause = {
-      gymId: organizationId, // option S: one id per business (G11: no NULL-copy branch is listed under every business)
+      gymId: businessId, // option S: one id per business (G11: no NULL-copy branch is listed under every business)
     };
   }
 

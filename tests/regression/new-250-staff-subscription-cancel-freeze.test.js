@@ -185,7 +185,7 @@ describe('NEW-250: staff Cancel', () => {
 
   test('cancel queues the device sync for the member (member removed from the access devices)', async () => {
     await registry.createDevice({
-      tenantId: T1(), tenantDb: db1, branchId: ctx.branch1.id, organizationId: ctx.branch1.gymId || null,
+      tenantId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.gymId || null,
       name: 'N250 Door', direction: 'in', importFirst: false, createdBy: personas.owner.user.id,
     });
     expect(await triggers.hasDevices(db1.sequelize)).toBe(true);

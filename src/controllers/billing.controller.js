@@ -85,13 +85,13 @@ const getPlans = async (req, res, next) => {
  */
 const syncIosPurchase = async (req, res, next) => {
   try {
-    const { transactionId, organizationId } = req.body;
+    const { transactionId, businessId } = req.body;
     if (!transactionId) throw createError('transactionId is required', 400);
 
     const tenantId = req.user?.tenantId;
     if (!tenantId) throw createError('No tenant context for this account', 400);
 
-    // organizationId is optional — the org the purchase was initiated from,
+    // businessId is optional — the org the purchase was initiated from,
     // if the app knows it (e.g. the upsell flow reached from a specific
     // organization's "need more capacity" prompt). Used only to decide where
     // an upgrade's new capacity lands as a spendable slot; a downgrade never
@@ -99,7 +99,7 @@ const syncIosPurchase = async (req, res, next) => {
     const subscription = await appleBilling.syncFromApple({
       transactionId,
       tenantId,
-      originListingId: organizationId || null,
+      originListingId: businessId || null,
     });
 
     return sendSuccess(res, { subscription }, 'Subscription synced');
@@ -152,7 +152,7 @@ const appleWebhook = async (req, res) => {
  */
 const syncAndroidPurchase = async (req, res, next) => {
   try {
-    const { purchaseToken, organizationId } = req.body;
+    const { purchaseToken, businessId } = req.body;
     if (!purchaseToken) throw createError('purchaseToken is required', 400);
 
     const tenantId = req.user?.tenantId;
@@ -164,7 +164,7 @@ const syncAndroidPurchase = async (req, res, next) => {
     const subscription = await googlePlayBilling.syncFromGoogle({
       purchaseToken,
       tenantId,
-      originListingId: organizationId || null,
+      originListingId: businessId || null,
     });
 
     // Not paid yet (cash, carrier billing…) or that payment was cancelled

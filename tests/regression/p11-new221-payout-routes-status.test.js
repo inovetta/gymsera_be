@@ -39,7 +39,7 @@ beforeAll(async () => {
   ctx = require('../harness/personas').personaManager.context;
   ({ PayoutAccount } = require('../../src/models/platform'));
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
+  await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
 });
 
 afterAll(async () => {
@@ -57,7 +57,7 @@ describe('NEW-221: a traveller with no team role is refused with 403 on the payo
   });
 
   test('nothing was changed by the refused calls', async () => {
-    const row = await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, organizationId: null } });
+    const row = await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, businessId: null } });
     expect(row.detailsJson).toEqual(DETAILS);
   });
 });

@@ -63,7 +63,7 @@ beforeAll(async () => {
   ({ Payout, ApprovalRequest } = ctx.tenant1Db.models);
   await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
+  await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
   await ctx.tenant1Db.models.Payment.create({
     userId: personas.member.user.id,
     branchId: ctx.branch1.id,

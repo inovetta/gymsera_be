@@ -40,10 +40,10 @@ const asAdminIn = () => ({ 'X-Tenant-Id': ctx.tenant1.id });
 
 const resetAccount = async () => {
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DETAILS, detailsUpdatedAt: OLD });
+  await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: OLD });
 };
 const storedDetails = async () =>
-  (await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, organizationId: null } })).detailsJson;
+  (await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, businessId: null } })).detailsJson;
 const noFullNumber = (body) => {
   const text = JSON.stringify(body);
   for (const n of FULL_NUMBERS) expect(text).not.toContain(n);

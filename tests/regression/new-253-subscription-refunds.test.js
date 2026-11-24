@@ -263,7 +263,7 @@ describe('NEW-253 A: staff cancel with refund', () => {
 
   test('cancel with refund queues the device sync for the member', async () => {
     await registry.createDevice({
-      tenantId: T1(), tenantDb: db1, branchId: ctx.branch1.id, organizationId: ctx.branch1.gymId || null,
+      tenantId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.gymId || null,
       name: 'N253 Door', direction: 'in', importFirst: false, createdBy: personas.owner.user.id,
     });
     const { sub, member } = await makeSub();

@@ -843,7 +843,7 @@ async function seedTenantsAndListings(userMap) {
     if (paymentDetailsJson) {
       await PayoutAccount.findOrCreate({
         where: { tenantId: tenant.id, scopeKey: PayoutAccount.scopeKeyFor(null), provider: 'BANK_TRANSFER' },
-        defaults: { tenantId: tenant.id, organizationId: null, detailsJson: paymentDetailsJson },
+        defaults: { tenantId: tenant.id, businessId: null, detailsJson: paymentDetailsJson },
       });
     }
 

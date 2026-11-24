@@ -26,7 +26,7 @@ const sn = () => `ADM${RUN}${String(++n).padStart(4, '0')}`;
 const mail = (tag) => `att-admin-${tag}-${crypto.randomBytes(3).toString('hex')}@gymseratest.com`;
 
 async function attDevice(branch, name, { importFirst = false } = {}) {
-  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, organizationId: branch.gymId, name, direction: 'in', importFirst, createdBy: w.owner.user.id });
+  const { device } = await registry.createDevice({ tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, businessId: branch.gymId, name, direction: 'in', importFirst, createdBy: w.owner.user.id });
   const sim = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: sn(), key: device.deviceKey, mode: 'host', att: true, realFirmware: true });
   await sim.connectAtt();
   await w.settled();

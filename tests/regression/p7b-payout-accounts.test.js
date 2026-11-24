@@ -79,12 +79,12 @@ describe('PUT / GET /host/payout-account: the tenant default (NEW-217)', () => {
 
     const res = await asPersona('owner').put('/host/payout-account', { details: DEFAULT_DETAILS, password: PASSWORD });
     expect(res.status).toBe(200);
-    expect(res.body.data.account).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, provider: 'BANK_TRANSFER', details: DEFAULT_DETAILS });
+    expect(res.body.data.account).toMatchObject({ scope: 'ORGANIZATION', businessId: null, provider: 'BANK_TRANSFER', details: DEFAULT_DETAILS });
     expect(res.body.data.account.detailsUpdatedAt).toBeTruthy();
 
     const rows = await PayoutAccount.findAll({ raw: true });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ tenantId: ctx.tenant1.id, organizationId: null, provider: 'BANK_TRANSFER', status: 'ACTIVE' });
+    expect(rows[0]).toMatchObject({ tenantId: ctx.tenant1.id, businessId: null, provider: 'BANK_TRANSFER', status: 'ACTIVE' });
     expect(rows[0].detailsJson).toEqual(DEFAULT_DETAILS);
 
     expect(JSON.stringify(await GymListing.findAll({ where: { tenantId: ctx.tenant1.id }, raw: true, order: [['id', 'ASC']] }))).toBe(listingsBefore);
@@ -108,12 +108,12 @@ describe('PUT / GET /host/payout-account: the tenant default (NEW-217)', () => {
     await asPersona('owner').put('/host/payout-account', { details: DEFAULT_DETAILS, password: PASSWORD });
     const res = await asPersona('owner').get('/host/payout-account');
     expect(res.status).toBe(200);
-    expect(res.body.data.account).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, details: DEFAULT_DETAILS });
+    expect(res.body.data.account).toMatchObject({ scope: 'ORGANIZATION', businessId: null, details: DEFAULT_DETAILS });
   });
 
   test('the tenant default is returned even when an organization override exists (launch exposes only the default)', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: ctx.listing1.id, detailsJson: ORG_DETAILS, detailsUpdatedAt: OLD });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: ctx.listing1.id, detailsJson: ORG_DETAILS, detailsUpdatedAt: OLD });
     const res = await asPersona('owner').get('/host/payout-account');
     expect(res.body.data.account.details).toEqual(DEFAULT_DETAILS);
   });
@@ -131,7 +131,7 @@ describe('PUT / GET /host/payout-account: the tenant default (NEW-217)', () => {
   test.each(['orgAdmin', 'manager', 'frontDesk', 'trainer', 'member', 'platformAdmin'])(
     '%s may neither read nor save the payout account (owner only, payouts.bank.manage)',
     async (persona) => {
-      await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
+      await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
       // A member or a platform admin has no tenant here: 400 missing_tenant_context (tenantContext,
       // as every /host/payouts route); a team member: 403 from payouts.bank.manage.
       const refused = (res) => (res.status === 400 ? res.body.code === 'missing_tenant_context' : [401, 403].includes(res.status));
@@ -140,12 +140,12 @@ describe('PUT / GET /host/payout-account: the tenant default (NEW-217)', () => {
       expect(JSON.stringify(read.body)).not.toContain(DEFAULT_DETAILS.accountNumber);
       const write = await asPersona(persona).put('/host/payout-account', { details: { bankName: 'Hacker Bank' }, password: PASSWORD });
       expect(refused(write)).toBe(true);
-      expect((await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, organizationId: null } })).detailsJson).toEqual(DEFAULT_DETAILS);
+      expect((await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, businessId: null } })).detailsJson).toEqual(DEFAULT_DETAILS);
     }
   );
 
   test('the other tenant\'s owner reads and saves only their own tenant', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
     const read = await asPersona('otherTenantOwner').get('/host/payout-account');
     expect(read.status).toBe(200);
     expect(read.body.data.account).toBeNull();
@@ -162,43 +162,43 @@ describe('resolver: tenant → organization → branch (R-94)', () => {
   beforeEach(clearAccounts);
 
   test('only a tenant default → every branch of every organization uses it', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
     const a = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, ctx.branch1.id);
     const b = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id);
-    expect(a).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, details: DEFAULT_DETAILS });
-    expect(b).toMatchObject({ scope: 'ORGANIZATION', organizationId: null, details: DEFAULT_DETAILS });
+    expect(a).toMatchObject({ scope: 'ORGANIZATION', businessId: null, details: DEFAULT_DETAILS });
+    expect(b).toMatchObject({ scope: 'ORGANIZATION', businessId: null, details: DEFAULT_DETAILS });
   });
 
   test('an organization override → its branches use it; other organizations keep the tenant default', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: orgB.id, detailsJson: ORG_DETAILS });
     const a = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, ctx.branch1.id);
     const b = await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id);
     expect(a).toMatchObject({ scope: 'ORGANIZATION', details: DEFAULT_DETAILS });
-    expect(b).toMatchObject({ scope: 'BUSINESS', organizationId: orgB.id, details: ORG_DETAILS });
+    expect(b).toMatchObject({ scope: 'BUSINESS', businessId: orgB.id, details: ORG_DETAILS });
   });
 
   test('an override with no tenant default still applies to its organization; others get null', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: orgB.id, detailsJson: ORG_DETAILS });
     expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id)).toMatchObject({ details: ORG_DETAILS });
     expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, ctx.branch1.id)).toBeNull();
   });
 
   test('a DISABLED override is skipped → tenant default', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS, status: 'DISABLED' });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: orgB.id, detailsJson: ORG_DETAILS, status: 'DISABLED' });
     expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id)).toMatchObject({ scope: 'ORGANIZATION' });
   });
 
   test('an override of another tenant\'s organization id is never used', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant2.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant2.id, businessId: orgB.id, detailsJson: ORG_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
     expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, branchB.id)).toMatchObject({ scope: 'ORGANIZATION', details: DEFAULT_DETAILS });
   });
 
   test('no branch (an organization-wide payout) → the tenant default', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: orgB.id, detailsJson: ORG_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
     expect(await payoutAccountService().resolveForBranch(ctx.tenant1Db, ctx.tenant1.id, null)).toMatchObject({ scope: 'ORGANIZATION' });
   });
 });
@@ -207,8 +207,8 @@ describe('consumers use the resolver', () => {
   beforeEach(clearAccounts);
 
   test('traveller checkout: a branch of the overridden organization shows the override; another branch the tenant default', async () => {
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS });
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: orgB.id, detailsJson: ORG_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: orgB.id, detailsJson: ORG_DETAILS });
 
     const byBranchB = await asPersona('member').get(`/discovery/gyms/${branchB.id}/payment-details`);
     expect(byBranchB.status).toBe(200);
@@ -223,8 +223,8 @@ describe('consumers use the resolver', () => {
 
   test('payout request for a branch: destination and SEC-13 cooling come from the resolved account', async () => {
     // Tenant default changed long ago; organization 1 override changed just now → cooling applies.
-    await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
-    const override = await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: ctx.listing1.id, detailsJson: ORG_DETAILS, detailsUpdatedAt: new Date() });
+    await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: DEFAULT_DETAILS, detailsUpdatedAt: OLD });
+    const override = await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: ctx.listing1.id, detailsJson: ORG_DETAILS, detailsUpdatedAt: new Date() });
 
     const cooling = await asPersona('owner', { 'Idempotency-Key': 'p7b-cool-1' }).post('/host/payouts', { amount: 100, branchId: ctx.branch1.id });
     expect(cooling.status).toBe(422);
@@ -250,7 +250,7 @@ describe('consumers use the resolver', () => {
     expect(save.body.data.gym.paymentDetailsUpdatedAt).toBeTruthy();
 
     const row = await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id }, raw: true });
-    expect(row).toMatchObject({ organizationId: null, provider: 'BANK_TRANSFER' });
+    expect(row).toMatchObject({ businessId: null, provider: 'BANK_TRANSFER' });
     expect(row.detailsJson).toEqual(DEFAULT_DETAILS);
 
     const viaNew = await asPersona('owner').get('/host/payout-account');

@@ -125,7 +125,7 @@
    "method": "POST",
    "path": "/api/v1/billing/android/sync",
    "allowed": [
-    "organizationId",
+    "businessId",
     "productId",
     "purchaseToken"
    ],
@@ -150,7 +150,7 @@
    "method": "POST",
    "path": "/api/v1/billing/ios/sync",
    "allowed": [
-    "organizationId",
+    "businessId",
     "transactionId"
    ],
    "clientKeys": [

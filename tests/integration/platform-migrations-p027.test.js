@@ -26,7 +26,7 @@ describe('Platform migration p027 (payout_accounts + tenant default backfill)', 
       type: QueryTypes.SELECT,
     })).length > 0;
   const accounts = () =>
-    seq.query('SELECT tenant_id AS tenantId, business_id AS organizationId, scope_key AS scopeKey, provider, status, details_json AS details, DATE_FORMAT(details_updated_at, \'%Y-%m-%d %H:%i:%s\') AS updatedAt FROM payout_accounts ORDER BY tenant_id', { type: QueryTypes.SELECT });
+    seq.query('SELECT tenant_id AS tenantId, business_id AS businessId, scope_key AS scopeKey, provider, status, details_json AS details, DATE_FORMAT(details_updated_at, \'%Y-%m-%d %H:%i:%s\') AS updatedAt FROM payout_accounts ORDER BY tenant_id', { type: QueryTypes.SELECT });
   const parse = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
 
   beforeAll(async () => {
@@ -106,7 +106,7 @@ describe('Platform migration p027 (payout_accounts + tenant default backfill)', 
 
     const rows = await accounts();
     expect(rows.map((r) => r.tenantId)).toEqual([T(1), T(2)]);
-    expect(rows[0]).toMatchObject({ organizationId: null, scopeKey: 'ORGANIZATION', provider: 'BANK_TRANSFER', status: 'ACTIVE' });
+    expect(rows[0]).toMatchObject({ businessId: null, scopeKey: 'ORGANIZATION', provider: 'BANK_TRANSFER', status: 'ACTIVE' });
     expect(parse(rows[0].details)).toEqual({ bankName: 'Meezan', accountTitle: 'Alpha', accountNumber: '0012345678' });
     // Copied as text: the machine's time zone (UTC+5 on the dev Mac) must not shift it.
     expect(rows[0].updatedAt).toBe('2026-10-01 10:00:00');

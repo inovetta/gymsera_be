@@ -98,7 +98,7 @@ async function createWorld() {
      */
     async device(db, { branch, direction = 'in', name = 'Door', registryBody, tenantId, importFirst = false, ...simOpts } = {}) {
       const tid = tenantId || db.tenantId;
-      const { device } = await registry.createDevice({ tenantId: tid, tenantDb: db, branchId: branch.id, organizationId: branch.gymId || null, name, direction, importFirst, createdBy: personas.owner.user.id });
+      const { device } = await registry.createDevice({ tenantId: tid, tenantDb: db, branchId: branch.id, businessId: branch.gymId || null, name, direction, importFirst, createdBy: personas.owner.user.id });
       const sim = new ZkDeviceSimulator({ baseUrl, sn: `SIM${RUN}${String(++serial).padStart(4, '0')}`, key: device.deviceKey, mode: 'host', registryBody, ...simOpts });
       const c = await sim.connect();
       if (!c.ok) throw new Error(`simulator did not connect: ${c.step} ${c.res.status}`);

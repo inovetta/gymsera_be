@@ -310,15 +310,15 @@ async function makeBranchLive(tenantDb, branch) {
 
 /**
  * P7b (R-94): the tenant's payout account (bank details), the one store the API reads. Replaces
- * seeding tenants.payment_details_json, which the API no longer reads. organizationId null = the
+ * seeding tenants.payment_details_json, which the API no longer reads. businessId null = the
  * tenant default; detailsUpdatedAt null = no SEC-13 cooling period.
  */
-async function setPayoutAccount(tenantId, details, { organizationId = null, detailsUpdatedAt = null } = {}) {
+async function setPayoutAccount(tenantId, details, { businessId = null, detailsUpdatedAt = null } = {}) {
   const { PayoutAccount } = require('../../src/models/platform');
-  const scopeKey = PayoutAccount.scopeKeyFor(organizationId);
+  const scopeKey = PayoutAccount.scopeKeyFor(businessId);
   const existing = await PayoutAccount.findOne({ where: { tenantId, scopeKey, provider: 'BANK_TRANSFER' } });
   if (existing) return existing.update({ detailsJson: details, detailsUpdatedAt, status: 'ACTIVE' });
-  return PayoutAccount.create({ tenantId, organizationId, detailsJson: details, detailsUpdatedAt });
+  return PayoutAccount.create({ tenantId, businessId, detailsJson: details, detailsUpdatedAt });
 }
 
 /** P7b: the tenant default payout account row (or null). */

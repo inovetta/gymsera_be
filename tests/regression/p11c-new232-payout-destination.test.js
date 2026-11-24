@@ -36,11 +36,11 @@ let seq = 0;
 
 const post = (persona, body, headers = {}) =>
   asPersona(persona, { 'Idempotency-Key': `p11c-${persona}-${Date.now()}-${(seq += 1)}`, ...headers }).post('/host/payouts', body);
-const saved = async () => (await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, organizationId: null } }))?.detailsJson;
+const saved = async () => (await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, businessId: null } }))?.detailsJson;
 const noHacker = (body) => expect(JSON.stringify(body)).not.toContain(HACKER.accountNumber);
 const resetAccount = async (detailsUpdatedAt = OLD) => {
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: SAVED, detailsUpdatedAt });
+  await PayoutAccount.create({ tenantId: ctx.tenant1.id, businessId: null, detailsJson: SAVED, detailsUpdatedAt });
 };
 
 beforeAll(async () => {
