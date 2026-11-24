@@ -48,7 +48,7 @@ describe('declared fields per route (fixture)', () => {
 
   test('the fixture covers all 25 tier-1 routes', () => {
     const tier1 = fixture.routes.filter((r) =>
-      /\/(auth\/(logout|sessions|tenant-invitations)|payments\/:p\/(action|printed|refund)|payments\/collection-action|billing\/(purchase-intent|ios\/sync|android\/sync|downgrade-choice|stripe\/(checkout-session|change-plan|portal-session))|team|approvals|ledger)/.test(r.path)
+      /\/(auth\/(logout|sessions|organization-invitations)|payments\/:p\/(action|printed|refund)|payments\/collection-action|billing\/(purchase-intent|ios\/sync|android\/sync|downgrade-choice|stripe\/(checkout-session|change-plan|portal-session))|team|approvals|ledger)/.test(r.path)
     );
     expect(tier1.length).toBeGreaterThanOrEqual(25);
   });
