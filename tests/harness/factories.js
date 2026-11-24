@@ -95,7 +95,7 @@ async function createTenant(overrides = {}) {
   const tenant = await Tenant.create({
     id,
     organizationCode: overrides.organizationCode || `GYM-${suffix}`,
-    gymName: overrides.gymName || `Test Gym ${suffix}`,
+    firstBusinessName: overrides.firstBusinessName || overrides.gymName || `Test Gym ${suffix}`,
     organizationName: overrides.organizationName || `Test Gym Enterprises ${suffix}`,
     email: overrides.email || `tenant_${suffix.toLowerCase()}@gymseratest.com`,
     phone: overrides.phone || '+923007654321',

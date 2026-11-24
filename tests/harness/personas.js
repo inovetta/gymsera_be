@@ -49,7 +49,7 @@ class PersonaManager {
     const tenant1Record = await createTenant({
       id: '11111111-1111-4111-8111-111111111111',
       organizationCode: 'GYM-TENANT1',
-      gymName: 'Alpha Fitness Club',
+      firstBusinessName: 'Alpha Fitness Club',
       ownerUserId: ownerUser.id,
       connectionStringEncrypted: tenant1.encryptedConnStr,
     });
@@ -70,7 +70,7 @@ class PersonaManager {
     const tenant2Record = await createTenant({
       id: '22222222-2222-4222-8222-222222222222',
       organizationCode: 'GYM-TENANT2',
-      gymName: 'Beta Gym',
+      firstBusinessName: 'Beta Gym',
       ownerUserId: otherOwnerUser.id,
       connectionStringEncrypted: tenant2.encryptedConnStr,
     });
