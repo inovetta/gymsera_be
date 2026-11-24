@@ -481,12 +481,6 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/organizations/:p/first-business/images",
-   "allowed": [],
-   "clientKeys": []
-  },
-  {
-   "method": "POST",
    "path": "/api/v1/users/:p/profile-image",
    "allowed": [],
    "clientKeys": []

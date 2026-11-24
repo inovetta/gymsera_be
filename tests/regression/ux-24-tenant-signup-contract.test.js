@@ -273,7 +273,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       expect(done.selectedPackageId).toBeNull();
     });
 
-    test('onboarding-images PUT replaces the staged list and keeps plans', async () => {
+    test('the first-business body replaces the staged images and keeps plans (images come through POST /host/staging-images, J12)', async () => {
       const { organizationId, token } = await registerHost('images');
       await request(app)
         .post(`${API}/organizations/${organizationId}/first-business`)
@@ -282,11 +282,11 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         .expect(200);
 
       const urls = ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'];
-      const put = await request(app)
-        .put(`${API}/organizations/${organizationId}/first-business/images`)
+      const second = await request(app)
+        .post(`${API}/organizations/${organizationId}/first-business`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ imagesJson: urls });
-      expect(put.status).toBe(200);
+        .send({ ...baseProfile, firstBranchDraft: { imagesJson: urls } });
+      expect(second.status).toBe(200);
 
       const stored = await Tenant.findByPk(organizationId);
       const branch = typeof stored.firstBranchDraft === 'string'
@@ -294,6 +294,14 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         : stored.firstBranchDraft;
       expect(branch.imagesJson).toEqual(urls);
       expect(branch.plans).toHaveLength(1);
+    });
+
+    test('the old first-business/images routes are gone (404)', async () => {
+      const { organizationId, token } = await registerHost('imgs-gone');
+      for (const method of ['post', 'put']) {
+        const res = await request(app)[method](`${API}/organizations/${organizationId}/first-business/images`).set('Authorization', `Bearer ${token}`).send({ imagesJson: [] });
+        expect(res.status).toBe(404);
+      }
     });
   });
 

@@ -1,5 +1,4 @@
 const tenantService = require('../services/tenant.service');
-const storageService = require('../services/storage.service');
 const { sendSuccess: sendSuccessRaw, createError } = require('../utils/response.utils');
 const { toOrganizationKeys } = require('../utils/organization-keys');
 const sendSuccess = (res, data, ...rest) => sendSuccessRaw(res, toOrganizationKeys(data), ...rest);
@@ -78,35 +77,6 @@ const selectPackage = async (req, res, next) => {
   try {
     const result = await tenantService.selectPackage(req.params.organizationId, req.user.sub, req.body.packageId);
     return sendSuccess(res, hostTenantView(result), 'Package selected successfully');
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ── POST /tenants/:id/first-business/images ───────────────────────────────────────
-// Step 4 photos, before the tenant has a real database — see
-// tenant.service.js#addOnboardingImages for why this writes to
-// firstBranchDraft instead of a Branch row.
-const uploadOnboardingImages = async (req, res, next) => {
-  try {
-    if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
-    const urls = await storageService.uploadImages(req.files, `organizations/${req.params.organizationId}/first-business/images`);
-    const result = await tenantService.addOnboardingImages(req.params.organizationId, req.user.sub, urls);
-    return sendSuccess(res, result, 'Images uploaded');
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ── PUT /tenants/:id/first-business/images ────────────────────────────────────────
-// Full-array replace — how a removal round-trips (the client computes the
-// list minus the one photo and sends the whole thing back), same shape as
-// the post-onboarding edit-photos screen's updateBranchListingContent.
-const replaceOnboardingImages = async (req, res, next) => {
-  try {
-    const imagesJson = Array.isArray(req.body.imagesJson) ? req.body.imagesJson : [];
-    const result = await tenantService.updateOnboardingImages(req.params.organizationId, req.user.sub, imagesJson);
-    return sendSuccess(res, result, 'Images updated');
   } catch (err) {
     next(err);
   }
@@ -248,8 +218,6 @@ module.exports = {
   register,
   submitGymProfile,
   selectPackage,
-  uploadOnboardingImages,
-  replaceOnboardingImages,
   finalizeApplication,
   reapplyTenant,
   getMyTenant,

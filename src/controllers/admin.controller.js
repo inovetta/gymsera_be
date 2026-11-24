@@ -19,7 +19,8 @@ const listTenants = async (req, res, next) => {
     const { page, limit, offset } = parsePagination(req.query);
     const { status } = req.query;
     const result = await adminService.listTenants({ status, page, limit, offset });
-    return sendSuccess(res, { tenants: result.tenants }, 'OK', 200, result.pagination);
+    // API contract v2 §10 G1: { organizations, page, total } inside data (the page and the total are not in the envelope).
+    return sendSuccess(res, { tenants: result.tenants, page: result.pagination.page, total: result.pagination.total }, 'OK', 200);
   } catch (err) {
     next(err);
   }

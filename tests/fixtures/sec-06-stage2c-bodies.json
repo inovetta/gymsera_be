@@ -30,16 +30,6 @@
    ]
   },
   {
-   "method": "PUT",
-   "path": "/api/v1/organizations/:p/first-business/images",
-   "allowed": [
-    "imagesJson"
-   ],
-   "clientKeys": [
-    "imagesJson"
-   ]
-  },
-  {
    "method": "POST",
    "path": "/api/v1/organizations/:p/finalize",
    "allowed": [

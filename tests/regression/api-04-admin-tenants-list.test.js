@@ -85,9 +85,10 @@ describe('GET /admin/organizations', () => {
     const { res } = await list('?page=1&limit=20');
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data.organizations)).toBe(true);
-    expect(res.body.pagination).toEqual(expect.objectContaining({
-      page: 1, limit: 20, total: expect.any(Number), totalPages: expect.any(Number),
-    }));
+    // API contract v2 §10 G1: { organizations, page, total } inside data; nothing in the envelope.
+    expect(res.body.data).toEqual(expect.objectContaining({ page: 1, total: expect.any(Number) }));
+    expect(Object.keys(res.body.data).sort()).toEqual(['organizations', 'page', 'total']);
+    expect(res.body.pagination).toBeUndefined();
     const row = res.body.data.organizations.find((t) => !t.isAdditionalOrganization);
     for (const k of ['id', 'organizationCode', 'organizationName', 'status', 'email', 'createdAt', 'owner', 'city']) {
       expect(row).toHaveProperty(k);
@@ -104,8 +105,7 @@ describe('GET /admin/organizations', () => {
   test('no limit / page: the same default page the CMS gets today (20, page 1)', async () => {
     const { res } = await list('');
     expect(res.status).toBe(200);
-    expect(res.body.pagination.page).toBe(1);
-    expect(res.body.pagination.limit).toBe(20);
+    expect(res.body.data.page).toBe(1);
     expect(res.body.data.organizations.length).toBe(20);
   });
 
@@ -117,13 +117,13 @@ describe('GET /admin/organizations', () => {
     let total = 0;
     for (;;) {
       const r = await asPersona('platformAdmin').get(`/admin/organizations?page=${page}&limit=100`);
-      total = r.body.pagination.total;
+      total = r.body.data.total;
       r.body.data.organizations.forEach((t) => ids.add(t.id));
-      if (page >= r.body.pagination.totalPages) break;
+      if (page >= Math.ceil(total / 100)) break;
       page += 1;
     }
     expect(ids.size).toBe(total); // every row exactly once across pages
-    expect(res.body.pagination.total).toBe(total);
+    expect(res.body.data.total).toBe(total);
     expect(total).toBeGreaterThanOrEqual(100 + pendingAdditional);
   });
 
@@ -139,24 +139,23 @@ describe('GET /admin/organizations', () => {
   test('pagination boundaries: limit is capped, bad page falls back, past the end is empty', async () => {
     const capped = await list('?limit=1000');
     expect(capped.res.status).toBe(200);
-    expect(capped.res.body.pagination.limit).toBe(100);
     expect(capped.res.body.data.organizations.length).toBeLessThanOrEqual(100);
 
     for (const bad of ['?page=0', '?page=-3', '?page=abc', '?limit=0', '?limit=-5']) {
       const r = await list(bad);
       expect(r.res.status).toBe(200);
-      expect(r.res.body.pagination.page).toBeGreaterThanOrEqual(1);
-      expect(r.res.body.pagination.limit).toBeGreaterThanOrEqual(1);
+      expect(r.res.body.data.page).toBeGreaterThanOrEqual(1);
+      expect(r.res.body.data.organizations.length).toBeLessThanOrEqual(100);
     }
 
-    const total = capped.res.body.pagination.total;
+    const total = capped.res.body.data.total;
     const last = Math.ceil(total / 20);
     const lastPage = await list(`?page=${last}&limit=20`);
     expect(lastPage.res.body.data.organizations.length).toBe(total - (last - 1) * 20);
     const beyond = await list(`?page=${last + 1}&limit=20`);
     expect(beyond.res.status).toBe(200);
     expect(beyond.res.body.data.organizations).toEqual([]);
-    expect(beyond.res.body.pagination.total).toBe(total);
+    expect(beyond.res.body.data.total).toBe(total);
   });
 
   test('status filter keeps working with pagination', async () => {

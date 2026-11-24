@@ -194,48 +194,6 @@ const selectPackage = async (organizationId, userId, packageId) => {
   return { tenant, package: pkg };
 };
 
-// ── updateOnboardingImages ───────────────────────────────────────────────────
-/**
- * Onboarding Step 4 photos, before the tenant has a real database.
- *
- * There is no Branch row yet — provisioning (and the actual `Branch.create()`)
- * only runs later, when an admin approves the application (see
- * tenant-provisioning.service.js). Until then, `firstBranchDraft` on this
- * platform-DB Tenant row is the only place branch data can live at all —
- * exactly the same pattern submitGymProfile already uses for name/address/
- * hours. Provisioning reads `imagesJson` off this same blob to seed the real
- * Branch once it exists.
- */
-const updateOnboardingImages = async (organizationId, userId, imagesJson) => {
-  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
-  if (!tenant) throw createError('Tenant not found or access denied', 404);
-
-  let existingMainBranch = tenant.firstBranchDraft;
-  if (typeof existingMainBranch === 'string') {
-    try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
-  }
-
-  const mergedMainBranchData = { ...(existingMainBranch || {}), imagesJson };
-  await tenant.update({ firstBranchDraft: mergedMainBranchData });
-
-  return { imagesJson };
-};
-
-/** Newly uploaded URLs appended to whatever's already there — the add half of Step 4. */
-const addOnboardingImages = async (organizationId, userId, newUrls) => {
-  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
-  if (!tenant) throw createError('Tenant not found or access denied', 404);
-
-  let existingMainBranch = tenant.firstBranchDraft;
-  if (typeof existingMainBranch === 'string') {
-    try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
-  }
-  const existingImages = Array.isArray(existingMainBranch?.imagesJson) ? existingMainBranch.imagesJson : [];
-  const imagesJson = [...existingImages, ...newUrls];
-
-  return updateOnboardingImages(organizationId, userId, imagesJson);
-};
-
 // ── updateMyTenant ────────────────────────────────────────────────────────────
 /**
  * Host updates their business contact info (organizationName, email, phone, cityId).
@@ -627,8 +585,6 @@ module.exports = {
   registerTenant,
   submitGymProfile,
   selectPackage,
-  updateOnboardingImages,
-  addOnboardingImages,
   finalizeApplication,
   mainBranchPlans,
   getMyTenant,
