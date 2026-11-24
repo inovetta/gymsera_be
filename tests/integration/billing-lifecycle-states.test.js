@@ -53,7 +53,7 @@ describe('BILL-04: grace, hold and pause states', () => {
     // A registration package the legacy fallback would hand back: a held or
     // paused plan must not fall through to it.
     const legacyPackage = await PlatformPackage.create({
-      name: 'Legacy 10', price: 1000, billingCycle: 'MONTHLY', maxBranches: 10, maxOrganizations: 3,
+      name: 'Legacy 10', price: 1000, billingCycle: 'MONTHLY', maxBranches: 10, maxBusinesses: 3,
       maxTrainers: 10, maxMembers: 1000,
     });
     tenant = await factories.createTenant({

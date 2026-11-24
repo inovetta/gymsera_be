@@ -6,7 +6,7 @@ const { DataTypes } = require('sequelize');
  * The host picks a catalog plan and a cycle; the SERVER fixes the amount and currency from the
  * catalog (monthlyPrice / annualPrice) when the request is made. With the BANK_TRANSFER method the
  * host uploads a receipt (private store, `proofKey`); a platform admin approves (the plan is granted
- * through applyVerifiedSubscription as a MANUAL row, `tenantSubscriptionId`) or rejects with a reason.
+ * through applyVerifiedSubscription as a MANUAL row, `organizationSubscriptionId`) or rejects with a reason.
  *
  * `method` is the pluggable payment method (plan-payment-methods.js). BANK_TRANSFER is the only one;
  * a card provider adds a method and uses `externalReference` for its checkout / payment id. The host
@@ -35,7 +35,7 @@ module.exports = (sequelize) => {
       reviewedByUserId: { type: DataTypes.UUID, allowNull: true },
       reviewedAt: { type: DataTypes.DATE, allowNull: true },
       rejectionReason: { type: DataTypes.STRING(500), allowNull: true },
-      tenantSubscriptionId: { type: DataTypes.UUID, allowNull: true, field: 'organization_subscription_id' }, // R-120 NEW-307 (p034)
+      organizationSubscriptionId: { type: DataTypes.UUID, allowNull: true, field: 'organization_subscription_id' }, // R-120 NEW-307 (p034)
       periodStart: { type: DataTypes.DATEONLY, allowNull: true },
       periodEnd: { type: DataTypes.DATEONLY, allowNull: true },
     },

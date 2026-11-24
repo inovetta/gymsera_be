@@ -252,14 +252,14 @@ const approve = async ({ requestId, adminUserId }) => {
       },
       { idempotencyPrefix: `${externalId}:approve`, logLabel: 'Plan payment' }
     );
-    await PlanPaymentRequest.update({ tenantSubscriptionId: subscription.id }, { where: { id: request.id } });
+    await PlanPaymentRequest.update({ organizationSubscriptionId: subscription.id }, { where: { id: request.id } });
     await PlatformAuditLog.create({
       actorUserId: adminUserId,
       action: 'PLAN_PAYMENT_APPROVED',
       targetType: 'PlanPaymentRequest',
       targetId: request.id,
       details: {
-        organizationId: request.organizationId, tenantSubscriptionId: subscription.id, billingPlanId: request.billingPlanId,
+        organizationId: request.organizationId, organizationSubscriptionId: subscription.id, billingPlanId: request.billingPlanId,
         billingCycle: request.billingCycle, amount: String(request.amount), currency: request.currency,
         periodStart: period.start, periodEnd: period.end, extendedFrom: period.extendedFrom,
       },

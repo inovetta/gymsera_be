@@ -155,10 +155,10 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
     const listingBefore = await GymListing.findByPk(listing.id);
     const reservedSlotsBefore = listingBefore.reservedSlots;
 
-    // Admin deletes branch with confirmOrganizationDeletion
+    // Admin deletes branch with confirmBusinessDeletion
     const res = await asPersona('platformAdmin')
       .delete(`/admin/organizations/${organizationId}/branches/${branch.id}`)
-      .send({ confirmOrganizationDeletion: true });
+      .send({ confirmBusinessDeletion: true });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

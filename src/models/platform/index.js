@@ -145,8 +145,8 @@ Tenant.hasMany(PlatformInvoice, { foreignKey: 'organizationId', as: 'platformInv
 PlatformInvoice.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // TenantSubscription ↔ PlatformInvoice
-TenantSubscription.hasMany(PlatformInvoice, { foreignKey: 'tenantSubscriptionId', as: 'invoices' });
-PlatformInvoice.belongsTo(TenantSubscription, { foreignKey: 'tenantSubscriptionId', as: 'subscription' });
+TenantSubscription.hasMany(PlatformInvoice, { foreignKey: 'organizationSubscriptionId', as: 'invoices' });
+PlatformInvoice.belongsTo(TenantSubscription, { foreignKey: 'organizationSubscriptionId', as: 'subscription' });
 
 // City / Area ↔ GymListing
 City.hasMany(GymListing, { foreignKey: 'cityId', as: 'gymListings' });

@@ -59,7 +59,7 @@
    "method": "DELETE",
    "path": "/api/v1/gyms/branches/:p",
    "allowed": [
-    "confirmOrganizationDeletion",
+    "confirmBusinessDeletion",
     "idToken",
     "password",
     "provider",
@@ -428,7 +428,7 @@
    "method": "DELETE",
    "path": "/api/v1/host/branches/:p",
    "allowed": [
-    "confirmOrganizationDeletion",
+    "confirmBusinessDeletion",
     "idToken",
     "password",
     "provider",
@@ -436,7 +436,7 @@
     "reauthProvider"
    ],
    "clientKeys": [
-    "confirmOrganizationDeletion",
+    "confirmBusinessDeletion",
     "idToken",
     "password",
     "provider"

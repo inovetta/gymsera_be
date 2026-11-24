@@ -291,8 +291,8 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
         branchId: branch2.id,
       });
 
-      // Call deleteBranch with confirmOrganizationDeletion = true
-      await gymService.deleteBranch(dbHarness.tenant1, branch2.id, null, { confirmOrganizationDeletion: true });
+      // Call deleteBranch with confirmBusinessDeletion = true
+      await gymService.deleteBranch(dbHarness.tenant1, branch2.id, null, { confirmBusinessDeletion: true });
 
       // Verify RoleAssignment is REVOKED with revokedBy: 'system:branch_deleted'
       await assignment.reload();

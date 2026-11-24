@@ -130,14 +130,14 @@ const deleteBranch = async (req, res, next) => {
       idToken: idToken || reauthIdToken,
     });
 
-    // confirmOrganizationDeletion is the client acknowledging the 409
+    // confirmBusinessDeletion is the client acknowledging the 409
     // `last_branch_in_organization` warning — deleting this branch will take
     // its (now empty) organization with it. See gym.service.js.
-    const confirmOrganizationDeletion =
-      req.body?.confirmOrganizationDeletion === true || req.query?.confirmOrganizationDeletion === 'true';
+    const confirmBusinessDeletion =
+      req.body?.confirmBusinessDeletion === true || req.query?.confirmBusinessDeletion === 'true';
 
     const result = await gymService.deleteBranch(req.tenantDb, req.params.branchId, req.user.sub, {
-      confirmOrganizationDeletion,
+      confirmBusinessDeletion,
     });
     // P5b item 7: whether the organization went too, and the store-plan notice if so.
     return sendSuccess(

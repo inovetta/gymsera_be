@@ -92,7 +92,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
 
     // 1. Delete without confirmation must reject with 409
     await expect(
-      gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmOrganizationDeletion: false })
+      gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmBusinessDeletion: false })
     ).rejects.toMatchObject({
       code: 'last_branch_in_organization',
       statusCode: 409,
@@ -105,7 +105,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
     expect(listing.status).toBe('ACTIVE');
 
     // 2. Confirmed delete deactivates the org so it is never an empty ACTIVE org
-    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmOrganizationDeletion: true });
+    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmBusinessDeletion: true });
     await branch.reload();
     await listing.reload();
     expect(branch.status).toBe('INACTIVE');
@@ -180,7 +180,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
           const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' } });
           if (activeBranches.length > 1) {
             const b = activeBranches[Math.floor(Math.random() * activeBranches.length)];
-            await gymService.deleteBranch(tenantDb, b.id, hostUser.id, { confirmOrganizationDeletion: true });
+            await gymService.deleteBranch(tenantDb, b.id, hostUser.id, { confirmBusinessDeletion: true });
           }
         } else if (action === 'RESTORE') {
           const inactiveBranches = await Branch.findAll({ where: { status: 'INACTIVE' } });

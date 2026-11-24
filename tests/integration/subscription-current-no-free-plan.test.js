@@ -60,7 +60,7 @@ describe('NEW-15: GET /host/subscription/current never grants a plan to a tenant
       price: 1000,
       billingCycle: 'MONTHLY',
       maxBranches: 10,
-      maxOrganizations: 3,
+      maxBusinesses: 3,
       maxTrainers: 10,
       maxMembers: 1000,
     });

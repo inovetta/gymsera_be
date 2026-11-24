@@ -24,10 +24,10 @@ const packagesValidators = {
       .isIn(['MONTHLY', 'QUARTERLY', 'YEARLY'])
       .withMessage('billingCycle must be MONTHLY, QUARTERLY, or YEARLY'),
 
-    body('maxOrganizations')
+    body('maxBusinesses')
       .optional()
       .isInt({ min: 1 })
-      .withMessage('maxOrganizations must be a positive integer'),
+      .withMessage('maxBusinesses must be a positive integer'),
 
     body('maxBranches')
       .optional()
@@ -74,7 +74,7 @@ const packagesValidators = {
       .isIn(['MONTHLY', 'QUARTERLY', 'YEARLY'])
       .withMessage('billingCycle must be MONTHLY, QUARTERLY, or YEARLY'),
 
-    body('maxOrganizations').optional().isInt({ min: 1 }),
+    body('maxBusinesses').optional().isInt({ min: 1 }),
     body('maxBranches').optional().isInt({ min: 1 }),
     body('maxTrainers').optional().isInt({ min: 1 }),
     body('maxMembers').optional().isInt({ min: 1 }),

@@ -3,7 +3,7 @@
  * "Subscription" at Rs 4,999 with "Branches built 3 of 1".
  * Root cause of the name: the entitling row was a legacy PlatformPackage row (branchCount null:
  * created at web signup with bank transfer, tenant.service.js:330, or by the admin "assign
- * package" form) and getActiveSubscription included only maxBranches / maxOrganizations of the
+ * package" form) and getActiveSubscription included only maxBranches / maxBusinesses of the
  * package, so `package.name` never reached the CMS, which fell back to "Subscription".
  * Rs 4,999 / "of 1" are that package (seed "Starter": 4,999, maxBranches 1); 3 is the tenant's
  * real ACTIVE branches: the tenant is over its legacy quota.
@@ -21,7 +21,7 @@ describe('P9c: a legacy package plan is named by its package', () => {
   afterAll(() => teardownTestDatabases());
 
   test('GET /host/subscription/current carries the package name and its branch limit', async () => {
-    const pkg = await PlatformPackage.create({ name: 'Starter', price: 4999, billingCycle: 'MONTHLY', maxOrganizations: 1, maxBranches: 1, status: 'ACTIVE' });
+    const pkg = await PlatformPackage.create({ name: 'Starter', price: 4999, billingCycle: 'MONTHLY', maxBusinesses: 1, maxBranches: 1, status: 'ACTIVE' });
     await TenantSubscription.destroy({ where: { organizationId: ctx.tenant1.id } });
     await TenantSubscription.create({
       organizationId: ctx.tenant1.id, platformPackageId: pkg.id, platform: 'MANUAL', startDate: new Date(), endDate: new Date(Date.now() + 20 * 86400000),

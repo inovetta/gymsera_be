@@ -196,7 +196,7 @@ describe('P9d: purchase-intent is the server check before every store purchase (
     });
 
     test('a legacy package row (paid, no branchCount) compares on the package limit', async () => {
-      const pkg = await PlatformPackage.create({ name: 'Starter', price: 4999, billingCycle: 'MONTHLY', maxBranches: 1, maxOrganizations: 1 });
+      const pkg = await PlatformPackage.create({ name: 'Starter', price: 4999, billingCycle: 'MONTHLY', maxBranches: 1, maxBusinesses: 1 });
       await reset([bank(plan1, { billingPlanId: null, branchCount: null, platformPackageId: pkg.id })]);
       expect((await ask(plan1, 'ios')).status).toBe(409);
       const bigger = await ask(plan3, 'ios');

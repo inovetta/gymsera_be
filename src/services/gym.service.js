@@ -1147,7 +1147,7 @@ const _storePlanNotice = async (organizationId) => {
   };
 };
 
-const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrganizationDeletion = false } = {}) => {
+const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmBusinessDeletion = false } = {}) => {
   const { Branch } = tenantDb.models;
 
   const t = await tenantDb.sequelize.transaction();
@@ -1182,7 +1182,7 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmOrgani
     // taking its last one, unless the host has already confirmed they
     // understand the organization goes with it. Runs before any mutation so
     // a declined confirmation changes nothing.
-    await _guardLastBranchInOrganization(tenantDb, branch, confirmOrganizationDeletion);
+    await _guardLastBranchInOrganization(tenantDb, branch, confirmBusinessDeletion);
 
     cascade = await _cascadeBranchDeletion(tenantDb, branch, deletedByUserId, t);
     await t.commit();

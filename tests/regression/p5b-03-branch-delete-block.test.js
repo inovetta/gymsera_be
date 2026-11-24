@@ -93,7 +93,7 @@ const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), 
 };
 
 const deleteBranch = (branch) =>
-  asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: PASSWORD, confirmOrganizationDeletion: true });
+  asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
 
 const statusOf = async (branch) => (await models.Branch.findByPk(branch.id)).status;
 

@@ -49,7 +49,7 @@
    "method": "DELETE",
    "path": "/api/v1/admin/organizations/:p/branches/:p",
    "allowed": [
-    "confirmOrganizationDeletion"
+    "confirmBusinessDeletion"
    ],
    "clientKeys": []
   },

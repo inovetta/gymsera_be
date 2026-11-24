@@ -91,13 +91,13 @@ describe('deriveHostStatus: every transition', () => {
 
   test('DRAFT, listing not finished: DRAFT / COMPLETE_LISTING', () => {
     const s = deriveHostStatus({ tenant: tenant() });
-    expect(s).toMatchObject({ status: 'DRAFT', nextAction: 'COMPLETE_LISTING', listingComplete: false, applicationSubmitted: false });
+    expect(s).toMatchObject({ status: 'DRAFT', nextAction: 'COMPLETE_LISTING', firstBusinessComplete: false, applicationSubmitted: false });
     expect(s.payment.done).toBe(false);
   });
 
   test('DRAFT, listing done, not paid: AWAITING_PAYMENT / CHOOSE_PLAN, no plan label', () => {
     const s = deriveHostStatus({ tenant: tenant({ firstBranchDraft: completeListing }) });
-    expect(s).toMatchObject({ status: 'AWAITING_PAYMENT', nextAction: 'CHOOSE_PLAN', listingComplete: true, plan: null });
+    expect(s).toMatchObject({ status: 'AWAITING_PAYMENT', nextAction: 'CHOOSE_PLAN', firstBusinessComplete: true, plan: null });
     expect(s.payment).toMatchObject({ done: false, entitled: false });
   });
 

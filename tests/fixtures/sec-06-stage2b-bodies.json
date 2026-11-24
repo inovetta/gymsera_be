@@ -11,7 +11,7 @@
     "status",
     "subtotal",
     "taxAmount",
-    "tenantSubscriptionId"
+    "organizationSubscriptionId"
    ],
    "clientKeys": [
     "description",
@@ -20,7 +20,7 @@
     "status",
     "subtotal",
     "taxAmount",
-    "tenantSubscriptionId"
+    "organizationSubscriptionId"
    ]
   },
   {
@@ -515,7 +515,7 @@
     "featureFlagsJson",
     "maxBranches",
     "maxMembers",
-    "maxOrganizations",
+    "maxBusinesses",
     "maxTrainers",
     "name",
     "price"
@@ -527,7 +527,7 @@
     "featureFlagsJson",
     "maxBranches",
     "maxMembers",
-    "maxOrganizations",
+    "maxBusinesses",
     "maxTrainers",
     "name",
     "price"

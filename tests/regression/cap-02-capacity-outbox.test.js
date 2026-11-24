@@ -62,7 +62,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     });
 
     // Delete the branch
-    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmOrganizationDeletion: true });
+    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmBusinessDeletion: true });
 
     // Verify tenant DB
     await branch.reload();
@@ -138,7 +138,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
       });
 
     // Execute deleteBranch
-    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmOrganizationDeletion: true });
+    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmBusinessDeletion: true });
 
     // Restore spy
     processSpy.mockRestore();

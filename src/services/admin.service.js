@@ -514,7 +514,7 @@ const rejectTenant = async (organizationId, adminUserId, reason) => {
       const gymService = require('./gym.service');
       for (const branch of branches) {
         await gymService.deleteBranch(tenantDb, branch.id, adminUserId, {
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         });
       }
     }
@@ -883,10 +883,10 @@ const unsuspendTenantBranch = async (organizationId, branchId, adminUserId) => {
 };
 
 // ── deleteTenantBranch (admin delete calling deleteBranch) ───────────────────
-const deleteTenantBranch = async (organizationId, branchId, adminUserId, { confirmOrganizationDeletion = false } = {}) => {
+const deleteTenantBranch = async (organizationId, branchId, adminUserId, { confirmBusinessDeletion = false } = {}) => {
   const tenantDb = await _getTenantDb(organizationId);
   const gymService = require('./gym.service');
-  await gymService.deleteBranch(tenantDb, branchId, adminUserId, { confirmOrganizationDeletion });
+  await gymService.deleteBranch(tenantDb, branchId, adminUserId, { confirmBusinessDeletion });
   const branch = await tenantDb.models.Branch.findByPk(branchId);
   return { branch };
 };
@@ -902,7 +902,7 @@ const updateTenantBranchStatus = async (organizationId, branchId, status, adminU
   if (status === 'SUSPENDED') {
     return await suspendTenantBranch(organizationId, branchId, reason, adminUserId);
   } else if (status === 'INACTIVE') {
-    return await deleteTenantBranch(organizationId, branchId, adminUserId, { confirmOrganizationDeletion: true });
+    return await deleteTenantBranch(organizationId, branchId, adminUserId, { confirmBusinessDeletion: true });
   } else if (status === 'ACTIVE') {
     const branch = await tenantDb.models.Branch.findByPk(branchId);
     if (!branch) throw createError('Branch not found', 404);
@@ -1130,7 +1130,7 @@ const assignTenantSubscription = async (organizationId, { packageId, startDate, 
     const invoiceNo = `INV-${Date.now().toString(36).toUpperCase()}`;
     invoice = await PlatformInvoice.create({
       organizationId,
-      tenantSubscriptionId: subscription.id,
+      organizationSubscriptionId: subscription.id,
       invoiceNo,
       description: `${pkg.name} — ${cycle.toLowerCase()} subscription`,
       subtotal: subscriptionAmount,
@@ -1169,7 +1169,7 @@ const revokeTenantSubscription = async (organizationId, subscriptionId) => {
   // Cancel any open invoices linked to this subscription
   await PlatformInvoice.update(
     { status: 'CANCELLED' },
-    { where: { tenantSubscriptionId: subscriptionId, status: ['DRAFT', 'ISSUED'] } }
+    { where: { organizationSubscriptionId: subscriptionId, status: ['DRAFT', 'ISSUED'] } }
   );
 
   return { subscription: sub };
@@ -1192,7 +1192,7 @@ const getTenantInvoices = async (organizationId, { page = 1, limit = 20 } = {}) 
 };
 
 // ── createTenantInvoice ───────────────────────────────────────────────────────
-const createTenantInvoice = async (organizationId, { tenantSubscriptionId, description, subtotal, taxAmount, dueDate, notes, status }, adminUserId) => {
+const createTenantInvoice = async (organizationId, { organizationSubscriptionId, description, subtotal, taxAmount, dueDate, notes, status }, adminUserId) => {
   const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
@@ -1202,7 +1202,7 @@ const createTenantInvoice = async (organizationId, { tenantSubscriptionId, descr
 
   const invoice = await PlatformInvoice.create({
     organizationId,
-    tenantSubscriptionId: tenantSubscriptionId || null,
+    organizationSubscriptionId: organizationSubscriptionId || null,
     invoiceNo,
     description: description || null,
     subtotal,

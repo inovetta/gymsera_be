@@ -43,7 +43,7 @@ beforeAll(async () => {
   adminToken = signToken({ sub: admin.id, id: admin.id, role: 'PLATFORM_ADMIN', isVerified: true });
   // 2 branches: provisioning builds 1 and attributes 1 unbuilt slot (one CapacityEvent).
   twoBranchPackage = await PlatformPackage.create({
-    name: 'F02 Two', price: 4000, billingCycle: 'MONTHLY', maxBranches: 2, maxOrganizations: 1, maxTrainers: 5, maxMembers: 500,
+    name: 'F02 Two', price: 4000, billingCycle: 'MONTHLY', maxBranches: 2, maxBusinesses: 1, maxTrainers: 5, maxMembers: 500,
   });
 });
 

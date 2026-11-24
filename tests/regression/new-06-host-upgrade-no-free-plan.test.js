@@ -37,7 +37,7 @@ describe('NEW-06: POST /host/subscription/upgrade grants nothing', () => {
       price: 9000,
       billingCycle: 'MONTHLY',
       maxBranches: 50,
-      maxOrganizations: 5,
+      maxBusinesses: 5,
       maxTrainers: 50,
       maxMembers: 5000,
     });

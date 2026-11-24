@@ -61,9 +61,9 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
 
     const usedBeforeDelete = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
 
-    // 2. Delete the branch with confirmOrganizationDeletion = true
+    // 2. Delete the branch with confirmBusinessDeletion = true
     await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, {
-      confirmOrganizationDeletion: true,
+      confirmBusinessDeletion: true,
     });
 
     // Verify branch is INACTIVE

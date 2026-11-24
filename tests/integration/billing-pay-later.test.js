@@ -55,7 +55,7 @@ describe('BILL-13: pay later is a time-limited GRACE plan', () => {
     adminToken = signToken({ sub: admin.id, id: admin.id, role: 'PLATFORM_ADMIN', isVerified: true });
     // A generous registration package: none of it may leak into pay-later.
     legacyPackage = await PlatformPackage.create({
-      name: 'Legacy 5', price: 5000, billingCycle: 'YEARLY', maxBranches: 5, maxOrganizations: 3, maxTrainers: 10, maxMembers: 1000,
+      name: 'Legacy 5', price: 5000, billingCycle: 'YEARLY', maxBranches: 5, maxBusinesses: 3, maxTrainers: 10, maxMembers: 1000,
     });
     await factories.createBillingPlan({ branchCount: 1, sortOrder: 1, monthlyPrice: 2000, annualPrice: 14400 });
   });

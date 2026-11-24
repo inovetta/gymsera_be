@@ -156,7 +156,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       tenantDb,
       targetBranch.id,
       hostUser.id,
-      { confirmOrganizationDeletion: false }
+      { confirmBusinessDeletion: false }
     );
     const restorePromise = gymService.restoreBranch(
       tenantDb,
@@ -195,8 +195,8 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     }
 
     const [dupDel1, dupDel2] = await Promise.allSettled([
-      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmOrganizationDeletion: false }),
-      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmOrganizationDeletion: false }),
+      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmBusinessDeletion: false }),
+      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmBusinessDeletion: false }),
     ]);
 
     const dupDelSuccess = [dupDel1, dupDel2].filter((r) => r.status === 'fulfilled');

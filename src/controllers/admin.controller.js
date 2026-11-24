@@ -182,14 +182,14 @@ const unsuspendTenantBranch = async (req, res, next) => {
 // ── DELETE /admin/organizations/:id/branches/:branchId ──────────────────────────────
 const deleteTenantBranch = async (req, res, next) => {
   try {
-    const confirm = req.body?.confirmOrganizationDeletion === true ||
+    const confirm = req.body?.confirmBusinessDeletion === true ||
       req.query?.confirm === 'true' ||
-      req.query?.confirmOrganizationDeletion === 'true';
+      req.query?.confirmBusinessDeletion === 'true';
     const result = await adminService.deleteTenantBranch(
       req.params.organizationId,
       req.params.branchId,
       req.user.sub || req.user.id,
-      { confirmOrganizationDeletion: confirm }
+      { confirmBusinessDeletion: confirm }
     );
     return sendSuccess(res, result, 'Branch deleted.');
   } catch (err) {

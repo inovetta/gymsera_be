@@ -218,7 +218,7 @@ router.patch(
  *       200:
  *         description: Branch deactivated
  */
-router.delete('/branches/:branchId', authorize('GYM_HOST'), validate.allowBody(['confirmOrganizationDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), gymsController.deleteBranch);
+router.delete('/branches/:branchId', authorize('GYM_HOST'), validate.allowBody(['confirmBusinessDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), gymsController.deleteBranch);
 
 // ── Branch images ──────────────────────────────────────────────────────────────
 // NEW-45: a branch's photos need branch.settings at that branch.

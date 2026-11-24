@@ -43,7 +43,7 @@ const getActiveSubscription = async (organizationId, { transaction } = {}) => {
   return TenantSubscription.findOne({
     where: { organizationId, status: { [Op.in]: ENTITLING_STATUSES } },
     // P9c: the name too, so a legacy package plan is shown by name, not as "Subscription".
-    include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches', 'maxOrganizations'] }],
+    include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches', 'maxBusinesses'] }],
     order: [['createdAt', 'DESC']],
     transaction,
   });
@@ -111,7 +111,7 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
 };
 
 // JSON-safe stand-in for "no limit" — Infinity itself serializes to `null`
-// over JSON (sendSuccess(res, {...}) would ship maxOrganizations: null,
+// over JSON (sendSuccess(res, {...}) would ship maxBusinesses: null,
 // which the Flutter side would then default back down to 1, the opposite
 // of what this is supposed to mean), so a very large finite number is used
 // instead. Never compared against anything real; existingListings.length is
@@ -124,18 +124,18 @@ const UNLIMITED_ORGANIZATIONS = Number.MAX_SAFE_INTEGER;
  * one costs nothing and consumes no capacity by itself (only building a
  * real branch into it does) — so there's no cap here at all for that path.
  * The legacy manual/PlatformPackage path still enforces whatever that
- * package's real maxOrganizations was.
+ * package's real maxBusinesses was.
  */
 const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) => {
   if (activeSub && activeSub.branchCount != null) {
     return UNLIMITED_ORGANIZATIONS;
   }
   if (activeSub && activeSub.package) {
-    return activeSub.package.maxOrganizations || 1;
+    return activeSub.package.maxBusinesses || 1;
   }
   if (tenant.selectedPackageId) {
     const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId, { transaction });
-    if (pkg) return pkg.maxOrganizations || 1;
+    if (pkg) return pkg.maxBusinesses || 1;
   }
   return 1;
 };

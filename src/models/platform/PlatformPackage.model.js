@@ -26,7 +26,7 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 'MONTHLY',
       },
-      maxOrganizations: {
+      maxBusinesses: {
         field: 'max_businesses', // R-120 NEW-306 (p033)
         type: DataTypes.INTEGER,
         allowNull: false,

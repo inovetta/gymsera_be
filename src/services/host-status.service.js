@@ -80,7 +80,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
       organizationId: null,
       firstBusinessName: null,
       applicationSubmitted: false,
-      listingComplete: false,
+      firstBusinessComplete: false,
       payment: { done: false, entitled: false, method: null },
       plan: null,
       verification: { status: KycStatus.NOT_SUBMITTED, verified: false },
@@ -89,7 +89,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
   }
 
   const plans = mainBranchPlans(tenant);
-  const listingComplete = Array.isArray(plans) && plans.length > 0;
+  const firstBusinessComplete = Array.isArray(plans) && plans.length > 0;
   const entitled = !!entitledSub;
   const paid = entitled && entitledSub.paymentStatus === 'PAID';
   const submitted = tenant.status !== TenantStatus.DRAFT;
@@ -113,7 +113,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
   } else if (tenant.status === TenantStatus.ACTIVE) {
     status = HostStatus.APPROVED;
     nextAction = paid ? NextAction.NONE : entitled ? NextAction.PAY_SUBSCRIPTION : NextAction.CHOOSE_PLAN;
-  } else if (!listingComplete) {
+  } else if (!firstBusinessComplete) {
     status = HostStatus.DRAFT;
     nextAction = NextAction.COMPLETE_LISTING;
   } else if (!paid) {
@@ -133,7 +133,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
     // R-112 (C5): the brand the host typed (null until Step 2 saves it).
     organizationName: tenant.organizationName || null,
     applicationSubmitted: submitted && status !== HostStatus.REJECTED,
-    listingComplete,
+    firstBusinessComplete,
     payment: { done: paid, entitled, method: tenant.paymentMethod || null },
     plan: paid ? planOf(entitledSub) : null,
     verification: {

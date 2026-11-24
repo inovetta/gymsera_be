@@ -293,7 +293,7 @@ const getOrganizationQuota = async (req, res, next) => {
     const organizationId = req.user.organizationId;
     if (!organizationId) {
       return sendSuccess(res, {
-        maxOrganizations: 1,
+        maxBusinesses: 1,
         usedOrganizations: 0,
         remainingOrganizations: 1,
         canCreateNext: true,
@@ -305,7 +305,7 @@ const getOrganizationQuota = async (req, res, next) => {
     if (!tenant) throw createError('Tenant not found', 404);
 
     const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId);
-    const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub);
+    const maxBusinesses = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub);
 
     const allListings = await GymListing.findAll({
       where: {
@@ -336,17 +336,17 @@ const getOrganizationQuota = async (req, res, next) => {
       const blockingListing = allListings.find(
         (l) => l.status === 'DRAFT' || l.status === 'PENDING'
       );
-      canCreateNext = !blockingListing && (maxOrganizations - usedOrganizations) > 0;
+      canCreateNext = !blockingListing && (maxBusinesses - usedOrganizations) > 0;
       if (blockingListing) {
         blockingListingStatus = blockingListing.status === 'DRAFT' ? 'draft' : 'under_review';
       }
     }
 
-    const remainingOrganizations = Math.max(0, maxOrganizations - usedOrganizations);
-    const hasOrganizationLimit = maxOrganizations !== subscriptionQuotaService.UNLIMITED_ORGANIZATIONS;
+    const remainingOrganizations = Math.max(0, maxBusinesses - usedOrganizations);
+    const hasOrganizationLimit = maxBusinesses !== subscriptionQuotaService.UNLIMITED_ORGANIZATIONS;
 
     return sendSuccess(res, {
-      maxOrganizations,
+      maxBusinesses,
       usedOrganizations,
       remainingOrganizations,
       hasOrganizationLimit,
@@ -477,7 +477,7 @@ const createListing = async (req, res, next) => {
 
       // Check organization quota and sequential approval gate
       const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId, { transaction: platformTx });
-      const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub, { transaction: platformTx });
+      const maxBusinesses = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub, { transaction: platformTx });
 
       const existingListings = await GymListing.findAll({
         where: {
@@ -501,7 +501,7 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      if (existingListings.length >= maxOrganizations) {
+      if (existingListings.length >= maxBusinesses) {
         const err = createError('Organization limit reached', 403);
         err.code = 'organization_limit_reached';
         throw err;

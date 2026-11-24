@@ -44,7 +44,7 @@ describe('BILL-02: refunds and revocations end entitlement', () => {
     // A tenant whose registration picked a legacy package: that fallback
     // must not hand entitlement back after a refund.
     const legacyPackage = await require('../../src/models/platform').PlatformPackage.create({
-      name: 'Legacy 10', price: 1000, billingCycle: 'MONTHLY', maxBranches: 10, maxOrganizations: 3,
+      name: 'Legacy 10', price: 1000, billingCycle: 'MONTHLY', maxBranches: 10, maxBusinesses: 3,
       maxTrainers: 10, maxMembers: 1000,
     });
     tenant = await factories.createTenant({

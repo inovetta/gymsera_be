@@ -76,7 +76,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
 
     // 3. Delete the branch
     await gymService.deleteBranch(dbHarness.tenant1, branch.id, personas.owner.user.id, {
-      confirmOrganizationDeletion: true,
+      confirmBusinessDeletion: true,
     });
 
     // 4. Verify RoleAssignment is REVOKED
@@ -177,7 +177,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
 
     // Delete branch A only
     await gymService.deleteBranch(dbHarness.tenant1, branchA.id, personas.owner.user.id, {
-      confirmOrganizationDeletion: true,
+      confirmBusinessDeletion: true,
     });
 
     // Assignment must still be ACTIVE because branch B remains

@@ -230,7 +230,7 @@ router.post(
 
 router.delete(
   '/organizations/:organizationId/branches/:branchId',
-  validate.allowBody(['confirmOrganizationDeletion']), adminController.deleteTenantBranch
+  validate.allowBody(['confirmBusinessDeletion']), adminController.deleteTenantBranch
 );
 
 router.get('/organizations/:organizationId/members', adminController.getTenantMembers);
@@ -387,7 +387,7 @@ router.post(
     body('taxAmount').optional().isFloat({ min: 0 }),
     body('status').optional().isIn(['DRAFT', 'ISSUED', 'PAID', 'OVERDUE', 'CANCELLED']),
     // SEC-06: read by admin.service#createTenantInvoice
-    body('tenantSubscriptionId').optional({ nullable: true }).isUUID(4),
+    body('organizationSubscriptionId').optional({ nullable: true }).isUUID(4),
     body('description').optional({ nullable: true }).isString().isLength({ max: 500 }),
     body('notes').optional({ nullable: true }).isString().isLength({ max: 2000 }),
   ], { stage: 2 }),

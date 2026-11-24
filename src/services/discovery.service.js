@@ -1287,11 +1287,11 @@ const listTopHosts = async () => {
         averageRating,
         // BUG-27: approved reviews; 0 = "New".
         reviewCount: reviewCountMap.get(tenant.id) || 0,
-        branchesCount: tenantBranches.length,
+        branchCount: tenantBranches.length,
         branches: tenantBranches,
       };
     })
-    .filter((host) => host.branchesCount > 0) // Only hosts with active branches
+    .filter((host) => host.branchCount > 0) // Only hosts with active branches
     .sort((a, b) => b.averageRating - a.averageRating); // Sort by average rating descending
 
   return topHosts;

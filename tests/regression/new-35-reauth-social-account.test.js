@@ -258,7 +258,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         organizationId: tenant.id,
         body: {
           password: 'made-up-random-password',
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 
@@ -277,7 +277,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         token: tokenFor(user, tenant.id),
         organizationId: tenant.id,
         body: {
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 
@@ -300,7 +300,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         body: {
           provider: 'GOOGLE',
           idToken: 'valid-google-id-token',
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 
@@ -326,7 +326,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         body: {
           reauthProvider: 'APPLE',
           reauthIdToken: 'valid-apple-id-token',
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 
@@ -353,7 +353,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         body: {
           provider: 'GOOGLE',
           idToken: 'wrong-token',
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 
@@ -371,7 +371,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         organizationId: tenant.id,
         body: {
           password: PASSWORD,
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 
@@ -389,7 +389,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         organizationId: tenant.id,
         body: {
           password: 'WrongPassword!',
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 
@@ -410,7 +410,7 @@ describe('NEW-35: Re-auth must reject made-up passwords for social accounts and 
         organizationId: tenant.id,
         body: {
           password: 'made-up-random-password',
-          confirmOrganizationDeletion: true,
+          confirmBusinessDeletion: true,
         },
       });
 

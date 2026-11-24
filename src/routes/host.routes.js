@@ -235,7 +235,7 @@ router.delete(
   authorize('GYM_HOST'),
   tenantContext,
   ownerHere,
-  validate.allowBody(['confirmOrganizationDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']),
+  validate.allowBody(['confirmBusinessDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']),
   gymsController.deleteBranch
 );
 

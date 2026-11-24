@@ -43,7 +43,7 @@ describe('P5b item 7: the plan still bills in the store after an organization go
   test('deleting an organization\'s last branch (iOS plan) → organizationDeleted and the App Store notice', async () => {
     await usePlatform('IOS');
     const { branches: [branch] } = await orgWith('Store Last Branch', 1);
-    const res = await asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: PASSWORD, confirmOrganizationDeletion: true });
+    const res = await asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
     expect(res.status).toBe(200);
     expect(res.body.data.organizationDeleted).toBe(true);
     expect(res.body.data.storePlanNotice).toEqual({
