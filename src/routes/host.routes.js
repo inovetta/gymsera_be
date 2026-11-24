@@ -83,7 +83,7 @@ router.get('/branch-quota', authenticate, authorize('GYM_HOST'), hostController.
 router.get('/organization-quota', authenticate, authorize('GYM_HOST'), hostController.getOrganizationQuota);
 router.get('/listings', authenticate, ownerOrListingManager({ ownerNeedsContext: false }), hostController.getListings);
 // R-120 A3 J13: a first-time host has no organization yet; any signed-in user may upload. Stateless (stores files, saves no draft).
-router.post('/staging-images', authenticate, upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), hostController.uploadStagingImages);
+router.post('/staging-images', authenticate, refusePlatformAdmin('staging_images_not_for_platform_admins', 'Platform admins do not upload host images.'), upload.images('images', 10), upload.handleMulterError, validate.allowBody([], { stage: 1 }), hostController.uploadStagingImages);
 router.post(
   '/listings/staging-images',
   authenticate,

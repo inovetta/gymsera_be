@@ -33,4 +33,18 @@ describe('POST /host/staging-images', () => {
     expect((await asPersona('member').post('/host/staging-images')).status).toBe(422);
     expect((await asPersona('anonymous').post('/host/staging-images').attach('images', PNG, 'a.png')).status).toBe(401);
   });
+  test('a body field is refused with 422: the route takes files only (a new route, so stage 1: reject, not log)', async () => {
+    const res = await asPersona('member').post('/host/staging-images').field('gymName', 'x').attach('images', PNG, 'a.png');
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('validation_error');
+  });
+
+  test('a platform admin gets 403, with and without a file', async () => {
+    expect((await asPersona('platformAdmin').post('/host/staging-images').attach('images', PNG, 'a.png')).status).toBe(403);
+    expect((await asPersona('platformAdmin').post('/host/staging-images')).status).toBe(403);
+  });
+
+  test('auth runs before the upload: an anonymous caller is 401 even with a file', async () => {
+    expect((await asPersona('anonymous').post('/host/staging-images').attach('images', PNG, 'a.png')).status).toBe(401);
+  });
 });

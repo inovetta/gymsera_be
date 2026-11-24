@@ -430,7 +430,6 @@ const uploadListingStagingImages = async (req, res, next) => {
  */
 const uploadStagingImages = async (req, res, next) => {
   try {
-    if (req.user?.role === 'PLATFORM_ADMIN') throw createError('Forbidden', 403);
     if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
     const userId = req.user.sub || req.user.id;
     const urls = await storageService.uploadImages(req.files, `users/${userId}/staging`);
