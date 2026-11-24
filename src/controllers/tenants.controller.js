@@ -61,10 +61,10 @@ const register = async (req, res, next) => {
   }
 };
 
-// ── POST /tenants/:id/gym-profile ─────────────────────────────────────────────
+// ── POST /tenants/:id/first-business ─────────────────────────────────────────────
 const submitGymProfile = async (req, res, next) => {
   try {
-    const result = await tenantService.submitGymProfile(req.params.id, req.user.sub, req.body);
+    const result = await tenantService.submitGymProfile(req.params.organizationId, req.user.sub, req.body);
     return sendSuccess(res, await withPendingAreas(hostTenantView(result)), 'Gym profile submitted successfully');
   } catch (err) {
     next(err);
@@ -74,36 +74,36 @@ const submitGymProfile = async (req, res, next) => {
 // ── POST /tenants/:id/select-package ──────────────────────────────────────────
 const selectPackage = async (req, res, next) => {
   try {
-    const result = await tenantService.selectPackage(req.params.id, req.user.sub, req.body.packageId);
+    const result = await tenantService.selectPackage(req.params.organizationId, req.user.sub, req.body.packageId);
     return sendSuccess(res, hostTenantView(result), 'Package selected successfully');
   } catch (err) {
     next(err);
   }
 };
 
-// ── POST /tenants/:id/onboarding-images ───────────────────────────────────────
+// ── POST /tenants/:id/first-business/images ───────────────────────────────────────
 // Step 4 photos, before the tenant has a real database — see
 // tenant.service.js#addOnboardingImages for why this writes to
 // firstBranchDraft instead of a Branch row.
 const uploadOnboardingImages = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
-    const urls = await storageService.uploadImages(req.files, `tenants/${req.params.id}/onboarding-images`);
-    const result = await tenantService.addOnboardingImages(req.params.id, req.user.sub, urls);
+    const urls = await storageService.uploadImages(req.files, `organizations/${req.params.organizationId}/first-business/images`);
+    const result = await tenantService.addOnboardingImages(req.params.organizationId, req.user.sub, urls);
     return sendSuccess(res, result, 'Images uploaded');
   } catch (err) {
     next(err);
   }
 };
 
-// ── PUT /tenants/:id/onboarding-images ────────────────────────────────────────
+// ── PUT /tenants/:id/first-business/images ────────────────────────────────────────
 // Full-array replace — how a removal round-trips (the client computes the
 // list minus the one photo and sends the whole thing back), same shape as
 // the post-onboarding edit-photos screen's updateBranchListingContent.
 const replaceOnboardingImages = async (req, res, next) => {
   try {
     const imagesJson = Array.isArray(req.body.imagesJson) ? req.body.imagesJson : [];
-    const result = await tenantService.updateOnboardingImages(req.params.id, req.user.sub, imagesJson);
+    const result = await tenantService.updateOnboardingImages(req.params.organizationId, req.user.sub, imagesJson);
     return sendSuccess(res, result, 'Images updated');
   } catch (err) {
     next(err);
@@ -113,7 +113,7 @@ const replaceOnboardingImages = async (req, res, next) => {
 // ── POST /tenants/:id/reapply (FLOW-04) ──────────────────────────────────────
 const reapplyTenant = async (req, res, next) => {
   try {
-    const result = await tenantService.reapplyTenant(req.params.id, req.user.sub);
+    const result = await tenantService.reapplyTenant(req.params.organizationId, req.user.sub);
     return sendSuccess(res, hostTenantView(result), 'Application reopened. Update it and submit again.');
   } catch (err) {
     next(err);
@@ -124,7 +124,7 @@ const reapplyTenant = async (req, res, next) => {
 const finalizeApplication = async (req, res, next) => {
   try {
     const { paymentMethod, bankTransferRef } = req.body;
-    const result = await tenantService.finalizeApplication(req.params.id, req.user.sub, { paymentMethod, bankTransferRef });
+    const result = await tenantService.finalizeApplication(req.params.organizationId, req.user.sub, { paymentMethod, bankTransferRef });
     return sendSuccess(res, hostTenantView(result), 'Application finalized successfully');
   } catch (err) {
     next(err);
@@ -166,7 +166,7 @@ const uploadKycDocuments = async (req, res, next) => {
       throw createError('Choose which document this is: ID, business registration or proof of premises.', 422, 'invalid_document_type');
     }
     const result = await tenantService.uploadKycDocuments({
-      organizationId: req.params.id,
+      organizationId: req.params.organizationId,
       userId: req.user.sub,
       userRole: req.user.role,
       files,
@@ -182,7 +182,7 @@ const uploadKycDocuments = async (req, res, next) => {
 const getKycDocuments = async (req, res, next) => {
   try {
     const result = await tenantService.getKycDocuments({
-      organizationId: req.params.id,
+      organizationId: req.params.organizationId,
       userId: req.user.sub,
       userRole: req.user.role,
     });
@@ -200,7 +200,7 @@ const streamKycDocument = async (req, res, next) => {
       userAgent: req.get('user-agent'),
     };
     const { stream, doc, contentType, contentLength } = await tenantService.getKycDocumentStream({
-      organizationId: req.params.id,
+      organizationId: req.params.organizationId,
       documentId: req.params.documentId,
       userId: req.user.sub,
       userRole: req.user.role,
@@ -231,7 +231,7 @@ const streamKycDocument = async (req, res, next) => {
 const deleteKycDocument = async (req, res, next) => {
   try {
     const result = await tenantService.deleteKycDocument({
-      organizationId: req.params.id,
+      organizationId: req.params.organizationId,
       documentId: req.params.documentId,
       userId: req.user.sub,
       userRole: req.user.role,

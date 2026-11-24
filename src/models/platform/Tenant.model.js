@@ -57,12 +57,12 @@ module.exports = (sequelize) => {
         allowNull: true,
       },
       // ── Gym profile (pre-approval snapshot) ─────────────────────────────────
-      gymName: {
+      firstBusinessName: {
         field: 'first_business_name', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(200),
         allowNull: true,
       },
-      gymDescription: {
+      firstBusinessDescription: {
         field: 'first_business_description', // R-120 NEW-307 (p034)
         type: DataTypes.TEXT,
         allowNull: true,

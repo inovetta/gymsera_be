@@ -500,13 +500,13 @@ const titleFor = async (link) => {
   const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   try {
     if (link.target === 'organization' || link.target === 'first_branch_draft') {
-      const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'gymName', 'organizationName', 'latitude', 'longitude', 'firstBranchDraft'] });
+      const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'firstBusinessName', 'organizationName', 'latitude', 'longitude', 'firstBranchDraft'] });
       if (!t) return base;
       const mb = parseJson(t.firstBranchDraft);
       if (link.target === 'first_branch_draft') {
-        return { ...base, title: mb.name || t.gymName || t.organizationName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
+        return { ...base, title: mb.name || t.firstBusinessName || t.organizationName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
       }
-      return { ...base, title: t.gymName || t.organizationName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
+      return { ...base, title: t.firstBusinessName || t.organizationName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
     }
     if (link.target === 'business') {
       const l = await GymListing.findByPk(link.targetId, { attributes: ['id', 'title', 'latitude', 'longitude'] });

@@ -225,7 +225,7 @@ describe('BUG-05: onboarding submit needs at least one plan shown to travellers'
   };
 
   const finalize = ({ tenant, token }) => asPersona('anonymous', { Authorization: `Bearer ${token}` })
-    .post(`/tenants/${tenant.id}/finalize`)
+    .post(`/organizations/${tenant.id}/finalize`)
     .send({ paymentMethod: 'IN_APP_PURCHASE' });
 
   test('every plan hidden: 422 visible_plan_required, not submitted', async () => {

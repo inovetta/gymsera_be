@@ -595,7 +595,7 @@ const rejectTenant = async (organizationId, adminUserId, reason) => {
       role: 'host',
       type: 'tenant_rejected',
       title: 'Host Application Rejected',
-      message: `Your organization ${tenant.gymName || tenant.organizationName} requires changes: ${reason.trim()}.`,
+      message: `Your organization ${tenant.firstBusinessName || tenant.organizationName} requires changes: ${reason.trim()}.`,
       priority: 'high',
       deepLink: '/host/profile',
       metadataJson: { event: 'tenant_status_updated', organizationId: tenant.id, status: 'REJECTED' },
@@ -666,9 +666,9 @@ const reactivateTenant = async (organizationId, adminUserId) => {
       await runTenantMigrations(tenantSeq, {
         organizationId: tenant.id,
         organizationCode: tenant.organizationCode,
-        gymName: tenant.gymName,
+        gymName: tenant.firstBusinessName,
       });
-      console.log(`[reactivateTenant] Tenant migrations applied to latest version for '${tenant.gymName}' (${tenant.id})`);
+      console.log(`[reactivateTenant] Tenant migrations applied to latest version for '${tenant.firstBusinessName}' (${tenant.id})`);
     } finally {
       await tenantSeq.close().catch(() => {});
     }

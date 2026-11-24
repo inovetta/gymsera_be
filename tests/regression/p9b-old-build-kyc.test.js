@@ -34,7 +34,7 @@ afterAll(async () => {
 });
 
 const upload = (documentType) => {
-  const req = asPersona('owner').post(`/tenants/${organizationId}/kyc-documents`);
+  const req = asPersona('owner').post(`/organizations/${organizationId}/kyc-documents`);
   if (documentType !== undefined) req.field('documentType', documentType);
   return req.attach('documents', pdf(), { filename: 'licence.pdf', contentType: 'application/pdf' });
 };
@@ -59,7 +59,7 @@ describe('P9b item 0: the released app build against the P9 API', () => {
 
   test('GET /tenants/me lists the documents as strings (the old build casts each one as String)', async () => {
     await upload(undefined);
-    const res = await asPersona('owner').get('/tenants/me');
+    const res = await asPersona('owner').get('/organizations/me');
     expect(res.status).toBe(200);
     const docs = res.body.data.tenant.kycDocumentsJson;
     expect(Array.isArray(docs)).toBe(true);
@@ -69,7 +69,7 @@ describe('P9b item 0: the released app build against the P9 API', () => {
   });
 
   test('NEW-190: no host tenant answer carries a document storage key', async () => {
-    const res = await asPersona('owner').get('/tenants/me');
+    const res = await asPersona('owner').get('/organizations/me');
     expect(JSON.stringify(res.body)).not.toMatch(/tenants\/[^"]*\/kyc\//);
   });
 
@@ -81,7 +81,7 @@ describe('P9b item 0: the released app build against the P9 API', () => {
   });
 
   test('the owner still gets every document with its type from the list route', async () => {
-    const res = await asPersona('owner').get(`/tenants/${organizationId}/kyc-documents`);
+    const res = await asPersona('owner').get(`/organizations/${organizationId}/kyc-documents`);
     expect(res.status).toBe(200);
     expect(res.body.data.map((d) => d.documentType)).toEqual(expect.arrayContaining(['BUSINESS_LICENSE', 'OWNER_ID']));
   });

@@ -37,21 +37,21 @@ describe('SEC-10: KYC Data Protection', () => {
   describe('1. Access Control on KYC Uploads', () => {
     test('Anonymous caller cannot upload KYC documents (401)', async () => {
       const res = await asPersona('anonymous')
-        .post(`/tenants/${tenant1Id}/kyc-documents`)
+        .post(`/organizations/${tenant1Id}/kyc-documents`)
         .attach('documents', Buffer.from('%PDF-1.4 test pdf file'), 'test.pdf');
       expect(res.status).toBe(401);
     });
 
     test('Another tenant owner cannot upload KYC documents to tenant 1 (403)', async () => {
       const res = await asPersona('otherTenantOwner')
-        .post(`/tenants/${tenant1Id}/kyc-documents`)
+        .post(`/organizations/${tenant1Id}/kyc-documents`)
         .attach('documents', Buffer.from('%PDF-1.4 test pdf file'), 'test.pdf');
       expect(res.status).toBe(403);
     });
 
     test('Regular member cannot upload KYC documents (403)', async () => {
       const res = await asPersona('member')
-        .post(`/tenants/${tenant1Id}/kyc-documents`)
+        .post(`/organizations/${tenant1Id}/kyc-documents`)
         .attach('documents', Buffer.from('%PDF-1.4 test pdf file'), 'test.pdf');
       expect(res.status).toBe(403);
     });
@@ -62,7 +62,7 @@ describe('SEC-10: KYC Data Protection', () => {
       const fakeJpg = Buffer.from('<html><body>malicious payload</body></html>');
 
       const res = await asPersona('owner')
-        .post(`/tenants/${tenant1Id}/kyc-documents`)
+        .post(`/organizations/${tenant1Id}/kyc-documents`)
         .attach('documents', fakeJpg, { filename: 'license.jpg', contentType: 'image/jpeg' });
       expect(res.status).toBe(422);
       expect(res.body.message || res.body.error).toMatch(/magic bytes|invalid file content|declared mime/i);
@@ -72,7 +72,7 @@ describe('SEC-10: KYC Data Protection', () => {
       const scriptBuffer = Buffer.from('console.log("hello");');
 
       const res = await asPersona('owner')
-        .post(`/tenants/${tenant1Id}/kyc-documents`)
+        .post(`/organizations/${tenant1Id}/kyc-documents`)
         .attach('documents', scriptBuffer, { filename: 'script.js', contentType: 'application/javascript' });
       expect(res.status).toBe(422);
     });
@@ -84,7 +84,7 @@ describe('SEC-10: KYC Data Protection', () => {
       const validJpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 
       const res = await asPersona('owner')
-        .post(`/tenants/${tenant1Id}/kyc-documents`)
+        .post(`/organizations/${tenant1Id}/kyc-documents`)
         .attach('documents', validPdf, { filename: 'license.pdf', contentType: 'application/pdf' })
         .attach('documents', validJpg, { filename: 'cnic_front.jpg', contentType: 'image/jpeg' });
 
@@ -120,7 +120,7 @@ describe('SEC-10: KYC Data Protection', () => {
     beforeAll(async () => {
       const validPdf = Buffer.from('%PDF-1.4 official kyc certificate');
       const res = await asPersona('owner')
-        .post(`/tenants/${tenant1Id}/kyc-documents`)
+        .post(`/organizations/${tenant1Id}/kyc-documents`)
         .attach('documents', validPdf, { filename: 'certificate.pdf', contentType: 'application/pdf' });
       uploadedDocId = res.body.data[res.body.data.length - 1].documentId;
     });
@@ -128,12 +128,12 @@ describe('SEC-10: KYC Data Protection', () => {
     test('Listing KYC documents: owner succeeds, other tenant owner 403', async () => {
       // Other tenant owner blocked
       const forbidden = await asPersona('otherTenantOwner')
-        .get(`/tenants/${tenant1Id}/kyc-documents`);
+        .get(`/organizations/${tenant1Id}/kyc-documents`);
       expect(forbidden.status).toBe(403);
 
       // Owner succeeds
       const success = await asPersona('owner')
-        .get(`/tenants/${tenant1Id}/kyc-documents`);
+        .get(`/organizations/${tenant1Id}/kyc-documents`);
       expect(success.status).toBe(200);
       expect(Array.isArray(success.body.data)).toBe(true);
       expect(success.body.data.some((d) => d.documentId === uploadedDocId)).toBe(true);
@@ -148,7 +148,7 @@ describe('SEC-10: KYC Data Protection', () => {
       });
 
       const res = await asPersona('platformAdmin')
-        .get(`/tenants/${tenant1Id}/kyc-documents/${uploadedDocId}/stream`);
+        .get(`/organizations/${tenant1Id}/kyc-documents/${uploadedDocId}/stream`);
 
       expect(res.status).toBe(200);
       expect(res.header['content-type']).toContain('application/pdf');

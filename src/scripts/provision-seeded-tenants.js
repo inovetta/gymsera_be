@@ -78,7 +78,7 @@ async function provisionTenant(tenant, dbConfig) {
     const { runTenantMigrations } = require('../database/tenant-migration-runner');
     await runTenantMigrations(tenantSeq, {
       organizationId: tenant.id,
-      gymName: tenant.gymName,
+      gymName: tenant.firstBusinessName,
     });
     console.log('   ✅ Tenant migrations applied to latest version');
   } finally {

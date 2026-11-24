@@ -371,7 +371,7 @@ const stepCreateListing = async (ctx) => {
   const { tenant } = ctx;
   let existingListing = await firstListing(tenant.id);
 
-  if (!existingListing && tenant.gymName) {
+  if (!existingListing && tenant.firstBusinessName) {
     // NEW-113: never city id 1 by default. approveTenant refuses a gym with no known
     // city before provisioning starts; this re-check covers a resumed run.
     const safeCityId = await resolveTenantCityId(tenant);
@@ -396,8 +396,8 @@ const stepCreateListing = async (ctx) => {
       organizationId: tenant.id,
       cityId: safeCityId,
       areaId: safeAreaId,
-      title: tenant.gymName,
-      shortDescription: tenant.gymDescription || null,
+      title: tenant.firstBusinessName,
+      shortDescription: tenant.firstBusinessDescription || null,
       logoUrl: tenant.logoUrl || null,
       coverImageUrl: tenant.coverImageUrl || null,
       genderType: tenant.genderType || 'MIXED',
@@ -420,7 +420,7 @@ const stepCreateListing = async (ctx) => {
 // ── Step 4: Gym, initial Branch and its membership plans (tenant DB) ─────────
 const stepCreateBranch = async (ctx) => {
   const { tenant, dbName } = ctx;
-  if (!tenant.gymName) return;
+  if (!tenant.firstBusinessName) return;
 
   const tenantDb = await ctx.tenantDb();
   const { models } = ctx;
@@ -433,8 +433,8 @@ const stepCreateBranch = async (ctx) => {
   if (!gym) {
     gym = await models.Gym.create({
       ...(listingId ? { id: listingId } : {}), // R-120 NEW-308 (option S): one id per business
-      name: tenant.gymName,
-      description: tenant.gymDescription || null,
+      name: tenant.firstBusinessName,
+      description: tenant.firstBusinessDescription || null,
       contactPhone: tenant.phone || null,
       genderType: tenant.genderType || 'MIXED',
       logoUrl: tenant.logoUrl || null,
@@ -476,7 +476,7 @@ const stepCreateBranch = async (ctx) => {
       tenant.id,
       {
         gymListingId: listingId,
-        branchName: b.name || tenant.gymName || 'Main Branch',
+        branchName: b.name || tenant.firstBusinessName || 'Main Branch',
         address: b.address || tenant.address || null,
         addressLine1: b.address || tenant.address || null,
         cityId: firstBranchCityId,
@@ -690,7 +690,7 @@ const stepLinkSubscription = async (ctx) => {
   // written in one platform transaction, so a resumed run never applies it
   // twice or records one without the other.
   const listing = await firstListing(tenant.id);
-  if (listing && tenant.gymName) {
+  if (listing && tenant.firstBusinessName) {
     const activeSub = await subscriptionQuotaService.getActiveSubscription(tenant.id);
     const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
     const extraSlots = maxBranches - 1; // 1 branch was built in step 4
@@ -724,7 +724,7 @@ const stepActivate = async (ctx, token) => {
   const { tenant, dbName } = ctx;
   const seq = await ctx.tenantDb();
   const { runTenantMigrations, missingTenantMigrations, MIGRATIONS } = require('../database/tenant-migration-runner');
-  await runTenantMigrations(seq, { organizationId: tenant.id, gymName: tenant.gymName });
+  await runTenantMigrations(seq, { organizationId: tenant.id, gymName: tenant.firstBusinessName });
   // NEW-127: a skipped migration ("resolve it by hand") is not recorded; the tenant must not go
   // live below target. It stays APPROVED at SUBSCRIPTION_LINKED and the admin's Resume retries.
   const missing = await missingTenantMigrations(seq);
@@ -783,7 +783,7 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
         role: 'host',
         type: 'host_update',
         title: 'Host Application Approved',
-        message: `Your organization ${tenant.gymName || tenant.organizationName} has been approved.`,
+        message: `Your organization ${tenant.firstBusinessName || tenant.organizationName} has been approved.`,
         deepLink: '/host/profile',
         metadataJson: { organizationId: tenant.id }
       });

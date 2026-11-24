@@ -278,7 +278,7 @@ describe('FLOW-02: HTTP approve endpoint', () => {
     const tenant = await pendingTenant();
     const key = `approve-${tenant.id}`;
     const first = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .set('Idempotency-Key', key)
       .send({ photosChecked: true });
@@ -286,7 +286,7 @@ describe('FLOW-02: HTTP approve endpoint', () => {
     expect(first.body.data.provisioning).toMatchObject({ state: 'ACTIVE', step: 6 });
 
     const second = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .set('Idempotency-Key', key)
       .send({ photosChecked: true });
@@ -304,13 +304,13 @@ describe('FLOW-02: HTTP approve endpoint', () => {
       provisioningLockedUntil: new Date(Date.now() + 5 * 60 * 1000),
     });
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ photosChecked: true });
     expect(res.status).toBe(202);
     expect(res.body.data.provisioning).toMatchObject({ state: 'LISTING_CREATED', step: 3, totalSteps: 6, inProgress: true });
 
-    const view = await request(app).get(`/api/v1/admin/tenants/${tenant.id}`).set('Authorization', `Bearer ${adminToken}`);
+    const view = await request(app).get(`/api/v1/admin/organizations/${tenant.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect(view.status).toBe(200);
     expect(view.body.data.tenant.provisioning).toMatchObject({ state: 'LISTING_CREATED', step: 3, inProgress: true });
     expect(JSON.stringify(view.body)).not.toContain('44444444-4444-4444-8444-444444444444');

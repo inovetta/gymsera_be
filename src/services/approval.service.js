@@ -459,7 +459,7 @@ const notifyApprovers = async (ctx, request, policy) => {
   const { Tenant } = require('../models/platform');
 
   const tenant = await Tenant.findByPk(ctx.organizationId, {
-    attributes: ['id', 'ownerUserId', 'gymName'],
+    attributes: ['id', 'ownerUserId', 'firstBusinessName'],
   });
   const branch = request.branchId ? await Branch.findByPk(request.branchId) : null;
   const branchName = branch ? branch.branchName : 'your gym';

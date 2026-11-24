@@ -26,8 +26,8 @@ async function gymsOf(userId) {
       { replacements: [userId, userId], type: QueryTypes.SELECT }
     ).catch(() => [{ n: 0 }]);
     if (!Number(seen?.n)) continue;
-    const tenant = await Tenant.findByPk(t.organizationId, { attributes: ['id', 'gymName'] });
-    out.push({ organizationId: t.organizationId, gymName: tenant?.gymName || null, db: t.db, consent: await biometrics.consentStatus(t.db, userId) });
+    const tenant = await Tenant.findByPk(t.organizationId, { attributes: ['id', 'firstBusinessName'] });
+    out.push({ organizationId: t.organizationId, organizationName: tenant?.firstBusinessName || null, db: t.db, consent: await biometrics.consentStatus(t.db, userId) });
   }
   return out;
 }
@@ -35,7 +35,7 @@ async function gymsOf(userId) {
 const list = async (req, res, next) => {
   try {
     const gyms = await gymsOf(userIdOf(req));
-    return sendSuccess(res, { gyms: gyms.map((g) => ({ organizationId: g.organizationId, gymName: g.gymName, consent: g.consent })) });
+    return sendSuccess(res, { gyms: gyms.map((g) => ({ organizationId: g.organizationId, organizationName: g.organizationName, consent: g.consent })) });
   } catch (err) {
     return next(err);
   }

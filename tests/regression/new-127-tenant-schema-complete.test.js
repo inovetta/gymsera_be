@@ -3,7 +3,7 @@
  * `branches.currency` (tenant migration 019), while the other 30 tenants have both; its approved
  * host's Gyms tab answers `database_error`.
  *
- * Provisioning (approve from the CMS = POST /admin/tenants/:id/approve → approveTenant →
+ * Provisioning (approve from the CMS = POST /admin/organizations/:id/approve → approveTenant →
  * processTenantProvisioning) runs every migration in step 6 on today's code, so a fresh approval
  * cannot produce that database. What can leave a tenant live below target:
  *   1. step 6 set ACTIVE even when a migration was skipped ("resolve it by hand"), so
@@ -127,10 +127,10 @@ const tenantWithDb = async ({ status, shape }) => {
 };
 
 describe('NEW-127: provisioning ends with every tenant migration recorded', () => {
-  test('approve from the CMS (POST /admin/tenants/:id/approve): ACTIVE, schema_migrations present, every version 1..target recorded, branches.currency present', async () => {
+  test('approve from the CMS (POST /admin/organizations/:id/approve): ACTIVE, schema_migrations present, every version 1..target recorded, branches.currency present', async () => {
     const tenant = await pendingTenant();
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ photosChecked: true });
     expect(res.status).toBe(200);
@@ -149,7 +149,7 @@ describe('NEW-127: provisioning ends with every tenant migration recorded', () =
     jest.spyOn(last, 'up').mockImplementation(async () => ({ skipped: true, reason: 'column_exists_with_other_type' }));
 
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ photosChecked: true });
     expect(res.status).toBe(502);
@@ -163,7 +163,7 @@ describe('NEW-127: provisioning ends with every tenant migration recorded', () =
     // Resolved by hand → the admin's Resume finishes it.
     last.up.mockImplementation(realUp);
     const resumed = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ photosChecked: true });
     expect(resumed.status).toBe(200);

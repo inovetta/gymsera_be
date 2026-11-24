@@ -350,7 +350,7 @@ async function repairAllTenantsPaymentBusinessDates(options = {}) {
         tenantSeq,
         {
           organizationId: tenant.id,
-          gymName: tenant.gymName,
+          gymName: tenant.firstBusinessName,
           organizationCode: tenant.organizationCode,
         },
         {
@@ -366,10 +366,10 @@ async function repairAllTenantsPaymentBusinessDates(options = {}) {
       totalSkippedClosed += result.skippedClosedCount;
       totalEligible += result.eligibleCount;
     } catch (err) {
-      console.error(`❌ [Tenant Error] ${tenant.gymName || tenant.organizationCode} (${tenant.id}):`, err.message);
+      console.error(`❌ [Tenant Error] ${tenant.firstBusinessName || tenant.organizationCode} (${tenant.id}):`, err.message);
       reports.push({
         organizationId: tenant.id,
-        gymName: tenant.gymName,
+        gymName: tenant.firstBusinessName,
         success: false,
         error: err.message,
       });

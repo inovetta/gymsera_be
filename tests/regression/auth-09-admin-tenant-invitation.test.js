@@ -5,7 +5,7 @@
  * Admin "add tenant" links or creates accounts by email with no ownership proof.
  *
  * Requirements:
- * 1. Admin POST /admin/tenants does NOT auto-create a verified user or auto-link an existing user.
+ * 1. Admin POST /admin/organizations does NOT auto-create a verified user or auto-link an existing user.
  * 2. It sends an invitation with a secure token to the owner email and records an audit log.
  * 3. The recipient must accept the invitation via token, proving ownership of the email.
  * 4. Only upon acceptance is the Tenant created and linked to the owner.
@@ -49,7 +49,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     const organizationName = 'Iron Peak Gym';
 
     const res = await request(appServer)
-      .post('/api/v1/admin/tenants')
+      .post('/api/v1/admin/organizations')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         ownerEmail,
@@ -98,7 +98,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     const organizationName = 'Silver Peak Gym';
 
     const res = await request(appServer)
-      .post('/api/v1/admin/tenants')
+      .post('/api/v1/admin/organizations')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         ownerEmail: existingMemberUser.email,
@@ -123,7 +123,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     const organizationName = 'Gold Peak Gym';
 
     const inviteRes = await request(appServer)
-      .post('/api/v1/admin/tenants')
+      .post('/api/v1/admin/organizations')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         ownerEmail,
@@ -196,7 +196,7 @@ describe('AUTH-09: Admin "add tenant" invitation flow', () => {
     // 2. Reused token
     const ownerEmail = `reused_${Date.now()}@example.test`;
     const inviteRes = await request(appServer)
-      .post('/api/v1/admin/tenants')
+      .post('/api/v1/admin/organizations')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         ownerEmail,

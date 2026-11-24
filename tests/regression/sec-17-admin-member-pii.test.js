@@ -48,8 +48,8 @@ describe('SEC-17: admin Members tab', () => {
     await teardownTestDatabases();
   });
 
-  const list = () => asPersona('platformAdmin').get(`/admin/tenants/${organizationId}/members`);
-  const reveal = (userId, body = {}, persona = 'platformAdmin') => asPersona(persona).post(`/admin/tenants/${organizationId}/members/${userId}/reveal`).send(body);
+  const list = () => asPersona('platformAdmin').get(`/admin/organizations/${organizationId}/members`);
+  const reveal = (userId, body = {}, persona = 'platformAdmin') => asPersona(persona).post(`/admin/organizations/${organizationId}/members/${userId}/reveal`).send(body);
   const auditRows = () => PlatformAuditLog.findAll({ where: { action: 'admin.member_contact_revealed' } });
 
   test('the list masks e-mail and phone and says so; other fields stay', async () => {
@@ -111,7 +111,7 @@ describe('SEC-17: admin Members tab', () => {
   test('admin only: a gym owner and an anonymous caller are refused and no row is written', async () => {
     const before = (await auditRows()).length;
     expect([401, 403]).toContain((await reveal(member.id, {}, 'owner')).status);
-    const anon = await request(server).post(`/api/v1/admin/tenants/${organizationId}/members/${member.id}/reveal`).send({});
+    const anon = await request(server).post(`/api/v1/admin/organizations/${organizationId}/members/${member.id}/reveal`).send({});
     expect(anon.status).toBe(401);
     expect((await auditRows()).length).toBe(before);
   });

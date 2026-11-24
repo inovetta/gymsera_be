@@ -116,7 +116,7 @@ describe('BUG-09: Become a Host says which currency the first branch will get', 
     });
     const { signToken } = require('../../src/utils/jwt.utils');
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true });
-    const res = await asPersona('anonymous', { Authorization: `Bearer ${token}` }).get('/tenants/me');
+    const res = await asPersona('anonymous', { Authorization: `Bearer ${token}` }).get('/organizations/me');
     expect(res.status).toBe(200);
     const { firstBranchCurrency } = require('../../src/utils/currency.utils');
     expect(firstBranchCurrency()).toBe('PKR');

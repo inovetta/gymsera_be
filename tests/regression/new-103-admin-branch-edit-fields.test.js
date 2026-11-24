@@ -1,5 +1,5 @@
 /**
- * NEW-103: PATCH /admin/tenants/:id/branches/:branchId copied only a fixed list of fields, so the map position
+ * NEW-103: PATCH /admin/organizations/:id/branches/:branchId copied only a fixed list of fields, so the map position
  * (latitude, longitude) and the facilities the CMS sends were silently dropped: the call answered 200 and nothing changed.
  * It now saves them like the host-side update does (gym.service#updateBranch): `facilities` (array) is stored as facilitiesJson.
  */
@@ -23,7 +23,7 @@ describe('NEW-103: admin branch edit saves position and facilities', () => {
     await teardownTestDatabases();
   });
 
-  const patch = (body) => asPersona('platformAdmin').patch(`/admin/tenants/${organizationId}/branches/${branch.id}`, body);
+  const patch = (body) => asPersona('platformAdmin').patch(`/admin/organizations/${organizationId}/branches/${branch.id}`, body);
 
   test('latitude and longitude are saved', async () => {
     const res = await patch({ latitude: 24.8607, longitude: 67.0011 });

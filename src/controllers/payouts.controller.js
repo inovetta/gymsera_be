@@ -162,7 +162,7 @@ const _readDetails = (details) => {
 const _auditAdminRead = async (req, organizationId, account) => {
   const { PlatformAuditLog, Tenant } = require('../models/platform');
   try {
-    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'gymName'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'firstBusinessName'] });
     await PlatformAuditLog.create({
       actorUserId: req.user.id || req.user.sub,
       action: 'admin.payout_account_viewed',
@@ -170,7 +170,7 @@ const _auditAdminRead = async (req, organizationId, account) => {
       targetId: organizationId,
       details: {
         organizationId,
-        gymName: tenant ? tenant.gymName : null,
+        organizationName: tenant ? tenant.firstBusinessName : null,
         payoutAccountId: account ? account.id : null,
         route: `${req.method} ${req.baseUrl}${req.path}`,
       },

@@ -352,7 +352,7 @@ describe('P3: branch coordinates are in range and keep the Google place id', () 
 
   test('onboarding refuses an out-of-range main-branch coordinate', async () => {
     const { tenant1 } = personaManager.context;
-    const res = await asPersona('owner').post(`/tenants/${tenant1.id}/gym-profile`).send({
+    const res = await asPersona('owner').post(`/organizations/${tenant1.id}/first-business`).send({
       gymName: 'Range Gym', firstBranchDraft: { address: 'x', latitude: 95, longitude: 74 },
     });
     expect(res.status).toBe(422);

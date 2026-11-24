@@ -52,7 +52,7 @@ const _push = (kind, { storeName, branchCount }) =>
  */
 const notifyHostOfPlanChange = async (organizationId, kind, subscription) => {
   try {
-    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId', 'organizationName', 'gymName'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId', 'organizationName', 'firstBusinessName'] });
     const owner = tenant?.ownerUserId ? await User.findByPk(tenant.ownerUserId, { attributes: ['id', 'email', 'fullName'] }) : null;
     if (!owner) return;
     const storeName = STORE_NAME[subscription.platform] || null;
@@ -60,7 +60,7 @@ const notifyHostOfPlanChange = async (organizationId, kind, subscription) => {
     const endedAt = subscription.entitlementEndedAt ? new Date(subscription.entitlementEndedAt) : null;
     const branchesLockAt =
       kind !== 'downgraded' && endedAt ? new Date(endedAt.getTime() + overquotaGraceDays() * 24 * 60 * 60 * 1000) : null;
-    const organizationName = tenant.organizationName || tenant.gymName || 'your business';
+    const organizationName = tenant.organizationName || tenant.firstBusinessName || 'your business';
 
     const notificationsService = require('./notifications.service');
     await notificationsService

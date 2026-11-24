@@ -609,7 +609,7 @@ const verifyPayment = async (tenantDb, paymentId, verifiedByUserId, notes, waive
           type: 'subscription_verified_audit',
           title: 'Subscription Verified',
           message: `Subscription verified: ${memberName} → ${planName} at ${branchName} (Host: ${hostName}).`,
-          deepLink: `/admin/tenants/${tenant.id}`,
+          deepLink: `/admin/organizations/${tenant.id}`,
           metadataJson: { subscriptionId: payment.referenceEntityId, organizationId: tenant.id },
         });
       }

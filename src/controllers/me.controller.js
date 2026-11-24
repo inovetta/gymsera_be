@@ -329,7 +329,7 @@ const getStaffStatus = async (req, res, next) => {
     for (const membership of memberships) {
       try {
         const tenant = await Tenant.findByPk(membership.organizationId, {
-          attributes: ['id', 'gymName', 'organizationName', 'connectionStringEncrypted', 'status'],
+          attributes: ['id', 'firstBusinessName', 'organizationName', 'connectionStringEncrypted', 'status'],
         });
         if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
           continue;
@@ -366,7 +366,7 @@ const getStaffStatus = async (req, res, next) => {
             branchId: branch.id,
             organizationId: tenant.id,
             branchName: branch.branchName,
-            gymName: tenant.gymName || tenant.organizationName,
+            organizationName: tenant.firstBusinessName || tenant.organizationName,
             designation,
           });
         }

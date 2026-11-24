@@ -12,7 +12,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('Found tenant:', tenant.gymName);
+  console.log('Found tenant:', tenant.firstBusinessName);
   const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
   
   const gyms = await tenantDb.models.Gym.findAll();

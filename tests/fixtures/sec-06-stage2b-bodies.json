@@ -3,7 +3,7 @@
  "routes": [
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/invoices",
+   "path": "/api/v1/admin/organizations/:p/invoices",
    "allowed": [
     "description",
     "dueDate",
@@ -25,7 +25,7 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/admin/tenants/:p/invoices/:p",
+   "path": "/api/v1/admin/organizations/:p/invoices/:p",
    "allowed": [
     "dueDate",
     "notes",
@@ -605,7 +605,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/gym-profile",
+   "path": "/api/v1/organizations/:p/first-business",
    "allowed": [
     "address",
     "organizationName",
@@ -635,7 +635,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/register",
+   "path": "/api/v1/organizations/register",
    "allowed": [
     "areaId",
     "areaRequestId",

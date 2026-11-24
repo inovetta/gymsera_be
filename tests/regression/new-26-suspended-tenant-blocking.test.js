@@ -181,7 +181,7 @@ describe('NEW-26: Suspended Tenant Full Blocking and Admin Exception', () => {
       // Ensure suspended
       await tenant.update({ status: TenantStatus.SUSPENDED });
 
-      const res = await asPersona('owner').patch('/tenants/me', {
+      const res = await asPersona('owner').patch('/organizations/me', {
         organizationName: 'Illegal Suspended Update',
       });
 
@@ -296,20 +296,20 @@ describe('NEW-26: Suspended Tenant Full Blocking and Admin Exception', () => {
       await adminService.suspendTenant(tenant1Record, personas.platformAdmin.user.id, 'Admin read test');
 
       // 1. Admin reads tenant details
-      const tenantRes = await asPersona('platformAdmin').get(`/admin/tenants/${tenant1Record}`);
+      const tenantRes = await asPersona('platformAdmin').get(`/admin/organizations/${tenant1Record}`);
       expect(tenantRes.status).toBe(200);
       expect(tenantRes.body.success).toBe(true);
       expect(tenantRes.body.data.tenant.id).toBe(tenant1Record);
       expect(tenantRes.body.data.tenant.status).toBe(TenantStatus.SUSPENDED);
 
       // 2. Admin reads tenant branches
-      const branchesRes = await asPersona('platformAdmin').get(`/admin/tenants/${tenant1Record}/branches`);
+      const branchesRes = await asPersona('platformAdmin').get(`/admin/organizations/${tenant1Record}/branches`);
       expect(branchesRes.status).toBe(200);
       expect(branchesRes.body.success).toBe(true);
       expect(Array.isArray(branchesRes.body.data.branches)).toBe(true);
 
       // 3. Admin reads tenant members
-      const membersRes = await asPersona('platformAdmin').get(`/admin/tenants/${tenant1Record}/members`);
+      const membersRes = await asPersona('platformAdmin').get(`/admin/organizations/${tenant1Record}/members`);
       expect(membersRes.status).toBe(200);
       expect(membersRes.body.success).toBe(true);
       expect(Array.isArray(membersRes.body.data.members)).toBe(true);

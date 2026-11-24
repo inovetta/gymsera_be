@@ -132,13 +132,13 @@ const _getOrCreateGym = async (tenantDb, organizationId, businessId = null) => {
     }
     // Seed initial data from the Platform Tenant record
     const tenant = await Tenant.findByPk(organizationId, {
-      attributes: ['organizationName', 'gymName', 'gymDescription', 'genderType', 'logoUrl', 'coverImageUrl', 'phone', 'email'],
+      attributes: ['organizationName', 'firstBusinessName', 'firstBusinessDescription', 'genderType', 'logoUrl', 'coverImageUrl', 'phone', 'email'],
     });
 
     gym = await Gym.create({
       ...(newId ? { id: newId } : {}),
-      name: (tenant && (tenant.gymName || tenant.organizationName)) || 'My Gym',
-      description: (tenant && tenant.gymDescription) || null,
+      name: (tenant && (tenant.firstBusinessName || tenant.organizationName)) || 'My Gym',
+      description: (tenant && tenant.firstBusinessDescription) || null,
       contactPhone: (tenant && tenant.phone) || null,
       contactEmail: (tenant && tenant.email) || null,
       genderType: (tenant && tenant.genderType) || 'MIXED',
@@ -2259,7 +2259,7 @@ const checkAndTriggerPendingStaffInvites = async (user) => {
 
           const br = await Branch.findByPk(invite.branchId);
           const brName = br ? br.branchName : 'branch';
-          const gymName = tenant.gymName || 'your gym';
+          const gymName = tenant.firstBusinessName || 'your gym';
 
           await notificationsService.createNotification({
             userId: user.id,

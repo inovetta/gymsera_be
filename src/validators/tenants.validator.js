@@ -34,14 +34,14 @@ const tenantsValidators = {
   submitGymProfile: [
     param('id').isUUID(4).withMessage('Invalid tenant ID'),
 
-    body('gymName')
+    body('firstBusinessName')
       .trim()
       .notEmpty()
       .withMessage('Gym name is required')
       .isLength({ max: 200 })
       .withMessage('Gym name must be 200 characters or fewer'),
 
-    body('gymDescription').optional().isString(),
+    body('firstBusinessDescription').optional().isString(),
 
     // R-112 (C3): the brand / organisation name; the rules (C1) are in brand-name.service (422 brand_name_*).
     body('organizationName').optional().isString().withMessage('Brand name must be text'),

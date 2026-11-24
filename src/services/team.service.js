@@ -335,7 +335,7 @@ const inviteMember = async (ctx, input) => {
     after: { email: emailClean, roleKey, scopeType: effectiveScope, branchIds: targetBranchIds },
   });
 
-  const { gymName, roleName, scopeText } = await notifyInvitee(ctx, user, assignment, targetBranchIds).catch(() => ({}));
+  const { organizationName, roleName, scopeText } = await notifyInvitee(ctx, user, assignment, targetBranchIds).catch(() => ({}));
 
   // UX-22 (option B): access is immediate; the person is told by e-mail where to sign in. The host is shown the
   // temporary password only when that e-mail could not be sent (mail down or not configured).
@@ -343,7 +343,7 @@ const inviteMember = async (ctx, input) => {
   const emailSent = await require('./email.service').sendTeamWelcomeEmail({
     to: emailClean,
     fullName: user.fullName,
-    gymName: gymName || 'your gym',
+    organizationName: organizationName || 'your gym',
     roleName: roleName || ROLE_META[assignment.roleKey]?.name || assignment.roleKey,
     scopeText: scopeText || 'your gym',
     newAccount: accountCreated,
@@ -732,8 +732,8 @@ const notifyInvitee = async (ctx, user, assignment, branchIds) => {
   const { Tenant } = require('../models/platform');
   const { Branch } = ctx.tenantDb.models;
 
-  const tenant = await Tenant.findByPk(ctx.organizationId, { attributes: ['gymName', 'organizationName'] });
-  const gymName = tenant ? tenant.gymName || tenant.organizationName : 'a gym';
+  const tenant = await Tenant.findByPk(ctx.organizationId, { attributes: ['firstBusinessName', 'organizationName'] });
+  const organizationName = tenant ? tenant.firstBusinessName || tenant.organizationName : 'a gym';
   const meta = ROLE_META[assignment.roleKey] || {};
 
   let scopeText = 'all branches';
@@ -749,12 +749,12 @@ const notifyInvitee = async (ctx, user, assignment, branchIds) => {
     userId: user.id,
     role: 'traveler',
     type: 'team_invite',
-    title: `You're now ${meta.name || assignment.roleKey} at ${gymName}`,
+    title: `You're now ${meta.name || assignment.roleKey} at ${organizationName}`,
     message: `You have been given ${meta.name || assignment.roleKey} access to ${scopeText}.`,
     data: { assignmentId: assignment.id, organizationId: ctx.organizationId, roleKey: assignment.roleKey },
   });
 
-  return { gymName, roleName: meta.name || assignment.roleKey, scopeText };
+  return { organizationName, roleName: meta.name || assignment.roleKey, scopeText };
 };
 
 module.exports = {

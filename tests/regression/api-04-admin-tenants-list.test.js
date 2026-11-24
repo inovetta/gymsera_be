@@ -1,5 +1,5 @@
 /**
- * API-04 / PERF-08: GET /admin/tenants.
+ * API-04 / PERF-08: GET /admin/organizations.
  *  - one batched read decides which pending organizations are "additional"
  *    (was one findOne per pending listing)
  *  - the page is cut in the database (was: every tenant loaded, then sliced)
@@ -9,7 +9,7 @@ const { Sequelize } = require('sequelize');
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { startTestServer, stopTestServer } = require('../harness/test-server');
 
-describe('GET /admin/tenants', () => {
+describe('GET /admin/organizations', () => {
   let queries = 0;
   let sqlLog = [];
   const origQuery = Sequelize.prototype.query;
@@ -37,7 +37,7 @@ describe('GET /admin/tenants', () => {
   const list = async (qs = '') => {
     queries = 0;
     sqlLog = [];
-    const res = await asPersona('platformAdmin').get(`/admin/tenants${qs}`);
+    const res = await asPersona('platformAdmin').get(`/admin/organizations${qs}`);
     return { res, queries };
   };
 
@@ -116,7 +116,7 @@ describe('GET /admin/tenants', () => {
     let page = 1;
     let total = 0;
     for (;;) {
-      const r = await asPersona('platformAdmin').get(`/admin/tenants?page=${page}&limit=100`);
+      const r = await asPersona('platformAdmin').get(`/admin/organizations?page=${page}&limit=100`);
       total = r.body.pagination.total;
       r.body.data.tenants.forEach((t) => ids.add(t.id));
       if (page >= r.body.pagination.totalPages) break;
@@ -168,7 +168,7 @@ describe('GET /admin/tenants', () => {
   });
 
   test('non-admins are refused', async () => {
-    const res = await asPersona('owner').get('/admin/tenants');
+    const res = await asPersona('owner').get('/admin/organizations');
     expect([401, 403]).toContain(res.status);
   });
 });

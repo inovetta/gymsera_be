@@ -136,7 +136,7 @@ router.get('/:staffId', async (req, res, next) => {
       } : null,
       gym: {
         id: tenant.id,
-        name: tenant.gymName || tenant.organizationName,
+        name: tenant.firstBusinessName || tenant.organizationName,
       },
       host: hostUser ? {
         fullName: hostUser.fullName,

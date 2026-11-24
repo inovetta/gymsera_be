@@ -1,7 +1,7 @@
 /**
  * Phase 7 P9b, the backend half of two CMS items.
  *
- * R-80 / BUG-09 (item 2): GET /admin/tenants/:id/membership-plans returned plans without `currency`
+ * R-80 / BUG-09 (item 2): GET /admin/organizations/:id/membership-plans returned plans without `currency`
  * (admin.service.js getTenantMembershipPlans skipped membership-plan.service#withCurrency), so the
  * CMS admin Plans tab could only print every plan as PKR.
  *
@@ -54,7 +54,7 @@ const asAdmin = (path) => request(app).get(`/api/v1${path}`).set('Authorization'
 
 describe('R-80: admin tenant plans carry their currency', () => {
   test('each plan has the currency of its branch', async () => {
-    const res = await asAdmin(`/admin/tenants/${organizationId}/membership-plans`);
+    const res = await asAdmin(`/admin/organizations/${organizationId}/membership-plans`);
     expect(res.status).toBe(200);
     const plan = res.body.data.plans.find((p) => p.name === 'Quarter Pass');
     expect(plan).toBeDefined();
@@ -63,7 +63,7 @@ describe('R-80: admin tenant plans carry their currency', () => {
 
   test('a non-admin cannot read them', async () => {
     const res = await request(app)
-      .get(`/api/v1/admin/tenants/${organizationId}/membership-plans`)
+      .get(`/api/v1/admin/organizations/${organizationId}/membership-plans`)
       .set('Authorization', `Bearer ${personas.owner.token}`);
     expect([401, 403]).toContain(res.status);
   });

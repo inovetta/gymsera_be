@@ -78,7 +78,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
       status: HostStatus.NONE,
       nextAction: NextAction.BECOME_HOST,
       organizationId: null,
-      gymName: null,
+      firstBusinessName: null,
       applicationSubmitted: false,
       listingComplete: false,
       payment: { done: false, entitled: false, method: null },
@@ -129,7 +129,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
     status,
     nextAction,
     organizationId: tenant.id,
-    gymName: tenant.gymName || tenant.organizationName || null,
+    firstBusinessName: tenant.firstBusinessName || tenant.organizationName || null,
     // R-112 (C5): the brand the host typed (null until Step 2 saves it).
     organizationName: tenant.organizationName || null,
     applicationSubmitted: submitted && status !== HostStatus.REJECTED,
@@ -145,7 +145,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
 };
 
 const TENANT_ATTRIBUTES = [
-  'id', 'gymName', 'organizationName', 'status', 'kycStatus', 'firstBranchDraft', 'paymentMethod', 'rejectionReason',
+  'id', 'firstBusinessName', 'organizationName', 'status', 'kycStatus', 'firstBranchDraft', 'paymentMethod', 'rejectionReason',
 ];
 
 /** The tenant the user owns (one per owner, registerTenant), or null. */

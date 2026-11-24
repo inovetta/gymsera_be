@@ -15,7 +15,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/approve",
+   "path": "/api/v1/admin/organizations/:p/approve",
    "allowed": [
     "photosChecked"
    ],
@@ -25,7 +25,7 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/admin/tenants/:p/branches/:p/images",
+   "path": "/api/v1/admin/organizations/:p/branches/:p/images",
    "allowed": [
     "imageUrl"
    ],
@@ -35,19 +35,19 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/branches/:p/images",
+   "path": "/api/v1/admin/organizations/:p/branches/:p/images",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/branches/:p/unsuspend",
+   "path": "/api/v1/admin/organizations/:p/branches/:p/unsuspend",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/admin/tenants/:p/branches/:p",
+   "path": "/api/v1/admin/organizations/:p/branches/:p",
    "allowed": [
     "confirmOrganizationDeletion"
    ],
@@ -55,7 +55,7 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/admin/tenants/:p/branches/:p",
+   "path": "/api/v1/admin/organizations/:p/branches/:p",
    "allowed": [
     "address",
     "areaId",
@@ -89,7 +89,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/branches",
+   "path": "/api/v1/admin/organizations/:p/branches",
    "allowed": [
     "address",
     "addressLine1",
@@ -134,19 +134,19 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/cover",
+   "path": "/api/v1/admin/organizations/:p/first-business/cover",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/gym-listing/cover",
+   "path": "/api/v1/admin/organizations/:p/gym-listing/first-business/cover",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/admin/tenants/:p/gym-listing/images",
+   "path": "/api/v1/admin/organizations/:p/gym-listing/images",
    "allowed": [
     "imageUrl"
    ],
@@ -156,19 +156,19 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/gym-listing/images",
+   "path": "/api/v1/admin/organizations/:p/gym-listing/images",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/gym-listing/logo",
+   "path": "/api/v1/admin/organizations/:p/gym-listing/first-business/logo",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/admin/tenants/:p/gym-listing",
+   "path": "/api/v1/admin/organizations/:p/gym-listing",
    "allowed": [
     "areaId",
     "cityId",
@@ -200,7 +200,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/gym-listing",
+   "path": "/api/v1/admin/organizations/:p/gym-listing",
    "allowed": [
     "areaId",
     "cityId",
@@ -227,25 +227,25 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/invoices/:p/send-confirmation",
+   "path": "/api/v1/admin/organizations/:p/invoices/:p/send-confirmation",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/invoices/:p/send-reminder",
+   "path": "/api/v1/admin/organizations/:p/invoices/:p/send-reminder",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/logo",
+   "path": "/api/v1/admin/organizations/:p/first-business/logo",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/members/:p/reveal",
+   "path": "/api/v1/admin/organizations/:p/members/:p/reveal",
    "allowed": [
     "reason"
    ],
@@ -253,19 +253,19 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/reactivate",
+   "path": "/api/v1/admin/organizations/:p/reactivate",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/admin/tenants/:p/subscriptions/:p/revoke",
+   "path": "/api/v1/admin/organizations/:p/subscriptions/:p/revoke",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/admin/tenants/:p",
+   "path": "/api/v1/admin/organizations/:p",
    "allowed": [],
    "clientKeys": []
   },
@@ -473,7 +473,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/kyc-documents",
+   "path": "/api/v1/organizations/:p/kyc-documents",
    "allowed": [
     "documentType"
    ],
@@ -481,7 +481,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/onboarding-images",
+   "path": "/api/v1/organizations/:p/first-business/images",
    "allowed": [],
    "clientKeys": []
   },

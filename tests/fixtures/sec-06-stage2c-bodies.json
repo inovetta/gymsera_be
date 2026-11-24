@@ -3,7 +3,7 @@
  "routes": [
   {
    "method": "PATCH",
-   "path": "/api/v1/tenants/me",
+   "path": "/api/v1/organizations/me",
    "allowed": [
     "areaId",
     "areaRequestId",
@@ -21,7 +21,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/select-package",
+   "path": "/api/v1/organizations/:p/select-package",
    "allowed": [
     "packageId"
    ],
@@ -31,7 +31,7 @@
   },
   {
    "method": "PUT",
-   "path": "/api/v1/tenants/:p/onboarding-images",
+   "path": "/api/v1/organizations/:p/first-business/images",
    "allowed": [
     "imagesJson"
    ],
@@ -41,7 +41,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/finalize",
+   "path": "/api/v1/organizations/:p/finalize",
    "allowed": [
     "bankTransferRef",
     "paymentMethod"
@@ -53,7 +53,7 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/tenants/:p/kyc-documents/:p",
+   "path": "/api/v1/organizations/:p/kyc-documents/:p",
    "allowed": [],
    "clientKeys": []
   },

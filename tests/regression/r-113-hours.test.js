@@ -103,10 +103,10 @@ describe('H4: the writes that take a weekly schedule', () => {
     expect(row.hoursJson.days.sun.closed).toBe(true);
   });
 
-  test('admin PATCH /admin/tenants/:id/branches/:branchId takes the week too', async () => {
+  test('admin PATCH /admin/organizations/:id/branches/:branchId takes the week too', async () => {
     const created = await asPersona('owner').post('/host/branches').send(branchBody());
     const id = created.body.data.branch.id;
-    const res = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${id}`).send({ hours: WEEKLY });
+    const res = await asPersona('platformAdmin').patch(`/admin/organizations/${ctx.tenant1.id}/branches/${id}`).send({ hours: WEEKLY });
     expect(res.status).toBe(200);
     expect((await Branch().findByPk(id)).hoursJson.days.sun.closed).toBe(true);
   });
@@ -140,7 +140,7 @@ describe('H5: old clients (builds up to 26, the CMS, the website) keep working',
 
   test('the admin form (old pair) cannot flatten a weekly schedule either', async () => {
     const created = await asPersona('owner').post('/host/branches').send(branchBody({ hours: WEEKLY }));
-    const res = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${created.body.data.branch.id}`).send({ openingTime: '05:00', closingTime: '23:00' });
+    const res = await asPersona('platformAdmin').patch(`/admin/organizations/${ctx.tenant1.id}/branches/${created.body.data.branch.id}`).send({ openingTime: '05:00', closingTime: '23:00' });
     expect(res.status).toBe(409);
   });
 
@@ -156,7 +156,7 @@ describe('H5: old clients (builds up to 26, the CMS, the website) keep working',
 
     const app = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ openingTime: '00:00', closingTime: '00:00', tagline: 'Kept' });
     expect(app.status).toBe(200);
-    const cms = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${id}`).send({ branchName: 'Renamed by admin', openingTime: '00:00', closingTime: '00:00' });
+    const cms = await asPersona('platformAdmin').patch(`/admin/organizations/${ctx.tenant1.id}/branches/${id}`).send({ branchName: 'Renamed by admin', openingTime: '00:00', closingTime: '00:00' });
     expect(cms.status).toBe(200);
     const row = await Branch().findByPk(id);
     expect(row.tagline).toBe('Kept');
@@ -223,10 +223,10 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
 
   test('gym-profile checks firstBranchDraft.hoursJson and stores it with its summary pair', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
+    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'G', firstBranchDraft: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
-    const ok = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', firstBranchDraft: { hoursJson: WEEKLY } });
+    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'G', firstBranchDraft: { hoursJson: WEEKLY } });
     expect(ok.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft.hoursJson.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);

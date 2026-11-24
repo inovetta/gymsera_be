@@ -142,7 +142,7 @@ describe('BILL-13: pay later is a time-limited GRACE plan', () => {
     const row = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
 
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/subscriptions/${row.id}/verify-payment`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/subscriptions/${row.id}/verify-payment`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ bankTransferRef: 'HBL-778899' });
     expect(res.status).toBe(200);
@@ -167,7 +167,7 @@ describe('BILL-13: pay later is a time-limited GRACE plan', () => {
     const { tenant } = await submitAndApprove();
     const row = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
     const verify = (token) => request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/subscriptions/${row.id}/verify-payment`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/subscriptions/${row.id}/verify-payment`)
       .set('Authorization', `Bearer ${token}`)
       .send({});
     expect((await verify(hostToken(tenant))).status).toBe(403);

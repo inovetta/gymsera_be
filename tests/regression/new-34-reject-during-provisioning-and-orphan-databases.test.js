@@ -109,7 +109,7 @@ describe('NEW-34: reject during provisioning, and orphan databases', () => {
       const token = signToken({ sub: admin.id, id: admin.id, role: 'PLATFORM_ADMIN', isVerified: true });
 
       const res = await request(app)
-        .post(`/api/v1/admin/tenants/${t.id}/reject`)
+        .post(`/api/v1/admin/organizations/${t.id}/reject`)
         .set('Authorization', `Bearer ${token}`)
         .send({ reason: 'not a real gym' });
 

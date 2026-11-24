@@ -70,7 +70,7 @@ describe('authorization', () => {
 
   test('POST /tenants/register: a non-integer areaRequestId is 422 validation_error', async () => {
     const h = await newHost();
-    const res = await h.as().post('/tenants/register').send({ organizationName: 'X', email: `x${Date.now()}@new265sr.test`, cityId: peshawar.id, areaRequestId: 'abc' });
+    const res = await h.as().post('/organizations/register').send({ organizationName: 'X', email: `x${Date.now()}@new265sr.test`, cityId: peshawar.id, areaRequestId: 'abc' });
     expect([res.status, res.body.code]).toEqual([422, 'validation_error']);
   });
 });

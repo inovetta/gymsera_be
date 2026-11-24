@@ -98,7 +98,7 @@ const _report = async (tenant, tenantDb, branch) => {
 
   const failing = checks.filter((c) => c.status === 'FAIL').map((c) => c.name);
   return {
-    tenant: { id: tenant.id, name: tenant.organizationName || tenant.gymName || null },
+    tenant: { id: tenant.id, name: tenant.organizationName || tenant.firstBusinessName || null },
     branch: { id: branch.id, name: branch.branchName || null, listingId: branch.gymId || null, listingStatus: listing?.status || null },
     checks,
     failing,

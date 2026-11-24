@@ -56,7 +56,7 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
 
     // Admin disables branch for policy reason
     const res = await asPersona('platformAdmin').post(
-      `/admin/tenants/${organizationId}/branches/${branch.id}/suspend`,
+      `/admin/organizations/${organizationId}/branches/${branch.id}/suspend`,
       { reason: 'TOS violation: unauthorized equipment' }
     );
 
@@ -123,7 +123,7 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
     const usedCapacityBefore = await subscriptionQuotaService.getUsedCapacity(organizationId, dbHarness.tenant1);
 
     const res = await asPersona('platformAdmin').post(
-      `/admin/tenants/${organizationId}/branches/${branch.id}/unsuspend`
+      `/admin/organizations/${organizationId}/branches/${branch.id}/unsuspend`
     );
 
     expect(res.status).toBe(200);
@@ -157,7 +157,7 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
 
     // Admin deletes branch with confirmOrganizationDeletion
     const res = await asPersona('platformAdmin')
-      .delete(`/admin/tenants/${organizationId}/branches/${branch.id}`)
+      .delete(`/admin/organizations/${organizationId}/branches/${branch.id}`)
       .send({ confirmOrganizationDeletion: true });
 
     expect(res.status).toBe(200);

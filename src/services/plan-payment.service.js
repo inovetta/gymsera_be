@@ -185,9 +185,9 @@ const listForAdmin = async ({ status = null, organizationId = null } = {}) => {
   const rows = await PlanPaymentRequest.findAll({ where, order: [['createdAt', 'DESC']], limit: 200 });
   const tenants = await Tenant.findAll({
     where: { id: { [Op.in]: [...new Set(rows.map((r) => r.organizationId))] } },
-    attributes: ['id', 'organizationName', 'gymName'],
+    attributes: ['id', 'organizationName', 'firstBusinessName'],
   });
-  const names = new Map(tenants.map((t) => [t.id, t.organizationName || t.gymName || null]));
+  const names = new Map(tenants.map((t) => [t.id, t.organizationName || t.firstBusinessName || null]));
   return rows.map((r) => ({ ...r.toJSON(), tenantName: names.get(r.organizationId) || null }));
 };
 

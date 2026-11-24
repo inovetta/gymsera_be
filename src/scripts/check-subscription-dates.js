@@ -332,7 +332,7 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
         tenantSeq,
         {
           organizationId: tenant.id,
-          gymName: tenant.organizationName || tenant.gymName || tenant.organizationCode,
+          gymName: tenant.organizationName || tenant.firstBusinessName || tenant.organizationCode,
           organizationCode: tenant.organizationCode,
         },
         options
@@ -342,10 +342,10 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
       totalScanned += result.scannedCount;
       totalAnomalies += result.anomaliesCount;
     } catch (err) {
-      console.error(`❌ [Tenant Error] ${tenant.gymName || tenant.organizationCode} (${tenant.id}):`, err.message);
+      console.error(`❌ [Tenant Error] ${tenant.firstBusinessName || tenant.organizationCode} (${tenant.id}):`, err.message);
       reports.push({
         organizationId: tenant.id,
-        gymName: tenant.organizationName || tenant.gymName || tenant.organizationCode,
+        gymName: tenant.organizationName || tenant.firstBusinessName || tenant.organizationCode,
         success: false,
         error: err.message,
       });

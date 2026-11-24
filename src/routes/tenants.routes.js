@@ -120,7 +120,7 @@ router.post(
 
 /**
  * @swagger
- * /tenants/{id}/gym-profile:
+ * /tenants/{id}/first-business:
  *   post:
  *     summary: Submit gym profile and KYC documents
  *     tags: [Tenants]
@@ -137,16 +137,16 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [gymName]
+ *             required: [firstBusinessName]
  *             properties:
  *               organizationName:
  *                 type: string
  *                 description: The brand / organisation name (R-112), 3 to 60 characters; 422 brand_name_invalid / brand_name_blocked.
  *                 example: Iron Temple
- *               gymName:
+ *               firstBusinessName:
  *                 type: string
  *                 example: Iron Temple Fitness
- *               gymDescription:
+ *               firstBusinessDescription:
  *                 type: string
  *               genderType:
  *                 type: string
@@ -171,7 +171,7 @@ router.post(
  *         description: Tenant not found
  */
 router.post(
-  '/:id/gym-profile',
+  '/:organizationId/first-business',
   authenticate,
   authorize('GYM_HOST'),
   validate.strict(tenantsValidators.submitGymProfile, { stage: 2 }),
@@ -209,7 +209,7 @@ router.post(
  *         description: Tenant or package not found
  */
 router.post(
-  '/:id/select-package',
+  '/:organizationId/select-package',
   authenticate,
   authorize('GYM_HOST'),
   validate.strict(tenantsValidators.selectPackage, { stage: 2 }),
@@ -218,7 +218,7 @@ router.post(
 
 /**
  * @swagger
- * /tenants/{id}/onboarding-images:
+ * /tenants/{id}/first-business/images:
  *   post:
  *     summary: Upload Step 4 (branch photos) images during onboarding
  *     description: >
@@ -271,7 +271,7 @@ router.post(
  *       200: { description: Images updated }
  */
 router.post(
-  '/:id/onboarding-images',
+  '/:organizationId/first-business/images',
   authenticate,
   authorize('GYM_HOST'),
   upload.images('images', 10),
@@ -279,7 +279,7 @@ router.post(
   validate.allowBody([]), tenantsController.uploadOnboardingImages
 );
 router.put(
-  '/:id/onboarding-images',
+  '/:organizationId/first-business/images',
   authenticate,
   authorize('GYM_HOST'),
   validate.allowBody(['imagesJson']),
@@ -288,7 +288,7 @@ router.put(
 
 // FLOW-04: a rejected host reopens the same application (REJECTED → DRAFT), edits it and submits again.
 router.post(
-  '/:id/reapply',
+  '/:organizationId/reapply',
   authenticate,
   authorize('GYM_HOST'),
   validate.allowBody([]),
@@ -296,7 +296,7 @@ router.post(
 );
 
 router.post(
-  '/:id/finalize',
+  '/:organizationId/finalize',
   authenticate,
   authorize('GYM_HOST'),
   validate.allowBody(['paymentMethod', 'bankTransferRef']),
@@ -305,7 +305,7 @@ router.post(
 
 // ── KYC Document endpoints (SEC-10) ──────────────────────────────────────────
 router.post(
-  '/:id/kyc-documents',
+  '/:organizationId/kyc-documents',
   authenticate,
   upload.documents('documents', 5),
   upload.handleMulterError,
@@ -313,19 +313,19 @@ router.post(
 );
 
 router.get(
-  '/:id/kyc-documents',
+  '/:organizationId/kyc-documents',
   authenticate,
   tenantsController.getKycDocuments
 );
 
 router.get(
-  '/:id/kyc-documents/:documentId/stream',
+  '/:organizationId/kyc-documents/:documentId/stream',
   authenticate,
   tenantsController.streamKycDocument
 );
 
 router.delete(
-  '/:id/kyc-documents/:documentId',
+  '/:organizationId/kyc-documents/:documentId',
   authenticate,
   validate.allowBody([]),
   tenantsController.deleteKycDocument

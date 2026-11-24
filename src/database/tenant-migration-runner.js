@@ -1767,7 +1767,7 @@ async function runAllTenantMigrations(options = {}) {
       const result = await runTenantMigrations(tenantSeq, {
         organizationId: tenant.id,
         organizationCode: tenant.organizationCode,
-        gymName: tenant.gymName,
+        gymName: tenant.firstBusinessName,
         targetVersion: options.targetVersion,
         dryRun: options.dryRun === true,
       });
@@ -1775,7 +1775,7 @@ async function runAllTenantMigrations(options = {}) {
       reports.push({
         organizationId: tenant.id,
         organizationCode: tenant.organizationCode,
-        gymName: tenant.gymName,
+        gymName: tenant.firstBusinessName,
         initialVersion: result.initialVersion,
         finalVersion: result.finalVersion,
         applied: result.applied,
@@ -1789,7 +1789,7 @@ async function runAllTenantMigrations(options = {}) {
       reports.push({
         organizationId: tenant.id,
         organizationCode: tenant.organizationCode,
-        gymName: tenant.gymName,
+        gymName: tenant.firstBusinessName,
         initialVersion: 0,
         finalVersion: 0,
         success: false,

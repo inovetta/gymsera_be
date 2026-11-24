@@ -93,7 +93,7 @@ const resolveForBranch = async (tenantDb, organizationId, branchId) => {
 /** SEC-13: alert the owner (in-app, push, e-mail) that payout details changed. Never throws. */
 const _notifyOwner = async (organizationId) => {
   try {
-    const tenantRecord = await Tenant.findByPk(organizationId, { attributes: ['ownerUserId', 'gymName'] });
+    const tenantRecord = await Tenant.findByPk(organizationId, { attributes: ['ownerUserId', 'firstBusinessName'] });
     if (!tenantRecord || !tenantRecord.ownerUserId) return;
     const ownerUser = await User.findByPk(tenantRecord.ownerUserId, { attributes: ['id', 'email', 'fullName'] });
     if (!ownerUser) return;
@@ -102,7 +102,7 @@ const _notifyOwner = async (organizationId) => {
     const emailService = require('./email.service');
 
     const alertTitle = 'Security Alert: Payout Account Changed';
-    const alertMsg = `Bank payout details for ${tenantRecord.gymName || 'your gym'} were updated. A 24-hour cooling period is in effect. If this wasn't you, contact support immediately.`;
+    const alertMsg = `Bank payout details for ${tenantRecord.firstBusinessName || 'your gym'} were updated. A 24-hour cooling period is in effect. If this wasn't you, contact support immediately.`;
 
     await notificationsService.createNotification({
       userId: ownerUser.id,

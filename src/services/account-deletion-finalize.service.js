@@ -181,7 +181,7 @@ const _finalizeTenantData = async (tenant, now) => {
     email: deletedEmail(`tenant-${tenant.id}`), // NOT NULL column
     phone: null,
     address: null,
-    gymDescription: null,
+    firstBusinessDescription: null,
     logoUrl: null,
     coverImageUrl: null,
     bankTransferRef: null,

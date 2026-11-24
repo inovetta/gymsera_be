@@ -120,7 +120,7 @@ const _notifyMembers = async (tenant) => {
         userId,
         role: 'traveler',
         type: 'GYM_CLOSING',
-        title: `${tenant.organizationName || tenant.gymName || 'Your gym'} is closing on GymsEra`,
+        title: `${tenant.organizationName || tenant.firstBusinessName || 'Your gym'} is closing on GymsEra`,
         message:
           'This gym has asked to close its GymsEra account. Its owner can still cancel the request for 30 days; after that your ' +
           'membership here will end. Your receipts and history stay available in your account.',

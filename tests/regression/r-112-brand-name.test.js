@@ -61,7 +61,7 @@ const BAD_NAMES = [
 describe('R-112: brand name', () => {
   test('C2: POST /tenants/register without a business name creates the draft with an empty brand', async () => {
     const { user, as } = await newUser();
-    const res = await as().post('/tenants/register').send({ email: user.email });
+    const res = await as().post('/organizations/register').send({ email: user.email });
     expect(res.status).toBe(201);
     const tenant = await Tenant.findOne({ where: { ownerUserId: user.id } });
     expect(tenant.organizationName).toBe('');
@@ -69,26 +69,26 @@ describe('R-112: brand name', () => {
 
   test('C2: an old app (build 25 and before) still registers with the generated name', async () => {
     const { user, as } = await newUser();
-    const res = await as().post('/tenants/register').send({ organizationName: 'Test Person\'s Gym Business', email: user.email });
+    const res = await as().post('/organizations/register').send({ organizationName: 'Test Person\'s Gym Business', email: user.email });
     expect(res.status).toBe(201);
     expect((await Tenant.findOne({ where: { ownerUserId: user.id } })).organizationName).toBe('Test Person\'s Gym Business');
   });
 
   test('C3: gym-profile saves the brand (cleaned) and the gym name; GET /tenants/me returns both', async () => {
     const { tenant, as } = await draftHost({ organizationName: '' });
-    const res = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ organizationName: '  Iron   Works  ', gymName: 'Iron Works Saddar' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: '  Iron   Works  ', gymName: 'Iron Works Saddar' });
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe('Iron Works');
-    expect(tenant.gymName).toBe('Iron Works Saddar');
-    const me = (await as().get('/tenants/me')).body.data.tenant;
+    expect(tenant.firstBusinessName).toBe('Iron Works Saddar');
+    const me = (await as().get('/organizations/me')).body.data.tenant;
     expect(me.organizationName).toBe('Iron Works');
     expect(me.gymName).toBe('Iron Works Saddar');
   });
 
   test.each([['Gold\'s Gym'], ['F45 Training'], ['24/7 Fitness'], ['Fit+ Club'], ['Zorba & Sons']])('C1: real brands pass: %s', async (name) => {
     const { tenant, as } = await draftHost();
-    const res = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ organizationName: name, gymName: 'Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, gymName: 'Gym' });
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe(name);
@@ -96,34 +96,34 @@ describe('R-112: brand name', () => {
 
   test.each(BAD_NAMES)('C1 / C3: gym-profile refuses %s → %s, nothing saved', async (name, code) => {
     const { tenant, as } = await draftHost({ organizationName: 'Kept Brand', gymName: 'Kept Gym' });
-    const res = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ organizationName: name, gymName: 'Other Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, gymName: 'Other Gym' });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe(code);
     if (code === 'brand_name_blocked') expect(JSON.stringify(res.body).toLowerCase()).not.toContain('fuck');
     await tenant.reload();
     expect(tenant.organizationName).toBe('Kept Brand');
-    expect(tenant.gymName).toBe('Kept Gym');
+    expect(tenant.firstBusinessName).toBe('Kept Gym');
   });
 
   test('C3: without organizationName gym-profile behaves as before (old apps)', async () => {
     const { tenant, as } = await draftHost({ organizationName: 'Old Person\'s Gym Business' });
-    const res = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'Old Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ gymName: 'Old Gym' });
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe('Old Person\'s Gym Business');
-    expect(tenant.gymName).toBe('Old Gym');
+    expect(tenant.firstBusinessName).toBe('Old Gym');
   });
 
   test('C3: the draft first branch name follows the gym name, unless the host typed another one', async () => {
     const { tenant, as } = await draftHost({ gymName: 'First Name', firstBranchDraft: { name: 'First Name', address: 'Road 1' } });
-    await as().post(`/tenants/${tenant.id}/gym-profile`).send({ organizationName: 'Brand One', gymName: 'Second Name' });
+    await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Brand One', gymName: 'Second Name' });
     await tenant.reload();
     expect(tenant.firstBranchDraft.name).toBe('Second Name');
     expect(tenant.firstBranchDraft.address).toBe('Road 1');
     expect(tenant.onboardingStep).toBeLessThanOrEqual(2); // saving names does not skip the address step
 
     const typed = await draftHost({ gymName: 'Gym A', firstBranchDraft: { name: 'Gym A Saddar' } });
-    await typed.as().post(`/tenants/${typed.tenant.id}/gym-profile`).send({ gymName: 'Gym B' });
+    await typed.as().post(`/organizations/${typed.tenant.id}/first-business`).send({ gymName: 'Gym B' });
     await typed.tenant.reload();
     expect(typed.tenant.firstBranchDraft.name).toBe('Gym A Saddar');
   });
@@ -132,13 +132,13 @@ describe('R-112: brand name', () => {
     const organizationId = personaManager.context.tenant1.id;
     const before = (await Tenant.findByPk(organizationId)).organizationName;
     for (const [name, code] of BAD_NAMES) {
-      const res = await asPersona('owner').patch('/tenants/me').send({ organizationName: name });
+      const res = await asPersona('owner').patch('/organizations/me').send({ organizationName: name });
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(code);
     }
     expect((await Tenant.findByPk(organizationId)).organizationName).toBe(before);
 
-    const res = await asPersona('owner').patch('/tenants/me').send({ organizationName: 'Renamed Brand' });
+    const res = await asPersona('owner').patch('/organizations/me').send({ organizationName: 'Renamed Brand' });
     expect(res.status).toBe(200);
     expect(res.body.data.tenant.organizationName).toBe('Renamed Brand');
     const audit = await PlatformAuditLog.findOne({ where: { action: 'tenant.brand_renamed', targetId: organizationId }, order: [['createdAt', 'DESC']] });
@@ -149,7 +149,7 @@ describe('R-112: brand name', () => {
 
     // The same name again changes nothing and writes no second row.
     const count = await PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: organizationId } });
-    await asPersona('owner').patch('/tenants/me').send({ organizationName: 'Renamed Brand' });
+    await asPersona('owner').patch('/organizations/me').send({ organizationName: 'Renamed Brand' });
     expect(await PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: organizationId } })).toBe(count);
     await Tenant.update({ organizationName: before }, { where: { id: organizationId } });
   });
@@ -160,7 +160,7 @@ describe('R-112: brand name', () => {
     expect(body.organizationName).toBeNull();
     expect(body.gymName).toBe('Status Gym');
 
-    await empty.as().post(`/tenants/${empty.tenant.id}/gym-profile`).send({ organizationName: 'Status Brand', gymName: 'Status Gym' });
+    await empty.as().post(`/organizations/${empty.tenant.id}/first-business`).send({ organizationName: 'Status Brand', gymName: 'Status Gym' });
     body = (await empty.as().get('/host/status')).body.data;
     expect(body.organizationName).toBe('Status Brand');
     expect(body.gymName).toBe('Status Gym');
@@ -173,11 +173,11 @@ describe('R-112: brand name', () => {
     await before.update({ organizationName: legacy });
     const audits = () => PlatformAuditLog.count({ where: { action: 'tenant.brand_renamed', targetId: organizationId } });
     const auditsBefore = await audits();
-    const res = await asPersona('owner').patch('/tenants/me').send({ organizationName: legacy, phone: '' });
+    const res = await asPersona('owner').patch('/organizations/me').send({ organizationName: legacy, phone: '' });
     expect(res.status).toBe(200);
     expect(await audits()).toBe(auditsBefore);
     // A real change to it is checked as usual.
-    const changed = await asPersona('owner').patch('/tenants/me').send({ organizationName: `${legacy} 2` });
+    const changed = await asPersona('owner').patch('/organizations/me').send({ organizationName: `${legacy} 2` });
     expect(changed.status).toBe(422);
     await Tenant.update({ organizationName: before.organizationName }, { where: { id: organizationId } });
   });

@@ -27,7 +27,7 @@ afterAll(async () => {
 });
 
 const upload = (documentType, persona = 'owner') => {
-  const req = asPersona(persona).post(`/tenants/${organizationId}/kyc-documents`);
+  const req = asPersona(persona).post(`/organizations/${organizationId}/kyc-documents`);
   if (documentType !== undefined) req.field('documentType', documentType);
   return req.attach('documents', pdf(), { filename: 'doc.pdf', contentType: 'application/pdf' });
 };
@@ -53,7 +53,7 @@ describe('R-85: KYC documents by type', () => {
   });
 
   test('the list says which type each document is', async () => {
-    const res = await asPersona('owner').get(`/tenants/${organizationId}/kyc-documents`);
+    const res = await asPersona('owner').get(`/organizations/${organizationId}/kyc-documents`);
     expect(res.status).toBe(200);
     const types = res.body.data.map((d) => d.documentType);
     expect(types).toEqual(expect.arrayContaining(['OWNER_ID', 'BUSINESS_REGISTRATION', 'PROOF_OF_PREMISES']));

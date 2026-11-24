@@ -80,7 +80,7 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
     throw createError('Gym profile cannot be updated at this stage', 400);
   }
 
-  const { gymName, gymDescription, genderType, address, latitude, longitude, firstBranchDraft, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
+  const { firstBusinessName, firstBusinessDescription, genderType, address, latitude, longitude, firstBranchDraft, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
   // R-112 (C1, C3): the brand the host typed on Step 2, checked before anything is saved.
   const organizationName = profileData.organizationName !== undefined ? await validateBrandName(profileData.organizationName) : undefined;
 
@@ -139,15 +139,15 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
   // R-112 (C3): the draft first branch is named after the gym; a new gym name carries over unless the host
   // gave the branch a name of its own.
   let mainBranchDataToSave = mergedMainBranchData;
-  if (gymName && gymName !== tenant.gymName && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
+  if (firstBusinessName && firstBusinessName !== tenant.firstBusinessName && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
     const branchName = typeof mergedMainBranchData.name === 'string' ? mergedMainBranchData.name.trim() : '';
-    if (!branchName || branchName === tenant.gymName) mainBranchDataToSave = { ...mergedMainBranchData, name: gymName };
+    if (!branchName || branchName === tenant.firstBusinessName) mainBranchDataToSave = { ...mergedMainBranchData, name: firstBusinessName };
   }
 
   await tenant.update({
     ...(organizationName !== undefined && { organizationName }),
-    gymName: gymName || tenant.gymName,
-    gymDescription: gymDescription !== undefined ? gymDescription : tenant.gymDescription,
+    firstBusinessName: firstBusinessName || tenant.firstBusinessName,
+    firstBusinessDescription: firstBusinessDescription !== undefined ? firstBusinessDescription : tenant.firstBusinessDescription,
     genderType: genderType || tenant.genderType,
     address: address !== undefined ? address : tenant.address,
     latitude: latitude !== undefined ? latitude : tenant.latitude,
@@ -397,8 +397,8 @@ const finalizeApplication = async (organizationId, userId, { paymentMethod, bank
         role: 'admin',
         type: 'tenant_submitted_review',
         title: 'New Organization Submitted',
-        message: `New organization pending review: ${tenant.gymName || tenant.organizationName} (Host: ${hostName}).`,
-        deepLink: `/admin/tenants/${tenant.id}`,
+        message: `New organization pending review: ${tenant.firstBusinessName || tenant.organizationName} (Host: ${hostName}).`,
+        deepLink: `/admin/organizations/${tenant.id}`,
         metadataJson: { organizationId: tenant.id },
       });
     }
@@ -543,7 +543,7 @@ const getKycDocuments = async ({ organizationId, userId, userRole }) => {
     size: doc.size,
     documentType: doc.documentType,
     uploadedAt: doc.uploadedAt,
-    streamUrl: `/api/v1/tenants/${tenant.id}/kyc-documents/${doc.documentId}/stream`,
+    streamUrl: `/api/v1/organizations/${tenant.id}/kyc-documents/${doc.documentId}/stream`,
   }));
 };
 

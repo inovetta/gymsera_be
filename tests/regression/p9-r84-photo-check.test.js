@@ -1,13 +1,13 @@
 /**
  * Phase 7 P9, NEW-158 / R-84: photo check at CMS approval.
  *
- * Before: POST /admin/tenants/:id/approve took an empty body (`validate.allowBody([])`,
+ * Before: POST /admin/organizations/:id/approve took an empty body (`validate.allowBody([])`,
  * admin.routes.js:118) and approved without anyone having looked at the gym's photos; the admin
  * detail (`getTenant`, admin.service.js:266) listed no photo, and a photo on a pending application
  * (`firstBranchDraft.imagesJson`) could not be removed by an admin. A screenshot of the app's
  * own "Submitted!" screen became a live gym's cover (BUG-30).
  * After: the detail lists every photo the approval would publish (`approvalPhotos`); an admin can
- * remove one (DELETE /admin/tenants/:id/approval-photos, audited); approve answers 422
+ * remove one (DELETE /admin/organizations/:id/approval-photos, audited); approve answers 422
  * `photos_not_checked` without `photosChecked: true`, and writes who checked into the audit log.
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories, getAdminConnection } = require('../harness');
@@ -55,7 +55,7 @@ const auditRows = (action, targetId) =>
 describe('R-84: the admin sees, can remove and must confirm the photos before approving', () => {
   test('the admin detail lists every photo the approval would publish', async () => {
     const tenant = await pendingTenant('list');
-    const res = await asPersona('platformAdmin').get(`/admin/tenants/${tenant.id}`);
+    const res = await asPersona('platformAdmin').get(`/admin/organizations/${tenant.id}`);
     expect(res.status).toBe(200);
     expect(res.body.data.tenant.approvalPhotos).toEqual([
       { url: 'https://cdn.gymsera.test/logo.png', kind: 'logo' },
@@ -67,7 +67,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
 
   test('approve without photosChecked: 422 photos_not_checked, nothing changes', async () => {
     const tenant = await pendingTenant('nocheck');
-    const res = await asPersona('platformAdmin').post(`/admin/tenants/${tenant.id}/approve`).send({});
+    const res = await asPersona('platformAdmin').post(`/admin/organizations/${tenant.id}/approve`).send({});
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('photos_not_checked');
     await tenant.reload();
@@ -77,7 +77,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
 
   test('photosChecked must be exactly true', async () => {
     const tenant = await pendingTenant('falsy');
-    const res = await asPersona('platformAdmin').post(`/admin/tenants/${tenant.id}/approve`).send({ photosChecked: 'yes' });
+    const res = await asPersona('platformAdmin').post(`/admin/organizations/${tenant.id}/approve`).send({ photosChecked: 'yes' });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('photos_not_checked');
   });
@@ -85,7 +85,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
   test('removing a photo takes it off the application and is audited; an unknown photo is 404', async () => {
     const tenant = await pendingTenant('remove');
     const res = await asPersona('platformAdmin')
-      .delete(`/admin/tenants/${tenant.id}/approval-photos`)
+      .delete(`/admin/organizations/${tenant.id}/approval-photos`)
       .send({ imageUrl: PHOTOS[1] });
     expect(res.status).toBe(200);
     await tenant.reload();
@@ -96,14 +96,14 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
     expect(rows[0].actorUserId).toBe(personas.platformAdmin.user.id);
 
     const cover = await asPersona('platformAdmin')
-      .delete(`/admin/tenants/${tenant.id}/approval-photos`)
+      .delete(`/admin/organizations/${tenant.id}/approval-photos`)
       .send({ imageUrl: 'https://cdn.gymsera.test/cover.jpg' });
     expect(cover.status).toBe(200);
     await tenant.reload();
     expect(tenant.coverImageUrl).toBeNull();
 
     const missing = await asPersona('platformAdmin')
-      .delete(`/admin/tenants/${tenant.id}/approval-photos`)
+      .delete(`/admin/organizations/${tenant.id}/approval-photos`)
       .send({ imageUrl: 'https://cdn.gymsera.test/nope.jpg' });
     expect(missing.status).toBe(404);
     expect(missing.body.code).toBe('photo_not_found');
@@ -111,7 +111,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
 
   test.each(['owner', 'manager', 'member', 'otherTenantOwner'])('%s cannot remove an application photo', async (persona) => {
     const tenant = await pendingTenant(`deny${persona.length}${persona[0]}`);
-    const res = await asPersona(persona).delete(`/admin/tenants/${tenant.id}/approval-photos`).send({ imageUrl: PHOTOS[0] });
+    const res = await asPersona(persona).delete(`/admin/organizations/${tenant.id}/approval-photos`).send({ imageUrl: PHOTOS[0] });
     expect([401, 403]).toContain(res.status);
     await tenant.reload();
     const data = typeof tenant.firstBranchDraft === 'string' ? JSON.parse(tenant.firstBranchDraft) : tenant.firstBranchDraft;
@@ -120,7 +120,7 @@ describe('R-84: the admin sees, can remove and must confirm the photos before ap
 
   test('approve with photosChecked: true approves and records who checked how many photos', async () => {
     const tenant = await pendingTenant('ok');
-    const res = await asPersona('platformAdmin').post(`/admin/tenants/${tenant.id}/approve`).send({ photosChecked: true });
+    const res = await asPersona('platformAdmin').post(`/admin/organizations/${tenant.id}/approve`).send({ photosChecked: true });
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.status).toBe('ACTIVE');

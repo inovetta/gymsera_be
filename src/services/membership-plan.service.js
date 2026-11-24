@@ -206,12 +206,12 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
       : (Array.isArray(b.packages) && b.packages.length > 0 ? b.packages : []);
 
     let gym = await Gym.findOne();
-    if (!gym && tenant.gymName) {
+    if (!gym && tenant.firstBusinessName) {
       const firstListing = await GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
       gym = await Gym.create({
         ...(firstListing ? { id: firstListing.id } : {}), // option S: the business id is the listing id
-        name: tenant.gymName,
-        description: tenant.gymDescription || null,
+        name: tenant.firstBusinessName,
+        description: tenant.firstBusinessDescription || null,
         contactPhone: tenant.phone || null,
         genderType: tenant.genderType || 'MIXED',
       });
@@ -225,7 +225,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
           tenantDb,
           gym.id,
           {
-            branchName: b.name || tenant.gymName || 'Main Branch',
+            branchName: b.name || tenant.firstBusinessName || 'Main Branch',
             address: b.address || tenant.address || null,
             cityId: b.cityId || tenant.cityId || null,
           },

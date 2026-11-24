@@ -46,7 +46,7 @@ describe('FLOW-04: re-apply after rejection', () => {
     const token = signToken({ sub: owner.id, id: owner.id, email: owner.email, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
     return { owner, tenant, token };
   };
-  const reapply = (id, token) => request(app).post(`${API}/tenants/${id}/reapply`).set('Authorization', `Bearer ${token}`).send({});
+  const reapply = (id, token) => request(app).post(`${API}/organizations/${id}/reapply`).set('Authorization', `Bearer ${token}`).send({});
 
   test('the owner reopens the same tenant: DRAFT, everything entered is kept, the reason stays visible', async () => {
     const { tenant, token } = await rejectedHost();
@@ -88,7 +88,7 @@ describe('FLOW-04: re-apply after rejection', () => {
 
   test('a body never changes the outcome (the route takes none)', async () => {
     const { tenant, token } = await rejectedHost();
-    const res = await request(app).post(`${API}/tenants/${tenant.id}/reapply`).set('Authorization', `Bearer ${token}`).send({ status: 'ACTIVE' });
+    const res = await request(app).post(`${API}/organizations/${tenant.id}/reapply`).set('Authorization', `Bearer ${token}`).send({ status: 'ACTIVE' });
     expect([200, 422]).toContain(res.status); // log mode today (R-61); never changes the status to the body's value
     expect((await Tenant.findByPk(tenant.id)).status).not.toBe('ACTIVE');
   });
@@ -97,12 +97,12 @@ describe('FLOW-04: re-apply after rejection', () => {
     const { tenant, token } = await rejectedHost();
     expect((await reapply(tenant.id, token)).status).toBe(200);
     const edit = await request(app)
-      .post(`${API}/tenants/${tenant.id}/gym-profile`)
+      .post(`${API}/organizations/${tenant.id}/first-business`)
       .set('Authorization', `Bearer ${token}`)
       .send({ gymName: 'Iron Works 2' });
     expect(edit.status).toBe(200);
     const fin = await request(app)
-      .post(`${API}/tenants/${tenant.id}/finalize`)
+      .post(`${API}/organizations/${tenant.id}/finalize`)
       .set('Authorization', `Bearer ${token}`)
       .send({ paymentMethod: 'PAY_LATER' });
     expect(fin.status).toBe(200);

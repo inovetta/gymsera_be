@@ -244,29 +244,29 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
   test('POST /tenants/register: another city\'s area or an unknown area is refused; a matching one is kept', async () => {
     const { Tenant } = require('../../src/models/platform');
     const a = await signedIn();
-    expectNotListed(await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: gulberg.id }));
-    expectNotListed(await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: 99999999 }));
-    expectNotListed(await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', areaId: ringRoad.id }));
+    expectNotListed(await a.as().post('/organizations/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: gulberg.id }));
+    expectNotListed(await a.as().post('/organizations/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: 99999999 }));
+    expectNotListed(await a.as().post('/organizations/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', areaId: ringRoad.id }));
     expect(await Tenant.count({ where: { ownerUserId: a.user.id } })).toBe(0);
 
-    const ok = await a.as().post('/tenants/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: ringRoad.id });
+    const ok = await a.as().post('/organizations/register').send({ organizationName: 'X Gym', email: 'x259@new259.test', cityId: peshawar.id, areaId: ringRoad.id });
     expect(ok.status).toBe(201);
     expect((await Tenant.findOne({ where: { ownerUserId: a.user.id } })).areaId).toBe(ringRoad.id);
   });
 
-  test('POST /tenants/:id/gym-profile: the main branch area must be in the main branch city', async () => {
+  test('POST /tenants/:id/first-business: the main branch area must be in the main branch city', async () => {
     const host = await signedIn('GYM_HOST');
     const tenant = await factories.createTenant({
       ownerUserId: host.user.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
     });
-    expectNotListed(await host.as().post(`/tenants/${tenant.id}/gym-profile`).send({
+    expectNotListed(await host.as().post(`/organizations/${tenant.id}/first-business`).send({
       gymName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: gulberg.id },
     }));
     // No cityId in the branch data: the business's city is used.
-    expectNotListed(await host.as().post(`/tenants/${tenant.id}/gym-profile`).send({
+    expectNotListed(await host.as().post(`/organizations/${tenant.id}/first-business`).send({
       gymName: 'Area Gym', firstBranchDraft: { address: 'x', areaId: gulberg.id },
     }));
-    const ok = await host.as().post(`/tenants/${tenant.id}/gym-profile`).send({
+    const ok = await host.as().post(`/organizations/${tenant.id}/first-business`).send({
       gymName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: ringRoad.id },
     });
     expect(ok.status).toBe(200);
@@ -307,9 +307,9 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
 
   test('CMS admin: gym listing and branch edits', async () => {
     const { tenant1, branch1 } = personaManager.context;
-    expectNotListed(await asPersona('platformAdmin').patch(`/admin/tenants/${tenant1.id}/gym-listing`).send({ cityId: peshawar.id, areaId: gulberg.id }));
-    expectNotListed(await asPersona('platformAdmin').patch(`/admin/tenants/${tenant1.id}/branches/${branch1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
-    expectNotListed(await asPersona('platformAdmin').post(`/admin/tenants/${tenant1.id}/branches`).send({
+    expectNotListed(await asPersona('platformAdmin').patch(`/admin/organizations/${tenant1.id}/gym-listing`).send({ cityId: peshawar.id, areaId: gulberg.id }));
+    expectNotListed(await asPersona('platformAdmin').patch(`/admin/organizations/${tenant1.id}/branches/${branch1.id}`).send({ cityId: peshawar.id, areaId: gulberg.id }));
+    expectNotListed(await asPersona('platformAdmin').post(`/admin/organizations/${tenant1.id}/branches`).send({
       branchName: 'Admin Area Branch', cityId: peshawar.id, areaId: gulberg.id, packages: [{ name: 'Monthly', price: 50 }],
     }));
   });
