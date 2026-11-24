@@ -9,12 +9,15 @@ const { Tenant, GymListing } = require('../../src/models/platform');
 // A 1 x 1 PNG.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
+const stored = []; // the files this test wrote; removed afterwards
 let h;
 beforeAll(async () => {
   h = await setupTestDatabases();
   await setupPersonas(h);
 });
 afterAll(async () => {
+  const storage = require('../../src/services/storage.service');
+  for (const url of stored) await storage.deleteImage(url).catch(() => {});
   await stopTestServer();
   await teardownTestDatabases();
 });
@@ -25,7 +28,7 @@ describe('POST /host/staging-images', () => {
     const res = await asPersona('member').post('/host/staging-images').attach('images', PNG, 'a.png').attach('images', PNG, 'b.png');
     expect(res.status).toBe(200);
     expect(res.body.data.urls).toHaveLength(2);
-    for (const u of res.body.data.urls) expect(typeof u).toBe('string');
+    for (const u of res.body.data.urls) { expect(typeof u).toBe('string'); stored.push(u); }
     expect([await Tenant.count(), await GymListing.count()]).toEqual(before);
   });
 
