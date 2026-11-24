@@ -7,9 +7,9 @@
    "allowed": [
     "areaId",
     "areaRequestId",
-    "organizationName",
     "cityId",
     "email",
+    "organizationName",
     "phone"
    ],
    "clientKeys": [

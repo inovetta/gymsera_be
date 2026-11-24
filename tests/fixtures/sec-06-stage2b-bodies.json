@@ -608,24 +608,24 @@
    "path": "/api/v1/organizations/:p/first-business",
    "allowed": [
     "address",
-    "organizationName",
     "coverImageUrl",
+    "firstBranchDraft",
+    "firstBusinessDescription",
+    "firstBusinessName",
     "genderType",
-    "gymDescription",
-    "gymName",
     "kycDocumentsJson",
     "latitude",
     "logoUrl",
     "longitude",
-    "firstBranchDraft"
+    "organizationName"
    ],
    "clientKeys": [
     "address",
     "organizationName",
     "coverImageUrl",
     "genderType",
-    "gymDescription",
-    "gymName",
+    "firstBusinessDescription",
+    "firstBusinessName",
     "kycDocumentsJson",
     "latitude",
     "logoUrl",
@@ -639,9 +639,9 @@
    "allowed": [
     "areaId",
     "areaRequestId",
-    "organizationName",
     "cityId",
     "email",
+    "organizationName",
     "phone"
    ],
    "clientKeys": [

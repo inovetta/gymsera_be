@@ -140,7 +140,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/organizations/:p/gym-listing/first-business/cover",
+   "path": "/api/v1/admin/organizations/:p/gym-listing/cover",
    "allowed": [],
    "clientKeys": []
   },
@@ -162,7 +162,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/organizations/:p/gym-listing/first-business/logo",
+   "path": "/api/v1/admin/organizations/:p/gym-listing/logo",
    "allowed": [],
    "clientKeys": []
   },
