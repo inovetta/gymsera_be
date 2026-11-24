@@ -29,11 +29,11 @@ const _ensureSchema = async (tenantDb) => {
 const _tenantFromGymListing = async (businessId) => {
   let listing = await GymListing.findOne({
     where: { id: businessId, status: 'ACTIVE' },
-    attributes: ['id', 'organizationId', 'title', 'branchId'],
+    attributes: ['id', 'organizationId', 'name', 'primaryBranchId'],
   });
 
   let organizationId = listing ? listing.organizationId : null;
-  let branchId = listing ? listing.branchId : null;
+  let branchId = listing ? listing.primaryBranchId : null;
 
   if (!listing) {
     // If listing not found, it could be a branch ID directly
@@ -54,7 +54,7 @@ const _tenantFromGymListing = async (businessId) => {
           if (branch.businessId) {
             listing = await GymListing.findOne({
               where: { id: branch.businessId, status: 'ACTIVE' },
-              attributes: ['id', 'organizationId', 'title', 'branchId'],
+              attributes: ['id', 'organizationId', 'name', 'primaryBranchId'],
             });
           }
           break;

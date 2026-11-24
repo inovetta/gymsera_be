@@ -15,7 +15,7 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       // References the primary branch in the tenant DB (stored as value — cross-DB reference)
-      branchId: {
+      primaryBranchId: {
         field: 'primary_branch_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: true,
@@ -38,12 +38,12 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      title: {
+      name: {
         field: 'name', // R-120 NEW-306 (p033)
         type: DataTypes.STRING(200),
         allowNull: false,
       },
-      shortDescription: {
+      description: {
         field: 'description', // R-120 NEW-306 (p033)
         type: DataTypes.TEXT,
         allowNull: true,

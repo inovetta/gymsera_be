@@ -86,7 +86,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
     // 5. Verify organization was reactivated in the same flow
     await listing.reload();
     expect(listing.status).toBe('ACTIVE');
-    expect(listing.branchId).toBe(branch.id);
+    expect(listing.primaryBranchId).toBe(branch.id);
 
     // 6. Verify organization's preserved reserved slot was consumed first (decremented from 1 to 0)
     expect(listing.reservedSlots).toBe(0);

@@ -223,15 +223,15 @@ const listTenants = async ({ status, page, limit, offset }) => {
         organizationCode: tenant.organizationCode,
         // Named as what it actually is: a pending organization under an
         // existing tenant, not a standalone business applying fresh.
-        organizationName: `${tenant.organizationName} — new organization "${listing.title}"`,
+        organizationName: `${tenant.organizationName} — new organization "${listing.name}"`,
         isAdditionalOrganization: true,
         ownerUserId: tenant.ownerUserId,
         email: tenant.email,
         phone: listing.contactPhone || tenant.phone,
         cityId: listing.cityId,
         status: listing.status === 'PENDING' ? 'PENDING_REVIEW' : 'REJECTED',
-        gymName: listing.title,
-        gymDescription: listing.shortDescription,
+        businessName: listing.name,
+        businessDescription: listing.description,
         logoUrl: listing.logoUrl,
         coverImageUrl: listing.coverImageUrl,
         genderType: listing.genderType,
@@ -239,10 +239,10 @@ const listTenants = async ({ status, page, limit, offset }) => {
         owner: tenant.owner,
         user: tenant.owner,
         city: listing.city,
-        gymListing: {
+        business: {
           id: listing.id,
           organizationId: listing.organizationId,
-          title: listing.title,
+          name: listing.name,
           averageRating: listing.averageRating,
           status: listing.status,
           isFeatured: listing.isFeatured,
@@ -301,7 +301,7 @@ const getTenant = async (organizationId) => {
     // organization row in listTenants links to — this is that one listing's
     // own review status, not a second tenant's.
     tenantJson.status = gymListing.status === 'PENDING' ? 'PENDING_REVIEW' : (gymListing.status === 'REJECTED' ? 'REJECTED' : 'ACTIVE');
-    tenantJson.organizationName = `${tenant.organizationName} — new organization "${gymListing.title}"`;
+    tenantJson.organizationName = `${tenant.organizationName} — new organization "${gymListing.name}"`;
   } else {
     // The real tenant view: every organization it owns, not just the
     // oldest. This is what replaces the old "one row per organization"
@@ -312,7 +312,7 @@ const getTenant = async (organizationId) => {
     // N separate page visits that each pretended to be a different tenant.
     const allListings = await GymListing.findAll({
       where: { organizationId: actualTenantId, status: { [Op.ne]: 'INACTIVE' } },
-      attributes: ['id', 'title', 'status', 'reservedSlots', 'createdAt'],
+      attributes: ['id', 'name', 'status', 'reservedSlots', 'createdAt'],
       order: [['createdAt', 'ASC']],
     });
 
@@ -335,7 +335,7 @@ const getTenant = async (organizationId) => {
 
     tenantJson.organizations = allListings.map((l) => ({
       id: l.id,
-      title: l.title,
+      name: l.name,
       status: l.status,
       activeBranches: branchCountsByListing[l.id] || 0,
       reservedSlots: l.reservedSlots,
@@ -390,7 +390,7 @@ const approveTenant = async (organizationId, adminUserId, { photosChecked = fals
         role: 'host',
         type: 'listing_approved',
         title: 'Gym Listing Approved! 🎉',
-        message: `Your listing "${listing.title}" has been approved.`,
+        message: `Your listing "${listing.name}" has been approved.`,
         priority: 'high',
         deepLink: '/host/branches',
         metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'ACTIVE' },
@@ -533,7 +533,7 @@ const rejectTenant = async (organizationId, adminUserId, reason) => {
         role: 'host',
         type: 'listing_rejected',
         title: 'Gym Listing Rejected — Capacity Returned',
-        message: `Your listing "${listing.title}" was not approved: ${reason.trim()}. Your branch capacity has been returned to your account.`,
+        message: `Your listing "${listing.name}" was not approved: ${reason.trim()}. Your branch capacity has been returned to your account.`,
         priority: 'high',
         deepLink: '/host/branches',
         metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED', capacityReturned: true },
@@ -1443,8 +1443,8 @@ const createGymListing = async (organizationId, data) => {
 
   const listing = await GymListing.create({
     organizationId: actualTenantId,
-    title: data.title || tenant.organizationName,
-    shortDescription: data.shortDescription || null,
+    name: data.name || tenant.organizationName,
+    description: data.description || null,
     genderType: data.genderType || 'MIXED',
     contactPhone: data.contactPhone || null,
     website: data.website || null,
@@ -1477,7 +1477,7 @@ const updateGymListing = async (organizationId, data) => {
     });
   }
 
-  const fields = ['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status'];
+  const fields = ['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status'];
   fields.forEach((f) => { if (data[f] !== undefined) listing[f] = data[f]; });
   // NEW-265 (R-109 F7): admins pick real areas only; saving one (or clearing it) drops the listing's request.
   if (data.areaId !== undefined) {

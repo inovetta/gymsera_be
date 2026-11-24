@@ -30,7 +30,7 @@ const TenantDbManager = require('../database/TenantDbManager');
       if (!tenant.connectionStringEncrypted) continue;
 
       const listings = await GymListing.findAll({
-        where: { organizationId: tenant.id, branchId: { [require('sequelize').Op.ne]: null } },
+        where: { organizationId: tenant.id, primaryBranchId: { [require('sequelize').Op.ne]: null } },
       });
       if (listings.length === 0) continue;
 
@@ -44,17 +44,17 @@ const TenantDbManager = require('../database/TenantDbManager');
 
       for (const listing of listings) {
         checked++;
-        const pointedBranch = await tenantDb.models.Branch.findByPk(listing.branchId);
+        const pointedBranch = await tenantDb.models.Branch.findByPk(listing.primaryBranchId);
         const isStale = !pointedBranch || pointedBranch.businessId !== listing.id;
         if (!isStale) continue;
 
         const realBranch = await tenantDb.models.Branch.findOne({
           where: { businessId: listing.id, status: 'ACTIVE' },
         });
-        await listing.update({ branchId: realBranch ? realBranch.id : null });
+        await listing.update({ primaryBranchId: realBranch ? realBranch.id : null });
         console.log(
-          `[Fixed] Tenant ${tenant.organizationName || tenant.id}: listing "${listing.title}" (${listing.id}) ` +
-            `branchId ${listing.branchId ? 'was stale' : ''} -> ${realBranch ? realBranch.id : 'null'}`
+          `[Fixed] Tenant ${tenant.organizationName || tenant.id}: listing "${listing.name}" (${listing.id}) ` +
+            `branchId ${listing.primaryBranchId ? 'was stale' : ''} -> ${realBranch ? realBranch.id : 'null'}`
         );
         fixed++;
       }

@@ -40,7 +40,7 @@ describe('Integration Test Harness & Factories', () => {
 
     // 2. GymListing
     const listing = await factories.createGymListing(tenant.id, { title: 'Factory Listing' });
-    expect(listing.title).toBe('Factory Listing');
+    expect(listing.name).toBe('Factory Listing');
 
     // 3. Branch in tenant DB
     const branch = await factories.createBranch(dbHarness.tenant1, listing.id, {

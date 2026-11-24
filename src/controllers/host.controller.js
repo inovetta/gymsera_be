@@ -600,8 +600,8 @@ const createListing = async (req, res, next) => {
         organizationId,
         cityId: targetCityId,
         ...areaValues,
-        title: gymName,
-        shortDescription: gymDescription || null,
+        name: gymName,
+        description: gymDescription || null,
         genderType: genderType || 'MIXED',
         logoUrl: logoUrl || tenant.logoUrl || null,
         coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
@@ -781,8 +781,8 @@ const updateListing = async (req, res, next) => {
     }
 
     const updates = {};
-    if (gymName !== undefined) updates.title = gymName;
-    if (gymDescription !== undefined) updates.shortDescription = gymDescription;
+    if (gymName !== undefined) updates.name = gymName;
+    if (gymDescription !== undefined) updates.description = gymDescription;
     if (genderType !== undefined) updates.genderType = genderType;
     if (cityId !== undefined) updates.cityId = cityId;
     Object.assign(updates, areaRequests.rowValues(areaChoice) || {});

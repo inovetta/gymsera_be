@@ -116,9 +116,9 @@ const buildUserDataExport = async (userId, { now = new Date() } = {}) => {
     Tenant.findAll({ where: { ownerUserId: userId, status: { [Op.ne]: TenantStatus.DELETED } } }),
   ]);
   const savedListings = saved.length
-    ? await GymListing.findAll({ where: { id: { [Op.in]: saved.map((s) => s.businessId) } }, attributes: ['id', 'title'], raw: true })
+    ? await GymListing.findAll({ where: { id: { [Op.in]: saved.map((s) => s.businessId) } }, attributes: ['id', 'name'], raw: true })
     : [];
-  const titleOf = Object.fromEntries(savedListings.map((l) => [l.id, l.title]));
+  const titleOf = Object.fromEntries(savedListings.map((l) => [l.id, l.name]));
 
   const result = {
     format: 'gymsera-user-data-export',

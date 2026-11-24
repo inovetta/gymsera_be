@@ -63,8 +63,8 @@ describe('RT-05: client_message_id idempotency', () => {
   test('new inquiry: resend returns the same message and conversation', async () => {
     const listing = await factories.createGymListing(tenant.id, { branchId: uuidv4(), cityId: 1 });
     const key = uuidv4();
-    const first = await inbox.createTravelerInquiry(traveler.id, listing.branchId, 'is it open?', { clientMessageId: key });
-    const again = await inbox.createTravelerInquiry(traveler.id, listing.branchId, 'is it open?', { clientMessageId: key });
+    const first = await inbox.createTravelerInquiry(traveler.id, listing.primaryBranchId, 'is it open?', { clientMessageId: key });
+    const again = await inbox.createTravelerInquiry(traveler.id, listing.primaryBranchId, 'is it open?', { clientMessageId: key });
 
     expect(again.message.id).toBe(first.message.id);
     expect(again.conversation.id).toBe(first.conversation.id);

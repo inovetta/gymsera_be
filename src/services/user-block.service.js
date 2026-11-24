@@ -76,7 +76,7 @@ const latestConversations = async (pairs) => {
   if (!pairs.length) return new Map();
   const rows = await Conversation.findAll({
     where: { [Op.or]: pairs.map(({ userId, organizationId }) => ({ userId, organizationId })) },
-    include: [{ model: GymListing, as: 'gymListing', attributes: ['id', 'title'] }],
+    include: [{ model: GymListing, as: 'gymListing', attributes: ['id', 'name'] }],
     order: [['lastMessageAt', 'DESC']],
   });
   const map = new Map();
@@ -99,7 +99,7 @@ const listForUser = async (userId) => {
     const c = convs.get(`${r.userId}:${r.organizationId}`);
     return {
       organizationId: r.organizationId,
-      name: c?.gymListing?.title || r.tenant?.organizationName || 'Gym',
+      name: c?.gymListing?.name || r.tenant?.organizationName || 'Gym',
       conversationId: c?.id || null,
       blockedAt: r.createdAt,
     };

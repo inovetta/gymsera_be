@@ -509,8 +509,8 @@ const titleFor = async (link) => {
       return { ...base, title: t.firstBusinessName || t.organizationName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
     }
     if (link.target === 'business') {
-      const l = await GymListing.findByPk(link.targetId, { attributes: ['id', 'title', 'latitude', 'longitude'] });
-      return { ...base, listingId: link.targetId, title: l ? l.title : null, latitude: num(l?.latitude), longitude: num(l?.longitude) };
+      const l = await GymListing.findByPk(link.targetId, { attributes: ['id', 'name', 'latitude', 'longitude'] });
+      return { ...base, listingId: link.targetId, title: l ? l.name : null, latitude: num(l?.latitude), longitude: num(l?.longitude) };
     }
     const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'connectionStringEncrypted'] });
     const out = { ...base, branchId: link.targetId };

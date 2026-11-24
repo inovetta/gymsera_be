@@ -275,8 +275,8 @@ router.delete('/area-aliases/:id', validate.strict([param('id').isInt({ min: 1 }
 
 // ── Gym listing management ─────────────────────────────────────────────────────
 router.get('/organizations/:organizationId/gym-listing', adminController.getGymListing);
-router.post('/organizations/:organizationId/gym-listing', validate.allowBody(['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson']), adminController.createGymListing);
-router.patch('/organizations/:organizationId/gym-listing', validate.allowBody(['title', 'shortDescription', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status']), adminController.updateGymListing);
+router.post('/organizations/:organizationId/gym-listing', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson']), adminController.createGymListing);
+router.patch('/organizations/:organizationId/gym-listing', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status']), adminController.updateGymListing);
 router.post('/organizations/:organizationId/gym-listing/logo', upload.image('logo'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingLogo);
 router.post('/organizations/:organizationId/gym-listing/cover', upload.image('cover'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingCover);
 router.post('/organizations/:organizationId/gym-listing/images', upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingImages);

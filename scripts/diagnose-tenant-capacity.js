@@ -106,7 +106,7 @@ const line = (n = 74) => console.log('─'.repeat(n));
 
       const listings = await GymListing.findAll({
         where: { organizationId },
-        attributes: ['id', 'title', 'status', 'reservedSlots'],
+        attributes: ['id', 'name', 'status', 'reservedSlots'],
       });
 
       console.log('');
@@ -118,7 +118,7 @@ const line = (n = 74) => console.log('─'.repeat(n));
         });
         if (l.status !== 'INACTIVE') reservedTotal += l.reservedSlots;
         console.log(
-          `    ${(l.title || l.id).padEnd(24)} ${l.status.padEnd(9)} ` +
+          `    ${(l.name || l.id).padEnd(24)} ${l.status.padEnd(9)} ` +
           `activeBranches ${branchesHere}  reservedSlots ${l.reservedSlots}` +
           (l.status === 'INACTIVE' ? '   (INACTIVE — not counted)' : '')
         );

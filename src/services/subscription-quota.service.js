@@ -387,7 +387,7 @@ const auditCapacity = async (organizationId, tenantDb) => {
 
   const listings = await GymListing.findAll({
     where: { organizationId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
-    attributes: ['id', 'title', 'reservedSlots'],
+    attributes: ['id', 'name', 'reservedSlots'],
     order: [['createdAt', 'ASC']],
   });
 
@@ -410,7 +410,7 @@ const auditCapacity = async (organizationId, tenantDb) => {
     const actual = l.reservedSlots;
     return {
       listingId: l.id,
-      title: l.title,
+      title: l.name,
       actualReservedSlots: actual,
       ledgerReservedSlots: expected,
       drift: actual - expected,
@@ -442,7 +442,7 @@ const auditCapacity = async (organizationId, tenantDb) => {
     // CAP-07: "Organization never empty" — report ACTIVE organizations with 0 ACTIVE branches
     const activeOrgs = await GymListing.findAll({
       where: { organizationId, status: 'ACTIVE' },
-      attributes: ['id', 'title'],
+      attributes: ['id', 'name'],
     });
     const activeBranchesList = await tenantDb.models.Branch.findAll({
       where: { status: 'ACTIVE' },
@@ -453,7 +453,7 @@ const auditCapacity = async (organizationId, tenantDb) => {
     );
     emptyActiveOrgs = activeOrgs
       .filter((org) => !activeListingIds.has(org.id))
-      .map((org) => ({ listingId: org.id, title: org.title }));
+      .map((org) => ({ listingId: org.id, title: org.name }));
   }
 
   // A lapsed plan records its overage on the lapsed row (NEW-170).

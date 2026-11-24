@@ -51,8 +51,8 @@ async function seed() {
     console.log(`Tenant ${tenant.organizationName} has ${listings.length} listings.`);
 
     for (const listing of listings) {
-      if (!listing.branchId) continue;
-      console.log(`Seeding conversations for branch: ${listing.title}`);
+      if (!listing.primaryBranchId) continue;
+      console.log(`Seeding conversations for branch: ${listing.name}`);
 
       for (let i = 0; i < Math.min(dummyConversations.length, users.length); i++) {
         const user = users[i];
@@ -62,7 +62,7 @@ async function seed() {
         let conversation = await Conversation.findOne({
           where: {
             organizationId: tenant.id,
-            branchId: listing.branchId,
+            branchId: listing.primaryBranchId,
             userId: user.id,
             type: dummy.type
           }
@@ -71,7 +71,7 @@ async function seed() {
         if (!conversation) {
           conversation = await Conversation.create({
             organizationId: tenant.id,
-            branchId: listing.branchId,
+            branchId: listing.primaryBranchId,
             userId: user.id,
             type: dummy.type,
             unreadCountHost: 0,

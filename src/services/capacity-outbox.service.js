@@ -89,7 +89,7 @@ const processOutboxEntry = async (tenantDb, outboxId) => {
 
     // Clean up primary branchId pointer on listing if branch was deleted
     if (payload.action === 'BRANCH_DELETED' && payload.branchId) {
-      await GymListing.update({ branchId: null }, { where: { branchId: payload.branchId }, transaction: platformTx });
+      await GymListing.update({ primaryBranchId: null }, { where: { primaryBranchId: payload.branchId }, transaction: platformTx });
     }
 
     await platformTx.commit();

@@ -41,7 +41,7 @@ const _generateQrToken = () => `GE-${crypto.randomBytes(20).toString('hex').toUp
 const _resolveTenant = async (businessId) => {
   let listing = await GymListing.findOne({
     where: { id: businessId, status: 'ACTIVE' },
-    attributes: ['id', 'organizationId', 'title'],
+    attributes: ['id', 'organizationId', 'name'],
   });
 
   let organizationId = listing ? listing.organizationId : null;
@@ -64,7 +64,7 @@ const _resolveTenant = async (businessId) => {
           if (branch.businessId) {
             listing = await GymListing.findOne({
               where: { id: branch.businessId, status: 'ACTIVE' },
-              attributes: ['id', 'organizationId', 'title'],
+              attributes: ['id', 'organizationId', 'name'],
             });
           }
           break;
@@ -80,7 +80,7 @@ const _resolveTenant = async (businessId) => {
   if (!listing) {
     listing = await GymListing.findOne({
       where: { organizationId, status: 'ACTIVE' },
-      attributes: ['id', 'organizationId', 'title'],
+      attributes: ['id', 'organizationId', 'name'],
     });
   }
   if (!listing) throw createError('Gym listing not found or not active', 404);
@@ -268,7 +268,7 @@ const subscribe = async (userId, { planId, businessId, branchId, autoRenew, sour
     organizationId,
     businessId: gymListing.id,
     subscriptionId: subscription.id,
-    gymName: gymListing.title,
+    gymName: gymListing.name,
     planName: plan.name,
     startDate,
     endDate,
@@ -336,7 +336,7 @@ const subscribe = async (userId, { planId, businessId, branchId, autoRenew, sour
         role: 'host',
         type: 'subscription_pending',
         title: 'New Subscription Request',
-        message: `New subscription request from ${travelerName} for ${plan.name} at ${gymListing.title}.`,
+        message: `New subscription request from ${travelerName} for ${plan.name} at ${gymListing.name}.`,
         deepLink: `/host/gyms?tab=subscriptions&filter=PENDING&subscriptionId=${subscription.id}`,
         metadataJson: {
           subscriptionId: subscription.id,

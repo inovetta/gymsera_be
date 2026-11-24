@@ -160,8 +160,8 @@ const _getOrCreateGym = async (tenantDb, organizationId, businessId = null) => {
  */
 const _syncGymListing = async (organizationId, gym, patch) => {
   const syncFields = {};
-  if (patch.name !== undefined) syncFields.title = patch.name;
-  if (patch.description !== undefined) syncFields.shortDescription = patch.description;
+  if (patch.name !== undefined) syncFields.name = patch.name;
+  if (patch.description !== undefined) syncFields.description = patch.description;
   if (patch.logoUrl !== undefined) syncFields.logoUrl = patch.logoUrl;
   if (patch.coverImageUrl !== undefined) syncFields.coverImageUrl = patch.coverImageUrl;
   if (patch.genderType !== undefined) syncFields.genderType = patch.genderType;
@@ -467,14 +467,14 @@ const _guardLastBranchInOrganization = async (tenantDb, branch, confirmed) => {
 
   const listing = await GymListing.findByPk(branch.businessId);
   const err = createError(
-    `This is the last branch in "${listing?.title || 'this organization'}". ` +
+    `This is the last branch in "${listing?.name || 'this organization'}". ` +
       'Continuing will also remove the organization.',
     409
   );
   err.code = 'last_branch_in_organization';
   // `data` (not `details`) — that's the key errorHandler.js actually
   // forwards to the client alongside `code`.
-  err.data = { listingId: branch.businessId, businessName: listing?.title || null };
+  err.data = { listingId: branch.businessId, businessName: listing?.name || null };
   throw err;
 };
 
@@ -1280,7 +1280,7 @@ const restoreBranch = async (tenantDb, organizationId, branchId, restoredByUserI
         status: 'ACTIVE',
         branchId: branch.id,
       }, { transaction: platformTx });
-    } else if (!listing.branchId) {
+    } else if (!listing.primaryBranchId) {
       await listing.update({
         branchId: branch.id,
       }, { transaction: platformTx });
@@ -1461,7 +1461,7 @@ const deleteOrganization = async (tenantDb, organizationId, listingId, { strateg
       reservedSlotsAfter: listing.reservedSlots,
       actorUserId: deletedByUserId || null,
       actorType: deletedByUserId ? 'HOST' : 'SYSTEM',
-      reason: `Organization "${listing.title}" deleted`,
+      reason: `Organization "${listing.name}" deleted`,
       idempotencyKey: `org_deleted:${listingId}`,
     },
     { transaction: null }
@@ -1910,7 +1910,7 @@ const enrollMember = async (tenantDb, organizationId, { email, fullName, phone, 
       organizationId,
       businessId: gymListing.id,
       subscriptionId: subscription.id,
-      gymName: gymListing.title,
+      gymName: gymListing.name,
       planName: plan.name,
       startDate: start,
       endDate: end,

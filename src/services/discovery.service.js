@@ -497,8 +497,8 @@ const getGym = async (id) => {
       let resolvedBranch = branchRecord || null;
       if (branchRecord) {
         gymIdToUse = branchRecord.businessId;
-      } else if (listing && listing.branchId) {
-        const primaryBranch = await Branch.findByPk(listing.branchId);
+      } else if (listing && listing.primaryBranchId) {
+        const primaryBranch = await Branch.findByPk(listing.primaryBranchId);
         if (primaryBranch) {
           gymIdToUse = primaryBranch.businessId;
           resolvedBranch = primaryBranch;
@@ -539,13 +539,13 @@ const getGym = async (id) => {
       // Resolve branchId -> businessId mapping
       const tenantListings = await GymListing.findAll({
         where: { organizationId: listing.organizationId, status: 'ACTIVE' },
-        attributes: ['id', 'branchId'],
+        attributes: ['id', 'primaryBranchId'],
       });
 
       const branchToListingMap = {};
       for (const tl of tenantListings) {
-        if (tl.branchId) {
-          branchToListingMap[tl.branchId] = tl.id;
+        if (tl.primaryBranchId) {
+          branchToListingMap[tl.primaryBranchId] = tl.id;
         }
       }
 
@@ -560,10 +560,10 @@ const getGym = async (id) => {
       if (branchRecord && gym) {
         listing = listing.get({ plain: true });
         listing.id = branchRecord.id; // Override businessId with branchId so client matches
-        listing.title = displayName(gym.name, branchRecord.branchName);
+        listing.name = displayName(gym.name, branchRecord.branchName);
         listing.businessName = gym.name || null;
         listing.branchName = branchRecord.branchName || null;
-        listing.shortDescription = gym.description || branchRecord.tagline;
+        listing.description = gym.description || branchRecord.tagline;
         listing.coverImageUrl = _firstPhoto(branchRecord.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || listing.coverImageUrl || null;
         listing.latitude = branchRecord.latitude ? parseFloat(branchRecord.latitude) : listing.latitude;
         listing.longitude = branchRecord.longitude ? parseFloat(branchRecord.longitude) : listing.longitude;
@@ -1045,7 +1045,7 @@ const adminListReviews = async ({ businessId, status, page, limit, offset }) => 
     where,
     include: [
       { model: User, as: 'reviewer', attributes: ['id', 'fullName', 'email'] },
-      { model: GymListing, as: 'gym', attributes: ['id', 'title'] },
+      { model: GymListing, as: 'gym', attributes: ['id', 'name'] },
     ],
     order: [['createdAt', 'DESC']],
     limit,
@@ -1064,7 +1064,7 @@ const adminListReviews = async ({ businessId, status, page, limit, offset }) => 
   }
   const reviews = rows.map((r) => {
     const json = typeof r.toJSON === 'function' ? r.toJSON() : { ...r };
-    json.gymTitle = (r.branchId && titles.get(r.branchId)) || (json.gym && json.gym.title) || null;
+    json.gymTitle = (r.branchId && titles.get(r.branchId)) || (json.gym && json.gym.name) || null;
     return json;
   });
 
@@ -1094,7 +1094,7 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
     const { Tenant, GymListing } = require('../models/platform');
     const notificationsService = require('./notifications.service');
     const listing = await GymListing.findByPk(review.businessId);
-    const branchName = listing ? listing.title : 'Gym';
+    const branchName = listing ? listing.name : 'Gym';
     const tenant = await Tenant.findByPk(review.organizationId);
 
     if (action === 'approve') {

@@ -94,7 +94,7 @@ describe('BUG-29: admin reviews name the gym by the traveller rule', () => {
     jest.spyOn(discoveryCache, 'getSnapshot').mockResolvedValue([]);
     const res = await asAdmin('/admin/reviews');
     const r = res.body.data.reviews.find((x) => x.id === hiddenReview.id);
-    expect(r.gymTitle).toBe(listing.title);
+    expect(r.gymTitle).toBe(listing.name);
   });
 
   test('a failed snapshot never fails the list', async () => {
@@ -102,6 +102,6 @@ describe('BUG-29: admin reviews name the gym by the traveller rule', () => {
     jest.spyOn(console, 'warn').mockImplementation(() => {});
     const res = await asAdmin('/admin/reviews');
     expect(res.status).toBe(200);
-    expect(res.body.data.reviews.find((x) => x.id === liveReview.id).gymTitle).toBe(listing.title);
+    expect(res.body.data.reviews.find((x) => x.id === liveReview.id).gymTitle).toBe(listing.name);
   });
 });

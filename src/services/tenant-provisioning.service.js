@@ -396,8 +396,8 @@ const stepCreateListing = async (ctx) => {
       organizationId: tenant.id,
       cityId: safeCityId,
       areaId: safeAreaId,
-      title: tenant.firstBusinessName,
-      shortDescription: tenant.firstBusinessDescription || null,
+      name: tenant.firstBusinessName,
+      description: tenant.firstBusinessDescription || null,
       logoUrl: tenant.logoUrl || null,
       coverImageUrl: tenant.coverImageUrl || null,
       genderType: tenant.genderType || 'MIXED',
@@ -534,7 +534,7 @@ const stepCreateBranch = async (ctx) => {
 
   // Link primary branchId back to GymListing on platform DB
   if (listingId && branch?.id) {
-    await GymListing.update({ branchId: branch.id }, { where: { id: listingId } }).catch(() => {});
+    await GymListing.update({ primaryBranchId: branch.id }, { where: { id: listingId } }).catch(() => {});
   }
 
   // ── Initial membership plans for the initial branch (found by branch + name) ──

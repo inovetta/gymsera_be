@@ -56,7 +56,7 @@ const listInquiries = async (organizationId) => {
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ],
     order: [['lastMessageAt', 'DESC']],
@@ -89,7 +89,7 @@ const getInquiryDetail = async (conversationId, organizationId) => {
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ]
   });
@@ -138,7 +138,7 @@ const replyToInquiry = async (conversationId, senderId, text, organizationId, op
     const { GymListing } = require('../models/platform');
     const notificationsService = require('./notifications.service');
     const listing = await GymListing.findByPk(conversation.businessId);
-    const tenantName = listing ? listing.title : 'GymsEra Host';
+    const tenantName = listing ? listing.name : 'GymsEra Host';
 
     await notificationsService.createNotification({
       userId: conversation.userId,
@@ -215,7 +215,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
   const listing = await GymListing.findOne({
     where: {
       [Op.or]: [
-        { branchId: branchIdOrGymId },
+        { primaryBranchId: branchIdOrGymId },
         { id: branchIdOrGymId }
       ]
     }
@@ -227,7 +227,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
     throw err;
   }
 
-  const finalBranchId = listing.branchId || branchIdOrGymId;
+  const finalBranchId = listing.primaryBranchId || branchIdOrGymId;
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
   await userBlocks.assertCanMessage(userId, listing.organizationId, BlockSide.USER);
@@ -312,7 +312,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
         role: 'host',
         type: 'inquiry_received',
         title: 'New Inquiry Received',
-        message: `New inquiry from ${travelerName} about ${listing.title}.`,
+        message: `New inquiry from ${travelerName} about ${listing.name}.`,
         deepLink: '/host/inbox',
         metadataJson: { conversationId: conversation.id, branchId: finalBranchId },
       });
@@ -335,7 +335,7 @@ const listTravelerConversations = async (userId) => {
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ],
     order: [['lastMessageAt', 'DESC']],
@@ -349,7 +349,7 @@ const getTravelerConversationDetail = async (conversationId, userId) => {
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ]
   });
@@ -457,7 +457,7 @@ const findOrCreateHostConversation = async (organizationId, userId, branchId, in
     listing = await GymListing.findOne({
       where: {
         [Op.or]: [
-          { branchId: finalBranchId },
+          { primaryBranchId: finalBranchId },
           { id: finalBranchId },
         ],
       },
@@ -466,13 +466,13 @@ const findOrCreateHostConversation = async (organizationId, userId, branchId, in
 
   if (!listing) {
     listing = await GymListing.findOne({ where: { organizationId } });
-    if (listing && listing.branchId && !finalBranchId) {
-      finalBranchId = listing.branchId;
+    if (listing && listing.primaryBranchId && !finalBranchId) {
+      finalBranchId = listing.primaryBranchId;
     }
   }
 
   if (!finalBranchId) {
-    finalBranchId = listing ? listing.branchId : organizationId;
+    finalBranchId = listing ? listing.primaryBranchId : organizationId;
   }
 
   // NEW-256: an opening message is a message (blocked pair, listed word).
@@ -497,7 +497,7 @@ const findOrCreateHostConversation = async (organizationId, userId, branchId, in
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       },
     ],
   });
@@ -534,7 +534,7 @@ const findOrCreateHostConversation = async (organizationId, userId, branchId, in
         {
           model: GymListing,
           as: 'gymListing',
-          attributes: ['id', 'title', 'logoUrl', 'branchId'],
+          attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
         },
       ],
     });
