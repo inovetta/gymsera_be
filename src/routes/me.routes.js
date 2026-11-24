@@ -307,7 +307,7 @@ router.post('/cancel-deletion', validate.allowBody([]), meController.cancelDelet
 // ── Traveler Inbox ────────────────────────────────────────────────────────────
 router.get('/inbox', meController.listMyInbox);
 router.get('/inbox/:conversationId', meController.getMyConversation);
-router.post('/inbox/:conversationId/reply', validate.allowBody(['clientMessageId', 'client_message_id', 'text']), meController.replyToMyConversation);
+router.post('/inbox/:conversationId/reply', validate.allowBody(['clientMessageId', 'text']), meController.replyToMyConversation);
 router.patch('/inbox/:conversationId/read', validate.allowBody([]), meController.markMyConversationRead);
 // NEW-256: the traveller blocks / unblocks the gym of a conversation; Settings › Blocked lists them.
 router.post('/inbox/:conversationId/block', validate.strict(moderationValidators.travellerConversation), moderationController.blockTraveller);

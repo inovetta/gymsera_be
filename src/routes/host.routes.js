@@ -255,7 +255,7 @@ router.patch('/branches/:branchId/resubmit-visibility', authenticate, tenantCont
 router.get('/inbox/inquiries', authenticate, authorize('GYM_HOST'), hostController.listInquiries);
 router.post('/inbox/conversations', authenticate, authorize('GYM_HOST'), validate.allowBody(['branchId', 'initialMessage', 'userId']), hostController.findOrCreateConversation);
 router.get('/inbox/inquiries/:inquiryId', authenticate, authorize('GYM_HOST'), hostController.getInquiryDetail);
-router.post('/inbox/inquiries/:inquiryId/reply', authenticate, authorize('GYM_HOST'), validate.allowBody(['clientMessageId', 'client_message_id', 'text']), hostController.replyToInquiry);
+router.post('/inbox/inquiries/:inquiryId/reply', authenticate, authorize('GYM_HOST'), validate.allowBody(['clientMessageId', 'text']), hostController.replyToInquiry);
 router.patch('/inbox/inquiries/:inquiryId/read', authenticate, authorize('GYM_HOST'), validate.allowBody([]), hostController.markInquiryRead);
 // NEW-256: the gym blocks / unblocks the traveller of a conversation; the inbox lists the blocked.
 router.post('/inbox/inquiries/:inquiryId/block', authenticate, authorize('GYM_HOST'), validate.strict(moderationValidators.hostConversation), moderationController.blockFromHost);

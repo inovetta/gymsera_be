@@ -159,7 +159,7 @@ const init = (httpServer) => {
     socket.on('send_message', async (payload, callback) => {
       try {
         const { conversationId, text, tempId } = payload || {};
-        const clientMessageId = payload?.clientMessageId ?? payload?.client_message_id;
+        const clientMessageId = payload?.clientMessageId;
         if (!conversationId || !text || !text.trim()) {
           if (typeof callback === 'function') {
             return callback({ success: false, error: 'conversationId and text required' });

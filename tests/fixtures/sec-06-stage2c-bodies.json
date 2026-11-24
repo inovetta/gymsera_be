@@ -529,7 +529,6 @@
    "path": "/api/v1/host/inbox/inquiries/:p/reply",
    "allowed": [
     "clientMessageId",
-    "client_message_id",
     "text"
    ],
    "clientKeys": [
@@ -747,7 +746,6 @@
    "path": "/api/v1/me/inbox/:p/reply",
    "allowed": [
     "clientMessageId",
-    "client_message_id",
     "text"
    ],
    "clientKeys": [

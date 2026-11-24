@@ -284,7 +284,7 @@ const replyToMyConversation = async (req, res, next) => {
       req.params.conversationId,
       req.user.sub,
       req.body.text,
-      { clientMessageId: req.body.clientMessageId ?? req.body.client_message_id }
+      { clientMessageId: req.body.clientMessageId }
     );
     return sendSuccess(res, { message }, 'Message sent', 201);
   } catch (err) {

@@ -1614,7 +1614,7 @@ const replyToInquiry = async (req, res, next) => {
       throw createError('Message text is required', 400);
     }
     const message = await inboxService.replyToInquiry(inquiryId, req.user.id, text.trim(), organizationId, {
-      clientMessageId: req.body.clientMessageId ?? req.body.client_message_id,
+      clientMessageId: req.body.clientMessageId,
     });
     return sendSuccess(res, message, 'Reply sent successfully', 201);
   } catch (err) {

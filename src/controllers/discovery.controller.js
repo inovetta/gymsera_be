@@ -202,7 +202,7 @@ const submitInquiry = async (req, res, next) => {
       req.user.sub,
       req.params.branchId,
       req.body.message,
-      { clientMessageId: req.body.clientMessageId ?? req.body.client_message_id }
+      { clientMessageId: req.body.clientMessageId }
     );
     return sendSuccess(res, result, 'Inquiry submitted successfully', 201);
   } catch (err) {
