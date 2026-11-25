@@ -190,17 +190,18 @@ const _buildAllActiveBranches = async () => {
           }),
           MembershipPlan.findAll({
             where: { status: 'ACTIVE', isPublic: true },
-            attributes: ['price', 'branchId', 'isFeatured'],
+            attributes: ['price', 'businessId', 'branchId', 'isFeatured'],
             raw: true,
           })
         ]);
 
         for (const b of branches) {
           const listing = b.businessId ? listingMap.get(b.businessId) : null;
-          const gym = gymMap.get(b.businessId) || gyms[0];
+          const gym = gymMap.get(b.businessId);
+          if (!listing || !gym) continue;
 
           // Compute branch-specific minPrice dynamically based on public plans
-          const branchPlans = plans.filter(p => p.branchId === null || p.branchId === b.id);
+          const branchPlans = plans.filter(p => p.businessId === b.businessId && (p.branchId === null || p.branchId === b.id));
           // Only show branches that have at least 1 active public plan
           if (branchPlans.length === 0) continue;
 
@@ -492,66 +493,44 @@ const getGym = async (id) => {
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
       const { MembershipPlan, Branch, Gym } = tenantDb.models;
 
-      let gymIdToUse = null;
+      const gymIdToUse = listing.id;
       let resolvedBranch = branchRecord || null;
-      if (branchRecord) {
-        gymIdToUse = branchRecord.businessId;
-      } else if (listing && listing.primaryBranchId) {
-        const primaryBranch = await Branch.findByPk(listing.primaryBranchId);
+      if (!branchRecord && listing.primaryBranchId) {
+        const primaryBranch = await Branch.findOne({ where: { id: listing.primaryBranchId, businessId: listing.id, status: 'ACTIVE' } });
         if (primaryBranch) {
-          gymIdToUse = primaryBranch.businessId;
           resolvedBranch = primaryBranch;
         }
       }
 
-      if (!gymIdToUse) {
-        const fallbackBranch = await Branch.findOne({ where: { status: 'ACTIVE' } });
-        if (fallbackBranch) {
-          gymIdToUse = fallbackBranch.businessId;
-          resolvedBranch = fallbackBranch;
-        }
+      if (!resolvedBranch) {
+        resolvedBranch = await Branch.findOne({
+          where: { businessId: listing.id, status: 'ACTIVE' },
+          order: [['createdAt', 'ASC'], ['id', 'ASC']],
+        });
       }
 
-      branchRecord = resolvedBranch;
-
-      const gym = gymIdToUse
-        ? await Gym.findByPk(gymIdToUse)
-        : await Gym.findOne();
+      const gym = await Gym.findByPk(gymIdToUse);
 
       [membershipPlans, branches] = await Promise.all([
         MembershipPlan.findAll({
-          where: { status: 'ACTIVE', isPublic: true },
+          where: { businessId: listing.id, status: 'ACTIVE', isPublic: true },
           attributes: ['id', 'businessId', 'name', 'description', 'durationType', 'durationValue', 'price', 'joiningFee', 'securityFee', 'isTrial', 'branchId', 'freezeLimitDays', 'visitLimit', 'isFeatured'],
           order: [['price', 'ASC']],
         }),
         Branch.findAll({
           where: {
             ...TRAVELLER_VISIBLE_BRANCH(),
-            ...(gymIdToUse ? { businessId: gymIdToUse } : {}),
+            businessId: gymIdToUse,
           },
           // R-113 H6: hoursJson and timezone for the week and "open now" (Branch#toJSON).
-          attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hoursJson', 'timezone', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
+          attributes: ['id', 'businessId', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hoursJson', 'timezone', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
           order: [['createdAt', 'ASC']],
         }),
       ]);
 
-      // Resolve branchId -> businessId mapping
-      const tenantListings = await GymListing.findAll({
-        where: { organizationId: listing.organizationId, status: 'ACTIVE' },
-        attributes: ['id', 'primaryBranchId'],
-      });
-
-      const branchToListingMap = {};
-      for (const tl of tenantListings) {
-        if (tl.primaryBranchId) {
-          branchToListingMap[tl.primaryBranchId] = tl.id;
-        }
-      }
-
       branches = branches.map(b => {
         // R-113 H6: the same branch object as everywhere else (Branch#toJSON adds the week and "open now").
         const plainBranch = b.toJSON();
-        plainBranch.businessId = branchToListingMap[plainBranch.id] || null;
         return plainBranch;
       });
 

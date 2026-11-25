@@ -105,6 +105,27 @@ describe('BUG-09: plan payloads carry the branch currency', () => {
     expect(c[gymWide.id]).toBe('USD');
     expect(c[pkrPlan.id]).toBeUndefined(); // another branch's plan is not shown here
   });
+
+  test('business detail keeps both of its branches and excludes another business in the same organization', async () => {
+    const otherListing = await factories.createGymListing(personas.owner.organizationId, { name: 'Other Business' });
+    const otherBranch = await factories.createBranch(tenantDb, otherListing.id, { name: 'Other Branch', currency: 'EUR' });
+    const otherPlan = await tenantDb.models.MembershipPlan.create({
+      businessId: otherListing.id, branchId: otherBranch.id, name: 'Other Monthly',
+      durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, price: 25,
+    });
+    await factories.makeBranchLive(tenantDb, first);
+    await factories.makeBranchLive(tenantDb, otherBranch);
+
+    const res = await asPersona('anonymous').get(`/discovery/businesses/${listing.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.business.id).toBe(listing.id);
+    const planIds = res.body.data.membershipPlans.map((plan) => plan.id);
+    expect(planIds).toEqual(expect.arrayContaining([usdPlan.id, pkrPlan.id, gymWide.id]));
+    expect(planIds).not.toContain(otherPlan.id);
+    const branchIds = res.body.data.business.branches.map((branch) => branch.id);
+    expect(branchIds).toEqual(expect.arrayContaining([first.id, usd.id]));
+    expect(branchIds).not.toContain(otherBranch.id);
+  });
 });
 
 describe('BUG-09: Become a Host says which currency the first branch will get', () => {
