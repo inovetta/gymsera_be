@@ -94,7 +94,10 @@ router.post(
 );
 // NEW-140 (P9): the first branch's location may come from Google (CMS New Organization), with its place id.
 // NEW-282: a retry with the same Idempotency-Key answers the first result (no second brand / slot).
-router.post('/businesses', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, idempotency(), validate.strict([...gymsValidators.branchLocation, ...gymsValidators.listingFacilities], { stage: 2, allow: ['address', 'branchSource', 'contactPhone', 'coverImageUrl', 'closingTime', 'genderType', 'businessDescription', 'businessName', 'hours', 'images', 'logoUrl', 'openingTime', 'packages'] }), hostController.createListing);
+router.post('/businesses', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, idempotency(), validate.strict([require('../validators/first-branch.validator').nested()], { stage: 1, allow: ['businessName', 'businessDescription', 'genderType', 'contactPhone', 'logoUrl', 'coverImageUrl', 'facilitiesJson'] }), hostController.createListing);
+const firstBranchValidator = require('../validators/first-branch.validator');
+router.patch('/businesses/:businessId/first-branch', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere,
+  validate.strict([firstBranchValidator.wholeBody({ partial: true })], { stage: 1, allow: [...firstBranchValidator.KEYS] }), hostController.updateHeldFirstBranch);
 // Phase 7 P5 (BUG-22): one organization and its own gym details, for Edit Organization.
 router.get('/businesses/:businessId', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), hostController.getListing);
 router.put('/businesses/:businessId', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'businessDescription', 'businessName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);

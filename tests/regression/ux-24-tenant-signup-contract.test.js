@@ -23,6 +23,7 @@ const { startTestServer, stopTestServer } = require('../harness/test-server');
 const { createUser } = require('../harness/factories');
 const { Tenant, PlatformPackage } = require('../../src/models/platform');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 const API = '/api/v1';
 
@@ -103,16 +104,12 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
     longitude: 71.57,
   };
 
-  const mainBranch = (extra = {}) => ({
-    name: 'UX24 Gym',
-    address: 'Main Boulevard, Peshawar',
-    latitude: 34.01,
-    longitude: 71.57,
-    phone: null,
-    openingTime: null,
-    closingTime: null,
-    cityId: 1,
-    ...extra,
+  const profile = async (extra = {}) => ({
+    organizationName: 'UX24 Fitness',
+    firstBusinessName: baseProfile.firstBusinessName,
+    firstBusinessDescription: baseProfile.firstBusinessDescription,
+    firstBranch: await firstBranchInput({ branchName: 'UX24 Gym', address: baseProfile.address,
+      latitude: baseProfile.latitude, longitude: baseProfile.longitude, packages: [MOBILE_PLAN], ...extra }),
   });
 
   describe('register', () => {
@@ -146,16 +143,16 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
     });
   });
 
-  describe('M1: web shape (gym-profile without plans) cannot finalize', () => {
-    test('finalize BANK_TRANSFER is refused with 400 when no membership plan was sent', async () => {
+  describe('J10: first-business is a complete body', () => {
+    test('first-business without plans is refused before finalize', async () => {
       const { organizationId, token } = await registerHost('web');
 
       // Exactly what gym-owner-register.tsx sends: no firstBranchDraft.plans.
-      const profile = await request(app)
+      const profileResponse = await request(app)
         .post(`${API}/organizations/${organizationId}/first-business`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ ...baseProfile, firstBranchDraft: mainBranch() });
-      expect(profile.status).toBe(200);
+        .send(await profile({ packages: [] }));
+      expect(profileResponse.status).toBe(422);
 
       const select = await request(app)
         .post(`${API}/organizations/${organizationId}/select-package`)
@@ -182,11 +179,11 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       async (paymentMethod) => {
         const { organizationId, token } = await registerHost(`web_${paymentMethod}`);
 
-        const profile = await request(app)
+        const profileResponse = await request(app)
           .post(`${API}/organizations/${organizationId}/first-business`)
           .set('Authorization', `Bearer ${token}`)
-          .send({ ...baseProfile, firstBranchDraft: mainBranch({ plans: [MOBILE_PLAN] }) });
-        expect(profile.status).toBe(200);
+          .send(await profile());
+        expect(profileResponse.status).toBe(200);
 
         const select = await request(app)
           .post(`${API}/organizations/${organizationId}/select-package`)
@@ -212,7 +209,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
   });
 
   describe('mobile shape', () => {
-    test('three gym-profile saves, then finalize IN_APP_PURCHASE with no select-package', async () => {
+    test('incomplete saves are refused; complete first-business finalizes IN_APP_PURCHASE', async () => {
       const { organizationId, token } = await registerHost('mobile');
       const post = (body) =>
         request(app)
@@ -226,7 +223,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         firstBusinessDescription: baseProfile.firstBusinessDescription,
         genderType: 'FEMALE_ONLY',
       });
-      expect(s1.status).toBe(200);
+      expect(s1.status).toBe(422);
 
       // step 2 (saveStep2Data): address + branch data
       const s2 = await post({
@@ -236,30 +233,22 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         address: baseProfile.address,
         latitude: baseProfile.latitude,
         longitude: baseProfile.longitude,
-        firstBranchDraft: mainBranch(),
+        firstBranchDraft: { name: 'UX24 Gym' },
       });
-      expect(s2.status).toBe(200);
+      expect(s2.status).toBe(422);
 
       // step 5 (saveStep5Plans): same branch data plus plans
-      const s5 = await post({
-        firstBusinessName: baseProfile.firstBusinessName,
-        firstBusinessDescription: baseProfile.firstBusinessDescription,
-        genderType: 'FEMALE_ONLY',
-        address: baseProfile.address,
-        latitude: baseProfile.latitude,
-        longitude: baseProfile.longitude,
-        firstBranchDraft: mainBranch({ plans: [MOBILE_PLAN] }),
-      });
+      const s5 = await post(await profile());
       expect(s5.status).toBe(200);
 
-      // Plans survive the merge; later saves do not drop earlier fields.
+      // J10 stores the submitted complete branch.
       const stored = await Tenant.findByPk(organizationId);
       const branch = typeof stored.firstBranchDraft === 'string'
         ? JSON.parse(stored.firstBranchDraft)
         : stored.firstBranchDraft;
       expect(branch.plans).toHaveLength(1);
       expect(branch.address).toBe(baseProfile.address);
-      expect(stored.genderType).toBe('FEMALE_ONLY');
+      expect(branch.branchName).toBe('UX24 Gym');
 
       const finalize = await request(app)
         .post(`${API}/organizations/${organizationId}/finalize`)
@@ -278,14 +267,14 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       await request(app)
         .post(`${API}/organizations/${organizationId}/first-business`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ ...baseProfile, firstBranchDraft: mainBranch({ plans: [MOBILE_PLAN] }) })
+        .send(await profile())
         .expect(200);
 
-      const urls = ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'];
+      const urls = ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg', 'https://cdn.example.com/c.jpg'];
       const second = await request(app)
         .post(`${API}/organizations/${organizationId}/first-business`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ ...baseProfile, firstBranchDraft: { imagesJson: urls } });
+        .send(await profile({ imagesJson: urls }));
       expect(second.status).toBe(200);
 
       const stored = await Tenant.findByPk(organizationId);
@@ -311,7 +300,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       const res = await request(app)
         .post(`${API}/organizations/${organizationId}/first-business`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ ...baseProfile, genderType: 'EVERYONE' });
+        .send({ ...(await profile()), genderType: 'EVERYONE' });
       expect(res.status).toBe(422);
     });
 
@@ -320,7 +309,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       const res = await request(app)
         .post(`${API}/organizations/${organizationId}/first-business`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ ...baseProfile, firstBranchDraft: mainBranch({ plans: [{ ...MOBILE_PLAN, price: -1 }] }) });
+        .send(await profile({ packages: [{ ...MOBILE_PLAN, price: -1 }] }));
       expect(res.status).toBe(422);
     });
 
@@ -339,7 +328,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       const res = await request(app)
         .post(`${API}/organizations/${a.organizationId}/first-business`)
         .set('Authorization', `Bearer ${b.token}`)
-        .send(baseProfile);
+        .send(await profile());
       expect(res.status).toBe(404);
     });
   });

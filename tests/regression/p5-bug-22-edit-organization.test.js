@@ -11,6 +11,7 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
 const { GymListing, TenantSubscription } = require('../../src/models/platform');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 let personas;
 let tenantDb;
@@ -44,10 +45,11 @@ const approvePending = () =>
 
 const newOrg = async (businessName, packages = [plan(`${businessName} Monthly`)]) => {
   await approvePending();
-  const res = await asPersona('owner').post('/host/businesses', { businessName, branchSource: 'new', cityId: 1, packages });
+  const res = await asPersona('owner').post('/host/businesses', { businessName,
+    firstBranch: await firstBranchInput({ branchName: businessName, packages }) });
   expect(res.status).toBe(201);
   await approvePending();
-  return res.body.data;
+  return res.body.data.business;
 };
 
 

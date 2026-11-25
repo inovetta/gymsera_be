@@ -17,6 +17,7 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
 const { personaManager } = require('../harness/personas');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 let fetchSpy;
 const calls = [];
@@ -260,14 +261,19 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
       ownerUserId: host.user.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
     });
     expectNotListed(await host.as().post(`/organizations/${tenant.id}/first-business`).send({
-      firstBusinessName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: gulberg.id },
+      organizationName: 'Area Brand', firstBusinessName: 'Area Gym',
+      firstBranch: await firstBranchInput({ cityId: peshawar.id, areaId: gulberg.id }), // A3 J10
     }));
-    // No cityId in the branch data: the business's city is used.
-    expectNotListed(await host.as().post(`/organizations/${tenant.id}/first-business`).send({
-      firstBusinessName: 'Area Gym', firstBranchDraft: { address: 'x', areaId: gulberg.id },
-    }));
+    // A3 J10 requires cityId in FirstBranch, so a missing city fails validation before area lookup.
+    const noCity = await host.as().post(`/organizations/${tenant.id}/first-business`).send({
+      organizationName: 'Area Brand', firstBusinessName: 'Area Gym',
+      firstBranch: await firstBranchInput({ cityId: null, areaId: gulberg.id }),
+    });
+    expect(noCity.status).toBe(422);
+    expect(noCity.body.code).toBe('validation_error');
     const ok = await host.as().post(`/organizations/${tenant.id}/first-business`).send({
-      firstBusinessName: 'Area Gym', firstBranchDraft: { address: 'x', cityId: peshawar.id, areaId: ringRoad.id },
+      organizationName: 'Area Brand', firstBusinessName: 'Area Gym',
+      firstBranch: await firstBranchInput({ cityId: peshawar.id, areaId: ringRoad.id }),
     });
     expect(ok.status).toBe(200);
   });
@@ -283,7 +289,7 @@ describe('NEW-259: every write that takes an areaId checks it belongs to the cit
 
   test('POST /host/businesses (new organization)', async () => {
     expectNotListed(await asPersona('owner').post('/host/businesses').send({
-      businessName: 'Area Org 259', cityId: peshawar.id, areaId: gulberg.id, packages: [{ name: 'Monthly', price: 50 }],
+      businessName: 'Area Org 259', firstBranch: await firstBranchInput({ cityId: peshawar.id, areaId: gulberg.id }), // A2 H2
     }));
   });
 

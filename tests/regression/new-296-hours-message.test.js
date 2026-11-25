@@ -11,6 +11,7 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { firstBranchInput } = require('../harness/first-branch-input');
 const hours = require('../../src/services/branch-hours.service');
 
 const MESSAGE = 'Closing time is before opening time. Check AM/PM, or pick a closing time up to 12:00 PM the next day.';
@@ -74,12 +75,13 @@ describe('NEW-296: Become a Host step 3 (POST /tenants/:id/first-business, the o
 
   test('18:00-14:00 is refused with the new sentence; 06:00-00:00 (12 AM closing) is stored', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { openingTime: '18:00', closingTime: '14:00' } });
+    const profile = (firstBranch) => ({ organizationName: 'Hours Brand', firstBusinessName: 'G', firstBranch }); // A3 J10
+    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send(profile(await firstBranchInput({ openingTime: '18:00', closingTime: '14:00' })));
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
     expect(JSON.stringify(bad.body)).toContain(MESSAGE);
 
-    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { openingTime: '06:00', closingTime: '00:00' } });
+    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send(profile(await firstBranchInput({ openingTime: '06:00', closingTime: '00:00' })));
     expect(ok.status).toBe(200);
     await tenant.reload();
     expect([tenant.firstBranchDraft.openingTime, tenant.firstBranchDraft.closingTime]).toEqual(['06:00', '00:00']);

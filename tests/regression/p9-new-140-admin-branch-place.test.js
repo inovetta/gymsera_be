@@ -11,6 +11,8 @@
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
+const { firstBranchInput } = require('../harness/first-branch-input');
+const { personaManager } = require('../harness/personas');
 
 let h;
 const organizationId = '11111111-1111-4111-8111-111111111111';
@@ -84,12 +86,14 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
     const res = await asPersona('owner')
       .post('/host/businesses')
       .send({
-        businessName: 'Second Org', businessDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
-        address: 'MM Alam Road', latitude: 31.51, longitude: 74.34, googlePlaceId: PLACE,
-        packages: [{ name: 'Monthly', price: 3000, durationType: 'MONTHLY', durationValue: 1 }],
+        businessName: 'Second Org', businessDescription: 'x', genderType: 'MIXED',
+        firstBranch: await firstBranchInput({ address: 'MM Alam Road', latitude: 31.51, longitude: 74.34, googlePlaceId: PLACE,
+          packages: [{ name: 'Monthly', price: 3000, durationType: 'MONTHLY', durationValue: 1 }] }), // A2 H2
       });
     expect(res.status).toBe(201);
-    const branch = await h.tenant1.models.Branch.findOne({ where: { businessId: res.body.data.id } });
+    expect(res.body.data.branch).toBeNull();
+    await require('../../src/services/admin.service').approveTenant(`${organizationId}:${res.body.data.business.id}`, personaManager.personas.platformAdmin.user.id);
+    const branch = await h.tenant1.models.Branch.findOne({ where: { businessId: res.body.data.business.id } });
     expect(branch.googlePlaceId).toBe(PLACE);
   });
 
@@ -97,9 +101,8 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
     const res = await asPersona('owner')
       .post('/host/businesses')
       .send({
-        businessName: 'Bad Org', businessDescription: 'x', genderType: 'MIXED', branchSource: 'new', cityId: 1,
-        address: 'x', googlePlaceId: 'not a place id; drop table',
-        packages: [{ name: 'Monthly', price: 3000 }],
+        businessName: 'Bad Org', businessDescription: 'x', genderType: 'MIXED',
+        firstBranch: await firstBranchInput({ googlePlaceId: 'not a place id; drop table' }), // A2 H2
       });
     expect(res.status).toBe(422);
   });

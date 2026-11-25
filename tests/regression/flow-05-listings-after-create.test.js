@@ -14,6 +14,7 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { signToken } = require('../../src/utils/jwt.utils');
 const request = require('supertest');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 describe('FLOW-05: a created organization is in the next GET /host/businesses', () => {
   let personas;
@@ -37,11 +38,10 @@ describe('FLOW-05: a created organization is in the next GET /host/businesses', 
 
     const created = await asPersona('owner').post('/host/businesses', {
       businessName: 'Flow05 New Org',
-      branchSource: 'new',
-      packages: [{ name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
+      firstBranch: await firstBranchInput({ packages: [{ name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
     });
     expect(created.status).toBe(201);
-    const newId = created.body.data.id;
+    const newId = created.body.data.business.id;
     expect(beforeIds).not.toContain(newId);
 
     const after = await asPersona('owner').get('/host/businesses');
@@ -65,7 +65,7 @@ describe('FLOW-05: a created organization is in the next GET /host/businesses', 
     try {
       created = await request(server).post('/api/v1/host/businesses')
         .set('Authorization', `Bearer ${noTenantToken}`)
-        .send({ businessName: 'Flow05 Tenantless Org', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }] }); // NEW-168: never an empty organization
+        .send({ businessName: 'Flow05 Tenantless Org', firstBranch: await firstBranchInput({ packages: [{ name: 'Monthly', price: 3000 }] }) }); // NEW-168: never an empty organization
       expect(created.status).toBe(201);
 
       const list = await request(server).get('/api/v1/host/businesses').set('Authorization', `Bearer ${noTenantToken}`);
@@ -82,7 +82,7 @@ describe('FLOW-05: a created organization is in the next GET /host/businesses', 
 
     // The same owner with a normal token sees it at once.
     const normal = await asPersona('otherTenantOwner').get('/host/businesses');
-    expect(normal.body.data.map((l) => l.id)).toContain(created.body.data.id);
+    expect(normal.body.data.map((l) => l.id)).toContain(created.body.data.business.id);
   });
 
   test('DEBUG_FLOW05 logs counts by status only (no ids, no names)', async () => {

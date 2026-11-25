@@ -11,6 +11,7 @@ const { createUser, createTenant } = require('../harness/factories');
 const { Tenant, PlatformAuditLog } = require('../../src/models/platform');
 const { runKycRetentionSweep } = require('../../src/jobs/kyc-retention.sweep');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 const API = '/api/v1';
 const DOCS = [{ key: 'kyc/x/id-front.png', name: 'id-front.png', type: 'image/png', size: 10 }];
@@ -99,7 +100,8 @@ describe('FLOW-04: re-apply after rejection', () => {
     const edit = await request(app)
       .post(`${API}/organizations/${tenant.id}/first-business`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ firstBusinessName: 'Iron Works 2' });
+      .send({ organizationName: 'Iron Works Brand', firstBusinessName: 'Iron Works 2',
+        firstBranch: await firstBranchInput({ branchName: 'Iron Works 2', packages: [PLAN] }) });
     expect(edit.status).toBe(200);
     const fin = await request(app)
       .post(`${API}/organizations/${tenant.id}/finalize`)

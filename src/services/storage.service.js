@@ -30,11 +30,14 @@ function getClient() {
 
 const saveLocalFallback = (buffer, key) => {
   try {
-    const uploadDir = path.join(__dirname, '../../public/uploads', path.dirname(key));
+    const root = process.env.NODE_ENV === 'test' && process.env.TEST_LOCAL_UPLOAD_DIR
+      ? process.env.TEST_LOCAL_UPLOAD_DIR
+      : path.join(__dirname, '../../public/uploads');
+    const uploadDir = path.join(root, path.dirname(key));
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
-    const filePath = path.join(__dirname, '../../public/uploads', key);
+    const filePath = path.join(root, key);
     fs.writeFileSync(filePath, buffer);
   } catch (err) {
     console.error('[Storage Service Local Fallback Write Error]', err.message);

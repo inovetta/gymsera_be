@@ -13,6 +13,7 @@ const { makeBranchLive } = require('../harness/factories');
 const { signToken } = require('../../src/utils/jwt.utils');
 const cache = require('../../src/services/discovery-cache.service');
 const subscriptionQuotaService = require('../../src/services/subscription-quota.service');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const slot = (open, close, forWho = 'all') => ({ open, close, for: forWho });
@@ -96,10 +97,14 @@ describe('H4: the writes that take a weekly schedule', () => {
 
   test('POST /host/businesses (another organisation) gives its first branch the week', async () => {
     const res = await asPersona('owner').post('/host/businesses').send({
-      businessName: `R113 Org ${Date.now()}`, packages: [{ name: 'Monthly', price: 50 }], hours: WEEKLY,
+      businessName: `R113 Org ${Date.now()}`,
+      firstBranch: await firstBranchInput({ packages: [{ name: 'Monthly', price: 50 }], hours: WEEKLY }),
     });
     expect(res.status).toBe(201);
-    const row = await Branch().findByPk(res.body.data.branch.id);
+    const listingId = res.body.data.business.id;
+    await require('../../src/services/admin.service').approveTenant(`${ctx.tenant1.id}:${listingId}`, admin.id);
+    const listing = await require('../../src/models/platform').GymListing.findByPk(listingId);
+    const row = await Branch().findByPk(listing.primaryBranchId);
     expect(row.hoursJson.days.sun.closed).toBe(true);
   });
 
@@ -221,12 +226,12 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     return { tenant, as: () => asPersona('anonymous', { Authorization: `Bearer ${token}` }) };
   };
 
-  test('gym-profile checks firstBranchDraft.hoursJson and stores it with its summary pair', async () => {
+  test('first-business checks firstBranch.hours and stores its summary pair', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
+    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'R113 Brand', firstBusinessName: 'Gym', firstBranch: await firstBranchInput({ hours: week({ all: [slot('08:00', '08:00')] }) }) });
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
-    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { hoursJson: WEEKLY } });
+    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'R113 Brand', firstBusinessName: 'Gym', firstBranch: await firstBranchInput({ hours: WEEKLY }) });
     expect(ok.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft.hoursJson.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);

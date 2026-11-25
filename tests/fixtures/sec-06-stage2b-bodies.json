@@ -606,31 +606,18 @@
   {
    "method": "POST",
    "path": "/api/v1/organizations/:p/first-business",
+   "stage": 1,
    "allowed": [
-    "address",
-    "coverImageUrl",
-    "firstBranchDraft",
+    "firstBranch",
     "firstBusinessDescription",
     "firstBusinessName",
-    "genderType",
-    "kycDocumentsJson",
-    "latitude",
-    "logoUrl",
-    "longitude",
     "organizationName"
    ],
    "clientKeys": [
-    "address",
-    "organizationName",
-    "coverImageUrl",
-    "genderType",
+    "firstBranch",
     "firstBusinessDescription",
     "firstBusinessName",
-    "kycDocumentsJson",
-    "latitude",
-    "logoUrl",
-    "longitude",
-    "firstBranchDraft"
+    "organizationName"
    ]
   },
   {

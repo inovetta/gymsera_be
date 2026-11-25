@@ -1608,6 +1608,22 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 37,
+    name: 'p037_held_first_branch',
+    description: 'NEW-303 M1: hold the submitted first branch on a business until approval.',
+    // ROLLBACK: after reverting the API, ALTER TABLE `business_listings` DROP COLUMN `first_branch_draft_json`;
+    // DELETE FROM `schema_migrations` WHERE `version` = 37.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      if (!(await r.tableExists(sequelize, 'business_listings'))) return null;
+      if (!(await r.columnInfo(sequelize, 'business_listings', 'first_branch_draft_json'))) {
+        await sequelize.query('ALTER TABLE `business_listings` ADD COLUMN `first_branch_draft_json` JSON NULL COMMENT \'Submitted first branch, built only after business approval.\', ALGORITHM=INPLACE, LOCK=NONE');
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

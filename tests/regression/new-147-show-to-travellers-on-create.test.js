@@ -10,6 +10,9 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
 const { GymListing, TenantSubscription } = require('../../src/models/platform');
+const { firstBranchInput } = require('../harness/first-branch-input');
+const { personaManager } = require('../harness/personas');
+const adminService = require('../../src/services/admin.service');
 
 let personas;
 let tenantDb;
@@ -38,10 +41,14 @@ const approvePending = () =>
 
 const newOrg = async (businessName, packages = [plan(`${businessName} Monthly`)]) => {
   await approvePending();
-  const res = await asPersona('owner').post('/host/businesses', { businessName, branchSource: 'new', cityId: 1, packages });
+  const res = await asPersona('owner').post('/host/businesses', {
+    businessName, firstBranch: await firstBranchInput({ branchName: businessName, packages }),
+  });
   expect(res.status).toBe(201);
-  await approvePending();
-  return res.body.data;
+  expect(res.body.data.branch).toBeNull();
+  await adminService.approveTenant(`${personas.owner.organizationId}:${res.body.data.business.id}`, personaManager.personas.platformAdmin.user.id);
+  const listing = await GymListing.findByPk(res.body.data.business.id);
+  return { branch: { id: listing.primaryBranchId } };
 };
 
 const plansOf = async (branchId) =>
@@ -63,7 +70,7 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
     await approvePending();
     const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
     const res = await asPersona('owner').post('/host/businesses', {
-      businessName: 'P5 Hidden Org', branchSource: 'new', cityId: 1, packages: [plan('Hidden', false)],
+      businessName: 'P5 Hidden Org', firstBranch: await firstBranchInput({ branchName: 'P5 Hidden Org', packages: [plan('Hidden', false)] }),
     });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('visible_plan_required');

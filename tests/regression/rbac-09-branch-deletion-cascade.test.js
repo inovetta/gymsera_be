@@ -125,7 +125,7 @@ describe('RBAC-09: Branch deletion cascade and permission revocation (spec §12.
       .set('Authorization', `Bearer ${freshToken}`);
     expect(statusRes.status).toBe(200);
     expect(statusRes.body.data.isStaff).toBe(false);
-    expect(statusRes.body.data.branches).toEqual([]);
+    expect(statusRes.body.data.organizations).toEqual([]); // API contract G11 staff-status wrapper
 
     // b) Accessing branch endpoints rejects access (404 branch access mask per SEC-01)
     const resStillForbidden = await request(appServer)

@@ -13,13 +13,18 @@ const { stopTestServer } = require('../harness/test-server');
 const { personaManager } = require('../harness/personas');
 const subscriptionQuotaService = require('../../src/services/subscription-quota.service');
 const { GymListing } = require('../../src/models/platform');
+const { firstBranchInput } = require('../harness/first-branch-input');
+const adminService = require('../../src/services/admin.service');
 
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const uniform = (open, close) => ({ v: 1, days: Object.fromEntries(DAYS.map((d) => [d, { closed: false, slots: [{ open, close, for: 'all' }] }])) });
 
 let ctx;
 let seq = 0;
-const listingBody = (extra = {}) => ({ businessName: `NEW297 Org ${Date.now()}-${(seq += 1)}`, packages: [{ name: 'Monthly', price: 50 }], ...extra });
+const listingBody = async (extra = {}) => ({
+  businessName: `NEW297 Org ${Date.now()}-${(seq += 1)}`,
+  firstBranch: await firstBranchInput({ packages: [{ name: 'Monthly', price: 50 }], ...extra }),
+});
 const Branch = () => ctx.tenant1Db.models.Branch;
 const listingCount = () => GymListing.count({ where: { organizationId: ctx.tenant1.id } });
 // One organisation at a time may be DRAFT / PENDING (the sequential gate): each one made here is set
@@ -27,8 +32,11 @@ const listingCount = () => GymListing.count({ where: { organizationId: ctx.tenan
 const create = async (body) => {
   const res = await asPersona('owner').post('/host/businesses').send(body);
   if (res.status === 201) {
-    const row = await Branch().findByPk(res.body.data.branch.id);
-    await GymListing.update({ status: 'INACTIVE' }, { where: { id: row.businessId } });
+    const businessId = res.body.data.business.id;
+    await adminService.approveTenant(`${ctx.tenant1.id}:${businessId}`, personaManager.personas.platformAdmin.user.id);
+    const listing = await GymListing.findByPk(businessId);
+    res.approvedBranchId = listing.primaryBranchId;
+    await listing.update({ status: 'INACTIVE' });
   }
   return res;
 };
@@ -48,16 +56,16 @@ afterAll(async () => {
 
 describe('NEW-297: POST /host/businesses keeps the old pair', () => {
   test('06:00-00:00 (12 AM closing) is stored on the first branch as the pair and a uniform week', async () => {
-    const res = await create(listingBody({ openingTime: '06:00', closingTime: '00:00' }));
+    const res = await create(await listingBody({ openingTime: '06:00', closingTime: '00:00' }));
     expect(res.status).toBe(201);
-    const row = await Branch().findByPk(res.body.data.branch.id);
+    const row = await Branch().findByPk(res.approvedBranchId);
     expect([row.openingTime, row.closingTime]).toEqual(['06:00', '00:00']);
     expect(row.hoursJson).toEqual(uniform('06:00', '00:00'));
   });
 
   test('a refused pair is 422 hours_invalid before anything is created', async () => {
     const before = await listingCount();
-    const res = await create(listingBody({ openingTime: '18:00', closingTime: '14:00' }));
+    const res = await create(await listingBody({ openingTime: '18:00', closingTime: '14:00' }));
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('hours_invalid');
     expect(JSON.stringify(res.body)).toContain('Check AM/PM');
@@ -65,18 +73,18 @@ describe('NEW-297: POST /host/businesses keeps the old pair', () => {
   });
 
   test('the week and the pair together are refused (as on every other route)', async () => {
-    const res = await create(listingBody({ hours: uniform('06:00', '22:00'), openingTime: '06:00', closingTime: '22:00' }));
+    const res = await create(await listingBody({ hours: uniform('06:00', '22:00'), openingTime: '06:00', closingTime: '22:00' }));
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('hours_invalid');
   });
 
-  test('the week alone still works (R-113 H4), and no hours at all leaves the branch without hours', async () => {
-    const week = await create(listingBody({ hours: uniform('00:00', '24:00') }));
+  test('the week alone still works (R-113 H4), and omitted hours use the H2 default', async () => {
+    const week = await create(await listingBody({ hours: uniform('00:00', '24:00') }));
     expect(week.status).toBe(201);
-    expect((await Branch().findByPk(week.body.data.branch.id)).hoursJson).toEqual(uniform('00:00', '24:00'));
-    const none = await create(listingBody());
+    expect((await Branch().findByPk(week.approvedBranchId)).hoursJson).toEqual(uniform('00:00', '24:00'));
+    const none = await create(await listingBody());
     expect(none.status).toBe(201);
-    const row = await Branch().findByPk(none.body.data.branch.id);
-    expect([row.hoursJson, row.openingTime, row.closingTime]).toEqual([null, null, null]);
+    const row = await Branch().findByPk(none.approvedBranchId);
+    expect([row.openingTime, row.closingTime]).toEqual(['06:00', '22:00']);
   });
 });

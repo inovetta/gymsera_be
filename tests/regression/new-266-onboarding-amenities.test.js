@@ -13,14 +13,17 @@ const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, fac
 const { stopTestServer } = require('../harness/test-server');
 const { personaManager } = require('../harness/personas');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { Area } = require('../../src/models/platform');
 
 const dbNames = [];
 let admin;
+let areaId;
 
 beforeAll(async () => {
   const h = await setupTestDatabases();
   await setupPersonas(h);
   admin = personaManager.personas.platformAdmin.user;
+  areaId = (await Area.create({ cityId: 1, name: 'NEW-266 Test Area' })).id;
 });
 
 afterAll(async () => {
@@ -31,6 +34,12 @@ afterAll(async () => {
 });
 
 const AMENITIES = ['Free Wi-Fi', 'Parking', 'Showers'];
+const firstBranch = (facilitiesJson = AMENITIES) => ({
+  branchName: 'Main', cityId: 1, areaId, address: 'Main Street', latitude: 24.86,
+  longitude: 67.01, phone: '+923001234567', facilitiesJson,
+  imagesJson: ['https://example.test/1.png', 'https://example.test/2.png', 'https://example.test/3.png'],
+  packages: [{ name: 'Monthly', price: 10, durationType: 'MONTHLY', durationValue: 1, isPublic: true }],
+});
 
 const draftHost = async () => {
   const user = await factories.createUser({ email: `n266-${Date.now()}@new266.test`, role: 'GYM_HOST', isHost: true });
@@ -40,24 +49,19 @@ const draftHost = async () => {
 };
 
 describe('NEW-266: Become a Host keeps the amenities', () => {
-  test('gym-profile stores firstBranchDraft.facilitiesJson; a later save without it keeps it', async () => {
+  test('a complete first-business submission stores firstBranchDraft.facilitiesJson for resume', async () => {
     const { tenant, as } = await draftHost();
-    const saved = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { facilitiesJson: AMENITIES } });
+    const saved = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Fitness Brand', firstBusinessName: 'Gym', firstBranch: firstBranch() });
     expect(saved.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
-    // The plans step sends its own fields only: the amenities stay.
-    await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { plans: [{ name: 'Monthly', price: 10 }] } });
-    await tenant.reload();
-    expect(tenant.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
-    // GET /tenants/me returns them for resume.
     expect((await as().get('/organizations/me')).body.data.organization.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
   });
 
   test('a list of names only: not a list, a non-text item or an over-long name → 422, nothing saved', async () => {
     const { tenant, as } = await draftHost();
     for (const bad of ['Parking', [{ name: 'x' }], ['x'.repeat(101)]]) {
-      const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { facilitiesJson: bad } });
+      const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Fitness Brand', firstBusinessName: 'Gym', firstBranch: firstBranch(bad) });
       expect(res.status).toBe(422);
     }
     await tenant.reload();
@@ -80,10 +84,10 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
 
   test('POST /host/businesses (another organisation) gives its first branch the amenities', async () => {
     const res = await asPersona('owner').post('/host/businesses').send({
-      businessName: `Org 266 ${Date.now()}`, facilitiesJson: AMENITIES, packages: [{ name: 'Monthly', price: 50 }],
+      businessName: `Org 266 ${Date.now()}`, firstBranch: firstBranch(),
     });
     expect(res.status).toBe(201);
-    const branch = await personaManager.context.tenant1Db.models.Branch.findByPk(res.body.data.branch.id);
-    expect(branch.facilitiesJson).toEqual(AMENITIES);
+    expect(res.body.data.branch).toBeNull();
+    expect(res.body.data.business.firstBranchDraft.facilitiesJson).toEqual(AMENITIES);
   });
 });

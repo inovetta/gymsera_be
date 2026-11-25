@@ -16,6 +16,7 @@ const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, fac
 const { stopTestServer } = require('../harness/test-server');
 const { personaManager } = require('../harness/personas');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 let City;
 let Area;
@@ -132,28 +133,30 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     expect(await Tenant.findOne({ where: { ownerUserId: h.user.id } })).toMatchObject({ areaId: hayatabad.id, areaStatus: null, areaRequestId: null });
   });
 
-  test('gym-profile: firstBranchDraft.areaRequestId → main_branch link; a save without area keys keeps it; areaId: null clears it (R-109, F1)', async () => {
+  test('first-business: FirstBranch.areaRequestId creates a draft link; resubmission keeps it; a real area replaces it', async () => {
     const h = await newHost();
     const tenant = await draftTenant(h.user);
     const r = await makeRequest(h.user.id, peshawar, 'Branch Town');
-    const first = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { name: 'Main', cityId: peshawar.id, areaRequestId: r.id } });
+    const firstBranch = await firstBranchInput({ branchName: 'Main', cityId: peshawar.id, areaRequestId: r.id });
+    const first = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Branch Brand', firstBusinessName: 'Main Gym', firstBranch });
     expect(first.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft).toMatchObject({ areaId: null, areaRequestId: r.id, areaStatus: 'pending_review' });
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toMatchObject({ areaRequestId: r.id });
 
     // Step 6 (plans) without area keys: kept.
-    const plans = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { plans: [{ name: 'Monthly', price: 10 }] } });
+    const plans = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Branch Brand', firstBusinessName: 'Main Gym', firstBranch: { ...firstBranch, packages: [{ name: 'Monthly', price: 10 }] } });
     expect(plans.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft).toMatchObject({ areaRequestId: r.id, areaStatus: 'pending_review' });
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).not.toBeNull();
 
-    // An explicit clear (what builds 21 to 24 send without an area): link and marker go.
-    const cleared = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { address: 'x', areaId: null } });
+    // H2 requires an area: choosing a real one removes the pending link.
+    const { areaRequestId, ...withoutRequest } = firstBranch;
+    const cleared = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Branch Brand', firstBusinessName: 'Main Gym', firstBranch: { ...withoutRequest, areaId: hayatabad.id } });
     expect(cleared.status).toBe(200);
     await tenant.reload();
-    expect(tenant.firstBranchDraft.areaId).toBeNull();
+    expect(tenant.firstBranchDraft.areaId).toBe(hayatabad.id);
     expect(tenant.firstBranchDraft.areaRequestId).toBeUndefined();
     expect(tenant.firstBranchDraft.areaStatus).toBeUndefined();
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toBeNull();
@@ -163,15 +166,17 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     const h = await newHost();
     const tenant = await draftTenant(h.user);
     const r = await makeRequest(h.user.id, peshawar, 'Swap Town');
-    await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { cityId: peshawar.id, areaRequestId: r.id } });
-    const swap = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { areaId: hayatabad.id } });
+    const firstBranch = await firstBranchInput({ cityId: peshawar.id, areaRequestId: r.id });
+    await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Swap Brand', firstBusinessName: 'Swap Gym', firstBranch });
+    const { areaRequestId, ...withoutRequest } = firstBranch;
+    const swap = await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Swap Brand', firstBusinessName: 'Swap Gym', firstBranch: { ...withoutRequest, areaId: hayatabad.id } });
     expect(swap.status).toBe(200);
     await tenant.reload();
     expect(tenant.firstBranchDraft).toMatchObject({ areaId: hayatabad.id });
     expect(tenant.firstBranchDraft.areaRequestId).toBeUndefined();
     expect(await linkOf('first_branch_draft', tenant.id, tenant.id)).toBeNull();
     const lahoreReq = await makeRequest(h.user.id, lahore, 'Lahore Branch Town');
-    expectCode(await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { areaRequestId: lahoreReq.id } }), 422, 'area_not_listed');
+    expectCode(await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Swap Brand', firstBusinessName: 'Swap Gym', firstBranch: { ...firstBranch, areaRequestId: lahoreReq.id } }), 422, 'area_not_listed');
   });
 
   test('GET /tenants/me: pendingArea for the tenant and firstBranchDraft.pendingArea for the draft first branch', async () => {
@@ -180,7 +185,7 @@ describe('A4: Become a Host (tenant and draft first branch)', () => {
     const r2 = await makeRequest(h.user.id, peshawar, 'Draft Branch Town');
     await h.as().post('/organizations/register').send({ organizationName: 'Me Gym', email: `me${seq}@new265w.test`, cityId: peshawar.id, areaRequestId: r1.id });
     const tenant = await Tenant.findOne({ where: { ownerUserId: h.user.id } });
-    await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { areaRequestId: r2.id } });
+    await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Me Brand', firstBusinessName: 'Me Gym', firstBranch: await firstBranchInput({ cityId: peshawar.id, areaRequestId: r2.id }) });
     const res = await h.as().get('/organizations/me');
     expect(res.status).toBe(200);
     expect(res.body.data.organization.pendingArea).toEqual({ requestId: r1.id, name: 'Org Town', status: 'pending_review', rejectReason: null });
@@ -266,7 +271,7 @@ describe('A4: "Choose your area again" (rejected marker, GET /host/status)', () 
     const h = await newHost();
     const tenant = await draftTenant(h.user, { areaId: hayatabad.id });
     const r = await makeRequest(h.user.id, peshawar, 'Branch Refused Town');
-    await h.as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'G', firstBranchDraft: { areaRequestId: r.id } });
+    await h.as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Refused Brand', firstBusinessName: 'Refused Gym', firstBranch: await firstBranchInput({ cityId: peshawar.id, areaRequestId: r.id }) });
     await r.update({ status: 'rejected', openKey: null, rejectReason: 'Duplicate' });
     await tenant.reload();
     await tenant.update({ firstBranchDraft: { ...tenant.firstBranchDraft, areaStatus: 'rejected' } });
@@ -282,18 +287,17 @@ describe('A4: "Choose your area again" (rejected marker, GET /host/status)', () 
 });
 
 describe('A4: host listing and branch routes', () => {
-  test('POST /host/businesses with areaRequestId writes two links (listing and its first branch) and the listing marker (R-109, F5)', async () => {
+  test('POST /host/businesses with areaRequestId holds the branch link until approval and marks the business (H2)', async () => {
     const r = await makeRequest(ownerUserId, peshawar, 'Two Links Town');
     const res = await asPersona('owner').post('/host/businesses').send({
-      businessName: `Org 265 ${Date.now()}`, cityId: peshawar.id, areaRequestId: r.id, packages: [{ name: 'Monthly', price: 50 }],
+      businessName: `Org 265 ${Date.now()}`, firstBranch: await firstBranchInput({ cityId: peshawar.id, areaRequestId: r.id, packages: [{ name: 'Monthly', price: 50 }] }),
     });
     expect(res.status).toBe(201);
-    const listingId = res.body.data.id;
-    const branchId = res.body.data.branch.id;
+    const listingId = res.body.data.business.id;
+    expect(res.body.data.branch).toBeNull();
     expect(await GymListing.findByPk(listingId)).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: r.id });
-    expect(res.body.data.branch.areaId).toBeNull();
     expect(await linkOf('business', ctx.tenant1.id, listingId)).toMatchObject({ areaRequestId: r.id });
-    expect(await linkOf('branch', ctx.tenant1.id, branchId)).toMatchObject({ areaRequestId: r.id });
+    expect(await ctx.tenant1Db.models.Branch.count({ where: { businessId: listingId } })).toBe(0);
     // Reads.
     const one = await asPersona('owner').get(`/host/businesses/${listingId}`);
     expect(one.body.data.pendingArea).toMatchObject({ requestId: r.id, name: 'Two Links Town', status: 'pending_review' });

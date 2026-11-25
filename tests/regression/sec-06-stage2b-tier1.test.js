@@ -40,7 +40,7 @@ describe('declared fields per route (fixture)', () => {
     const found = routes.filter((x) => x.key === key);
     expect(found.length).toBeGreaterThan(0);
     for (const f of found) {
-      expect(f.stage).toBe(2);
+      expect(f.stage).toBe(r.stage || 2); // J10 first-business rejects removed flat fields at stage 1
       expect([...f.allowed].sort()).toEqual(r.allowed);
       expect(r.clientKeys.filter((k) => !f.allowed.includes(k))).toEqual([]);
     }

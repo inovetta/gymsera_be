@@ -118,7 +118,7 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
       ).rejects.toThrow('Branch limit reached');
     });
 
-    test('createListing with branchSource: new consumes capacity or donor slots via createBranch', async () => {
+    test('Add Business reserves capacity and approval builds its first branch via createBranch', async () => {
       let sub = await TenantSubscription.findOne({ where: { organizationId } });
       if (sub) {
         await sub.update({ branchCount: 2 });
@@ -126,35 +126,29 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
         await factories.createTenantSubscription(organizationId, { branchCount: 2, status: 'ACTIVE' });
       }
 
-      // Host creates listing with branchSource: 'new'
+      const { firstBranchInput } = require('../harness/first-branch-input');
       const res = await asPersona('owner').post('/host/businesses', {
         businessName: 'Host Created New Org',
-        branchSource: 'new',
-        branchName: 'Host Created New Branch',
-        address: '456 Host Ave',
-        packages: [
-          { name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }
-        ],
+        firstBranch: await firstBranchInput({ branchName: 'Host Created New Branch', address: '456 Host Ave',
+          packages: [{ name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
       });
 
       expect([200, 201]).toContain(res.status);
       expect(res.body.success).toBe(true);
 
-      // Verify branch was created in tenantDb with ACTIVE status
+      expect(res.body.data.branch).toBeNull();
+      await require('../../src/services/admin.service').approveTenant(`${organizationId}:${res.body.data.business.id}`, personas.platformAdmin.user.id);
+      // Approval builds the held first branch with ACTIVE status.
       const { Branch } = dbHarness.tenant1.models;
-      const branch = await Branch.findOne({ where: { branchName: 'Host Created New Org' } });
+      const branch = await Branch.findOne({ where: { branchName: 'Host Created New Branch' } });
       expect(branch).not.toBeNull();
       expect(branch.status).toBe('ACTIVE');
 
-      // Now at 2 active branches (capacity 2). Next attempt to create branchSource: 'new' without donor slot must fail
+      // Now at 2 active branches (capacity 2). Another first branch needs a free unit.
       const failRes = await asPersona('owner').post('/host/businesses', {
         businessName: 'Listing Over Capacity',
-        branchSource: 'new',
-        branchName: 'Over Capacity Branch',
-        address: '789 Fail Ave',
-        packages: [
-          { name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }
-        ],
+        firstBranch: await firstBranchInput({ branchName: 'Over Capacity Branch', address: '789 Fail Ave',
+          packages: [{ name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
       });
 
       expect([400, 403]).toContain(failRes.status);

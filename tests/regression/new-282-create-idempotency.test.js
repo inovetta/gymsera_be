@@ -15,6 +15,8 @@ const { personaManager } = require('../harness/personas');
 const { Op } = require('sequelize');
 const { GymListing } = require('../../src/models/platform');
 const subscriptionQuotaService = require('../../src/services/subscription-quota.service');
+const { firstBranchInput } = require('../harness/first-branch-input');
+const adminService = require('../../src/services/admin.service');
 
 describe('NEW-282: brand and branch creates are idempotent', () => {
   let tenantDb;
@@ -36,20 +38,21 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
   });
 
   const branches = () => tenantDb.models.Branch.count();
-  const listingBody = (n) => ({
-    businessName: `Idem Org ${n}`, branchSource: 'new', branchName: `Idem Org Branch ${n}`, address: `${n} Street`,
-    packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
+  const listingBody = async (n) => ({
+    businessName: `Idem Org ${n}`,
+    firstBranch: await firstBranchInput({ branchName: `Idem Org Branch ${n}`, address: `${n} Street`,
+      packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
   });
   const branchBody = (n) => ({ branchName: `Idem Branch ${n}`, address: `${n} Road`, packages: [{ name: 'Monthly', price: 50 }] });
   // A new organisation waits for admin review and the API refuses another one until then (403);
   // approve each one, as an admin would, so the next create in the test is allowed.
-  const approvePending = () =>
-    GymListing.update({ status: 'ACTIVE' }, { where: { organizationId, status: { [Op.in]: ['PENDING', 'DRAFT'] } } });
   const send = async (path, body, k) => {
     const req = asPersona('owner').post(path);
     if (k) req.set('Idempotency-Key', k);
     const res = await req.send(body);
-    if (path === '/host/businesses') await approvePending();
+    if (path === '/host/businesses' && res.status === 201 && !res.headers['x-idempotent-replay']) {
+      await adminService.approveTenant(`${organizationId}:${res.body.data.business.id}`, personaManager.personas.platformAdmin.user.id);
+    }
     return res;
   };
 
@@ -60,7 +63,7 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
   ])('%s', (_name, path, body) => {
     test('a retry with the same key answers the first result and creates nothing more', async () => {
       const k = key();
-      const b = body(k);
+      const b = await body(k);
       const before = await branches();
 
       const first = await send(path, b, k);
@@ -77,16 +80,16 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
 
     test('the same key with a different body is refused (422 idempotency_key_reuse)', async () => {
       const k = key();
-      expect([200, 201]).toContain((await send(path, body(`${k}-a`), k)).status);
-      const res = await send(path, body(`${k}-b`), k);
+      expect([200, 201]).toContain((await send(path, await body(`${k}-a`), k)).status);
+      const res = await send(path, await body(`${k}-b`), k);
       expect(res.status).toBe(422);
       expect(res.body.code).toBe('idempotency_key_reuse');
     });
 
     test('without the header (old builds) every request still creates, as before', async () => {
       const before = await branches();
-      expect([200, 201]).toContain((await send(path, body(key()), null)).status);
-      expect([200, 201]).toContain((await send(path, body(key()), null)).status);
+      expect([200, 201]).toContain((await send(path, await body(key()), null)).status);
+      expect([200, 201]).toContain((await send(path, await body(key()), null)).status);
       expect(await branches()).toBe(before + 2);
     });
   });

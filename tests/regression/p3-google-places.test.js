@@ -14,6 +14,7 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
 const { personaManager } = require('../harness/personas');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 let fetchSpy;
 const calls = [];
@@ -353,9 +354,11 @@ describe('P3: branch coordinates are in range and keep the Google place id', () 
   test('onboarding refuses an out-of-range main-branch coordinate', async () => {
     const { tenant1 } = personaManager.context;
     const res = await asPersona('owner').post(`/organizations/${tenant1.id}/first-business`).send({
-      gymName: 'Range Gym', firstBranchDraft: { address: 'x', latitude: 95, longitude: 74 },
+      organizationName: 'Range Brand', firstBusinessName: 'Range Gym',
+      firstBranch: await firstBranchInput({ latitude: 95, longitude: 74 }), // A3 J10
     });
     expect(res.status).toBe(422);
-    expect(res.body.errors.map((e) => e.field)).toContain('firstBranchDraft.latitude');
+    expect(res.body.errors.map((e) => e.field)).toContain('firstBranch');
+    expect(JSON.stringify(res.body.errors)).toMatch(/latitude/i);
   });
 });

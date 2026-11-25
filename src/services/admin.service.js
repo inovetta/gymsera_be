@@ -365,6 +365,46 @@ const getTenant = async (organizationId) => {
  * `provisioning.inProgress` (the controller answers 202). The route also takes
  * an optional Idempotency-Key (REL-01 middleware).
  */
+const buildHeldFirstBranch = async (listing, adminUserId, approval) => {
+  const tenant = await Tenant.findByPk(listing.organizationId);
+  if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
+    throw createError('The organization database is not ready', 409, 'organization_not_ready');
+  }
+  const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+  const gymService = require('./gym.service');
+  const { submittedBy, submittedAt, ...held } = listing.firstBranchDraft;
+  // API contract H2: a submitted FirstBranch without hours opens 06:00–22:00 daily.
+  // Pass the pair through the existing branch-hours resolver when the held branch is built.
+  if (!held.hours && !held.openingTime && !held.closingTime) {
+    held.openingTime = '06:00';
+    held.closingTime = '22:00';
+  }
+  const t = await GymListing.sequelize.transaction();
+  try {
+    await listing.update(approval, { transaction: t });
+    const { branch } = await gymService.createBranch(tenantDb, tenant.id, {
+      ...held,
+      businessId: listing.id,
+      images: held.imagesJson,
+      facilitiesJson: held.facilitiesJson || held.facilities || null,
+    }, submittedBy || null, {
+      transaction: t,
+      isProvisioning: true,
+      actorType: 'ADMIN',
+      reason: `First branch built on business approval by ${adminUserId || 'admin'} (held since ${submittedAt || 'submit'})`,
+    });
+    if (held.areaRequestId) {
+      await areaRequests.applyChoiceToLink({ kind: 'request', requestId: Number(held.areaRequestId) }, { organizationId: tenant.id, target: 'branch', targetId: branch.id }, { transaction: t });
+    }
+    await listing.update({ firstBranchDraft: null, primaryBranchId: listing.primaryBranchId || branch.id }, { transaction: t });
+    await t.commit();
+    return branch;
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+};
+
 const approveTenant = async (organizationId, adminUserId, { photosChecked = false } = {}) => {
   const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
   // R-84 (NEW-158): the route requires the admin's photo check; the record is written once the
@@ -377,12 +417,14 @@ const approveTenant = async (organizationId, adminUserId, { photosChecked = fals
     if (!listing) throw createError('Gym listing not found', 404);
     await recordPhotoCheck();
 
-    await listing.update({
+    const approval = {
       status: 'ACTIVE',
       rejectionReason: null,
       rejectedAt: null,
       rejectedBy: null,
-    });
+    };
+    if (listing.firstBranchDraft) await buildHeldFirstBranch(listing, adminUserId, approval);
+    else await listing.update(approval);
 
     if (listing.hostId) {
       notificationsService.createNotification({

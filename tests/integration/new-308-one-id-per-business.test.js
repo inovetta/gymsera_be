@@ -8,6 +8,7 @@ const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = 
 const { stopTestServer } = require('../harness/test-server');
 const { GymListing, TenantSubscription } = require('../../src/models/platform');
 const rename = require('../../src/database/rename-helpers');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 let h;
 let personas;
@@ -41,17 +42,21 @@ describe('NEW-308: the business id is the listing id', () => {
     expect(await rename.dropColumn(seq, { table: 'branches', column: 'gym_listing_id' })).toEqual({ statements: [] });
   });
 
-  test('POST /host/businesses builds the business with the listing id, and its branch under it', async () => {
+  test('POST /host/businesses holds the branch, then approval builds it under the same business id (A2 H2)', async () => {
     await approvePending();
     const res = await asPersona('owner').post('/host/businesses', {
-      businessName: 'N308 Org', branchSource: 'new', cityId: 1,
-      packages: [{ name: 'Monthly', price: 1500, durationType: 'MONTHLY', durationValue: 1 }],
+      businessName: 'N308 Org', firstBranch: await firstBranchInput({
+        packages: [{ name: 'Monthly', price: 1500, durationType: 'MONTHLY', durationValue: 1 }],
+      }),
     });
     expect(res.status).toBe(201);
-    const listingId = res.body.data.id;
+    expect(res.body.data).toMatchObject({ branch: null, heldFirstBranch: true });
+    const listingId = res.body.data.business.id;
     const { Gym, Branch } = h.tenant1.models;
     const gym = await Gym.findByPk(listingId);
     expect(gym).not.toBeNull();
+    expect(await Branch.count({ where: { businessId: listingId } })).toBe(0);
+    await require('../../src/services/admin.service').approveTenant(`${personas.owner.organizationId}:${listingId}`, personas.platformAdmin.user.id);
     const branches = await Branch.findAll({ where: { businessId: listingId } });
     expect(branches).toHaveLength(1);
     expect(branches[0].toJSON().businessId).toBe(listingId); // the read-only alias (until NEW-309)

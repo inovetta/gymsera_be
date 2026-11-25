@@ -16,6 +16,11 @@ const { personaManager } = require('../harness/personas');
 const { signToken } = require('../../src/utils/jwt.utils');
 const { Tenant, PlatformAuditLog } = require('../../src/models/platform');
 const moderationWords = require('../../src/services/moderation-words.service');
+const { firstBranchInput } = require('../harness/first-branch-input');
+const profile = async (organizationName, firstBusinessName, extra = {}) => ({
+  organizationName, firstBusinessName,
+  firstBranch: await firstBranchInput({ branchName: firstBusinessName, ...extra }),
+});
 
 beforeAll(async () => {
   const h = await setupTestDatabases();
@@ -76,7 +81,7 @@ describe('R-112: brand name', () => {
 
   test('C3: gym-profile saves the brand (cleaned) and the gym name; GET /tenants/me returns both', async () => {
     const { tenant, as } = await draftHost({ organizationName: '' });
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: '  Iron   Works  ', firstBusinessName: 'Iron Works Saddar' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send(await profile('  Iron   Works  ', 'Iron Works Saddar'));
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe('Iron Works');
@@ -88,7 +93,7 @@ describe('R-112: brand name', () => {
 
   test.each([['Gold\'s Gym'], ['F45 Training'], ['24/7 Fitness'], ['Fit+ Club'], ['Zorba & Sons']])('C1: real brands pass: %s', async (name) => {
     const { tenant, as } = await draftHost();
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, firstBusinessName: 'Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send(await profile(name, 'Gym'));
     expect(res.status).toBe(200);
     await tenant.reload();
     expect(tenant.organizationName).toBe(name);
@@ -96,7 +101,7 @@ describe('R-112: brand name', () => {
 
   test.each(BAD_NAMES)('C1 / C3: gym-profile refuses %s → %s, nothing saved', async (name, code) => {
     const { tenant, as } = await draftHost({ organizationName: 'Kept Brand', firstBusinessName: 'Kept Gym' });
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: name, firstBusinessName: 'Other Gym' });
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send(await profile(name, 'Other Gym'));
     expect(res.status).toBe(422);
     expect(res.body.code).toBe(code);
     if (code === 'brand_name_blocked') expect(JSON.stringify(res.body).toLowerCase()).not.toContain('fuck');
@@ -105,25 +110,26 @@ describe('R-112: brand name', () => {
     expect(tenant.firstBusinessName).toBe('Kept Gym');
   });
 
-  test('C3: without organizationName gym-profile behaves as before (old apps)', async () => {
+  test('J10: first-business requires organizationName in the complete body', async () => {
     const { tenant, as } = await draftHost({ organizationName: 'Old Person\'s Gym Business' });
-    const res = await as().post(`/organizations/${tenant.id}/first-business`).send({ firstBusinessName: 'Old Gym' });
-    expect(res.status).toBe(200);
+    const { organizationName, ...body } = await profile('Old Person\'s Gym Business', 'Old Gym');
+    const res = await as().post(`/organizations/${tenant.id}/first-business`).send(body);
+    expect(res.status).toBe(422);
     await tenant.reload();
     expect(tenant.organizationName).toBe('Old Person\'s Gym Business');
-    expect(tenant.firstBusinessName).toBe('Old Gym');
+    expect(tenant.firstBusinessName).not.toBe('Old Gym');
   });
 
-  test('C3: the draft first branch name follows the gym name, unless the host typed another one', async () => {
+  test('H2: the first branch keeps its explicitly submitted name', async () => {
     const { tenant, as } = await draftHost({ firstBusinessName: 'First Name', firstBranchDraft: { name: 'First Name', address: 'Road 1' } });
-    await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'Brand One', firstBusinessName: 'Second Name' });
+    await as().post(`/organizations/${tenant.id}/first-business`).send(await profile('Brand One', 'Second Name', { branchName: 'Second Name' }));
     await tenant.reload();
     expect(tenant.firstBranchDraft.name).toBe('Second Name');
-    expect(tenant.firstBranchDraft.address).toBe('Road 1');
-    expect(tenant.onboardingStep).toBeLessThanOrEqual(2); // saving names does not skip the address step
+    expect(tenant.firstBranchDraft.address).toBe('Main Street');
+    expect(tenant.onboardingStep).toBeGreaterThanOrEqual(3); // J10 submits a complete first branch
 
     const typed = await draftHost({ firstBusinessName: 'Gym A', firstBranchDraft: { name: 'Gym A Saddar' } });
-    await typed.as().post(`/organizations/${typed.tenant.id}/first-business`).send({ firstBusinessName: 'Gym B' });
+    await typed.as().post(`/organizations/${typed.tenant.id}/first-business`).send(await profile('Brand Two', 'Gym B', { branchName: 'Gym A Saddar' }));
     await typed.tenant.reload();
     expect(typed.tenant.firstBranchDraft.name).toBe('Gym A Saddar');
   });
@@ -160,7 +166,7 @@ describe('R-112: brand name', () => {
     expect(body.organizationName).toBeNull();
     expect(body.firstBusinessName).toBe('Status Gym');
 
-    await empty.as().post(`/organizations/${empty.tenant.id}/first-business`).send({ organizationName: 'Status Brand', firstBusinessName: 'Status Gym' });
+    await empty.as().post(`/organizations/${empty.tenant.id}/first-business`).send(await profile('Status Brand', 'Status Gym'));
     body = (await empty.as().get('/host/status')).body.data;
     expect(body.organizationName).toBe('Status Brand');
     expect(body.firstBusinessName).toBe('Status Gym');

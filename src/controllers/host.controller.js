@@ -410,9 +410,10 @@ const createListing = async (req, res, next) => {
     if (!organizationId) throw createError('Tenant not found', 404);
     // R-113 H4: the first branch's week, checked before the organisation is created.
     // NEW-297 (R-117): the old opening / closing pair too (H5), checked by the same rules, never dropped.
+    const firstBranch = req.body.firstBranch;
     const hoursBody = {};
     for (const k of ['hours', 'openingTime', 'closingTime']) {
-      if (Object.prototype.hasOwnProperty.call(req.body, k)) hoursBody[k] = req.body[k];
+      if (Object.prototype.hasOwnProperty.call(firstBranch, k)) hoursBody[k] = firstBranch[k];
     }
     const hasHours = Object.keys(hoursBody).length > 0;
     if (hasHours) require('../services/branch-hours.service').resolveWrite(hoursBody, {});
@@ -472,93 +473,36 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      const { businessName, businessDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
+      const { businessName, businessDescription, genderType, logoUrl, coverImageUrl, contactPhone } = req.body;
+      const { cityId, latitude, longitude, packages } = firstBranch;
       if (!businessName) throw createError('businessName is required', 400);
       // NEW-259: a real area belongs to the city sent. NEW-265 (A4, R-109 F5): or a pending request of the
       // organization's city (the one saved below), linked to the listing and to its first branch.
-      const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
-        cityId: req.body.areaRequestId ? (cityId || tenant.cityId) : cityId,
+      const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(firstBranch), {
+        cityId: firstBranch.areaRequestId ? (cityId || tenant.cityId) : cityId,
         userId: req.user.sub || req.user.id,
         organizationId,
       });
       const areaValues = areaRequests.rowValues(areaChoice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
-      // How this organization's first branch gets filled:
-      //   'new'     (default) — build a real branch immediately, same as
-      //             before; requires packages, consumes 1 unit of capacity.
-      //   'reserve' — no branch yet, just earmark 1 unit of capacity on this
-      //             organization (a "slot") to be built later from the Gyms
-      //             tab, or moved to a different organization first.
-      //   'none'    — refused (NEW-168): it made a bare organization for the
-      //             move-branch flow, which P5b removed (R-81); an organization
-      //             is never empty (CAP-07).
-      if (req.body.branchSource === 'none') {
-        throw createError('An organization needs its first branch. Add the branch with its plans.', 422, 'organization_needs_branch');
-      }
-      const branchSource = ['new', 'reserve'].includes(req.body.branchSource) ? req.body.branchSource : 'new';
-      if (branchSource === 'new' && (!Array.isArray(packages) || packages.length === 0)) {
-        throw createError('At least 1 membership package/plan is required to create an organization', 400);
-      }
-      // Phase 7 P5 (NEW-147): the same rule gym.service.js#_createBranchRecord enforces, checked here
-      // too because the organization's tenant-DB gym is created before the branch (and outside the
-      // platform transaction), so a refusal there would leave an orphan gym behind.
-      if (branchSource === 'new' && !packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
+      if (!packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
         throw createError('Show at least one plan to travellers before you submit.', 422, 'visible_plan_required');
       }
-
       const targetCityId = cityId || tenant.cityId;
-      if (!targetCityId) throw createError('cityId is required', 400);
+      if (!targetCityId) throw createError('cityId is required', 422, 'city_required');
 
-      // Organizations are free to create, but every organization comes with
-      // its own first branch, and branches (real or reserved) are what the
-      // subscription actually charges for — so 'new'/'reserve' must be
-      // gated by the SAME tenant-wide capacity createBranch uses, checked
-      // before anything is created so a rejected request never leaves behind
-      // an organization with no branch and no reservation in it.
-      // Set when this organization's unit has to come from an unbuilt slot
-      // parked on a sibling organization rather than from free capacity.
-      // Released below, once there's a listing id to attribute it to.
+      // One reserved unit holds the submitted first branch until business approval.
+      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
+      const usedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, req.tenantDb, { transaction: platformTx });
       let slotDonorListing = null;
-
-      if (branchSource !== 'none') {
-        const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-        const usedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, req.tenantDb, { transaction: platformTx });
-        if (usedCapacity >= maxBranches) {
-          // Every paid unit is allocated — but "allocated" includes unbuilt
-          // reservedSlots parked on other organizations, and one of those is
-          // exactly the unit this organization needs. A host who paid for 3
-          // branches, built 1, and holds 2 parked slots is not out of
-          // capacity; the capacity is just sitting somewhere else.
-          //
-          // Before the slot concept was removed from the UI, the host fixed
-          // this by hand ("move an unused slot here") through
-          // transferReservedSlots. There's no such flow to send them to any
-          // more — the app presents one tenant-wide pool — so the same
-          // transfer happens here instead, invisibly and atomically.
-          //
-          // Capacity-neutral by construction: the donor loses exactly the
-          // one unit this organization consumes (a real branch for 'new', a
-          // reservation for 'reserve'), so getUsedCapacity is unchanged
-          // either way and the subscription's limit is never exceeded.
-          slotDonorListing = await GymListing.findOne({
-            where: {
-              organizationId,
-              status: { [Op.ne]: 'INACTIVE' },
-              reservedSlots: { [Op.gt]: 0 },
-            },
-            // Draw from whichever organization is hoarding the most, so a
-            // host with slots spread around keeps the widest spread.
-            order: [['reservedSlots', 'DESC']],
-            lock: true,
-            transaction: platformTx,
-          });
-
-          if (!slotDonorListing) {
-            const err = createError('Branch limit reached', 403);
-            err.code = 'branch_limit_reached';
-            throw err;
-          }
-        }
+      if (usedCapacity >= maxBranches) {
+        slotDonorListing = await GymListing.findOne({
+          where: { organizationId, status: 'ACTIVE', reservedSlots: { [Op.gt]: 0 } },
+          order: [['reservedSlots', 'DESC']],
+          lock: true,
+          transaction: platformTx,
+        });
+        if (!slotDonorListing) throw createError('Branch limit reached', 403, 'branch_limit_reached');
       }
 
       const listing = await GymListing.create({
@@ -574,32 +518,19 @@ const createListing = async (req, res, next) => {
         latitude: latitude || null,
         longitude: longitude || null,
         status: 'PENDING',
-        reservedSlots: branchSource === 'reserve' ? 1 : 0,
+        reservedSlots: 1,
+        firstBranchDraft: { ...firstBranch, cityId: targetCityId, areaId: areaValues.areaId, ...(areaValues.areaRequestId && { areaRequestId: areaValues.areaRequestId }), submittedBy: req.user.sub || req.user.id, submittedAt: new Date().toISOString() },
       }, { transaction: platformTx });
 
       await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction: platformTx });
 
-      if (branchSource === 'reserve') {
-        // Drawing 1 unit of already-available tenant-wide capacity (checked
-        // above) into this brand-new organization as an unbuilt slot — same
-        // shape as any other slot attribution, so it gets the same audit
-        // trail treatment.
-        await subscriptionQuotaService.recordCapacityEvent(
-          {
-            organizationId,
-            listingId: listing.id,
-            action: 'SLOT_ATTRIBUTED_UPGRADE',
-            delta: 1,
-            reservedSlotsBefore: 0,
-            reservedSlotsAfter: 1,
-            actorUserId: req.user.sub || req.user.id,
-            actorType: 'HOST',
-            reason: `Organization "${businessName}" created with a reserved slot (build later)`,
-            idempotencyKey: `slot_attribute_reserve:${listing.id}`,
-          },
-          { transaction: platformTx }
-        );
-      }
+      await subscriptionQuotaService.recordCapacityEvent({
+        organizationId, listingId: listing.id, action: 'SLOT_ATTRIBUTED_UPGRADE', delta: 1,
+        reservedSlotsBefore: 0, reservedSlotsAfter: 1,
+        actorUserId: req.user.sub || req.user.id, actorType: 'HOST',
+        reason: `Business "${businessName}" submitted with its first branch held until approval`,
+        idempotencyKey: `slot_attribute_reserve:${listing.id}`,
+      }, { transaction: platformTx });
 
       if (slotDonorListing) {
         // The other half of the transfer decided during the capacity check
@@ -644,45 +575,8 @@ const createListing = async (req, res, next) => {
         coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
       });
 
-      let branch = null;
-      if (branchSource === 'new') {
-        // CAP-03: Route through gymService.createBranch with caller's transaction
-        // and capacity already verified/settled above.
-        const branchResult = await gymService.createBranch(
-          req.tenantDb,
-          organizationId,
-          {
-            branchName: businessName,
-            address,
-            addressLine1: address,
-            cityId: targetCityId,
-            areaId: areaValues.areaId,
-            ...(areaValues.areaRequestId ? { areaRequestId: areaValues.areaRequestId } : {}), // NEW-265: second link
-            latitude,
-            longitude,
-            googlePlaceId: googlePlaceId || null, // NEW-140: the address picked from Google
-            facilitiesJson: Array.isArray(req.body.facilitiesJson) ? req.body.facilitiesJson : null, // NEW-266
-            ...hoursBody, // R-113 H4; NEW-297: or the old pair
-            phone: contactPhone || tenant.phone || null,
-            images: Array.isArray(images) && images.length > 0
-              ? images
-              : (coverImageUrl ? [coverImageUrl] : []),
-            packages,
-            businessId: listing.id,
-          },
-          req.user.sub || req.user.id,
-          {
-            transaction: platformTx,
-            skipCapacityCheck: true,
-            skipCapacityEvent: !!slotDonorListing,
-            reason: `Initial branch "${businessName}" created with new organization`,
-          }
-        );
-        branch = branchResult.branch;
-      }
-
       await platformTx.commit();
-      return sendSuccess(res, { ...listing.toJSON(), branch }, 'Listing created successfully', 201);
+      return sendSuccess(res, { business: listing.toJSON(), branch: null, heldFirstBranch: true }, 'Business submitted for review', 201);
     } catch (err) {
       await platformTx.rollback();
       throw err;
@@ -690,6 +584,40 @@ const createListing = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+};
+
+const updateHeldFirstBranch = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organizationId;
+    const listing = await GymListing.findOne({ where: { id: req.params.businessId, organizationId } });
+    if (!listing) throw createError('Business not found', 404);
+    if (listing.status === 'ACTIVE' || !listing.firstBranchDraft) {
+      throw createError('The first branch has already been built', 409, 'first_branch_already_built');
+    }
+    const { submittedBy, submittedAt, ...stored } = listing.firstBranchDraft;
+    const merged = { ...stored, ...req.body };
+    if (req.body.areaId != null) delete merged.areaRequestId;
+    if (req.body.areaRequestId != null) delete merged.areaId;
+    require('../validators/first-branch.validator').validateFirstBranch(merged);
+    const hoursBody = {};
+    for (const key of ['hours', 'openingTime', 'closingTime']) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) hoursBody[key] = req.body[key];
+    }
+    if (Object.keys(hoursBody).length) require('../services/branch-hours.service').resolveWrite(hoursBody, stored);
+    const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(merged), {
+      cityId: merged.cityId, userId: req.user.sub || req.user.id, organizationId,
+    });
+    const areaValues = areaRequests.rowValues(areaChoice) || {};
+    await GymListing.sequelize.transaction(async (transaction) => {
+      await listing.update({
+        cityId: merged.cityId,
+        ...areaValues,
+        firstBranchDraft: { ...merged, ...areaValues, submittedBy, submittedAt },
+      }, { transaction });
+      await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction });
+    });
+    return sendSuccess(res, { business: listing.toJSON() }, 'First branch updated');
+  } catch (err) { next(err); }
 };
 
 /** The tenant-DB gym of one organization: option S (R-120 NEW-308), the same id as its listing. */
@@ -1629,6 +1557,7 @@ module.exports = {
   uploadListingStagingImages,
   uploadStagingImages,
   createListing,
+  updateHeldFirstBranch,
   getListing,
   updateListing,
   deleteListing,

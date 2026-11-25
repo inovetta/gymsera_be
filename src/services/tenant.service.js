@@ -80,7 +80,16 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
     throw createError('Gym profile cannot be updated at this stage', 400);
   }
 
-  const { firstBusinessName, firstBusinessDescription, genderType, address, latitude, longitude, firstBranchDraft, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
+  const { firstBusinessName, firstBusinessDescription, firstBranch } = profileData;
+  const { address, latitude, longitude } = firstBranch;
+  const firstBranchDraft = {
+    ...firstBranch,
+    name: firstBranch.branchName,
+    plans: firstBranch.packages,
+    ...(firstBranch.googlePlaceId && { placeId: firstBranch.googlePlaceId }),
+    ...(firstBranch.hours && { hoursJson: firstBranch.hours }),
+    facilitiesJson: firstBranch.facilitiesJson || firstBranch.facilities || null,
+  };
   // R-112 (C1, C3): the brand the host typed on Step 2, checked before anything is saved.
   const organizationName = profileData.organizationName !== undefined ? await validateBrandName(profileData.organizationName) : undefined;
 
@@ -148,14 +157,12 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
     ...(organizationName !== undefined && { organizationName }),
     firstBusinessName: firstBusinessName || tenant.firstBusinessName,
     firstBusinessDescription: firstBusinessDescription !== undefined ? firstBusinessDescription : tenant.firstBusinessDescription,
-    genderType: genderType || tenant.genderType,
+    genderType: tenant.genderType,
     address: address !== undefined ? address : tenant.address,
     latitude: latitude !== undefined ? latitude : tenant.latitude,
     longitude: longitude !== undefined ? longitude : tenant.longitude,
     firstBranchDraft: mainBranchDataToSave,
-    kycDocumentsJson: kycDocumentsJson || tenant.kycDocumentsJson,
-    logoUrl: logoUrl || tenant.logoUrl,
-    coverImageUrl: coverImageUrl || tenant.coverImageUrl,
+    firstBranchCurrency: firstBranch.currency || tenant.firstBranchCurrency,
     kycStatus: KycStatus.PENDING,
     onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || firstBranchDraft !== undefined) ? 3 : 2),
   });

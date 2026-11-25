@@ -174,7 +174,7 @@ router.post(
   '/:organizationId/first-business',
   authenticate,
   authorize('GYM_HOST'),
-  validate.strict(tenantsValidators.submitGymProfile, { stage: 2 }),
+  validate.strict(tenantsValidators.submitGymProfile, { stage: 1 }),
   tenantsController.submitGymProfile
 );
 

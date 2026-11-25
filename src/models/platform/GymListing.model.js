@@ -142,6 +142,12 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 0,
       },
+      // A complete first branch is held here while the business awaits approval.
+      firstBranchDraft: {
+        field: 'first_branch_draft_json',
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
       rejectionReason: {
         type: DataTypes.TEXT,
         allowNull: true,

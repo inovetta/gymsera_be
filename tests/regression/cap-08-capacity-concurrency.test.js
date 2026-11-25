@@ -9,6 +9,7 @@ const gymService = require('../../src/services/gym.service');
 const subscriptionQuotaService = require('../../src/services/subscription-quota.service');
 const { GymListing, TenantSubscription, CapacityEvent } = require('../../src/models/platform');
 const { Op } = require('sequelize');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 describe('CAP-08: Branch Capacity Concurrency Controls', () => {
   let dbHarness;
@@ -286,18 +287,14 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     // Two parallel requests to create a new organization competing for the single donor slot
     const createReq1 = asPersona('owner').post('/host/businesses', {
       businessName: 'Contender Org 1',
-      branchSource: 'new',
-      branchName: 'Contender Branch 1',
-      address: '101 Street',
-      packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
+      firstBranch: await firstBranchInput({ branchName: 'Contender Branch 1', address: '101 Street',
+        packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
     });
 
     const createReq2 = asPersona('owner').post('/host/businesses', {
       businessName: 'Contender Org 2',
-      branchSource: 'new',
-      branchName: 'Contender Branch 2',
-      address: '102 Street',
-      packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
+      firstBranch: await firstBranchInput({ branchName: 'Contender Branch 2', address: '102 Street',
+        packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
     });
 
     const [res1, res2] = await Promise.all([createReq1, createReq2]);

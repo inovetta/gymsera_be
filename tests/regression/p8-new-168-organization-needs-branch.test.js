@@ -25,11 +25,11 @@ describe('NEW-168: no organization without a branch', () => {
     await teardownTestDatabases();
   });
 
-  test("branchSource 'none': 422 organization_needs_branch and no organization is created", async () => {
+  test('A2 H2: a business without its required firstBranch is refused before creation', async () => {
     const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
-    const res = await asPersona('owner').post('/host/businesses', { businessName: 'Empty Org', branchSource: 'none', cityId: 1 });
+    const res = await asPersona('owner').post('/host/businesses', { businessName: 'Empty Org' });
     expect(res.status).toBe(422);
-    expect(res.body.code).toBe('organization_needs_branch');
+    expect(res.body.code).toBe('validation_error');
     expect(await GymListing.count({ where: { organizationId: personas.owner.organizationId } })).toBe(before);
   });
 
