@@ -1624,6 +1624,32 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 38,
+    name: 'p038_business_kyc_verification',
+    description: 'NEW-303 M2: business KYC, approval and verified-badge columns on business_listings. No backfill (R-120).',
+    // ROLLBACK: after reverting the API, drop the seven columns below and delete schema_migrations version 38.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      if (!(await r.tableExists(sequelize, 'business_listings'))) return null;
+      const columns = [
+        ['kyc_status', "ENUM('NOT_SUBMITTED','PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'NOT_SUBMITTED'"],
+        ['kyc_documents_json', 'JSON NULL'],
+        ['kyc_submitted_at', 'DATETIME NULL'],
+        ['approved_at', 'DATETIME NULL'],
+        ['approved_by', 'CHAR(36) BINARY NULL'],
+        ['verified_at', 'DATETIME NULL'],
+        ['verified_by', 'CHAR(36) BINARY NULL'],
+      ];
+      for (const [column, definition] of columns) {
+        if (!(await r.columnInfo(sequelize, 'business_listings', column))) {
+          await sequelize.query(`ALTER TABLE \`business_listings\` ADD COLUMN \`${column}\` ${definition}, ALGORITHM=INPLACE, LOCK=NONE`);
+        }
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;

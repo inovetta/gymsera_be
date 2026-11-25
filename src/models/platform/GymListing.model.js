@@ -148,6 +148,18 @@ module.exports = (sequelize) => {
         type: DataTypes.JSON,
         allowNull: true,
       },
+      kycStatus: {
+        field: 'kyc_status',
+        type: DataTypes.ENUM('NOT_SUBMITTED', 'PENDING', 'APPROVED', 'REJECTED'),
+        allowNull: false,
+        defaultValue: 'NOT_SUBMITTED',
+      },
+      kycDocumentsJson: { field: 'kyc_documents_json', type: DataTypes.JSON, allowNull: true },
+      kycSubmittedAt: { field: 'kyc_submitted_at', type: DataTypes.DATE, allowNull: true },
+      approvedAt: { field: 'approved_at', type: DataTypes.DATE, allowNull: true },
+      approvedBy: { field: 'approved_by', type: DataTypes.UUID, allowNull: true },
+      verifiedAt: { field: 'verified_at', type: DataTypes.DATE, allowNull: true },
+      verifiedBy: { field: 'verified_by', type: DataTypes.UUID, allowNull: true },
       rejectionReason: {
         type: DataTypes.TEXT,
         allowNull: true,
