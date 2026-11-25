@@ -145,3 +145,27 @@ test('G1 review queue lists organizations and businesses waiting, with their own
   }
   expect((await asPersona('owner').get('/admin/review-queue')).status).toBe(403);
 });
+
+test('§1.4 a business is traveller-visible only when approved, and discovery carries businessVerified', async () => {
+  const cache = require('../../src/services/discovery-cache.service');
+  const { makeBranchLive } = require('../harness/factories');
+  const request = require('supertest');
+  const { startTestServer } = require('../harness/test-server');
+  const server = await startTestServer();
+  const listing = await GymListing.findOne({ where: { organizationId: personaManager.context.tenant1.id, status: 'ACTIVE' } });
+  const branch = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
+  await makeBranchLive(tenantDb, branch);
+  const listed = async () => {
+    cache.invalidate();
+    const res = await request(server).get('/api/v1/discovery/branches?page=1&limit=50');
+    expect(res.status).toBe(200);
+    return res.body.data.branches.find((g) => g.id === branch.id);
+  };
+  expect(await listed()).toBeTruthy();
+  await listing.update({ kycStatus: 'PENDING' });
+  expect(await listed()).toBeUndefined();
+  await listing.update({ kycStatus: 'APPROVED', verifiedAt: null });
+  expect((await listed()).businessVerified).toBe(false);
+  await listing.update({ verifiedAt: new Date(), verifiedBy: personaManager.personas.platformAdmin.user.id });
+  expect((await listed()).businessVerified).toBe(true);
+});

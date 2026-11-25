@@ -139,7 +139,8 @@ const _buildAllActiveBranches = async () => {
   const [tenants, listings, cities, areas] = await Promise.all([
     _liveTenants(['id', 'connectionStringEncrypted', 'cityId', 'areaId', 'areaStatus']),
     GymListing.findAll({
-      where: { status: 'ACTIVE' },
+      // NEW-303 M2 (enterprise §1.4): travellers see only approved businesses; the plan check is _liveTenants.
+      where: { status: 'ACTIVE', kycStatus: 'APPROVED' },
       include: [
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Area, as: 'area', attributes: ['id', 'name', 'cityId'] },
@@ -226,6 +227,7 @@ const _buildAllActiveBranches = async () => {
             areaId: finalAreaId,
             displayName: displayName(gym.name, b.branchName),
             businessName: gym.name || null,
+            businessVerified: !!listing.verifiedAt, // D11
             branchName: b.branchName || null,
             description: gym.description || b.tagline,
             logoUrl: gym.logoUrl,
@@ -234,6 +236,7 @@ const _buildAllActiveBranches = async () => {
             coverImageUrl: _firstPhoto(b.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || (listing && listing.coverImageUrl) || null,
             business: {
               name: gym.name || null,
+              businessVerified: !!listing.verifiedAt,
               description: gym.description || null,
               logoUrl: gym.logoUrl || null,
               coverImageUrl: gym.coverImageUrl || null,
@@ -540,6 +543,7 @@ const getGym = async (id) => {
         listing.id = branchRecord.id; // Override businessId with branchId so client matches
         listing.title = displayName(gym.name, branchRecord.branchName); // card label; becomes displayName with the discovery rows (group 3)
         listing.businessName = gym.name || null;
+        listing.businessVerified = !!listing.verifiedAt; // D11
         listing.branchName = branchRecord.branchName || null;
         listing.shortDescription = gym.description || branchRecord.tagline; // becomes description with the discovery rows (group 3)
         listing.coverImageUrl = _firstPhoto(branchRecord.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || listing.coverImageUrl || null;

@@ -86,8 +86,10 @@ const _report = async (tenant, tenantDb, branch) => {
     branch.billingLockedAt ? `locked on ${_day(branch.billingLockedAt)} (${branch.billingLockReason || 'no reason'})` : 'not locked'
   );
 
-  const listing = branch.businessId ? await GymListing.findByPk(branch.businessId, { attributes: ['id', 'status', 'cityId'] }) : null;
+  const listing = branch.businessId ? await GymListing.findByPk(branch.businessId, { attributes: ['id', 'status', 'cityId', 'kycStatus'] }) : null;
   const liveListing = listing && listing.status === 'ACTIVE' ? listing : null;
+  // NEW-303 M2 (enterprise §1.4): the business itself must be approved.
+  if (listing) add('business approval', listing.status === 'ACTIVE' && listing.kycStatus === 'APPROVED' ? 'PASS' : 'FAIL', `${listing.status}, kyc ${listing.kycStatus}`);
   const cityId = resolveBranchCityId(branch, liveListing, tenant);
   const city = cityId ? await City.findByPk(cityId, { attributes: ['id', 'name'] }) : null;
   add(

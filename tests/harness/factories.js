@@ -125,6 +125,8 @@ async function createGymListing(organizationId, overrides = {}) {
     tagline: overrides.tagline || 'Excellence in fitness',
     slug: overrides.slug || `org-${suffix}`,
     status: overrides.status || 'ACTIVE',
+    // NEW-303 M2: an ACTIVE business is an approved one unless a test says otherwise.
+    kycStatus: overrides.kycStatus || ((overrides.status || 'ACTIVE') === 'ACTIVE' ? 'APPROVED' : 'NOT_SUBMITTED'),
     reservedSlots: overrides.reservedSlots !== undefined ? overrides.reservedSlots : 0,
     contactPhone: overrides.contactPhone || '+923001112233',
     contactEmail: overrides.contactEmail || `org_${suffix}@gymseratest.com`,
@@ -296,7 +298,7 @@ async function makeBranchLive(tenantDb, branch) {
   const row = typeof branch === 'string' ? await Branch.findByPk(branch) : branch;
   await row.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
   if (row.businessId) {
-    await GymListing.update({ status: 'ACTIVE' }, { where: { id: row.businessId } });
+    await GymListing.update({ status: 'ACTIVE', kycStatus: 'APPROVED' }, { where: { id: row.businessId } });
   }
   const visible = await MembershipPlan.count({ where: { branchId: row.id, status: 'ACTIVE', isPublic: true } });
   if (visible === 0) {
