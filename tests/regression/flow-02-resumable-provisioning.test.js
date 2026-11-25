@@ -107,7 +107,17 @@ const counts = async (tenant) => {
   };
 };
 
-const EXACTLY_ONE = { databases: 1, listings: 1, gyms: 1, branches: 1, plans: 1, subscriptions: 1, capacityEvents: 1 };
+// NEW-303 M2d: provisioning builds everything but the first branch, which the first business holds until the
+// business's own approval (proof of premises + 3 photos) builds it, like Add Business.
+const EXACTLY_ONE = { databases: 1, listings: 1, gyms: 1, branches: 0, plans: 0, subscriptions: 1, capacityEvents: 1 };
+const AFTER_BUSINESS_APPROVAL = { ...EXACTLY_ONE, branches: 1, plans: 1, capacityEvents: 2 }; // + SLOT_CONSUMED_BUILD
+
+/** The business approval that builds the held first branch (D10 inputs recorded without files). */
+const approveFirstBusiness = async (tenant) => {
+  const listing = await GymListing.findOne({ where: { organizationId: tenant.id } });
+  await require('../harness/business-proof').addProof(listing.id, { photos: true });
+  return adminService.approveBusiness(listing.id, admin.id);
+};
 
 const expectFullyProvisioned = async (tenant) => {
   await tenant.reload();
@@ -118,7 +128,17 @@ const expectFullyProvisioned = async (tenant) => {
   expect(tenant.connectionStringEncrypted).toBeTruthy();
   expect(await counts(tenant)).toEqual(EXACTLY_ONE);
   const listing = await GymListing.findOne({ where: { organizationId: tenant.id } });
-  expect(listing.reservedSlots).toBe(1);
+  expect(listing).toMatchObject({ status: 'PENDING', kycStatus: 'NOT_SUBMITTED', reservedSlots: 2 }); // 1 held branch + 1 extra slot
+  expect(listing.firstBranchDraft).toBeTruthy();
+  expect(listing.firstBranchDraft.packages).toHaveLength(1);
+};
+
+const expectFirstBranchBuilt = async (tenant) => {
+  await approveFirstBusiness(tenant);
+  expect(await counts(tenant)).toEqual(AFTER_BUSINESS_APPROVAL);
+  const listing = await GymListing.findOne({ where: { organizationId: tenant.id } });
+  expect(listing).toMatchObject({ status: 'ACTIVE', kycStatus: 'APPROVED', reservedSlots: 1, firstBranchDraft: null });
+  expect(listing.primaryBranchId).toBeTruthy();
 };
 
 describe('FLOW-02: a failure at any step is resumed to exactly one of everything', () => {
@@ -161,21 +181,23 @@ describe('FLOW-02: a failure at any step is resumed to exactly one of everything
     provisioning.provisioningHooks.onStep = null;
     await adminService.approveTenant(tenant.id, admin.id);
     await expectFullyProvisioned(tenant);
+    await expectFirstBranchBuilt(tenant); // the same business approval as Add Business (M2d)
   });
 
-  test('a real failure inside a step (branch creation) resumes without a second gym or branch', async () => {
+  test('a failure while building the first branch (business approval) can be retried without a second branch', async () => {
     const tenant = await pendingTenant();
+    await adminService.approveTenant(tenant.id, admin.id);
+    await expectFullyProvisioned(tenant);
     const spy = jest.spyOn(gymService, 'createBranch').mockImplementationOnce(async () => {
       throw new Error('branch insert timed out');
     });
-    await expect(adminService.approveTenant(tenant.id, admin.id)).rejects.toMatchObject({ statusCode: 502 });
-    await tenant.reload();
-    expect(tenant.status).toBe('APPROVED');
-    expect((await counts(tenant)).gyms).toBe(1); // the gym was created before the branch failed
+    await expect(approveFirstBusiness(tenant)).rejects.toThrow('branch insert timed out');
+    expect((await counts(tenant)).branches).toBe(0);
+    const held = await GymListing.findOne({ where: { organizationId: tenant.id } });
+    expect(held.status).toBe('PENDING'); // the failed build left the business waiting, nothing half done
 
     spy.mockRestore();
-    await adminService.approveTenant(tenant.id, admin.id);
-    await expectFullyProvisioned(tenant);
+    await expectFirstBranchBuilt(tenant);
   });
 
   test('a failing listing insert stops provisioning instead of building a branch with no listing', async () => {
@@ -449,7 +471,7 @@ describe('FLOW-02: a tenant app user with no server-wide privileges', () => {
     });
     try {
       const [[own]] = await asApp.query(`SELECT COUNT(*) AS n FROM \`gymsera_${tenant.organizationCode}\`.branches`);
-      expect(Number(own.n)).toBe(1);
+      expect(Number(own.n)).toBe(0); // M2d: the first branch is built by the business approval, not by provisioning
       await expect(asApp.query(`SELECT COUNT(*) AS n FROM \`${process.env.PLATFORM_DB_NAME}\`.tenants`)).rejects.toMatchObject({
         code: expect.stringMatching(/ER_TABLEACCESS_DENIED_ERROR|ER_DBACCESS_DENIED_ERROR/),
       });

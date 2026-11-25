@@ -58,6 +58,7 @@ describe('NEW-146: no invented membership plan', () => {
   test("approval with the host's plan creates exactly that plan, nothing else", async () => {
     const tenant = await pendingTenant('ok', { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] });
     await adminService.approveTenant(tenant.id, admin.id);
+    await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d
     await tenant.reload();
     expect(tenant.status).toBe('ACTIVE');
     const db = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);

@@ -286,6 +286,7 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
   };
   const approve = async (tenant) => {
     await adminService().approveTenant(tenant.id, admin.id);
+    await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d: the business approval builds the first branch
     await tenant.reload();
     const db = await TenantDbManager().getConnection(tenant.id, tenant.connectionStringEncrypted);
     const listing = await M.GymListing.findOne({ where: { organizationId: tenant.id } });

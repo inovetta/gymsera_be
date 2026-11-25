@@ -247,6 +247,7 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
       firstBranchDraft: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
     });
     await require('../../src/services/admin.service').approveTenant(tenant.id, admin.id);
+    await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d
     await tenant.reload();
     const db = await require('../../src/database/TenantDbManager').getConnection(tenant.id, tenant.connectionStringEncrypted);
     const branch = await db.models.Branch.findOne();

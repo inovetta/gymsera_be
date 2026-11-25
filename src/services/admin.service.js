@@ -397,6 +397,8 @@ const buildHeldFirstBranch = async (listing, adminUserId, approval) => {
       await areaRequests.applyChoiceToLink({ kind: 'request', requestId: Number(held.areaRequestId) }, { organizationId: tenant.id, target: 'branch', targetId: branch.id }, { transaction: t });
     }
     await listing.update({ firstBranchDraft: null, primaryBranchId: listing.primaryBranchId || branch.id }, { transaction: t });
+    // The organization's first business: its onboarding area request moves to the branch (A9 rule 3).
+    await areaRequests.carryLinkToFirstBranch(tenant, branch, null);
     await t.commit();
     return branch;
   } catch (err) {

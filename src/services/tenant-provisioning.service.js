@@ -366,6 +366,34 @@ const resolveTenantCityId = async (tenant) => {
   return null;
 };
 
+/**
+ * NEW-303 M2d: the organization's onboarding draft (`firstBranchDraft`, Become a Host shape) as the FirstBranch the
+ * held first branch needs (API contract A2 H2), so business approval builds it through the one branch-create path.
+ */
+const _heldFirstBranch = async (tenant, b, cityId) => {
+  const branchCityId = b.cityId || cityId || tenant.cityId || null;
+  const area = await areaRequests.firstBranchArea(tenant, b, branchCityId);
+  const packages = (Array.isArray(b.packages) && b.packages.length > 0) ? b.packages : (Array.isArray(b.plans) ? b.plans : []);
+  const hours = b.hoursJson && typeof b.hoursJson === 'object' ? { hours: b.hoursJson } : _draftPair(b.openingTime, b.closingTime);
+  return {
+    branchName: b.name || tenant.firstBusinessName || 'Main Branch',
+    address: b.address || tenant.address || null,
+    cityId: branchCityId,
+    ...(area.request ? { areaRequestId: area.request.id } : { areaId: area.areaId }),
+    latitude: b.latitude != null ? b.latitude : tenant.latitude,
+    longitude: b.longitude != null ? b.longitude : tenant.longitude,
+    googlePlaceId: b.placeId || null,
+    currency: firstBranchCurrency(), // BUG-09 / R-80
+    phone: b.phone || tenant.phone || null,
+    ...hours,
+    imagesJson: Array.isArray(b.imagesJson) ? b.imagesJson : [],
+    facilitiesJson: Array.isArray(b.facilitiesJson) && b.facilitiesJson.length > 0 ? b.facilitiesJson : null,
+    packages,
+    submittedBy: tenant.ownerUserId || null,
+    submittedAt: new Date().toISOString(),
+  };
+};
+
 // ── Step 3: GymListing on the platform DB (found by organizationId, else created) ──
 const stepCreateListing = async (ctx) => {
   const { tenant } = ctx;
@@ -392,6 +420,10 @@ const stepCreateListing = async (ctx) => {
 
     // Not swallowed (FLOW-02): without a listing the branch below would be
     // built unattached and the tenant activated with no public listing.
+    // NEW-303 M2d (owner 2026-11-25, "uniform"): the first business is created PENDING with its first branch
+    // held, exactly like Add Business. The same business approval (proof of premises + 3 photos) builds the branch.
+    const draft = onboardingBranchData(tenant);
+    const heldBranch = await _heldFirstBranch(tenant, draft, safeCityId);
     existingListing = await GymListing.create({
       organizationId: tenant.id,
       cityId: safeCityId,
@@ -404,16 +436,15 @@ const stepCreateListing = async (ctx) => {
       contactPhone: tenant.phone || null,
       latitude: safeLat,
       longitude: safeLng,
-      status: 'ACTIVE',
-      // NEW-303 M2: approving the organization approves its first business (one review, D10).
-      kycStatus: 'APPROVED',
-      approvedAt: new Date(),
-      approvedBy: tenant.approvedBy || null,
+      status: 'PENDING',
+      kycStatus: 'NOT_SUBMITTED',
+      firstBranchDraft: heldBranch,
     });
     console.log(`[Provisioning] GymListing created for tenant ${tenant.id}`);
   }
 
-  if (existingListing && existingListing.status !== 'ACTIVE') {
+  // A business holding its first branch waits for its own approval (M2d); any other listing goes live as before.
+  if (existingListing && existingListing.status !== 'ACTIVE' && !existingListing.firstBranchDraft) {
     await existingListing.update({ status: 'ACTIVE' }).catch(() => {});
   }
   // NEW-265 (A9 rule 3): the listing takes the first-branch default (R-111; above) or its pending request (a `listing`
@@ -449,6 +480,9 @@ const stepCreateBranch = async (ctx) => {
   } else {
     businessId = gym.id;
   }
+
+  // NEW-303 M2d: a first business that holds its branch gets only its Gym row here; business approval builds the branch.
+  if (listing && listing.firstBranchDraft && listing.status === 'PENDING') return;
 
   // ── Initial Branch from onboarding data ────────────────────────────────────
   const b = onboardingBranchData(tenant);
@@ -697,7 +731,8 @@ const stepLinkSubscription = async (ctx) => {
   if (listing && tenant.firstBusinessName) {
     const activeSub = await subscriptionQuotaService.getActiveSubscription(tenant.id);
     const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
-    const extraSlots = maxBranches - 1; // 1 branch was built in step 4
+    // M2d: a held first branch is one of the unbuilt slots; otherwise step 4 built 1 branch.
+    const extraSlots = listing.firstBranchDraft ? maxBranches : maxBranches - 1;
     if (extraSlots > 0) {
       await GymListing.sequelize.transaction(async (transaction) => {
         const { applied } = await subscriptionQuotaService.recordCapacityEvent(

@@ -109,7 +109,7 @@ describe('BILL-13: pay later is a time-limited GRACE plan', () => {
     expect(await maxBranches(tenant.id)).toBe(1);
     // The registration package's extra branches were not handed out as slots.
     const listing = await GymListing.findOne({ where: { organizationId: tenant.id } });
-    expect(listing ? listing.reservedSlots : 0).toBe(0);
+    expect(listing ? listing.reservedSlots : 0).toBe(1); // M2d: only the held first branch, no extra slots
 
     // The host sees a countdown.
     const res = await request(app).get('/api/v1/host/subscription/current').set('Authorization', `Bearer ${hostToken(tenant)}`);
