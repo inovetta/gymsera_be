@@ -282,8 +282,9 @@ describe('staff (D-8), locked branch (D-5), OUT exit grace (D-7)', () => {
     const endIn = Number(din.sim.holds(pin).user.endTime);
     const endOut = Number(dout.sim.holds(pin).user.endTime);
     const [y, m, dd] = day(5).split('-').map(Number);
+    const [nextY, nextM, nextD] = day(6).split('-').map(Number);
     expect(endIn).toBe(protocol.encodeZkTime(y, m, dd, 23, 59, 59));
-    expect(endOut - endIn).toBe(86400); // 24 h later (same ZK day arithmetic within a month boundary)
+    expect(endOut).toBe(protocol.encodeZkTime(nextY, nextM, nextD, 23, 59, 59));
     await s.update({ status: 'CANCELLED' });
     await w.settled();
     await din.sim.drain();
