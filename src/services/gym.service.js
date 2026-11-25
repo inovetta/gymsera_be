@@ -533,6 +533,11 @@ const createBranch = async (tenantDb, organizationId, data, createdByUserId = nu
     if (targetListingId) {
       targetListing = await GymListing.findByPk(targetListingId, { lock: true, transaction: platformTx });
     }
+    // NEW-303 M2 (Q2, enterprise §1.4): a branch is only added to an approved business. Building the held first
+    // branch on approval (isProvisioning) is the one exception: it is how the business gets its first branch.
+    if (targetListing && !isProvisioning && !(targetListing.status === 'ACTIVE' && targetListing.kycStatus === 'APPROVED')) {
+      throw createError('This business has not been approved yet.', 409, 'business_not_approved');
+    }
     const consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
 
     if (!consumingReservedSlot && !skipCapacityCheck) {

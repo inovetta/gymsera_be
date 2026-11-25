@@ -405,6 +405,10 @@ const stepCreateListing = async (ctx) => {
       latitude: safeLat,
       longitude: safeLng,
       status: 'ACTIVE',
+      // NEW-303 M2: approving the organization approves its first business (one review, D10).
+      kycStatus: 'APPROVED',
+      approvedAt: new Date(),
+      approvedBy: tenant.approvedBy || null,
     });
     console.log(`[Provisioning] GymListing created for tenant ${tenant.id}`);
   }

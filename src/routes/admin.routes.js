@@ -275,6 +275,15 @@ router.delete('/area-aliases/:id', validate.strict([param('id').isInt({ min: 1 }
 
 // ── Gym listing management ─────────────────────────────────────────────────────
 router.get('/businesses/:businessId', adminController.getGymListing);
+router.get('/review-queue', adminController.getReviewQueue);
+router.post('/businesses/:businessId/approve', idempotency(), validate.allowBody([]), adminController.approveBusiness);
+router.post('/businesses/:businessId/reject', validate.strict([body('reason').trim().notEmpty().withMessage('Rejection reason is required')], { stage: 2 }), adminController.rejectBusiness);
+router.post('/businesses/:businessId/verify', validate.allowBody([]), adminController.verifyBusiness);
+router.delete('/businesses/:businessId/verify', validate.allowBody([]), adminController.unverifyBusiness);
+router.get('/businesses/:businessId/documents', adminController.listBusinessDocuments);
+router.get('/businesses/:businessId/documents/:documentId/stream', adminController.streamBusinessDocument);
+router.post('/businesses/:businessId/documents/:documentId/approve', validate.allowBody([]), adminController.approveBusinessDocument);
+router.post('/businesses/:businessId/documents/:documentId/reject', validate.allowBody(['reason']), adminController.rejectBusinessDocument);
 router.post('/organizations/:organizationId/businesses', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson']), adminController.createGymListing);
 router.patch('/businesses/:businessId', validate.allowBody(['name', 'description', 'genderType', 'contactPhone', 'website', 'cityId', 'areaId', 'latitude', 'longitude', 'facilitiesJson', 'isFeatured', 'status']), adminController.updateGymListing);
 router.post('/businesses/:businessId/logo', upload.image('logo'), upload.handleMulterError, validate.allowBody([]), adminController.uploadGymListingLogo);

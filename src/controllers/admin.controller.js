@@ -402,6 +402,78 @@ const ofBusiness = async (req) => {
 // The answer wraps the business as `business` (was `gymListing`).
 const asBusiness = (result) => (result && result.gymListing ? { ...result, business: result.gymListing, gymListing: undefined } : result);
 
+// ── NEW-303 M2: business approval, documents, verified badge, review queue ─────
+const kycService = () => require('../services/business-kyc.service');
+const _adminId = (req) => req.user.sub || req.user.id;
+
+const approveBusiness = async (req, res, next) => {
+  try {
+    const listing = await adminService.approveBusiness(req.params.businessId, _adminId(req));
+    return sendSuccess(res, { business: listing.toJSON() }, 'Business approved');
+  } catch (err) { next(err); }
+};
+
+const rejectBusiness = async (req, res, next) => {
+  try {
+    await adminService.businessForAdmin(req.params.businessId);
+    const result = await adminService.rejectTenant(await ofBusiness(req), _adminId(req), req.body.reason);
+    return sendSuccess(res, result, 'Business rejected');
+  } catch (err) { next(err); }
+};
+
+const verifyBusiness = async (req, res, next) => {
+  try {
+    const listing = await kycService().verify({ listing: await adminService.businessForAdmin(req.params.businessId), adminUserId: _adminId(req) });
+    return sendSuccess(res, { business: listing.toJSON() }, 'Business verified');
+  } catch (err) { next(err); }
+};
+
+const unverifyBusiness = async (req, res, next) => {
+  try {
+    const listing = await kycService().unverify({ listing: await adminService.businessForAdmin(req.params.businessId), adminUserId: _adminId(req) });
+    return sendSuccess(res, { business: listing.toJSON() }, 'Verified badge removed');
+  } catch (err) { next(err); }
+};
+
+const listBusinessDocuments = async (req, res, next) => {
+  try {
+    const listing = await adminService.businessForAdmin(req.params.businessId);
+    return sendSuccess(res, { documents: kycService().publicDocuments(listing) });
+  } catch (err) { next(err); }
+};
+
+const streamBusinessDocument = async (req, res, next) => {
+  try {
+    const listing = await adminService.businessForAdmin(req.params.businessId);
+    const { stream, contentType, contentLength } = await kycService().streamDocument({
+      listing, documentId: req.params.documentId, userId: _adminId(req), isPlatformAdmin: true,
+      reqInfo: { ip: req.ip, userAgent: req.get('user-agent') },
+    });
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (stream.pipe) stream.pipe(res); else res.send(stream);
+  } catch (err) { next(err); }
+};
+
+const reviewBusinessDocument = (decision) => async (req, res, next) => {
+  try {
+    const listing = await adminService.businessForAdmin(req.params.businessId);
+    const document = await kycService().reviewDocument({
+      listing, documentId: req.params.documentId, decision, reason: req.body.reason, adminUserId: _adminId(req),
+    });
+    return sendSuccess(res, { document });
+  } catch (err) { next(err); }
+};
+
+const getReviewQueue = async (req, res, next) => {
+  try {
+    return sendSuccess(res, await adminService.getReviewQueue());
+  } catch (err) { next(err); }
+};
+
 const getGymListing = async (req, res, next) => {
   try {
     const result = await adminService.getGymListing(await ofBusiness(req));
@@ -535,6 +607,8 @@ module.exports = {
   getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
+  approveBusiness, rejectBusiness, verifyBusiness, unverifyBusiness, listBusinessDocuments, streamBusinessDocument,
+  approveBusinessDocument: reviewBusinessDocument('APPROVED'), rejectBusinessDocument: reviewBusinessDocument('REJECTED'), getReviewQueue,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,
   createAdminTenantBranch, updateAdminTenantBranch, uploadAdminBranchImages, deleteAdminBranchImage, removeApprovalPhoto,
   getTenantSubscriptions, assignTenantSubscription, revokeTenantSubscription, verifyPayLaterPayment,

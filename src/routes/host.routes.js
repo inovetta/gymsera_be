@@ -98,6 +98,11 @@ router.post('/businesses', authenticate, authorize('GYM_HOST'), tenantContext, o
 const firstBranchValidator = require('../validators/first-branch.validator');
 router.patch('/businesses/:businessId/first-branch', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere,
   validate.strict([firstBranchValidator.wholeBody({ partial: true })], { stage: 1, allow: [...firstBranchValidator.KEYS] }), hostController.updateHeldFirstBranch);
+// NEW-303 M2 (D10, A2 H3, J11): business documents. Private; the file is read only through /stream.
+router.post('/businesses/:businessId/kyc-documents', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere,
+  upload.documents('documents', 5), upload.handleMulterError, validate.allowBody(['type']), hostController.uploadBusinessKycDocuments);
+router.get('/businesses/:businessId/kyc-documents', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, hostController.listBusinessKycDocuments);
+router.get('/businesses/:businessId/kyc-documents/:documentId/stream', authenticate, authorize('GYM_HOST'), tenantContext, ownerHere, hostController.streamBusinessKycDocument);
 // Phase 7 P5 (BUG-22): one organization and its own gym details, for Edit Organization.
 router.get('/businesses/:businessId', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), hostController.getListing);
 router.put('/businesses/:businessId', authenticate, ownerOrListingManager({ ownerNeedsContext: true }), validate.strict(gymsValidators.updateOrganization, { stage: 2, allow: ['areaId', 'areaRequestId', 'cityId', 'contactPhone', 'coverImageUrl', 'genderType', 'businessDescription', 'businessName', 'latitude', 'logoUrl', 'longitude'] }), hostController.updateListing);

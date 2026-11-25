@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  return sequelize.define(
+  const GymListing = sequelize.define(
     'GymListing',
     {
       id: {
@@ -185,4 +185,22 @@ module.exports = (sequelize) => {
       ],
     }
   );
+
+  // NEW-303 M2 (A2 H3, D11): the private document list never leaves the server with its storage keys. Clients
+  // get `kycDocuments` (id, type, status, dates, reason) and the derived flags; `verifiedBy` stays internal.
+  GymListing.prototype.toJSON = function toJSON() {
+    const values = { ...this.get({ plain: true }) };
+    if (!Object.prototype.hasOwnProperty.call(values, 'kycDocumentsJson')) return values;
+    const kyc = require('../../services/business-kyc.service');
+    delete values.kycDocumentsJson;
+    delete values.verifiedBy;
+    delete values.approvedBy;
+    values.kycDocuments = kyc.publicDocuments(this);
+    values.businessVerified = !!this.verifiedAt;
+    values.missingForApproval = kyc.isApproved(this) ? [] : kyc.missingForApproval(this);
+    values.heldFirstBranch = !!this.firstBranchDraft;
+    return values;
+  };
+
+  return GymListing;
 };

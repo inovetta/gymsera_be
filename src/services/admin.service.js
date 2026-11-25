@@ -405,6 +405,93 @@ const buildHeldFirstBranch = async (listing, adminUserId, approval) => {
   }
 };
 
+/**
+ * NEW-303 M2 (D10): approve one business. Needs a proof-of-premises
+ * document and 3 or more photos, else 422 `business_requirements_missing` with `missing`. Builds the held first
+ * branch (M1b) and marks the documents reviewed. Re-approving an approved business changes nothing.
+ */
+const approveBusiness = async (businessId, adminUserId, { beforeChange = null } = {}) => {
+  const kyc = require('./business-kyc.service');
+  const listing = await GymListing.findByPk(businessId);
+  if (!listing) throw createError('Business not found', 404);
+  if (kyc.isApproved(listing)) return listing;
+  const tenant = await Tenant.findByPk(listing.organizationId, { attributes: ['id', 'ownerUserId'] });
+  const missing = kyc.missingForApproval(listing);
+  if (missing.length) {
+    const err = createError('This business is missing what approval needs', 422, 'business_requirements_missing');
+    err.details = { missing };
+    throw err;
+  }
+  if (beforeChange) await beforeChange();
+
+  const now = new Date();
+  const reviewed = kyc.documentsOf(listing).map((d) => (d.status === 'REJECTED' ? d : { ...d, status: 'APPROVED', reviewedAt: d.reviewedAt || now.toISOString(), reviewedBy: d.reviewedBy || adminUserId }));
+  const hasRegistration = reviewed.some((d) => d.documentType === 'BUSINESS_REGISTRATION' && d.status === 'APPROVED');
+  const approval = {
+    status: 'ACTIVE',
+    kycStatus: 'APPROVED',
+    kycDocumentsJson: reviewed,
+    approvedAt: now,
+    approvedBy: adminUserId,
+    rejectionReason: null,
+    rejectedAt: null,
+    rejectedBy: null,
+    ...(hasRegistration && !listing.verifiedAt && { verifiedAt: now, verifiedBy: adminUserId }),
+  };
+  if (listing.firstBranchDraft) await buildHeldFirstBranch(listing, adminUserId, approval);
+  else await listing.update(approval);
+  await kyc.audit(adminUserId, 'business.approve', listing, { held: !!listing.firstBranchDraft });
+
+  const hostUserId = listing.hostId || tenant?.ownerUserId;
+  if (hostUserId) {
+    notificationsService.createNotification({
+      userId: hostUserId,
+      role: 'host',
+      type: 'listing_approved',
+      title: 'Business Approved! 🎉',
+      message: `Your business "${listing.name}" has been approved.`,
+      priority: 'high',
+      deepLink: '/host/branches',
+      metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'ACTIVE' },
+    }).catch((err) => console.error('[approveBusiness] Notification error:', err.message));
+  }
+  return listing.reload();
+};
+
+/**
+ * GET /admin/review-queue (A1 G1): one item per organization waiting for identity review and one per business
+ * waiting for approval.
+ */
+const getReviewQueue = async () => {
+  const [organizations, businesses] = await Promise.all([
+    Tenant.findAll({
+      where: { status: { [Op.in]: [TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW] } },
+      attributes: ['id', 'organizationName', 'status', 'kycStatus', 'createdAt', 'updatedAt'],
+      order: [['createdAt', 'ASC']],
+    }),
+    GymListing.findAll({
+      where: { status: 'PENDING' },
+      attributes: ['id', 'organizationId', 'name', 'status', 'kycStatus', 'kycSubmittedAt', 'createdAt'],
+      order: [['createdAt', 'ASC']],
+    }),
+  ]);
+  const items = [
+    ...organizations.map((o) => ({
+      kind: 'ORGANIZATION', organizationId: o.id, name: o.organizationName, status: o.status, kycStatus: o.kycStatus, submittedAt: o.updatedAt || o.createdAt,
+    })),
+    ...businesses.map((b) => ({
+      kind: 'BUSINESS', organizationId: b.organizationId, businessId: b.id, name: b.name, status: b.status, kycStatus: b.kycStatus, submittedAt: b.kycSubmittedAt || b.createdAt,
+    })),
+  ].sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
+  return { items };
+};
+
+const businessForAdmin = async (businessId) => {
+  const listing = await GymListing.findByPk(businessId);
+  if (!listing) throw createError('Business not found', 404);
+  return listing;
+};
+
 const approveTenant = async (organizationId, adminUserId, { photosChecked = false } = {}) => {
   const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
   // R-84 (NEW-158): the route requires the admin's photo check; the record is written once the
@@ -413,32 +500,7 @@ const approveTenant = async (organizationId, adminUserId, { photosChecked = fals
     photosChecked ? require('./approval-photos.service').recordPhotosChecked(organizationId, adminUserId) : null;
 
   if (listingId) {
-    const listing = await GymListing.findByPk(listingId);
-    if (!listing) throw createError('Gym listing not found', 404);
-    await recordPhotoCheck();
-
-    const approval = {
-      status: 'ACTIVE',
-      rejectionReason: null,
-      rejectedAt: null,
-      rejectedBy: null,
-    };
-    if (listing.firstBranchDraft) await buildHeldFirstBranch(listing, adminUserId, approval);
-    else await listing.update(approval);
-
-    if (listing.hostId) {
-      notificationsService.createNotification({
-        userId: listing.hostId,
-        role: 'host',
-        type: 'listing_approved',
-        title: 'Gym Listing Approved! 🎉',
-        message: `Your listing "${listing.name}" has been approved.`,
-        priority: 'high',
-        deepLink: '/host/branches',
-        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'ACTIVE' },
-      }).catch(err => console.error('[approveTenant listing] Notification error:', err.message));
-    }
-
+    await approveBusiness(listingId, adminUserId, { beforeChange: recordPhotoCheck });
     return { tenant: { id: organizationId, status: 'ACTIVE' } };
   }
 
@@ -563,6 +625,7 @@ const rejectTenant = async (organizationId, adminUserId, reason) => {
 
     await listing.update({
       status: 'REJECTED',
+      kycStatus: 'REJECTED',
       rejectionReason: reason.trim(),
       rejectedAt: new Date(),
       rejectedBy: adminUserId,
@@ -1497,6 +1560,9 @@ const createGymListing = async (organizationId, data) => {
     facilitiesJson: data.facilitiesJson || null,
     isFeatured: false,
     status: 'ACTIVE',
+    // NEW-303 M2: a business an administrator creates is approved by that act.
+    kycStatus: 'APPROVED',
+    approvedAt: new Date(),
   });
 
   const full = await GymListing.findByPk(listing.id, { include: _getListingIncludes() });
@@ -1833,7 +1899,7 @@ const getBranchVisibilityHistory = async (branchId) => {
 
 module.exports = {
   revealTenantMemberContact,
-  createTenant, listTenants, getTenant, approveTenant, rejectTenant, suspendTenant,
+  createTenant, listTenants, getTenant, approveTenant, rejectTenant, approveBusiness, getReviewQueue, businessForAdmin, suspendTenant,
   reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus,
   suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
   getTenantMembers, getTenantMembershipPlans,

@@ -620,6 +620,47 @@ const updateHeldFirstBranch = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── NEW-303 M2: business KYC documents (D10, A2 H3, J11) ───────────────────────
+const _ownBusiness = async (req) => {
+  const listing = await GymListing.findOne({ where: { id: req.params.businessId, organizationId: req.user.organizationId } });
+  if (!listing) throw createError('Business not found', 404);
+  return listing;
+};
+
+const uploadBusinessKycDocuments = async (req, res, next) => {
+  try {
+    const listing = await _ownBusiness(req);
+    const files = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
+    const documents = await require('../services/business-kyc.service').uploadDocuments({
+      listing, files, type: req.body.type, userId: req.user.sub || req.user.id,
+    });
+    return sendSuccess(res, { documents }, 'Documents uploaded', 201);
+  } catch (err) { next(err); }
+};
+
+const listBusinessKycDocuments = async (req, res, next) => {
+  try {
+    const listing = await _ownBusiness(req);
+    return sendSuccess(res, { documents: require('../services/business-kyc.service').publicDocuments(listing) });
+  } catch (err) { next(err); }
+};
+
+const streamBusinessKycDocument = async (req, res, next) => {
+  try {
+    const listing = await _ownBusiness(req);
+    const { stream, contentType, contentLength } = await require('../services/business-kyc.service').streamDocument({
+      listing, documentId: req.params.documentId, userId: req.user.sub || req.user.id, isPlatformAdmin: false,
+      reqInfo: { ip: req.ip, userAgent: req.get('user-agent') },
+    });
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (stream.pipe) stream.pipe(res); else res.send(stream);
+  } catch (err) { next(err); }
+};
+
 /** The tenant-DB gym of one organization: option S (R-120 NEW-308), the same id as its listing. */
 const _organizationGym = async (tenantDb, listing) => tenantDb.models.Gym.findByPk(listing.id);
 
@@ -1558,6 +1599,9 @@ module.exports = {
   uploadStagingImages,
   createListing,
   updateHeldFirstBranch,
+  uploadBusinessKycDocuments,
+  listBusinessKycDocuments,
+  streamBusinessKycDocument,
   getListing,
   updateListing,
   deleteListing,

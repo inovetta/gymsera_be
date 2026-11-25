@@ -58,6 +58,10 @@ test('H2/J10 Add Business holds one paid slot and builds the edited branch only 
   expect(edited.body.data.business.firstBranchDraft.branchName).toBe('Edited Site');
   expect(await tenantDb.models.Branch.count()).toBe(beforeBranches);
 
+  // D10: approval needs proof of premises (M2); the photos come with the FirstBranch.
+  const proof = await asPersona('owner').post(`/host/businesses/${businessId}/kyc-documents`).field('type', 'PROOF_OF_PREMISES')
+    .attach('documents', Buffer.from('%PDF-1.4\n%%EOF\n'), { filename: 'proof.pdf', contentType: 'application/pdf' });
+  expect(proof.status).toBe(201);
   const admin = personaManager.personas.platformAdmin.user;
   await require('../../src/services/admin.service').approveTenant(`${organizationId}:${businessId}`, admin.id);
   await listing.reload();
