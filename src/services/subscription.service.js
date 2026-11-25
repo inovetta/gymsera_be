@@ -338,7 +338,7 @@ const subscribe = async (userId, { planId, businessId, branchId, autoRenew, sour
         type: 'subscription_pending',
         title: 'New Subscription Request',
         message: `New subscription request from ${travelerName} for ${plan.name} at ${gymListing.name}.`,
-        deepLink: `/host/gyms?tab=subscriptions&filter=PENDING&subscriptionId=${subscription.id}`,
+        deepLink: `/host/operations?tab=subscriptions&filter=PENDING&subscriptionId=${subscription.id}`,
         metadataJson: {
           subscriptionId: subscription.id,
           branchId: branchIdToUse,

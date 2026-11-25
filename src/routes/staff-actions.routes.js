@@ -158,7 +158,7 @@ router.post('/branches/:branchId/action-requests', validate.allowBody(['actionTy
         title: 'Pending Staff Request',
         message: notifMessage,
         priority: 'normal',
-        deepLink: `/host/gyms/${branchId}/staff-requests`,
+        deepLink: `/host/branches/${branchId}/staff-requests`,
         metadataJson: { requestId: request.id, branchId, organizationId: tenant.id }
       });
     } catch (notifErr) {

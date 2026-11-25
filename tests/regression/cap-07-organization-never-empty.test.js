@@ -52,8 +52,8 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
     });
 
     const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
-    expect(audit.hasEmptyActiveOrgs).toBe(true);
-    expect(audit.emptyActiveOrgs.some((o) => o.listingId === emptyListing.id)).toBe(true);
+    expect(audit.hasEmptyActiveBusinesses).toBe(true);
+    expect(audit.emptyActiveBusinesses.some((o) => o.businessId === emptyListing.id)).toBe(true);
     expect(audit.ok).toBe(false);
 
     // Clean up by deactivating the empty listing so subsequent tests start clean
@@ -113,7 +113,7 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
 
     // auditCapacity passes with zero empty active orgs
     const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
-    expect(audit.hasEmptyActiveOrgs).toBe(false);
+    expect(audit.hasEmptyActiveBusinesses).toBe(false);
   });
 
   test('Property-based randomized sequence of create/delete/restore/lock/unlock preserves invariant and no active org is empty', async () => {
@@ -212,14 +212,14 @@ describe('CAP-07: Organization Never Empty & Capacity Invariant Verification', (
       // INVARIANT CHECK AFTER EVERY STEP:
       const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
       // 1. No ACTIVE organization has zero active branches
-      expect(audit.hasEmptyActiveOrgs).toBe(false);
-      expect(audit.emptyActiveOrgs.length).toBe(0);
+      expect(audit.hasEmptyActiveBusinesses).toBe(false);
+      expect(audit.emptyActiveBusinesses.length).toBe(0);
 
       // 2. Capacity invariant holds
       expect(audit.invariantHolds).toBe(true);
 
       // 3. No ledger drift on live organizations
-      expect(audit.driftedListings.length).toBe(0);
+      expect(audit.driftedBusinesses.length).toBe(0);
       expect(audit.totalDrift).toBe(0);
     }
   });

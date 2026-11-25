@@ -112,6 +112,8 @@ router.get('/:staffId', async (req, res, next) => {
     const { staff, tenant } = await _resolveStaffAndTenant(req.params.staffId, req.query.organizationId);
     const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
     const branch = await tenantDb.models.Branch.findByPk(staff.branchId);
+    const business = branch?.businessId ? await tenantDb.models.Gym.findByPk(branch.businessId, { attributes: ['name'] }) : null;
+    const { mapDesignationToRoleKey } = require('../services/gym.service');
 
     // Get host user details
     const hostUser = await User.findByPk(tenant.ownerUserId);
@@ -130,14 +132,18 @@ router.get('/:staffId', async (req, res, next) => {
         expiresAt,
         isExpired,
       },
-      branch: branch ? {
-        id: branch.id,
-        name: branch.branchName,
-      } : null,
-      gym: {
+      organization: {
         id: tenant.id,
-        name: tenant.firstBusinessName || tenant.organizationName,
+        name: tenant.organizationName,
       },
+      scopeType: 'BRANCH',
+      roleKey: mapDesignationToRoleKey(staff.designation, false),
+      branches: branch ? [{
+        branchId: branch.id,
+        branchName: branch.branchName,
+        businessId: branch.businessId,
+        businessName: business?.name || null,
+      }] : [],
       host: hostUser ? {
         fullName: hostUser.fullName,
         email: hostUser.email,
@@ -207,7 +213,7 @@ router.post('/:staffId/accept', validate.allowBody(['organizationId']), async (r
         title: 'Staff Invite Accepted',
         message: `${user?.fullName || 'A staff member'} has accepted the invite to join ${branchName} as staff.`,
         priority: 'normal',
-        deepLink: `/host/gyms/${staff.branchId}/staff`,
+        deepLink: `/host/branches/${staff.branchId}/staff`,
         metadataJson: { staffId: staff.id, branchId: staff.branchId, organizationId: tenant.id }
       });
     } catch (err) {
@@ -263,7 +269,7 @@ router.post('/:staffId/decline', validate.allowBody(['organizationId']), async (
         title: 'Staff Invite Declined',
         message: `${user?.fullName || 'An invitee'} has declined the invite to join ${branchName} as staff.`,
         priority: 'normal',
-        deepLink: `/host/gyms/${staff.branchId}/staff`,
+        deepLink: `/host/branches/${staff.branchId}/staff`,
         metadataJson: { branchId: staff.branchId, organizationId: tenant.id }
       });
     } catch (err) {

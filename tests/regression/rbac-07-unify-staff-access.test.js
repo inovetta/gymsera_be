@@ -162,14 +162,14 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       expect(loginRes.status).toBe(200);
       const token = loginRes.body.data.accessToken;
 
-      // 1. GET /me/staff-status must return isStaff: false and empty branches
+      // 1. GET /me/staff-status must return isStaff: false and empty organizations (A3 J7).
       const statusRes = await request(appServer)
         .get('/api/v1/me/staff-status')
         .set('Authorization', `Bearer ${token}`);
 
       expect(statusRes.status).toBe(200);
       expect(statusRes.body.data.isStaff).toBe(false);
-      expect(statusRes.body.data.branches).toEqual([]);
+      expect(statusRes.body.data.organizations).toEqual([]);
 
       // 2. Access to payments recording must be 403
       const paymentRes = await request(appServer)

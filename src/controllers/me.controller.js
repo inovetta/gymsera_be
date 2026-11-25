@@ -4,7 +4,7 @@ const dataExportService = require('../services/data-export.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
 const inboxService = require('../services/inbox.service');
-const { ROLE_META } = require('../constants/roles');
+const { ROLE_META, getRoleLevel } = require('../constants/roles');
 
 // ── GET /me/profile ────────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -322,7 +322,7 @@ const getStaffStatus = async (req, res, next) => {
     const membershipService = require('../services/membership.service');
 
     const userId = req.user.id || req.user.sub;
-    const branches = [];
+    const organizations = [];
 
     const memberships = await membershipService.listUserTenants(userId, { activeOnly: true });
 
@@ -345,14 +345,10 @@ const getStaffStatus = async (req, res, next) => {
         if (assignments.length === 0) continue;
 
         const isOrgScoped = assignments.some((a) => a.scopeType === 'ORG');
-        const designation =
-          assignments.find((a) => a.jobTitle)?.jobTitle ||
-          ROLE_META[assignments[0].roleKey]?.displayName ||
-          assignments[0].roleKey;
+        const highest = [...assignments].sort((a, b) => getRoleLevel(b.roleKey) - getRoleLevel(a.roleKey))[0];
+        const designation = highest.jobTitle || ROLE_META[highest.roleKey]?.displayName || highest.roleKey;
 
-        const branchWhere = isOrgScoped
-          ? { status: 'ACTIVE' }
-          : {
+        const branchWhere = {
               id: [
                 ...new Set(assignments.flatMap((a) => (a.branchLinks || []).map((l) => l.branchId))),
               ],
@@ -360,16 +356,28 @@ const getStaffStatus = async (req, res, next) => {
             };
         if (!isOrgScoped && branchWhere.id.length === 0) continue;
 
-        const branchRows = await Branch.findAll({ where: branchWhere });
+        const branchRows = isOrgScoped || branchWhere.id.length === 0 ? [] : await Branch.findAll({ where: branchWhere });
+        if (!isOrgScoped && branchRows.length === 0) continue;
+        const businessNames = new Map();
         for (const branch of branchRows) {
-          branches.push({
-            branchId: branch.id,
-            organizationId: tenant.id,
-            branchName: branch.branchName,
-            organizationName: tenant.firstBusinessName || tenant.organizationName,
-            designation,
-          });
+          if (!businessNames.has(branch.businessId)) {
+            const business = await tenantDb.models.Gym.findByPk(branch.businessId, { attributes: ['name'] });
+            businessNames.set(branch.businessId, business?.name || null);
+          }
         }
+        organizations.push({
+          organizationId: tenant.id,
+          organizationName: tenant.organizationName,
+          scopeType: isOrgScoped ? 'ORG' : 'BRANCH',
+          roleKey: highest.roleKey,
+          designation,
+          branches: branchRows.map((branch) => ({
+            branchId: branch.id,
+            branchName: branch.branchName,
+            businessId: branch.businessId,
+            businessName: businessNames.get(branch.businessId),
+          })),
+        });
       } catch (err) {
         // One unreachable tenant must not break the whole status check.
         console.warn(`[staff-status] tenant ${membership.organizationId} unreachable:`, err.message);
@@ -377,8 +385,8 @@ const getStaffStatus = async (req, res, next) => {
     }
 
     return sendSuccess(res, {
-      isStaff: branches.length > 0,
-      branches,
+      isStaff: organizations.length > 0,
+      organizations,
     }, 'Staff status retrieved');
   } catch (err) {
     next(err);

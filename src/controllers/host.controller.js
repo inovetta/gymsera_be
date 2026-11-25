@@ -291,72 +291,37 @@ const getBranchQuota = async (req, res, next) => {
 const getOrganizationQuota = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
-    if (!organizationId) {
-      return sendSuccess(res, {
-        maxBusinesses: 1,
-        usedOrganizations: 0,
-        remainingOrganizations: 1,
-        canCreateNext: true,
-        blockingListingStatus: null,
-      });
-    }
-
+    if (!organizationId) return sendSuccess(res, {
+      pool: { max: 0, used: 0, reserved: 0, free: 0 },
+      canAddBusiness: false, blockingBusinessStatus: null,
+    });
     const tenant = await Tenant.findByPk(organizationId);
-    if (!tenant) throw createError('Tenant not found', 404);
-
+    if (!tenant) throw createError('Organization not found', 404);
     const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId);
+    const max = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
     const maxBusinesses = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub);
-
-    const allListings = await GymListing.findAll({
-      where: {
-        organizationId,
-        status: { [Op.ne]: 'INACTIVE' }
-      },
-      attributes: ['id', 'status'],
-      order: [['created_at', 'ASC']],
+    const businesses = await GymListing.findAll({
+      where: { organizationId, status: { [Op.ne]: 'INACTIVE' } },
+      attributes: ['id', 'status', 'reservedSlots'],
+      order: [['createdAt', 'ASC']],
     });
-
-    let usedOrganizations = allListings.length;
-    let canCreateNext = true;
-    let blockingListingStatus = null;
-
-    if (tenant.status !== 'ACTIVE') {
-      // First organization is in draft/review state (no listing record in DB yet)
-      usedOrganizations = Math.max(1, allListings.length);
-      canCreateNext = false;
-      if (tenant.status === 'DRAFT') {
-        blockingListingStatus = 'draft';
-      } else if (tenant.status === 'PENDING_REVIEW' || tenant.status === 'UNDER_REVIEW') {
-        blockingListingStatus = 'under_review';
-      } else if (tenant.status === 'REJECTED') {
-        blockingListingStatus = 'rejected';
-      }
-    } else {
-      // Tenant is active, check the GymListing records
-      const blockingListing = allListings.find(
-        (l) => l.status === 'DRAFT' || l.status === 'PENDING'
-      );
-      canCreateNext = !blockingListing && (maxBusinesses - usedOrganizations) > 0;
-      if (blockingListing) {
-        blockingListingStatus = blockingListing.status === 'DRAFT' ? 'draft' : 'under_review';
-      }
+    const reserved = businesses.reduce((sum, business) => sum + Number(business.reservedSlots || 0), 0);
+    let used = 0;
+    if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+      used = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
     }
-
-    const remainingOrganizations = Math.max(0, maxBusinesses - usedOrganizations);
-    const hasOrganizationLimit = maxBusinesses !== subscriptionQuotaService.UNLIMITED_ORGANIZATIONS;
-
+    const free = Math.max(0, max - used - reserved);
+    const blocking = tenant.status === 'ACTIVE'
+      ? businesses.find((b) => ['DRAFT', 'PENDING'].includes(b.status))?.status || null
+      : tenant.status;
+    const donorAvailable = businesses.some((b) => b.status === 'ACTIVE' && b.reservedSlots > 0);
     return sendSuccess(res, {
-      maxBusinesses,
-      usedOrganizations,
-      remainingOrganizations,
-      hasOrganizationLimit,
-      canCreateNext,
-      blockingListingStatus,
-      blockingOrganizationStatus: blockingListingStatus,
+      pool: { max, used, reserved, free },
+      canAddBusiness: !blocking && businesses.length < maxBusinesses && (free > 0 || donorAvailable),
+      blockingBusinessStatus: blocking,
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
 const getListings = async (req, res, next) => {

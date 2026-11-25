@@ -1737,7 +1737,7 @@ const updateBranchTravelerVisibility = async (branchId, status, reason, adminUse
         message: status === 'deactivated'
           ? `Your listing ${foundBranch.branchName} is no longer visible to travelers. Reason: ${reason}`
           : `Your listing ${foundBranch.branchName} is now live again.`,
-        deepLink: '/host/listings',
+        deepLink: '/host/businesses',
         metadataJson: { branchId: foundBranch.id }
       });
     }

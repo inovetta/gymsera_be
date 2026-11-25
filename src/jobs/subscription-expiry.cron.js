@@ -378,15 +378,15 @@ const _reconcileCapacityForAllTenants = async () => {
         const audit = await subscriptionQuotaService.auditCapacity(sub.organizationId, tenantDb);
         if (!audit.ok) {
           audited++;
-          if (audit.driftedListings.length || audit.overQuotaMismatch || audit.invariantHolds === false) {
+          if (audit.driftedBusinesses.length || audit.overQuotaMismatch || audit.invariantHolds === false) {
             found.driftTenantIds.push(sub.organizationId);
-            found.driftedListingCount += audit.driftedListings.length;
+            found.driftedListingCount += audit.driftedBusinesses.length;
             if (audit.overQuotaMismatch) found.overQuotaMismatchCount += 1;
             if (audit.invariantHolds === false) found.invariantBrokenCount += 1;
           }
-          if (audit.emptyActiveOrgs && audit.emptyActiveOrgs.length) {
+          if (audit.emptyActiveBusinesses && audit.emptyActiveBusinesses.length) {
             found.emptyOrgTenantIds.push(sub.organizationId);
-            found.emptyOrgCount += audit.emptyActiveOrgs.length;
+            found.emptyOrgCount += audit.emptyActiveBusinesses.length;
           }
           console.warn(
             `[Cron] CAPACITY AUDIT FAILED tenant ${sub.organizationId} (${audit.organizationName}): ` +
@@ -397,9 +397,9 @@ const _reconcileCapacityForAllTenants = async () => {
                 ? `, overQuotaCount recorded ${audit.recordedOverQuota} but should be ${audit.expectedOverQuota}`
                 : '')
           );
-          for (const d of audit.driftedListings) {
+          for (const d of audit.driftedBusinesses) {
             console.warn(
-              `[Cron]   listing "${d.title}" (${d.listingId}): reservedSlots ${d.actualReservedSlots}, ` +
+              `[Cron]   business "${d.businessName}" (${d.businessId}): reservedSlots ${d.actualReservedSlots}, ` +
                 `ledger says ${d.ledgerReservedSlots} (drift ${d.drift > 0 ? '+' : ''}${d.drift})`
             );
           }

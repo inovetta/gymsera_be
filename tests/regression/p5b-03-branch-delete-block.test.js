@@ -195,7 +195,8 @@ describe('P5b item 3: deleting an organization is all or nothing', () => {
     const res = await asPersona('owner').delete(`/host/businesses/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('organization_delete_blocked');
-    expect(res.body.data.listingId).toBe(listing.id);
+    expect(res.body.data.businessId).toBe(listing.id);
+    expect(res.body.data).not.toHaveProperty('listingId');
     expect(res.body.data.counts.activeMemberships).toBe(1);
     expect(res.body.data.branches).toEqual([
       expect.objectContaining({ branchId: busy.id, branchName: busy.branchName, counts: expect.objectContaining({ activeMemberships: 1 }) }),

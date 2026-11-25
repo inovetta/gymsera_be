@@ -1000,7 +1000,7 @@ const submitReview = async (userId, businessId, branchId, { rating, title, body 
         type: 'review_submitted',
         title: 'New Review Submitted',
         message: `New review submitted for ${branchName} by ${travelerName}: ${rating} stars.`,
-        deepLink: '/host/listings',
+        deepLink: '/host/businesses',
         metadataJson: { branchId, reviewId: finalReview.id },
       });
     }
@@ -1088,7 +1088,7 @@ const adminListReviews = async ({ businessId, status, page, limit, offset }) => 
   }
   const reviews = rows.map((r) => {
     const json = typeof r.toJSON === 'function' ? r.toJSON() : { ...r };
-    json.gymTitle = (r.branchId && titles.get(r.branchId)) || (json.gym && json.gym.name) || null;
+    json.businessName = (r.branchId && titles.get(r.branchId)) || (json.gym && json.gym.name) || null;
     return json;
   });
 
@@ -1150,7 +1150,7 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
           type: 'review_rejected',
           title: 'Review Flagged by Admin',
           message: `A review for ${branchName} was hidden by admin. Reason: ${adminNote || 'None'}.`,
-          deepLink: '/host/listings',
+          deepLink: '/host/businesses',
           metadataJson: { reviewId: review.id },
         });
       }

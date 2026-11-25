@@ -60,7 +60,7 @@ describe('OBS-05: admin billing events view', () => {
     expect(res.status).toBe(200);
     const rows = res.body.data;
     expect(rows.map((r) => r.providerEventId)).toEqual(['new', 'old']);
-    expect(rows[0]).toMatchObject({ organizationId: tenantA.id, tenantName: tenantA.firstBusinessName, status: 'FAILED', attempts: 2, provider: 'APPLE' });
+    expect(rows[0]).toMatchObject({ organizationId: tenantA.id, organizationName: tenantA.organizationName, status: 'FAILED', attempts: 2, provider: 'APPLE' });
     expect(JSON.stringify(res.body)).not.toContain('receipt-data-123');
     expect(rows[0].rawPayload).toBeUndefined();
   });

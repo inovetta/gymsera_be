@@ -375,7 +375,7 @@ const createExpense = async (req, res, next) => {
           title: 'Pending Staff Expense Approval',
           message: `${req.user.fullName || 'Staff'} submitted an expense: ${title.trim()} — ${moneyText(parseFloat(amount), await ledgerBranchCurrency(req.tenantDb, branchId))} — needs your approval.`,
           priority: 'normal',
-          deepLink: `/host/gyms/${branchId}/staff-requests`,
+          deepLink: `/host/branches/${branchId}/staff-requests`,
           metadataJson: {
             requestId: staffAction.id,
             branchId,

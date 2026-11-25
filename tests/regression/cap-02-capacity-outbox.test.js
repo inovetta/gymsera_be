@@ -185,7 +185,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
 
     // 8. Verify auditCapacity reports no drift
     const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
-    expect(audit.driftedListings.filter(l => l.listingId === listing.id)).toHaveLength(0);
+    expect(audit.driftedBusinesses.filter(l => l.businessId === listing.id)).toHaveLength(0);
     expect(audit.totalDrift).toBe(0);
   });
 });

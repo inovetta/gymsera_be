@@ -157,7 +157,7 @@ const deleteBranch = async (req, res, next) => {
     // P5b item 7: whether the organization went too, and the store-plan notice if so.
     return sendSuccess(
       res,
-      { organizationDeleted: result.organizationDeleted, storePlanNotice: result.storePlanNotice },
+      { businessDeleted: result.businessDeleted, storePlanNotice: result.storePlanNotice },
       result.message
     );
   } catch (err) {

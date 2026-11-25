@@ -112,7 +112,7 @@ describe('CAP-06: Restoring a Branch Whose Organization Was Auto-Deactivated', (
     // 9. Verify capacity audit passes with zero drift
     const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
     expect(audit.ok).toBe(true);
-    expect(audit.driftedListings.length).toBe(0);
+    expect(audit.driftedBusinesses.length).toBe(0);
     expect(audit.totalDrift).toBe(0);
     expect(audit.invariantHolds).toBe(true);
   });

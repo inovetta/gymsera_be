@@ -40,12 +40,12 @@ const orgWith = async (title, count) => {
 };
 
 describe('P5b item 7: the plan still bills in the store after an organization goes', () => {
-  test('deleting an organization\'s last branch (iOS plan) → organizationDeleted and the App Store notice', async () => {
+  test('deleting an organization\'s last branch (iOS plan) → businessDeleted and the App Store notice', async () => {
     await usePlatform('IOS');
     const { branches: [branch] } = await orgWith('Store Last Branch', 1);
     const res = await asPersona('owner').delete(`/organizations/me/branches/${branch.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
     expect(res.status).toBe(200);
-    expect(res.body.data.organizationDeleted).toBe(true);
+    expect(res.body.data.businessDeleted).toBe(true);
     expect(res.body.data.storePlanNotice).toEqual({
       platform: 'IOS',
       manageUrl: 'https://apps.apple.com/account/subscriptions',
@@ -70,7 +70,7 @@ describe('P5b item 7: the plan still bills in the store after an organization go
     const { branches: [branch] } = await orgWith('Store Not Last', 2);
     const res = await asPersona('owner').delete(`/organizations/me/branches/${branch.id}`, { password: PASSWORD });
     expect(res.status).toBe(200);
-    expect(res.body.data.organizationDeleted).toBe(false);
+    expect(res.body.data.businessDeleted).toBe(false);
     expect(res.body.data.storePlanNotice).toBeNull();
   });
 

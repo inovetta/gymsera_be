@@ -7,7 +7,7 @@
  *
  * BUG-29 (item 5): GET /admin/reviews returned `gym: { id, title }` only (discovery.service.js
  * adminListReviews); a review is for a branch, so the CMS could not name the gym by the traveller
- * rule ("Organization · Branch", or the name once when they match). It now sends `gymTitle`, the
+ * rule ("Organization · Branch", or the name once when they match). It now sends `businessName`, the
  * snapshot's displayName for a live branch, else the organization's title.
  */
 const request = require('supertest');
@@ -87,14 +87,14 @@ describe('BUG-29: admin reviews name the gym by the traveller rule', () => {
     const res = await asAdmin('/admin/reviews');
     expect(res.status).toBe(200);
     const r = res.body.data.reviews.find((x) => x.id === liveReview.id);
-    expect(r.gymTitle).toBe('Iron Gym · Uptown');
+    expect(r.businessName).toBe('Iron Gym · Uptown');
   });
 
   test('a review of a branch travellers cannot see falls back to the organization title', async () => {
     jest.spyOn(discoveryCache, 'getSnapshot').mockResolvedValue([]);
     const res = await asAdmin('/admin/reviews');
     const r = res.body.data.reviews.find((x) => x.id === hiddenReview.id);
-    expect(r.gymTitle).toBe(listing.name);
+    expect(r.businessName).toBe(listing.name);
   });
 
   test('a failed snapshot never fails the list', async () => {
@@ -102,6 +102,6 @@ describe('BUG-29: admin reviews name the gym by the traveller rule', () => {
     jest.spyOn(console, 'warn').mockImplementation(() => {});
     const res = await asAdmin('/admin/reviews');
     expect(res.status).toBe(200);
-    expect(res.body.data.reviews.find((x) => x.id === liveReview.id).gymTitle).toBe(listing.name);
+    expect(res.body.data.reviews.find((x) => x.id === liveReview.id).businessName).toBe(listing.name);
   });
 });

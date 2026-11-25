@@ -146,9 +146,9 @@ const line = (n = 74) => console.log('─'.repeat(n));
       line();
       console.log(`INTEGRITY AUDIT  ${audit.ok ? 'PASS' : '*** FAIL ***'}`);
       line();
-      for (const l of audit.listings) {
+      for (const l of audit.businesses) {
         console.log(
-          `  ${(l.title || l.listingId).padEnd(24)} reservedSlots ${l.actualReservedSlots}` +
+          `  ${(l.businessName || l.businessId).padEnd(24)} reservedSlots ${l.actualReservedSlots}` +
           `  ledger ${l.ledgerReservedSlots}` +
           (l.drift !== 0 ? `   <== DRIFT ${l.drift > 0 ? '+' : ''}${l.drift}` : '')
         );

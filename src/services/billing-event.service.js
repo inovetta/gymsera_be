@@ -306,8 +306,8 @@ const listEvents = async ({ organizationId, status, provider, limit = 20, offset
     offset,
   });
   const tenantIds = [...new Set(rows.map((r) => r.organizationId).filter(Boolean))];
-  const tenants = tenantIds.length ? await Tenant.findAll({ where: { id: tenantIds }, attributes: ['id', 'firstBusinessName'] }) : [];
-  const nameById = new Map(tenants.map((t) => [t.id, t.firstBusinessName]));
+  const tenants = tenantIds.length ? await Tenant.findAll({ where: { id: tenantIds }, attributes: ['id', 'organizationName'] }) : [];
+  const nameById = new Map(tenants.map((t) => [t.id, t.organizationName]));
   const now = Date.now();
   const items = rows.map((r) => ({
     id: r.id,
@@ -318,7 +318,7 @@ const listEvents = async ({ organizationId, status, provider, limit = 20, offset
     attempts: r.attempts,
     lastError: r.lastError ? redactString(r.lastError) : null,
     organizationId: r.organizationId,
-    tenantName: r.organizationId ? nameById.get(r.organizationId) || null : null,
+    organizationName: r.organizationId ? nameById.get(r.organizationId) || null : null,
     receivedAt: r.receivedAt,
     processedAt: r.processedAt,
     stuck:

@@ -382,7 +382,7 @@ const _notifyBranchLimitReached = async (organizationId, tenant) => {
         type: 'branch_quota_reached',
         title: 'Branch Limit Reached',
         message: 'You have reached your branch listing quota! Upgrade your package to add more branch listings.',
-        deepLink: '/host/listings',
+        deepLink: '/host/businesses',
         metadataJson: { organizationId }
       });
     }
@@ -1098,9 +1098,9 @@ const _afterBranchDeletion = async (tenantDb, branch, deletedByUserId, { outboxE
   // 7b. If that was the organization's last branch, the organization goes
   // with it — see _deactivateOrganizationIfEmpty for why the capacity the
   // host paid for survives this untouched.
-  let organizationDeleted = false;
+  let businessDeleted = false;
   try {
-    organizationDeleted = await _deactivateOrganizationIfEmpty(
+    businessDeleted = await _deactivateOrganizationIfEmpty(
       tenantDb,
       branch.businessId,
       deletedByUserId,
@@ -1119,7 +1119,7 @@ const _afterBranchDeletion = async (tenantDb, branch, deletedByUserId, { outboxE
     console.warn('[Branch Deletion] Warning re-syncing minPrice:', syncErr.message);
   }
 
-  return { organizationDeleted };
+  return { businessDeleted };
 };
 
 /**
@@ -1191,13 +1191,13 @@ const deleteBranch = async (tenantDb, branchId, deletedByUserId, { confirmBusine
     throw err;
   }
 
-  const { organizationDeleted } = await _afterBranchDeletion(tenantDb, branch, deletedByUserId, cascade);
+  const { businessDeleted } = await _afterBranchDeletion(tenantDb, branch, deletedByUserId, cascade);
   let storePlanNotice = null;
-  if (organizationDeleted) {
+  if (businessDeleted) {
     const listing = await GymListing.findByPk(branch.businessId, { attributes: ['organizationId'] });
     storePlanNotice = await _storePlanNotice(listing?.organizationId || tenantDb.organizationId);
   }
-  return { message: 'Branch deleted successfully', organizationDeleted, storePlanNotice };
+  return { message: 'Branch deleted successfully', businessDeleted, storePlanNotice };
 };
 
 /**
@@ -1399,7 +1399,7 @@ const deleteOrganization = async (tenantDb, organizationId, listingId, { strateg
   // first, before the host is asked to confirm deleting them.
   const blockers = await _organizationDeleteBlockers(tenantDb, branches);
   if (blockers.branches.length > 0) {
-    throw _deleteBlockedError('organization_delete_blocked', ORGANIZATION_DELETE_BLOCKED_MESSAGE, { listingId, ...blockers });
+    throw _deleteBlockedError('organization_delete_blocked', ORGANIZATION_DELETE_BLOCKED_MESSAGE, { businessId: listingId, ...blockers });
   }
 
   if (branches.length > 0 || listing.reservedSlots > 0) {
@@ -1429,7 +1429,7 @@ const deleteOrganization = async (tenantDb, organizationId, listingId, { strateg
         });
         const lockedBlockers = await _organizationDeleteBlockers(tenantDb, locked, t);
         if (lockedBlockers.branches.length > 0) {
-          throw _deleteBlockedError('organization_delete_blocked', ORGANIZATION_DELETE_BLOCKED_MESSAGE, { listingId, ...lockedBlockers });
+          throw _deleteBlockedError('organization_delete_blocked', ORGANIZATION_DELETE_BLOCKED_MESSAGE, { businessId: listingId, ...lockedBlockers });
         }
         for (const branch of locked) {
            

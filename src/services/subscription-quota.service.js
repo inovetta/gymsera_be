@@ -405,26 +405,26 @@ const auditCapacity = async (organizationId, tenantDb) => {
     ledgerByListing.set(e.listingId, (ledgerByListing.get(e.listingId) || 0) + e.delta);
   }
 
-  const listingReports = listings.map((l) => {
+  const businessReports = listings.map((l) => {
     const expected = ledgerByListing.get(l.id) || 0;
     const actual = l.reservedSlots;
     return {
-      listingId: l.id,
-      title: l.name,
+      businessId: l.id,
+      businessName: l.name,
       actualReservedSlots: actual,
       ledgerReservedSlots: expected,
       drift: actual - expected,
     };
   });
 
-  const driftedListings = listingReports.filter((r) => r.drift !== 0);
-  const totalDrift = listingReports.reduce((sum, r) => sum + r.drift, 0);
+  const driftedBusinesses = businessReports.filter((r) => r.drift !== 0);
+  const totalDrift = businessReports.reduce((sum, r) => sum + r.drift, 0);
 
   let activeBranches = null;
   let usedCapacity = null;
   let invariantHolds = null;
   let expectedOverQuota = null;
-  let emptyActiveOrgs = [];
+  let emptyActiveBusinesses = [];
 
   if (tenantDb) {
     activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
@@ -451,9 +451,9 @@ const auditCapacity = async (organizationId, tenantDb) => {
     const activeListingIds = new Set(
       activeBranchesList.map((b) => b.businessId).filter(Boolean)
     );
-    emptyActiveOrgs = activeOrgs
+    emptyActiveBusinesses = activeOrgs
       .filter((org) => !activeListingIds.has(org.id))
-      .map((org) => ({ listingId: org.id, title: org.name }));
+      .map((org) => ({ businessId: org.id, businessName: org.name }));
   }
 
   // A lapsed plan records its overage on the lapsed row (NEW-170).
@@ -471,13 +471,13 @@ const auditCapacity = async (organizationId, tenantDb) => {
     recordedOverQuota,
     expectedOverQuota,
     overQuotaMismatch,
-    listings: listingReports,
-    driftedListings,
+    businesses: businessReports,
+    driftedBusinesses,
     totalDrift,
-    emptyActiveOrgs,
-    hasEmptyActiveOrgs: emptyActiveOrgs.length > 0,
+    emptyActiveBusinesses,
+    hasEmptyActiveBusinesses: emptyActiveBusinesses.length > 0,
     // The single field a cron or dashboard should branch on.
-    ok: driftedListings.length === 0 && !overQuotaMismatch && invariantHolds !== false && emptyActiveOrgs.length === 0,
+    ok: driftedBusinesses.length === 0 && !overQuotaMismatch && invariantHolds !== false && emptyActiveBusinesses.length === 0,
   };
 };
 

@@ -56,7 +56,7 @@ const auditActiveTenants = async ({ listActiveTenants, getTenantDb, auditCapacit
       if (!db) { skipped.push({ organizationId: tenant.id, reason: 'no tenant database connection' }); continue; }
       const res = await auditCapacity(tenant.id, db);
       if (res.ok) passed += 1;
-      else failed.push({ organizationId: tenant.id, error: res.error || null, driftedListings: (res.driftedListings || res.drifted || []).length });
+      else failed.push({ organizationId: tenant.id, error: res.error || null, driftedBusinesses: (res.driftedBusinesses || res.drifted || []).length });
     } catch (err) {
       failed.push({ organizationId: tenant.id, error: err.message });
     }
