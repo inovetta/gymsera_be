@@ -51,6 +51,7 @@ describe('NEW-282: brand and branch creates are idempotent', () => {
     if (k) req.set('Idempotency-Key', k);
     const res = await req.send(body);
     if (path === '/host/businesses' && res.status === 201 && !res.headers['x-idempotent-replay']) {
+      await require('../harness/business-proof').addProof(res.body.data.business.id);
       await adminService.approveTenant(`${organizationId}:${res.body.data.business.id}`, personaManager.personas.platformAdmin.user.id);
     }
     return res;

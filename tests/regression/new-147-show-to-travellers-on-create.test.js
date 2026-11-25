@@ -46,6 +46,7 @@ const newOrg = async (businessName, packages = [plan(`${businessName} Monthly`)]
   });
   expect(res.status).toBe(201);
   expect(res.body.data.branch).toBeNull();
+  await require('../harness/business-proof').addProof(res.body.data.business.id);
   await adminService.approveTenant(`${personas.owner.organizationId}:${res.body.data.business.id}`, personaManager.personas.platformAdmin.user.id);
   const listing = await GymListing.findByPk(res.body.data.business.id);
   return { branch: { id: listing.primaryBranchId } };

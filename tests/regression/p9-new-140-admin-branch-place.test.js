@@ -92,6 +92,7 @@ describe('NEW-140: admin branch create / edit keep the Google place', () => {
       });
     expect(res.status).toBe(201);
     expect(res.body.data.branch).toBeNull();
+    await require('../harness/business-proof').addProof(res.body.data.business.id);
     await require('../../src/services/admin.service').approveTenant(`${organizationId}:${res.body.data.business.id}`, personaManager.personas.platformAdmin.user.id);
     const branch = await h.tenant1.models.Branch.findOne({ where: { businessId: res.body.data.business.id } });
     expect(branch.googlePlaceId).toBe(PLACE);

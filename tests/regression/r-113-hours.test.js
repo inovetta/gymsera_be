@@ -102,6 +102,7 @@ describe('H4: the writes that take a weekly schedule', () => {
     });
     expect(res.status).toBe(201);
     const listingId = res.body.data.business.id;
+    await require('../harness/business-proof').addProof(listingId);
     await require('../../src/services/admin.service').approveTenant(`${ctx.tenant1.id}:${listingId}`, admin.id);
     const listing = await require('../../src/models/platform').GymListing.findByPk(listingId);
     const row = await Branch().findByPk(listing.primaryBranchId);

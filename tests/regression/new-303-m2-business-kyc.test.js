@@ -152,7 +152,7 @@ test('§1.4 a business is traveller-visible only when approved, and discovery ca
   const request = require('supertest');
   const { startTestServer } = require('../harness/test-server');
   const server = await startTestServer();
-  const listing = await GymListing.findOne({ where: { organizationId: personaManager.context.tenant1.id, status: 'ACTIVE' } });
+  const listing = await GymListing.findOne({ where: { organizationId: personaManager.context.tenant1.id, status: 'ACTIVE' }, order: [['createdAt', 'ASC']] });
   const branch = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   await makeBranchLive(tenantDb, branch);
   const listed = async () => {

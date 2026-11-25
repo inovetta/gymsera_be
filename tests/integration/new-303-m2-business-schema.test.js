@@ -15,8 +15,8 @@ test('M2 business KYC and verification columns are versioned and survive a model
     'approved_by', 'verified_at', 'verified_by']) {
     expect(await rename.columnInfo(GymListing.sequelize, 'business_listings', column)).toBeTruthy();
   }
+  expect(GymListing.build({}).kycStatus).toBe('NOT_SUBMITTED'); // the column default; the test factory approves ACTIVE listings
   const listing = await GymListing.findOne();
-  expect(listing.kycStatus).toBe('NOT_SUBMITTED');
   const now = new Date();
   await listing.update({ kycStatus: 'PENDING', kycDocumentsJson: [{ id: 'test' }],
     kycSubmittedAt: now, verifiedAt: now, verifiedBy: '11111111-1111-4111-8111-111111111111' });

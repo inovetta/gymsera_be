@@ -137,6 +137,7 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
       expect(res.body.success).toBe(true);
 
       expect(res.body.data.branch).toBeNull();
+      await require('../harness/business-proof').addProof(res.body.data.business.id);
       await require('../../src/services/admin.service').approveTenant(`${organizationId}:${res.body.data.business.id}`, personas.platformAdmin.user.id);
       // Approval builds the held first branch with ACTIVE status.
       const { Branch } = dbHarness.tenant1.models;

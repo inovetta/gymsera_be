@@ -33,6 +33,7 @@ const create = async (body) => {
   const res = await asPersona('owner').post('/host/businesses').send(body);
   if (res.status === 201) {
     const businessId = res.body.data.business.id;
+    await require('../harness/business-proof').addProof(businessId);
     await adminService.approveTenant(`${ctx.tenant1.id}:${businessId}`, personaManager.personas.platformAdmin.user.id);
     const listing = await GymListing.findByPk(businessId);
     res.approvedBranchId = listing.primaryBranchId;

@@ -56,6 +56,7 @@ describe('NEW-308: the business id is the listing id', () => {
     const gym = await Gym.findByPk(listingId);
     expect(gym).not.toBeNull();
     expect(await Branch.count({ where: { businessId: listingId } })).toBe(0);
+    await require('../harness/business-proof').addProof(listingId);
     await require('../../src/services/admin.service').approveTenant(`${personas.owner.organizationId}:${listingId}`, personas.platformAdmin.user.id);
     const branches = await Branch.findAll({ where: { businessId: listingId } });
     expect(branches).toHaveLength(1);
