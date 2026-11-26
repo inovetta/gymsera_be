@@ -306,7 +306,7 @@ First-time Become a Host = one review screen with both rows; approving the busin
 | W5 approve business | admin approves W3 business | branch built; both tabs show it Live |
 | W6 refund | turn refunds on for one branch, then "Apply to all branches" with a 14-day window, quote a refund on each branch | quotes follow each branch's policy |
 | W9 verified | upload a registration, admin verifies, open the gym as a traveller, admin revokes | check shown beside the business name, then gone; host card shows "Upload your registration to get Verified" before and after |
-| W7 resume | kill the app mid-wizard in each mode, relaunch | lands on the same step with the same data |
+| W7 resume | kill the app mid-wizard in each mode, relaunch | lands on the first incomplete step with the same data |
 | W8 copy | screenshots of every wizard step at iPhone SE and Pro Max sizes | no cut-off labels; texts as §3.5 |
 
 ### 7.3 CMS (Vitest + manual on local)
