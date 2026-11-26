@@ -39,7 +39,7 @@ beforeAll(async () => {
     status: 'PENDING_REVIEW',
     connectionStringEncrypted: null,
     paymentMethod: 'BANK_TRANSFER',
-    firstBranchDraft: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] },
+    firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }] },
   });
   await adminService.approveTenant(tenant.id, admin.id);
   await tenant.reload();

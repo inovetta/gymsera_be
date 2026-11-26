@@ -121,17 +121,17 @@ describe('R-112: brand name', () => {
   });
 
   test('H2: the first branch keeps its explicitly submitted name', async () => {
-    const { tenant, as } = await draftHost({ firstBusinessName: 'First Name', firstBranchDraft: { name: 'First Name', address: 'Road 1' } });
+    const { tenant, as } = await draftHost({ firstBusinessName: 'First Name', firstBranchDraft: { branchName: 'First Name', address: 'Road 1' } });
     await as().post(`/organizations/${tenant.id}/first-business`).send(await profile('Brand One', 'Second Name', { branchName: 'Second Name' }));
     await tenant.reload();
-    expect(tenant.firstBranchDraft.name).toBe('Second Name');
+    expect(tenant.firstBranchDraft.branchName).toBe('Second Name');
     expect(tenant.firstBranchDraft.address).toBe('Main Street');
     expect(tenant.onboardingStep).toBeGreaterThanOrEqual(3); // J10 submits a complete first branch
 
-    const typed = await draftHost({ firstBusinessName: 'Gym A', firstBranchDraft: { name: 'Gym A Saddar' } });
+    const typed = await draftHost({ firstBusinessName: 'Gym A', firstBranchDraft: { branchName: 'Gym A Saddar' } });
     await typed.as().post(`/organizations/${typed.tenant.id}/first-business`).send(await profile('Brand Two', 'Gym B', { branchName: 'Gym A Saddar' }));
     await typed.tenant.reload();
-    expect(typed.tenant.firstBranchDraft.name).toBe('Gym A Saddar');
+    expect(typed.tenant.firstBranchDraft.branchName).toBe('Gym A Saddar');
   });
 
   test('C4: PATCH /tenants/me (live gym) checks the rules and audits the change', async () => {

@@ -82,13 +82,12 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
 
   const { firstBusinessName, firstBusinessDescription, firstBranch } = profileData;
   const { address, latitude, longitude } = firstBranch;
+  // NEW-303 M3e (S3): the draft stores the FirstBranch names only (branchName, packages, googlePlaceId, hours, …;
+  // API contract A2 H2). No second set (name / plans / placeId / hoursJson) and no compatibility copies.
+  const { facilities, ...firstBranchKeys } = firstBranch;
   const firstBranchDraft = {
-    ...firstBranch,
-    name: firstBranch.branchName,
-    plans: firstBranch.packages,
-    ...(firstBranch.googlePlaceId && { placeId: firstBranch.googlePlaceId }),
-    ...(firstBranch.hours && { hoursJson: firstBranch.hours }),
-    facilitiesJson: firstBranch.facilitiesJson || firstBranch.facilities || null,
+    ...firstBranchKeys,
+    facilitiesJson: firstBranch.facilitiesJson || facilities || null,
   };
   // R-112 (C1, C3): the brand the host typed on Step 2, checked before anything is saved.
   const organizationName = profileData.organizationName !== undefined ? await validateBrandName(profileData.organizationName) : undefined;
@@ -102,19 +101,19 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
     ...firstBranchDraft,
   } : tenant.firstBranchDraft;
 
-  // R-113 H4 / H5: the draft first branch's week (`firstBranchDraft.hoursJson`, Become a Host), checked and
+  // R-113 H4 / H5: the draft first branch's week (`firstBranchDraft.hours`, Become a Host), checked and
   // stored with its summary pair; an older build's pair follows the same old-client rules as a branch.
   if (firstBranchDraft && typeof firstBranchDraft === 'object' && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
     const has = (k) => Object.prototype.hasOwnProperty.call(firstBranchDraft, k);
-    if (has('hoursJson') || has('openingTime') || has('closingTime')) {
+    if (has('hours') || has('openingTime') || has('closingTime')) {
       const stored = existingMainBranch || {};
       const hm = (t) => (typeof t === 'string' && t ? t.slice(0, 5) : null);
-      const body = has('hoursJson')
-        ? { hours: firstBranchDraft.hoursJson, ...(has('openingTime') && { openingTime: firstBranchDraft.openingTime }), ...(has('closingTime') && { closingTime: firstBranchDraft.closingTime }) }
+      const body = has('hours')
+        ? { hours: firstBranchDraft.hours, ...(has('openingTime') && { openingTime: firstBranchDraft.openingTime }), ...(has('closingTime') && { closingTime: firstBranchDraft.closingTime }) }
         : { ...(has('openingTime') && { openingTime: firstBranchDraft.openingTime }), ...(has('closingTime') && { closingTime: firstBranchDraft.closingTime }) };
-      const values = branchHours.resolveWrite(body, { hoursJson: stored.hoursJson || null, openingTime: hm(stored.openingTime), closingTime: hm(stored.closingTime) });
-      const next = values || { hoursJson: stored.hoursJson || null, openingTime: stored.openingTime || null, closingTime: stored.closingTime || null };
-      mergedMainBranchData.hoursJson = next.hoursJson;
+      const values = branchHours.resolveWrite(body, { hoursJson: stored.hours || null, openingTime: hm(stored.openingTime), closingTime: hm(stored.closingTime) });
+      const next = values || { hoursJson: stored.hours || null, openingTime: stored.openingTime || null, closingTime: stored.closingTime || null };
+      mergedMainBranchData.hours = next.hoursJson;
       mergedMainBranchData.openingTime = next.openingTime;
       mergedMainBranchData.closingTime = next.closingTime;
     }
@@ -149,8 +148,8 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
   // gave the branch a name of its own.
   let mainBranchDataToSave = mergedMainBranchData;
   if (firstBusinessName && firstBusinessName !== tenant.firstBusinessName && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
-    const branchName = typeof mergedMainBranchData.name === 'string' ? mergedMainBranchData.name.trim() : '';
-    if (!branchName || branchName === tenant.firstBusinessName) mainBranchDataToSave = { ...mergedMainBranchData, name: firstBusinessName };
+    const branchName = typeof mergedMainBranchData.branchName === 'string' ? mergedMainBranchData.branchName.trim() : '';
+    if (!branchName || branchName === tenant.firstBusinessName) mainBranchDataToSave = { ...mergedMainBranchData, branchName: firstBusinessName };
   }
 
   await tenant.update({
@@ -307,7 +306,7 @@ const reapplyTenant = async (organizationId, userId) => {
 
 /**
  * The membership plans the host entered for the main branch during onboarding
- * (`firstBranchDraft.plans`, older drafts `.packages`), or null. Submitting needs at
+ * (`firstBranchDraft.packages`, the FirstBranch name), or null. Submitting needs at
  * least one; host-status.service.js uses the same rule for "listing complete".
  */
 const mainBranchPlans = (tenant) => {
@@ -315,7 +314,6 @@ const mainBranchPlans = (tenant) => {
   if (typeof mainBranch === 'string') {
     try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = {}; }
   }
-  if (mainBranch && Array.isArray(mainBranch.plans)) return mainBranch.plans;
   if (mainBranch && Array.isArray(mainBranch.packages)) return mainBranch.packages;
   return null;
 };

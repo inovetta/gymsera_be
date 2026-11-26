@@ -85,6 +85,6 @@ describe('NEW-296: Become a Host step 3 (POST /tenants/:id/first-business, the o
     expect(ok.status).toBe(200);
     await tenant.reload();
     expect([tenant.firstBranchDraft.openingTime, tenant.firstBranchDraft.closingTime]).toEqual(['06:00', '00:00']);
-    expect(tenant.firstBranchDraft.hoursJson.days.sun.slots).toEqual([{ open: '06:00', close: '00:00', for: 'all' }]);
+    expect(tenant.firstBranchDraft.hours.days.sun.slots).toEqual([{ open: '06:00', close: '00:00', for: 'all' }]);
   });
 });

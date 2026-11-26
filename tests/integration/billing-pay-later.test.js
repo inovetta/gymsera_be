@@ -81,7 +81,7 @@ describe('BILL-13: pay later is a time-limited GRACE plan', () => {
       status: 'DRAFT',
       connectionStringEncrypted: null,
       selectedPackageId: legacyPackage.id,
-      firstBranchDraft: { plans: [{ name: 'Monthly', price: 3000, durationDays: 30 }] },
+      firstBranchDraft: { packages: [{ name: 'Monthly', price: 3000, durationDays: 30 }] },
     });
     await tenantService.finalizeApplication(tenant.id, tenant.ownerUserId, { paymentMethod });
     const afterSubmit = await TenantSubscription.count({ where: { organizationId: tenant.id } });

@@ -40,7 +40,7 @@ describe('FLOW-04: re-apply after rejection', () => {
       address: 'Main Boulevard',
       onboardingStep: 5,
       kycDocumentsJson: DOCS,
-      firstBranchDraft: { name: 'Iron Works', plans: [PLAN] },
+      firstBranchDraft: { branchName: 'Iron Works', packages: [PLAN] },
       connectionStringEncrypted: null,
       ...over,
     });

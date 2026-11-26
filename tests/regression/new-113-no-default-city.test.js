@@ -25,7 +25,7 @@ afterAll(async () => {
   await teardownTestDatabases();
 });
 
-const completeListing = { branchName: 'Main', plans: [{ name: 'Monthly', price: 5000 }] };
+const completeListing = { branchName: 'Main', packages: [{ name: 'Monthly', price: 5000 }] };
 
 const makeHost = async (key, tenantOverrides = {}) => {
   const user = await factories.createUser({ email: `${key.toLowerCase()}@new113.test`, role: 'GYM_HOST', isHost: true });

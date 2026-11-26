@@ -367,22 +367,22 @@ const resolveTenantCityId = async (tenant) => {
 };
 
 /**
- * NEW-303 M2d: the organization's onboarding draft (`firstBranchDraft`, Become a Host shape) as the FirstBranch the
+ * NEW-303 M2d: the organization's onboarding draft (`firstBranchDraft`, already in FirstBranch names, S3) as the FirstBranch the
  * held first branch needs (API contract A2 H2), so business approval builds it through the one branch-create path.
  */
 const _heldFirstBranch = async (tenant, b, cityId) => {
   const branchCityId = b.cityId || cityId || tenant.cityId || null;
   const area = await areaRequests.firstBranchArea(tenant, b, branchCityId);
-  const packages = (Array.isArray(b.packages) && b.packages.length > 0) ? b.packages : (Array.isArray(b.plans) ? b.plans : []);
-  const hours = b.hoursJson && typeof b.hoursJson === 'object' ? { hours: b.hoursJson } : _draftPair(b.openingTime, b.closingTime);
+  const packages = Array.isArray(b.packages) ? b.packages : [];
+  const hours = b.hours && typeof b.hours === 'object' ? { hours: b.hours } : _draftPair(b.openingTime, b.closingTime);
   return {
-    branchName: b.name || tenant.firstBusinessName || 'Main Branch',
+    branchName: b.branchName || tenant.firstBusinessName || 'Main Branch',
     address: b.address || tenant.address || null,
     cityId: branchCityId,
     ...(area.request ? { areaRequestId: area.request.id } : { areaId: area.areaId }),
     latitude: b.latitude != null ? b.latitude : tenant.latitude,
     longitude: b.longitude != null ? b.longitude : tenant.longitude,
-    googlePlaceId: b.placeId || null,
+    googlePlaceId: b.googlePlaceId || null,
     currency: firstBranchCurrency(), // BUG-09 / R-80
     phone: b.phone || tenant.phone || null,
     ...hours,
@@ -506,27 +506,25 @@ const stepCreateBranch = async (ctx) => {
   if (!branch) {
     // CAP-03: Route through gymService.createBranch
     const gymService = require('./gym.service');
-    const rawPackages = (Array.isArray(b.packages) && b.packages.length > 0)
-      ? b.packages
-      : (Array.isArray(b.plans) && b.plans.length > 0 ? b.plans : []);
+    const rawPackages = Array.isArray(b.packages) ? b.packages : [];
     const branchResult = await gymService.createBranch(
       tenantDb,
       tenant.id,
       {
         businessId: listingId,
-        branchName: b.name || tenant.firstBusinessName || 'Main Branch',
+        branchName: b.branchName || tenant.firstBusinessName || 'Main Branch',
         address: b.address || tenant.address || null,
         addressLine1: b.address || tenant.address || null,
         cityId: firstBranchCityId,
         areaId: firstArea.areaId,
         latitude: safeBranchLat,
         longitude: safeBranchLng,
-        googlePlaceId: b.placeId || null, // Phase 7 P3: the address the host picked from Google
+        googlePlaceId: b.googlePlaceId || null, // Phase 7 P3: the address the host picked from Google
         currency: firstBranchCurrency(), // BUG-09 / R-80: the currency Become a Host showed
         phone: b.phone || tenant.phone || null,
         // R-113 H4: the draft's week (Become a Host); older drafts keep their pair.
-        ...(b.hoursJson && typeof b.hoursJson === 'object'
-          ? { hours: b.hoursJson }
+        ...(b.hours && typeof b.hours === 'object'
+          ? { hours: b.hours }
           : _draftPair(b.openingTime, b.closingTime)),
         images: onboardingImages,
         // NEW-266: the amenities picked in Become a Host.
@@ -546,7 +544,7 @@ const stepCreateBranch = async (ctx) => {
     console.log(`[Provisioning] Initial Branch created in '${dbName}' (id: ${branch.id})`);
   } else {
     const updates = {};
-    if (b.name && !branch.branchName) updates.branchName = b.name;
+    if (b.branchName && !branch.branchName) updates.branchName = b.branchName;
     if (b.address && !branch.address) updates.address = b.address;
     // Only fill in if the branch has no photos of its own yet — never
     // clobber photos a host already added post-provisioning via the
@@ -577,9 +575,7 @@ const stepCreateBranch = async (ctx) => {
 
   // ── Initial membership plans for the initial branch (found by branch + name) ──
   if (branch?.id) {
-    const rawPlans = (Array.isArray(b.plans) && b.plans.length > 0)
-      ? b.plans
-      : (Array.isArray(b.packages) && b.packages.length > 0 ? b.packages : []);
+    const rawPlans = Array.isArray(b.packages) ? b.packages : []; // FirstBranch names only (S3)
 
     let lowestPrice = null;
 

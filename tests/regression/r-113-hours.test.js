@@ -235,7 +235,7 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'R113 Brand', firstBusinessName: 'Gym', firstBranch: await firstBranchInput({ hours: WEEKLY }) });
     expect(ok.status).toBe(200);
     await tenant.reload();
-    expect(tenant.firstBranchDraft.hoursJson.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);
+    expect(tenant.firstBranchDraft.hours.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);
     expect([tenant.firstBranchDraft.openingTime, tenant.firstBranchDraft.closingTime]).toEqual(['06:00', '19:00']);
   });
 
@@ -244,7 +244,7 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     dbNames.push(`gymsera_${organizationCode}`);
     const tenant = await factories.createTenant({
       organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER', cityId: 1,
-      firstBranchDraft: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
+      firstBranchDraft: { branchName: 'Main', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }], hours: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
     });
     await require('../../src/services/admin.service').approveTenant(tenant.id, admin.id);
     await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d

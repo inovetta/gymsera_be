@@ -114,7 +114,7 @@ describe('R-25: approval with a bad credential fails loudly and activates nothin
   });
 
   const pendingTenant = (organizationCode) =>
-    createTenant({ organizationCode, gymName: `R25 ${organizationCode}`, ownerUserId: hostUser.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, firstBranchDraft: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] } });
+    createTenant({ organizationCode, gymName: `R25 ${organizationCode}`, ownerUserId: hostUser.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }] } });
 
   const dbExists = async (name) => {
     const conn = await getAdminConnection();

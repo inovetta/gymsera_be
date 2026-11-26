@@ -152,14 +152,42 @@ const TENANT_ATTRIBUTES = [
 const findOwnedTenant = (userId) =>
   Tenant.findOne({ where: { ownerUserId: userId }, attributes: TENANT_ATTRIBUTES, order: [['createdAt', 'DESC']] });
 
-/** The caller's host status. Two indexed reads; no tenant database is opened. */
+/**
+ * NEW-303 M3e (S2): what the host does next for the first business, once the organization is approved and that
+ * business waits with its first branch held (M2d, R-121):
+ *   { key: 'upload_proof_of_premises', businessId }   no proof of premises uploaded yet (D10)
+ *   { key: 'wait_for_business_approval', businessId } the proof is there; the business waits for the admin
+ * null otherwise (no organization, not approved yet, or the first business is approved).
+ */
+const NextStep = {
+  UPLOAD_PROOF_OF_PREMISES: 'upload_proof_of_premises',
+  WAIT_FOR_BUSINESS_APPROVAL: 'wait_for_business_approval',
+};
+
+const firstBusinessNextStep = async (tenant) => {
+  if (!tenant || tenant.status !== TenantStatus.ACTIVE) return null;
+  const { GymListing } = require('../models/platform');
+  const first = await GymListing.findOne({
+    where: { organizationId: tenant.id },
+    order: [['createdAt', 'ASC'], ['id', 'ASC']],
+  });
+  if (!first || first.status !== 'PENDING' || !first.firstBranchDraft) return null;
+  const missing = require('./business-kyc.service').missingForApproval(first);
+  return {
+    key: missing.includes('PROOF_OF_PREMISES') ? NextStep.UPLOAD_PROOF_OF_PREMISES : NextStep.WAIT_FOR_BUSINESS_APPROVAL,
+    businessId: first.id,
+  };
+};
+
+/** The caller's host status. Indexed platform reads only; no tenant database is opened. */
 const getHostStatus = async (userId) => {
   const tenant = userId ? await findOwnedTenant(userId) : null;
   const entitledSub = tenant ? await subscriptionQuotaService.getActiveSubscription(tenant.id) : null;
   // NEW-265 (R-109 F3): the organisation's or draft first branch's area request, for "Choose your area
   // again" (status rejected) or "under review"; null when none.
   const area = tenant ? await require('./area-requests.service').hostStatusArea(tenant) : null;
-  return { ...deriveHostStatus({ tenant, entitledSub }), area };
+  const nextStep = await firstBusinessNextStep(tenant);
+  return { ...deriveHostStatus({ tenant, entitledSub }), area, nextStep };
 };
 
-module.exports = { HostStatus, NextAction, deriveHostStatus, getHostStatus };
+module.exports = { HostStatus, NextAction, NextStep, deriveHostStatus, getHostStatus };

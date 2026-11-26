@@ -28,7 +28,7 @@ const deriveHostStatus = (...a) => require('../../src/services/host-status.servi
 const tierForBranchCount = (n) => require('../../src/constants/plan-tiers').tierForBranchCount(n);
 const planTiers = () => require('../../src/constants/plan-tiers').PLAN_TIERS;
 
-const completeListing = { branchName: 'Main', plans: [{ name: 'Monthly', price: 5000 }] };
+const completeListing = { branchName: 'Main', packages: [{ name: 'Monthly', price: 5000 }] };
 
 let personas;
 

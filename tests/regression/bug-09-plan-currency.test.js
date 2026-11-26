@@ -133,7 +133,7 @@ describe('BUG-09: Become a Host says which currency the first branch will get', 
     const user = await factories.createUser({ email: 'draft@bug09.test', role: 'GYM_HOST', isHost: true });
     await factories.createTenant({
       ownerUserId: user.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING',
-      firstBranchDraft: { branchName: 'Main', plans: [{ name: 'Monthly', price: 5000 }] },
+      firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 5000 }] },
     });
     const { signToken } = require('../../src/utils/jwt.utils');
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true });

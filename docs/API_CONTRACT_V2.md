@@ -143,7 +143,11 @@ this branch.
 
 `status`, `nextAction`, `organizationId` (was `tenantId`), `organizationName` (was `brandName`),
 `firstBusinessName` (was `gymName`), `applicationSubmitted`, `firstBusinessComplete` (was `listingComplete`),
-`payment { done, entitled, method }`, `plan`, `verification { status, verified }`, `rejectionReason`, `area` (A3 J5; was written `pendingArea`).
+`payment { done, entitled, method }`, `plan`, `verification { status, verified }`, `rejectionReason`, `area` (A3 J5; was written `pendingArea`),
+`nextStep` (NEW-303 M3e, R-121): `null`, or for an approved organization whose first business still holds its first
+branch `{ key, businessId }` with `key` = `upload_proof_of_premises` (no proof of premises uploaded yet; upload at
+`POST /host/businesses/:businessId/kyc-documents`) or `wait_for_business_approval` (uploaded; the business waits for
+the admin).
 
 #### BranchQuota (`GET /host/branch-quota[?businessId=]`)
 

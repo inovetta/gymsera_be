@@ -504,7 +504,7 @@ const titleFor = async (link) => {
       if (!t) return base;
       const mb = parseJson(t.firstBranchDraft);
       if (link.target === 'first_branch_draft') {
-        return { ...base, title: mb.name || t.firstBusinessName || t.organizationName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
+        return { ...base, title: mb.branchName || t.firstBusinessName || t.organizationName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
       }
       return { ...base, title: t.firstBusinessName || t.organizationName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
     }

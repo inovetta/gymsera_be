@@ -73,7 +73,7 @@ describe('NEW-266: Become a Host keeps the amenities', () => {
     dbNames.push(`gymsera_${organizationCode}`);
     const tenant = await factories.createTenant({
       organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
-      firstBranchDraft: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }], facilitiesJson: AMENITIES },
+      firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }], facilitiesJson: AMENITIES },
     });
     await require('../../src/services/admin.service').approveTenant(tenant.id, admin.id);
     await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d

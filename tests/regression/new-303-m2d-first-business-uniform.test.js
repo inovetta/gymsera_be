@@ -32,7 +32,7 @@ test('organization approval needs no proof; the first business waits, its approv
   const tenant = await factories.createTenant({
     organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER', cityId: 1,
     firstBranchDraft: {
-      name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }],
+      branchName: 'Main', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }],
       imagesJson: ['https://example.test/1.png', 'https://example.test/2.png', 'https://example.test/3.png'],
     },
   });

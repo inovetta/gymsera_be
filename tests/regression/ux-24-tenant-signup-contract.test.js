@@ -147,7 +147,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
     test('first-business without plans is refused before finalize', async () => {
       const { organizationId, token } = await registerHost('web');
 
-      // Exactly what gym-owner-register.tsx sends: no firstBranchDraft.plans.
+      // Exactly what gym-owner-register.tsx sends: no firstBranchDraft.packages.
       const profileResponse = await request(app)
         .post(`${API}/organizations/${organizationId}/first-business`)
         .set('Authorization', `Bearer ${token}`)
@@ -233,7 +233,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         address: baseProfile.address,
         latitude: baseProfile.latitude,
         longitude: baseProfile.longitude,
-        firstBranchDraft: { name: 'UX24 Gym' },
+        firstBranchDraft: { branchName: 'UX24 Gym' },
       });
       expect(s2.status).toBe(422);
 
@@ -246,7 +246,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
       const branch = typeof stored.firstBranchDraft === 'string'
         ? JSON.parse(stored.firstBranchDraft)
         : stored.firstBranchDraft;
-      expect(branch.plans).toHaveLength(1);
+      expect(branch.packages).toHaveLength(1); expect(branch).not.toHaveProperty('plans'); // S3: FirstBranch names only
       expect(branch.address).toBe(baseProfile.address);
       expect(branch.branchName).toBe('UX24 Gym');
 
@@ -282,7 +282,7 @@ describe('UX-24: /tenants/* signup contract (web and mobile shapes)', () => {
         ? JSON.parse(stored.firstBranchDraft)
         : stored.firstBranchDraft;
       expect(branch.imagesJson).toEqual(urls);
-      expect(branch.plans).toHaveLength(1);
+      expect(branch.packages).toHaveLength(1); expect(branch).not.toHaveProperty('plans'); // S3: FirstBranch names only
     });
 
     test('the old first-business/images routes are gone (404)', async () => {

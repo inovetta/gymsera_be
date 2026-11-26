@@ -201,9 +201,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
     }
     b = b || {};
 
-    const rawPlans = (Array.isArray(b.plans) && b.plans.length > 0)
-      ? b.plans
-      : (Array.isArray(b.packages) && b.packages.length > 0 ? b.packages : []);
+    const rawPlans = Array.isArray(b.packages) ? b.packages : []; // FirstBranch names only (S3)
 
     let gym = await Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
     if (!gym && tenant.firstBusinessName) {
@@ -225,7 +223,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
           tenantDb,
           gym.id,
           {
-            branchName: b.name || tenant.firstBusinessName || 'Main Branch',
+            branchName: b.branchName || tenant.firstBusinessName || 'Main Branch',
             address: b.address || tenant.address || null,
             cityId: b.cityId || tenant.cityId || null,
           },

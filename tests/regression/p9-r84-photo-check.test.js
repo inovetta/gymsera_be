@@ -45,7 +45,7 @@ const pendingTenant = async (key) => {
     cityId: 1,
     logoUrl: 'https://cdn.gymsera.test/logo.png',
     coverImageUrl: 'https://cdn.gymsera.test/cover.jpg',
-    firstBranchDraft: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], imagesJson: [...PHOTOS] },
+    firstBranchDraft: { branchName: 'Main', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }], imagesJson: [...PHOTOS] },
   });
 };
 
