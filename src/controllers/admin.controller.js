@@ -461,7 +461,9 @@ const reviewBusinessDocument = (decision) => async (req, res, next) => {
 
 const getReviewQueue = async (req, res, next) => {
   try {
-    return sendSuccess(res, await adminService.getReviewQueue());
+    const { page, limit, offset } = parsePagination(req.query);
+    const { kind } = req.query;
+    return sendSuccess(res, await adminService.getReviewQueue({ kind, page, limit, offset }));
   } catch (err) { next(err); }
 };
 

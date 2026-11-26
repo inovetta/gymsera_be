@@ -591,6 +591,7 @@ const getGym = async (id) => {
   }
 
   const normalizedGym = _normalizeFacilities(listing);
+  normalizedGym.businessVerified = !!listing.verifiedAt;
   // NEW-283: the brand is the account's (R-112). With two or more live organisations it would show the
   // first brand's name under another brand's gyms, so it is sent only for exactly one live organisation.
   if (normalizedGym.tenant && normalizedGym.organizationId) {
@@ -608,7 +609,7 @@ const BUSINESS_PUBLIC_KEYS = [
   'id', 'organizationId', 'primaryBranchId', 'cityId', 'areaId', 'name', 'description', 'logoUrl', 'coverImageUrl',
   'genderType', 'averageRating', 'reviewCount', 'latitude', 'longitude', 'isFeatured', 'contactPhone', 'website',
   'facilitiesJson', 'imagesJson', 'category', 'establishedYear', 'floorArea', 'postalCode', 'country', 'minPrice',
-  'currency', 'city', 'area',
+  'currency', 'businessVerified', 'city', 'area',
 ];
 const _toBusinessPublic = (gym) => {
   const out = {};

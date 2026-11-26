@@ -185,10 +185,10 @@ describe('NEW-108: GYM_HOST with a PENDING booking at gym B gets 403 on gym B st
 });
 
 describe('NEW-108: without a header the unpaid host is never placed in gym B', () => {
-  test('GET /team answers 409 tenant_not_active, not gym B\'s team', async () => {
+  test('GET /team answers 409 organization_not_active, not gym B\'s team', async () => {
     const res = await asHostA().get('/team');
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe('tenant_not_active');
+    expect(res.body.code).toBe('organization_not_active');
     expect(JSON.stringify(res.body)).not.toContain('X-Organization-Id');
   });
 
@@ -197,9 +197,9 @@ describe('NEW-108: without a header the unpaid host is never placed in gym B', (
     expect(res.status).toBe(200);
   });
 
-  test('GET /reports/yearly answers 409 tenant_not_active', async () => {
+  test('GET /reports/yearly answers 409 organization_not_active', async () => {
     const res = await asHostA().get('/reports/yearly');
     expect(res.status).toBe(409);
-    expect(res.body.code).toBe('tenant_not_active');
+    expect(res.body.code).toBe('organization_not_active');
   });
 });

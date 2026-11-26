@@ -323,7 +323,7 @@ const makeTenantContext = ({ memberRoute = false, noTenantIsForbidden = false } 
       // BUG-14/15: a host whose own gym is not live yet gets a clear code the
       // clients map to "your gym isn't live yet", never a developer sentence.
       if (userId && !isPlatformAdmin && (await membershipService.ownsInactiveTenant(userId))) {
-        return sendError(res, 409, 'Your gym is not live yet. Finish setting it up to use this.', 'tenant_not_active');
+        return sendError(res, 409, 'Your gym is not live yet. Finish setting it up to use this.', 'organization_not_active');
       }
       if (noTenantIsForbidden && !isPlatformAdmin) {
         return sendError(res, 403, 'Only the gym\'s owner and team can use this.', 'forbidden');

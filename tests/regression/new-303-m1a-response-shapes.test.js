@@ -117,7 +117,8 @@ test('G11 source deep links all use the contract paths', () => {
   const allowed = new Set([
     '/traveler/subscriptions', '/traveler/inbox',
     '/traveler/staff-invite-confirmation?staffId=<id>&organizationId=<id>',
-    '/host/subscriptions', '/host/businesses', '/host/profile', '/host/branches', '/host/today',
+    '/host/subscriptions', '/host/businesses', '/host/businesses/<id>', '/host/businesses/<id>/documents',
+    '/host/profile', '/host/branches', '/host/today',
     '/host/devices', '/host/inbox', '/host/branches/<id>/staff', '/host/branches/<id>/staff-requests',
     '/host/operations?tab=subscriptions&filter=PENDING&subscriptionId=<id>',
     '/staff/dashboard', '/admin/organizations/<id>', '/admin/plan-payments', '/notifications',

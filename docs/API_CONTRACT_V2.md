@@ -231,7 +231,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 43 | GET | `/tenants/me` | **`/organizations/me`** |  |  |
 | 44 | PATCH | `/tenants/me` | **`/organizations/me`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` |  |
 | 45 | POST | `/tenants/register` | **`/organizations/register`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` | new organization codes `ORG-` (D-5, F8) |
-| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (was `gymDescription`), `firstBranch` (`FirstBranch`, A2 H2 / A3 J10) |  |
+| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (was `gymDescription`), `genderType`, `logoUrl`, `coverImageUrl`, `firstBranch` (`FirstBranch`, A2 H2 / A3 J10) |  |
 | 47 | POST | `/tenants/:id/select-package` | **`/organizations/:organizationId/select-package`** | `packageId` |  |
 | 48 | POST | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** |  |  |
 | 49 | PUT | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** | `imagesJson` |  |
@@ -672,7 +672,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | POST | `/admin/businesses/:businessId/reject` | body `reason` |
 | POST | `/admin/businesses/:businessId/verify` | verified badge on; 422 `registration_missing` |
 | DELETE | `/admin/businesses/:businessId/verify` | verified badge off |
-| GET | `/admin/review-queue` | A1 G1: `{ items: [ReviewItem] }` |
+| GET | `/admin/review-queue` | A1 G1: `{ items: [ReviewItem], page, total }` (query: `kind`, `page`, `limit`) |
 | GET | `/admin/businesses/:businessId/documents` | A1 G4 |
 | GET | `/admin/businesses/:businessId/documents/:documentId/stream` | A1 G4 |
 | POST | `/admin/businesses/:businessId/documents/:documentId/approve` | A1 G4 |
@@ -957,7 +957,7 @@ issued).
 ### G1. Admin organization list and review queue
 
 - `GET /admin/organizations` (was `GET /admin/tenants`) → `{ organizations: [Organization], page, total }`.
-- **New** `GET /admin/review-queue` → `{ items: [ReviewItem] }`. One item per organization waiting for identity
+- **New** `GET /admin/review-queue` (query: optional `kind=ORGANIZATION|BUSINESS`, `page`, `limit`) → `{ items: [ReviewItem], page, total }`. One item per organization waiting for identity
   review and one per business waiting for approval (replaces the compound `tenantId:listingId` rows, F7):
 
 | Key | Value |
@@ -974,12 +974,12 @@ issued).
 `organizationId:businessId` rows and `isAdditionalOrganization` are gone; a business waiting for approval is in
 `GET /admin/review-queue` and is decided at `POST /admin/businesses/:businessId/approve|reject`. An id with a colon is
 not accepted anywhere. `GET /admin/organizations/:organizationId` has one `gymListing` (the first business) and
-`organizations` (every business) as before.
+`businesses` (every business, G2).
 
 ### G2. Organization detail
 
-`GET /admin/organizations/:organizationId` → `{ organization: Organization, businesses: [Business], ... }`: the
-organization's businesses are listed under **`businesses`** (each a §3 Business, with its own `id`).
+`GET /admin/organizations/:organizationId` → `{ organization: Organization & { businesses: [Business], ... } }`: the
+organization's businesses are listed under **`organization.businesses`** (each with `id`, `name`, `status`, `kycStatus`, `businessVerified`, `activeBranches`, `reservedSlots`, `createdAt`).
 
 ### G3. Admin business wrapper
 
@@ -1060,7 +1060,7 @@ so **`ORGANIZATION` changes meaning**: clients map by the new table, never by th
 | `/admin/plan-payments` | (same) | plan payment requests |
 | `/notifications` | (same) | generic |
 
-New with the enterprise model: `/host/businesses/<businessId>` (business approved / needs changes / verified).
+New with the enterprise model: `/host/businesses/<businessId>` (business approved / needs changes / verified) and `/host/businesses/<businessId>/documents` (`organization_approved` when the first business is waiting for proof of premises).
 No other deep link is sent; a test lists them (server work).
 
 ### G15. Area-request groups (admin, `GET /admin/area-requests`)
@@ -1086,13 +1086,13 @@ Where this section and earlier sections differ, this section wins (except H5, wh
 
 | Before | After | When |
 |---|---|---|
-| `tenant_approved` | **`organization_approved`** | admin approves the organization (`admin.service.js:474`) |
+| `tenant_approved` | **`organization_approved`** | admin approves the organization (`admin.service.js`); when the first business holds its first branch (`PENDING`), says it is waiting for proof of premises with deep link `/host/businesses/<businessId>/documents`, else `/host/today` |
 | `tenant_rejected` | **`organization_rejected`** | admin rejects it (`:596`) |
 | `tenant_suspended` | **`organization_suspended`** | admin suspends it (`:631`) |
 | metadata `event: 'tenant_status_updated'` | **`organization_status_updated`** | every organization status change (`metadataJson.event` on the four rows above; key `tenantId` → `organizationId`, §2) |
 | `tenant_reactivated` | **`organization_reactivated`** | admin reactivates it (`:684`); final (A3 J1) |
 | `tenant_submitted_review` | `organization_submitted_review` | to admins, on finalize (`tenant.service.js:404`); follows §2 |
-| `listing_approved` / `listing_rejected` | `business_approved` / `business_rejected` | business approval (`admin.service.js:391,534`); deep link `/host/businesses/<businessId>` (A1 G11); follows §2 |
+| `listing_approved` / `listing_rejected` | **`business_approved`** / `business_rejected` | business approval (`admin.service.js`); `business_approved` deep link `/host/businesses/<businessId>` (A1 G11); follows §2 |
 
 Every other type is unchanged.
 
@@ -1287,3 +1287,4 @@ route** and no server draft: the server first sees the business when `POST /host
 | 2026-11-23 | Amendment A3 (§12, owner): `organization_reactivated`; list keys `branches` / `businesses`; my-subscriptions rows with `branchId` + `businessId`; error-table rows listed; HostStatus key `area`; inbox `business { id, name }` + `branchName`; staff roles scoped ORG / BRANCH (`/me/staff-status`, staff invite) with the report of other responses; Add Business nested `firstBranch`. | Claude Code (Sonnet 5.5), session 166 |
 | 2026-11-23 | Amendment A3 addendum (§12 J10-J12, owner): one `FirstBranch` schema for first-business, Add Business and first-branch edit; business KYC list is `{ documents: [...] }`; first-time host drafts are phone-only (no partial-save contract). | Claude Code (Sonnet 5.5), session 167 |
 | 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName`, `firstBusinessName`, `firstBusinessDescription`, `firstBranch` only; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
+| 2026-11-26 | M3e fixes: `GET /admin/review-queue` honours `kind` and returns `{ items, page, total }`; `GET /admin/organizations/:organizationId` lists businesses under `organization.businesses` (F7 note corrected); `GET /discovery/businesses/:id` includes `businessVerified`; `POST /organizations/:organizationId/first-business` accepts `genderType`, `logoUrl`, `coverImageUrl`; `organization_approved` links to `/host/businesses/<businessId>/documents` when first business awaits proof of premises and `business_approved` links to `/host/businesses/<businessId>`. | Antigravity |

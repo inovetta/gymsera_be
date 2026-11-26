@@ -115,7 +115,7 @@ const _ownerTenant = async (organizationId, userId) => {
 
 const submit = async ({ organizationId, userId, billingPlanId, billingCycle, method = 'BANK_TRANSFER', payerReference = null, file = null }) => {
   const tenant = await _ownerTenant(organizationId, userId);
-  if (tenant.status !== 'ACTIVE') throw err(409, 'tenant_not_active', 'Your business must be approved and active to pay for a plan here.');
+  if (tenant.status !== 'ACTIVE') throw err(409, 'organization_not_active', 'Your business must be approved and active to pay for a plan here.');
 
   const m = methods.getMethod(method);
   if (!m) throw err(422, 'invalid_method', 'This payment method is not available.');

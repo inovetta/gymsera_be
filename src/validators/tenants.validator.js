@@ -36,7 +36,13 @@ const tenantsValidators = {
     body('organizationName').trim().notEmpty().withMessage('Organization name is required'),
     body('firstBusinessName').trim().notEmpty().withMessage('Business name is required')
       .isLength({ max: 200 }).withMessage('Business name must be 200 characters or fewer'),
-    body('firstBusinessDescription').optional().isString(),
+    body('firstBusinessDescription').optional({ nullable: true }).isString(),
+    body('genderType')
+      .optional({ nullable: true })
+      .isIn(['MIXED', 'MALE_ONLY', 'FEMALE_ONLY'])
+      .withMessage('genderType must be MIXED, MALE_ONLY, or FEMALE_ONLY'),
+    body('logoUrl').optional({ nullable: true, checkFalsy: true }).isString().withMessage('logoUrl must be a string'),
+    body('coverImageUrl').optional({ nullable: true, checkFalsy: true }).isString().withMessage('coverImageUrl must be a string'),
     require('./first-branch.validator').nested(),
   ],
 

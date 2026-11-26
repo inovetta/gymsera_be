@@ -130,7 +130,7 @@ const ERROR_COPY = {
     ar: 'بعض المعلومات المدخلة غير صحيحة. يرجى المراجعة والتصحيح.',
     action: 'retry',
   },
-  tenant_not_active: {
+  organization_not_active: {
     en: 'Your gym is not live yet. Finish setting it up to use this.',
     ur: 'آپ کا جم ابھی فعال نہیں ہوا۔ اسے استعمال کرنے کے لیے سیٹ اپ مکمل کریں۔',
     ar: 'ناديك الرياضي غير مفعّل بعد. أكمل إعداده لاستخدام هذه الميزة.',

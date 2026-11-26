@@ -122,7 +122,8 @@ describe('GET /admin/organizations', () => {
     expect(res.body.data.total).toBe(total);
     expect(total).toBeGreaterThanOrEqual(100);
     expect(total).toBe(await require('../../src/models/platform').Tenant.count());
-    const queue = await asPersona('platformAdmin').get('/admin/review-queue');
+    const queue = await asPersona('platformAdmin').get('/admin/review-queue?kind=BUSINESS&limit=100');
+    expect(queue.body.data.total).toBeGreaterThanOrEqual(pendingAdditional);
     expect(queue.body.data.items.filter((i) => i.kind === 'BUSINESS').length).toBeGreaterThanOrEqual(pendingAdditional);
   });
 

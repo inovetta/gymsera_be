@@ -187,7 +187,7 @@ const getTenant = async (organizationId) => {
     // N separate page visits that each pretended to be a different tenant.
     const allListings = await GymListing.findAll({
       where: { organizationId: actualTenantId, status: { [Op.ne]: 'INACTIVE' } },
-      attributes: ['id', 'name', 'status', 'reservedSlots', 'createdAt'],
+      attributes: ['id', 'name', 'status', 'kycStatus', 'verifiedAt', 'reservedSlots', 'createdAt'],
       order: [['createdAt', 'ASC']],
     });
 
@@ -203,15 +203,17 @@ const getTenant = async (organizationId) => {
         });
         branchCountsByListing = Object.fromEntries(counts.map((c) => [c.businessId, parseInt(c.count, 10)]));
       } catch (err) {
-        // Tenant DB unreachable — organizations still render, just without
-        // branch counts, rather than failing the whole tenant page.
+        // Tenant DB unreachable — businesses still render, just without
+        // branch counts, rather than failing the whole organization page.
       }
     }
 
-    tenantJson.organizations = allListings.map((l) => ({
+    tenantJson.businesses = allListings.map((l) => ({
       id: l.id,
       name: l.name,
       status: l.status,
+      kycStatus: l.kycStatus,
+      businessVerified: !!l.verifiedAt,
       activeBranches: branchCountsByListing[l.id] || 0,
       reservedSlots: l.reservedSlots,
       createdAt: l.createdAt,
@@ -324,12 +326,12 @@ const approveBusiness = async (businessId, adminUserId, { beforeChange = null } 
     notificationsService.createNotification({
       userId: hostUserId,
       role: 'host',
-      type: 'listing_approved',
+      type: 'business_approved',
       title: 'Business Approved! 🎉',
       message: `Your business "${listing.name}" has been approved.`,
       priority: 'high',
-      deepLink: '/host/branches',
-      metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'ACTIVE' },
+      deepLink: `/host/businesses/${listing.id}`,
+      metadataJson: { event: 'business_updated', businessId: listing.id, status: 'ACTIVE' },
     }).catch((err) => console.error('[approveBusiness] Notification error:', err.message));
   }
   return listing.reload();
@@ -337,20 +339,27 @@ const approveBusiness = async (businessId, adminUserId, { beforeChange = null } 
 
 /**
  * GET /admin/review-queue (A1 G1): one item per organization waiting for identity review and one per business
- * waiting for approval.
+ * waiting for approval, with optional `kind` filter and pagination (`page`, `total`).
  */
-const getReviewQueue = async () => {
+const getReviewQueue = async ({ kind = null, page = 1, limit = 20, offset = 0 } = {}) => {
+  if (kind && !['ORGANIZATION', 'BUSINESS'].includes(kind)) {
+    throw createError('Invalid kind. Valid values: ORGANIZATION, BUSINESS', 400);
+  }
   const [organizations, businesses] = await Promise.all([
-    Tenant.findAll({
-      where: { status: { [Op.in]: [TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW] } },
-      attributes: ['id', 'organizationName', 'status', 'kycStatus', 'createdAt', 'updatedAt'],
-      order: [['createdAt', 'ASC']],
-    }),
-    GymListing.findAll({
-      where: { status: 'PENDING' },
-      attributes: ['id', 'organizationId', 'name', 'status', 'kycStatus', 'kycSubmittedAt', 'createdAt'],
-      order: [['createdAt', 'ASC']],
-    }),
+    !kind || kind === 'ORGANIZATION'
+      ? Tenant.findAll({
+        where: { status: { [Op.in]: [TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW] } },
+        attributes: ['id', 'organizationName', 'status', 'kycStatus', 'createdAt', 'updatedAt'],
+        order: [['createdAt', 'ASC']],
+      })
+      : [],
+    !kind || kind === 'BUSINESS'
+      ? GymListing.findAll({
+        where: { status: 'PENDING' },
+        attributes: ['id', 'organizationId', 'name', 'status', 'kycStatus', 'kycSubmittedAt', 'createdAt'],
+        order: [['createdAt', 'ASC']],
+      })
+      : [],
   ]);
   const items = [
     ...organizations.map((o) => ({
@@ -360,7 +369,7 @@ const getReviewQueue = async () => {
       kind: 'BUSINESS', organizationId: b.organizationId, businessId: b.id, name: b.name, status: b.status, kycStatus: b.kycStatus, submittedAt: b.kycSubmittedAt || b.createdAt,
     })),
   ].sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
-  return { items };
+  return { items: items.slice(offset, offset + limit), page, total: items.length };
 };
 
 const businessForAdmin = async (businessId) => {
@@ -442,17 +451,30 @@ const approveTenant = async (organizationId, adminUserId, { photosChecked = fals
   // Another run is provisioning this tenant: report where it is, change nothing.
   if (run.inProgress || run.alreadyActive) return { tenant, provisioning };
 
-  // Real-time notification to Gym Host that their tenant account is active
+  // Real-time notification to Gym Host that their organization is active (and first business awaits proof of premises)
   if (tenant.ownerUserId) {
+    const firstBusiness = await GymListing.findOne({
+      where: { organizationId: tenant.id },
+      order: [['createdAt', 'ASC'], ['id', 'ASC']],
+      attributes: ['id', 'name', 'status', 'firstBranchDraft'],
+    });
+    const waitingForProof = Boolean(firstBusiness && firstBusiness.status === 'PENDING' && firstBusiness.firstBranchDraft);
     notificationsService.createNotification({
       userId: tenant.ownerUserId,
       role: 'host',
-      type: 'tenant_approved',
-      title: 'Your Gym has been Approved! 🎉',
-      message: `Congratulations! ${tenant.organizationName} has been approved and is now active.`,
+      type: 'organization_approved',
+      title: waitingForProof ? 'Organization Approved — Upload Proof of Premises' : 'Your Organization has been Approved! 🎉',
+      message: waitingForProof
+        ? `Congratulations! ${tenant.organizationName} has been approved. Your first business "${firstBusiness.name}" is waiting for proof of premises before it can go live.`
+        : `Congratulations! ${tenant.organizationName} has been approved and is now active.`,
       priority: 'high',
-      deepLink: '/host/today',
-      metadataJson: { event: 'tenant_status_updated', organizationId: tenant.id, status: tenant.status },
+      deepLink: waitingForProof ? `/host/businesses/${firstBusiness.id}/documents` : '/host/today',
+      metadataJson: {
+        event: 'organization_status_updated',
+        organizationId: tenant.id,
+        ...(waitingForProof && { businessId: firstBusiness.id }),
+        status: tenant.status,
+      },
     }).catch(err => console.error('[approveTenant] Notification error:', err.message));
   }
 

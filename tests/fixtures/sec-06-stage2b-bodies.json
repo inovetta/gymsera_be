@@ -608,15 +608,21 @@
    "path": "/api/v1/organizations/:p/first-business",
    "stage": 1,
    "allowed": [
+    "coverImageUrl",
     "firstBranch",
     "firstBusinessDescription",
     "firstBusinessName",
+    "genderType",
+    "logoUrl",
     "organizationName"
    ],
    "clientKeys": [
+    "coverImageUrl",
     "firstBranch",
     "firstBusinessDescription",
     "firstBusinessName",
+    "genderType",
+    "logoUrl",
     "organizationName"
    ]
   },

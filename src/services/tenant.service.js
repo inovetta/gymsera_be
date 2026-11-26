@@ -80,7 +80,7 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
     throw createError('Gym profile cannot be updated at this stage', 400);
   }
 
-  const { firstBusinessName, firstBusinessDescription, firstBranch } = profileData;
+  const { firstBusinessName, firstBusinessDescription, genderType, logoUrl, coverImageUrl, firstBranch } = profileData;
   const { address, latitude, longitude } = firstBranch;
   // NEW-303 M3e (S3): the draft stores the FirstBranch names only (branchName, packages, googlePlaceId, hours, …;
   // API contract A2 H2). No second set (name / plans / placeId / hoursJson) and no compatibility copies.
@@ -156,7 +156,9 @@ const submitGymProfile = async (organizationId, userId, profileData) => {
     ...(organizationName !== undefined && { organizationName }),
     firstBusinessName: firstBusinessName || tenant.firstBusinessName,
     firstBusinessDescription: firstBusinessDescription !== undefined ? firstBusinessDescription : tenant.firstBusinessDescription,
-    genderType: tenant.genderType,
+    ...(genderType !== undefined && { genderType: genderType || null }),
+    ...(logoUrl !== undefined && { logoUrl: logoUrl || null }),
+    ...(coverImageUrl !== undefined && { coverImageUrl: coverImageUrl || null }),
     address: address !== undefined ? address : tenant.address,
     latitude: latitude !== undefined ? latitude : tenant.latitude,
     longitude: longitude !== undefined ? longitude : tenant.longitude,
