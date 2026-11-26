@@ -1041,9 +1041,11 @@ async function seedTenantsAndListings(userMap) {
   let listingsCreated = 0;
 
   for (const ld of listingDefs) {
+    // NEW-303 M2: a seeded live business is an approved one (enterprise §1.4), else travellers never see it.
+    const approved = ld.status === 'ACTIVE' ? { kycStatus: 'APPROVED', approvedAt: new Date() } : {};
     const [listing, wasCreated] = await GymListing.findOrCreate({
       where:    { name: ld.name, organizationId: ld.organizationId },
-      defaults: ld,
+      defaults: { ...ld, ...approved },
     });
     listingMap[listing.name] = listing;
     if (wasCreated) listingsCreated++;
