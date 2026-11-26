@@ -151,9 +151,15 @@ const verify = async ({ listing, adminUserId }) => {
   return listing;
 };
 
-/** DELETE /admin/businesses/:id/verify: revocable (D11). */
+/** DELETE /admin/businesses/:id/verify: revocable (D11); rejects the registration document with "Verification revoked". */
 const unverify = async ({ listing, adminUserId }) => {
-  await listing.update({ verifiedAt: null, verifiedBy: null });
+  const now = new Date();
+  const docs = documentsOf(listing).map((d) => (
+    d.documentType === KycDocumentType.BUSINESS_REGISTRATION && d.status !== 'REJECTED'
+      ? { ...d, status: 'REJECTED', reviewedAt: now.toISOString(), reviewedBy: adminUserId, rejectionReason: 'Verification revoked' }
+      : d
+  ));
+  await listing.update({ verifiedAt: null, verifiedBy: null, kycDocumentsJson: docs });
   await audit(adminUserId, 'business.unverify', listing);
   return listing;
 };

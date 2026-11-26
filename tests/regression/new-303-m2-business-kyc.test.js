@@ -113,9 +113,17 @@ test('D11 verified badge: set by approving the registration, revocable, never ne
 
   const revoke = await asPersona('platformAdmin').delete(`/admin/businesses/${id}/verify`);
   expect(revoke.status).toBe(200);
+  expect(revoke.body.data.business.businessVerified).toBe(false);
+  expect(revoke.body.data.business.kycDocuments).toEqual([
+    expect.objectContaining({ id: docId, type: 'BUSINESS_REGISTRATION', status: 'REJECTED', rejectionReason: 'Verification revoked' }),
+  ]);
   listing = await GymListing.findByPk(id);
   expect(listing.verifiedAt).toBeNull();
   expect(listing.verifiedBy).toBeNull();
+  const docsAfterRevoke = await asPersona('platformAdmin').get(`/admin/businesses/${id}/documents`);
+  expect(docsAfterRevoke.body.data.documents[0]).toMatchObject({
+    id: docId, type: 'BUSINESS_REGISTRATION', status: 'REJECTED', rejectionReason: 'Verification revoked',
+  });
 
   const again = await asPersona('platformAdmin').post(`/admin/businesses/${id}/verify`).send({});
   expect(again.status).toBe(200);

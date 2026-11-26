@@ -671,7 +671,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | POST | `/admin/businesses/:businessId/approve` | approve the business (builds the held first branch); 422 `business_requirements_missing` |
 | POST | `/admin/businesses/:businessId/reject` | body `reason` |
 | POST | `/admin/businesses/:businessId/verify` | verified badge on; 422 `registration_missing` |
-| DELETE | `/admin/businesses/:businessId/verify` | verified badge off |
+| DELETE | `/admin/businesses/:businessId/verify` | verified badge off; also marks `BUSINESS_REGISTRATION` document(s) `REJECTED` with `rejectionReason: "Verification revoked"` |
 | GET | `/admin/review-queue` | A1 G1: `{ items: [ReviewItem], page, total }` (query: `kind`, `page`, `limit`) |
 | GET | `/admin/businesses/:businessId/documents` | A1 G4 |
 | GET | `/admin/businesses/:businessId/documents/:documentId/stream` | A1 G4 |
@@ -996,7 +996,7 @@ organization's businesses are listed under **`organization.businesses`** (each w
 | POST | `/admin/businesses/:businessId/documents/:documentId/reject` | body `reason` → `{ document }` |
 
 Document `status`: `PENDING` \| `APPROVED` \| `REJECTED`. Approving a `BUSINESS_REGISTRATION` document is what the
-verified badge reads (enterprise D11); `POST/DELETE /admin/businesses/:businessId/verify` stay.
+verified badge reads (enterprise D11); `POST/DELETE /admin/businesses/:businessId/verify` stay (revoking via `DELETE .../verify` also rejects the registration document with `rejectionReason: "Verification revoked"`).
 
 ### G5. Business quota
 
@@ -1289,3 +1289,4 @@ route** and no server draft: the server first sees the business when `POST /host
 | 2026-11-24 | Amendment A3 addendum 2 (§12 J13, owner): first-business body is `organizationName`, `firstBusinessName`, `firstBusinessDescription`, `firstBranch` only; `POST /host/staging-images` (stateless upload for first-time hosts); §3 MemberSubscriptionSummary lists `branchId`. | Claude Code (Sonnet 5.5), session 167 |
 | 2026-11-26 | M3e fixes: `GET /admin/review-queue` honours `kind` and returns `{ items, page, total }`; `GET /admin/organizations/:organizationId` lists businesses under `organization.businesses` (F7 note corrected); `GET /discovery/businesses/:id` includes `businessVerified`; `POST /organizations/:organizationId/first-business` accepts `genderType`, `logoUrl`, `coverImageUrl`; `organization_approved` links to `/host/businesses/<businessId>/documents` when first business awaits proof of premises and `business_approved` links to `/host/businesses/<businessId>`. | Antigravity |
 | 2026-11-26 | S4: `GET /host/businesses` (and `GET /host/businesses/:businessId`) includes `branchCount` (§3 Business). | Antigravity |
+| 2026-11-26 | `DELETE /admin/businesses/:businessId/verify` also rejects `BUSINESS_REGISTRATION` document(s) with `rejectionReason: "Verification revoked"` (§4, §10 G4). | Antigravity |
