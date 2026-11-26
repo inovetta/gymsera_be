@@ -538,7 +538,7 @@ const createBranch = async (tenantDb, organizationId, data, createdByUserId = nu
     if (targetListing && !isProvisioning && !(targetListing.status === 'ACTIVE' && targetListing.kycStatus === 'APPROVED')) {
       throw createError('This business has not been approved yet.', 409, 'business_not_approved');
     }
-    const consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
+    let consumingReservedSlot = !!(targetListing && targetListing.reservedSlots > 0);
 
     if (!consumingReservedSlot && !skipCapacityCheck) {
       const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId, { transaction: platformTx });
@@ -561,7 +561,45 @@ const createBranch = async (tenantDb, organizationId, data, createdByUserId = nu
       const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
       const usedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb, { transaction: platformTx });
 
-      if (usedCapacity >= maxBranches && !isProvisioning) {
+      // NEW-303 M3 (walkthrough W4): the pool is organization-wide. When every unit is taken but one sits unbuilt on
+      // another approved business, it moves to this business first (one ledger pair), then the build consumes it.
+      let donated = false;
+      if (usedCapacity >= maxBranches && !isProvisioning && targetListing) {
+        const donor = await GymListing.findOne({
+          where: { organizationId, status: 'ACTIVE', reservedSlots: { [Op.gt]: 0 }, id: { [Op.ne]: targetListing.id } },
+          order: [['reservedSlots', 'DESC'], ['createdAt', 'ASC']],
+          lock: true,
+          transaction: platformTx,
+        });
+        if (donor) {
+          const transferId = crypto.randomUUID();
+          const actorUserId = createdByUserId;
+          const actorKind = actorType || (actorUserId ? 'HOST' : 'SYSTEM');
+          const { applied } = await subscriptionQuotaService.recordCapacityEvent({
+            organizationId, listingId: donor.id, action: 'SLOT_TRANSFERRED', delta: -1,
+            reservedSlotsBefore: donor.reservedSlots, reservedSlotsAfter: donor.reservedSlots - 1,
+            actorUserId, actorType: actorKind,
+            reason: `1 unbuilt slot moved to business ${targetListing.id} to build a branch`,
+            idempotencyKey: `slot_transfer_out:${transferId}`,
+          }, { transaction: platformTx });
+          if (applied) {
+            await subscriptionQuotaService.recordCapacityEvent({
+              organizationId, listingId: targetListing.id, action: 'SLOT_TRANSFERRED', delta: 1,
+              reservedSlotsBefore: targetListing.reservedSlots, reservedSlotsAfter: targetListing.reservedSlots + 1,
+              actorUserId, actorType: actorKind,
+              reason: `1 unbuilt slot received from business ${donor.id} to build a branch`,
+              idempotencyKey: `slot_transfer_in:${transferId}`,
+            }, { transaction: platformTx });
+            await donor.decrement('reservedSlots', { by: 1, transaction: platformTx });
+            await targetListing.increment('reservedSlots', { by: 1, transaction: platformTx });
+            await targetListing.reload({ transaction: platformTx });
+            consumingReservedSlot = true;
+            donated = true;
+          }
+        }
+      }
+
+      if (usedCapacity >= maxBranches && !isProvisioning && !donated) {
         _notifyBranchLimitReached(organizationId, tenant).catch((notifErr) => {
           console.warn('[Notification Error] Failed to create branch quota reached notification:', notifErr.message);
         });
