@@ -305,7 +305,7 @@ describe('A4: host listing and branch routes', () => {
     const rows = Array.isArray(all.body.data) ? all.body.data : (all.body.data.listings || all.body.data.organizations || []);
     expect(rows.find((l) => l.id === listingId).pendingArea).toMatchObject({ requestId: r.id });
     // Let the next create through (approval_pending guard on a PENDING organization).
-    await GymListing.update({ status: 'ACTIVE' }, { where: { id: listingId } });
+    await GymListing.update({ status: 'ACTIVE', kycStatus: 'APPROVED' }, { where: { id: listingId } });
   });
 
   test('PUT /host/businesses/:id: a request links the listing; a field not sent keeps it; a real area clears link and marker', async () => {
