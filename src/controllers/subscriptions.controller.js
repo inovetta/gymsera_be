@@ -468,13 +468,28 @@ const decideRefundRequest = async (req, res, next) => {
   }
 };
 
-// ── Host: GET / PUT /subscriptions/staff/refund-policy ────────────────────────
-// Per gym (the branch's gym; ?branchId= picks it, else the tenant's first gym). Changing it needs a
-// direct payments.refund at that branch (Owner / Org admin by default).
+// ── Host: GET / PUT /subscriptions/staff/refund-policy (enterprise D12, API contract G9) ──
+// The policy belongs to the branch. GET with ?branchId= answers that branch; without it, every branch the caller
+// sees. PUT takes `branchId` or `applyToAllBranches: true` (neither: 422 branch_required). Changing a branch needs a
+// direct payments.refund at that branch (Owner / Org admin by default); `applyToAllBranches` skips and lists the rest.
+const _refundGrants = (req, branchId) => {
+  const accessService = require('../services/access.service');
+  const organizationId = req.organizationId || req.user?.organizationId;
+  const userId = req.user.id || req.user.sub;
+  return accessService.resolve(req.tenantDb, organizationId, userId, branchId);
+};
+
 const getRefundPolicy = async (req, res, next) => {
   try {
-    const p = await refundService.policyFor(req.tenantDb, req.query.branchId || null);
-    return sendSuccess(res, { businessId: p.businessId, refundsAllowed: p.refundsAllowed, refundWindowDays: p.refundWindowDays });
+    const branchId = req.query.branchId || null;
+    if (branchId) {
+      if (!(await hasBranchAccess(req, branchId, 'subscriptions.view'))) throw createError('Branch not found', 404);
+      const p = await refundService.policyFor(req.tenantDb, branchId);
+      if (!p.branchId) throw createError('Branch not found', 404);
+      return sendSuccess(res, { branchId: p.branchId, refundsAllowed: p.refundsAllowed, refundWindowDays: p.refundWindowDays });
+    }
+    const branches = await refundService.listPolicies(req.tenantDb, (id) => hasBranchAccess(req, id, 'subscriptions.view'));
+    return sendSuccess(res, { branches });
   } catch (err) {
     next(err);
   }
@@ -483,21 +498,35 @@ const getRefundPolicy = async (req, res, next) => {
 const updateRefundPolicy = async (req, res, next) => {
   try {
     const branchId = req.body.branchId || null;
-    if (branchId && !(await hasBranchAccess(req, branchId, 'subscriptions.view'))) throw createError('Branch not found', 404);
-    const accessService = require('../services/access.service');
-    const organizationId = req.organizationId || req.user?.organizationId;
-    const userId = req.user.id || req.user.sub;
-    const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
-    if (grants.tierFor('payments.refund') !== 'DIRECT') {
-      const err = createError('Only someone who can issue refunds directly can change the refund policy', 403);
-      err.code = 'refund_not_permitted';
+    const applyToAll = req.body.applyToAllBranches === true;
+    if (!branchId && !applyToAll) {
+      const err = createError('Choose a branch, or apply the policy to all branches', 422);
+      err.code = 'branch_required';
       throw err;
     }
+    const organizationId = req.organizationId || req.user?.organizationId;
+    const userId = req.user.id || req.user.sub;
+    const input = { refundsAllowed: req.body.refundsAllowed, refundWindowDays: req.body.refundWindowDays };
+    const notPermitted = () => {
+      const err = createError('Only someone who can issue refunds directly can change the refund policy', 403);
+      err.code = 'refund_not_permitted';
+      return err;
+    };
+    const directAt = async (id) => (await _refundGrants(req, id)).tierFor('payments.refund') === 'DIRECT';
+
+    if (applyToAll) {
+      const grants = await _refundGrants(req, null);
+      const ctx = { tenantDb: req.tenantDb, organizationId, userId, branchId: null, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
+      const result = await refundService.updatePolicyForAll(ctx, input, async (id) => (await hasBranchAccess(req, id, 'subscriptions.view')) && (await directAt(id)));
+      if (result.updatedBranchIds.length === 0 && result.skippedBranchIds.length > 0) throw notPermitted();
+      return sendSuccess(res, result, 'Refund policy saved');
+    }
+
+    if (!(await hasBranchAccess(req, branchId, 'subscriptions.view'))) throw createError('Branch not found', 404);
+    const grants = await _refundGrants(req, branchId);
+    if (grants.tierFor('payments.refund') !== 'DIRECT') throw notPermitted();
     const ctx = { tenantDb: req.tenantDb, organizationId, userId, branchId, grants, roleKey: (grants.roleKeys || [])[0] || null, req };
-    const policy = await refundService.updatePolicy(ctx, branchId, {
-      refundsAllowed: req.body.refundsAllowed,
-      refundWindowDays: req.body.refundWindowDays,
-    });
+    const policy = await refundService.updatePolicy(ctx, branchId, input);
     return sendSuccess(res, policy, 'Refund policy saved');
   } catch (err) {
     next(err);

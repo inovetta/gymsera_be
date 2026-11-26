@@ -1550,6 +1550,30 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // NEW-303 M3 (enterprise D12): the refund policy belongs to the branch only. No copy from the business
+    // (R-120: data is recreated); new branches start with refunds off. ROLLBACK: add the two columns back to
+    // `businesses` (TINYINT(1) NOT NULL DEFAULT 0, SMALLINT UNSIGNED NULL), drop them from `branches`, delete version 32.
+    version: 32,
+    name: '032_branch_refund_policy',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const hasColumn = async (table, column) => !!(await r.columnInfo(sequelize, table, column));
+      if (!(await hasColumn('branches', 'refunds_allowed'))) {
+        await sequelize.query('ALTER TABLE `branches` ADD COLUMN `refunds_allowed` TINYINT(1) NOT NULL DEFAULT 0');
+      }
+      if (!(await hasColumn('branches', 'refund_window_days'))) {
+        await sequelize.query('ALTER TABLE `branches` ADD COLUMN `refund_window_days` SMALLINT UNSIGNED NULL');
+      }
+      const business = await businessTable(sequelize);
+      await r.applyAll(sequelize, [
+        [r.dropColumn, { table: business, column: 'refunds_allowed' }],
+        [r.dropColumn, { table: business, column: 'refund_window_days' }],
+      ]);
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

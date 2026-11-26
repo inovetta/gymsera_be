@@ -51,18 +51,6 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: 'Array of gallery image URLs',
       },
-      // NEW-253 (R-103): refunds on cancellation, off by default; window in days from the payment (null = no limit).
-      refundsAllowed: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false,
-        field: 'refunds_allowed',
-      },
-      refundWindowDays: {
-        type: DataTypes.SMALLINT.UNSIGNED,
-        allowNull: true,
-        field: 'refund_window_days',
-      },
     },
     {
       tableName: 'businesses', // R-120 NEW-306 (tenant 030); model renamed with the API (NEW-309)

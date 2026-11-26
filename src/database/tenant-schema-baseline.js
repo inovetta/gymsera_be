@@ -97,6 +97,7 @@ const ADDS = {
     tables: ['refund_requests'],
     columns: { businesses: ['refunds_allowed', 'refund_window_days'] },
   },
+  32: { columns: { branches: ['refunds_allowed', 'refund_window_days'] } },
   29: {
     columns: { branches: ['hours_json'] },
   },
@@ -328,7 +329,10 @@ const PROBES = {
   27: async (s) => tableWithColumn(s, 'device_admin_pins', 'privilege'),
   // 028 adds two business-table columns (`gyms` until 030), then creates refund_requests (NEW-253); the last step is the table.
   28: async (s) => {
+    // NEW-303 M3 (032): the two columns moved from the business table to branches; a database after 032 has them there.
+    const movedToBranches = ['refunds_allowed', 'refund_window_days'].every((c) => s.col('branches', c) && !s.col('businesses', c));
     for (const column of ['refunds_allowed', 'refund_window_days']) {
+      if (movedToBranches) break;
       const r = columnOfType(s, 'businesses', column, (c) => INT_TYPES.includes(type(c)), { tableOptional: true });
       if (r.state !== 'present') return r;
     }
@@ -350,6 +354,15 @@ const PROBES = {
   31: async (s) => {
     for (const [t, tbl] of [['branches', 'branches'], ['businesses', 'businesses']]) {
       if (s.col(t, 'gym_listing_id')) return missing(`${tbl}.gym_listing_id still exists`);
+    }
+    return present();
+  },
+  // 032 (NEW-303 M3, D12): the refund policy columns are on branches and gone from the business table.
+  32: async (s) => {
+    for (const column of ['refunds_allowed', 'refund_window_days']) {
+      const r = columnOfType(s, 'branches', column, (c) => INT_TYPES.includes(type(c)));
+      if (r.state !== 'present') return r;
+      if (s.col('businesses', column)) return missing(`businesses.${column} still exists`);
     }
     return present();
   },

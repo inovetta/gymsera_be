@@ -6,7 +6,7 @@
  *     now, refund to the approval inbox. Front desk (refund OFF): 403, nothing changes.
  *  B. Member: cancel first, then GET / POST /subscriptions/:id/refund-request; a DIRECT refunder decides
  *     (POST /subscriptions/staff/refund-requests/:requestId/decide).
- *  C. Policy per gym: GET / PUT /subscriptions/staff/refund-policy (off by default; window in days).
+ *  C. Policy per branch (D12): GET / PUT /subscriptions/staff/refund-policy (off by default; window in days).
  *
  * Covers success, duplicate (sequential and at the same time), wrong tenant, policy off, window closed,
  * not approved, partial and over-the-balance amounts, ledger totals, audit history and device sync.
@@ -74,7 +74,7 @@ beforeAll(async () => {
     businessId: ctx.branch2.businessId, branchId: ctx.branch2.id, name: 'Tenant2 253', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
   });
-  gym1 = (ctx.branch1.businessId && await db1.models.Gym.findByPk(ctx.branch1.businessId)) || await db1.models.Gym.findOne({ order: [['createdAt', 'ASC']] });
+  gym1 = await db1.models.Branch.findByPk(ctx.branch1.id); // NEW-303 M3 (D12): the policy lives on the branch
   await setPolicy(true);
 });
 
@@ -87,9 +87,9 @@ afterAll(async () => {
 describe('NEW-253 C: refund policy', () => {
   test('off by default on a new gym (migration default), on after PUT by the owner, audited', async () => {
     await setPolicy(false);
-    const before = await as(personas.owner, 'get', 'staff/refund-policy');
+    const before = await as(personas.owner, 'get', `staff/refund-policy?branchId=${ctx.branch1.id}`);
     expect(before.status).toBe(200);
-    expect(before.body.data).toMatchObject({ refundsAllowed: false, refundWindowDays: null });
+    expect(before.body.data).toMatchObject({ branchId: ctx.branch1.id, refundsAllowed: false, refundWindowDays: null });
 
     const put = await as(personas.owner, 'put', 'staff/refund-policy', { branchId: ctx.branch1.id, refundsAllowed: true, refundWindowDays: 30 });
     expect(put.status).toBe(200);
