@@ -2,7 +2,7 @@ const TenantDbManager = require('../database/TenantDbManager');
 const { Tenant, TenantSubscription, GymListing, User, PlatformAuditLog } = require('../models/platform');
 const { sendSuccess, createError, buildPagination } = require('../utils/response.utils');
 const { likeContains } = require('../utils/sql-like');
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const gymService = require('../services/gym.service');
 const { assertAreaInCity } = require('../services/places.service');
 const areaRequests = require('../services/area-requests.service');
@@ -324,6 +324,23 @@ const getOrganizationQuota = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const _branchCountsByBusiness = async (organizationId) => {
+  const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'connectionStringEncrypted'] });
+  if (!tenant?.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') return {};
+  try {
+    const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+    const rows = await tenantDb.models.Branch.findAll({
+      where: { status: 'ACTIVE' },
+      attributes: ['businessId', [fn('COUNT', col('id')), 'count']],
+      group: ['businessId'],
+      raw: true,
+    });
+    return Object.fromEntries(rows.map((r) => [r.businessId, parseInt(r.count, 10) || 0]));
+  } catch (_) {
+    return {};
+  }
+};
+
 const getListings = async (req, res, next) => {
   try {
     const organizationId = req.user.organizationId;
@@ -353,8 +370,12 @@ const getListings = async (req, res, next) => {
       console.log(`[FLOW-05] GET /host/listings: ${listings.length} listing(s) ${JSON.stringify(byStatus)}; X-Organization-Id ${headerVsToken}`);
     }
 
-    // NEW-265 (A4 reads): each organization's pending or rejected area request.
-    return sendSuccess(res, await areaRequests.withPendingAreas('business', organizationId, listings));
+    // NEW-265 (A4 reads): each organization's pending or rejected area request; S4: active branchCount per business.
+    const [withPending, branchCounts] = await Promise.all([
+      areaRequests.withPendingAreas('business', organizationId, listings),
+      listings.length ? _branchCountsByBusiness(organizationId) : {},
+    ]);
+    return sendSuccess(res, withPending.map((b) => ({ ...b, branchCount: branchCounts[b.id] || 0 })));
   } catch (err) {
     next(err);
   }
@@ -675,8 +696,11 @@ const getListing = async (req, res, next) => {
     const listing = await GymListing.findOne({ where: { id: req.params.businessId, organizationId } });
     if (!listing) throw createError('Organization not found or access denied', 404);
     const gym = await _organizationGym(req.tenantDb, listing);
-    const pendingArea = await areaRequests.pendingAreaFor('business', organizationId, listing.id); // NEW-265
-    return sendSuccess(res, { ...listing.toJSON(), pendingArea, gym: gym ? gym.toJSON() : null });
+    const [pendingArea, branchCount] = await Promise.all([
+      areaRequests.pendingAreaFor('business', organizationId, listing.id), // NEW-265
+      req.tenantDb.models.Branch.count({ where: { businessId: listing.id, status: 'ACTIVE' } }),
+    ]);
+    return sendSuccess(res, { ...listing.toJSON(), branchCount, pendingArea, gym: gym ? gym.toJSON() : null });
   } catch (err) {
     next(err);
   }
