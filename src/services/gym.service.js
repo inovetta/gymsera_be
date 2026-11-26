@@ -225,7 +225,7 @@ const updateProfile = async (tenantDb, organizationId, data, businessId = null) 
 
 const listBranches = async (tenantDb, organizationId, businessId, { includeInactive = false, branchIds = null } = {}) => {
   const { Gym, Branch } = tenantDb.models;
-  let gym = await Gym.findOne();
+  let gym = await Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
 
   let whereClause = {};
 
@@ -518,6 +518,7 @@ const createBranch = async (tenantDb, organizationId, data, createdByUserId = nu
     if (!targetListingId) {
       const firstListing = await GymListing.findOne({
         where: { organizationId },
+        order: [['createdAt', 'ASC'], ['id', 'ASC']],
         transaction: platformTx,
       });
       if (firstListing) targetListingId = firstListing.id;
@@ -1946,7 +1947,7 @@ const enrollMember = async (tenantDb, organizationId, { email, fullName, phone, 
   }
 
   // Cross-tenant platform index
-  const gymListing = await GymListing.findOne({ where: { organizationId } });
+  const gymListing = await GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (gymListing) {
     await UserGymMembership.create({
       userId: user.id,

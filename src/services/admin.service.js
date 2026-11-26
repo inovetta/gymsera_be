@@ -1541,7 +1541,7 @@ const getGymListing = async (organizationId) => {
 
 const createGymListing = async (organizationId, data) => {
   const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
-  const existing = await GymListing.findOne({ where: { organizationId: actualTenantId } });
+  const existing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (existing) throw createError('Gym listing already exists for this tenant', 409);
 
   const tenant = await Tenant.findByPk(actualTenantId);

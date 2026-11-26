@@ -85,7 +85,7 @@ const _tenantFromGymListing = async (businessId) => {
  * Resolve the tenant's Gym record (needed for new plan businessId).
  */
 const _getGym = async (models) => {
-  const gym = await models.Gym.findOne();
+  const gym = await models.Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (!gym) throw createError('Gym profile not found', 404);
   return gym;
 };
@@ -205,7 +205,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
       ? b.plans
       : (Array.isArray(b.packages) && b.packages.length > 0 ? b.packages : []);
 
-    let gym = await Gym.findOne();
+    let gym = await Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
     if (!gym && tenant.firstBusinessName) {
       const firstListing = await GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
       gym = await Gym.create({
@@ -218,7 +218,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
     }
 
     if (gym) {
-      let branch = await Branch.findOne({ where: { businessId: gym.id } }) || await Branch.findOne();
+      let branch = await Branch.findOne({ where: { businessId: gym.id }, order: [['createdAt', 'ASC'], ['id', 'ASC']] }) || await Branch.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
       if (!branch) {
         const gymService = require('./gym.service');
         branch = await gymService.createBranch(

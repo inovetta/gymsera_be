@@ -498,7 +498,7 @@ const findOrCreateHostConversation = async (organizationId, userId, branchId, in
   }
 
   if (!listing) {
-    listing = await GymListing.findOne({ where: { organizationId } });
+    listing = await GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
     if (listing && listing.primaryBranchId && !finalBranchId) {
       finalBranchId = listing.primaryBranchId;
     }

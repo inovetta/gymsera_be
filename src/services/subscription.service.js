@@ -80,6 +80,7 @@ const _resolveTenant = async (businessId) => {
   if (!listing) {
     listing = await GymListing.findOne({
       where: { organizationId, status: 'ACTIVE' },
+      order: [['createdAt', 'ASC'], ['id', 'ASC']],
       attributes: ['id', 'organizationId', 'name'],
     });
   }

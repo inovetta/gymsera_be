@@ -464,7 +464,7 @@ const stepCreateBranch = async (ctx) => {
 
   // ── Gym record (one per tenant DB) ─────────────────────────────────────────
   let businessId = null;
-  let gym = await models.Gym.findOne();
+  let gym = await models.Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (!gym) {
     gym = await models.Gym.create({
       ...(listingId ? { id: listingId } : {}), // R-120 NEW-308 (option S): one id per business
@@ -502,7 +502,7 @@ const stepCreateBranch = async (ctx) => {
   const firstBranchCityId = b.cityId || tenant.cityId || null;
   const firstArea = await areaRequests.firstBranchArea(tenant, b, firstBranchCityId);
 
-  let branch = await models.Branch.findOne({ where: { businessId } });
+  let branch = await models.Branch.findOne({ where: { businessId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (!branch) {
     // CAP-03: Route through gymService.createBranch
     const gymService = require('./gym.service');

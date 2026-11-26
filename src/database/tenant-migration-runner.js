@@ -141,6 +141,7 @@ const MIGRATIONS = [
         const { GymListing } = require('../models/platform');
         const firstListing = await GymListing.findOne({
           where: { organizationId: context.organizationId, status: { [Sequelize.Op.ne]: 'INACTIVE' } },
+          order: [['createdAt', 'ASC'], ['id', 'ASC']],
         }).catch(() => null);
 
         if (firstListing && firstListing.id) {
