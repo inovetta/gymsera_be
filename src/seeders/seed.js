@@ -854,7 +854,8 @@ async function seedTenantsAndListings(userMap) {
         platformPackageId: td.pkg.id,
         status:            'ACTIVE',
         startDate:         td.subStart,
-        endDate:           td.subEnd,
+        // A seeded hosting plan must still be running when the seed is used (else the expiry cron ends it).
+        endDate:           td.subEnd > new Date().toISOString().slice(0, 10) ? td.subEnd : new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
         amount:            td.pkg.price,
         billingCycle:      td.pkg.billingCycle,
         paymentStatus:     'PAID',

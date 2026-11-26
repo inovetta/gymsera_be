@@ -27,7 +27,7 @@ const { Sequelize } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 
 const { connect: initPlatformDb } = require('../database/platform');
-const { Tenant, User, City, Area, UserGymMembership } = require('../models/platform');
+const { Tenant, User, City, Area, UserGymMembership, GymListing } = require('../models/platform');
 const registerTenantModels = require('../models/tenant');
 const { decrypt } = require('../utils/crypto.utils');
 
@@ -435,9 +435,11 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
     await seq.sync({ alter: true });
 
     // ── 1. Gym ──────────────────────────────────────────────────────────────
+    // R-120 NEW-308 (option S): the business row has its platform listing's id (the organization's first business).
+    const firstListing = await GymListing.findOne({ where: { organizationId: tenant.id }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
     let [gym] = await M.Gym.findOrCreate({
       where:    { name: def.gym.name },
-      defaults: def.gym,
+      defaults: { ...def.gym, ...(firstListing && { id: firstListing.id }) },
     });
 
     // ── 2. Branches ─────────────────────────────────────────────────────────
@@ -449,11 +451,13 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
       const { cityName, areaName, ...branchData } = b;
       const [branch] = await M.Branch.findOrCreate({
         where:    { businessId: gym.id, branchName: b.branchName },
-        defaults: { ...branchData, businessId: gym.id, cityId, areaId },
+        // Live for travellers (R-77): the seeded branches are approved and visible.
+        defaults: { ...branchData, businessId: gym.id, cityId, areaId, travelerVisibilityStatus: 'active' },
       });
       branchMap[b.branchName] = branch;
     }
     const primaryBranch = Object.values(branchMap)[0];
+    if (firstListing && primaryBranch) await firstListing.update({ primaryBranchId: primaryBranch.id });
 
     // ── 3. Membership Plans ─────────────────────────────────────────────────
     const planMap = {};
@@ -472,6 +476,7 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
           visitLimit:      null,
           freezeLimitDays: p.durationType === 'YEARLY' ? 30 : p.durationType === 'QUARTERLY' ? 15 : 7,
           isTrial:         p.isTrial,
+          isPublic:        true,
           status:          'ACTIVE',
         },
       });
