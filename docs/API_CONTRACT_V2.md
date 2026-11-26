@@ -966,6 +966,12 @@ issued).
 | `kycStatus` | the organization's or the business's `kycStatus` |
 | `submittedAt` | when it was submitted for review (organization: finalize; business: `kycSubmittedAt`, else creation) |
 
+**F7 (NEW-303 M3):** `GET /admin/organizations` holds organizations only. The synthesized
+`organizationId:businessId` rows and `isAdditionalOrganization` are gone; a business waiting for approval is in
+`GET /admin/review-queue` and is decided at `POST /admin/businesses/:businessId/approve|reject`. An id with a colon is
+not accepted anywhere. `GET /admin/organizations/:organizationId` has one `gymListing` (the first business) and
+`organizations` (every business) as before.
+
 ### G2. Organization detail
 
 `GET /admin/organizations/:organizationId` → `{ organization: Organization, businesses: [Business], ... }`: the
@@ -1018,7 +1024,9 @@ verified badge reads (enterprise D11); `POST/DELETE /admin/businesses/:businessI
 - `GET` **without** `branchId` → `{ branches: [{ branchId, branchName, businessId, refundsAllowed,
   refundWindowDays }] }`, every non-deleted branch the caller can see (replaces the 422 `branch_required` on GET).
 - `PUT` takes `branchId` **or** `applyToAllBranches: true`, with `refundsAllowed` and `refundWindowDays`; neither id →
-  422 `branch_required` (PUT only). Answers as §3.
+  422 `branch_required` (PUT only). With `branchId` it answers `{ branchId, refundsAllowed, refundWindowDays }`; with
+  `applyToAllBranches` it answers `{ updatedBranchIds, skippedBranchIds }` (a branch where the caller has no direct
+  `payments.refund` is skipped; if every branch is skipped: 403 `refund_not_permitted`). One audit row per branch changed.
 
 ### G10. Payout account scope
 
