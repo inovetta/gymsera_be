@@ -59,6 +59,11 @@ const serverKey = () => {
   return key;
 };
 
+/** Local/dev only: fake places backed by seeded cities/areas when no Google key is present. Never active in production. */
+const isFakePlacesProvider = () =>
+  process.env.NODE_ENV !== 'production' &&
+  String(process.env.PLACES_PROVIDER || '').trim().toLowerCase() === 'fake';
+
 /** Optional `GOOGLE_PLACES_REGION_CODES=pk,ae`: the countries searched when no city country is known; else Pakistan. */
 const defaultRegions = () => {
   const list = (process.env.GOOGLE_PLACES_REGION_CODES || '').split(',').map((c) => c.trim().toLowerCase()).filter(Boolean);
@@ -238,6 +243,21 @@ const autocomplete = async ({ input, kind, sessionToken, cityId, extended = fals
     };
   }
   if (kind === 'city') {
+    if (isFakePlacesProvider()) {
+      const clean = normalizeName(input) || '';
+      const cities = await City.findAll({
+        where: { isActive: true, name: { [Op.like]: likeContains(clean) } },
+        order: [['name', 'ASC']],
+        limit: 10,
+      });
+      return {
+        suggestions: cities.map((c) => ({
+          placeId: `fake-city-${c.id}`,
+          primaryText: c.name,
+          secondaryText: 'Pakistan',
+        })),
+      };
+    }
     body.includedPrimaryTypes = ['(cities)'];
   } else if (kind === 'area') {
     // NEW-265: roads and landmarks only for the builds that can handle them (extended=true).
@@ -250,6 +270,18 @@ const autocomplete = async ({ input, kind, sessionToken, cityId, extended = fals
       body.input = `${input}, ${city.name}`; // no centre yet: the city name narrows it instead
     }
     return areaSuggestions({ input, city, hasCentre, body });
+  }
+
+  if (kind === 'address' && isFakePlacesProvider()) {
+    const clean = normalizeName(input) || input.trim();
+    const hex = Buffer.from(clean.slice(0, 40), 'utf8').toString('hex');
+    return {
+      suggestions: [{
+        placeId: `fake-addr-${city ? city.id : 0}-${hex}`,
+        primaryText: clean,
+        secondaryText: city ? `${city.name}, Pakistan` : 'Pakistan',
+      }],
+    };
   }
 
   // City and address searches answer as before NEW-265 (Google's types are only read for areas).
@@ -305,6 +337,10 @@ const areaSuggestions = async ({ input, city, hasCentre, body }) => {
   });
   ours.sort((a, b) => Number(!nameKey(a.name).startsWith(key)) - Number(!nameKey(b.name).startsWith(key)));
   const picked = ours.slice(0, OUR_AREA_LIMIT);
+
+  if (isFakePlacesProvider()) {
+    return { suggestions: picked.map((a) => ourAreaSuggestion(a, city)) };
+  }
 
   let google;
   try {
@@ -387,6 +423,38 @@ const details = async ({ placeId, kind, sessionToken, cityId, userId = null }) =
       };
     }
   }
+  if (isFakePlacesProvider()) {
+    if (kind === 'city' && String(placeId).startsWith('fake-city-')) {
+      const id = Number(String(placeId).slice('fake-city-'.length));
+      const city = Number.isInteger(id) && id > 0 ? await City.findByPk(id) : null;
+      if (!city) throw createError('We could not find that place. Please pick another one.', 404, 'place_not_found');
+      return {
+        placeId,
+        formattedAddress: `${city.name}, Pakistan`,
+        latitude: toNumber(city.latitude) ?? 31.5204,
+        longitude: toNumber(city.longitude) ?? 74.3587,
+        city: shapeCity(city),
+        area: null,
+      };
+    }
+    const addrMatch = kind === 'address' && /^fake-addr-(\d+)-([0-9a-f]+)$/i.exec(String(placeId));
+    if (addrMatch) {
+      const addrCityId = Number(addrMatch[1]);
+      const label = Buffer.from(addrMatch[2], 'hex').toString('utf8');
+      const city = addrCityId > 0
+        ? await City.findByPk(addrCityId)
+        : await City.findOne({ where: { isActive: true }, order: [['id', 'ASC']] });
+      const area = city ? await Area.findOne({ where: { cityId: city.id }, order: [['id', 'ASC']] }) : null;
+      return {
+        placeId,
+        formattedAddress: city ? `${label}, ${city.name}` : label,
+        latitude: toNumber(city?.latitude) ?? 31.5204,
+        longitude: toNumber(city?.longitude) ?? 74.3587,
+        city: shapeCity(city),
+        area: shapeArea(area),
+      };
+    }
+  }
   const qs = sessionToken ? `?sessionToken=${encodeURIComponent(sessionToken)}` : '';
   const place = await callGoogle(`${PLACES_BASE}/places/${encodeURIComponent(placeId)}${qs}`, {
     method: 'GET',
@@ -457,6 +525,19 @@ const legacyComponent = (components, types, field = 'long_name') => {
 
 /** "Use current location": the address at a point, with its city and area upserted. */
 const reverseGeocode = async ({ latitude, longitude }) => {
+  if (isFakePlacesProvider()) {
+    const city = (await City.findOne({ where: { isActive: true, name: 'Lahore' }, order: [['id', 'ASC']] }))
+      || (await City.findOne({ where: { isActive: true }, order: [['id', 'ASC']] }));
+    const area = city ? await Area.findOne({ where: { cityId: city.id }, order: [['id', 'ASC']] }) : null;
+    return {
+      placeId: `fake-addr-${city ? city.id : 0}-geo`,
+      formattedAddress: city ? `${area ? `${area.name}, ` : ''}${city.name}` : 'Pakistan',
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      city: shapeCity(city),
+      area: shapeArea(area),
+    };
+  }
   const params = new URLSearchParams({ latlng: `${latitude},${longitude}`, key: serverKey() });
   const res = await callGoogle(`${GEOCODE_URL}?${params.toString()}`, { method: 'GET' });
   const results = res.results || [];
