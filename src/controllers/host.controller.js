@@ -512,8 +512,8 @@ const createListing = async (req, res, next) => {
         name: businessName,
         description: businessDescription || null,
         genderType: genderType || 'MIXED',
-        logoUrl: logoUrl || tenant.logoUrl || null,
-        coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
+        logoUrl: logoUrl || null, // F9: a new business never borrows another business's logo
+        coverImageUrl: coverImageUrl || null, // F9: nor its cover
         contactPhone: contactPhone || tenant.phone || null,
         latitude: latitude || null,
         longitude: longitude || null,
@@ -571,8 +571,8 @@ const createListing = async (req, res, next) => {
         description: businessDescription || null,
         contactPhone: contactPhone || tenant.phone || null,
         genderType: genderType || 'MIXED',
-        logoUrl: logoUrl || tenant.logoUrl || null,
-        coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
+        logoUrl: logoUrl || null, // F9: a new business never borrows another business's logo
+        coverImageUrl: coverImageUrl || null, // F9: nor its cover
       });
 
       await platformTx.commit();

@@ -57,7 +57,7 @@ describe('NEW-308: the business id is the listing id', () => {
     expect(gym).not.toBeNull();
     expect(await Branch.count({ where: { businessId: listingId } })).toBe(0);
     await require('../harness/business-proof').addProof(listingId);
-    await require('../../src/services/admin.service').approveTenant(`${personas.owner.organizationId}:${listingId}`, personas.platformAdmin.user.id);
+    await require('../../src/services/admin.service').approveBusiness(listingId, personas.platformAdmin.user.id);
     const branches = await Branch.findAll({ where: { businessId: listingId } });
     expect(branches).toHaveLength(1);
     expect(branches[0].toJSON().businessId).toBe(listingId); // the read-only alias (until NEW-309)

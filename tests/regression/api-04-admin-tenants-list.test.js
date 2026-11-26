@@ -93,13 +93,9 @@ describe('GET /admin/organizations', () => {
     for (const k of ['id', 'organizationCode', 'organizationName', 'status', 'email', 'createdAt', 'owner', 'city']) {
       expect(row).toHaveProperty(k);
     }
-    const additional = res.body.data.organizations.find((t) => t.isAdditionalOrganization);
-    expect(additional).toBeDefined();
-    for (const k of ['id', 'organizationName', 'status', 'businessName', 'business', 'owner', 'user', 'city', 'ownerUserId']) {
-      expect(additional).toHaveProperty(k);
-    }
-    expect(additional.id).toMatch(/^[0-9a-f-]{36}:[0-9a-f-]{36}$/);
-    expect(additional.status).toBe('PENDING_REVIEW');
+    // NEW-303 M3 (A1 G1, audit F7): a business waiting for approval is not a row here; it is in GET /admin/review-queue.
+    expect(res.body.data.organizations.some((t) => t.isAdditionalOrganization)).toBe(false);
+    expect(res.body.data.organizations.every((t) => !String(t.id).includes(':'))).toBe(true);
   });
 
   test('no limit / page: the same default page the CMS gets today (20, page 1)', async () => {
@@ -109,9 +105,9 @@ describe('GET /admin/organizations', () => {
     expect(res.body.data.organizations.length).toBe(20);
   });
 
-  test('total counts tenants plus pending additional organizations', async () => {
+  test('total counts organizations only (waiting businesses are in the review queue)', async () => {
     const { res } = await list('?limit=1');
-    // 100 seeded tenants + persona tenants, plus one row per pending additional organization
+    // 100 seeded organizations + the persona organizations; the pending second businesses are not rows (G1)
     const ids = new Set();
     let page = 1;
     let total = 0;
@@ -124,10 +120,13 @@ describe('GET /admin/organizations', () => {
     }
     expect(ids.size).toBe(total); // every row exactly once across pages
     expect(res.body.data.total).toBe(total);
-    expect(total).toBeGreaterThanOrEqual(100 + pendingAdditional);
+    expect(total).toBeGreaterThanOrEqual(100);
+    expect(total).toBe(await require('../../src/models/platform').Tenant.count());
+    const queue = await asPersona('platformAdmin').get('/admin/review-queue');
+    expect(queue.body.data.items.filter((i) => i.kind === 'BUSINESS').length).toBeGreaterThanOrEqual(pendingAdditional);
   });
 
-  test('ordering is newest first across tenants and additional organizations, stable between pages', async () => {
+  test('ordering is newest first, stable between pages', async () => {
     const a = await list('?page=1&limit=10');
     const b = await list('?page=2&limit=10');
     const rows = [...a.res.body.data.organizations, ...b.res.body.data.organizations];

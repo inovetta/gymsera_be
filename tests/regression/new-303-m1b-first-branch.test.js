@@ -63,7 +63,7 @@ test('H2/J10 Add Business holds one paid slot and builds the edited branch only 
     .attach('documents', Buffer.from('%PDF-1.4\n%%EOF\n'), { filename: 'proof.pdf', contentType: 'application/pdf' });
   expect(proof.status).toBe(201);
   const admin = personaManager.personas.platformAdmin.user;
-  await require('../../src/services/admin.service').approveTenant(`${organizationId}:${businessId}`, admin.id);
+  await require('../../src/services/admin.service').approveBusiness(businessId, admin.id);
   await listing.reload();
   const branch = await tenantDb.models.Branch.findByPk(listing.primaryBranchId);
   expect(branch).toMatchObject({ businessId, branchName: 'Edited Site', status: 'ACTIVE' });

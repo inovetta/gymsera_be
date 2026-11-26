@@ -58,7 +58,7 @@ describe('CAP-05: Rejecting a Pending Organization Returns Capacity via deleteBr
     expect(capacityAfterOrgCreation).toBe(initialUsedCapacity + 1);
 
     // 3. Admin rejects the pending organization
-    const rejectionResult = await adminService.rejectTenant(
+    const rejectionResult = await adminService.rejectBusiness(
       pendingListing.id,
       adminUser.id,
       'Documentation does not meet platform requirements'

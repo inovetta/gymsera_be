@@ -391,14 +391,6 @@ const getPlatformAnalytics = async (req, res, next) => {
 };
 
 // ── Business management (contract v2 §4 rows 104-110, A1 G3) ─────────────────────────────────────────────────────
-// `/admin/businesses/:businessId...`: the organization is found from the business. The services keep their
-// "organizationId:businessId" form.
-const ofBusiness = async (req) => {
-  const { GymListing } = require('../models/platform');
-  const listing = await GymListing.findByPk(req.params.businessId, { attributes: ['id', 'organizationId'] });
-  if (!listing) throw createError('Business not found', 404);
-  return `${listing.organizationId}:${listing.id}`;
-};
 // The answer wraps the business as `business` (was `gymListing`).
 const asBusiness = (result) => (result && result.gymListing ? { ...result, business: result.gymListing, gymListing: undefined } : result);
 
@@ -415,8 +407,7 @@ const approveBusiness = async (req, res, next) => {
 
 const rejectBusiness = async (req, res, next) => {
   try {
-    await adminService.businessForAdmin(req.params.businessId);
-    const result = await adminService.rejectTenant(await ofBusiness(req), _adminId(req), req.body.reason);
+    const result = await adminService.rejectBusiness(req.params.businessId, _adminId(req), req.body.reason);
     return sendSuccess(res, result, 'Business rejected');
   } catch (err) { next(err); }
 };
@@ -476,7 +467,7 @@ const getReviewQueue = async (req, res, next) => {
 
 const getGymListing = async (req, res, next) => {
   try {
-    const result = await adminService.getGymListing(await ofBusiness(req));
+    const result = await adminService.getGymListing(req.params.businessId);
     return sendSuccess(res, asBusiness(result));
   } catch (err) { next(err); }
 };
@@ -490,7 +481,7 @@ const createGymListing = async (req, res, next) => {
 
 const updateGymListing = async (req, res, next) => {
   try {
-    const result = await adminService.updateGymListing(await ofBusiness(req), req.body);
+    const result = await adminService.updateGymListing(req.params.businessId, req.body);
     return sendSuccess(res, asBusiness(result), 'Business updated');
   } catch (err) { next(err); }
 };
@@ -498,7 +489,7 @@ const updateGymListing = async (req, res, next) => {
 const uploadGymListingLogo = async (req, res, next) => {
   try {
     if (!req.file) throw { status: 422, message: 'Image file is required' };
-    const result = await adminService.uploadGymListingLogo(await ofBusiness(req), req.file.buffer, req.file.mimetype);
+    const result = await adminService.uploadGymListingLogo(req.params.businessId, req.file.buffer, req.file.mimetype);
     return sendSuccess(res, result, 'Logo uploaded');
   } catch (err) { next(err); }
 };
@@ -506,7 +497,7 @@ const uploadGymListingLogo = async (req, res, next) => {
 const uploadGymListingCover = async (req, res, next) => {
   try {
     if (!req.file) throw { status: 422, message: 'Image file is required' };
-    const result = await adminService.uploadGymListingCover(await ofBusiness(req), req.file.buffer, req.file.mimetype);
+    const result = await adminService.uploadGymListingCover(req.params.businessId, req.file.buffer, req.file.mimetype);
     return sendSuccess(res, result, 'Cover image uploaded');
   } catch (err) { next(err); }
 };
@@ -514,7 +505,7 @@ const uploadGymListingCover = async (req, res, next) => {
 const uploadGymListingImages = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) throw { status: 422, message: 'At least one image is required' };
-    const result = await adminService.uploadGymListingImages(await ofBusiness(req), req.files);
+    const result = await adminService.uploadGymListingImages(req.params.businessId, req.files);
     return sendSuccess(res, result, 'Images uploaded');
   } catch (err) { next(err); }
 };
@@ -523,7 +514,7 @@ const deleteGymListingImage = async (req, res, next) => {
   try {
     const { imageUrl } = req.body;
     if (!imageUrl) throw { status: 422, message: 'imageUrl is required' };
-    await adminService.deleteGymListingImage(await ofBusiness(req), imageUrl);
+    await adminService.deleteGymListingImage(req.params.businessId, imageUrl);
     return sendSuccess(res, null, 'Image removed');
   } catch (err) { next(err); }
 };

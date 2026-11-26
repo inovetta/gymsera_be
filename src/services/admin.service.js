@@ -116,29 +116,9 @@ const createTenant = async ({ ownerEmail, ownerFullName, ownerPhone, organizatio
 
 // ── listTenants ───────────────────────────────────────────────────────────────
 /**
- * A tenant is one host account with one subscription — genuinely one row.
- * Their organizations (GymListings) are not separate tenants and must never
- * be presented as one, which this list used to do for every ADDITIONAL
- * organization regardless of its own status: an active host with 3
- * organizations produced 3 duplicate rows, each with a fabricated business
- * name and the SAME owner/email repeated on every one — indistinguishable
- * from 3 different people applying, and with no row anywhere showing the
- * one real fact ("this tenant has one subscription and 3 organizations").
- *
- * The one thing that synthesis was legitimately doing: a new organization
- * still starts life at GymListing.status 'PENDING' (see
- * host.controller.js#createListing) and genuinely needs admin
- * approve/reject — the same review a first-time tenant application gets,
- * just for an additional org under an already-active tenant. That's a real,
- * current workflow (approveTenant/rejectTenant below still operate on it via
- * the organizationId:listingId compound id), so a row for it can't just disappear.
- *
- * So the rule is narrower than "never synthesize": only a PENDING or
- * REJECTED additional organization gets its own row, because that's the one
- * case where it's a genuine action item distinct from anything the tenant
- * row itself shows. An ACTIVE additional organization is not — it belongs
- * inside its tenant's own detail page (see getTenant's `organizations`),
- * never as a look-alike top-level tenant.
+ * GET /admin/organizations: one row per organization (a `tenants` row). Businesses waiting for approval are not
+ * rows here any more (no compound `organizationId:businessId` id, audit F7); they are in `GET /admin/review-queue`
+ * and are decided at `/admin/businesses/:id/approve|reject`.
  */
 const listTenants = async ({ status, page, limit, offset }) => {
   const tenantWhere = {};
@@ -149,10 +129,7 @@ const listTenants = async ({ status, page, limit, offset }) => {
     tenantWhere.status = status;
   }
 
-  // 1. Fetch the page of Tenants in the database (PERF-08). Rows of the two
-  // sources (tenants, additional organizations) interleave by createdAt, so the
-  // newest `offset + limit` tenants are enough to cut any page out of the merge;
-  // the total comes from COUNT, not from loading every row.
+  // The page is cut in SQL (PERF-08): the newest `offset + limit` rows, the total from COUNT.
   const [tenantCount, tenants] = await Promise.all([
     Tenant.count({ where: tenantWhere }),
     Tenant.findAll({
@@ -166,107 +143,18 @@ const listTenants = async ({ status, page, limit, offset }) => {
     }),
   ]);
 
-  // 2. Additional organizations awaiting a decision — PENDING/REJECTED only.
-  // Never ACTIVE; see the function doc above for why.
-  let gymListingWhere = null;
-  if (!status) {
-    gymListingWhere = { status: { [Op.in]: ['PENDING', 'REJECTED'] } };
-  } else if (status === 'PENDING_REVIEW') {
-    gymListingWhere = { status: 'PENDING' };
-  } else if (status === 'REJECTED') {
-    gymListingWhere = { status: 'REJECTED' };
-  }
-  // Every other tenant-status filter (UNDER_REVIEW, APPROVED, ACTIVE,
-  // SUSPENDED) has no additional-organization equivalent — gymListingWhere
-  // stays null and none are fetched.
-
-  let synthesized = [];
-  if (gymListingWhere) {
-    const gymListings = await GymListing.findAll({
-      where: gymListingWhere,
-      include: [
-        { model: City, as: 'city', attributes: ['id', 'name'] },
-        { model: Tenant, as: 'tenant', include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email', 'phone'] }] },
-      ],
-      order: [['createdAt', 'DESC']],
-    });
-
-    // Exclude a tenant's own first/primary listing — that one already is
-    // the tenant row, approved or rejected through the tenant itself.
-    // One batched read for every tenant involved (was one findOne per listing).
-    const additionalListings = [];
-    const ownerTenantIds = [...new Set(gymListings.filter((l) => l.tenant).map((l) => l.organizationId))];
-    const firstListingByTenant = new Map();
-    if (ownerTenantIds.length > 0) {
-      const siblings = await GymListing.findAll({
-        where: { organizationId: { [Op.in]: ownerTenantIds } },
-        attributes: ['id', 'organizationId'],
-        order: [['createdAt', 'ASC'], ['id', 'ASC']],
-        raw: true,
-      });
-      for (const s of siblings) {
-        if (!firstListingByTenant.has(s.organizationId)) firstListingByTenant.set(s.organizationId, s.id);
-      }
-    }
-    for (const listing of gymListings) {
-      if (!listing.tenant) continue;
-      const firstId = firstListingByTenant.get(listing.organizationId);
-      if (firstId && firstId !== listing.id) {
-        additionalListings.push(listing);
-      }
-    }
-
-    synthesized = additionalListings.map((listing) => {
-      const tenant = listing.tenant;
-      return {
-        id: `${tenant.id}:${listing.id}`, // Compound ID — approveTenant/rejectTenant act on the listing.
-        organizationCode: tenant.organizationCode,
-        // Named as what it actually is: a pending organization under an
-        // existing tenant, not a standalone business applying fresh.
-        organizationName: `${tenant.organizationName} — new organization "${listing.name}"`,
-        isAdditionalOrganization: true,
-        ownerUserId: tenant.ownerUserId,
-        email: tenant.email,
-        phone: listing.contactPhone || tenant.phone,
-        cityId: listing.cityId,
-        status: listing.status === 'PENDING' ? 'PENDING_REVIEW' : 'REJECTED',
-        businessName: listing.name,
-        businessDescription: listing.description,
-        logoUrl: listing.logoUrl,
-        coverImageUrl: listing.coverImageUrl,
-        genderType: listing.genderType,
-        createdAt: listing.createdAt,
-        owner: tenant.owner,
-        user: tenant.owner,
-        city: listing.city,
-        business: {
-          id: listing.id,
-          organizationId: listing.organizationId,
-          name: listing.name,
-          averageRating: listing.averageRating,
-          status: listing.status,
-          isFeatured: listing.isFeatured,
-        },
-      };
-    });
-  }
-
-  // 3. Combine and sort by createdAt DESC (id breaks ties so pages never
-  // repeat or skip a row)
-  const combined = [...tenants.map((t) => t.toJSON()), ...synthesized];
+  // Newest first (id breaks ties so pages never repeat or skip a row)
+  const combined = tenants.map((t) => t.toJSON());
   combined.sort((a, b) => (new Date(b.createdAt) - new Date(a.createdAt)) || String(b.id).localeCompare(String(a.id)));
 
-  // 4. Cut the requested page out of the merge; the total is every tenant row
-  // plus every additional organization awaiting a decision.
-  const count = tenantCount + synthesized.length;
   const paginated = combined.slice(offset, offset + limit);
 
-  return { tenants: paginated, pagination: buildPagination(count, page, limit) };
+  return { tenants: paginated, pagination: buildPagination(tenantCount, page, limit) };
 };
 
 // ── getTenant ─────────────────────────────────────────────────────────────────
 const getTenant = async (organizationId) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
 
   const tenant = await Tenant.findByPk(actualTenantId, {
     include: [
@@ -281,28 +169,15 @@ const getTenant = async (organizationId) => {
   // "Provisioning… (step n/6)" / Resume in the admin console (FLOW-02).
   tenantJson.provisioning = provisioningSummary(tenant);
 
-  let gymListing;
-  if (listingId) {
-    gymListing = await GymListing.findByPk(listingId, {
-      include: _getListingIncludes(),
-    });
-  } else {
-    gymListing = await GymListing.findOne({
-      where: { organizationId: actualTenantId },
-      order: [['createdAt', 'ASC']],
-      include: _getListingIncludes(),
-    });
-  }
+  const gymListing = await GymListing.findOne({
+    where: { organizationId: actualTenantId },
+    order: [['createdAt', 'ASC'], ['id', 'ASC']],
+    include: _getListingIncludes(),
+  });
 
   tenantJson.gymListing = gymListing ? gymListing.toJSON() : null;
 
-  if (listingId && gymListing) {
-    // Reached only via the compound id a PENDING/REJECTED additional-
-    // organization row in listTenants links to — this is that one listing's
-    // own review status, not a second tenant's.
-    tenantJson.status = gymListing.status === 'PENDING' ? 'PENDING_REVIEW' : (gymListing.status === 'REJECTED' ? 'REJECTED' : 'ACTIVE');
-    tenantJson.organizationName = `${tenant.organizationName} — new organization "${gymListing.name}"`;
-  } else {
+  {
     // The real tenant view: every organization it owns, not just the
     // oldest. This is what replaces the old "one row per organization"
     // list — one tenant, its real subscription (see the subscription tab's
@@ -495,16 +370,11 @@ const businessForAdmin = async (businessId) => {
 };
 
 const approveTenant = async (organizationId, adminUserId, { photosChecked = false } = {}) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   // R-84 (NEW-158): the route requires the admin's photo check; the record is written once the
   // approval's own checks have passed, before anything changes.
   const recordPhotoCheck = () =>
     photosChecked ? require('./approval-photos.service').recordPhotosChecked(organizationId, adminUserId) : null;
-
-  if (listingId) {
-    await approveBusiness(listingId, adminUserId, { beforeChange: recordPhotoCheck });
-    return { tenant: { id: organizationId, status: 'ACTIVE' } };
-  }
 
   const tenant = await Tenant.findByPk(actualTenantId, {
     include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email'] }],
@@ -590,65 +460,61 @@ const approveTenant = async (organizationId, adminUserId, { photosChecked = fals
 };
 
 // ── rejectTenant ──────────────────────────────────────────────────────────────
+const rejectBusiness = async (businessId, adminUserId, reason) => {
+  if (!reason || !reason.trim()) {
+    throw createError('A rejection reason is required', 400);
+  }
+  const listing = await GymListing.findByPk(businessId);
+  if (!listing) throw createError('Business not found', 404);
+
+  const tenant = await Tenant.findByPk(listing.organizationId);
+  if (tenant && tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+    const TenantDbManager = require('../database/TenantDbManager');
+    const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+    const { Branch } = tenantDb.models;
+    const branches = await Branch.findAll({
+      where: { businessId: listing.id, status: 'ACTIVE' },
+    });
+    const gymService = require('./gym.service');
+    for (const branch of branches) {
+      await gymService.deleteBranch(tenantDb, branch.id, adminUserId, {
+        confirmBusinessDeletion: true,
+      });
+    }
+  }
+
+  await listing.update({
+    status: 'REJECTED',
+    kycStatus: 'REJECTED',
+    rejectionReason: reason.trim(),
+    rejectedAt: new Date(),
+    rejectedBy: adminUserId,
+  });
+
+  const hostUserId = listing.hostId || tenant?.ownerUserId;
+  if (hostUserId) {
+    notificationsService.createNotification({
+      userId: hostUserId,
+      role: 'host',
+      type: 'listing_rejected',
+      title: 'Gym Listing Rejected — Capacity Returned',
+      message: `Your listing "${listing.name}" was not approved: ${reason.trim()}. Your branch capacity has been returned to your account.`,
+      priority: 'high',
+      deepLink: '/host/branches',
+      metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED', capacityReturned: true },
+    }).catch(err => console.error('[rejectTenant listing] Notification error:', err.message));
+  }
+
+  return { business: { id: businessId, status: 'REJECTED' }, capacityReturned: true };
+};
+
 const rejectTenant = async (organizationId, adminUserId, reason) => {
-  let [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
 
   if (!reason || !reason.trim()) {
     throw createError('A rejection reason is required', 400);
   }
 
-  if (!listingId) {
-    const maybeListing = await GymListing.findByPk(actualTenantId);
-    if (maybeListing) {
-      listingId = maybeListing.id;
-      actualTenantId = maybeListing.organizationId;
-    }
-  }
-
-  if (listingId) {
-    const listing = await GymListing.findByPk(listingId);
-    if (!listing) throw createError('Gym listing not found', 404);
-
-    const tenant = await Tenant.findByPk(listing.organizationId);
-    if (tenant && tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
-      const TenantDbManager = require('../database/TenantDbManager');
-      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-      const { Branch } = tenantDb.models;
-      const branches = await Branch.findAll({
-        where: { businessId: listing.id, status: 'ACTIVE' },
-      });
-      const gymService = require('./gym.service');
-      for (const branch of branches) {
-        await gymService.deleteBranch(tenantDb, branch.id, adminUserId, {
-          confirmBusinessDeletion: true,
-        });
-      }
-    }
-
-    await listing.update({
-      status: 'REJECTED',
-      kycStatus: 'REJECTED',
-      rejectionReason: reason.trim(),
-      rejectedAt: new Date(),
-      rejectedBy: adminUserId,
-    });
-
-    const hostUserId = listing.hostId || tenant?.ownerUserId;
-    if (hostUserId) {
-      notificationsService.createNotification({
-        userId: hostUserId,
-        role: 'host',
-        type: 'listing_rejected',
-        title: 'Gym Listing Rejected — Capacity Returned',
-        message: `Your listing "${listing.name}" was not approved: ${reason.trim()}. Your branch capacity has been returned to your account.`,
-        priority: 'high',
-        deepLink: '/host/branches',
-        metadataJson: { event: 'branch_updated', listingId: listing.id, status: 'REJECTED', capacityReturned: true },
-      }).catch(err => console.error('[rejectTenant listing] Notification error:', err.message));
-    }
-
-    return { tenant: { id: organizationId, status: 'REJECTED' }, capacityReturned: true };
-  }
 
   const tenant = await Tenant.findByPk(actualTenantId, {
     include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email'] }],
@@ -802,7 +668,7 @@ const reactivateTenant = async (organizationId, adminUserId) => {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const _getTenantDb = async (organizationId) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   const tenant = await Tenant.findByPk(actualTenantId, {
     attributes: ['id', 'connectionStringEncrypted', 'status'],
   });
@@ -816,14 +682,12 @@ const _getTenantDb = async (organizationId) => {
  * Read-only capacity integrity report for one tenant — "are this host's
  * branch numbers actually correct, and does the audit trail agree?"
  *
- * Always resolves against the REAL tenant, even when called with one of the
- * synthesized `organizationId:listingId` compound ids the tenant list still hands
- * out for additional organizations. Capacity is a property of the
+ * Capacity is a property of the
  * subscription, which is tenant-wide — there is no such thing as one
  * organization's own plan, and reporting per-listing here would invent one.
  */
 const getTenantCapacityAudit = async (organizationId) => {
-  const [actualTenantId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId];
+  const actualTenantId = organizationId;
   const subscriptionQuotaService = require('./subscription-quota.service');
 
   let tenantDb = null;
@@ -841,13 +705,10 @@ const getTenantCapacityAudit = async (organizationId) => {
 
 // ── getTenantBranches (admin) ─────────────────────────────────────────────────
 const getTenantBranches = async (organizationId) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   const { models } = await _getTenantDb(organizationId);
-  
+
   const where = {};
-  if (listingId) {
-    where.businessId = listingId;
-  }
 
   const branches = await models.Branch.findAll({
     where,
@@ -929,7 +790,7 @@ const suspendTenantBranch = async (organizationId, branchId, reason, adminUserId
 
   // 3. Notify the host
   try {
-    const [actualTenantId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId];
+    const actualTenantId = organizationId;
     const tenant = await Tenant.findByPk(actualTenantId);
     if (tenant && tenant.ownerUserId) {
       const notificationsService = require('./notifications.service');
@@ -1002,7 +863,7 @@ const deleteTenantBranch = async (organizationId, branchId, adminUserId, { confi
 // Delegates to deleteTenantBranch (for INACTIVE), restoreBranch / unsuspend (for ACTIVE),
 // or suspendTenantBranch (for SUSPENDED). Never writes status directly.
 const updateTenantBranchStatus = async (organizationId, branchId, status, adminUserId, reason = null) => {
-  const [actualTenantId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId];
+  const actualTenantId = organizationId;
   const tenantDb = await _getTenantDb(organizationId);
   const gymService = require('./gym.service');
 
@@ -1072,7 +933,7 @@ const getTenantMembers = async (organizationId, { page = 1, limit = 20 } = {}) =
  * The row holds ids, the field names and the admin's reason, never the values.
  */
 const revealTenantMemberContact = async (organizationId, memberUserId, { adminUserId, reason } = {}) => {
-  const actualTenantId = organizationId.includes(':') ? organizationId.split(':')[0] : organizationId;
+  const actualTenantId = organizationId;
   if (!/^[0-9a-f-]{36}$/i.test(String(memberUserId))) throw createError('Member not found in this tenant', 404);
   const { models } = await _getTenantDb(organizationId);
 
@@ -1525,14 +1386,8 @@ const _getListingIncludes = () => [
   { model: Area, as: 'area', attributes: ['id', 'name'] },
 ];
 
-const getGymListing = async (organizationId) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
-  let listing;
-  if (listingId) {
-    listing = await GymListing.findByPk(listingId, { include: _getListingIncludes() });
-  } else {
-    listing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC']], include: _getListingIncludes() });
-  }
+const getGymListing = async (businessId) => {
+  const listing = await GymListing.findByPk(businessId, { include: _getListingIncludes() });
   if (!listing) throw createError('Gym listing not found', 404);
   // NEW-265 (R-109 F7): the listing's pending or rejected area request.
   const [gymListing] = await areaRequests.withPendingAreas('business', listing.organizationId, [listing]);
@@ -1540,7 +1395,7 @@ const getGymListing = async (organizationId) => {
 };
 
 const createGymListing = async (organizationId, data) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   const existing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (existing) throw createError('Gym listing already exists for this tenant', 409);
 
@@ -1571,14 +1426,8 @@ const createGymListing = async (organizationId, data) => {
   return { gymListing: full };
 };
 
-const updateGymListing = async (organizationId, data) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
-  let listing;
-  if (listingId) {
-    listing = await GymListing.findByPk(listingId);
-  } else {
-    listing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC']] });
-  }
+const updateGymListing = async (businessId, data) => {
+  const listing = await GymListing.findByPk(businessId);
   if (!listing) throw createError('Gym listing not found', 404);
   if (data.cityId !== undefined || data.areaId !== undefined) { // NEW-259
     await assertAreaInCity({
@@ -1601,15 +1450,9 @@ const updateGymListing = async (organizationId, data) => {
   return { gymListing: full };
 };
 
-const uploadGymListingLogo = async (organizationId, fileBuffer, mimetype) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+const uploadGymListingLogo = async (businessId, fileBuffer, mimetype) => {
   const storageService = require('./storage.service');
-  let listing;
-  if (listingId) {
-    listing = await GymListing.findByPk(listingId);
-  } else {
-    listing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC']] });
-  }
+  const listing = await GymListing.findByPk(businessId);
   if (!listing) throw createError('Gym listing not found', 404);
 
   if (listing.logoUrl) await storageService.deleteImage(listing.logoUrl).catch(() => {});
@@ -1618,15 +1461,9 @@ const uploadGymListingLogo = async (organizationId, fileBuffer, mimetype) => {
   return { logoUrl };
 };
 
-const uploadGymListingCover = async (organizationId, fileBuffer, mimetype) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+const uploadGymListingCover = async (businessId, fileBuffer, mimetype) => {
   const storageService = require('./storage.service');
-  let listing;
-  if (listingId) {
-    listing = await GymListing.findByPk(listingId);
-  } else {
-    listing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC']] });
-  }
+  const listing = await GymListing.findByPk(businessId);
   if (!listing) throw createError('Gym listing not found', 404);
 
   if (listing.coverImageUrl) await storageService.deleteImage(listing.coverImageUrl).catch(() => {});
@@ -1635,15 +1472,9 @@ const uploadGymListingCover = async (organizationId, fileBuffer, mimetype) => {
   return { coverImageUrl };
 };
 
-const uploadGymListingImages = async (organizationId, files) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+const uploadGymListingImages = async (businessId, files) => {
   const storageService = require('./storage.service');
-  let listing;
-  if (listingId) {
-    listing = await GymListing.findByPk(listingId);
-  } else {
-    listing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC']] });
-  }
+  const listing = await GymListing.findByPk(businessId);
   if (!listing) throw createError('Gym listing not found', 404);
 
   const newUrls = await storageService.uploadImages(files, `gym-listings/${listing.id}/images`);
@@ -1652,15 +1483,9 @@ const uploadGymListingImages = async (organizationId, files) => {
   return { images: listing.imagesJson };
 };
 
-const deleteGymListingImage = async (organizationId, imageUrl) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+const deleteGymListingImage = async (businessId, imageUrl) => {
   const storageService = require('./storage.service');
-  let listing;
-  if (listingId) {
-    listing = await GymListing.findByPk(listingId);
-  } else {
-    listing = await GymListing.findOne({ where: { organizationId: actualTenantId }, order: [['createdAt', 'ASC']] });
-  }
+  const listing = await GymListing.findByPk(businessId);
   if (!listing) throw createError('Gym listing not found', 404);
 
   await storageService.deleteImage(imageUrl).catch(() => {});
@@ -1675,7 +1500,7 @@ const deleteGymListingImage = async (organizationId, imageUrl) => {
 // creation delegates directly to gymService.createBranch, ensuring uniform
 // capacity enforcement, reservedSlots consumption, and CapacityEvent audit logging.
 const createAdminTenantBranch = async (organizationId, data, adminUserId) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
   if (!tenant) throw createError('Tenant not found', 404);
   if (tenant.status !== 'ACTIVE') throw createError('Tenant must be active to manage branches', 400);
@@ -1691,7 +1516,7 @@ const createAdminTenantBranch = async (organizationId, data, adminUserId) => {
     actualTenantId,
     {
       ...adminData,
-      businessId: listingId || data.businessId,
+      businessId: data.businessId,
     },
     adminUserId,
     {
@@ -1705,7 +1530,7 @@ const createAdminTenantBranch = async (organizationId, data, adminUserId) => {
 };
 
 const updateAdminTenantBranch = async (organizationId, branchId, data, adminUserId) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
   if (!tenant) throw createError('Tenant not found', 404);
 
@@ -1753,7 +1578,7 @@ const updateAdminTenantBranch = async (organizationId, branchId, data, adminUser
 };
 
 const uploadAdminBranchImages = async (organizationId, branchId, files) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   const storageService = require('./storage.service');
   const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted'] });
   if (!tenant) throw createError('Tenant not found', 404);
@@ -1770,7 +1595,7 @@ const uploadAdminBranchImages = async (organizationId, branchId, files) => {
 };
 
 const deleteAdminBranchImage = async (organizationId, branchId, imageUrl) => {
-  const [actualTenantId, listingId] = organizationId.includes(':') ? organizationId.split(':') : [organizationId, undefined];
+  const actualTenantId = organizationId;
   const storageService = require('./storage.service');
   const tenant = await Tenant.findByPk(actualTenantId, { attributes: ['id', 'connectionStringEncrypted'] });
   if (!tenant) throw createError('Tenant not found', 404);
@@ -1901,7 +1726,7 @@ const getBranchVisibilityHistory = async (branchId) => {
 
 module.exports = {
   revealTenantMemberContact,
-  createTenant, listTenants, getTenant, approveTenant, rejectTenant, approveBusiness, getReviewQueue, businessForAdmin, suspendTenant,
+  createTenant, listTenants, getTenant, approveTenant, rejectTenant, approveBusiness, rejectBusiness, getReviewQueue, businessForAdmin, suspendTenant,
   reactivateTenant, deleteTenant, getTenantBranches, getTenantCapacityAudit, updateTenantBranchStatus,
   suspendTenantBranch, unsuspendTenantBranch, deleteTenantBranch,
   getTenantMembers, getTenantMembershipPlans,
