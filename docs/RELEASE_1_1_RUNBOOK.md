@@ -1,6 +1,6 @@
 # GymsEra API v1.1.0 (`feat/naming-v2-r2`) — Production Cut-Over Runbook
 
-> **Scope:** Coordinating backend release `1.1.0` (`feat/naming-v2-r2` → `main`), platform migrations `p031`–`p038`, and organization (tenant) migrations `028`–`032`.
+> **Scope:** Coordinating backend release `1.1.0` (`origin/main` `e966d2e` → `feat/naming-v2-r2`), platform migrations `p033`–`p038` (`v32` → `v38`), and organization (tenant) migrations `030`–`032` (`v29` → `v32`).
 > **Rule D14 (no old-build compatibility):** Old mobile/CMS/web clients are incompatible once `p033`–`p035` and `030`–`032` land. Release API, CMS, website, and mobile builds together and raise the force-update gate (`MIN_APP_VERSION_IOS`, `MIN_APP_VERSION_ANDROID`) at cut-over.
 > **NEW-302 (`+` email aliases):** Cherry-picked from `fix/email-plus-space` (`7f9dc17`) into `feat/naming-v2-r2` (`emailField()` in `src/validators/auth.validator.js`).
 
@@ -10,19 +10,18 @@ Target host: Windows / IIS (`iisnode`) with MySQL 5.7. Run commands in an elevat
 
 ## 1. Environment Variables (Names Only — Never Print or Commit Values)
 
-Compare `main` (`11f57f2`) → `feat/naming-v2-r2` (`7081dd1`):
+Compare `origin/main` (`e966d2e`) → `feat/naming-v2-r2` (`fb47422`):
 
 ### New Environment Variables
 
 | Variable Name | Production Setting | Notes |
 |---|---|---|
-| `APPLE_API_TIMEOUT_MS` | Optional (default `8000`) | App Store Server API request timeout in ms (NEW-278). Leave unset unless overriding default. |
 | `PLACES_PROVIDER` | **Do NOT set** (leave unset) | Local/dev only (`fake` serves `/places/*` from seeded `cities`/`areas`). Explicitly ignored when `NODE_ENV=production`. |
 | `TEST_LOCAL_UPLOAD_DIR` | **Do NOT set** (leave unset) | Automated test harness only (`NODE_ENV=test`). |
 
 ### Removed Environment Variables
 
-- **None** (0 environment variables removed since `main`).
+- **None** (0 environment variables removed since `origin/main`).
 
 ### Existing Cut-Over / Gate Variables to Verify Before & During Cut-Over
 
@@ -129,22 +128,22 @@ Expected: `OK: the API would start with these settings.` (exit `0`). Ensure `PLA
 
 ## 5. Run Migrations in Exact Order
 
-> **CRITICAL ORDERING:** Run **platform migrations FIRST (`p031`→`p038`)**, then **per-organization migrations (`028`→`032`)**.
+> **CRITICAL ORDERING:** Run **platform migrations FIRST (`p033`→`p038`)**, then **per-organization migrations (`030`→`032`)** (`origin/main` `e966d2e` is already at platform `v32` and tenant `v29`; any older target runs pending earlier steps automatically).
 > `run-tenant-migrations.js` calls `platform.js#connect()` and queries `organizations` / `organization_code`, which requires `p033`–`p035` to be applied on the platform database first. Never run tenant migrations before platform migrations.
 
-### 5.1 Platform Migrations (`v30` → `v38`: `p031`–`p038`)
+### 5.1 Platform Migrations (`v32` → `v38`: `p033`–`p038`)
 
 1. Preview pending platform migrations (read-only; uses `sequelize.authenticate()`, zero writes):
    ```cmd
    node src\scripts\run-platform-migrations.js --dry-run
    ```
-   Verify pending list ends at target `v38` (`p031_content_moderation`, `p032_area_requests`, `p033_business_naming`, `p034_organization_naming`, `p035_organization_id_columns`, `p036_member_index_branch_id`, `p037_held_first_branch`, `p038_business_kyc_verification`).
+   Verify pending list ends at target `v38` (`p033_business_naming`, `p034_organization_naming`, `p035_organization_id_columns`, `p036_member_index_branch_id`, `p037_held_first_branch`, `p038_business_kyc_verification`).
 
 2. Apply platform migrations:
    ```cmd
    node src\scripts\run-platform-migrations.js
    ```
-   Expected: `From v<prev> to v38`, zero `SKIPPING` warnings. If any rename conflict is logged (`both tables/columns hold data`), stop, resolve manually, and re-run before proceeding.
+   Expected: `From v32 to v38` (or `v<prev> to v38`), zero `SKIPPING` warnings. If any rename conflict is logged (`both tables/columns hold data`), stop, resolve manually, and re-run before proceeding.
 
 3. Re-check platform dry run:
    ```cmd
@@ -152,7 +151,7 @@ Expected: `OK: the API would start with these settings.` (exit `0`). Ensure `PLA
    ```
    Expected: `UP TO DATE (no migrations needed)`.
 
-### 5.2 Per-Organization (Tenant) Migrations (`v27` → `v32`: `028`–`032`)
+### 5.2 Per-Organization (Tenant) Migrations (`v29` → `v32`: `030`–`032`)
 
 1. Check all `ACTIVE`, `SUSPENDED`, and `PENDING_DELETION` organization databases (read-only):
    ```cmd
@@ -164,7 +163,7 @@ Expected: `OK: the API would start with these settings.` (exit `0`). Ensure `PLA
    ```cmd
    node src\scripts\run-tenant-migrations.js --dry-run
    ```
-   Verify every organization lists up to target `v32` (`028_refund_policy_and_requests`, `029_branch_hours_json`, `030_business_naming`, `031_business_one_id`, `032_branch_refund_policy`).
+   Verify every organization lists up to target `v32` (`030_business_naming`, `031_business_one_id`, `032_branch_refund_policy`).
 
 3. Apply per-organization migrations across all organizations:
    ```cmd
@@ -276,7 +275,7 @@ Expected: `OK: the API would start with these settings.` (exit `0`). Ensure `PLA
    ```
    Lower `MIN_APP_VERSION_IOS` / `MIN_APP_VERSION_ANDROID` back to pre-cut-over values if needed.
 
-2. **Revert application code to pre-cut-over `main` (`11f57f2` or exact SHA recorded before pull):**
+2. **Revert application code to pre-cut-over `origin/main` (`e966d2e` or exact SHA recorded before pull):**
    ```cmd
    cd C:\inetpub\gymsera_be
    git checkout <pre-cutover-sha>
