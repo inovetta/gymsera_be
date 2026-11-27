@@ -1,26 +1,26 @@
 # GymsEra API v1.1.0 (`feat/naming-v2-r2`) — Production Cut-Over & Launch-Wipe Runbook
 
-> **Scope:** Deploy Release `1.1.0` (`origin/main` `e966d2e` → `feat/naming-v2-r2`), apply platform migrations `p033`–`p038` (`v32` → `v38`) and per-organization migrations `030`–`032` (`v29` → `v32`), wipe all pre-release test data, and re-create clean demo + Apple/Google review accounts through the real 1.1.0 onboarding flow.
-> **Rule D14:** Old clients are incompatible once `p033`–`p035` and `030`–`032` land. Release API, CMS, website, and mobile builds together and raise `MIN_APP_VERSION_IOS` / `MIN_APP_VERSION_ANDROID`.
-> **Target host:** Windows Server / IIS (`iisnode`) + MySQL 5.7. Run commands in an elevated **Command Prompt (`cmd.exe`)** inside `C:\inetpub\gymsera_be` unless noted otherwise. Never run `iisreset`, and never use PowerShell `>` / `<` for `mysqldump` or `mysql` (UTF-16 mangling).
+> **Scope:** Deploy Release `1.1.0` (`origin/main` `e966d2e` → `feat/naming-v2-r2` via PR #247), apply platform migrations `p033`–`p038` (`v32` → `v38`) and per-organization migrations `030`–`032` (`v29` → `v32`), wipe all pre-release test data, and re-create clean demo + Apple/Google review accounts through the real 1.1.0 onboarding flow.
+> **Rule D14:** Old mobile/CMS/web clients are incompatible once `p033`–`p035` and `030`–`032` land. Release CMS and website alongside the API at cut-over; keep `MIN_APP_VERSION_IOS` and `MIN_APP_VERSION_ANDROID` unchanged during cut-over and raise each one **only later once 1.1.0 is live in that store**.
+> **Target host:** Windows Server / IIS (`iisnode`) + MySQL 5.7. Run commands in an elevated **Command Prompt (`cmd.exe`)** inside `C:\inetpub\gymsera_be` unless noted otherwise. **Owner rule:** never stop or recycle IIS application pools and never run `iisreset`; restart only our API app by touching `web.config`. Never use PowerShell `>` / `<` for `mysqldump` or `mysql` (UTF-16 mangling).
 
 ---
 
 ## Pre-Cut-Over Preparation
 
-1. Run local rehearsal first against a throwaway local MySQL copy (§8): `node src\scripts\dry-run-release-1-1-backup.js --platform-db gymsera_local_walk`.
+1. Run local rehearsal first against a throwaway local MySQL copy (§9): `node src\scripts\dry-run-release-1-1-backup.js --platform-db gymsera_local_walk`.
 2. Check environment safety and disk space (free space ≥ 2× DB size):
    ```cmd
    cd C:\inetpub\gymsera_be
    node src\scripts\check-environment.js
    git rev-parse HEAD
    ```
-3. Stop IIS writers and disable scheduled tasks before backups, migrations, and wipe:
+3. Disable GymsEra scheduled tasks before backups, migrations, and wipe (stopping **only our IIS site** is optional if you want zero HTTP traffic during backup/migration — never stop or recycle the app pool):
    ```cmd
-   %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
-   %windir%\system32\inetsrv\appcmd stop apppool /apppool.name:"<GymsEra API pool>"
    schtasks /Query /FO TABLE | findstr /I GymsEra
    for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
+   REM Optional (our site only — never touch app pools):
+   REM %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
    ```
 
 ---
@@ -70,21 +70,21 @@
 
 ---
 
-### 2. Deploy (`git pull`, `npm ci --omit=dev`)
+### 2. Deploy (`git status`, `git pull`, `npm ci --omit=dev`)
 
-From `C:\inetpub\gymsera_be` (`main` after PR merge, or `feat/naming-v2-r2` prior to merge):
+From `C:\inetpub\gymsera_be` (after PR #247 merges `feat/naming-v2-r2` into `main`):
 
 ```cmd
 cd C:\inetpub\gymsera_be
-git fetch origin
 git status
-git checkout feat/naming-v2-r2
-git pull --ff-only origin feat/naming-v2-r2
+git fetch origin
+git checkout main
+git pull --ff-only origin main
 git rev-parse HEAD
 npm ci --omit=dev
 node src\scripts\check-environment.js
 ```
-Confirm `check-environment.js` exits `0` and `PLACES_PROVIDER` / `TEST_LOCAL_UPLOAD_DIR` remain **unset** in production.
+(If deploying directly from `feat/naming-v2-r2` before PR #247 merges, substitute `feat/naming-v2-r2` for `main` above.) Confirm `check-environment.js` exits `0` and `PLACES_PROVIDER` / `TEST_LOCAL_UPLOAD_DIR` remain **unset** in production.
 
 ---
 
@@ -142,14 +142,17 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
    - **API server disk:** archive then clear `logs\errors-*.jsonl`, `logs\scheduled-*.log`, `iisnode\`, `%TEMP%\gymsera-logs\`, and verify `public\uploads\` and `storage\private\kyc\` are empty (keep `.env` and `logs\reset-*.jsonl`).
    - Cancel active test subscriptions in Stripe test mode & Google Play tester console, clear any ZKTeco test devices per `launch-wipe.md` §10.
 
-4. **Start & Restart ONLY via Touching `web.config` (NEVER `iisreset`) and Re-Enable Jobs:**
+4. **Restart ONLY our app by touching `web.config` (NEVER stop/recycle app pools, NEVER `iisreset`) and Re-Enable Jobs:**
+   ```powershell
+   (Get-Item web.config).LastWriteTime = Get-Date
+   ```
    ```cmd
-   %windir%\system32\inetsrv\appcmd start apppool /apppool.name:"<GymsEra API pool>"
-   %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
+   REM If you optionally stopped ONLY our site in Pre-Cut-Over Step 3, start our site again:
+   REM %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
    powershell -NoProfile -Command "(Get-Item 'C:\inetpub\gymsera_be\web.config').LastWriteTime = Get-Date"
    for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
    ```
-   Deploy matching `gymsera_cms`, `gymsera_web`, and `gyms_era` `1.1.0` builds and raise `MIN_APP_VERSION_IOS` / `MIN_APP_VERSION_ANDROID` (re-touch `web.config` if `.env` changed).
+   Deploy matching `gymsera_cms` and `gymsera_web` builds. Leave `MIN_APP_VERSION_IOS` and `MIN_APP_VERSION_ANDROID` alone until Step 7 (`Later Step`).
 
 ---
 
@@ -181,11 +184,11 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
 
 > Pre-1.1.0 restoration requires restoring code **and** restoring all pre-cut-over database dumps (`031`/`032` drop columns and `p033`–`p035`/`030` rename schemas).
 
-1. Stop IIS site/pool and disable scheduled tasks:
+1. Disable scheduled tasks (and optionally stop **only our IIS site** during restore — never stop or recycle any app pool):
    ```cmd
-   %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
-   %windir%\system32\inetsrv\appcmd stop apppool /apppool.name:"<GymsEra API pool>"
    for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
+   REM Optional (our site only — never touch app pools):
+   REM %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
    ```
 2. Revert code and dependencies:
    ```cmd
@@ -208,10 +211,10 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
    )
    ```
    (Restore R2 objects from `%BK%\r2-*` if cleared before deciding to roll back.)
-4. Restart ONLY via touching `web.config`, re-enable tasks, and verify `/api/v1/health` returns `%PREV_SHA%`:
+4. Restart ONLY our app by touching `web.config` (never touch app pools, never `iisreset`), re-enable tasks, and verify `/api/v1/health` returns `%PREV_SHA%`:
    ```cmd
-   %windir%\system32\inetsrv\appcmd start apppool /apppool.name:"<GymsEra API pool>"
-   %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
+   REM If you optionally stopped our site above, start our site first:
+   REM %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
    powershell -NoProfile -Command "(Get-Item 'C:\inetpub\gymsera_be\web.config').LastWriteTime = Get-Date"
    for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
    curl -fsS https://api.gymsera.com/api/v1/health
@@ -219,7 +222,20 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
 
 ---
 
-## 7. Environment Variables (Names Only — Never Print or Commit Values)
+## 7. Later Step (Only When 1.1 Is Live in a Store): Raise `MIN_APP_VERSION`
+
+Do **not** run this during cut-over. Raise each platform's variable in `.env` **only when `1.1.0` is live and downloadable in that store** (App Store Connect / Google Play Console), then restart our API app by touching `web.config`:
+
+1. Set `MIN_APP_VERSION_IOS=<1.1.0 store version>` once iOS 1.1.0 is live on the App Store, and/or `MIN_APP_VERSION_ANDROID=<1.1.0 store version>` once Android 1.1.0 is live on Google Play.
+2. Touch `web.config` so `iisnode` reloads `.env` (never stop/recycle app pools):
+   ```powershell
+   (Get-Item web.config).LastWriteTime = Get-Date
+   ```
+3. Verify `curl -fsS https://api.gymsera.com/api/v1/meta/app-config` reflects the updated `minAppVersion`.
+
+---
+
+## 8. Environment Variables (Names Only — Never Print or Commit Values)
 
 Baseline `origin/main` (`e966d2e`) → `feat/naming-v2-r2`:
 
@@ -233,7 +249,7 @@ Verify critical variables remain set: `NODE_ENV=production`, `APP_URL`, `PLATFOR
 
 ---
 
-## 8. Pre-Release Dry-Run on Restored Local Throwaway Copy
+## 9. Pre-Release Dry-Run on Restored Local Throwaway Copy
 
 Verify migrations and post-migration invariants locally against MySQL 5.7 (`127.0.0.1:3308`) before the production window:
 
