@@ -191,10 +191,11 @@ const getTenant = async (organizationId) => {
       order: [['createdAt', 'ASC']],
     });
 
+    let tenantDb = null;
     let branchCountsByListing = {};
     if (tenant.connectionStringEncrypted) {
       try {
-        const tenantDb = await TenantDbManager.getConnection(actualTenantId, tenant.connectionStringEncrypted);
+        tenantDb = await TenantDbManager.getConnection(actualTenantId, tenant.connectionStringEncrypted);
         const counts = await tenantDb.models.Branch.findAll({
           where: { status: 'ACTIVE' },
           attributes: ['businessId', [fn('COUNT', col('id')), 'count']],
@@ -208,7 +209,8 @@ const getTenant = async (organizationId) => {
       }
     }
 
-    tenantJson.businesses = allListings.map((l) => ({
+    const quotaService = require('./subscription-quota.service');
+    const bizSummary = allListings.map((l) => ({
       id: l.id,
       name: l.name,
       status: l.status,
@@ -218,6 +220,10 @@ const getTenant = async (organizationId) => {
       reservedSlots: l.reservedSlots,
       createdAt: l.createdAt,
     }));
+    tenantJson.businesses = await quotaService.attachCanReceiveBranches(bizSummary, { organizationId: actualTenantId, tenant, tenantDb });
+    if (tenantJson.gymListing) {
+      tenantJson.gymListing = await quotaService.attachCanReceiveBranches(tenantJson.gymListing, { organizationId: actualTenantId, tenant, tenantDb });
+    }
   }
 
   // R-84 (NEW-158): what the approval would publish, for the photo check on the approve screen.
@@ -527,7 +533,7 @@ const rejectBusiness = async (businessId, adminUserId, reason) => {
     }).catch(err => console.error('[rejectTenant listing] Notification error:', err.message));
   }
 
-  return { business: { id: businessId, status: 'REJECTED' }, capacityReturned: true };
+  return { business: listing, capacityReturned: true };
 };
 
 const rejectTenant = async (organizationId, adminUserId, reason) => {

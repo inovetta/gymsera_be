@@ -498,6 +498,88 @@ const getBranchesToKeep = async (organizationId, { transaction } = {}) => {
   return Array.isArray(change.keepBranchIds) ? change.keepBranchIds : null;
 };
 
+/**
+ * Returns a predicate `(business) => boolean` for whether an approved ACTIVE business in
+ * `organizationId` can currently receive another branch: true only when the organization is
+ * ACTIVE and either the business holds its own unbuilt reserved slot or (with no over-quota
+ * suspension) the organization pool has a free unit or another ACTIVE business holds an unused
+ * reserved unit that can be transferred (W4).
+ */
+const canReceiveBranchesForOrg = async (organizationId, { tenant = null, tenantDb = null } = {}) => {
+  const org = tenant || await Tenant.findByPk(organizationId, {
+    attributes: ['id', 'status', 'selectedPackageId', 'connectionStringEncrypted'],
+  });
+  if (!org || org.status !== 'ACTIVE') return () => false;
+
+  let db = tenantDb;
+  if (!db && org.connectionStringEncrypted && org.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+    try {
+      db = await require('../database/TenantDbManager').getConnection(org.id, org.connectionStringEncrypted);
+    } catch {
+      return () => false;
+    }
+  }
+  if (!db) return () => false;
+
+  const [activeSub, usedCapacity, activeListingsWithSlots] = await Promise.all([
+    getActiveSubscription(org.id),
+    getUsedCapacity(org.id, db),
+    GymListing.findAll({
+      where: { organizationId: org.id, status: 'ACTIVE', reservedSlots: { [Op.gt]: 0 } },
+      attributes: ['id'],
+    }),
+  ]);
+
+  const maxBranches = await resolveMaxBranches(org, activeSub);
+  const free = Math.max(0, maxBranches - usedCapacity);
+  const overQuota = (activeSub?.overQuotaCount || 0) > 0;
+  const activeDonorIds = new Set(activeListingsWithSlots.map((r) => r.id));
+
+  return (business) => {
+    if (!business || business.status !== 'ACTIVE' || business.kycStatus !== 'APPROVED') return false;
+    if (Number(business.reservedSlots) > 0) return true;
+    if (overQuota) return false;
+    if (free > 0) return true;
+    for (const donorId of activeDonorIds) {
+      if (donorId !== business.id) return true;
+    }
+    return false;
+  };
+};
+
+/**
+ * Attaches `canReceiveBranches` to a serialized Business (or array of them), accepting either
+ * Sequelize model instances or plain JSON objects.
+ */
+const attachCanReceiveBranches = async (target, opts = {}) => {
+  if (!target) return target;
+  const isArray = Array.isArray(target);
+  const items = isArray ? target : [target];
+  if (items.length === 0) return target;
+
+  const plainItems = items.map((item) => (typeof item?.toJSON === 'function' ? item.toJSON() : { ...item }));
+  const eligibleOrgIds = [...new Set(
+    plainItems
+      .filter((b) => b && b.status === 'ACTIVE' && b.kycStatus === 'APPROVED')
+      .map((b) => b.organizationId || opts.organizationId)
+      .filter(Boolean)
+  )];
+
+  const evaluators = new Map();
+  await Promise.all(eligibleOrgIds.map(async (orgId) => {
+    const useOpts = (opts.organizationId && orgId !== opts.organizationId) ? {} : opts;
+    evaluators.set(orgId, await canReceiveBranchesForOrg(orgId, useOpts));
+  }));
+
+  const enriched = plainItems.map((b) => {
+    const orgId = b.organizationId || opts.organizationId;
+    const fn = orgId ? evaluators.get(orgId) : null;
+    return { ...b, canReceiveBranches: fn ? fn(b) : false };
+  });
+
+  return isArray ? enriched : enriched[0];
+};
+
 module.exports = {
   ENTITLING_STATUSES,
   getBranchesToKeep,
@@ -510,5 +592,6 @@ module.exports = {
   getUsedCapacity,
   reconcileCapacity,
   auditCapacity,
+  attachCanReceiveBranches,
   UNLIMITED_ORGANIZATIONS,
 };

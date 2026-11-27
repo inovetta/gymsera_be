@@ -392,7 +392,15 @@ const getPlatformAnalytics = async (req, res, next) => {
 
 // ── Business management (contract v2 §4 rows 104-110, A1 G3) ─────────────────────────────────────────────────────
 // The answer wraps the business as `business` (was `gymListing`).
-const asBusiness = (result) => (result && result.gymListing ? { ...result, business: result.gymListing, gymListing: undefined } : result);
+const subscriptionQuotaService = require('../services/subscription-quota.service');
+const asBusiness = async (result) => {
+  if (!result || !result.gymListing) return result;
+  return {
+    ...result,
+    business: await subscriptionQuotaService.attachCanReceiveBranches(result.gymListing),
+    gymListing: undefined,
+  };
+};
 
 // ── NEW-303 M2: business approval, documents, verified badge, review queue ─────
 const kycService = () => require('../services/business-kyc.service');
@@ -401,28 +409,29 @@ const _adminId = (req) => req.user.sub || req.user.id;
 const approveBusiness = async (req, res, next) => {
   try {
     const listing = await adminService.approveBusiness(req.params.businessId, _adminId(req));
-    return sendSuccess(res, { business: listing.toJSON() }, 'Business approved');
+    return sendSuccess(res, { business: await subscriptionQuotaService.attachCanReceiveBranches(listing) }, 'Business approved');
   } catch (err) { next(err); }
 };
 
 const rejectBusiness = async (req, res, next) => {
   try {
     const result = await adminService.rejectBusiness(req.params.businessId, _adminId(req), req.body.reason);
-    return sendSuccess(res, result, 'Business rejected');
+    const business = await subscriptionQuotaService.attachCanReceiveBranches(result.business);
+    return sendSuccess(res, { ...result, business }, 'Business rejected');
   } catch (err) { next(err); }
 };
 
 const verifyBusiness = async (req, res, next) => {
   try {
     const listing = await kycService().verify({ listing: await adminService.businessForAdmin(req.params.businessId), adminUserId: _adminId(req) });
-    return sendSuccess(res, { business: listing.toJSON() }, 'Business verified');
+    return sendSuccess(res, { business: await subscriptionQuotaService.attachCanReceiveBranches(listing) }, 'Business verified');
   } catch (err) { next(err); }
 };
 
 const unverifyBusiness = async (req, res, next) => {
   try {
     const listing = await kycService().unverify({ listing: await adminService.businessForAdmin(req.params.businessId), adminUserId: _adminId(req) });
-    return sendSuccess(res, { business: listing.toJSON() }, 'Verified badge removed');
+    return sendSuccess(res, { business: await subscriptionQuotaService.attachCanReceiveBranches(listing) }, 'Verified badge removed');
   } catch (err) { next(err); }
 };
 
@@ -470,21 +479,21 @@ const getReviewQueue = async (req, res, next) => {
 const getGymListing = async (req, res, next) => {
   try {
     const result = await adminService.getGymListing(req.params.businessId);
-    return sendSuccess(res, asBusiness(result));
+    return sendSuccess(res, await asBusiness(result));
   } catch (err) { next(err); }
 };
 
 const createGymListing = async (req, res, next) => {
   try {
     const result = await adminService.createGymListing(req.params.organizationId, req.body);
-    return sendSuccess(res, asBusiness(result), 'Business created', 201);
+    return sendSuccess(res, await asBusiness(result), 'Business created', 201);
   } catch (err) { next(err); }
 };
 
 const updateGymListing = async (req, res, next) => {
   try {
     const result = await adminService.updateGymListing(req.params.businessId, req.body);
-    return sendSuccess(res, asBusiness(result), 'Business updated');
+    return sendSuccess(res, await asBusiness(result), 'Business updated');
   } catch (err) { next(err); }
 };
 

@@ -375,7 +375,8 @@ const getListings = async (req, res, next) => {
       areaRequests.withPendingAreas('business', organizationId, listings),
       listings.length ? _branchCountsByBusiness(organizationId) : {},
     ]);
-    return sendSuccess(res, withPending.map((b) => ({ ...b, branchCount: branchCounts[b.id] || 0 })));
+    const withCounts = withPending.map((b) => ({ ...b, branchCount: branchCounts[b.id] || 0 }));
+    return sendSuccess(res, await subscriptionQuotaService.attachCanReceiveBranches(withCounts, { organizationId }));
   } catch (err) {
     next(err);
   }
@@ -597,7 +598,11 @@ const createListing = async (req, res, next) => {
       });
 
       await platformTx.commit();
-      return sendSuccess(res, { business: listing.toJSON(), branch: null, heldFirstBranch: true }, 'Business submitted for review', 201);
+      return sendSuccess(res, {
+        business: await subscriptionQuotaService.attachCanReceiveBranches(listing, { organizationId, tenantDb: req.tenantDb }),
+        branch: null,
+        heldFirstBranch: true,
+      }, 'Business submitted for review', 201);
     } catch (err) {
       await platformTx.rollback();
       throw err;
@@ -637,7 +642,9 @@ const updateHeldFirstBranch = async (req, res, next) => {
       }, { transaction });
       await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction });
     });
-    return sendSuccess(res, { business: listing.toJSON() }, 'First branch updated');
+    return sendSuccess(res, {
+      business: await subscriptionQuotaService.attachCanReceiveBranches(listing, { organizationId, tenantDb: req.tenantDb }),
+    }, 'First branch updated');
   } catch (err) { next(err); }
 };
 
@@ -700,7 +707,11 @@ const getListing = async (req, res, next) => {
       areaRequests.pendingAreaFor('business', organizationId, listing.id), // NEW-265
       req.tenantDb.models.Branch.count({ where: { businessId: listing.id, status: 'ACTIVE' } }),
     ]);
-    return sendSuccess(res, { ...listing.toJSON(), branchCount, pendingArea, gym: gym ? gym.toJSON() : null });
+    const payload = await subscriptionQuotaService.attachCanReceiveBranches(
+      { ...listing.toJSON(), branchCount, pendingArea, gym: gym ? gym.toJSON() : null },
+      { organizationId, tenantDb: req.tenantDb }
+    );
+    return sendSuccess(res, payload);
   } catch (err) {
     next(err);
   }
@@ -788,7 +799,7 @@ const updateListing = async (req, res, next) => {
       await gym.update(gymUpdates);
     }
 
-    return sendSuccess(res, listing, 'Organization updated successfully');
+    return sendSuccess(res, await subscriptionQuotaService.attachCanReceiveBranches(listing, { organizationId, tenantDb: req.tenantDb }), 'Organization updated successfully');
   } catch (err) {
     next(err);
   }
