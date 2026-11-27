@@ -2,84 +2,60 @@
 
 > **Scope:** Coordinating backend release `1.1.0` (`origin/main` `e966d2e` → `feat/naming-v2-r2`), platform migrations `p033`–`p038` (`v32` → `v38`), and organization (tenant) migrations `030`–`032` (`v29` → `v32`).
 > **Rule D14 (no old-build compatibility):** Old mobile/CMS/web clients are incompatible once `p033`–`p035` and `030`–`032` land. Release API, CMS, website, and mobile builds together and raise the force-update gate (`MIN_APP_VERSION_IOS`, `MIN_APP_VERSION_ANDROID`) at cut-over.
-> **NEW-302 (`+` email aliases):** Cherry-picked from `fix/email-plus-space` (`7f9dc17`) into `feat/naming-v2-r2` (`emailField()` in `src/validators/auth.validator.js`).
-
-Target host: Windows / IIS (`iisnode`) with MySQL 5.7. Run commands in an elevated **Command Prompt (`cmd.exe`)** inside the production API checkout (for example `C:\inetpub\gymsera_be`) unless noted otherwise. Never run `iisreset`, and never use PowerShell `>` / `<` for `mysqldump` or `mysql` (UTF-16 mangling).
+> **Target host:** Windows Server / IIS (`iisnode`) + MySQL 5.7. Run commands in an elevated **Command Prompt (`cmd.exe`)** inside `C:\inetpub\gymsera_be` unless noted otherwise. Never run `iisreset`, and never use PowerShell `>` / `<` for `mysqldump` or `mysql` (PowerShell defaults to UTF-16 and corrupts SQL streams).
 
 ---
 
-## 1. Environment Variables (Names Only — Never Print or Commit Values)
+## Pre-Cut-Over Checklist
 
-Compare `origin/main` (`e966d2e`) → `feat/naming-v2-r2` (`fb47422`):
-
-### New Environment Variables
-
-| Variable Name | Production Setting | Notes |
-|---|---|---|
-| `PLACES_PROVIDER` | **Do NOT set** (leave unset) | Local/dev only (`fake` serves `/places/*` from seeded `cities`/`areas`). Explicitly ignored when `NODE_ENV=production`. |
-| `TEST_LOCAL_UPLOAD_DIR` | **Do NOT set** (leave unset) | Automated test harness only (`NODE_ENV=test`). |
-
-### Removed Environment Variables
-
-- **None** (0 environment variables removed since `origin/main`).
-
-### Existing Cut-Over / Gate Variables to Verify Before & During Cut-Over
-
-- `NODE_ENV` (must be `production`), `APP_URL`, `PLATFORM_DB_HOST`, `PLATFORM_DB_NAME`, `TENANT_DB_HOST`, `TENANT_CONN_ENCRYPTION_KEY`, `BIOMETRIC_DATA_KEY`, `JWT_SECRET`, `JWT_REFRESH_SECRET`
-- `APPLE_IAP_ENVIRONMENT` (must NOT be `Sandbox` for live customer purchases) and `SANDBOX_PURCHASES_GO_LIVE` (must remain **unset** in production)
-- `GOOGLE_MAPS_SERVER_KEY` (required on production for `/places/*` autocomplete, details, reverse-geocode)
-- `MIN_APP_VERSION_IOS`, `MIN_APP_VERSION_ANDROID`, `APP_STORE_URL_IOS`, `APP_STORE_URL_ANDROID` (keep old values until step 7/8, then raise to the approved 1.1.0 mobile build)
-
----
-
-## 2. Pre-Cut-Over Checks & Maintenance Window Freeze
-
-1. **Dry-run rehearsal completed:** Ensure the restored backup dry-run script (`node src/scripts/dry-run-release-1-1-backup.js`, see §10) passed locally on a throwaway copy of production dumps before touching production.
-2. **Release gate alignment:** Confirm the new iOS and Android builds (`v1.1.0`) are approved and ready for manual release in App Store Connect and Google Play Console, and CMS/web releases are staged.
-3. **Verify environment config (before stopping):**
+1. **Local rehearsal passed:** Confirm `node src\scripts\dry-run-release-1-1-backup.js` passed against a local throwaway MySQL copy (§8).
+2. **Environment safety & disk space check (read-only):**
    ```cmd
+   cd C:\inetpub\gymsera_be
    node src\scripts\check-environment.js
+   git rev-parse HEAD
    ```
-   Expected: `staging: no`, `platform database: gymsera (...)`, `tenant database server: 209.209.42.64 (...)`, `OK: the API would start with these settings.` (exit `0`).
-4. **Check disk space:** Confirm the backup drive has free space ≥ 2× total database size.
-5. **Stop writers (IIS site, app pool, and scheduled jobs) before backups & table-rename migrations:**
+   Confirm `staging: no`, expected platform DB / tenant DB host, `OK: the API would start with these settings.` (exit `0`), and free disk space ≥ 2× total database size.
+3. **Stop IIS site, app pool, and scheduled jobs before backing up and migrating:**
    ```cmd
    %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
    %windir%\system32\inetsrv\appcmd stop apppool /apppool.name:"<GymsEra API pool>"
    schtasks /Query /FO TABLE | findstr /I GymsEra
-   ```
-   Disable each scheduled task (`daily`, `billing-inbox`, `device-watchdog`, `device-sync`, `device-audit`, `device-retention`):
-   ```cmd
-   schtasks /Change /TN "GymsEra\<name>" /DISABLE
+   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
    ```
 
 ---
 
-## 3. Backup Platform Database & Every Organization Database
+## Cut-Over Checklist (Exact Order)
 
-> **Table name note before `p034`:** Before migration `p034_organization_naming` runs, the platform database still names the table `tenants` (`tenant_code`, `db_name`) and `gym_listings` (instead of `organizations` / `business_listings`). Read `db_name` directly from the database — never infer database names.
+### 1. Backup Platform Database & Every Organization Database (`mysqldump`)
 
-1. Create a dated backup directory and capture pre-cut-over inventory (adjust script path depending on whether platform is pre-`p033` or post-`p034`):
+> **Pre-`p034` table name note:** Before `p034_organization_naming` runs, the platform DB stores organization database names in `tenants.db_name` (and businesses in `gym_listings`). Never guess or derive database names from organization names or codes.
+
+1. Create a dated backup directory, capture the current commit + pre-migration inventory, and **list every organization database** into `%BK%\org-dbs.txt`:
    ```cmd
    set BK=D:\gymsera-backups\release-1-1-YYYY-MM-DD
    mkdir "%BK%"
+   git rev-parse HEAD > "%BK%\pre-cutover-sha.txt"
    node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory-before-p033.sql > "%BK%\inventory-before.txt"
    ```
-   Extract every non-NULL `db_name` value into `%BK%\org-dbs.txt` (one database name per line, exact spelling from `inventory-before.txt`). Also list any orphan databases not linked to a row in case ops wants a snapshot.
-
-2. Prepare a restricted MySQL 5.7 options file `C:\gymsera-secure\dump.cnf` (do **not** store `.env`, `BIOMETRIC_DATA_KEY`, or `TENANT_CONN_ENCRYPTION_KEY` in `%BK%`):
+2. Prepare restricted MySQL 5.7 option files (`C:\gymsera-secure\dump.cnf` for platform DB and `C:\gymsera-secure\dump-tenant.cnf` for tenant DB server if distinct) readable only by Administrators — never store credentials inside `%BK%`:
    ```ini
    [client]
-   host=<platform or tenant DB host>
+   host=<db host>
    user=<backup user with SELECT, LOCK TABLES, SHOW VIEW, TRIGGER, EVENT>
-   # add `password=` line with restricted file permissions only on the server
+   # add `password=...` only in C:\gymsera-secure\ on the server
    default-character-set=utf8mb4
    ```
-   (Create a second `dump-tenant.cnf` if `TENANT_DB_HOST` differs from `PLATFORM_DB_HOST`.)
-
-3. **Dump the platform database AND every organization database:**
+3. **List all non-NULL organization database names directly from MySQL:**
    ```cmd
    set MYSQL_BIN=C:\Program Files\MySQL\MySQL Server 5.7\bin
+   "%MYSQL_BIN%\mysql.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf -N -B gymsera -e "SELECT DISTINCT db_name FROM tenants WHERE db_name IS NOT NULL AND db_name <> '' ORDER BY db_name;" > "%BK%\org-dbs.txt"
+   type "%BK%\org-dbs.txt"
+   ```
+   (If the platform DB is on a separate host from tenant DBs, also run `SELECT SCHEMA_NAME FROM information_schema.SCHEMATA` against `dump-tenant.cnf` to verify no orphan organization DBs are missing from `%BK%\org-dbs.txt`.)
+4. **Dump the platform database AND every organization database with `mysqldump`:**
+   ```cmd
    set OPTS=--single-transaction --quick --routines --triggers --events --hex-blob --set-gtid-purged=OFF
 
    "%MYSQL_BIN%\mysqldump.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf %OPTS% gymsera --result-file="%BK%\platform.sql"
@@ -87,203 +63,141 @@ Compare `origin/main` (`e966d2e`) → `feat/naming-v2-r2` (`fb47422`):
    for /f "usebackq delims=" %D in ("%BK%\org-dbs.txt") do ^
      "%MYSQL_BIN%\mysqldump.exe" --defaults-extra-file=C:\gymsera-secure\dump-tenant.cnf %OPTS% %D --result-file="%BK%\org-%D.sql"
    ```
-
-4. **Verify dump integrity & checksums:**
+5. **Verify every dump finished cleanly & record SHA-256 checksums:**
    ```cmd
    dir "%BK%\*.sql"
    findstr /M /C:"-- Dump completed on" "%BK%\*.sql"
    for %F in ("%BK%\*.sql") do certutil -hashfile "%F" SHA256 >> "%BK%\SHA256SUMS.txt"
    ```
-   Every `.sql` file must be non-empty and listed by `findstr`. Copy encrypted archive off-server before proceeding.
+   Copy `%BK%` off-server before continuing.
 
 ---
 
-## 4. Pull & Install
+### 2. Pull Release Code & Install Dependencies (`npm ci --omit=dev`)
 
-In the production API folder (`C:\inetpub\gymsera_be`):
+Run from `C:\inetpub\gymsera_be` (`main` after merging `feat/naming-v2-r2`, or `feat/naming-v2-r2` directly if deploying the release branch prior to merge):
 
 ```cmd
+cd C:\inetpub\gymsera_be
 git fetch origin
 git status
-git checkout main
-git pull --ff-only origin main
+git checkout feat/naming-v2-r2
+git pull --ff-only origin feat/naming-v2-r2
 git rev-parse HEAD
-```
-
-Install production Node dependencies cleanly:
-
-```cmd
 npm ci --omit=dev
-```
-
-Re-verify environment safety and new optional variables:
-
-```cmd
 node src\scripts\check-environment.js
 ```
-
-Expected: `OK: the API would start with these settings.` (exit `0`). Ensure `PLACES_PROVIDER` and `TEST_LOCAL_UPLOAD_DIR` are **not** set in `.env` or IIS app pool settings.
+(Replace `feat/naming-v2-r2` with `main` if `feat/naming-v2-r2` has already been merged to `main`.) Confirm `check-environment.js` exits `0` and `PLACES_PROVIDER` / `TEST_LOCAL_UPLOAD_DIR` remain **unset** in `.env` and IIS settings.
 
 ---
 
-## 5. Run Migrations in Exact Order
+### 3. Apply Migrations on Production (CLI Scripts Only — Platform BEFORE Organization)
 
-> **CRITICAL ORDERING:** Run **platform migrations FIRST (`p033`→`p038`)**, then **per-organization migrations (`030`→`032`)** (`origin/main` `e966d2e` is already at platform `v32` and tenant `v29`; any older target runs pending earlier steps automatically).
-> `run-tenant-migrations.js` calls `platform.js#connect()` and queries `organizations` / `organization_code`, which requires `p033`–`p035` to be applied on the platform database first. Never run tenant migrations before platform migrations.
+> **How migrations run on production:** Migrations do **NOT** run automatically at server start-up. `server.js` runs only read-only version checks (`checkPlatformSchemaVersion()` and `runTenantSchemaCheck()`), which log `[Deploy Warning]` and return `503` on `/api/v1/health/tenant-schema` if behind. You **must** apply migrations via CLI scripts before starting IIS.
+> **Strict order:** **Platform DB FIRST (`p033`–`p038`)**, then **Organization DBs SECOND (`030`–`032`)**. `run-tenant-migrations.js` reads `organizations.db_name`, which does not exist until platform migration `p034_organization_naming` completes.
 
-### 5.1 Platform Migrations (`v32` → `v38`: `p033`–`p038`)
-
-1. Preview pending platform migrations (read-only; uses `sequelize.authenticate()`, zero writes):
+1. **Platform migrations FIRST (`v32` → `v38`: `p033`–`p038`):**
    ```cmd
    node src\scripts\run-platform-migrations.js --dry-run
-   ```
-   Verify pending list ends at target `v38` (`p033_business_naming`, `p034_organization_naming`, `p035_organization_id_columns`, `p036_member_index_branch_id`, `p037_held_first_branch`, `p038_business_kyc_verification`).
-
-2. Apply platform migrations:
-   ```cmd
    node src\scripts\run-platform-migrations.js
-   ```
-   Expected: `From v32 to v38` (or `v<prev> to v38`), zero `SKIPPING` warnings. If any rename conflict is logged (`both tables/columns hold data`), stop, resolve manually, and re-run before proceeding.
-
-3. Re-check platform dry run:
-   ```cmd
    node src\scripts\run-platform-migrations.js --dry-run
    ```
-   Expected: `UP TO DATE (no migrations needed)`.
+   Confirm the first `--dry-run` lists `p033`–`p038`, live run prints zero `SKIPPING` warnings, and the second `--dry-run` prints `UP TO DATE (no migrations needed)`.
 
-### 5.2 Per-Organization (Tenant) Migrations (`v29` → `v32`: `030`–`032`)
-
-1. Check all `ACTIVE`, `SUSPENDED`, and `PENDING_DELETION` organization databases (read-only):
+2. **Per-organization migrations SECOND (`v29` → `v32`: `030`–`032`):**
    ```cmd
    node src\scripts\run-tenant-migrations.js --check
-   ```
-   If any organization prints `NO schema_migrations table`, stop and baseline it first per [runbooks/tenant-schema.md](runbooks/tenant-schema.md) using `repair-tenant-schema.js`.
-
-2. Preview pending per-organization migrations:
-   ```cmd
    node src\scripts\run-tenant-migrations.js --dry-run
-   ```
-   Verify every organization lists up to target `v32` (`030_business_naming`, `031_business_one_id`, `032_branch_refund_policy`).
-
-3. Apply per-organization migrations across all organizations:
-   ```cmd
    node src\scripts\run-tenant-migrations.js
-   ```
-   Expected: `Failed: 0`, every organization `OK`.
-
-4. Run the deploy gate check (must exit `0`):
-   ```cmd
    node src\scripts\run-tenant-migrations.js --check
    ```
-   Expected: `OK: every tenant database is at the target.` (exit `0`).
+   If `--check` flags any organization with `NO schema_migrations table`, repair it per [runbooks/tenant-schema.md](runbooks/tenant-schema.md) before applying. Confirm the live run prints `Failed: 0` and the final `--check` prints `OK: every tenant database is at the target.` (exit `0`).
 
-5. Capture post-migration read-only inventory & invariant check:
+3. **Keep existing production test/demo businesses visible in discovery (test data only):**
+   `p038_business_kyc_verification` adds `business_listings.kyc_status DEFAULT 'NOT_SUBMITTED'` without a backfill, which hides every existing `ACTIVE` test business from discovery (`status = 'ACTIVE' AND kyc_status = 'APPROVED'`). Preview first, then approve those existing `ACTIVE` + `NOT_SUBMITTED` rows (update-only, zero deletes):
+   ```cmd
+   node tools\release-1-1-approve-existing-test-businesses.js
+   node tools\release-1-1-approve-existing-test-businesses.js --apply
+   ```
+
+4. **Post-migration read-only invariant check:**
    ```cmd
    node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inventory-after.txt"
    node src\scripts\dry-run-release-1-1-backup.js --verify-only --allow-nonlocal
    ```
-   Wait: only pass `--allow-nonlocal` with `--verify-only` if performing read-only post-migration invariant verification on production, or run the full verification first against the restored staging/local copy (§10).
 
 ---
 
-## 6. Start / Restart ONLY via Touching `web.config` (Never `iisreset`)
+### 4. Start & Restart ONLY via Touching `web.config` (Never `iisreset`)
 
-> **IIS / iisnode rule:** Do **not** run `iisreset`. Always recycle the API worker strictly by touching `web.config` (`watchedFiles="web.config;server.js"` in `web.config`).
+> **IIS / `iisnode` rule:** **Never** run `iisreset`. Always recycle/restart the Node worker strictly by updating `web.config` (`watchedFiles="web.config;server.js"` in `web.config`).
 
-1. If the site/app pool were stopped in §2, start them first, and recycle/restart the worker cleanly by touching `web.config`:
+1. Start the app pool and site if stopped in Pre-Cut-Over, then trigger a clean `iisnode` worker recycle via PowerShell:
    ```cmd
    %windir%\system32\inetsrv\appcmd start apppool /apppool.name:"<GymsEra API pool>"
    %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
-   powershell -NoProfile -Command "(Get-Item 'C:\inetpub\gymsera_be\web.config').LastWriteTime = Get-Date"
    ```
-   (If the site remained running or to recycle cleanly after config changes, touching `web.config` alone triggers `iisnode` to spawn a fresh `node.exe` process.)
-
-2. Re-enable all `GymsEra\*` Task Scheduler jobs disabled in §2:
+   ```powershell
+   (Get-Item web.config).LastWriteTime = Get-Date
+   ```
+   (From `cmd.exe`, run: `powershell -NoProfile -Command "(Get-Item 'C:\inetpub\gymsera_be\web.config').LastWriteTime = Get-Date"`.)
+2. Re-enable Task Scheduler jobs:
    ```cmd
-   schtasks /Change /TN "GymsEra\<name>" /ENABLE
+   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
    ```
-
-3. Deploy matching CMS (`gymsera_cms`), website (`gymsera_web`), and release mobile builds (`gyms_era`), then set `MIN_APP_VERSION_IOS` and `MIN_APP_VERSION_ANDROID` to the new release build (touch `web.config` if updated inside `.env`).
+3. Release matching CMS (`gymsera_cms`), website (`gymsera_web`), and mobile (`gyms_era` `1.1.0`) builds, then raise `MIN_APP_VERSION_IOS` and `MIN_APP_VERSION_ANDROID` and re-touch `web.config` if `.env` changed.
 
 ---
 
-## 7. Health Checks
+### 5. Health Checks & Smoke Tests
 
-1. **Boot log verification (`iisnode\` stdout / `logs\`):**
-   Confirm a fresh boot line exists with the new commit hash and expected hosts:
-   ```
-   [ErrorJournal] boot ... commit=<new 12-char sha> ... platformDb=gymsera (.env) tenantDbHost=209.209.42.64 (.env)
-   ```
-   And confirm zero `[Deploy Warning] Platform schema version ... is behind target` messages.
+1. **Health checks (all must pass immediately after `web.config` touch):**
+   - **Boot log (`iisnode\` stdout / `logs\`):** confirm `[ErrorJournal] boot ... commit=<new 12-char sha> ...` and **zero** `[Deploy Warning] Platform schema version ... is behind target`.
+   - **API liveness & version:**
+     ```cmd
+     curl -fsS https://api.gymsera.com/api/v1/health
+     ```
+     Expect HTTP `200`, `data.version === "1.1.0"`, `data.build.commit` matches deployed SHA, and `data.startedAt` is after touching `web.config`.
+   - **Organization schema gate:**
+     ```cmd
+     curl -fsS https://api.gymsera.com/api/v1/health/tenant-schema
+     ```
+     Expect HTTP `200`, `data.tenantSchema.status === "ok"`, `behindCount === 0`, `failedCount === 0`.
+   - **Hidden internal paths:**
+     ```cmd
+     curl -i -s https://api.gymsera.com/iisnode/index.html
+     ```
+     Expect HTTP `404`.
 
-2. **Liveness & version check:**
-   ```cmd
-   curl -fsS https://api.gymsera.com/api/v1/health
-   ```
-   Verify:
-   - HTTP `200`
-   - `data.version` is `"1.1.0"`
-   - `data.build.commit` equals the deployed commit
-   - `data.startedAt` is after touching `web.config`
-
-3. **Organization (tenant) schema health check:**
-   ```cmd
-   curl -fsS https://api.gymsera.com/api/v1/health/tenant-schema
-   ```
-   Verify: HTTP `200`, `data.tenantSchema.status === "ok"`, `behindCount === 0`, `failedCount === 0`.
-
-4. **Internal path security check:**
-   ```cmd
-   curl -i -s https://api.gymsera.com/iisnode/index.html
-   ```
-   Verify HTTP `404` (`web.config` keeps `iisnode`, `logs`, `storage` hidden and `devErrorsEnabled="false"`).
+2. **Smoke test list:**
+   - **Public discovery:** `GET /api/v1/cities` (`200`); `GET /api/v1/discovery/businesses` and `GET /api/v1/discovery/top-businesses` (`200`, existing approved demo businesses visible, `businesses`/`branches` keys, `displayName`, `businessVerified`, **no** `organizationName` or nested `tenant`); `GET /api/v1/discovery/businesses/:businessId` (`200`, includes `businessVerified`).
+   - **Auth & `+` email aliases (`NEW-302`):** `POST /api/v1/auth/login` + `GET /api/v1/me/context` (`200`, JWT contains `organizationId` claim and no `tenantId`; stale pre-1.1.0 tokens return `401`).
+   - **Host organization/business flows:** `GET /api/v1/host/status` (`200`, `organizationId`, `organizationName`, `nextStep`); `GET /api/v1/host/businesses` (`200`, each item has `branchCount`, `canReceiveBranches`, `businessVerified`, `kycStatus`, `missingForApproval`).
+   - **CMS / Admin flows:** `GET /api/v1/admin/review-queue?kind=BUSINESS&page=1&limit=20` (`200`, `{ items, page, total }`); `GET /api/v1/admin/organizations/:organizationId` (`200`, `organization.businesses[]` includes `canReceiveBranches`); `DELETE /api/v1/admin/businesses/:businessId/verify` (on a test business) sets `verifiedAt: null` and rejects registration doc with `"Verification revoked"`.
+   - **Force-update config:** `GET /api/v1/meta/app-config` reflects the raised `1.1.0` `minAppVersion.ios` / `minAppVersion.android`.
+   - **Scheduled jobs:** `node src\scripts\run-scheduled-job.js daily` exits `0`.
 
 ---
 
-## 8. Smoke Tests
+### 6. Rollback
 
-1. **Discovery (public + privacy D3/D11):**
-   - `GET /api/v1/cities` → `200`, cities/areas load.
-   - `GET /api/v1/discovery/businesses` and `GET /api/v1/discovery/top-businesses` → `200`, keys are `businesses` / `branches` (`displayName`, `businessVerified`), and **zero** `organizationName` or `tenant` keys appear in traveller responses.
-   - `GET /api/v1/discovery/businesses/:businessId` → `200`, includes `businessVerified` and only `ACTIVE` + `APPROVED` businesses.
-2. **Auth & JWT claims:**
-   - Sign in with a host/member account (`POST /api/v1/auth/login`) and decode JWT / call `GET /api/v1/me/context` → token carries `organizationId` (no `tenantId` claim); old JWTs without `organizationId` receive `401`.
-3. **Host APIs (`X-Organization-Id`):**
-   - `GET /api/v1/host/status` → `200`, includes `organizationId`, `organizationName`, `nextStep` (`null` or `{ key, businessId }`).
-   - `GET /api/v1/host/businesses` → `200`, each item includes `branchCount`, `businessVerified`, `kycStatus`, `missingForApproval`.
-4. **Admin review & verification:**
-   - `GET /api/v1/admin/review-queue?kind=BUSINESS&page=1&limit=20` → `200`, `{ items, page, total }`.
-   - `GET /api/v1/admin/organizations/:organizationId` → `200`, lists `organization.businesses` (no compound `id1:id2` ids).
-   - `DELETE /api/v1/admin/businesses/:businessId/verify` (if tested on a staging/test business) → sets `verifiedAt: null` and rejects `BUSINESS_REGISTRATION` document(s) with `"Verification revoked"`.
-5. **Force-update check (`GET /api/v1/meta/app-config`):**
-   - Verify `minAppVersion.ios` / `minAppVersion.android` reflect the raised `1.1.0` build once set, and an older build shows the update gate.
-6. **Scheduled jobs & fresh-approval invariant:**
-   - Run `node src\scripts\run-scheduled-job.js daily` → exit `0`.
-   - If approving a fresh test organization, confirm `why-not-live.js --branch <name>` and `run-sql-check.js docs\sql\new-127-fresh-approval-check.sql` pass (`PASS`).
+> **Full DB restore is mandatory when rolling back:** `031_business_one_id` drops `gym_listing_id`, `032_branch_refund_policy` drops `businesses.refunds_allowed`/`refund_window_days`, and `p033`–`p035` / `030` rename tables, columns, indexes, and enum values. Never revert code without restoring the pre-cut-over dumps.
 
----
-
-## 9. Rollback Procedure
-
-> **Why database restore is the authoritative rollback:** Migrations `031_business_one_id` (drops `gym_listing_id`) and `032_branch_refund_policy` (drops `businesses.refunds_allowed`, `businesses.refund_window_days`) remove columns without backfill, and `p033`–`p035` / `030` rename core tables, columns, indexes, and enum values. Code rollback **must** accompany database rollback so app code and schema stay aligned.
-
-1. **Stop writes immediately:**
+1. **Stop IIS & scheduled tasks immediately:**
    ```cmd
    %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
    %windir%\system32\inetsrv\appcmd stop apppool /apppool.name:"<GymsEra API pool>"
-   schtasks /Change /TN "GymsEra\<name>" /DISABLE
+   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
    ```
-   Lower `MIN_APP_VERSION_IOS` / `MIN_APP_VERSION_ANDROID` back to pre-cut-over values if needed.
-
-2. **Revert application code to pre-cut-over `origin/main` (`e966d2e` or exact SHA recorded before pull):**
+   Revert `MIN_APP_VERSION_IOS` / `MIN_APP_VERSION_ANDROID` if they were raised.
+2. **Revert application code to `%BK%\pre-cutover-sha.txt` (`e966d2e`) and reinstall deps:**
    ```cmd
    cd C:\inetpub\gymsera_be
-   git checkout <pre-cutover-sha>
+   set /p PREV_SHA=<"%BK%\pre-cutover-sha.txt"
+   git checkout %PREV_SHA%
    npm ci --omit=dev
    ```
-
-3. **Restore platform DB and all organization DB dumps taken in §3:**
-   > If any organization DB schema or tables were renamed (`gyms` → `businesses`), drop/recreate cleanly or restore directly from the `--single-transaction` dump (mysqldump emits `DROP TABLE IF EXISTS` for existing tables, so any newly named tables created by `p033`/`p034`/`030` such as `organizations`, `business_listings`, `businesses` should be dropped or the target database recreated clean from the pre-cut-over dump):
+3. **Drop newly renamed databases cleanly and restore platform + every organization dump from `%BK%`:**
    ```cmd
    set MYSQL_BIN=C:\Program Files\MySQL\MySQL Server 5.7\bin
    set BK=D:\gymsera-backups\release-1-1-YYYY-MM-DD
@@ -296,29 +210,35 @@ Expected: `OK: the API would start with these settings.` (exit `0`). Ensure `PLA
      "%MYSQL_BIN%\mysql.exe" --defaults-extra-file=C:\gymsera-secure\dump-tenant.cnf %D < "%BK%\org-%D.sql"
    )
    ```
-   (Verify any database storing ZKTeco biometrics with `node src\scripts\rotate-biometric-key.js` dry run.)
-
-4. **Restart ONLY via touching `web.config`:**
+4. **Restart ONLY via touching `web.config` (never `iisreset`) & re-enable jobs:**
    ```cmd
    %windir%\system32\inetsrv\appcmd start apppool /apppool.name:"<GymsEra API pool>"
    %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
    powershell -NoProfile -Command "(Get-Item 'C:\inetpub\gymsera_be\web.config').LastWriteTime = Get-Date"
-   schtasks /Change /TN "GymsEra\<name>" /ENABLE
+   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
    ```
-
-5. **Confirm rollback health:**
-   - `GET https://api.gymsera.com/api/v1/health` → `200`, `data.build.commit` matches `<pre-cutover-sha>`.
-   - Revert CMS/website deploys if they had switched to v2 contract endpoints.
+5. **Verify rollback:** `curl -fsS https://api.gymsera.com/api/v1/health` returns `200` with `data.build.commit` matching `%PREV_SHA%`, and revert CMS/web deploys if switched to v2 routes.
 
 ---
 
-## 10. Pre-Release Dry-Run on Restored Local Throwaway Copy
+## 7. Environment Variables (Names Only — Never Print or Commit Values)
 
-Run the dry-run verification script against a local MySQL (`127.0.0.1:3308`) restored copy before the production window:
+Baseline `origin/main` (`e966d2e`) → `feat/naming-v2-r2`:
+
+| Change | Variable Name | Production Setting | Notes |
+|---|---|---|---|
+| **New** | `PLACES_PROVIDER` | **Do NOT set** (leave unset) | Local/dev only (`fake` serves `/places/*` from seeded `cities`/`areas`); ignored when `NODE_ENV=production`. |
+| **New** | `TEST_LOCAL_UPLOAD_DIR` | **Do NOT set** (leave unset) | Automated test harness only (`NODE_ENV=test`). |
+| **Removed** | *(none)* | — | 0 variables removed since `origin/main`. |
+
+Existing critical variables to verify: `NODE_ENV=production`, `APP_URL`, `PLATFORM_DB_HOST`, `PLATFORM_DB_NAME`, `TENANT_DB_HOST`, `TENANT_CONN_ENCRYPTION_KEY`, `BIOMETRIC_DATA_KEY`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `GOOGLE_MAPS_SERVER_KEY`, `APPLE_IAP_ENVIRONMENT`, `SANDBOX_PURCHASES_GO_LIVE` (unset), `MIN_APP_VERSION_IOS`, `MIN_APP_VERSION_ANDROID`, `APP_STORE_URL_IOS`, `APP_STORE_URL_ANDROID`.
+
+---
+
+## 8. Pre-Release Dry-Run on Restored Local Throwaway Copy
+
+Verify migrations and post-migration invariants locally against MySQL 5.7 (`127.0.0.1:3308`) on a restored throwaway copy before the production window:
 
 ```sh
 node src/scripts/dry-run-release-1-1-backup.js --platform-db gymsera_local_walk
 ```
-
-See `src/scripts/dry-run-release-1-1-backup.js` header comments for options (`--verify-only`, `--skip-tenant-migrations`, `--allow-nonlocal`) and the **What to Look At** checklist printed at the end of each run.
-
