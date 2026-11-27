@@ -33,9 +33,9 @@ const parseArgs = (argv) => {
 const _day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : 'none');
 const _sub = (s) => `${s.status} (${s.platform}, environment ${s.environment || 'none'}, ends ${_day(s.endDate)})`;
 
-const _subscriptionCheck = async (tenantId) => {
+const _subscriptionCheck = async (organizationId) => {
   const rows = await TenantSubscription.findAll({
-    where: { tenantId },
+    where: { organizationId },
     attributes: ['status', 'platform', 'environment', 'endDate', 'createdAt'],
     order: [['createdAt', 'DESC']],
   });
@@ -63,7 +63,7 @@ const _report = async (tenant, tenantDb, branch) => {
   add('tenant database', 'PASS', 'provisioned and reachable');
 
   const gyms = await Gym.findAll({ attributes: ['id', 'name'] });
-  const gym = gyms.find((g) => g.id === branch.gymId) || gyms[0];
+  const gym = gyms.find((g) => g.id === branch.businessId) || gyms[0];
   add('organization', gym ? 'PASS' : 'FAIL', gym ? gym.name : 'the tenant has no organization');
 
   add('branch status', branch.status === 'ACTIVE' ? 'PASS' : 'FAIL', branch.status);
@@ -86,8 +86,10 @@ const _report = async (tenant, tenantDb, branch) => {
     branch.billingLockedAt ? `locked on ${_day(branch.billingLockedAt)} (${branch.billingLockReason || 'no reason'})` : 'not locked'
   );
 
-  const listing = branch.gymListingId ? await GymListing.findByPk(branch.gymListingId, { attributes: ['id', 'status', 'cityId'] }) : null;
+  const listing = branch.businessId ? await GymListing.findByPk(branch.businessId, { attributes: ['id', 'status', 'cityId', 'kycStatus'] }) : null;
   const liveListing = listing && listing.status === 'ACTIVE' ? listing : null;
+  // NEW-303 M2 (enterprise §1.4): the business itself must be approved.
+  if (listing) add('business approval', listing.status === 'ACTIVE' && listing.kycStatus === 'APPROVED' ? 'PASS' : 'FAIL', `${listing.status}, kyc ${listing.kycStatus}`);
   const cityId = resolveBranchCityId(branch, liveListing, tenant);
   const city = cityId ? await City.findByPk(cityId, { attributes: ['id', 'name'] }) : null;
   add(
@@ -98,8 +100,8 @@ const _report = async (tenant, tenantDb, branch) => {
 
   const failing = checks.filter((c) => c.status === 'FAIL').map((c) => c.name);
   return {
-    tenant: { id: tenant.id, name: tenant.businessName || tenant.gymName || null },
-    branch: { id: branch.id, name: branch.branchName || null, listingId: branch.gymListingId || null, listingStatus: listing?.status || null },
+    tenant: { id: tenant.id, name: tenant.organizationName || tenant.firstBusinessName || null },
+    branch: { id: branch.id, name: branch.branchName || null, listingId: branch.businessId || null, listingStatus: listing?.status || null },
     checks,
     failing,
     live: failing.length === 0,
@@ -108,14 +110,14 @@ const _report = async (tenant, tenantDb, branch) => {
 
 /**
  * @param {string} query - a branch id, or part of a branch name (case ignored).
- * @param {{onSkip?: (tenantId: string, why: string) => void}} [opts]
+ * @param {{onSkip?: (organizationId: string, why: string) => void}} [opts]
  * @returns {Promise<object[]>} one report per matching branch, in every tenant.
  */
 const whyNotLive = async (query, { onSkip = () => {} } = {}) => {
   const q = String(query || '').trim();
   if (!q) return [];
   const tenants = await Tenant.findAll({
-    attributes: ['id', 'status', 'businessName', 'gymName', 'cityId', 'connectionStringEncrypted'],
+    attributes: ['id', 'status', 'organizationName', 'firstBusinessName', 'cityId', 'connectionStringEncrypted'],
   });
   const reports = [];
   for (const tenant of tenants) {
@@ -155,7 +157,7 @@ if (require.main === module) {
     let code = 0;
     try {
       const reports = await whyNotLive(branch, {
-        onSkip: (tenantId, why) => console.warn(`(tenant ${tenantId} skipped: database unreachable: ${why})`),
+        onSkip: (organizationId, why) => console.warn(`(tenant ${organizationId} skipped: database unreachable: ${why})`),
       });
       if (reports.length === 0) {
         console.log(`No branch matches "${branch}".`);

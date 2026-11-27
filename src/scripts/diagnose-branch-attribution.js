@@ -18,13 +18,13 @@ const TenantDbManager = require('../database/TenantDbManager');
       if (!tenant.connectionStringEncrypted) continue;
 
       const listings = await GymListing.findAll({
-        where: { tenantId: tenant.id },
+        where: { organizationId: tenant.id },
         order: [['createdAt', 'ASC']],
       });
       if (listings.length < 2) continue;
 
       console.log('=====================================================');
-      console.log(`Tenant: ${tenant.businessName || tenant.id} (${tenant.id})`);
+      console.log(`Tenant: ${tenant.organizationName || tenant.id} (${tenant.id})`);
       console.log('--- GymListings (platform DB) ---');
       for (const l of listings) {
         console.log(
@@ -38,14 +38,14 @@ const TenantDbManager = require('../database/TenantDbManager');
         console.log('--- Branches (tenant DB) ---');
         for (const b of branches) {
           console.log(
-            `  id=${b.id}  branchName=${JSON.stringify(b.branchName)}  status=${b.status}  gymId=${b.gymId}  gymListingId=${b.gymListingId}`
+            `  id=${b.id}  branchName=${JSON.stringify(b.branchName)}  status=${b.status}  businessId=${b.businessId}  businessId=${b.businessId}`
           );
         }
 
         const gyms = await tenantDb.models.Gym.findAll();
         console.log('--- Gyms (tenant DB) ---');
         for (const g of gyms) {
-          console.log(`  id=${g.id}  name=${JSON.stringify(g.name)}  gymListingId=${g.gymListingId}`);
+          console.log(`  id=${g.id}  name=${JSON.stringify(g.name)}  businessId=${g.businessId}`);
         }
       } catch (err) {
         console.log(`  [Error reading tenant DB: ${err.message}]`);

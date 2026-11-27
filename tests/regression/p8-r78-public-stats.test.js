@@ -49,7 +49,7 @@ describe('R-78: GET /discovery/stats', () => {
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     await ctx.tenant1Db.models.Branch.update({ cityId: city.id }, { where: { id: ctx.branch1.id } });
     await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Monthly', price: 2000,
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Monthly', price: 2000,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     const s = await stats();

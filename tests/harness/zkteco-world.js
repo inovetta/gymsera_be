@@ -52,7 +52,7 @@ async function createWorld() {
     await db.sequelize.query('UPDATE device_pin_sequence SET next_pin = 1001 WHERE id = 1');
     await db.sequelize.query('DELETE FROM capacity_outbox WHERE event_type = \'DEVICE_RECONCILE\'');
     await db.sequelize.query('DELETE FROM audit_logs WHERE action LIKE \'devices.%\' OR action LIKE \'biometrics.%\'');
-    if (db.tenantId === undefined) db.tenantId = db === ctx.tenant1Db ? ctx.tenant1.id : ctx.tenant2.id;
+    if (db.organizationId === undefined) db.organizationId = db === ctx.tenant1Db ? ctx.tenant1.id : ctx.tenant2.id;
   }
   const server = await startTestServer();
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -65,16 +65,16 @@ async function createWorld() {
     db2: ctx.tenant2Db,
 
     async gym(db, name = `Org ${uuidv4().slice(0, 6)}`) {
-      return db.models.Gym.create({ id: uuidv4(), name, gymListingId: ctx.branch1.gymListingId || null });
+      return db.models.Gym.create({ id: uuidv4(), name });
     },
 
-    async branch(db, { gymId, timezone = TZ, name } = {}) {
-      const b = await createBranch(db, ctx.branch1.gymListingId || null, { gymId, timezone, branchName: name || `Branch ${uuidv4().slice(0, 6)}` });
+    async branch(db, { businessId, timezone = TZ, name } = {}) {
+      const b = await createBranch(db, ctx.branch1.businessId || null, { businessId, timezone, branchName: name || `Branch ${uuidv4().slice(0, 6)}` });
       return b;
     },
 
     async plan(db, branch) {
-      return db.models.MembershipPlan.create({ id: uuidv4(), gymId: branch.gymId, branchId: branch.id, name: 'Monthly', durationType: 'MONTHLY', durationValue: 1, price: 1000, status: 'ACTIVE' });
+      return db.models.MembershipPlan.create({ id: uuidv4(), businessId: branch.businessId, branchId: branch.id, name: 'Monthly', durationType: 'MONTHLY', durationValue: 1, price: 1000, status: 'ACTIVE' });
     },
 
     async member(fullName = 'Device Member', over = {}) {
@@ -96,9 +96,9 @@ async function createWorld() {
      * A device on `branch`, registered by a simulator (capabilities known), with the first reconcile done.
      * importFirst: added in import hold (Phase 4: a device that already has another system's users).
      */
-    async device(db, { branch, direction = 'in', name = 'Door', registryBody, tenantId, importFirst = false, ...simOpts } = {}) {
-      const tid = tenantId || db.tenantId;
-      const { device } = await registry.createDevice({ tenantId: tid, tenantDb: db, branchId: branch.id, organizationId: branch.gymId || null, name, direction, importFirst, createdBy: personas.owner.user.id });
+    async device(db, { branch, direction = 'in', name = 'Door', registryBody, organizationId, importFirst = false, ...simOpts } = {}) {
+      const tid = organizationId || db.organizationId;
+      const { device } = await registry.createDevice({ organizationId: tid, tenantDb: db, branchId: branch.id, businessId: branch.businessId || null, name, direction, importFirst, createdBy: personas.owner.user.id });
       const sim = new ZkDeviceSimulator({ baseUrl, sn: `SIM${RUN}${String(++serial).padStart(4, '0')}`, key: device.deviceKey, mode: 'host', registryBody, ...simOpts });
       const c = await sim.connect();
       if (!c.ok) throw new Error(`simulator did not connect: ${c.step} ${c.res.status}`);

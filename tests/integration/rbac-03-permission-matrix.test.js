@@ -31,7 +31,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
   let personas;
   let tenant1Id;
   let branch1Id;
-  let gymId;
+  let businessId;
   let planId;
   let categoryId;
   let ledgerDayId;
@@ -39,15 +39,15 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenant1Id = dbHarness.tenant1.tenantId || '11111111-1111-4111-8111-111111111111';
+    tenant1Id = dbHarness.tenant1.organizationId || '11111111-1111-4111-8111-111111111111';
 
     const branch1 = await dbHarness.tenant1.models.Branch.findOne();
     branch1Id = branch1.id;
-    gymId = branch1.gymId;
+    businessId = branch1.businessId;
 
     // Create an active MembershipPlan for member enrollment commands
     const plan = await dbHarness.tenant1.models.MembershipPlan.create({
-      gymId,
+      businessId,
       branchId: branch1Id,
       name: 'Standard Monthly',
       price: 3000,
@@ -129,7 +129,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('forbids Member (404/403)', async () => {
-        const res = await asPersona('member', { 'X-Tenant-Id': tenant1Id }).post('/actions/members.create', {
+        const res = await asPersona('member', { 'X-Organization-Id': tenant1Id }).post('/actions/members.create', {
           branchId: branch1Id,
           planId,
         });
@@ -137,7 +137,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('rejects Other Tenant Owner with 404 (cross-tenant)', async () => {
-        const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': tenant1Id }).post('/actions/members.create', {
+        const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': tenant1Id }).post('/actions/members.create', {
           branchId: branch1Id,
           planId,
         });
@@ -258,7 +258,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
           });
           expect(res.status).toBe(403);
         }
-        const memberRes = await asPersona('member', { 'X-Tenant-Id': tenant1Id }).post('/team/invites', {
+        const memberRes = await asPersona('member', { 'X-Organization-Id': tenant1Id }).post('/team/invites', {
           email: 'member-invite@test.com',
           roleKey: 'DESK',
         });
@@ -266,7 +266,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('rejects Other Tenant Owner with 404 (cross-tenant)', async () => {
-        const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': tenant1Id }).post('/team/invites', {
+        const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': tenant1Id }).post('/team/invites', {
           email: 'cross-tenant-invite@test.com',
           roleKey: 'DESK',
         });
@@ -311,7 +311,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
       });
 
       it('rejects Other Tenant Owner with 404 (cross-tenant)', async () => {
-        const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': tenant1Id }).post(
+        const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': tenant1Id }).post(
           '/approvals/00000000-0000-0000-0000-000000000000/approve',
           {}
         );
@@ -391,11 +391,11 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
     });
   });
 
-  // ── 5. Branch Lifecycle Mutations: /api/v1/gyms/branches ────────────────────
-  describe('Branch Lifecycle: /api/v1/gyms/branches', () => {
+  // ── 5. Branch Lifecycle Mutations: /api/v1/organizations/me/branches ────────────────────
+  describe('Branch Lifecycle: /api/v1/organizations/me/branches', () => {
     it('only allows Host/Owner to create a branch (branch.create)', async () => {
       // Owner is allowed (validation error 422 if input missing, never 403)
-      const ownerRes = await asPersona('owner').post('/gyms/branches', {
+      const ownerRes = await asPersona('owner').post('/organizations/me/branches', {
         branchName: 'Downtown Expansion',
         address: 'Sector C',
       });
@@ -404,7 +404,7 @@ describe('RBAC-03: Endpoint × Persona Permission Matrix', () => {
 
       // OrgAdmin, Manager, Desk, Trainer, Cleaner are strictly forbidden from branch creation
       for (const persona of ['orgAdmin', 'manager', 'frontDesk', 'trainer', 'cleaner']) {
-        const res = await asPersona(persona).post('/gyms/branches', {
+        const res = await asPersona(persona).post('/organizations/me/branches', {
           branchName: 'Unauthorized Branch',
         });
         expect(res.status).toBe(403);

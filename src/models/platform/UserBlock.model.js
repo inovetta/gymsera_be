@@ -13,8 +13,8 @@ module.exports = (sequelize) =>
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
       userId: { type: DataTypes.UUID, allowNull: false },
-      tenantId: { type: DataTypes.UUID, allowNull: false },
-      blockedBy: { type: DataTypes.STRING(8), allowNull: false },
+      organizationId: { type: DataTypes.UUID, allowNull: false },
+      blockedBy: { type: DataTypes.STRING(16), allowNull: false }, // R-120 NEW-307: 16 (was 8, F6); values USER | ORGANIZATION
       createdByUserId: { type: DataTypes.UUID, allowNull: false },
     },
     {
@@ -22,8 +22,8 @@ module.exports = (sequelize) =>
       underscored: true,
       timestamps: true,
       indexes: [
-        { name: 'user_blocks_pair_side', unique: true, fields: ['user_id', 'tenant_id', 'blocked_by'] },
-        { name: 'user_blocks_tenant_id', fields: ['tenant_id'] },
+        { name: 'user_blocks_pair_side', unique: true, fields: ['user_id', 'organization_id', 'blocked_by'] },
+        { name: 'user_blocks_organization_id', fields: ['organization_id'] },
       ],
     }
   );

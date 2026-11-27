@@ -1,7 +1,7 @@
 /**
  * Structured logger (OBS-01, spec §12.12).
  *
- * One JSON object per line with the request context (requestId, tenantId,
+ * One JSON object per line with the request context (requestId, organizationId,
  * userId) added automatically. Console output from the whole code base goes
  * through here via `log-redaction.js#sink`, so the SEC-07 redaction runs first
  * and nothing in the ~740 existing `console.*` calls had to change.

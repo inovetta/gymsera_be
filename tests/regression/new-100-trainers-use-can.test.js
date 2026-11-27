@@ -31,12 +31,12 @@ beforeAll(async () => {
   personas = await setupPersonas(dbHarness);
   app = await startTestServer();
   const tenantDb = dbHarness.tenant1;
-  const tenantId = personas.owner.tenantId;
-  const listing = await GymListing.findOne({ where: { tenantId } });
-  branchA = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  const organizationId = personas.owner.organizationId;
+  const listing = await GymListing.findOne({ where: { organizationId } });
+  branchA = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const make = (email, roleKey, scopeType, branchIds) =>
-    teamMember({ tenantDb, tenantId, email, roleKey, scopeType, branchIds });
+    teamMember({ tenantDb, organizationId, email, roleKey, scopeType, branchIds });
   people = {
     managerA: await make('mgr-a@new100.test', 'MANAGER', 'BRANCH', [branchA.id]),
     orgAdmin: await make('orgadmin@new100.test', 'ORG_ADMIN', 'ORG', []),

@@ -56,7 +56,7 @@ const LIVE_TENANT = new Set(['APPROVED', 'ACTIVE', 'SUSPENDED']);
 const FINISHED_TENANT = new Set(['PENDING_DELETION', 'DELETED']);
 
 /** Same rule as tenant-provisioning.service.js#buildDbName. */
-const dbNameFor = (tenantCode) => `gymsera_${String(tenantCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+const dbNameFor = (organizationCode) => `gymsera_${String(organizationCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
 
 /**
  * Pure classification.
@@ -106,7 +106,7 @@ function classify({ users, tenants, databases, now = new Date() }) {
       add({
         kind: 'TENANT',
         id: t.id,
-        tenantCode: t.tenant_code,
+        organizationCode: t.tenant_code,
         status: t.status,
         dbName,
         dbExists: dbSet.has(dbName),
@@ -156,7 +156,7 @@ async function main() {
       return new Set(cols.map((r) => r.c));
     };
     const userCols = await colSet('users');
-    const tenantCols = await colSet('tenants');
+    const tenantCols = await colSet('organizations');
     migrated = userCols.has('deletion_scheduled_for') && tenantCols.has('deletion_scheduled_for');
     [users] = await pconn.query(
       `SELECT id, status, is_verified${migrated ? ', deletion_scheduled_for, deleted_at' : ''}, ` +
@@ -164,7 +164,7 @@ async function main() {
         `FROM ${q(platformDb)}.users`
     );
     [tenants] = await pconn.query(
-      `SELECT id, tenant_code, status, db_name, owner_user_id, rejected_at, updated_at${migrated ? ', deletion_scheduled_for' : ''} FROM ${q(platformDb)}.tenants`
+      `SELECT id, organization_code AS tenant_code, status, db_name, owner_user_id, rejected_at, updated_at${migrated ? ', deletion_scheduled_for' : ''} FROM ${q(platformDb)}.organizations`
     );
     await pconn.query('ROLLBACK');
   } finally {
@@ -201,7 +201,7 @@ async function main() {
       );
     } else {
       console.log(
-        `  tenant=${f.id} code=${f.tenantCode} status=${f.status} db=${f.dbName} dbExists=${f.dbExists}` +
+        `  tenant=${f.id} code=${f.organizationCode} status=${f.status} db=${f.dbName} dbExists=${f.dbExists}` +
           `${f.ageDays !== null ? ` rejectedDaysAgo=${f.ageDays} eligibleToDrop=${f.eligibleToDrop}` : ''}  → ${f.verdicts.join(', ')}`
       );
     }

@@ -1,7 +1,9 @@
 const adminService = require('../services/admin.service');
-const { sendSuccess, parsePagination, createError } = require('../utils/response.utils');
+const { sendSuccess: sendSuccessRaw, parsePagination, createError } = require('../utils/response.utils');
+const { toOrganizationKeys } = require('../utils/organization-keys');
+const sendSuccess = (res, data, ...rest) => sendSuccessRaw(res, toOrganizationKeys(data), ...rest);
 
-// ── POST /admin/tenants ───────────────────────────────────────────────────────
+// ── POST /admin/organizations ───────────────────────────────────────────────────────
 const createTenant = async (req, res, next) => {
   try {
     const result = await adminService.createTenant(req.body, req.user?.sub);
@@ -11,36 +13,37 @@ const createTenant = async (req, res, next) => {
   }
 };
 
-// ── GET /admin/tenants ────────────────────────────────────────────────────────
+// ── GET /admin/organizations ────────────────────────────────────────────────────────
 const listTenants = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query);
     const { status } = req.query;
     const result = await adminService.listTenants({ status, page, limit, offset });
-    return sendSuccess(res, { tenants: result.tenants }, 'OK', 200, result.pagination);
+    // API contract v2 §10 G1: { organizations, page, total } inside data (the page and the total are not in the envelope).
+    return sendSuccess(res, { tenants: result.tenants, page: result.pagination.page, total: result.pagination.total }, 'OK', 200);
   } catch (err) {
     next(err);
   }
 };
 
-// ── GET /admin/tenants/:id ────────────────────────────────────────────────────
+// ── GET /admin/organizations/:id ────────────────────────────────────────────────────
 const getTenant = async (req, res, next) => {
   try {
-    const result = await adminService.getTenant(req.params.id);
+    const result = await adminService.getTenant(req.params.organizationId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
   }
 };
 
-// ── POST /admin/tenants/:id/approve ──────────────────────────────────────────
+// ── POST /admin/organizations/:id/approve ──────────────────────────────────────────
 const approveTenant = async (req, res, next) => {
   try {
     // R-84 (NEW-158): the admin must have looked at the photos the approval publishes.
     if (req.body?.photosChecked !== true) {
       throw createError('Check the gym photos, then tick "I checked the photos" to approve.', 422, 'photos_not_checked');
     }
-    const result = await adminService.approveTenant(req.params.id, req.user.sub, { photosChecked: true });
+    const result = await adminService.approveTenant(req.params.organizationId, req.user.sub, { photosChecked: true });
     // Another run is provisioning this tenant (FLOW-02): 202 with its step.
     if (result.provisioning?.inProgress) {
       return sendSuccess(
@@ -56,40 +59,40 @@ const approveTenant = async (req, res, next) => {
   }
 };
 
-// ── POST /admin/tenants/:id/reject ────────────────────────────────────────────
+// ── POST /admin/organizations/:id/reject ────────────────────────────────────────────
 const rejectTenant = async (req, res, next) => {
   try {
-    const result = await adminService.rejectTenant(req.params.id, req.user.sub, req.body.reason);
+    const result = await adminService.rejectTenant(req.params.organizationId, req.user.sub, req.body.reason);
     return sendSuccess(res, result, 'Tenant application rejected and host notified.');
   } catch (err) {
     next(err);
   }
 };
 
-// ── POST /admin/tenants/:id/suspend ──────────────────────────────────────────
+// ── POST /admin/organizations/:id/suspend ──────────────────────────────────────────
 const suspendTenant = async (req, res, next) => {
   try {
-    const result = await adminService.suspendTenant(req.params.id, req.user.sub, req.body.reason);
+    const result = await adminService.suspendTenant(req.params.organizationId, req.user.sub, req.body.reason);
     return sendSuccess(res, result, 'Tenant suspended.');
   } catch (err) {
     next(err);
   }
 };
 
-// ── POST /admin/tenants/:id/reactivate ───────────────────────────────────────
+// ── POST /admin/organizations/:id/reactivate ───────────────────────────────────────
 const reactivateTenant = async (req, res, next) => {
   try {
-    const result = await adminService.reactivateTenant(req.params.id, req.user.sub);
+    const result = await adminService.reactivateTenant(req.params.organizationId, req.user.sub);
     return sendSuccess(res, result, 'Tenant reactivated.');
   } catch (err) {
     next(err);
   }
 };
 
-// ── GET /admin/tenants/:id/branches ──────────────────────────────────────────
+// ── GET /admin/organizations/:id/branches ──────────────────────────────────────────
 const getTenantBranches = async (req, res, next) => {
   try {
-    const result = await adminService.getTenantBranches(req.params.id);
+    const result = await adminService.getTenantBranches(req.params.organizationId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -100,9 +103,9 @@ const getTenantBranches = async (req, res, next) => {
 const listBillingEvents = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { tenantId, status, provider } = req.query;
+    const { organizationId, status, provider } = req.query;
     const { items, total } = await require('../services/billing-event.service').listEvents({
-      tenantId, status, provider, limit, offset,
+      organizationId, status, provider, limit, offset,
     });
     return sendSuccess(res, items, 'OK', 200, { total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err) {
@@ -121,21 +124,21 @@ const listAuditLogs = async (req, res, next) => {
   }
 };
 
-// ── GET /admin/tenants/:id/capacity-audit ────────────────────────────────────
+// ── GET /admin/organizations/:id/capacity-audit ────────────────────────────────────
 const getTenantCapacityAudit = async (req, res, next) => {
   try {
-    const result = await adminService.getTenantCapacityAudit(req.params.id);
+    const result = await adminService.getTenantCapacityAudit(req.params.organizationId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
   }
 };
 
-// ── PATCH /admin/tenants/:id/branches/:branchId/status ───────────────────────
+// ── PATCH /admin/organizations/:id/branches/:branchId/status ───────────────────────
 const updateTenantBranchStatus = async (req, res, next) => {
   try {
     const result = await adminService.updateTenantBranchStatus(
-      req.params.id,
+      req.params.organizationId,
       req.params.branchId,
       req.body.status,
       req.user.sub || req.user.id,
@@ -147,11 +150,11 @@ const updateTenantBranchStatus = async (req, res, next) => {
   }
 };
 
-// ── POST /admin/tenants/:id/branches/:branchId/suspend ────────────────────────
+// ── POST /admin/organizations/:id/branches/:branchId/suspend ────────────────────────
 const suspendTenantBranch = async (req, res, next) => {
   try {
     const result = await adminService.suspendTenantBranch(
-      req.params.id,
+      req.params.organizationId,
       req.params.branchId,
       req.body.reason,
       req.user.sub || req.user.id
@@ -162,11 +165,11 @@ const suspendTenantBranch = async (req, res, next) => {
   }
 };
 
-// ── POST /admin/tenants/:id/branches/:branchId/unsuspend ──────────────────────
+// ── POST /admin/organizations/:id/branches/:branchId/unsuspend ──────────────────────
 const unsuspendTenantBranch = async (req, res, next) => {
   try {
     const result = await adminService.unsuspendTenantBranch(
-      req.params.id,
+      req.params.organizationId,
       req.params.branchId,
       req.user.sub || req.user.id
     );
@@ -176,17 +179,17 @@ const unsuspendTenantBranch = async (req, res, next) => {
   }
 };
 
-// ── DELETE /admin/tenants/:id/branches/:branchId ──────────────────────────────
+// ── DELETE /admin/organizations/:id/branches/:branchId ──────────────────────────────
 const deleteTenantBranch = async (req, res, next) => {
   try {
-    const confirm = req.body?.confirmOrganizationDeletion === true ||
+    const confirm = req.body?.confirmBusinessDeletion === true ||
       req.query?.confirm === 'true' ||
-      req.query?.confirmOrganizationDeletion === 'true';
+      req.query?.confirmBusinessDeletion === 'true';
     const result = await adminService.deleteTenantBranch(
-      req.params.id,
+      req.params.organizationId,
       req.params.branchId,
       req.user.sub || req.user.id,
-      { confirmOrganizationDeletion: confirm }
+      { confirmBusinessDeletion: confirm }
     );
     return sendSuccess(res, result, 'Branch deleted.');
   } catch (err) {
@@ -194,21 +197,21 @@ const deleteTenantBranch = async (req, res, next) => {
   }
 };
 
-// ── GET /admin/tenants/:id/members ────────────────────────────────────────────
+// ── GET /admin/organizations/:id/members ────────────────────────────────────────────
 const getTenantMembers = async (req, res, next) => {
   try {
     const { page, limit } = parsePagination(req.query);
-    const result = await adminService.getTenantMembers(req.params.id, { page, limit });
+    const result = await adminService.getTenantMembers(req.params.organizationId, { page, limit });
     return sendSuccess(res, { members: result.members }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
   }
 };
 
-// ── POST /admin/tenants/:id/members/:userId/reveal (SEC-17) ──────────────────
+// ── POST /admin/organizations/:id/members/:userId/reveal (SEC-17) ──────────────────
 const revealTenantMemberContact = async (req, res, next) => {
   try {
-    const result = await adminService.revealTenantMemberContact(req.params.id, req.params.userId, {
+    const result = await adminService.revealTenantMemberContact(req.params.organizationId, req.params.userId, {
       adminUserId: req.user.id,
       reason: req.body?.reason,
     });
@@ -219,57 +222,57 @@ const revealTenantMemberContact = async (req, res, next) => {
   }
 };
 
-// ── GET /admin/tenants/:id/membership-plans ───────────────────────────────────
+// ── GET /admin/organizations/:id/membership-plans ───────────────────────────────────
 const getTenantMembershipPlans = async (req, res, next) => {
   try {
-    const result = await adminService.getTenantMembershipPlans(req.params.id);
+    const result = await adminService.getTenantMembershipPlans(req.params.organizationId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
   }
 };
 
-// ── POST /admin/tenants/:id/logo ──────────────────────────────────────────────
+// ── POST /admin/organizations/:id/logo ──────────────────────────────────────────────
 const uploadTenantLogo = async (req, res, next) => {
   try {
     if (!req.file) return next(createError('No file uploaded', 422));
-    const result = await adminService.uploadTenantLogo(req.params.id, req.file.buffer, req.file.mimetype);
+    const result = await adminService.uploadTenantLogo(req.params.organizationId, req.file.buffer, req.file.mimetype);
     return sendSuccess(res, result, 'Logo uploaded');
   } catch (err) { next(err); }
 };
 
-// ── POST /admin/tenants/:id/cover ─────────────────────────────────────────────
+// ── POST /admin/organizations/:id/cover ─────────────────────────────────────────────
 const uploadTenantCover = async (req, res, next) => {
   try {
     if (!req.file) return next(createError('No file uploaded', 422));
-    const result = await adminService.uploadTenantCover(req.params.id, req.file.buffer, req.file.mimetype);
+    const result = await adminService.uploadTenantCover(req.params.organizationId, req.file.buffer, req.file.mimetype);
     return sendSuccess(res, result, 'Cover image uploaded');
   } catch (err) { next(err); }
 };
 
-// ── GET /admin/tenants/:id/subscriptions ──────────────────────────────────────
+// ── GET /admin/organizations/:id/subscriptions ──────────────────────────────────────
 const getTenantSubscriptions = async (req, res, next) => {
   try {
-    const result = await adminService.getTenantSubscriptions(req.params.id);
+    const result = await adminService.getTenantSubscriptions(req.params.organizationId);
     return sendSuccess(res, result);
   } catch (err) { next(err); }
 };
 
-// ── POST /admin/tenants/:id/subscriptions ─────────────────────────────────────
+// ── POST /admin/organizations/:id/subscriptions ─────────────────────────────────────
 const assignTenantSubscription = async (req, res, next) => {
   try {
-    const result = await adminService.assignTenantSubscription(req.params.id, req.body, req.user.sub);
+    const result = await adminService.assignTenantSubscription(req.params.organizationId, req.body, req.user.sub);
     return sendSuccess(res, result, 'Subscription assigned', 201);
   } catch (err) { next(err); }
 };
 
-// ── PATCH /admin/tenants/:id/subscriptions/:subId/revoke ──────────────────────
-// ── POST /admin/tenants/:id/subscriptions/:subId/verify-payment ───────────────
+// ── PATCH /admin/organizations/:id/subscriptions/:subId/revoke ──────────────────────
+// ── POST /admin/organizations/:id/subscriptions/:subId/verify-payment ───────────────
 // Pay later (BILL-13): the admin confirms the bank transfer arrived.
 const verifyPayLaterPayment = async (req, res, next) => {
   try {
     const subscriptionMigration = require('../services/subscription-migration.service');
-    const subscription = await subscriptionMigration.verifyPayLaterPayment(req.params.id, req.params.subId, {
+    const subscription = await subscriptionMigration.verifyPayLaterPayment(req.params.organizationId, req.params.subId, {
       adminUserId: req.user.sub || req.user.id,
       bankTransferRef: req.body?.bankTransferRef || null,
       req,
@@ -280,46 +283,46 @@ const verifyPayLaterPayment = async (req, res, next) => {
 
 const revokeTenantSubscription = async (req, res, next) => {
   try {
-    const result = await adminService.revokeTenantSubscription(req.params.id, req.params.subId);
+    const result = await adminService.revokeTenantSubscription(req.params.organizationId, req.params.subId);
     return sendSuccess(res, result, 'Subscription revoked');
   } catch (err) { next(err); }
 };
 
-// ── GET /admin/tenants/:id/invoices ───────────────────────────────────────────
+// ── GET /admin/organizations/:id/invoices ───────────────────────────────────────────
 const getTenantInvoices = async (req, res, next) => {
   try {
     const { page, limit } = parsePagination(req.query);
-    const result = await adminService.getTenantInvoices(req.params.id, { page, limit });
+    const result = await adminService.getTenantInvoices(req.params.organizationId, { page, limit });
     return sendSuccess(res, { invoices: result.invoices }, 'OK', 200, result.pagination);
   } catch (err) { next(err); }
 };
 
-// ── POST /admin/tenants/:id/invoices ──────────────────────────────────────────
+// ── POST /admin/organizations/:id/invoices ──────────────────────────────────────────
 const createTenantInvoice = async (req, res, next) => {
   try {
-    const result = await adminService.createTenantInvoice(req.params.id, req.body, req.user.sub);
+    const result = await adminService.createTenantInvoice(req.params.organizationId, req.body, req.user.sub);
     return sendSuccess(res, result, 'Invoice created', 201);
   } catch (err) { next(err); }
 };
 
-// ── PATCH /admin/tenants/:id/invoices/:invoiceId ──────────────────────────────
+// ── PATCH /admin/organizations/:id/invoices/:invoiceId ──────────────────────────────
 const updateTenantInvoice = async (req, res, next) => {
   try {
-    const result = await adminService.updateTenantInvoice(req.params.id, req.params.invoiceId, req.body);
+    const result = await adminService.updateTenantInvoice(req.params.organizationId, req.params.invoiceId, req.body);
     return sendSuccess(res, result, 'Invoice updated');
   } catch (err) { next(err); }
 };
 
-// ── POST /admin/tenants/:id/invoices/:invoiceId/send-reminder ─────────────────
+// ── POST /admin/organizations/:id/invoices/:invoiceId/send-reminder ─────────────────
 const sendInvoiceReminder = async (req, res, next) => {
   try {
     const { PlatformInvoice, Tenant, User } = require('../models/platform');
-    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, tenantId: req.params.id } });
+    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, organizationId: req.params.organizationId } });
     if (!invoice) return next(require('../utils/response.utils').createError('Invoice not found', 404));
     if (!['ISSUED', 'OVERDUE'].includes(invoice.status)) {
       return next(require('../utils/response.utils').createError('Reminder can only be sent for ISSUED or OVERDUE invoices', 400));
     }
-    const tenant = await Tenant.findByPk(req.params.id, { include: [{ model: User, as: 'owner', attributes: ['fullName', 'email'] }] });
+    const tenant = await Tenant.findByPk(req.params.organizationId, { include: [{ model: User, as: 'owner', attributes: ['fullName', 'email'] }] });
     if (tenant?.owner) {
       const emailService = require('../services/email.service');
       await emailService.sendPlatformInvoiceReminderEmail(tenant.owner.email, tenant.owner.fullName, {
@@ -327,23 +330,23 @@ const sendInvoiceReminder = async (req, res, next) => {
         description: invoice.description,
         totalAmount: invoice.totalAmount,
         dueDate: invoice.dueDate,
-        businessName: tenant.businessName,
+        organizationName: tenant.organizationName,
       });
     }
     return sendSuccess(res, null, 'Reminder email sent');
   } catch (err) { next(err); }
 };
 
-// ── POST /admin/tenants/:id/invoices/:invoiceId/send-confirmation ──────────────
+// ── POST /admin/organizations/:id/invoices/:invoiceId/send-confirmation ──────────────
 const sendInvoiceConfirmation = async (req, res, next) => {
   try {
     const { PlatformInvoice, Tenant, User } = require('../models/platform');
-    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, tenantId: req.params.id } });
+    const invoice = await PlatformInvoice.findOne({ where: { id: req.params.invoiceId, organizationId: req.params.organizationId } });
     if (!invoice) return next(require('../utils/response.utils').createError('Invoice not found', 404));
     if (invoice.status !== 'PAID') {
       return next(require('../utils/response.utils').createError('Confirmation can only be sent for PAID invoices', 400));
     }
-    const tenant = await Tenant.findByPk(req.params.id, { include: [{ model: User, as: 'owner', attributes: ['fullName', 'email'] }] });
+    const tenant = await Tenant.findByPk(req.params.organizationId, { include: [{ model: User, as: 'owner', attributes: ['fullName', 'email'] }] });
     if (tenant?.owner) {
       const emailService = require('../services/email.service');
       await emailService.sendPlatformInvoicePaidEmail(tenant.owner.email, tenant.owner.fullName, {
@@ -351,7 +354,7 @@ const sendInvoiceConfirmation = async (req, res, next) => {
         description: invoice.description,
         totalAmount: invoice.totalAmount,
         paidAt: invoice.paidAt,
-        businessName: tenant.businessName,
+        organizationName: tenant.organizationName,
       });
     }
     return sendSuccess(res, null, 'Payment confirmation email sent');
@@ -360,7 +363,7 @@ const sendInvoiceConfirmation = async (req, res, next) => {
 
 const deleteTenant = async (req, res, next) => {
   try {
-    await adminService.deleteTenant(req.params.id);
+    await adminService.deleteTenant(req.params.organizationId);
     return sendSuccess(res, null, 'Tenant deleted');
   } catch (err) { next(err); }
 };
@@ -387,32 +390,117 @@ const getPlatformAnalytics = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── Gym listing management ─────────────────────────────────────────────────────
+// ── Business management (contract v2 §4 rows 104-110, A1 G3) ─────────────────────────────────────────────────────
+// The answer wraps the business as `business` (was `gymListing`).
+const subscriptionQuotaService = require('../services/subscription-quota.service');
+const asBusiness = async (result) => {
+  if (!result || !result.gymListing) return result;
+  return {
+    ...result,
+    business: await subscriptionQuotaService.attachCanReceiveBranches(result.gymListing),
+    gymListing: undefined,
+  };
+};
+
+// ── NEW-303 M2: business approval, documents, verified badge, review queue ─────
+const kycService = () => require('../services/business-kyc.service');
+const _adminId = (req) => req.user.sub || req.user.id;
+
+const approveBusiness = async (req, res, next) => {
+  try {
+    const listing = await adminService.approveBusiness(req.params.businessId, _adminId(req));
+    return sendSuccess(res, { business: await subscriptionQuotaService.attachCanReceiveBranches(listing) }, 'Business approved');
+  } catch (err) { next(err); }
+};
+
+const rejectBusiness = async (req, res, next) => {
+  try {
+    const result = await adminService.rejectBusiness(req.params.businessId, _adminId(req), req.body.reason);
+    const business = await subscriptionQuotaService.attachCanReceiveBranches(result.business);
+    return sendSuccess(res, { ...result, business }, 'Business rejected');
+  } catch (err) { next(err); }
+};
+
+const verifyBusiness = async (req, res, next) => {
+  try {
+    const listing = await kycService().verify({ listing: await adminService.businessForAdmin(req.params.businessId), adminUserId: _adminId(req) });
+    return sendSuccess(res, { business: await subscriptionQuotaService.attachCanReceiveBranches(listing) }, 'Business verified');
+  } catch (err) { next(err); }
+};
+
+const unverifyBusiness = async (req, res, next) => {
+  try {
+    const listing = await kycService().unverify({ listing: await adminService.businessForAdmin(req.params.businessId), adminUserId: _adminId(req) });
+    return sendSuccess(res, { business: await subscriptionQuotaService.attachCanReceiveBranches(listing) }, 'Verified badge removed');
+  } catch (err) { next(err); }
+};
+
+const listBusinessDocuments = async (req, res, next) => {
+  try {
+    const listing = await adminService.businessForAdmin(req.params.businessId);
+    return sendSuccess(res, { documents: kycService().publicDocuments(listing) });
+  } catch (err) { next(err); }
+};
+
+const streamBusinessDocument = async (req, res, next) => {
+  try {
+    const listing = await adminService.businessForAdmin(req.params.businessId);
+    const { stream, contentType, contentLength } = await kycService().streamDocument({
+      listing, documentId: req.params.documentId, userId: _adminId(req), isPlatformAdmin: true,
+      reqInfo: { ip: req.ip, userAgent: req.get('user-agent') },
+    });
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (stream.pipe) stream.pipe(res); else res.send(stream);
+  } catch (err) { next(err); }
+};
+
+const reviewBusinessDocument = (decision) => async (req, res, next) => {
+  try {
+    const listing = await adminService.businessForAdmin(req.params.businessId);
+    const document = await kycService().reviewDocument({
+      listing, documentId: req.params.documentId, decision, reason: req.body.reason, adminUserId: _adminId(req),
+    });
+    return sendSuccess(res, { document });
+  } catch (err) { next(err); }
+};
+
+const getReviewQueue = async (req, res, next) => {
+  try {
+    const { page, limit, offset } = parsePagination(req.query);
+    const { kind } = req.query;
+    return sendSuccess(res, await adminService.getReviewQueue({ kind, page, limit, offset }));
+  } catch (err) { next(err); }
+};
+
 const getGymListing = async (req, res, next) => {
   try {
-    const result = await adminService.getGymListing(req.params.id);
-    return sendSuccess(res, result);
+    const result = await adminService.getGymListing(req.params.businessId);
+    return sendSuccess(res, await asBusiness(result));
   } catch (err) { next(err); }
 };
 
 const createGymListing = async (req, res, next) => {
   try {
-    const result = await adminService.createGymListing(req.params.id, req.body);
-    return sendSuccess(res, result, 'Gym listing created', 201);
+    const result = await adminService.createGymListing(req.params.organizationId, req.body);
+    return sendSuccess(res, await asBusiness(result), 'Business created', 201);
   } catch (err) { next(err); }
 };
 
 const updateGymListing = async (req, res, next) => {
   try {
-    const result = await adminService.updateGymListing(req.params.id, req.body);
-    return sendSuccess(res, result, 'Gym listing updated');
+    const result = await adminService.updateGymListing(req.params.businessId, req.body);
+    return sendSuccess(res, await asBusiness(result), 'Business updated');
   } catch (err) { next(err); }
 };
 
 const uploadGymListingLogo = async (req, res, next) => {
   try {
     if (!req.file) throw { status: 422, message: 'Image file is required' };
-    const result = await adminService.uploadGymListingLogo(req.params.id, req.file.buffer, req.file.mimetype);
+    const result = await adminService.uploadGymListingLogo(req.params.businessId, req.file.buffer, req.file.mimetype);
     return sendSuccess(res, result, 'Logo uploaded');
   } catch (err) { next(err); }
 };
@@ -420,7 +508,7 @@ const uploadGymListingLogo = async (req, res, next) => {
 const uploadGymListingCover = async (req, res, next) => {
   try {
     if (!req.file) throw { status: 422, message: 'Image file is required' };
-    const result = await adminService.uploadGymListingCover(req.params.id, req.file.buffer, req.file.mimetype);
+    const result = await adminService.uploadGymListingCover(req.params.businessId, req.file.buffer, req.file.mimetype);
     return sendSuccess(res, result, 'Cover image uploaded');
   } catch (err) { next(err); }
 };
@@ -428,7 +516,7 @@ const uploadGymListingCover = async (req, res, next) => {
 const uploadGymListingImages = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) throw { status: 422, message: 'At least one image is required' };
-    const result = await adminService.uploadGymListingImages(req.params.id, req.files);
+    const result = await adminService.uploadGymListingImages(req.params.businessId, req.files);
     return sendSuccess(res, result, 'Images uploaded');
   } catch (err) { next(err); }
 };
@@ -437,7 +525,7 @@ const deleteGymListingImage = async (req, res, next) => {
   try {
     const { imageUrl } = req.body;
     if (!imageUrl) throw { status: 422, message: 'imageUrl is required' };
-    await adminService.deleteGymListingImage(req.params.id, imageUrl);
+    await adminService.deleteGymListingImage(req.params.businessId, imageUrl);
     return sendSuccess(res, null, 'Image removed');
   } catch (err) { next(err); }
 };
@@ -445,14 +533,14 @@ const deleteGymListingImage = async (req, res, next) => {
 // ── Admin branch management ───────────────────────────────────────────────────
 const createAdminTenantBranch = async (req, res, next) => {
   try {
-    const result = await adminService.createAdminTenantBranch(req.params.id, req.body, req.user.sub || req.user.id);
+    const result = await adminService.createAdminTenantBranch(req.params.organizationId, req.body, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch created', 201);
   } catch (err) { next(err); }
 };
 
 const updateAdminTenantBranch = async (req, res, next) => {
   try {
-    const result = await adminService.updateAdminTenantBranch(req.params.id, req.params.branchId, req.body, req.user.sub || req.user.id);
+    const result = await adminService.updateAdminTenantBranch(req.params.organizationId, req.params.branchId, req.body, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch updated');
   } catch (err) { next(err); }
 };
@@ -460,15 +548,15 @@ const updateAdminTenantBranch = async (req, res, next) => {
 const uploadAdminBranchImages = async (req, res, next) => {
   try {
     if (!req.files || req.files.length === 0) throw { status: 422, message: 'At least one image is required' };
-    const result = await adminService.uploadAdminBranchImages(req.params.id, req.params.branchId, req.files);
+    const result = await adminService.uploadAdminBranchImages(req.params.organizationId, req.params.branchId, req.files);
     return sendSuccess(res, result, 'Images uploaded');
   } catch (err) { next(err); }
 };
 
-// ── DELETE /admin/tenants/:id/approval-photos (R-84, NEW-158) ──────────────────
+// ── DELETE /admin/organizations/:id/approval-photos (R-84, NEW-158) ──────────────────
 const removeApprovalPhoto = async (req, res, next) => {
   try {
-    const result = await require('../services/approval-photos.service').removeApprovalPhoto(req.params.id, req.body.imageUrl, req.user.sub);
+    const result = await require('../services/approval-photos.service').removeApprovalPhoto(req.params.organizationId, req.body.imageUrl, req.user.sub);
     return sendSuccess(res, result, 'Photo removed');
   } catch (err) { next(err); }
 };
@@ -477,7 +565,7 @@ const deleteAdminBranchImage = async (req, res, next) => {
   try {
     const { imageUrl } = req.body;
     if (!imageUrl) throw { status: 422, message: 'imageUrl is required' };
-    await adminService.deleteAdminBranchImage(req.params.id, req.params.branchId, imageUrl);
+    await adminService.deleteAdminBranchImage(req.params.organizationId, req.params.branchId, imageUrl);
     return sendSuccess(res, null, 'Image removed');
   } catch (err) { next(err); }
 };
@@ -521,6 +609,8 @@ module.exports = {
   getTenantMembers, getTenantMembershipPlans,
   uploadTenantLogo, uploadTenantCover,
   getGymListing, createGymListing, updateGymListing,
+  approveBusiness, rejectBusiness, verifyBusiness, unverifyBusiness, listBusinessDocuments, streamBusinessDocument,
+  approveBusinessDocument: reviewBusinessDocument('APPROVED'), rejectBusinessDocument: reviewBusinessDocument('REJECTED'), getReviewQueue,
   uploadGymListingLogo, uploadGymListingCover, uploadGymListingImages, deleteGymListingImage,
   createAdminTenantBranch, updateAdminTenantBranch, uploadAdminBranchImages, deleteAdminBranchImage, removeApprovalPhoto,
   getTenantSubscriptions, assignTenantSubscription, revokeTenantSubscription, verifyPayLaterPayment,

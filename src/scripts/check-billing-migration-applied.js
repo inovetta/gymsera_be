@@ -16,9 +16,9 @@ const { sequelize } = require('../database/platform');
     console.log('[OK] Connected to platform DB.\n');
 
     const [tsCols] = await sequelize.query(
-      'SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenant_subscriptions\' AND COLUMN_NAME IN (\'status\', \'status_note\')'
+      'SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'organization_subscriptions\' AND COLUMN_NAME IN (\'status\', \'status_note\')'
     );
-    console.log('tenant_subscriptions columns:');
+    console.log('organization_subscriptions columns:');
     tsCols.forEach((c) => console.log(`  ${c.COLUMN_NAME}: ${c.COLUMN_TYPE}`));
     const statusCol = tsCols.find((c) => c.COLUMN_NAME === 'status');
     const statusWidened = statusCol && /PENDING_MIGRATION/.test(statusCol.COLUMN_TYPE) && /PENDING_CANCEL/.test(statusCol.COLUMN_TYPE) && /SCHEDULED/.test(statusCol.COLUMN_TYPE);

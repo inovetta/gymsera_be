@@ -76,7 +76,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     const gym2 = (await tenant2Db.models.Gym.findOne()) || (await tenant2Db.models.Gym.create({ name: 'Beta Gym', genderType: 'MIXED' }));
 
     const planT1 = await tenant1Db.models.MembershipPlan.create({
-      gymId: gym1.id,
+      businessId: gym1.id,
       name: 'Plan T1',
       price: 1000,
       durationType: 'MONTHLY',
@@ -84,7 +84,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
       status: 'ACTIVE',
     });
     const planT2 = await tenant2Db.models.MembershipPlan.create({
-      gymId: gym2.id,
+      businessId: gym2.id,
       name: 'Plan T2',
       price: 2000,
       durationType: 'MONTHLY',
@@ -103,8 +103,8 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     });
     await UserGymMembership.create({
       userId: tenant1Member.id,
-      tenantId: ctx.tenant1.id,
-      gymListingId: ctx.listing1.id,
+      organizationId: ctx.tenant1.id,
+      businessId: ctx.listing1.id,
       subscriptionId: tenant1SubBranch1.id,
       status: 'ACTIVE',
     });
@@ -119,8 +119,8 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     });
     await UserGymMembership.create({
       userId: tenant1Member.id,
-      tenantId: ctx.tenant1.id,
-      gymListingId: ctx.listing1.id,
+      organizationId: ctx.tenant1.id,
+      businessId: ctx.listing1.id,
       subscriptionId: tenant1SubBranch2.id,
       status: 'ACTIVE',
     });
@@ -135,8 +135,8 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     });
     await UserGymMembership.create({
       userId: tenant2Member.id,
-      tenantId: ctx.tenant2.id,
-      gymListingId: ctx.listing2.id,
+      organizationId: ctx.tenant2.id,
+      businessId: ctx.listing2.id,
       subscriptionId: tenant2Sub.id,
       status: 'ACTIVE',
     });
@@ -332,9 +332,9 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
   });
 
   describe('4. Branch IDOR Scoping', () => {
-    test('Host A reading Tenant B branch (/gyms/branches/:id) returns 404', async () => {
+    test('Host A reading Tenant B branch (/organizations/me/branches/:id) returns 404', async () => {
       const res = await request(appServer)
-        .get(`/api/v1/gyms/branches/${tenant2Branch.id}`)
+        .get(`/api/v1/organizations/me/branches/${tenant2Branch.id}`)
         .set('Authorization', `Bearer ${personas.owner.token}`);
 
       expect(res.status).toBe(404);
@@ -344,7 +344,7 @@ describe('SEC-01: No IDOR (Insecure Direct Object Reference) Matrix', () => {
     test('Branch-scoped Manager reading unassigned branch returns 404 (NOT 200 or 403)', async () => {
       // Manager is assigned to branch1 only; branch2 is in same tenant but unassigned
       const res = await request(appServer)
-        .get(`/api/v1/gyms/branches/${tenant1Branch2.id}`)
+        .get(`/api/v1/organizations/me/branches/${tenant1Branch2.id}`)
         .set('Authorization', `Bearer ${personas.manager.token}`);
 
       expect(res.status).toBe(404);

@@ -27,7 +27,7 @@ const { Sequelize } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 
 const { connect: initPlatformDb } = require('../database/platform');
-const { Tenant, User, City, Area, UserGymMembership } = require('../models/platform');
+const { Tenant, User, City, Area, UserGymMembership, GymListing } = require('../models/platform');
 const registerTenantModels = require('../models/tenant');
 const { decrypt } = require('../utils/crypto.utils');
 
@@ -47,8 +47,8 @@ const daysAgo = (n) => {
 const dateOnly = (d) => d.toISOString().slice(0, 10);
 
 // Invoice numbers: INV-TENANTCODE-000001
-const makeInvoiceNo = (tenantCode, n) =>
-  `INV-${tenantCode}-${String(n).padStart(6, '0')}`;
+const makeInvoiceNo = (organizationCode, n) =>
+  `INV-${organizationCode}-${String(n).padStart(6, '0')}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-tenant seed definitions
@@ -412,7 +412,7 @@ const MEMBER_PROFILES = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
-  const code = tenant.tenantCode;
+  const code = tenant.organizationCode;
   const def  = TENANT_SEEDS[code];
 
   if (!def) {
@@ -435,9 +435,11 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
     await seq.sync({ alter: true });
 
     // ── 1. Gym ──────────────────────────────────────────────────────────────
+    // R-120 NEW-308 (option S): the business row has its platform listing's id (the organization's first business).
+    const firstListing = await GymListing.findOne({ where: { organizationId: tenant.id }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
     let [gym] = await M.Gym.findOrCreate({
       where:    { name: def.gym.name },
-      defaults: def.gym,
+      defaults: { ...def.gym, ...(firstListing && { id: firstListing.id }) },
     });
 
     // ── 2. Branches ─────────────────────────────────────────────────────────
@@ -448,20 +450,22 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
 
       const { cityName, areaName, ...branchData } = b;
       const [branch] = await M.Branch.findOrCreate({
-        where:    { gymId: gym.id, branchName: b.branchName },
-        defaults: { ...branchData, gymId: gym.id, cityId, areaId },
+        where:    { businessId: gym.id, branchName: b.branchName },
+        // Live for travellers (R-77): the seeded branches are approved and visible.
+        defaults: { ...branchData, businessId: gym.id, cityId, areaId, travelerVisibilityStatus: 'active' },
       });
       branchMap[b.branchName] = branch;
     }
     const primaryBranch = Object.values(branchMap)[0];
+    if (firstListing && primaryBranch) await firstListing.update({ primaryBranchId: primaryBranch.id });
 
     // ── 3. Membership Plans ─────────────────────────────────────────────────
     const planMap = {};
     for (const p of def.plans) {
       const [plan] = await M.MembershipPlan.findOrCreate({
-        where:    { gymId: gym.id, name: p.name },
+        where:    { businessId: gym.id, name: p.name },
         defaults: {
-          gymId:           gym.id,
+          businessId:           gym.id,
           branchId:        null,
           name:            p.name,
           durationType:    p.durationType,
@@ -472,6 +476,7 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
           visitLimit:      null,
           freezeLimitDays: p.durationType === 'YEARLY' ? 30 : p.durationType === 'QUARTERLY' ? 15 : 7,
           isTrial:         p.isTrial,
+          isPublic:        true,
           status:          'ACTIVE',
         },
       });
@@ -575,7 +580,7 @@ async function seedTenant(tenant, platformUsers, cityMap, areaMap) {
       // seed.js uses uuidv4() as a placeholder — overwrite it here with the actual sub.id.
       await UserGymMembership.update(
         { subscriptionId: sub.id, status: subStatus, startDate: dateOnly(startDate), endDate: dateOnly(endDate), planName: plan.name },
-        { where: { userId: memberUser.id, tenantId: tenant.id } }
+        { where: { userId: memberUser.id, organizationId: tenant.id } }
       );
 
       if (subCreated && plan.price > 0) {
@@ -699,7 +704,7 @@ async function main() {
       status: 'ACTIVE',
       kycStatus: 'APPROVED',
     };
-    if (targetCode) whereClause.tenantCode = targetCode;
+    if (targetCode) whereClause.organizationCode = targetCode;
 
     const tenants = await Tenant.findAll({ where: whereClause });
 
@@ -710,16 +715,16 @@ async function main() {
 
     const unprovisioned = tenants.filter(t => t.connectionStringEncrypted === 'PENDING_PROVISIONING');
     if (unprovisioned.length > 0) {
-      console.log(`⚠️  ${unprovisioned.length} tenant(s) not yet provisioned: ${unprovisioned.map(t => t.tenantCode).join(', ')}`);
+      console.log(`⚠️  ${unprovisioned.length} tenant(s) not yet provisioned: ${unprovisioned.map(t => t.organizationCode).join(', ')}`);
       console.log('   Run: node src/scripts/provision-seeded-tenants.js\n');
       process.exit(1);
     }
 
     const ready = tenants.filter(t => t.connectionStringEncrypted !== 'PENDING_PROVISIONING');
-    console.log(`📋  Seeding ${ready.length} tenant(s): ${ready.map(t => t.tenantCode).join(', ')}\n`);
+    console.log(`📋  Seeding ${ready.length} tenant(s): ${ready.map(t => t.organizationCode).join(', ')}\n`);
 
     for (const tenant of ready) {
-      console.log(`🔧  Seeding ${tenant.tenantCode}...`);
+      console.log(`🔧  Seeding ${tenant.organizationCode}...`);
       await seedTenant(tenant, platformUsers, cityMap, areaMap);
     }
 

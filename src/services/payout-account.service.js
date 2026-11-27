@@ -2,8 +2,8 @@
  * Payout accounts (P7b, R-73, R-94): where a host's money goes, and the bank / wallet details a
  * traveller is shown at checkout. One store, platform table payout_accounts (PayoutAccount).
  *
- * Ownership: the TENANT (the business). A row with organizationId null is the tenant default; a
- * row with an organizationId is an override for that organization. Resolution for a branch:
+ * Ownership: the TENANT (the business). A row with businessId null is the tenant default; a
+ * row with an businessId is an override for that organization. Resolution for a branch:
  * the ACTIVE override of the branch's organization, else the ACTIVE tenant default, else null.
  * No per-branch accounts. The launch API reads and writes only the tenant default; overrides
  * exist in the schema and the resolver (tested) for a later screen.
@@ -46,8 +46,8 @@ const toView = (row) =>
   row
     ? {
       id: row.id,
-      scope: row.organizationId ? 'ORGANIZATION' : 'TENANT',
-      organizationId: row.organizationId || null,
+      scope: row.businessId ? 'BUSINESS' : 'ORGANIZATION', // A1 G10: BUSINESS (one business) | ORGANIZATION (organization-wide)
+      businessId: row.businessId || null,
       provider: row.provider,
       status: row.status,
       details: row.detailsJson || null,
@@ -55,45 +55,45 @@ const toView = (row) =>
     }
     : null;
 
-const _find = (tenantId, organizationId, { transaction } = {}) =>
+const _find = (organizationId, businessId, { transaction } = {}) =>
   PayoutAccount.findOne({
     where: {
-      tenantId,
-      scopeKey: PayoutAccount.scopeKeyFor(organizationId),
+      organizationId,
+      scopeKey: PayoutAccount.scopeKeyFor(businessId),
       provider: PROVIDER,
       status: PayoutAccount.STATUSES.ACTIVE,
     },
     transaction,
   });
 
-/** The tenant default (organizationId null), or null. */
-const getTenantDefault = async (tenantId) => toView(await _find(tenantId, null));
+/** The tenant default (businessId null), or null. */
+const getTenantDefault = async (organizationId) => toView(await _find(organizationId, null));
 
 /**
  * The account for an organization: its own ACTIVE override, else the tenant default.
- * `organizationId` null → the tenant default. Rows are always looked up under `tenantId`, so an
+ * `businessId` null → the tenant default. Rows are always looked up under `organizationId`, so an
  * organization id of another tenant can never select that tenant's account.
  */
-const resolve = async ({ tenantId, organizationId = null }) => {
-  if (!tenantId) return null;
-  if (organizationId) {
-    const override = await _find(tenantId, organizationId);
+const resolve = async ({ organizationId, businessId = null }) => {
+  if (!organizationId) return null;
+  if (businessId) {
+    const override = await _find(organizationId, businessId);
     if (override) return toView(override);
   }
-  return toView(await _find(tenantId, null));
+  return toView(await _find(organizationId, null));
 };
 
 /** The account for a branch (through its organization); branchId null → the tenant default. */
-const resolveForBranch = async (tenantDb, tenantId, branchId) => {
-  if (!branchId) return resolve({ tenantId });
-  const branch = await tenantDb.models.Branch.findByPk(branchId, { attributes: ['id', 'gymListingId'] });
-  return resolve({ tenantId, organizationId: branch ? branch.gymListingId : null });
+const resolveForBranch = async (tenantDb, organizationId, branchId) => {
+  if (!branchId) return resolve({ organizationId });
+  const branch = await tenantDb.models.Branch.findByPk(branchId, { attributes: ['id', 'businessId'] });
+  return resolve({ organizationId, businessId: branch ? branch.businessId : null });
 };
 
 /** SEC-13: alert the owner (in-app, push, e-mail) that payout details changed. Never throws. */
-const _notifyOwner = async (tenantId) => {
+const _notifyOwner = async (organizationId) => {
   try {
-    const tenantRecord = await Tenant.findByPk(tenantId, { attributes: ['ownerUserId', 'gymName'] });
+    const tenantRecord = await Tenant.findByPk(organizationId, { attributes: ['ownerUserId', 'firstBusinessName'] });
     if (!tenantRecord || !tenantRecord.ownerUserId) return;
     const ownerUser = await User.findByPk(tenantRecord.ownerUserId, { attributes: ['id', 'email', 'fullName'] });
     if (!ownerUser) return;
@@ -102,11 +102,11 @@ const _notifyOwner = async (tenantId) => {
     const emailService = require('./email.service');
 
     const alertTitle = 'Security Alert: Payout Account Changed';
-    const alertMsg = `Bank payout details for ${tenantRecord.gymName || 'your gym'} were updated. A 24-hour cooling period is in effect. If this wasn't you, contact support immediately.`;
+    const alertMsg = `Bank payout details for ${tenantRecord.firstBusinessName || 'your gym'} were updated. A 24-hour cooling period is in effect. If this wasn't you, contact support immediately.`;
 
     await notificationsService.createNotification({
       userId: ownerUser.id,
-      tenantId,
+      organizationId,
       title: alertTitle,
       body: alertMsg,
       type: 'SECURITY_ALERT',
@@ -134,24 +134,24 @@ const _notifyOwner = async (tenantId) => {
  * SEC-13 cooling period starts) and alerts the owner. The caller has already checked the
  * permission and the re-authentication.
  */
-const saveTenantDefault = async (tenantId, details) => {
+const saveTenantDefault = async (organizationId, details) => {
   const now = new Date();
   const existing = await PayoutAccount.findOne({
-    where: { tenantId, scopeKey: PayoutAccount.scopeKeyFor(null), provider: PROVIDER },
+    where: { organizationId, scopeKey: PayoutAccount.scopeKeyFor(null), provider: PROVIDER },
   });
   let row;
   if (existing) {
     row = await existing.update({ detailsJson: details, detailsUpdatedAt: now, status: PayoutAccount.STATUSES.ACTIVE });
   } else {
-    row = await PayoutAccount.create({ tenantId, organizationId: null, provider: PROVIDER, detailsJson: details, detailsUpdatedAt: now });
+    row = await PayoutAccount.create({ organizationId, businessId: null, provider: PROVIDER, detailsJson: details, detailsUpdatedAt: now });
   }
-  await _notifyOwner(tenantId);
+  await _notifyOwner(organizationId);
   return toView(row);
 };
 
 /** Account deletion (AUTH-07): every payout account of the tenant goes with it. */
-const deleteAllForTenant = (tenantId, { transaction } = {}) =>
-  PayoutAccount.destroy({ where: { tenantId }, transaction });
+const deleteAllForTenant = (organizationId, { transaction } = {}) =>
+  PayoutAccount.destroy({ where: { organizationId }, transaction });
 
 module.exports = {
   BANK_DETAIL_FIELDS,

@@ -66,8 +66,8 @@ async function discoverTenantDatabases(config, platformDb) {
     try {
       const { decrypt } = require('./src/utils/crypto.utils');
       const [tenants] = await conn.query(
-        `SELECT id, tenant_code, status, connection_string_encrypted
-         FROM \`${platformDb}\`.tenants WHERE status = 'ACTIVE'`
+        `SELECT id, organization_code AS tenant_code, status, connection_string_encrypted
+         FROM \`${platformDb}\`.organizations WHERE status = 'ACTIVE'`
       );
 
       for (const t of tenants) {
@@ -119,7 +119,7 @@ async function auditPlatformDatabase(config, platformDb) {
     // SEC-13: Bank details without payment_details_updated_at timestamp
     const [cols] = await conn.query(
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'payment_details_updated_at'`,
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'organizations' AND COLUMN_NAME = 'payment_details_updated_at'`,
       [platformDb]
     );
 
@@ -131,8 +131,8 @@ async function auditPlatformDatabase(config, platformDb) {
       });
     } else {
       const [legacyBankDetails] = await conn.query(
-        `SELECT id, business_name, tenant_code, payment_details_updated_at, created_at
-         FROM tenants
+        `SELECT id, organization_name AS business_name, organization_code AS tenant_code, payment_details_updated_at, created_at
+         FROM organizations
          WHERE payment_details_json IS NOT NULL
            AND payment_details_updated_at IS NULL`
       );
@@ -142,13 +142,13 @@ async function auditPlatformDatabase(config, platformDb) {
           severity: 'INFO',
           check: 'SEC-13',
           description: `${legacyBankDetails.length} tenant(s) have bank details configured without an updated_at timestamp.`,
-          details: legacyBankDetails.map((t) => ({ id: t.id, tenantCode: t.tenant_code })),
+          details: legacyBankDetails.map((t) => ({ id: t.id, organizationCode: t.tenant_code })),
         });
       }
 
       const [recentUpdated] = await conn.query(
-        `SELECT id, business_name, tenant_code, payment_details_updated_at
-         FROM tenants
+        `SELECT id, organization_name AS business_name, organization_code AS tenant_code, payment_details_updated_at
+         FROM organizations
          WHERE payment_details_updated_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`
       );
 

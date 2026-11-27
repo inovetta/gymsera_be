@@ -158,9 +158,26 @@ async function createTestDatabases() {
   await conn.query(`CREATE DATABASE IF NOT EXISTS \`${TENANT_2_TEST_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
 
   try {
-    await conn.query(`GRANT ALL PRIVILEGES ON \`gymsera_test_%\`.* TO 'gymsera_tenant'@'%'; FLUSH PRIVILEGES;`);
+    await conn.query('GRANT ALL PRIVILEGES ON `gymsera_test_%`.* TO \'gymsera_tenant\'@\'%\'; FLUSH PRIVILEGES;');
   } catch (_) {
     // Non-fatal if gymsera_tenant user does not exist or running without grant perms
+  }
+}
+
+// R-120: tables renamed by a naming migration (old name). A test database reused from a run of the
+// older code still has them, and their foreign keys stop sync({ force: true }) from dropping the tables
+// they point at, so they are dropped first.
+const LEGACY_PLATFORM_TABLES = [
+  'saved_gyms', 'gym_reviews', 'user_gym_memberships', 'gym_listings', // p033
+  'tenant_subscriptions', 'tenant_invitations', 'user_org_index', 'tenants', // p034
+];
+const LEGACY_TENANT_TABLES = ['gyms'];
+async function dropLegacyTables(seq, names) {
+  await seq.query('SET FOREIGN_KEY_CHECKS = 0');
+  try {
+    for (const name of names) await seq.query(`DROP TABLE IF EXISTS \`${name}\``);
+  } finally {
+    await seq.query('SET FOREIGN_KEY_CHECKS = 1');
   }
 }
 
@@ -172,6 +189,12 @@ async function setupTestDatabases() {
 
   // Initialize Platform models
   const { sequelize: platformSequelize, connect: connectPlatform } = require('../../src/database/platform');
+  require('../../src/models/platform'); // the models must be registered before sync (every table was just dropped)
+  // R-120 NEW-309: the test databases persist between runs and sync({ force }) only drops tables that have a model, so
+  // a table made by raw DDL in a migration (access_devices, device_commands, ...) could survive in a half-migrated
+  // state and make the next run disagree with a fresh database. Every table of the platform test database goes first.
+  const [existing] = await platformSequelize.query('SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = \'BASE TABLE\'');
+  await dropLegacyTables(platformSequelize, [...LEGACY_PLATFORM_TABLES, ...existing.map((t) => t.name)]);
   await platformSequelize.sync({ force: true });
   await connectPlatform();
   const { runPlatformMigrations } = require('../../src/database/platform-migrations');
@@ -198,8 +221,9 @@ async function setupTestDatabases() {
   });
   await tenant1Sequelize.authenticate();
   const tenant1Models = registerTenantModels(tenant1Sequelize);
+  await dropLegacyTables(tenant1Sequelize, LEGACY_TENANT_TABLES);
   await tenant1Sequelize.sync({ force: true });
-  await runTenantMigrations(tenant1Sequelize, { tenantId: 'test-tenant-1' });
+  await runTenantMigrations(tenant1Sequelize, { organizationId: 'test-tenant-1' });
 
   // Initialize Tenant 2
   const t2Url = `mysql://${tenantUser}:${tenantPass}@${tenantHost}:${tenantPort}/${TENANT_2_TEST_DB}`;
@@ -216,8 +240,9 @@ async function setupTestDatabases() {
   });
   await tenant2Sequelize.authenticate();
   const tenant2Models = registerTenantModels(tenant2Sequelize);
+  await dropLegacyTables(tenant2Sequelize, LEGACY_TENANT_TABLES);
   await tenant2Sequelize.sync({ force: true });
-  await runTenantMigrations(tenant2Sequelize, { tenantId: 'test-tenant-2' });
+  await runTenantMigrations(tenant2Sequelize, { organizationId: 'test-tenant-2' });
 
   return {
     platform: {
@@ -333,6 +358,7 @@ async function createMixedCollationTenantDb(customDbName = 'gymsera_test_mixed_c
   await seq.query('DROP TABLE IF EXISTS ledger_days');
   await seq.query('DROP TABLE IF EXISTS branches');
   await seq.query('DROP TABLE IF EXISTS gyms');
+  await seq.query('DROP TABLE IF EXISTS businesses'); // R-120: the business table after tenant migration 030
 
   // branches table with utf8mb4_unicode_ci
   await seq.query(`
@@ -394,7 +420,7 @@ async function createMixedCollationTenantDb(customDbName = 'gymsera_test_mixed_c
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
-  await seq.query("INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, '001_ensure_rbac_tables', NOW()), (2, '002_ensure_ledger_tables', NOW()), (3, '003_audit_and_tracking_columns', NOW())");
+  await seq.query('INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, \'001_ensure_rbac_tables\', NOW()), (2, \'002_ensure_ledger_tables\', NOW()), (3, \'003_audit_and_tracking_columns\', NOW())');
 
   // Seed sample branch, payments, and ledger_days with NULL business_date
   await seq.query(`

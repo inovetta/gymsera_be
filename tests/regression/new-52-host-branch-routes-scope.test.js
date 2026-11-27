@@ -27,7 +27,7 @@ const membershipService = require('../../src/services/membership.service');
 let app;
 let dbHarness;
 let personas;
-let tenantId;
+let organizationId;
 let branches; // { a, b, c }
 let plans; // letter -> plan
 let announcementIds; // letter -> id
@@ -50,16 +50,16 @@ const KEYS = [
 const makeUser = async (email, roleKey, branchId, denyKey) => {
   const user = await factories.createUser({ email, role: 'MEMBER', fullName: email });
   const assignment = await factories.createRoleAssignment(
-    { ...dbHarness.tenant1, tenantId },
-    { userId: user.id, roleKey, scopeType: 'BRANCH', branchIds: [branchId], overrides: { tenantId } }
+    { ...dbHarness.tenant1, organizationId },
+    { userId: user.id, roleKey, scopeType: 'BRANCH', branchIds: [branchId], overrides: { organizationId } }
   );
   if (denyKey) {
     await dbHarness.tenant1.models.AssignmentOverride.create({
       assignmentId: assignment.id, permissionKey: denyKey, effect: 'DENY', createdBy: user.id,
     });
   }
-  await membershipService.syncUserOrgIndex(tenantId, user.id, dbHarness.tenant1);
-  return { token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true, tenantId }) };
+  await membershipService.syncUserOrgIndex(organizationId, user.id, dbHarness.tenant1);
+  return { token: signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true, organizationId }) };
 };
 
 beforeAll(async () => {
@@ -68,11 +68,11 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
   const { Branch, MembershipPlan, ExpenseCategory } = tenantDb.models;
 
-  const listing = await GymListing.findOne({ where: { tenantId } });
-  const a = await Branch.findOne({ where: { gymListingId: listing.id } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
+  const a = await Branch.findOne({ where: { businessId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
   branches = { a, b, c };
@@ -81,21 +81,21 @@ beforeAll(async () => {
   for (const letter of LETTERS) {
     const br = branches[letter];
     plans[letter] = await MembershipPlan.create({
-      gymId: br.gymId || br.id, branchId: br.id, name: `N52 Monthly ${letter}`, price: 5000, priceMinor: 500000,
+      businessId: br.businessId || br.id, branchId: br.id, name: `N52 Monthly ${letter}`, price: 5000, priceMinor: 500000,
       durationType: 'MONTHLY', durationValue: 1, isPublic: true, status: 'ACTIVE',
     });
   }
   categoryId = (await ExpenseCategory.create({ name: 'N52 Rent' })).id;
 
   managerThree = await teamMember({
-    tenantDb, tenantId, email: 'mgr-three@new52.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
+    tenantDb, organizationId, email: 'mgr-three@new52.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
     branchIds: [a.id, b.id, c.id],
   });
   managerOne = await teamMember({
-    tenantDb, tenantId, email: 'mgr-one@new52.test', roleKey: 'MANAGER', scopeType: 'BRANCH', branchIds: [a.id],
+    tenantDb, organizationId, email: 'mgr-one@new52.test', roleKey: 'MANAGER', scopeType: 'BRANCH', branchIds: [a.id],
   });
   orgAdmin = await teamMember({
-    tenantDb, tenantId, email: 'org-admin@new52.test', roleKey: 'ORG_ADMIN', scopeType: 'ORG',
+    tenantDb, organizationId, email: 'org-admin@new52.test', roleKey: 'ORG_ADMIN', scopeType: 'ORG',
   });
   for (const key of KEYS) {
     denied[key] = (await makeUser(`deny-${key.replace(/\./g, '-')}@new52.test`, 'MANAGER', a.id, key)).token;
@@ -126,7 +126,7 @@ beforeEach(async () => {
   }
 });
 
-const authed = (req, token) => req.set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', tenantId);
+const authed = (req, token) => req.set('Authorization', `Bearer ${token}`).set('X-Organization-Id', organizationId);
 const base = (letter) => `/api/v1/host/branches/${branches[letter].id}`;
 
 const ROUTES = [

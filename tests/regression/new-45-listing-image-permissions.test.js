@@ -1,5 +1,5 @@
 /**
- * NEW-45 (d) — the profile routes and PATCH /gyms/profile need listing.manage
+ * NEW-45 (d) — the profile routes and PATCH /organizations/me/businesses/{businessId}/profile need listing.manage
  * (organization-wide); the branch image routes need branch.settings at the branch.
  *
  * Image routes are called with no file: a request that gets past the permission check
@@ -26,16 +26,16 @@ afterAll(async () => {
 });
 
 const call = (method, path, token, body) => {
-  const r = request(app)[method](`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId);
+  const r = request(app)[method](`/api/v1${path.replace('{businessId}', team.branchA.businessId)}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
   return body ? r.send(body) : r;
 };
 
 const PROFILE_WRITES = [
-  ['post', '/gyms/profile/logo'],
-  ['post', '/gyms/profile/cover'],
-  ['post', '/gyms/profile/images'],
-  ['delete', '/gyms/profile/images'],
-  ['patch', '/gyms/profile'],
+  ['post', '/organizations/me/businesses/{businessId}/profile/logo'],
+  ['post', '/organizations/me/businesses/{businessId}/profile/cover'],
+  ['post', '/organizations/me/businesses/{businessId}/profile/images'],
+  ['delete', '/organizations/me/businesses/{businessId}/profile/images'],
+  ['patch', '/organizations/me/businesses/{businessId}/profile'],
 ];
 
 describe('NEW-45 (d): profile writes need listing.manage, organization-wide', () => {
@@ -49,34 +49,34 @@ describe('NEW-45 (d): profile writes need listing.manage, organization-wide', ()
     expect(res.status).toBe(403);
   });
 
-  test('Org Admin (listing.manage) and the owner get past the check on PATCH /gyms/profile', async () => {
+  test('Org Admin (listing.manage) and the owner get past the check on PATCH /organizations/me/businesses/{businessId}/profile', async () => {
     for (const token of [team.orgAdmin.token, team.ownerToken]) {
-      const res = await call('patch', '/gyms/profile', token, { description: 'Updated by the NEW-45 test' });
+      const res = await call('patch', '/organizations/me/businesses/{businessId}/profile', token, { description: 'Updated by the NEW-45 test' });
       expect(res.status).toBe(200);
     }
   });
 
   test('Org Admin and the owner get past the check on the image routes (422: no file, nothing stored)', async () => {
     for (const token of [team.orgAdmin.token, team.ownerToken]) {
-      expect((await call('post', '/gyms/profile/logo', token)).status).toBe(422);
-      expect((await call('delete', '/gyms/profile/images', token, {})).status).toBe(422);
+      expect((await call('post', '/organizations/me/businesses/{businessId}/profile/logo', token)).status).toBe(422);
+      expect((await call('delete', '/organizations/me/businesses/{businessId}/profile/images', token, {})).status).toBe(422);
     }
   });
 });
 
 describe('NEW-45 (d): branch image routes need branch.settings at that branch', () => {
   test('Front Desk at A: 403 on both methods', async () => {
-    expect((await call('post', `/gyms/branches/${team.branchA.id}/images`, team.frontDeskOff.token)).status).toBe(403);
-    expect((await call('delete', `/gyms/branches/${team.branchA.id}/images`, team.frontDeskOff.token, {})).status).toBe(403);
+    expect((await call('post', `/organizations/me/branches/${team.branchA.id}/images`, team.frontDeskOff.token)).status).toBe(403);
+    expect((await call('delete', `/organizations/me/branches/${team.branchA.id}/images`, team.frontDeskOff.token, {})).status).toBe(403);
   });
 
   test('Manager of A: past the check at A, 403 at B', async () => {
-    expect((await call('post', `/gyms/branches/${team.branchA.id}/images`, team.managerA.token)).status).toBe(422);
-    expect((await call('post', `/gyms/branches/${team.branchB.id}/images`, team.managerA.token)).status).toBe(403);
-    expect((await call('delete', `/gyms/branches/${team.branchB.id}/images`, team.managerA.token, {})).status).toBe(403);
+    expect((await call('post', `/organizations/me/branches/${team.branchA.id}/images`, team.managerA.token)).status).toBe(422);
+    expect((await call('post', `/organizations/me/branches/${team.branchB.id}/images`, team.managerA.token)).status).toBe(403);
+    expect((await call('delete', `/organizations/me/branches/${team.branchB.id}/images`, team.managerA.token, {})).status).toBe(403);
   });
 
   test('owner: past the check', async () => {
-    expect((await call('post', `/gyms/branches/${team.branchB.id}/images`, team.ownerToken)).status).toBe(422);
+    expect((await call('post', `/organizations/me/branches/${team.branchB.id}/images`, team.ownerToken)).status).toBe(422);
   });
 });

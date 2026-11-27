@@ -37,8 +37,8 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
     });
 
     testTenant = await Tenant.create({
-      tenantCode: 'TEN-BILL-' + Date.now(),
-      businessName: 'Billing Test Gym',
+      organizationCode: 'TEN-BILL-' + Date.now(),
+      organizationName: 'Billing Test Gym',
       ownerUserId: testHostUser.id,
       email: testHostUser.email,
       status: 'ACTIVE',
@@ -64,7 +64,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
       role: 'GYM_HOST',
       isVerified: true,
       isHost: true,
-      tenantId: testTenant.id,
+      organizationId: testTenant.id,
       ver: 1,
     });
   });
@@ -79,7 +79,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
         .post('/api/v1/billing/purchase-intent')
         .set('Authorization', `Bearer ${hostToken}`)
         .send({
-          tenantId: testTenant.id,
+          organizationId: testTenant.id,
           targetPlatform: 'ANDROID',
           targetPlanId: plan1.id,
         });
@@ -95,7 +95,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
       const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       const iosSub = await TenantSubscription.create({
-        tenantId: testTenant.id,
+        organizationId: testTenant.id,
         billingPlanId: plan1.id,
         platform: 'IOS',
         status: 'ACTIVE',
@@ -113,7 +113,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
         .post('/api/v1/billing/purchase-intent')
         .set('Authorization', `Bearer ${hostToken}`)
         .send({
-          tenantId: testTenant.id,
+          organizationId: testTenant.id,
           targetPlatform: 'ANDROID',
           targetPlanId: plan3.id,
         });
@@ -136,7 +136,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
       const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       const currentSub = await TenantSubscription.create({
-        tenantId: testTenant.id,
+        organizationId: testTenant.id,
         billingPlanId: plan1.id,
         platform: 'IOS',
         status: 'ACTIVE',
@@ -153,7 +153,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
         .post('/api/v1/billing/purchase-intent')
         .set('Authorization', `Bearer ${hostToken}`)
         .send({
-          tenantId: testTenant.id,
+          organizationId: testTenant.id,
           targetPlatform: 'IOS',
           targetPlanId: plan3.id,
         });
@@ -173,7 +173,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
 
       // Superseded old subscription row that provider reports is still auto-renewing
       const supersededSub = await TenantSubscription.create({
-        tenantId: testTenant.id,
+        organizationId: testTenant.id,
         billingPlanId: plan1.id,
         platform: 'IOS',
         status: 'CANCELLED',
@@ -191,7 +191,7 @@ describe('BILL-07 & BILL-09: Cross-Provider Intent & Duplicate Billing', () => {
       const currentStart = new Date().toISOString().split('T')[0];
       const currentEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const activeSub = await TenantSubscription.create({
-        tenantId: testTenant.id,
+        organizationId: testTenant.id,
         billingPlanId: plan3.id,
         platform: 'ANDROID',
         status: 'ACTIVE',

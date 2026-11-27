@@ -62,12 +62,12 @@ describe('Tenant Provisioning Migrations (Step 2.6)', () => {
     // 1. Create a tenant pending review
     const pendingTenant = await createTenant({
       id: '33333333-3333-4333-8333-333333333333',
-      tenantCode: testTenantCode,
+      organizationCode: testTenantCode,
       gymName: 'Safe Migrations Gym',
       ownerUserId: hostUser.id,
       status: 'PENDING_REVIEW',
       connectionStringEncrypted: null,
-      mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] }, // NEW-146: approval needs a visible plan
+      firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }] }, // NEW-146: approval needs a visible plan
     });
 
     // 2. Approve tenant (triggers processTenantProvisioning)

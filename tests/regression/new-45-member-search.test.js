@@ -1,5 +1,5 @@
 /**
- * NEW-45 (c) — GET /gyms/members/search needs members.create at one or more branches.
+ * NEW-45 (c) — GET /organizations/me/members/search needs members.create at one or more branches.
  *
  * Before: any team member could look up any platform user by e-mail (name, phone,
  * status) — a Trainer or a Support account too.
@@ -20,7 +20,7 @@ beforeAll(async () => {
   const personas = await setupPersonas(dbHarness);
   team = await buildTwoBranchTeam(dbHarness, personas);
   await factories.createUser({ email: LOOKUP, fullName: 'Someone Else', phone: '+923009990000' });
-  const base = { tenantDb: dbHarness.tenant1, tenantId: team.tenantId, scopeType: 'BRANCH', branchIds: [team.branchA.id] };
+  const base = { tenantDb: dbHarness.tenant1, organizationId: team.organizationId, scopeType: 'BRANCH', branchIds: [team.branchA.id] };
   trainer = await teamMember({ ...base, email: 'trainer@new45s.test', roleKey: 'TRAINER' });
   support = await teamMember({ ...base, email: 'support@new45s.test', roleKey: 'SUPPORT' });
   app = await startTestServer();
@@ -33,10 +33,10 @@ afterAll(async () => {
 
 const search = (token) =>
   request(app)
-    .get('/api/v1/gyms/members/search')
+    .get('/api/v1/organizations/me/members/search')
     .query({ email: LOOKUP })
     .set('Authorization', `Bearer ${token}`)
-    .set('X-Tenant-Id', team.tenantId);
+    .set('X-Organization-Id', team.organizationId);
 
 describe('NEW-45: member search needs members.create', () => {
   test.each([

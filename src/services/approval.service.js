@@ -66,7 +66,7 @@ const policyFor = async (tenantDb, branchId, actionKey) => {
  *
  * @param {object} ctx
  * @param {object} ctx.tenantDb
- * @param {string} ctx.tenantId
+ * @param {string} ctx.organizationId
  * @param {string} ctx.userId       the actor
  * @param {string} [ctx.branchId]
  * @param {import('./access.service').Grants} ctx.grants
@@ -172,7 +172,7 @@ const decide = async (ctx, requestId, decision, reason = null) => {
   // the client happened to send.
   const approverGrants = await accessService.resolve(
     ctx.tenantDb,
-    ctx.tenantId,
+    ctx.organizationId,
     ctx.userId,
     request.branchId
   );
@@ -205,7 +205,7 @@ const decide = async (ctx, requestId, decision, reason = null) => {
       throw createError('The requester account has been suspended', 422);
     }
 
-    const tenant = await Tenant.findByPk(ctx.tenantId);
+    const tenant = await Tenant.findByPk(ctx.organizationId);
     const isRequesterOwner = tenant && tenant.ownerUserId === request.requestedBy;
     if (!isRequesterOwner) {
       const { RoleAssignment } = ctx.tenantDb.models;
@@ -348,7 +348,7 @@ const markCollected = async (ctx, requestId, { method, notes } = {}) => {
   // same gate the ordinary "Mark as collected" action uses on a real Payment
   // row. Being the original requester isn't required: any authorized
   // collector at the branch may be the one who ends up holding the cash.
-  const grants = await accessService.resolve(ctx.tenantDb, ctx.tenantId, ctx.userId, request.branchId);
+  const grants = await accessService.resolve(ctx.tenantDb, ctx.organizationId, ctx.userId, request.branchId);
   if (!grants.isOwner && !grants.has('payments.record')) {
     throw createError('You do not have permission to collect payments at this branch', 403);
   }
@@ -458,8 +458,8 @@ const notifyApprovers = async (ctx, request, policy) => {
   const { RoleAssignment, RoleAssignmentBranch, Branch } = ctx.tenantDb.models;
   const { Tenant } = require('../models/platform');
 
-  const tenant = await Tenant.findByPk(ctx.tenantId, {
-    attributes: ['id', 'ownerUserId', 'gymName'],
+  const tenant = await Tenant.findByPk(ctx.organizationId, {
+    attributes: ['id', 'ownerUserId', 'firstBusinessName'],
   });
   const branch = request.branchId ? await Branch.findByPk(request.branchId) : null;
   const branchName = branch ? branch.branchName : 'your gym';

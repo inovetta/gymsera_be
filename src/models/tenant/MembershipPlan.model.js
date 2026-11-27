@@ -9,7 +9,8 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      gymId: {
+      businessId: {
+        field: 'business_id', // R-120 NEW-306 (tenant 030)
         type: DataTypes.UUID,
         allowNull: false,
       },
@@ -94,7 +95,7 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { fields: ['gym_id'] },
+        { fields: ['business_id'] },
         { fields: ['branch_id'] },
         { fields: ['status'] },
         { fields: ['is_deactivated'] },

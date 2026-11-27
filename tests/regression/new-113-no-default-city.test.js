@@ -25,7 +25,7 @@ afterAll(async () => {
   await teardownTestDatabases();
 });
 
-const completeListing = { branchName: 'Main', plans: [{ name: 'Monthly', price: 5000 }] };
+const completeListing = { branchName: 'Main', packages: [{ name: 'Monthly', price: 5000 }] };
 
 const makeHost = async (key, tenantOverrides = {}) => {
   const user = await factories.createUser({ email: `${key.toLowerCase()}@new113.test`, role: 'GYM_HOST', isHost: true });
@@ -49,9 +49,9 @@ describe('NEW-113: no branch is filed under city id 1 by default', () => {
     const { tenant } = await makeHost('NoCity', {
       status: 'PENDING_REVIEW',
       cityId: null,
-      mainBranchDataJson: { ...completeListing, cityId: null },
+      firstBranchDraft: { ...completeListing, cityId: null },
     });
-    const res = await asPersona('platformAdmin').post(`/admin/tenants/${tenant.id}/approve`).send({ photosChecked: true });
+    const res = await asPersona('platformAdmin').post(`/admin/organizations/${tenant.id}/approve`).send({ photosChecked: true });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('city_required');
     const { Tenant } = require('../../src/models/platform');
@@ -62,7 +62,7 @@ describe('NEW-113: no branch is filed under city id 1 by default', () => {
     const { resolveTenantCityId } = require('../../src/services/tenant-provisioning.service');
     const { City } = require('../../src/models/platform');
     const city = await City.create({ name: 'P2 Test City', isActive: true });
-    await expect(resolveTenantCityId({ cityId: 987654, mainBranchDataJson: { cityId: city.id } })).resolves.toBe(city.id);
-    await expect(resolveTenantCityId({ cityId: 987654, mainBranchDataJson: JSON.stringify({ cityId: 987655 }) })).resolves.toBeNull();
+    await expect(resolveTenantCityId({ cityId: 987654, firstBranchDraft: { cityId: city.id } })).resolves.toBe(city.id);
+    await expect(resolveTenantCityId({ cityId: 987654, firstBranchDraft: JSON.stringify({ cityId: 987655 }) })).resolves.toBeNull();
   });
 });

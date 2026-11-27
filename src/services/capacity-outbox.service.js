@@ -62,7 +62,7 @@ const processOutboxEntry = async (tenantDb, outboxId) => {
       if (listing) {
         const { applied } = await subscriptionQuotaService.recordCapacityEvent(
           {
-            tenantId: listing.tenantId,
+            organizationId: listing.organizationId,
             listingId: listing.id,
             branchId: payload.branchId,
             action: payload.action,
@@ -89,7 +89,7 @@ const processOutboxEntry = async (tenantDb, outboxId) => {
 
     // Clean up primary branchId pointer on listing if branch was deleted
     if (payload.action === 'BRANCH_DELETED' && payload.branchId) {
-      await GymListing.update({ branchId: null }, { where: { branchId: payload.branchId }, transaction: platformTx });
+      await GymListing.update({ primaryBranchId: null }, { where: { primaryBranchId: payload.branchId }, transaction: platformTx });
     }
 
     await platformTx.commit();
@@ -109,7 +109,7 @@ const processOutboxEntry = async (tenantDb, outboxId) => {
   }
 };
 
-const sweepTenantOutbox = async (tenantId, tenantDb) => {
+const sweepTenantOutbox = async (organizationId, tenantDb) => {
   const { CapacityOutbox, Outbox } = tenantDb.models;
   const Model = CapacityOutbox || Outbox;
   if (!Model) return { processedCount: 0 };
@@ -130,7 +130,7 @@ const sweepTenantOutbox = async (tenantId, tenantDb) => {
       await processOutboxEntry(tenantDb, entry.id);
       processedCount++;
     } catch (err) {
-      console.warn(`[CapacityOutbox] Failed to process outbox entry ${entry.id} for tenant ${tenantId}:`, err.message);
+      console.warn(`[CapacityOutbox] Failed to process outbox entry ${entry.id} for tenant ${organizationId}:`, err.message);
     }
   }
 

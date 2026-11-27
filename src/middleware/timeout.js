@@ -28,7 +28,7 @@ function isUploadRoute(url) {
 function isProvisioningRoute(url) {
   if (!url || typeof url !== 'string') return false;
   return (
-    (url.includes('/admin/tenants') && url.endsWith('/approve')) ||
+    (url.includes('/admin/organizations') && url.endsWith('/approve')) ||
     url.includes('/provision')
   );
 }

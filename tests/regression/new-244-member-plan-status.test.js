@@ -1,5 +1,5 @@
 /**
- * NEW-244: GET /gyms/members (the CMS Members list) reports each member's plan status the way the
+ * NEW-244: GET /organizations/me/members (the CMS Members list) reports each member's plan status the way the
  * mobile app's branch member list shows it, not only the platform account status.
  *
  * Owner report (2026-11-13): branch "savvvv" had four members; the CMS Status column said "Active"
@@ -26,7 +26,7 @@ const { daysFromToday } = require('../harness/dates');
 
 let app;
 let personas;
-let tenantId;
+let organizationId;
 let branch;
 let plan;
 const m = {};
@@ -48,12 +48,12 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  organizationId = personas.owner.organizationId;
+  const listing = await GymListing.findOne({ where: { organizationId } });
   branch = await factories.createBranch(tenantDb, listing.id, { name: 'Savvvv Test' });
 
   plan = await tenantDb.models.MembershipPlan.create({
-    gymId: branch.gymId,
+    businessId: branch.businessId,
     branchId: branch.id,
     name: 'Monthly 244',
     price: 3000,
@@ -95,14 +95,14 @@ afterAll(async () => {
 
 const getMembers = (query = '') =>
   request(app)
-    .get(`/api/v1/gyms/members${query}`)
+    .get(`/api/v1/organizations/me/members${query}`)
     .set('Authorization', `Bearer ${personas.owner.token}`)
-    .set('X-Tenant-Id', tenantId);
+    .set('X-Organization-Id', organizationId);
 
 const byId = (res) => new Map(res.body.data.members.map((row) => [row.id, row]));
 const ours = (res) => res.body.data.members.filter((row) => row.email.endsWith('@new244.test'));
 
-describe('NEW-244: GET /gyms/members reports the plan status like the app', () => {
+describe('NEW-244: GET /organizations/me/members reports the plan status like the app', () => {
   test('each member carries the plan status the app shows', async () => {
     const res = await getMembers(`?branchId=${branch.id}&limit=100`);
     expect(res.status).toBe(200);

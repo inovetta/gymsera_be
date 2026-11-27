@@ -1,5 +1,5 @@
 /**
- * NEW-103: PATCH /admin/tenants/:id/branches/:branchId copied only a fixed list of fields, so the map position
+ * NEW-103: PATCH /admin/organizations/:id/branches/:branchId copied only a fixed list of fields, so the map position
  * (latitude, longitude) and the facilities the CMS sends were silently dropped: the call answered 200 and nothing changed.
  * It now saves them like the host-side update does (gym.service#updateBranch): `facilities` (array) is stored as facilitiesJson.
  */
@@ -8,22 +8,22 @@ const { GymListing } = require('../../src/models/platform');
 
 describe('NEW-103: admin branch edit saves position and facilities', () => {
   let db;
-  let tenantId;
+  let organizationId;
   let branch;
 
   beforeAll(async () => {
     const h = await setupTestDatabases();
     const personas = await setupPersonas(h);
     db = h.tenant1;
-    tenantId = personas.owner.tenantId;
-    const listing = await GymListing.findOne({ where: { tenantId } });
-    branch = await db.models.Branch.findOne({ where: { gymListingId: listing.id } });
+    organizationId = personas.owner.organizationId;
+    const listing = await GymListing.findOne({ where: { organizationId } });
+    branch = await db.models.Branch.findOne({ where: { businessId: listing.id } });
   });
   afterAll(async () => {
     await teardownTestDatabases();
   });
 
-  const patch = (body) => asPersona('platformAdmin').patch(`/admin/tenants/${tenantId}/branches/${branch.id}`, body);
+  const patch = (body) => asPersona('platformAdmin').patch(`/admin/organizations/${organizationId}/branches/${branch.id}`, body);
 
   test('latitude and longitude are saved', async () => {
     const res = await patch({ latitude: 24.8607, longitude: 67.0011 });

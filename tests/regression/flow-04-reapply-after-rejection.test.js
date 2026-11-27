@@ -11,6 +11,7 @@ const { createUser, createTenant } = require('../harness/factories');
 const { Tenant, PlatformAuditLog } = require('../../src/models/platform');
 const { runKycRetentionSweep } = require('../../src/jobs/kyc-retention.sweep');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 const API = '/api/v1';
 const DOCS = [{ key: 'kyc/x/id-front.png', name: 'id-front.png', type: 'image/png', size: 10 }];
@@ -35,27 +36,27 @@ describe('FLOW-04: re-apply after rejection', () => {
       kycStatus: 'REJECTED',
       rejectionReason: 'The ID photo is unreadable',
       rejectedAt: new Date(Date.now() - 100 * 86400000),
-      gymName: 'Iron Works',
+      firstBusinessName: 'Iron Works',
       address: 'Main Boulevard',
       onboardingStep: 5,
       kycDocumentsJson: DOCS,
-      mainBranchDataJson: { name: 'Iron Works', plans: [PLAN] },
+      firstBranchDraft: { branchName: 'Iron Works', packages: [PLAN] },
       connectionStringEncrypted: null,
       ...over,
     });
-    const token = signToken({ sub: owner.id, id: owner.id, email: owner.email, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    const token = signToken({ sub: owner.id, id: owner.id, email: owner.email, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
     return { owner, tenant, token };
   };
-  const reapply = (id, token) => request(app).post(`${API}/tenants/${id}/reapply`).set('Authorization', `Bearer ${token}`).send({});
+  const reapply = (id, token) => request(app).post(`${API}/organizations/${id}/reapply`).set('Authorization', `Bearer ${token}`).send({});
 
   test('the owner reopens the same tenant: DRAFT, everything entered is kept, the reason stays visible', async () => {
     const { tenant, token } = await rejectedHost();
     const res = await reapply(tenant.id, token);
     expect(res.status).toBe(200);
-    expect(res.body.data.tenant.id).toBe(tenant.id);
+    expect(res.body.data.organization.id).toBe(tenant.id);
     const row = await Tenant.findByPk(tenant.id);
     expect(row.status).toBe('DRAFT');
-    expect(row.gymName).toBe('Iron Works');
+    expect(row.firstBusinessName).toBe('Iron Works');
     expect(row.address).toBe('Main Boulevard');
     expect(row.rejectionReason).toBe('The ID photo is unreadable');
     expect(row.kycStatus).toBe('PENDING');
@@ -88,7 +89,7 @@ describe('FLOW-04: re-apply after rejection', () => {
 
   test('a body never changes the outcome (the route takes none)', async () => {
     const { tenant, token } = await rejectedHost();
-    const res = await request(app).post(`${API}/tenants/${tenant.id}/reapply`).set('Authorization', `Bearer ${token}`).send({ status: 'ACTIVE' });
+    const res = await request(app).post(`${API}/organizations/${tenant.id}/reapply`).set('Authorization', `Bearer ${token}`).send({ status: 'ACTIVE' });
     expect([200, 422]).toContain(res.status); // log mode today (R-61); never changes the status to the body's value
     expect((await Tenant.findByPk(tenant.id)).status).not.toBe('ACTIVE');
   });
@@ -97,18 +98,19 @@ describe('FLOW-04: re-apply after rejection', () => {
     const { tenant, token } = await rejectedHost();
     expect((await reapply(tenant.id, token)).status).toBe(200);
     const edit = await request(app)
-      .post(`${API}/tenants/${tenant.id}/gym-profile`)
+      .post(`${API}/organizations/${tenant.id}/first-business`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ gymName: 'Iron Works 2' });
+      .send({ organizationName: 'Iron Works Brand', firstBusinessName: 'Iron Works 2',
+        firstBranch: await firstBranchInput({ branchName: 'Iron Works 2', packages: [PLAN] }) });
     expect(edit.status).toBe(200);
     const fin = await request(app)
-      .post(`${API}/tenants/${tenant.id}/finalize`)
+      .post(`${API}/organizations/${tenant.id}/finalize`)
       .set('Authorization', `Bearer ${token}`)
       .send({ paymentMethod: 'PAY_LATER' });
     expect(fin.status).toBe(200);
     const row = await Tenant.findByPk(tenant.id);
     expect(row.status).toBe('PENDING_REVIEW');
-    expect(row.gymName).toBe('Iron Works 2');
+    expect(row.firstBusinessName).toBe('Iron Works 2');
   });
 
   test('a reopened application is not swept by the 90-day KYC retention, a still-rejected one is', async () => {
@@ -116,7 +118,7 @@ describe('FLOW-04: re-apply after rejection', () => {
     const stillRejected = await rejectedHost();
     expect((await reapply(reopened.tenant.id, reopened.token)).status).toBe(200);
     const sweep = await runKycRetentionSweep({ dryRun: true });
-    const ids = sweep.details.map((d) => d.tenantId);
+    const ids = sweep.details.map((d) => d.organizationId);
     expect(ids).toContain(stillRejected.tenant.id);
     expect(ids).not.toContain(reopened.tenant.id);
   });

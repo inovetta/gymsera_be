@@ -51,12 +51,12 @@ function normalizeDateStr(val) {
  * Process payment business date repair for a single tenant database.
  *
  * @param {Sequelize} tenantSeq - Connected Sequelize instance for the tenant
- * @param {object} context - Tenant context { tenantId, gymName, tenantCode }
+ * @param {object} context - Tenant context { organizationId, gymName, organizationCode }
  * @param {object} [options]
  * @param {boolean} [options.apply=false] - Whether to apply mutations
  * @param {boolean} [options.quiet=false] - Suppress verbose console logs
  * @returns {Promise<{
- *   tenantId: string,
+ *   organizationId: string,
  *   gymName: string,
  *   totalPayments: number,
  *   mismatches: Array<object>,
@@ -120,7 +120,7 @@ async function processTenantPaymentRepair(tenantSeq, context = {}, options = {})
 
   if (mismatches.length === 0) {
     return {
-      tenantId: context.tenantId || 'local',
+      organizationId: context.organizationId || 'local',
       gymName: context.gymName || 'Local DB',
       totalPayments: payments.length,
       mismatches: [],
@@ -192,7 +192,7 @@ async function processTenantPaymentRepair(tenantSeq, context = {}, options = {})
     const transaction = await tenantSeq.transaction({ readOnly: true });
     try {
       if (!options.quiet) {
-        console.log(`\n--- Tenant: ${context.gymName || context.tenantId} (${mismatches.length} mismatch(es)) ---`);
+        console.log(`\n--- Tenant: ${context.gymName || context.organizationId} (${mismatches.length} mismatch(es)) ---`);
         for (const m of mismatches) {
           console.log(`Payment ID:     ${m.paymentId}`);
           console.log(`  Method:       ${m.method} | Status: ${m.status} | Amount: ${m.amount} ${m.currency}`);
@@ -266,7 +266,7 @@ async function processTenantPaymentRepair(tenantSeq, context = {}, options = {})
   }
 
   return {
-    tenantId: context.tenantId || 'local',
+    organizationId: context.organizationId || 'local',
     gymName: context.gymName || 'Local DB',
     totalPayments: payments.length,
     mismatches,
@@ -317,7 +317,7 @@ async function repairAllTenantsPaymentBusinessDates(options = {}) {
 
   if (options.tenantFilter) {
     activeTenants = activeTenants.filter(
-      (t) => t.id === options.tenantFilter || t.tenantCode?.toLowerCase() === options.tenantFilter.toLowerCase()
+      (t) => t.id === options.tenantFilter || t.organizationCode?.toLowerCase() === options.tenantFilter.toLowerCase()
     );
   }
 
@@ -349,9 +349,9 @@ async function repairAllTenantsPaymentBusinessDates(options = {}) {
       const result = await processTenantPaymentRepair(
         tenantSeq,
         {
-          tenantId: tenant.id,
-          gymName: tenant.gymName,
-          tenantCode: tenant.tenantCode,
+          organizationId: tenant.id,
+          gymName: tenant.firstBusinessName,
+          organizationCode: tenant.organizationCode,
         },
         {
           apply: isApply,
@@ -366,10 +366,10 @@ async function repairAllTenantsPaymentBusinessDates(options = {}) {
       totalSkippedClosed += result.skippedClosedCount;
       totalEligible += result.eligibleCount;
     } catch (err) {
-      console.error(`❌ [Tenant Error] ${tenant.gymName || tenant.tenantCode} (${tenant.id}):`, err.message);
+      console.error(`❌ [Tenant Error] ${tenant.firstBusinessName || tenant.organizationCode} (${tenant.id}):`, err.message);
       reports.push({
-        tenantId: tenant.id,
-        gymName: tenant.gymName,
+        organizationId: tenant.id,
+        gymName: tenant.firstBusinessName,
         success: false,
         error: err.message,
       });

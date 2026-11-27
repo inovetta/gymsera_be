@@ -53,7 +53,7 @@ describe('BILL-04: grace, hold and pause states', () => {
     // A registration package the legacy fallback would hand back: a held or
     // paused plan must not fall through to it.
     const legacyPackage = await PlatformPackage.create({
-      name: 'Legacy 10', price: 1000, billingCycle: 'MONTHLY', maxBranches: 10, maxOrganizations: 3,
+      name: 'Legacy 10', price: 1000, billingCycle: 'MONTHLY', maxBranches: 10, maxBusinesses: 3,
       maxTrainers: 10, maxMembers: 1000,
     });
     tenant = await factories.createTenant({
@@ -64,7 +64,7 @@ describe('BILL-04: grace, hold and pause states', () => {
     await factories.createBranch(dbHarness.tenant1, listing.id);
     await factories.createBranch(dbHarness.tenant1, listing.id);
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5, stripeMonthlyPriceId: 'price_5m' });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const maxBranches = async () => {
@@ -159,13 +159,13 @@ describe('BILL-04: grace, hold and pause states', () => {
 
     test('an unknown subscription state is never treated as ACTIVE — the event fails and nothing changes', async () => {
       truth.tok = fakes.googlePurchase({ productId: plan5.androidProductId, state: 'SUBSCRIPTION_STATE_SOMETHING_NEW' });
-      await expect(googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', tenantId: tenant.id })).rejects.toThrow(/state/);
+      await expect(googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok', organizationId: tenant.id })).rejects.toThrow(/state/);
       expect((await rowFor('tok')).status).toBe('ACTIVE');
     });
 
     test('a first-seen purchase that is already on hold is recorded as ON_HOLD, never created ACTIVE', async () => {
       truth.tok2 = fakes.googlePurchase({ productId: plan5.androidProductId, state: 'SUBSCRIPTION_STATE_ON_HOLD', expiresInDays: -1 });
-      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok2', tenantId: tenant.id });
+      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok2', organizationId: tenant.id });
       expect((await rowFor('tok2')).status).toBe('ON_HOLD');
       // The tenant's real entitlement (the first purchase) is untouched.
       expect((await rowFor('tok')).status).toBe('ACTIVE');
@@ -254,7 +254,7 @@ describe('BILL-04: grace, hold and pause states', () => {
 
     beforeEach(async () => {
       ({ truth } = fakes.installStripeFakes({
-        subscriptions: { sub_s: fakes.stripeSubscription({ id: 'sub_s', priceId: 'price_5m', tenantId: tenant.id }) },
+        subscriptions: { sub_s: fakes.stripeSubscription({ id: 'sub_s', priceId: 'price_5m', organizationId: tenant.id }) },
       }));
       await updated('evt_s_start');
       expect(await maxBranches()).toBe(5);
@@ -282,7 +282,7 @@ describe('BILL-04: grace, hold and pause states', () => {
     });
 
     test('incomplete (first payment not done) grants nothing and writes no row', async () => {
-      truth.subscriptions.sub_new = fakes.stripeSubscription({ id: 'sub_new', priceId: 'price_5m', tenantId: tenant.id, status: 'incomplete' });
+      truth.subscriptions.sub_new = fakes.stripeSubscription({ id: 'sub_new', priceId: 'price_5m', organizationId: tenant.id, status: 'incomplete' });
       await request(app).post('/api/v1/billing/webhooks/stripe')
         .send({ id: 'evt_incomplete', type: 'customer.subscription.created', data: { object: { id: 'sub_new' } } });
       expect(await rowFor('sub_new')).toBeNull();
@@ -292,20 +292,20 @@ describe('BILL-04: grace, hold and pause states', () => {
 
   test('a GRACE row is the tenant\'s one entitling row: a new purchase supersedes it (never two entitling rows)', async () => {
     const { truth } = fakes.installGoogleFakes({ 'tok-a': fakes.googlePurchase({ productId: plan5.androidProductId }) });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-a', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-a', organizationId: tenant.id });
     truth['tok-a'] = fakes.googlePurchase({ productId: plan5.androidProductId, state: 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD' });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-a', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-a', organizationId: tenant.id });
     expect((await rowFor('tok-a')).status).toBe('GRACE');
 
     truth['tok-b'] = fakes.googlePurchase({ productId: plan5.androidProductId, latestOrderId: 'GPA.9' });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-b', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-b', organizationId: tenant.id });
     expect((await rowFor('tok-b')).status).toBe('ACTIVE');
     expect((await rowFor('tok-a')).status).toBe('PENDING_CANCEL');
-    expect(await TenantSubscription.count({ where: { tenantId: tenant.id, status: ['ACTIVE', 'GRACE'] } })).toBe(1);
+    expect(await TenantSubscription.count({ where: { organizationId: tenant.id, status: ['ACTIVE', 'GRACE'] } })).toBe(1);
 
     // The superseded one recovering at Google does not become a second entitling row.
     truth['tok-a'] = fakes.googlePurchase({ productId: plan5.androidProductId, state: 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD', latestOrderId: 'GPA.10' });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-a', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-a', organizationId: tenant.id });
     expect((await rowFor('tok-a')).status).toBe('PENDING_CANCEL');
   });
 });

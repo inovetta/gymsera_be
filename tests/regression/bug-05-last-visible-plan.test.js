@@ -25,8 +25,8 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
-  branch1 = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
+  branch1 = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
 });
 
 afterAll(async () => {
@@ -40,7 +40,7 @@ const plan = async (branchId, overrides = {}) => {
   const gym = await Gym.findOne();
   n += 1;
   return MembershipPlan.create({
-    gymId: gym.id,
+    businessId: gym.id,
     branchId,
     name: `B05 plan ${n}`,
     price: 1000 + n,
@@ -194,7 +194,7 @@ describe('BUG-05: personas on the hide route', () => {
   });
 
   test('member naming this gym: 404 from tenantContext (not a member; existence not revealed)', async () => {
-    const res = await asPersona('member', { 'X-Tenant-Id': personas.owner.tenantId })
+    const res = await asPersona('member', { 'X-Organization-Id': personas.owner.organizationId })
       .post(`/membership-plans/${only.id}/public`).send({});
     expect(res.status).toBe(404);
   });
@@ -217,7 +217,7 @@ describe('BUG-05: onboarding submit needs at least one plan shown to travellers'
       gymName: `${key} Gym`,
       status: 'DRAFT',
       connectionStringEncrypted: 'PENDING_PROVISIONING',
-      mainBranchDataJson: { branchName: 'Main', plans },
+      firstBranchDraft: { branchName: 'Main', packages: plans },
     });
     const { signToken } = require('../../src/utils/jwt.utils');
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true });
@@ -225,7 +225,7 @@ describe('BUG-05: onboarding submit needs at least one plan shown to travellers'
   };
 
   const finalize = ({ tenant, token }) => asPersona('anonymous', { Authorization: `Bearer ${token}` })
-    .post(`/tenants/${tenant.id}/finalize`)
+    .post(`/organizations/${tenant.id}/finalize`)
     .send({ paymentMethod: 'IN_APP_PURCHASE' });
 
   test('every plan hidden: 422 visible_plan_required, not submitted', async () => {

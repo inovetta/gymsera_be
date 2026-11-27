@@ -80,20 +80,20 @@ const _restrictedPortalConfigId = async () => {
   return created.id;
 };
 
-/** Finds or creates the Stripe Customer for a tenant, keyed by tenantId in metadata. */
-const _resolveCustomerId = async (tenantId, tenant) => {
+/** Finds or creates the Stripe Customer for a tenant, keyed by organizationId in metadata. */
+const _resolveCustomerId = async (organizationId, tenant) => {
   const stripe = _client();
   // externalTransactionId on a Stripe TenantSubscription row is the
   // subscription id, not the customer id, so a past row doesn't shortcut
   // this — the customer is always looked up by metadata instead, the one
   // place it's findable regardless of subscription history.
-  const found = await stripe.customers.search({ query: `metadata['tenantId']:'${tenantId}'` });
+  const found = await stripe.customers.search({ query: `metadata['organizationId']:'${organizationId}'` });
   if (found.data.length > 0) return found.data[0].id;
 
   const created = await stripe.customers.create({
     email: tenant?.email || undefined,
-    name: tenant?.businessName || undefined,
-    metadata: { tenantId },
+    name: tenant?.organizationName || undefined,
+    metadata: { organizationId },
   });
   return created.id;
 };
@@ -111,8 +111,8 @@ const _resolveCustomerId = async (tenantId, tenant) => {
  * is already active would leave two Stripe subscriptions both billing the
  * same customer instead of replacing one with the other.
  */
-const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { successUrl, cancelUrl, currency = null }) => {
-  const currentActive = await require('./subscription-quota.service').getActiveSubscription(tenantId);
+const createCheckoutSession = async (organizationId, billingPlanId, billingCycle, { successUrl, cancelUrl, currency = null }) => {
+  const currentActive = await require('./subscription-quota.service').getActiveSubscription(organizationId);
   if (currentActive?.platform === 'STRIPE') {
     throw createError('This account already has an active Stripe subscription — change its plan instead of starting a new checkout.', 409);
   }
@@ -125,8 +125,8 @@ const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { su
   const priceId = billingCycle === 'YEARLY' ? chosen.stripeAnnualPriceId : chosen.stripeMonthlyPriceId;
   if (!priceId) throw createError(`This plan is not yet configured for Stripe (${billingCycle})`, 400);
 
-  const tenant = await Tenant.findByPk(tenantId);
-  const customerId = await _resolveCustomerId(tenantId, tenant);
+  const tenant = await Tenant.findByPk(organizationId);
+  const customerId = await _resolveCustomerId(organizationId, tenant);
   const stripe = _client();
 
   const session = await stripe.checkout.sessions.create({
@@ -135,8 +135,8 @@ const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { su
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: successUrl,
     cancel_url: cancelUrl,
-    metadata: { tenantId, billingPlanId: plan.id },
-    subscription_data: { metadata: { tenantId, billingPlanId: plan.id } },
+    metadata: { organizationId, billingPlanId: plan.id },
+    subscription_data: { metadata: { organizationId, billingPlanId: plan.id } },
   });
   return { url: session.url, sessionId: session.id };
 };
@@ -157,8 +157,8 @@ const createCheckoutSession = async (tenantId, billingPlanId, billingCycle, { su
  * write to TenantSubscription itself — same "frontend/caller never grants,
  * only the webhook does" rule as everywhere else in this file.
  */
-const changeSubscriptionPlan = async (tenantId, billingPlanId, billingCycle) => {
-  const currentActive = await require('./subscription-quota.service').getActiveSubscription(tenantId);
+const changeSubscriptionPlan = async (organizationId, billingPlanId, billingCycle) => {
+  const currentActive = await require('./subscription-quota.service').getActiveSubscription(organizationId);
   if (!currentActive || currentActive.platform !== 'STRIPE') {
     throw createError('This account does not have an active Stripe subscription to change.', 409);
   }
@@ -181,16 +181,16 @@ const changeSubscriptionPlan = async (tenantId, billingPlanId, billingCycle) => 
   const updated = await stripe.subscriptions.update(currentActive.externalOriginalTransactionId, {
     items: [{ id: existingItemId, price: newPriceId }],
     proration_behavior: 'create_prorations',
-    metadata: { tenantId, billingPlanId: plan.id },
+    metadata: { organizationId, billingPlanId: plan.id },
   });
 
   return { subscriptionId: updated.id, status: updated.status };
 };
 
 /** Payment method / invoices / cancellation only — see the restricted Portal Configuration above. */
-const createBillingPortalSession = async (tenantId, returnUrl) => {
-  const tenant = await Tenant.findByPk(tenantId);
-  const customerId = await _resolveCustomerId(tenantId, tenant);
+const createBillingPortalSession = async (organizationId, returnUrl) => {
+  const tenant = await Tenant.findByPk(organizationId);
+  const customerId = await _resolveCustomerId(organizationId, tenant);
   const stripe = _client();
   const configuration = await _restrictedPortalConfigId();
   const session = await stripe.billingPortal.sessions.create({
@@ -270,7 +270,7 @@ const _statusFromStripeStatus = (stripeStatus) => {
  * own retries of the same delivery, which is exactly the idempotency
  * behavior every other caller of reconcileCapacity relies on.
  */
-const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { originListingId = null, stripeEventId = null, revoked = false } = {}) => {
+const syncSubscriptionFromStripeObject = async (organizationId, stripeSubscription, { originListingId = null, stripeEventId = null, revoked = false } = {}) => {
   const idempotencyPrefix = stripeEventId || stripeSubscription.id;
   const item = stripeSubscription.items?.data?.[0];
   const priceId = item?.price?.id;
@@ -317,11 +317,11 @@ const syncSubscriptionFromStripeObject = async (tenantId, stripeSubscription, { 
     lastVerifiedAt: new Date(),
   };
 
-  return subscriptionMigrationService.applyVerifiedSubscription(tenantId, values, {
+  return subscriptionMigrationService.applyVerifiedSubscription(organizationId, values, {
     originListingId,
     idempotencyPrefix,
     // Written by our own createCheckoutSession, server-side (BILL-01).
-    boundTenantId: stripeSubscription.metadata?.tenantId || null,
+    boundTenantId: stripeSubscription.metadata?.organizationId || null,
     logLabel: 'Stripe Billing',
   });
 };
@@ -389,7 +389,7 @@ const stripeApi = {
  * grants anything; only the webhook does. A session that isn't this tenant's
  * is reported as not found.
  */
-const getCheckoutSessionStatus = async (tenantId, sessionId) => {
+const getCheckoutSessionStatus = async (organizationId, sessionId) => {
   let session;
   try {
     session = await stripeApi.retrieveCheckoutSession(sessionId);
@@ -397,7 +397,7 @@ const getCheckoutSessionStatus = async (tenantId, sessionId) => {
     if (err.statusCode === 404 || err.code === 'resource_missing') throw createError('Checkout session not found', 404);
     throw err;
   }
-  if (session.metadata?.tenantId !== tenantId) throw createError('Checkout session not found', 404);
+  if (session.metadata?.organizationId !== organizationId) throw createError('Checkout session not found', 404);
 
   const confirmed = session.status === 'complete' && ['paid', 'no_payment_required'].includes(session.payment_status);
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
@@ -407,7 +407,7 @@ const getCheckoutSessionStatus = async (tenantId, sessionId) => {
     entitled =
       (await TenantSubscription.count({
         where: {
-          tenantId,
+          organizationId,
           platform: 'STRIPE',
           externalOriginalTransactionId: subscriptionId,
           status: require('./subscription-quota.service').ENTITLING_STATUSES,
@@ -422,7 +422,7 @@ const getCheckoutSessionStatus = async (tenantId, sessionId) => {
  * Stripe's API (never the webhook payload's copy, which can arrive out of
  * order), resolve its owner, then apply it through
  * syncSubscriptionFromStripeObject. The owner is the tenant already holding
- * this subscription id, else the tenantId our own Checkout Session wrote into
+ * this subscription id, else the organizationId our own Checkout Session wrote into
  * the subscription's metadata server-side.
  *
  * @returns {Promise<object|null>} null when no tenant can be resolved;
@@ -433,13 +433,13 @@ const syncFromStripe = async ({ subscriptionId, eventId = null, revoked = false 
   // First payment not completed yet (e.g. 3-D Secure pending): nothing to
   // grant. The next customer.subscription.updated carries the outcome.
   if (subscription.status === 'incomplete') return { pending: true };
-  const tenantId = await subscriptionMigrationService.resolveSubscriptionOwner(
+  const organizationId = await subscriptionMigrationService.resolveSubscriptionOwner(
     'STRIPE',
     subscription.id,
-    subscription.metadata?.tenantId
+    subscription.metadata?.organizationId
   );
-  if (!tenantId) return null;
-  return syncSubscriptionFromStripeObject(tenantId, subscription, { stripeEventId: eventId, revoked });
+  if (!organizationId) return null;
+  return syncSubscriptionFromStripeObject(organizationId, subscription, { stripeEventId: eventId, revoked });
 };
 
 /**

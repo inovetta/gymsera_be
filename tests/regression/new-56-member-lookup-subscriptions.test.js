@@ -23,7 +23,7 @@ const { GymListing } = require('../../src/models/platform');
 let app;
 let dbHarness;
 let personas;
-let tenantId;
+let organizationId;
 let branches; // { a, b, c }
 let members; // letter -> { user, subscription } (one valid subscription each)
 let mixed; // member at A with valid, expired, zero-visit, frozen and unlimited subscriptions
@@ -41,11 +41,11 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
   const { Branch, MembershipPlan, MemberSubscription } = tenantDb.models;
 
-  const listing = await GymListing.findOne({ where: { tenantId } });
-  const a = await Branch.findOne({ where: { gymListingId: listing.id } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
+  const a = await Branch.findOne({ where: { businessId: listing.id } });
   const b = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   const c = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
   branches = { a, b, c };
@@ -54,7 +54,7 @@ beforeAll(async () => {
   for (const letter of LETTERS) {
     const br = branches[letter];
     plans[letter] = await MembershipPlan.create({
-      gymId: br.gymId || br.id, branchId: br.id, name: `N56 Monthly ${letter}`, price: 5000, priceMinor: 500000,
+      businessId: br.businessId || br.id, branchId: br.id, name: `N56 Monthly ${letter}`, price: 5000, priceMinor: 500000,
       durationType: 'MONTHLY', durationValue: 1, isPublic: true, status: 'ACTIVE',
     });
   }
@@ -82,16 +82,16 @@ beforeAll(async () => {
   bare = await factories.createUser({ email: 'bare@new56.test', fullName: 'Bare', role: 'MEMBER' });
 
   managerThree = await teamMember({
-    tenantDb, tenantId, email: 'mgr-three@new56.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
+    tenantDb, organizationId, email: 'mgr-three@new56.test', roleKey: 'MANAGER', scopeType: 'BRANCH',
     branchIds: [a.id, b.id, c.id],
   });
   managerOne = await teamMember({
-    tenantDb, tenantId, email: 'mgr-one@new56.test', roleKey: 'MANAGER', scopeType: 'BRANCH', branchIds: [a.id],
+    tenantDb, organizationId, email: 'mgr-one@new56.test', roleKey: 'MANAGER', scopeType: 'BRANCH', branchIds: [a.id],
   });
   // Front Desk keeps members.view and checkins.manual.create but has subscriptions.view DENIED,
   // which is the reported case: GET /subscriptions/staff answers 403.
   desk = await teamMember({
-    tenantDb, tenantId, email: 'desk@new56.test', roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [a.id],
+    tenantDb, organizationId, email: 'desk@new56.test', roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [a.id],
   });
   await tenantDb.models.AssignmentOverride.create({
     assignmentId: desk.assignment.id, permissionKey: 'subscriptions.view', effect: 'DENY', createdBy: desk.user.id,
@@ -103,7 +103,7 @@ afterAll(async () => {
   await teardownTestDatabases();
 });
 
-const authed = (req, token) => req.set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', tenantId);
+const authed = (req, token) => req.set('Authorization', `Bearer ${token}`).set('X-Organization-Id', organizationId);
 const lookup = (token, letter, email) => authed(
   request(app).get(`/api/v1/host/branches/${branches[letter].id}/members/lookup`).query({ email }), token
 );

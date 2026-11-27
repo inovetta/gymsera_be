@@ -34,7 +34,7 @@ beforeAll(async () => {
   branch = await models.Branch.findByPk(ctx.branch1.id);
   await branch.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
   const plan = await models.MembershipPlan.create({
-    gymId: branch.gymId, branchId: branch.id, name: 'Public', price: 2500,
+    businessId: branch.businessId, branchId: branch.id, name: 'Public', price: 2500,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
   });
   const user = await factories.createUser({ role: 'MEMBER', email: `m-${uuidv4().slice(0, 8)}@p5b.test` });
@@ -52,7 +52,7 @@ afterAll(async () => {
 beforeEach(() => cache._resetForTests());
 
 const listedIds = async () => {
-  const res = await request(server).get('/api/v1/discovery/gyms?page=1&limit=50');
+  const res = await request(server).get('/api/v1/discovery/branches?page=1&limit=50');
   expect(res.status).toBe(200);
   const d = res.body.data;
   return (Array.isArray(d) ? d : d.branches || d.gyms || []).map((r) => r.id);
@@ -115,20 +115,20 @@ describe('P5b item 2: pause and resume', () => {
     const { personaManager } = require('../harness/personas');
     await UserGymMembership.create({
       userId: personaManager.personas.member.user.id,
-      tenantId: ctx.tenant1.id,
-      gymListingId: ctx.listing1.id,
+      organizationId: ctx.tenant1.id,
+      businessId: ctx.listing1.id,
       subscriptionId: uuidv4(),
-      gymName: 'Alpha Fitness Club',
+      businessName: 'Alpha Fitness Club',
       planName: 'Public',
       status: 'ACTIVE',
     });
-    const res = await asPersona('member', { 'X-Tenant-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
+    const res = await asPersona('member', { 'X-Organization-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
     expect(res.status).toBe(403);
     expect((await reload()).pausedAt).toBeNull();
   });
 
   test('another tenant\'s owner cannot reach it (404), branch not paused', async () => {
-    const res = await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
+    const res = await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id }).post(`/host/branches/${ctx.branch1.id}/pause`, {});
     expect(res.status).toBe(404);
     expect((await reload()).pausedAt).toBeNull();
   });

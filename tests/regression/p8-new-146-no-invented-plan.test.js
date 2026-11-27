@@ -20,12 +20,12 @@ const TenantDbManager = require('../../src/database/TenantDbManager');
 const dbNames = [];
 let admin;
 
-const pendingTenant = async (key, mainBranchDataJson) => {
-  const tenantCode = `test_p8n146_${key}_${Date.now().toString(36)}`;
-  dbNames.push(`gymsera_${tenantCode}`);
+const pendingTenant = async (key, firstBranchDraft) => {
+  const organizationCode = `test_p8n146_${key}_${Date.now().toString(36)}`;
+  dbNames.push(`gymsera_${organizationCode}`);
   return factories.createTenant({
-    tenantCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
-    mainBranchDataJson,
+    organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
+    firstBranchDraft,
   });
 };
 
@@ -43,8 +43,8 @@ afterAll(async () => {
 
 describe('NEW-146: no invented membership plan', () => {
   test.each([
-    ['no plan at all', { name: 'Main', plans: [] }],
-    ['only plans hidden from travellers', { name: 'Main', plans: [{ name: 'Staff only', price: 1000, isPublic: false }] }],
+    ['no plan at all', { branchName: 'Main', packages: [] }],
+    ['only plans hidden from travellers', { branchName: 'Main', packages: [{ name: 'Staff only', price: 1000, isPublic: false }] }],
   ])('approval with %s: 422 visible_plan_required, nothing changes', async (_label, data) => {
     const tenant = await pendingTenant(_label.length, data);
     await expect(adminService.approveTenant(tenant.id, admin.id)).rejects.toMatchObject({
@@ -56,8 +56,9 @@ describe('NEW-146: no invented membership plan', () => {
   });
 
   test("approval with the host's plan creates exactly that plan, nothing else", async () => {
-    const tenant = await pendingTenant('ok', { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] });
+    const tenant = await pendingTenant('ok', { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }] });
     await adminService.approveTenant(tenant.id, admin.id);
+    await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d
     await tenant.reload();
     expect(tenant.status).toBe('ACTIVE');
     const db = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);

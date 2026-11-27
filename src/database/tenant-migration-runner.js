@@ -18,7 +18,7 @@ const MIGRATIONS = [
     name: '001_ensure_rbac_tables',
     up: async (sequelize, context) => {
       if (context?.dryRun === true) return;
-      await ensureAccessControlTables(sequelize, context?.tenantId || 'unknown');
+      await ensureAccessControlTables(sequelize, context?.organizationId || 'unknown');
     },
   },
   {
@@ -26,7 +26,7 @@ const MIGRATIONS = [
     name: '002_ensure_ledger_tables',
     up: async (sequelize, context) => {
       if (context?.dryRun === true) return;
-      await ensureLedgerTables(sequelize, context?.tenantId || 'unknown');
+      await ensureLedgerTables(sequelize, context?.organizationId || 'unknown');
     },
   },
   {
@@ -80,7 +80,7 @@ const MIGRATIONS = [
       ).catch(() => {});
 
       // gyms
-      await ensureCol('gyms', 'gym_listing_id', '`gym_listing_id` CHAR(36) NULL');
+      await ensureCol(await businessTable(sequelize), 'gym_listing_id', '`gym_listing_id` CHAR(36) NULL'); // R-120: `gyms` until 030
     },
   },
   {
@@ -136,11 +136,12 @@ const MIGRATIONS = [
     name: '005_backfill_gym_listing_ids',
     up: async (sequelize, context) => {
       if (context?.dryRun === true) return;
-      if (!context?.tenantId) return;
+      if (!context?.organizationId) return;
       try {
         const { GymListing } = require('../models/platform');
         const firstListing = await GymListing.findOne({
-          where: { tenantId: context.tenantId, status: { [Sequelize.Op.ne]: 'INACTIVE' } },
+          where: { organizationId: context.organizationId, status: { [Sequelize.Op.ne]: 'INACTIVE' } },
+          order: [['createdAt', 'ASC'], ['id', 'ASC']],
         }).catch(() => null);
 
         if (firstListing && firstListing.id) {
@@ -149,7 +150,7 @@ const MIGRATIONS = [
             { replacements: [firstListing.id, ''] }
           ).catch(() => {});
           await sequelize.query(
-            'UPDATE gyms SET gym_listing_id = ? WHERE gym_listing_id IS NULL OR gym_listing_id = ?',
+            `UPDATE \`${await businessTable(sequelize)}\` SET gym_listing_id = ? WHERE gym_listing_id IS NULL OR gym_listing_id = ?`, // R-120: `gyms` until 030
             { replacements: [firstListing.id, ''] }
           ).catch(() => {});
         }
@@ -163,7 +164,7 @@ const MIGRATIONS = [
     name: '006_enforce_payments_business_date_not_null',
     up: async (sequelize, context) => {
       if (context?.dryRun === true) return;
-      const tenantId = context?.tenantId || 'unknown';
+      const organizationId = context?.organizationId || 'unknown';
       // Count NULL business_date rows in payments
       const [result] = await sequelize.query(
         'SELECT COUNT(*) AS null_count FROM payments WHERE business_date IS NULL',
@@ -173,7 +174,7 @@ const MIGRATIONS = [
       const nullCount = Number(result?.null_count || 0);
       if (nullCount > 0) {
         console.warn(
-          `[TenantMigration] SKIPPING Migration 006 on tenant ${tenantId}: found ${nullCount} payments with NULL business_date. Table remains unchanged.`
+          `[TenantMigration] SKIPPING Migration 006 on tenant ${organizationId}: found ${nullCount} payments with NULL business_date. Table remains unchanged.`
         );
         return { skipped: true, reason: 'has_null_business_date_rows', nullCount };
       }
@@ -189,7 +190,7 @@ const MIGRATIONS = [
     name: '007_align_tenant_collations',
     up: async (sequelize, context) => {
       if (context?.dryRun === true) return;
-      const tenantLabel = context?.tenantId || 'local';
+      const tenantLabel = context?.organizationId || 'local';
 
       // 1. Identify all tables whose collation differs from utf8mb4_unicode_ci
       const differingTables = await sequelize.query(`
@@ -1449,16 +1450,15 @@ const MIGRATIONS = [
           'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
           { replacements: [table, column], type: QueryTypes.SELECT }
         )).length > 0;
-      // As 023 does for gym_staff: a database without `gyms` (a partial test schema) gets the table only.
-      const hasGyms = (await sequelize.query(
-        'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gyms\'',
-        { type: QueryTypes.SELECT }
-      )).length > 0;
-      if (hasGyms && !(await hasColumn('gyms', 'refunds_allowed'))) {
-        await sequelize.query('ALTER TABLE `gyms` ADD COLUMN `refunds_allowed` TINYINT(1) NOT NULL DEFAULT 0');
+      // As 023 does for gym_staff: a database without the business table (a partial test schema) gets the
+      // table only. R-120: `gyms` until 030 renames it `businesses`.
+      const biz = await businessTable(sequelize);
+      const hasGyms = await hasTable(sequelize, biz);
+      if (hasGyms && !(await hasColumn(biz, 'refunds_allowed'))) {
+        await sequelize.query(`ALTER TABLE \`${biz}\` ADD COLUMN \`refunds_allowed\` TINYINT(1) NOT NULL DEFAULT 0`);
       }
-      if (hasGyms && !(await hasColumn('gyms', 'refund_window_days'))) {
-        await sequelize.query('ALTER TABLE `gyms` ADD COLUMN `refund_window_days` SMALLINT UNSIGNED NULL');
+      if (hasGyms && !(await hasColumn(biz, 'refund_window_days'))) {
+        await sequelize.query(`ALTER TABLE \`${biz}\` ADD COLUMN \`refund_window_days\` SMALLINT UNSIGNED NULL`);
       }
       await sequelize.query(`CREATE TABLE IF NOT EXISTS \`refund_requests\` (
         \`id\` CHAR(36) NOT NULL,
@@ -1505,6 +1505,76 @@ const MIGRATIONS = [
       return null;
     },
   },
+  {
+    // R-120 NEW-306 (docs/NAMING_AND_DATA_DICTIONARY.md §3.6): the tenant `gyms` table holds businesses.
+    // gyms → businesses; branches / membership_plans / expense_categories .gym_id → business_id (indexes
+    // renamed; the foreign keys follow the rename). Metadata only (ALGORITHM=INPLACE), no data changes.
+    // A fresh database built by sync already has the new names: every step is then a no-op.
+    // A conflict (both names hold data) is reported and the migration is not recorded; re-run after fixing.
+    // Rollback (manual, in this order):
+    //   ALTER TABLE `expense_categories` CHANGE COLUMN `business_id` `gym_id` <same definition>;
+    //   ALTER TABLE `membership_plans` RENAME INDEX `membership_plans_business_id` TO `membership_plans_gym_id`;
+    //   ALTER TABLE `membership_plans` CHANGE COLUMN `business_id` `gym_id` <same definition>;
+    //   ALTER TABLE `branches` RENAME INDEX `branches_business_id` TO `branches_gym_id`;
+    //   ALTER TABLE `branches` CHANGE COLUMN `business_id` `gym_id` <same definition>;
+    //   RENAME TABLE `businesses` TO `gyms`; DELETE FROM `schema_migrations` WHERE `version` = 30;
+    version: 30,
+    name: '030_business_naming',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const out = await r.applyAll(sequelize, [
+        [r.renameTable, { from: 'gyms', to: 'businesses', comment: 'One row per business in this organization (staff profile); same id as its business_listings row.' }],
+        [r.renameColumn, { table: 'branches', from: 'gym_id', to: 'business_id', comment: 'The business this branch belongs to (businesses.id).' }],
+        [r.renameIndex, { table: 'branches', from: 'branches_gym_id', to: 'branches_business_id' }],
+        [r.renameColumn, { table: 'membership_plans', from: 'gym_id', to: 'business_id', comment: 'The business that sells the plan (businesses.id).' }],
+        [r.renameIndex, { table: 'membership_plans', from: 'membership_plans_gym_id', to: 'membership_plans_business_id' }],
+        [r.renameColumn, { table: 'expense_categories', from: 'gym_id', to: 'business_id', comment: 'Business of a custom category; NULL for system categories.' }],
+      ]);
+      return out.skipped.length ? { skipped: true, reason: 'rename_conflict', conflicts: out.skipped } : null;
+    },
+  },
+  {
+    // R-120 NEW-308 (option S): one id per business. `businesses.id` is the `business_listings.id`, so the two link
+    // columns are dropped. No backfill (R-120): a database whose ids differ is recreated, never repaired.
+    // Undo (manual): ALTER TABLE `branches` ADD COLUMN `gym_listing_id` CHAR(36) NULL;
+    //   ALTER TABLE `businesses` ADD COLUMN `gym_listing_id` CHAR(36) NULL; DELETE FROM `schema_migrations` WHERE `version` = 31;
+    version: 31,
+    name: '031_business_one_id',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      await r.applyAll(sequelize, [
+        [r.dropColumn, { table: 'branches', column: 'gym_listing_id' }],
+        [r.dropColumn, { table: await businessTable(sequelize), column: 'gym_listing_id' }],
+      ]);
+      return null;
+    },
+  },
+  {
+    // NEW-303 M3 (enterprise D12): the refund policy belongs to the branch only. No copy from the business
+    // (R-120: data is recreated); new branches start with refunds off. ROLLBACK: add the two columns back to
+    // `businesses` (TINYINT(1) NOT NULL DEFAULT 0, SMALLINT UNSIGNED NULL), drop them from `branches`, delete version 32.
+    version: 32,
+    name: '032_branch_refund_policy',
+    up: async (sequelize, context) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const hasColumn = async (table, column) => !!(await r.columnInfo(sequelize, table, column));
+      if (!(await hasColumn('branches', 'refunds_allowed'))) {
+        await sequelize.query('ALTER TABLE `branches` ADD COLUMN `refunds_allowed` TINYINT(1) NOT NULL DEFAULT 0');
+      }
+      if (!(await hasColumn('branches', 'refund_window_days'))) {
+        await sequelize.query('ALTER TABLE `branches` ADD COLUMN `refund_window_days` SMALLINT UNSIGNED NULL');
+      }
+      const business = await businessTable(sequelize);
+      await r.applyAll(sequelize, [
+        [r.dropColumn, { table: business, column: 'refunds_allowed' }],
+        [r.dropColumn, { table: business, column: 'refund_window_days' }],
+      ]);
+      return null;
+    },
+  },
 ];
 
 const TARGET_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -1521,6 +1591,9 @@ const hasTable = async (sequelize, table) => {
   );
   return rows.length > 0;
 };
+
+/** R-120 (030): the tenant business table is `businesses`; a database before 030 still has `gyms`. */
+const businessTable = async (sequelize) => ((await hasTable(sequelize, 'businesses')) ? 'businesses' : 'gyms');
 
 /**
  * Versions of `migrations` not recorded in `schema_migrations` (all of them when the table is missing).
@@ -1542,7 +1615,7 @@ async function isUnbaselinedTenantDb(sequelize) {
   return !(await hasTable(sequelize, 'schema_migrations')) && (await hasTable(sequelize, 'branches'));
 }
 
-const repairCommand = (tenantCode) => `node src/scripts/repair-tenant-schema.js --tenant ${tenantCode}`;
+const repairCommand = (organizationCode) => `node src/scripts/repair-tenant-schema.js --tenant ${organizationCode}`;
 
 /**
  * Ensures the `schema_migrations` tracking table exists on a tenant database.
@@ -1565,14 +1638,14 @@ async function ensureMigrationTable(sequelize) {
  *
  * @param {import('sequelize').Sequelize} sequelize
  * @param {object} [context]
- * @param {string} [context.tenantId]
- * @param {string} [context.tenantCode]
+ * @param {string} [context.organizationId]
+ * @param {string} [context.organizationCode]
  * @param {string} [context.gymName]
  * @param {number} [context.targetVersion]
  * @param {boolean} [context.dryRun]
  * @param {Array} [context.migrations] - the migration list to run (default: the tenant MIGRATIONS). The platform
  *   database passes its own list (platform-migrations.js) so both databases share this one runner.
- * @returns {Promise<{ tenantId: string, tenantCode?: string, gymName: string, initialVersion: number, finalVersion: number, applied: string[], wouldRun?: string[], dryRun?: boolean }>}
+ * @returns {Promise<{ organizationId: string, organizationCode?: string, gymName: string, initialVersion: number, finalVersion: number, applied: string[], wouldRun?: string[], dryRun?: boolean }>}
  */
 async function runTenantMigrations(sequelize, context = {}) {
   const isDryRun = context.dryRun === true;
@@ -1619,8 +1692,8 @@ async function runTenantMigrations(sequelize, context = {}) {
     }
 
     return {
-      tenantId: context.tenantId || 'local',
-      tenantCode: context.tenantCode || 'UNKNOWN',
+      organizationId: context.organizationId || 'local',
+      organizationCode: context.organizationCode || 'UNKNOWN',
       gymName: context.gymName || 'Local DB',
       initialVersion,
       finalVersion: initialVersion,
@@ -1636,11 +1709,11 @@ async function runTenantMigrations(sequelize, context = {}) {
     if (mig.version > targetVersion) continue;
     if (appliedSet.has(mig.version)) continue;
 
-    console.log(`[TenantMigration] Tenant ${context.tenantId || 'local'}: running ${mig.name} (v${mig.version})...`);
+    console.log(`[TenantMigration] Tenant ${context.organizationId || 'local'}: running ${mig.name} (v${mig.version})...`);
     const migResult = await mig.up(sequelize, context);
 
     if (migResult?.skipped) {
-      console.warn(`[TenantMigration] Tenant ${context.tenantId || 'local'}: skipped ${mig.name} (v${mig.version}); not recording as applied.`);
+      console.warn(`[TenantMigration] Tenant ${context.organizationId || 'local'}: skipped ${mig.name} (v${mig.version}); not recording as applied.`);
       continue;
     }
 
@@ -1658,8 +1731,8 @@ async function runTenantMigrations(sequelize, context = {}) {
   const finalVersion = finalRows.length > 0 ? Math.max(...finalRows.map((r) => r.version)) : 0;
 
   return {
-    tenantId: context.tenantId || 'local',
-    tenantCode: context.tenantCode || 'UNKNOWN',
+    organizationId: context.organizationId || 'local',
+    organizationCode: context.organizationCode || 'UNKNOWN',
     gymName: context.gymName || 'Local DB',
     initialVersion,
     finalVersion,
@@ -1712,22 +1785,22 @@ async function runAllTenantMigrations(options = {}) {
 
       if (await isUnbaselinedTenantDb(tenantSeq)) {
         throw new Error(
-          `no schema_migrations table but tenant tables exist (made before the migration runner). Not touched. Run '${repairCommand(tenant.tenantCode)}' (dry run), then add --apply --confirm ${tenant.tenantCode}`
+          `no schema_migrations table but tenant tables exist (made before the migration runner). Not touched. Run '${repairCommand(tenant.organizationCode)}' (dry run), then add --apply --confirm ${tenant.organizationCode}`
         );
       }
 
       const result = await runTenantMigrations(tenantSeq, {
-        tenantId: tenant.id,
-        tenantCode: tenant.tenantCode,
-        gymName: tenant.gymName,
+        organizationId: tenant.id,
+        organizationCode: tenant.organizationCode,
+        gymName: tenant.firstBusinessName,
         targetVersion: options.targetVersion,
         dryRun: options.dryRun === true,
       });
 
       reports.push({
-        tenantId: tenant.id,
-        tenantCode: tenant.tenantCode,
-        gymName: tenant.gymName,
+        organizationId: tenant.id,
+        organizationCode: tenant.organizationCode,
+        gymName: tenant.firstBusinessName,
         initialVersion: result.initialVersion,
         finalVersion: result.finalVersion,
         applied: result.applied,
@@ -1737,11 +1810,11 @@ async function runAllTenantMigrations(options = {}) {
       });
       successCount++;
     } catch (err) {
-      console.error(`[TenantMigration] Failed migrating tenant ${tenant.tenantCode} (${tenant.id}):`, err.message);
+      console.error(`[TenantMigration] Failed migrating tenant ${tenant.organizationCode} (${tenant.id}):`, err.message);
       reports.push({
-        tenantId: tenant.id,
-        tenantCode: tenant.tenantCode,
-        gymName: tenant.gymName,
+        organizationId: tenant.id,
+        organizationCode: tenant.organizationCode,
+        gymName: tenant.firstBusinessName,
         initialVersion: 0,
         finalVersion: 0,
         success: false,
@@ -1770,8 +1843,8 @@ async function runAllTenantMigrations(options = {}) {
  * Reporting (error lines, alert, /health) is tenant-schema-health.service.js (NEW-126).
  *
  * @returns {Promise<{ checked: number, targetVersion: number,
- *   behind: Array<{ tenantId: string, tenantCode: string, status: string, currentVersion: number, targetVersion: number, hasMigrationTable: boolean }>,
- *   failed: Array<{ tenantId: string|null, tenantCode: string|null, error: string }> }>}
+ *   behind: Array<{ organizationId: string, organizationCode: string, status: string, currentVersion: number, targetVersion: number, hasMigrationTable: boolean }>,
+ *   failed: Array<{ organizationId: string|null, organizationCode: string|null, error: string }> }>}
  */
 async function checkTenantSchemaVersions() {
   const behind = [];
@@ -1786,7 +1859,7 @@ async function checkTenantSchemaVersions() {
       },
     })).filter((t) => t.connectionStringEncrypted !== 'PENDING_PROVISIONING');
   } catch (err) {
-    failed.push({ tenantId: null, tenantCode: null, error: `could not list tenants: ${err.message}` });
+    failed.push({ organizationId: null, organizationCode: null, error: `could not list tenants: ${err.message}` });
     return { checked: 0, targetVersion: TARGET_SCHEMA_VERSION, behind, failed };
   }
 
@@ -1810,8 +1883,8 @@ async function checkTenantSchemaVersions() {
           currentVersion = Number(rows[0]?.max_version || 0);
         }
         behind.push({
-          tenantId: tenant.id,
-          tenantCode: tenant.tenantCode,
+          organizationId: tenant.id,
+          organizationCode: tenant.organizationCode,
           status: tenant.status,
           currentVersion,
           targetVersion: TARGET_SCHEMA_VERSION,
@@ -1820,7 +1893,7 @@ async function checkTenantSchemaVersions() {
         });
       }
     } catch (err) {
-      failed.push({ tenantId: tenant.id, tenantCode: tenant.tenantCode, error: err.message });
+      failed.push({ organizationId: tenant.id, organizationCode: tenant.organizationCode, error: err.message });
     } finally {
       if (tenantSeq) await tenantSeq.close().catch(() => {});
     }

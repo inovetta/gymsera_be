@@ -70,7 +70,7 @@ const q = (name) => {
 };
 
 /** Same rule as tenant-provisioning.service.js#buildDbName. */
-const dbNameFor = (tenantCode) => `gymsera_${String(tenantCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+const dbNameFor = (organizationCode) => `gymsera_${String(organizationCode).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
 
 const normTitle = (title) => String(title ?? '').trim().toLowerCase();
 
@@ -81,8 +81,8 @@ const DOUBLE_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
  * Pure classification.
  * @param {object} data
  *   tenants:   [{ id, tenant_code, status, db_name, has_connection, provisioning_state? }]
- *   listings:  [{ tenant_id, title, created_at }]
- *   planCounts: { [tenantId]: n }
+ *   listings:  [{ organization_id, title, created_at }]
+ *   planCounts: { [organizationId]: n }
  *   databases: string[]                          gymsera_* databases on the tenant server
  *   tenantDbs: { [dbName]: { gyms, gymsSharingListing, branchesWithoutListing } | { error } }
  *              gymsSharingListing = gym rows whose gym_listing_id is also on another gym row
@@ -91,7 +91,7 @@ const DOUBLE_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 function classify({ tenants, listings, planCounts, databases, tenantDbs, platformDb }) {
   const dbSet = new Set(databases);
   const listingsByTenant = {};
-  for (const l of listings) (listingsByTenant[l.tenant_id] = listingsByTenant[l.tenant_id] || []).push(l);
+  for (const l of listings) (listingsByTenant[l.organization_id] = listingsByTenant[l.organization_id] || []).push(l);
 
   const findings = [];
   const expectedDbs = new Map();
@@ -131,7 +131,7 @@ function classify({ tenants, listings, planCounts, databases, tenantDbs, platfor
       findings.push({
         kind: 'TENANT',
         id: t.id,
-        tenantCode: t.tenant_code,
+        organizationCode: t.tenant_code,
         status: t.status,
         provisioningState: t.provisioning_state ?? null,
         dbName,
@@ -151,7 +151,7 @@ function classify({ tenants, listings, planCounts, databases, tenantDbs, platfor
     if (db === platformDb) continue;
     const t = expectedDbs.get(db);
     if (!t || !LIVE_STATUSES.has(t.status)) {
-      findings.push({ kind: 'DATABASE', dbName: db, tenantId: t?.id || null, tenantStatus: t?.status || null, verdicts: ['ORPHAN_DATABASE'] });
+      findings.push({ kind: 'DATABASE', dbName: db, organizationId: t?.id || null, tenantStatus: t?.status || null, verdicts: ['ORPHAN_DATABASE'] });
     }
   }
   return findings;
@@ -187,21 +187,27 @@ async function main() {
   try {
     await readOnly(pconn);
     const [cols] = await pconn.query(
-      "SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'provisioning_state'",
+      "SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'organizations' AND COLUMN_NAME = 'provisioning_state'",
       [platformDb]
     );
     hasState = cols.length === 1;
     [tenants] = await pconn.query(
-      `SELECT id, tenant_code, status, db_name, (connection_string_encrypted IS NOT NULL AND connection_string_encrypted <> 'PENDING_PROVISIONING') AS has_connection` +
-        `${hasState ? ', provisioning_state' : ''} FROM ${q(platformDb)}.tenants ORDER BY created_at, id`
+      `SELECT id, organization_code AS tenant_code, status, db_name, (connection_string_encrypted IS NOT NULL AND connection_string_encrypted <> 'PENDING_PROVISIONING') AS has_connection` +
+        `${hasState ? ', provisioning_state' : ''} FROM ${q(platformDb)}.organizations ORDER BY created_at, id`
     );
-    [listings] = await pconn.query(`SELECT tenant_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
-    [plans] = await pconn.query(`SELECT tenant_id, COUNT(*) AS n FROM ${q(platformDb)}.tenant_subscriptions GROUP BY tenant_id`);
+    // R-120 (p033): business_listings (name) on a renamed database, gym_listings (title) before it.
+    const [[renamed]] = await pconn.query(
+      'SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?', [platformDb, 'business_listings']
+    );
+    [listings] = await pconn.query(Number(renamed.n) > 0
+      ? `SELECT organization_id, name AS title, created_at FROM ${q(platformDb)}.business_listings`
+      : `SELECT organization_id, title, created_at FROM ${q(platformDb)}.gym_listings`);
+    [plans] = await pconn.query(`SELECT organization_id, COUNT(*) AS n FROM ${q(platformDb)}.organization_subscriptions GROUP BY organization_id`);
     await pconn.query('ROLLBACK');
   } finally {
     await pconn.end().catch(() => {});
   }
-  const planCounts = Object.fromEntries(plans.map((p) => [p.tenant_id, Number(p.n)]));
+  const planCounts = Object.fromEntries(plans.map((p) => [p.organization_id, Number(p.n)]));
   tenants = tenants.map((t) => ({ ...t, has_connection: Boolean(Number(t.has_connection)) }));
 
   const tconn = await mysql.createConnection(tenantCfg);
@@ -212,23 +218,25 @@ async function main() {
     const [schemas] = await tconn.query("SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'gymsera\\_%'");
     databases = schemas.map((s) => s.name);
     const [tables] = await tconn.query(
-      "SELECT TABLE_SCHEMA AS db, TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA LIKE 'gymsera\\_%' AND TABLE_NAME IN ('gyms','branches')"
+      "SELECT TABLE_SCHEMA AS db, TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA LIKE 'gymsera\\_%' AND TABLE_NAME IN ('gyms','businesses','branches')"
     );
     const has = new Set(tables.map((r) => `${r.db}.${r.t}`));
+    // R-120 (tenant 030): the business table is `businesses`; a database before 030 still has `gyms`.
+    const bizTable = (db) => (has.has(`${db}.businesses`) ? 'businesses' : 'gyms');
     const [gymCols] = await tconn.query(
-      'SELECT TABLE_SCHEMA AS db FROM information_schema.COLUMNS WHERE TABLE_SCHEMA LIKE ? AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-      ['gymsera\\_%', 'gyms', 'gym_listing_id']
+      'SELECT TABLE_SCHEMA AS db FROM information_schema.COLUMNS WHERE TABLE_SCHEMA LIKE ? AND TABLE_NAME IN (?, ?) AND COLUMN_NAME = ?',
+      ['gymsera\\_%', 'gyms', 'businesses', 'gym_listing_id']
     );
     const hasGymListingId = new Set(gymCols.map((r) => r.db));
     for (const db of databases) {
       if (db === platformDb) continue;
       try {
-        const gyms = has.has(`${db}.gyms`) ? Number((await tconn.query(`SELECT COUNT(*) AS n FROM ${q(db)}.gyms`))[0][0].n) : 0;
+        const gyms = has.has(`${db}.${bizTable(db)}`) ? Number((await tconn.query(`SELECT COUNT(*) AS n FROM ${q(db)}.${bizTable(db)}`))[0][0].n) : 0;
         // Gym rows whose listing is also on another gym row (0 on very old schemas without the column).
         const gymsSharingListing = hasGymListingId.has(db)
           ? Number(
             (await tconn.query(
-              `SELECT COALESCE(SUM(n), 0) AS n FROM (SELECT COUNT(*) AS n FROM ${q(db)}.gyms ` +
+              `SELECT COALESCE(SUM(n), 0) AS n FROM (SELECT COUNT(*) AS n FROM ${q(db)}.${bizTable(db)} ` +
                 'WHERE gym_listing_id IS NOT NULL GROUP BY gym_listing_id HAVING COUNT(*) > 1) shared'
             ))[0][0].n
           )
@@ -260,12 +268,12 @@ async function main() {
   for (const f of findings) {
     if (f.kind === 'TENANT') {
       console.log(
-        `  tenant=${f.id} code=${f.tenantCode} status=${f.status} state=${f.provisioningState ?? '-'} db=${f.dbName} dbExists=${f.dbExists} ` +
+        `  tenant=${f.id} code=${f.organizationCode} status=${f.status} state=${f.provisioningState ?? '-'} db=${f.dbName} dbExists=${f.dbExists} ` +
           `listings=${f.listings} plans=${f.plans} gyms=${f.gyms ?? '-'} gymsSharingListing=${f.gymsSharingListing ?? '-'} branchesWithoutListing=${f.branchesWithoutListing ?? '-'}` +
           `${f.error ? ` error=${f.error}` : ''}  → ${f.verdicts.join(', ')}`
       );
     } else {
-      console.log(`  database=${f.dbName} tenant=${f.tenantId ?? '-'} tenantStatus=${f.tenantStatus ?? '-'}  → ${f.verdicts.join(', ')}`);
+      console.log(`  database=${f.dbName} tenant=${f.organizationId ?? '-'} tenantStatus=${f.tenantStatus ?? '-'}  → ${f.verdicts.join(', ')}`);
     }
   }
   console.log('\nNothing was changed. Resume (re-approve) finishes STUCK_* tenants after Prompt 1G; anything else is a data correction for the owner to decide.');

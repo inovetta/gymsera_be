@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Regression test for the CORS preflight rejecting X-Tenant-Id.
+ * Regression test for the CORS preflight rejecting X-Organization-Id.
  *
- * The CMS sends X-Tenant-Id on every request (gymsera_cms src/lib/api/client.ts:20).
+ * The CMS sends X-Organization-Id on every request (gymsera_cms src/lib/api/client.ts:20).
  * app.js answered the preflight with a header list that did not include it, so
  * the browser blocked every CMS call. Every custom header a client sends must be
  * allowed, and an unknown origin must still get no CORS headers at all.
@@ -20,7 +20,7 @@ const preflight = (app, origin, headers) =>
     .set('Access-Control-Request-Headers', headers);
 
 const CLIENT_HEADERS = [
-  'x-tenant-id',
+  'x-organization-id',
   'idempotency-key',
   'x-api-version',
   'x-request-id',
@@ -38,11 +38,11 @@ describe('CORS preflight: custom client headers', () => {
     String(res.headers['access-control-allow-headers'] || '')
       .toLowerCase().split(',').map((h) => h.trim());
 
-  it('allows X-Tenant-Id from the CMS origin', async () => {
-    const res = await preflight(app, 'https://cms.gymsera.com', 'x-tenant-id');
+  it('allows X-Organization-Id from the CMS origin', async () => {
+    const res = await preflight(app, 'https://cms.gymsera.com', 'x-organization-id');
     expect(res.status).toBe(204);
     expect(res.headers['access-control-allow-origin']).toBe('https://cms.gymsera.com');
-    expect(allowed(res)).toContain('x-tenant-id');
+    expect(allowed(res)).toContain('x-organization-id');
   });
 
   it.each(CLIENT_HEADERS)('allows %s', async (header) => {
@@ -56,7 +56,7 @@ describe('CORS preflight: custom client headers', () => {
   });
 
   it('gives an unknown origin no CORS headers', async () => {
-    const res = await preflight(app, 'https://evil.example.com', 'x-tenant-id');
+    const res = await preflight(app, 'https://evil.example.com', 'x-organization-id');
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
     expect(res.headers['access-control-allow-headers']).toBeUndefined();
     expect(res.headers['access-control-allow-credentials']).toBeUndefined();

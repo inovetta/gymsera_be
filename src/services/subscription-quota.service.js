@@ -39,11 +39,11 @@ const ENDED_STATUSES = ['REVOKED', 'ON_HOLD', 'PAUSED', 'EXPIRED'];
 const NO_FALLBACK_STATUSES = ENDED_STATUSES;
 
 /** The tenant's current entitlement — the most recently created entitling (ACTIVE or GRACE) subscription, if any. */
-const getActiveSubscription = async (tenantId, { transaction } = {}) => {
+const getActiveSubscription = async (organizationId, { transaction } = {}) => {
   return TenantSubscription.findOne({
-    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
+    where: { organizationId, status: { [Op.in]: ENTITLING_STATUSES } },
     // P9c: the name too, so a legacy package plan is shown by name, not as "Subscription".
-    include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches', 'maxOrganizations'] }],
+    include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches', 'maxBusinesses'] }],
     order: [['createdAt', 'DESC']],
     transaction,
   });
@@ -54,10 +54,10 @@ const getActiveSubscription = async (tenantId, { transaction } = {}) => {
  * entitles, the most recently ended row in ENDED_STATUSES; null when a row
  * entitles or the tenant never had a plan (legacy default, unchanged).
  */
-const getLapsedSubscription = async (tenantId, { transaction } = {}) => {
-  if (await getActiveSubscription(tenantId, { transaction })) return null;
+const getLapsedSubscription = async (organizationId, { transaction } = {}) => {
+  if (await getActiveSubscription(organizationId, { transaction })) return null;
   return TenantSubscription.findOne({
-    where: { tenantId, status: { [Op.in]: ENDED_STATUSES } },
+    where: { organizationId, status: { [Op.in]: ENDED_STATUSES } },
     order: [['entitlementEndedAt', 'DESC'], ['updatedAt', 'DESC']],
     transaction,
   });
@@ -68,13 +68,13 @@ const getLapsedSubscription = async (tenantId, { transaction } = {}) => {
  * the entitling row, or — when none entitles — the lapsed one, so the audit and
  * the branch billing lock read the same number for a lapsed plan (NEW-170).
  */
-const _recordOverQuota = async (tenantId, overQuotaCount, { transaction }) => {
+const _recordOverQuota = async (organizationId, overQuotaCount, { transaction }) => {
   const [updated] = await TenantSubscription.update(
     { overQuotaCount },
-    { where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
+    { where: { organizationId, status: { [Op.in]: ENTITLING_STATUSES } }, transaction }
   );
   if (updated > 0) return;
-  const lapsed = await getLapsedSubscription(tenantId, { transaction });
+  const lapsed = await getLapsedSubscription(organizationId, { transaction });
   if (lapsed && lapsed.overQuotaCount !== overQuotaCount) await lapsed.update({ overQuotaCount }, { transaction });
 };
 
@@ -99,7 +99,7 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
   // BILL-13).
   if (
     !activeSub &&
-    (await TenantSubscription.count({ where: { tenantId: tenant.id, status: { [Op.in]: NO_FALLBACK_STATUSES } }, transaction })) > 0
+    (await TenantSubscription.count({ where: { organizationId: tenant.id, status: { [Op.in]: NO_FALLBACK_STATUSES } }, transaction })) > 0
   ) {
     return 0;
   }
@@ -111,7 +111,7 @@ const resolveMaxBranches = async (tenant, activeSub, { transaction } = {}) => {
 };
 
 // JSON-safe stand-in for "no limit" — Infinity itself serializes to `null`
-// over JSON (sendSuccess(res, {...}) would ship maxOrganizations: null,
+// over JSON (sendSuccess(res, {...}) would ship maxBusinesses: null,
 // which the Flutter side would then default back down to 1, the opposite
 // of what this is supposed to mean), so a very large finite number is used
 // instead. Never compared against anything real; existingListings.length is
@@ -124,18 +124,18 @@ const UNLIMITED_ORGANIZATIONS = Number.MAX_SAFE_INTEGER;
  * one costs nothing and consumes no capacity by itself (only building a
  * real branch into it does) — so there's no cap here at all for that path.
  * The legacy manual/PlatformPackage path still enforces whatever that
- * package's real maxOrganizations was.
+ * package's real maxBusinesses was.
  */
 const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) => {
   if (activeSub && activeSub.branchCount != null) {
     return UNLIMITED_ORGANIZATIONS;
   }
   if (activeSub && activeSub.package) {
-    return activeSub.package.maxOrganizations || 1;
+    return activeSub.package.maxBusinesses || 1;
   }
   if (tenant.selectedPackageId) {
     const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId, { transaction });
-    if (pkg) return pkg.maxOrganizations || 1;
+    if (pkg) return pkg.maxBusinesses || 1;
   }
   return 1;
 };
@@ -152,13 +152,13 @@ const resolveMaxOrganizations = async (tenant, activeSub, { transaction } = {}) 
  * — never just the raw active-branch count, which alone would let a host's
  * unbuilt reservations silently vanish from enforcement.
  */
-const getUsedCapacity = async (tenantId, tenantDb, { transaction } = {}) => {
+const getUsedCapacity = async (organizationId, tenantDb, { transaction } = {}) => {
   const [activeBranches, reservedTotal] = await Promise.all([
     tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } }),
     // Excludes deleted (INACTIVE) and REJECTED organizations — otherwise a reservedSlots
     // count left on an inactive/rejected organization would permanently lock that
     // capacity out of the pool forever.
-    GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } }, transaction }),
+    GymListing.sum('reservedSlots', { where: { organizationId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } }, transaction }),
   ]);
   return activeBranches + (reservedTotal || 0);
 };
@@ -210,7 +210,7 @@ const recordCapacityEvent = async (fields, { transaction } = {}) => {
  * branches, restores) without touching anything that already exists.
  */
 const reconcileCapacity = async (
-  tenantId,
+  organizationId,
   tenantDb,
   newMaxBranches,
   {
@@ -231,7 +231,7 @@ const reconcileCapacity = async (
   // back to for "which org gets an upgrade's new capacity" when no specific
   // origin is known.
   const listings = await GymListing.findAll({
-    where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
+    where: { organizationId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
     order: [['createdAt', 'ASC']],
     lock: true,
     transaction,
@@ -265,7 +265,7 @@ const reconcileCapacity = async (
       if (target) {
         const { applied } = await recordCapacityEvent(
           {
-            tenantId,
+            organizationId,
             listingId: target.id,
             action: 'SLOT_ATTRIBUTED_UPGRADE',
             delta,
@@ -285,14 +285,14 @@ const reconcileCapacity = async (
     }
 
     // Any previously-set over-quota flag is now resolved.
-    await _recordOverQuota(tenantId, 0, { transaction });
+    await _recordOverQuota(organizationId, 0, { transaction });
 
     if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
       try {
         const branchBillingLockService = require('./branch-billing-lock.service');
-        await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb, { transaction });
+        await branchBillingLockService.enforceBranchBillingLocksForTenant(organizationId, tenantDb, { transaction });
       } catch (lockErr) {
-        console.warn(`[reconcileCapacity] Failed to unlock branches for tenant ${tenantId}:`, lockErr.message);
+        console.warn(`[reconcileCapacity] Failed to unlock branches for tenant ${organizationId}:`, lockErr.message);
       }
     }
     return { overQuotaCount: 0, trimmedSlots: 0 };
@@ -309,7 +309,7 @@ const reconcileCapacity = async (
     const take = Math.min(listing.reservedSlots, remaining);
     const { applied } = await recordCapacityEvent(
       {
-        tenantId,
+        organizationId,
         listingId: listing.id,
         action: 'SLOT_TRIMMED_DOWNGRADE',
         delta: -take,
@@ -335,15 +335,15 @@ const reconcileCapacity = async (
 
   // `remaining` > 0 here means real ACTIVE branches alone exceed the new
   // plan — never resolved by deleting or hiding anything, only flagged.
-  await _recordOverQuota(tenantId, Math.max(0, remaining), { transaction });
+  await _recordOverQuota(organizationId, Math.max(0, remaining), { transaction });
 
   // Automatic lock/unlock enforcement when capacity changes (CAP-01)
   if (tenantDb && tenantDb.models && tenantDb.models.Branch) {
     try {
       const branchBillingLockService = require('./branch-billing-lock.service');
-      await branchBillingLockService.enforceBranchBillingLocksForTenant(tenantId, tenantDb, { transaction });
+      await branchBillingLockService.enforceBranchBillingLocksForTenant(organizationId, tenantDb, { transaction });
     } catch (lockErr) {
-      console.warn(`[reconcileCapacity] Failed to enforce branch locks for tenant ${tenantId}:`, lockErr.message);
+      console.warn(`[reconcileCapacity] Failed to enforce branch locks for tenant ${organizationId}:`, lockErr.message);
     }
   }
 
@@ -378,16 +378,16 @@ const reconcileCapacity = async (
  * an admin endpoint can render it, and a CLI script can print it — all from
  * the same computation, with no risk of a check accidentally mutating.
  */
-const auditCapacity = async (tenantId, tenantDb) => {
-  const tenant = await Tenant.findByPk(tenantId);
-  if (!tenant) return { tenantId, ok: false, error: 'Tenant not found' };
+const auditCapacity = async (organizationId, tenantDb) => {
+  const tenant = await Tenant.findByPk(organizationId);
+  if (!tenant) return { organizationId, ok: false, error: 'Tenant not found' };
 
-  const activeSub = await getActiveSubscription(tenantId);
+  const activeSub = await getActiveSubscription(organizationId);
   const maxBranches = await resolveMaxBranches(tenant, activeSub);
 
   const listings = await GymListing.findAll({
-    where: { tenantId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
-    attributes: ['id', 'title', 'reservedSlots'],
+    where: { organizationId, status: { [Op.notIn]: ['INACTIVE', 'REJECTED'] } },
+    attributes: ['id', 'name', 'reservedSlots'],
     order: [['createdAt', 'ASC']],
   });
 
@@ -396,7 +396,7 @@ const auditCapacity = async (tenantId, tenantDb) => {
   // summing everything first means a listing deleted mid-history can't skew
   // a live listing's total.
   const events = await CapacityEvent.findAll({
-    where: { tenantId },
+    where: { organizationId },
     attributes: ['listingId', 'delta'],
   });
   const ledgerByListing = new Map();
@@ -405,26 +405,26 @@ const auditCapacity = async (tenantId, tenantDb) => {
     ledgerByListing.set(e.listingId, (ledgerByListing.get(e.listingId) || 0) + e.delta);
   }
 
-  const listingReports = listings.map((l) => {
+  const businessReports = listings.map((l) => {
     const expected = ledgerByListing.get(l.id) || 0;
     const actual = l.reservedSlots;
     return {
-      listingId: l.id,
-      title: l.title,
+      businessId: l.id,
+      businessName: l.name,
       actualReservedSlots: actual,
       ledgerReservedSlots: expected,
       drift: actual - expected,
     };
   });
 
-  const driftedListings = listingReports.filter((r) => r.drift !== 0);
-  const totalDrift = listingReports.reduce((sum, r) => sum + r.drift, 0);
+  const driftedBusinesses = businessReports.filter((r) => r.drift !== 0);
+  const totalDrift = businessReports.reduce((sum, r) => sum + r.drift, 0);
 
   let activeBranches = null;
   let usedCapacity = null;
   let invariantHolds = null;
   let expectedOverQuota = null;
-  let emptyActiveOrgs = [];
+  let emptyActiveBusinesses = [];
 
   if (tenantDb) {
     activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
@@ -441,29 +441,29 @@ const auditCapacity = async (tenantId, tenantDb) => {
 
     // CAP-07: "Organization never empty" — report ACTIVE organizations with 0 ACTIVE branches
     const activeOrgs = await GymListing.findAll({
-      where: { tenantId, status: 'ACTIVE' },
-      attributes: ['id', 'title'],
+      where: { organizationId, status: 'ACTIVE' },
+      attributes: ['id', 'name'],
     });
     const activeBranchesList = await tenantDb.models.Branch.findAll({
       where: { status: 'ACTIVE' },
-      attributes: ['gymListingId'],
+      attributes: ['businessId'],
     });
     const activeListingIds = new Set(
-      activeBranchesList.map((b) => b.gymListingId).filter(Boolean)
+      activeBranchesList.map((b) => b.businessId).filter(Boolean)
     );
-    emptyActiveOrgs = activeOrgs
+    emptyActiveBusinesses = activeOrgs
       .filter((org) => !activeListingIds.has(org.id))
-      .map((org) => ({ listingId: org.id, title: org.title }));
+      .map((org) => ({ businessId: org.id, businessName: org.name }));
   }
 
   // A lapsed plan records its overage on the lapsed row (NEW-170).
-  const recordedOverQuota = (activeSub || (await getLapsedSubscription(tenantId)))?.overQuotaCount ?? 0;
+  const recordedOverQuota = (activeSub || (await getLapsedSubscription(organizationId)))?.overQuotaCount ?? 0;
   const overQuotaMismatch =
     expectedOverQuota !== null && expectedOverQuota !== recordedOverQuota;
 
   return {
-    tenantId,
-    businessName: tenant.businessName,
+    organizationId,
+    organizationName: tenant.organizationName,
     maxBranches,
     activeBranches,
     usedCapacity,
@@ -471,13 +471,13 @@ const auditCapacity = async (tenantId, tenantDb) => {
     recordedOverQuota,
     expectedOverQuota,
     overQuotaMismatch,
-    listings: listingReports,
-    driftedListings,
+    businesses: businessReports,
+    driftedBusinesses,
     totalDrift,
-    emptyActiveOrgs,
-    hasEmptyActiveOrgs: emptyActiveOrgs.length > 0,
+    emptyActiveBusinesses,
+    hasEmptyActiveBusinesses: emptyActiveBusinesses.length > 0,
     // The single field a cron or dashboard should branch on.
-    ok: driftedListings.length === 0 && !overQuotaMismatch && invariantHolds !== false && emptyActiveOrgs.length === 0,
+    ok: driftedBusinesses.length === 0 && !overQuotaMismatch && invariantHolds !== false && emptyActiveBusinesses.length === 0,
   };
 };
 
@@ -491,11 +491,93 @@ const auditCapacity = async (tenantId, tenantDb) => {
  * the most recently created. Null when the host made no choice.
  * @returns {Promise<string[]|null>}
  */
-const getBranchesToKeep = async (tenantId, { transaction } = {}) => {
-  const sub = await getActiveSubscription(tenantId, { transaction });
+const getBranchesToKeep = async (organizationId, { transaction } = {}) => {
+  const sub = await getActiveSubscription(organizationId, { transaction });
   const change = sub?.pendingChange;
   if (!change || !change.appliedAt || change.billingPlanId !== sub.billingPlanId) return null;
   return Array.isArray(change.keepBranchIds) ? change.keepBranchIds : null;
+};
+
+/**
+ * Returns a predicate `(business) => boolean` for whether an approved ACTIVE business in
+ * `organizationId` can currently receive another branch: true only when the organization is
+ * ACTIVE and either the business holds its own unbuilt reserved slot or (with no over-quota
+ * suspension) the organization pool has a free unit or another ACTIVE business holds an unused
+ * reserved unit that can be transferred (W4).
+ */
+const canReceiveBranchesForOrg = async (organizationId, { tenant = null, tenantDb = null } = {}) => {
+  const org = tenant || await Tenant.findByPk(organizationId, {
+    attributes: ['id', 'status', 'selectedPackageId', 'connectionStringEncrypted'],
+  });
+  if (!org || org.status !== 'ACTIVE') return () => false;
+
+  let db = tenantDb;
+  if (!db && org.connectionStringEncrypted && org.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+    try {
+      db = await require('../database/TenantDbManager').getConnection(org.id, org.connectionStringEncrypted);
+    } catch {
+      return () => false;
+    }
+  }
+  if (!db) return () => false;
+
+  const [activeSub, usedCapacity, activeListingsWithSlots] = await Promise.all([
+    getActiveSubscription(org.id),
+    getUsedCapacity(org.id, db),
+    GymListing.findAll({
+      where: { organizationId: org.id, status: 'ACTIVE', reservedSlots: { [Op.gt]: 0 } },
+      attributes: ['id'],
+    }),
+  ]);
+
+  const maxBranches = await resolveMaxBranches(org, activeSub);
+  const free = Math.max(0, maxBranches - usedCapacity);
+  const overQuota = (activeSub?.overQuotaCount || 0) > 0;
+  const activeDonorIds = new Set(activeListingsWithSlots.map((r) => r.id));
+
+  return (business) => {
+    if (!business || business.status !== 'ACTIVE' || business.kycStatus !== 'APPROVED') return false;
+    if (Number(business.reservedSlots) > 0) return true;
+    if (overQuota) return false;
+    if (free > 0) return true;
+    for (const donorId of activeDonorIds) {
+      if (donorId !== business.id) return true;
+    }
+    return false;
+  };
+};
+
+/**
+ * Attaches `canReceiveBranches` to a serialized Business (or array of them), accepting either
+ * Sequelize model instances or plain JSON objects.
+ */
+const attachCanReceiveBranches = async (target, opts = {}) => {
+  if (!target) return target;
+  const isArray = Array.isArray(target);
+  const items = isArray ? target : [target];
+  if (items.length === 0) return target;
+
+  const plainItems = items.map((item) => (typeof item?.toJSON === 'function' ? item.toJSON() : { ...item }));
+  const eligibleOrgIds = [...new Set(
+    plainItems
+      .filter((b) => b && b.status === 'ACTIVE' && b.kycStatus === 'APPROVED')
+      .map((b) => b.organizationId || opts.organizationId)
+      .filter(Boolean)
+  )];
+
+  const evaluators = new Map();
+  await Promise.all(eligibleOrgIds.map(async (orgId) => {
+    const useOpts = (opts.organizationId && orgId !== opts.organizationId) ? {} : opts;
+    evaluators.set(orgId, await canReceiveBranchesForOrg(orgId, useOpts));
+  }));
+
+  const enriched = plainItems.map((b) => {
+    const orgId = b.organizationId || opts.organizationId;
+    const fn = orgId ? evaluators.get(orgId) : null;
+    return { ...b, canReceiveBranches: fn ? fn(b) : false };
+  });
+
+  return isArray ? enriched : enriched[0];
 };
 
 module.exports = {
@@ -510,5 +592,6 @@ module.exports = {
   getUsedCapacity,
   reconcileCapacity,
   auditCapacity,
+  attachCanReceiveBranches,
   UNLIMITED_ORGANIZATIONS,
 };

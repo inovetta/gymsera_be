@@ -34,7 +34,7 @@ describe('Tenant Migration 016 (add payment shift and ledger closed collectors) 
     expect(colBefore).toBeUndefined();
 
     const res = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       dryRun: true,
       targetVersion: 16,
     });
@@ -64,7 +64,7 @@ describe('Tenant Migration 016 (add payment shift and ledger closed collectors) 
     await tenantSeq.query('DELETE FROM schema_migrations WHERE version = 16').catch(() => {});
 
     const res = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 16,
     });
 
@@ -86,7 +86,7 @@ describe('Tenant Migration 016 (add payment shift and ledger closed collectors) 
     await tenantSeq.query('DELETE FROM schema_migrations WHERE version = 16').catch(() => {});
 
     const res1 = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 16,
     });
     expect(res1.applied).toContain(M016);
@@ -107,7 +107,7 @@ describe('Tenant Migration 016 (add payment shift and ledger closed collectors) 
 
     // Run again - idempotent
     const res2 = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 16,
     });
     expect(res2.applied).not.toContain(M016);

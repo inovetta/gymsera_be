@@ -12,7 +12,7 @@ const { GymListing, TenantSubscription } = require('../../src/models/platform');
 
 describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let listing;
   let branch;
@@ -20,15 +20,15 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
 
-    listing = await GymListing.findOne({ where: { tenantId } });
+    listing = await GymListing.findOne({ where: { organizationId } });
     const { Branch, MembershipPlan } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await Branch.findOne({ where: { businessId: listing.id } });
 
     // Ensure branch has an active plan and is published to discovery
     await MembershipPlan.create({
-      gymId: branch.gymId,
+      businessId: branch.businessId,
       branchId: branch.id,
       name: 'Public Pass',
       price: 100,
@@ -50,13 +50,13 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
     const { Branch, AuditLog, BranchVisibilityHistory } = dbHarness.tenant1.models;
 
     // Check capacity before admin disable
-    const usedCapacityBefore = await subscriptionQuotaService.getUsedCapacity(tenantId, dbHarness.tenant1);
+    const usedCapacityBefore = await subscriptionQuotaService.getUsedCapacity(organizationId, dbHarness.tenant1);
     const listingBefore = await GymListing.findByPk(listing.id);
     const reservedSlotsBefore = listingBefore.reservedSlots;
 
     // Admin disables branch for policy reason
     const res = await asPersona('platformAdmin').post(
-      `/admin/tenants/${tenantId}/branches/${branch.id}/suspend`,
+      `/admin/organizations/${organizationId}/branches/${branch.id}/suspend`,
       { reason: 'TOS violation: unauthorized equipment' }
     );
 
@@ -64,7 +64,7 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
     expect(res.body.success).toBe(true);
 
     // 1. Verify capacity is completely UNCHANGED
-    const usedCapacityAfter = await subscriptionQuotaService.getUsedCapacity(tenantId, dbHarness.tenant1);
+    const usedCapacityAfter = await subscriptionQuotaService.getUsedCapacity(organizationId, dbHarness.tenant1);
     expect(usedCapacityAfter).toBe(usedCapacityBefore);
 
     const listingAfter = await GymListing.findByPk(listing.id);
@@ -89,7 +89,7 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
     expect(foundInDiscovery).toBeFalsy();
 
     // 4. Verify host cannot bypass policy by republishing visibility
-    const hostUpdateRes = await asPersona('owner').patch(`/gyms/branches/${branch.id}`, {
+    const hostUpdateRes = await asPersona('owner').patch(`/organizations/me/branches/${branch.id}`, {
       travelerVisibilityStatus: 'active',
     });
     expect(hostUpdateRes.status).toBe(403);
@@ -120,17 +120,17 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
   test('Admin unsuspend restores branch policy state without touching capacity', async () => {
     const { Branch, AuditLog } = dbHarness.tenant1.models;
 
-    const usedCapacityBefore = await subscriptionQuotaService.getUsedCapacity(tenantId, dbHarness.tenant1);
+    const usedCapacityBefore = await subscriptionQuotaService.getUsedCapacity(organizationId, dbHarness.tenant1);
 
     const res = await asPersona('platformAdmin').post(
-      `/admin/tenants/${tenantId}/branches/${branch.id}/unsuspend`
+      `/admin/organizations/${organizationId}/branches/${branch.id}/unsuspend`
     );
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
 
     // Capacity unchanged
-    const usedCapacityAfter = await subscriptionQuotaService.getUsedCapacity(tenantId, dbHarness.tenant1);
+    const usedCapacityAfter = await subscriptionQuotaService.getUsedCapacity(organizationId, dbHarness.tenant1);
     expect(usedCapacityAfter).toBe(usedCapacityBefore);
 
     await branch.reload();
@@ -155,10 +155,10 @@ describe('CAP-04: Admin Disable Branch Lifecycle and Policy Suspension', () => {
     const listingBefore = await GymListing.findByPk(listing.id);
     const reservedSlotsBefore = listingBefore.reservedSlots;
 
-    // Admin deletes branch with confirmOrganizationDeletion
+    // Admin deletes branch with confirmBusinessDeletion
     const res = await asPersona('platformAdmin')
-      .delete(`/admin/tenants/${tenantId}/branches/${branch.id}`)
-      .send({ confirmOrganizationDeletion: true });
+      .delete(`/admin/organizations/${organizationId}/branches/${branch.id}`)
+      .send({ confirmBusinessDeletion: true });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

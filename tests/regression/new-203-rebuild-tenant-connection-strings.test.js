@@ -81,7 +81,7 @@ describe('NEW-203 rebuild-tenant-connection-strings (test MySQL)', () => {
     expect(result).toMatchObject({ applied: false, toRebuild: 1, otherUser: 1, notProvisioned: 1, failures: [] });
     expect(await stored(tenant)).toBe(url(USER, OLD_PASS));
     const out = logs.join('\n');
-    expect(out).toContain(tenant.tenantCode);
+    expect(out).toContain(tenant.organizationCode);
     expect(out).toContain(`${host}:${port}/${DB}`);
     for (const secret of [OLD_PASS, NEW_PASS, encodeURIComponent(OLD_PASS), encodeURIComponent(NEW_PASS)]) {
       expect(out).not.toContain(secret);
@@ -102,7 +102,7 @@ describe('NEW-203 rebuild-tenant-connection-strings (test MySQL)', () => {
   it('a wrong new password fails the connection check and nothing is written', async () => {
     const result = await tool.run({ apply: true, env: { ...env(), TENANT_DB_PASS: 'not-the-password' }, log, tenantIds: ids() });
     expect(result.applied).toBe(false);
-    expect(result.failures).toEqual([expect.objectContaining({ tenantCode: tenant.tenantCode, reason: 'cannot_connect' })]);
+    expect(result.failures).toEqual([expect.objectContaining({ organizationCode: tenant.organizationCode, reason: 'cannot_connect' })]);
     expect(await stored(tenant)).toBe(url(USER, OLD_PASS));
   });
 
@@ -110,7 +110,7 @@ describe('NEW-203 rebuild-tenant-connection-strings (test MySQL)', () => {
     await tenant.update({ dbName: 'gymsera_t_somethingelse' }, { hooks: false });
     const result = await tool.run({ apply: true, env: env(), log, tenantIds: ids() });
     expect(result.applied).toBe(false);
-    expect(result.failures).toEqual([expect.objectContaining({ tenantCode: tenant.tenantCode, reason: 'db_name_mismatch' })]);
+    expect(result.failures).toEqual([expect.objectContaining({ organizationCode: tenant.organizationCode, reason: 'db_name_mismatch' })]);
     expect(await stored(tenant)).toBe(url(USER, OLD_PASS));
   });
 
@@ -118,7 +118,7 @@ describe('NEW-203 rebuild-tenant-connection-strings (test MySQL)', () => {
     await other.update({ connectionStringEncrypted: 'not-a-ciphertext' }, { hooks: false });
     const result = await tool.run({ apply: true, env: env(), log, tenantIds: ids() });
     expect(result.applied).toBe(false);
-    expect(result.failures).toEqual([expect.objectContaining({ tenantCode: other.tenantCode, reason: 'unreadable' })]);
+    expect(result.failures).toEqual([expect.objectContaining({ organizationCode: other.organizationCode, reason: 'unreadable' })]);
     expect(await stored(tenant)).toBe(url(USER, OLD_PASS));
   });
 

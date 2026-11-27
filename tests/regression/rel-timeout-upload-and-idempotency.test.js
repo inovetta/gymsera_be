@@ -28,30 +28,30 @@ describe('2A Blocker 1: Request Timeout & Upload Exemption & Idempotency Protect
 
   describe('Route Classification', () => {
     test('isUploadRoute correctly identifies upload routes and rejects normal routes', () => {
-      expect(isUploadRoute('/api/v1/tenants/me/kyc/documents')).toBe(true);
-      expect(isUploadRoute('/api/v1/tenants/onboarding/kyc/documents')).toBe(true);
+      expect(isUploadRoute('/api/v1/organizations/me/kyc/documents')).toBe(true);
+      expect(isUploadRoute('/api/v1/organizations/onboarding/kyc/documents')).toBe(true);
       expect(isUploadRoute('/api/v1/me/payment-proof')).toBe(true);
       expect(isUploadRoute('/api/v1/payments/123/proof')).toBe(true);
       expect(isUploadRoute('/api/v1/subscriptions/456/proof')).toBe(true);
       expect(isUploadRoute('/api/v1/me/profile-image')).toBe(true);
       expect(isUploadRoute('/api/v1/users/me/profile/image')).toBe(true);
       expect(isUploadRoute('/api/v1/membership-plans/789/poster')).toBe(true);
-      expect(isUploadRoute('/api/v1/gyms/profile/images')).toBe(true);
-      expect(isUploadRoute('/api/v1/tenants/123/logo')).toBe(true);
-      expect(isUploadRoute('/api/v1/tenants/123/cover')).toBe(true);
+      expect(isUploadRoute('/api/v1/organizations/me/businesses/123/profile/images')).toBe(true);
+      expect(isUploadRoute('/api/v1/organizations/123/logo')).toBe(true);
+      expect(isUploadRoute('/api/v1/organizations/123/cover')).toBe(true);
 
       // Normal routes must NOT be classified as uploads
-      expect(isUploadRoute('/api/v1/tenants/me')).toBe(false);
-      expect(isUploadRoute('/api/v1/host/listings')).toBe(false);
+      expect(isUploadRoute('/api/v1/organizations/me')).toBe(false);
+      expect(isUploadRoute('/api/v1/host/businesses')).toBe(false);
       expect(isUploadRoute('/api/v1/auth/login')).toBe(false);
       expect(isUploadRoute('/api/v1/payments')).toBe(false);
       expect(isUploadRoute('/api/v1/branches')).toBe(false);
     });
 
     test('isProvisioningRoute correctly identifies provisioning routes', () => {
-      expect(isProvisioningRoute('/api/v1/admin/tenants/123/approve')).toBe(true);
-      expect(isProvisioningRoute('/api/v1/tenants/provision')).toBe(true);
-      expect(isProvisioningRoute('/api/v1/tenants/me')).toBe(false);
+      expect(isProvisioningRoute('/api/v1/admin/organizations/123/approve')).toBe(true);
+      expect(isProvisioningRoute('/api/v1/organizations/provision')).toBe(true);
+      expect(isProvisioningRoute('/api/v1/organizations/me')).toBe(false);
     });
   });
 
@@ -77,7 +77,7 @@ describe('2A Blocker 1: Request Timeout & Upload Exemption & Idempotency Protect
         if (!res.headersSent) res.json({ success: true, uploaded: true });
       });
 
-      app.post('/api/v1/tenants/me/kyc/documents', async (req, res) => {
+      app.post('/api/v1/organizations/me/kyc/documents', async (req, res) => {
         // Takes 100ms: under upload limit
         await new Promise((r) => setTimeout(r, 100));
         if (!res.headersSent) res.json({ success: true, kyc: true });
@@ -114,7 +114,7 @@ describe('2A Blocker 1: Request Timeout & Upload Exemption & Idempotency Protect
     });
 
     test('KYC document upload route is NOT cut off at normal timeout limit', async () => {
-      const res = await request(server).post('/api/v1/tenants/me/kyc/documents');
+      const res = await request(server).post('/api/v1/organizations/me/kyc/documents');
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.kyc).toBe(true);

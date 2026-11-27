@@ -11,11 +11,13 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      tenantCode: {
+      organizationCode: {
+        field: 'organization_code', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(50),
         allowNull: false,
       },
-      businessName: {
+      organizationName: {
+        field: 'organization_name', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(200),
         allowNull: false,
       },
@@ -55,11 +57,13 @@ module.exports = (sequelize) => {
         allowNull: true,
       },
       // ── Gym profile (pre-approval snapshot) ─────────────────────────────────
-      gymName: {
+      firstBusinessName: {
+        field: 'first_business_name', // R-120 NEW-307 (p034)
         type: DataTypes.STRING(200),
         allowNull: true,
       },
-      gymDescription: {
+      firstBusinessDescription: {
+        field: 'first_business_description', // R-120 NEW-307 (p034)
         type: DataTypes.TEXT,
         allowNull: true,
       },
@@ -83,14 +87,15 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(11, 8),
         allowNull: true,
       },
-      mainBranchDataJson: {
+      firstBranchDraft: {
+        field: 'first_branch_draft_json', // R-120 NEW-307 (p034)
         type: DataTypes.JSON,
         allowNull: true,
         comment: 'Branch data captured during onboarding; used to auto-create Branch on provisioning',
       },
       // BUG-09 (R-80): not stored. The currency approval gives the first branch, for the price
       // labels in Become a Host; provisioning uses the same function.
-      mainBranchCurrency: {
+      firstBranchCurrency: {
         type: DataTypes.VIRTUAL,
         get() {
           return firstBranchCurrency();
@@ -228,11 +233,11 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'tenants',
+      tableName: 'organizations', // R-120 NEW-307 (p034)
       underscored: true,
       timestamps: true,
       indexes: [
-        { name: 'tenants_tenant_code_unique', unique: true, fields: ['tenant_code'] },
+        { name: 'organizations_organization_code_unique', unique: true, fields: ['organization_code'] },
         { fields: ['owner_user_id'] },
         { fields: ['status'] },
         { fields: ['city_id'] },

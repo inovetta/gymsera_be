@@ -111,7 +111,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
 
   describe('Behavioral Guard: RoleAssignment is the single source of truth for access', () => {
     let dbHarness;
-    let tenantId;
+    let organizationId;
     let personas;
     let appServer;
     let branchId;
@@ -119,7 +119,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
     beforeAll(async () => {
       dbHarness = await setupTestDatabases();
       personas = await setupPersonas(dbHarness);
-      tenantId = personas.owner.tenantId;
+      organizationId = personas.owner.organizationId;
       appServer = await startTestServer();
 
       const { Branch } = dbHarness.tenant1.models;
@@ -162,20 +162,20 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       expect(loginRes.status).toBe(200);
       const token = loginRes.body.data.accessToken;
 
-      // 1. GET /me/staff-status must return isStaff: false and empty branches
+      // 1. GET /me/staff-status must return isStaff: false and empty organizations (A3 J7).
       const statusRes = await request(appServer)
         .get('/api/v1/me/staff-status')
         .set('Authorization', `Bearer ${token}`);
 
       expect(statusRes.status).toBe(200);
       expect(statusRes.body.data.isStaff).toBe(false);
-      expect(statusRes.body.data.branches).toEqual([]);
+      expect(statusRes.body.data.organizations).toEqual([]);
 
       // 2. Access to payments recording must be 403
       const paymentRes = await request(appServer)
         .post('/api/v1/payments')
         .set('Authorization', `Bearer ${token}`)
-        .set('X-Tenant-Id', tenantId)
+        .set('X-Organization-Id', organizationId)
         .send({
           branchId,
           userId: personas.member.user.id,
@@ -197,9 +197,9 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       expect([401, 403]).toContain(actionRes.status);
     });
 
-    test('Creating staff via legacy POST /gyms/staff creates RoleAssignment and keeps User role as MEMBER', async () => {
+    test('Creating staff via legacy POST /organizations/me/staff creates RoleAssignment and keeps User role as MEMBER', async () => {
       const email = 'legacy.create@example.test';
-      const createRes = await asPersona('owner').post('/gyms/staff', {
+      const createRes = await asPersona('owner').post('/organizations/me/staff', {
         fullName: 'Legacy Staff Member',
         email,
         phone: '+923001112233',
@@ -228,14 +228,14 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       expect(assignment.branchLinks.map((b) => b.branchId)).toContain(branchId);
     });
 
-    test('Removing staff via legacy DELETE /gyms/staff/:userId revokes RoleAssignment and revokes access', async () => {
+    test('Removing staff via legacy DELETE /organizations/me/staff/:userId revokes RoleAssignment and revokes access', async () => {
       // First, find the user created in previous test
       const email = 'legacy.create@example.test';
       const user = await User.findOne({ where: { email } });
       expect(user).not.toBeNull();
 
       // Delete via legacy endpoint
-      const delRes = await asPersona('owner').delete(`/gyms/staff/${user.id}`);
+      const delRes = await asPersona('owner').delete(`/organizations/me/staff/${user.id}`);
       expect(delRes.status).toBe(200);
 
       // Verify RoleAssignment in tenantDb is REVOKED
@@ -264,7 +264,7 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
       const gymService = require('../../src/services/gym.service');
 
       // Create a test branch using factories
-      const branch2 = await factories.createBranch(dbHarness.tenant1, tenantId, {
+      const branch2 = await factories.createBranch(dbHarness.tenant1, organizationId, {
         branchName: 'Branch To Delete For RBAC',
       });
 
@@ -291,8 +291,8 @@ describe('RBAC-07: Unify staff access through Team & Access', () => {
         branchId: branch2.id,
       });
 
-      // Call deleteBranch with confirmOrganizationDeletion = true
-      await gymService.deleteBranch(dbHarness.tenant1, branch2.id, null, { confirmOrganizationDeletion: true });
+      // Call deleteBranch with confirmBusinessDeletion = true
+      await gymService.deleteBranch(dbHarness.tenant1, branch2.id, null, { confirmBusinessDeletion: true });
 
       // Verify RoleAssignment is REVOKED with revokedBy: 'system:branch_deleted'
       await assignment.reload();

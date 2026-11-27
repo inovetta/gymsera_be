@@ -4,7 +4,7 @@ const dataExportService = require('../services/data-export.service');
 const { sendSuccess, parsePagination } = require('../utils/response.utils');
 const storageService = require('../services/storage.service');
 const inboxService = require('../services/inbox.service');
-const { ROLE_META } = require('../constants/roles');
+const { ROLE_META, getRoleLevel } = require('../constants/roles');
 
 // ── GET /me/profile ────────────────────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -177,27 +177,27 @@ const uploadPaymentProof = async (req, res, next) => {
 // ── GET /me/saved-gyms ────────────────────────────────────────────────────────
 const getSavedGyms = async (req, res, next) => {
   try {
-    const gyms = await meService.getSavedGyms(req.user.sub);
-    return sendSuccess(res, { gyms }, 'Saved gyms retrieved');
+    const businesses = await meService.getSavedGyms(req.user.sub);
+    return sendSuccess(res, { businesses }, 'Saved businesses retrieved');
   } catch (err) {
     next(err);
   }
 };
 
-// ── POST /me/saved-gyms/:gymId ───────────────────────────────────────────────
+// ── POST /me/saved-gyms/:businessId ───────────────────────────────────────────────
 const saveGym = async (req, res, next) => {
   try {
-    const saved = await meService.saveGym(req.user.sub, req.params.gymId);
+    const saved = await meService.saveGym(req.user.sub, req.params.businessId);
     return sendSuccess(res, { saved }, 'Gym saved to wishlist', 201);
   } catch (err) {
     next(err);
   }
 };
 
-// ── DELETE /me/saved-gyms/:gymId ─────────────────────────────────────────────
+// ── DELETE /me/saved-gyms/:businessId ─────────────────────────────────────────────
 const unsaveGym = async (req, res, next) => {
   try {
-    await meService.unsaveGym(req.user.sub, req.params.gymId);
+    await meService.unsaveGym(req.user.sub, req.params.businessId);
     return sendSuccess(res, null, 'Gym removed from wishlist', 200);
   } catch (err) {
     next(err);
@@ -257,7 +257,7 @@ const dataExport = async (req, res, next) => {
 // ── GET /me/inbox ──────────────────────────────────────────────────────────────
 const listMyInbox = async (req, res, next) => {
   try {
-    const conversations = await inboxService.listTravelerConversations(req.user.sub);
+    const conversations = await inboxService.shapeConversations(await inboxService.listTravelerConversations(req.user.sub));
     return sendSuccess(res, { conversations });
   } catch (err) {
     next(err);
@@ -271,7 +271,7 @@ const getMyConversation = async (req, res, next) => {
       req.params.conversationId,
       req.user.sub
     );
-    return sendSuccess(res, result);
+    return sendSuccess(res, { ...result, conversation: await inboxService.shapeConversations(result.conversation) });
   } catch (err) {
     next(err);
   }
@@ -284,7 +284,7 @@ const replyToMyConversation = async (req, res, next) => {
       req.params.conversationId,
       req.user.sub,
       req.body.text,
-      { clientMessageId: req.body.clientMessageId ?? req.body.client_message_id }
+      { clientMessageId: req.body.clientMessageId }
     );
     return sendSuccess(res, { message }, 'Message sent', 201);
   } catch (err) {
@@ -322,14 +322,14 @@ const getStaffStatus = async (req, res, next) => {
     const membershipService = require('../services/membership.service');
 
     const userId = req.user.id || req.user.sub;
-    const branches = [];
+    const organizations = [];
 
     const memberships = await membershipService.listUserTenants(userId, { activeOnly: true });
 
     for (const membership of memberships) {
       try {
-        const tenant = await Tenant.findByPk(membership.tenantId, {
-          attributes: ['id', 'gymName', 'businessName', 'connectionStringEncrypted', 'status'],
+        const tenant = await Tenant.findByPk(membership.organizationId, {
+          attributes: ['id', 'firstBusinessName', 'organizationName', 'connectionStringEncrypted', 'status'],
         });
         if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
           continue;
@@ -345,14 +345,10 @@ const getStaffStatus = async (req, res, next) => {
         if (assignments.length === 0) continue;
 
         const isOrgScoped = assignments.some((a) => a.scopeType === 'ORG');
-        const designation =
-          assignments.find((a) => a.jobTitle)?.jobTitle ||
-          ROLE_META[assignments[0].roleKey]?.displayName ||
-          assignments[0].roleKey;
+        const highest = [...assignments].sort((a, b) => getRoleLevel(b.roleKey) - getRoleLevel(a.roleKey))[0];
+        const designation = highest.jobTitle || ROLE_META[highest.roleKey]?.displayName || highest.roleKey;
 
-        const branchWhere = isOrgScoped
-          ? { status: 'ACTIVE' }
-          : {
+        const branchWhere = {
               id: [
                 ...new Set(assignments.flatMap((a) => (a.branchLinks || []).map((l) => l.branchId))),
               ],
@@ -360,25 +356,37 @@ const getStaffStatus = async (req, res, next) => {
             };
         if (!isOrgScoped && branchWhere.id.length === 0) continue;
 
-        const branchRows = await Branch.findAll({ where: branchWhere });
+        const branchRows = isOrgScoped || branchWhere.id.length === 0 ? [] : await Branch.findAll({ where: branchWhere });
+        if (!isOrgScoped && branchRows.length === 0) continue;
+        const businessNames = new Map();
         for (const branch of branchRows) {
-          branches.push({
-            branchId: branch.id,
-            tenantId: tenant.id,
-            branchName: branch.branchName,
-            gymName: tenant.gymName || tenant.businessName,
-            designation,
-          });
+          if (!businessNames.has(branch.businessId)) {
+            const business = await tenantDb.models.Gym.findByPk(branch.businessId, { attributes: ['name'] });
+            businessNames.set(branch.businessId, business?.name || null);
+          }
         }
+        organizations.push({
+          organizationId: tenant.id,
+          organizationName: tenant.organizationName,
+          scopeType: isOrgScoped ? 'ORG' : 'BRANCH',
+          roleKey: highest.roleKey,
+          designation,
+          branches: branchRows.map((branch) => ({
+            branchId: branch.id,
+            branchName: branch.branchName,
+            businessId: branch.businessId,
+            businessName: businessNames.get(branch.businessId),
+          })),
+        });
       } catch (err) {
         // One unreachable tenant must not break the whole status check.
-        console.warn(`[staff-status] tenant ${membership.tenantId} unreachable:`, err.message);
+        console.warn(`[staff-status] tenant ${membership.organizationId} unreachable:`, err.message);
       }
     }
 
     return sendSuccess(res, {
-      isStaff: branches.length > 0,
-      branches,
+      isStaff: organizations.length > 0,
+      organizations,
     }, 'Staff status retrieved');
   } catch (err) {
     next(err);

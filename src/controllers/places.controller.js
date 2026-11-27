@@ -57,7 +57,7 @@ const createArea = async (req, res, next) => {
 };
 
 // ── NEW-265 Part A: area requests (spec §13 A3) ──────────────────────────────
-const callerOf = (req) => ({ userId: req.user.sub || req.user.id, tenantId: req.user.tenantId || null });
+const callerOf = (req) => ({ userId: req.user.sub || req.user.id, organizationId: req.user.organizationId || null });
 
 // POST /places/area-requests/check — writes nothing
 const checkAreaRequest = async (req, res, next) => {

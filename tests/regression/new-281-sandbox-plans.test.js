@@ -34,7 +34,7 @@ describe('NEW-281: SANDBOX store plans never block or extend a real plan (R-114)
   let plan2;
   let jpeg;
   const saved = {};
-  const tenantId = () => ctx.tenant1.id;
+  const organizationId = () => ctx.tenant1.id;
 
   const submit = () => {
     const req = asPersona('owner').post('/host/plan-payments');
@@ -43,11 +43,11 @@ describe('NEW-281: SANDBOX store plans never block or extend a real plan (R-114)
     return req;
   };
   const approve = (id) => asPersona('platformAdmin').post(`/admin/plan-payments/${id}/approve`, {});
-  const entitling = () => TenantSubscription.findAll({ where: { tenantId: tenantId(), status: ENTITLING_STATUSES } });
+  const entitling = () => TenantSubscription.findAll({ where: { organizationId: organizationId(), status: ENTITLING_STATUSES } });
   const resetTenant = async (rows = []) => {
     await PlanPaymentRequest.destroy({ where: {} });
-    await TenantSubscription.destroy({ where: { tenantId: tenantId() } });
-    for (const r of rows) await createTenantSubscription(tenantId(), r);
+    await TenantSubscription.destroy({ where: { organizationId: organizationId() } });
+    for (const r of rows) await createTenantSubscription(organizationId(), r);
   };
 
   beforeAll(async () => {
@@ -109,7 +109,7 @@ describe('NEW-281: SANDBOX store plans never block or extend a real plan (R-114)
       const ok = await approve((await submit()).body.data.request.id);
       expect(ok.status).toBe(200);
 
-      await subscriptionMigration.applyVerifiedSubscription(tenantId(), {
+      await subscriptionMigration.applyVerifiedSubscription(organizationId(), {
         platform, externalOriginalTransactionId: `${platform}-renews`, externalTransactionId: `${platform}-renews-2`,
         environment: 'SANDBOX', status: 'ACTIVE', branchCount: 1, billingPlanId: null, productId: null,
         startDate: today(), endDate: plusDays(30), autoRenew: true, paymentStatus: 'PAID', lastVerifiedAt: new Date(),
@@ -124,7 +124,7 @@ describe('NEW-281: SANDBOX store plans never block or extend a real plan (R-114)
     test('a real store purchase (PRODUCTION) replacing a SANDBOX plan closes it, no action needed', async () => {
       await resetTenant([storeRow({ environment: 'SANDBOX', externalOriginalTransactionId: `${platform}-old-sandbox` })]);
 
-      await subscriptionMigration.applyVerifiedSubscription(tenantId(), {
+      await subscriptionMigration.applyVerifiedSubscription(organizationId(), {
         platform, externalOriginalTransactionId: `${platform}-real-1`, externalTransactionId: `${platform}-real-1`,
         environment: 'PRODUCTION', status: 'ACTIVE', branchCount: 2, billingPlanId: plan2.id, productId: null,
         startDate: today(), endDate: plusDays(30), autoRenew: true, paymentStatus: 'PAID', lastVerifiedAt: new Date(),

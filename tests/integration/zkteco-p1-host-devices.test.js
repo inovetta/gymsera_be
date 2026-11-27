@@ -33,7 +33,7 @@ beforeAll(async () => {
   for (const db of [ctx.tenant1Db, ctx.tenant2Db]) {
     for (const t of ['access_device_details', 'device_commands']) await db.sequelize.query(`DELETE FROM \`${t}\``);
   }
-  branchB = await factories.createBranch(ctx.tenant1Db, ctx.listing1.id, { branchName: 'Branch B', gymId: ctx.branch1.gymId });
+  branchB = await factories.createBranch(ctx.tenant1Db, ctx.listing1.id, { branchName: 'Branch B', businessId: ctx.branch1.businessId });
   const server = await startTestServer();
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
@@ -69,7 +69,7 @@ describe('add, list, detail', () => {
     const text = JSON.stringify(res.body);
     expect(text).not.toContain(row.registry_code);
     expect(text).not.toContain(row.session_id);
-    expect(row).toMatchObject({ tenant_id: ctx.tenant1.id, branch_id: ctx.branch1.id, created_by: personas.owner.user.id, token_mode: 'log' });
+    expect(row).toMatchObject({ organization_id: ctx.tenant1.id, branch_id: ctx.branch1.id, created_by: personas.owner.user.id, token_mode: 'log' });
   });
 
   test('path mode shows push.gymsera.com/d/<key>', async () => {
@@ -178,7 +178,7 @@ describe('permissions (§12)', () => {
   });
 
   test('platform admin: reads with a gym chosen, never writes', async () => {
-    const h = { 'X-Tenant-Id': ctx.tenant1.id };
+    const h = { 'X-Organization-Id': ctx.tenant1.id };
     expect((await asPersona('platformAdmin', h).get('/host/devices')).status).toBe(200);
     expect((await asPersona('platformAdmin', h).get(`/host/devices/${deviceA.id}`)).status).toBe(200);
     const writes = [

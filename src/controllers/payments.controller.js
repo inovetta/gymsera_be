@@ -176,7 +176,7 @@ const uploadProof = async (req, res, next) => {
       throw createError('Payment not found', 404);
     }
 
-    const payment = await paymentService.uploadPaymentProof(req.tenantDb, req.params.id, req.file, req.tenantId || req.tenantDb.tenantId);
+    const payment = await paymentService.uploadPaymentProof(req.tenantDb, req.params.id, req.file, req.organizationId || req.tenantDb.organizationId);
     return sendSuccess(res, { payment }, 'Proof uploaded');
   } catch (err) {
     next(err);
@@ -185,7 +185,7 @@ const uploadProof = async (req, res, next) => {
 
 // ── GET /payments/:id/proof — the stored proof, for the receiving host only (P9c, A) ─────
 // Tenant context + `payments.view` on the payment's branch (owner, organization admin, branch
-// staff with that grant; platform admins through their X-Tenant-Id). A payment the caller cannot
+// staff with that grant; platform admins through their X-Organization-Id). A payment the caller cannot
 // see answers 404 like GET /payments/:id. Every opening is written to the platform audit log
 // (same rule as KYC documents, R-27). Never cached.
 const getProof = async (req, res, next) => {
@@ -206,7 +206,7 @@ const getProof = async (req, res, next) => {
       targetType: 'Payment',
       targetId: payment.id,
       details: {
-        tenantId: req.tenantDb.tenantId || null,
+        organizationId: req.tenantDb.organizationId || null,
         branchId: payment.branchId,
         isPlatformAdmin: req.user?.role === 'PLATFORM_ADMIN',
       },
@@ -336,14 +336,14 @@ const refundPayment = async (req, res, next) => {
     const approvalService = require('../services/approval.service');
     const accessService = require('../services/access.service');
 
-    const tenantId = req.tenantId || req.user?.tenantId || req.tenant?.id;
+    const organizationId = req.organizationId || req.user?.organizationId || req.tenant?.id;
     const userId = req.user.id || req.user.sub;
     const branchId = payment.branchId || req.branchId || null;
-    const grants = req.grants || (await accessService.resolve(req.tenantDb, tenantId, userId, branchId));
+    const grants = req.grants || (await accessService.resolve(req.tenantDb, organizationId, userId, branchId));
 
     const ctx = {
       tenantDb: req.tenantDb,
-      tenantId,
+      organizationId,
       userId,
       branchId,
       grants,

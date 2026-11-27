@@ -52,7 +52,7 @@ const AreaAlias = require('./AreaAlias.model')(sequelize);
 // User ↔ UserOrgIndex (routing index — see UserOrgIndex.model.js)
 User.hasMany(UserOrgIndex, { foreignKey: 'userId', as: 'orgMemberships', onDelete: 'CASCADE' });
 UserOrgIndex.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-UserOrgIndex.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
+UserOrgIndex.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant', constraints: false });
 
 // User ↔ DeviceToken
 User.hasMany(DeviceToken, { foreignKey: 'userId', as: 'deviceTokens', onDelete: 'CASCADE' });
@@ -70,8 +70,8 @@ User.hasMany(Conversation, { foreignKey: 'userId', as: 'conversations', onDelete
 Conversation.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // GymListing ↔ Conversation
-GymListing.hasMany(Conversation, { foreignKey: 'branchId', sourceKey: 'branchId', as: 'conversations', constraints: false });
-Conversation.belongsTo(GymListing, { foreignKey: 'branchId', targetKey: 'branchId', as: 'gymListing', constraints: false });
+GymListing.hasMany(Conversation, { foreignKey: 'branchId', sourceKey: 'primaryBranchId', as: 'conversations', constraints: false });
+Conversation.belongsTo(GymListing, { foreignKey: 'branchId', targetKey: 'primaryBranchId', as: 'gymListing', constraints: false });
 
 // User ↔ Notification
 User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications', onDelete: 'CASCADE' });
@@ -82,8 +82,8 @@ User.hasMany(SavedGym, { foreignKey: 'userId', as: 'savedGyms', onDelete: 'CASCA
 SavedGym.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // GymListing ↔ SavedGym
-GymListing.hasMany(SavedGym, { foreignKey: 'gymListingId', as: 'savedGyms', onDelete: 'CASCADE' });
-SavedGym.belongsTo(GymListing, { foreignKey: 'gymListingId', as: 'gym' });
+GymListing.hasMany(SavedGym, { foreignKey: 'businessId', as: 'savedGyms', onDelete: 'CASCADE' });
+SavedGym.belongsTo(GymListing, { foreignKey: 'businessId', as: 'gym' });
 
 // User ↔ RefreshToken
 User.hasMany(RefreshToken, { foreignKey: 'userId', as: 'refreshTokens', onDelete: 'CASCADE' });
@@ -106,24 +106,24 @@ City.hasMany(Tenant, { foreignKey: 'cityId', as: 'tenants' });
 Tenant.belongsTo(City, { foreignKey: 'cityId', as: 'city' });
 
 // Tenant ↔ TenantSubscription
-Tenant.hasMany(TenantSubscription, { foreignKey: 'tenantId', as: 'subscriptions' });
-TenantSubscription.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasMany(TenantSubscription, { foreignKey: 'organizationId', as: 'subscriptions' });
+TenantSubscription.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // Tenant ↔ PlatformPackage (selected package)
 Tenant.belongsTo(PlatformPackage, { foreignKey: 'selectedPackageId', as: 'selectedPackage' });
 PlatformPackage.hasMany(Tenant, { foreignKey: 'selectedPackageId', as: 'tenants' });
 
 // Tenant ↔ GymListing (one-to-one: each approved tenant has one public gym listing)
-Tenant.hasOne(GymListing, { foreignKey: 'tenantId', as: 'gymListing' });
-Tenant.hasMany(GymListing, { foreignKey: 'tenantId', as: 'gymListings' });
-GymListing.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasOne(GymListing, { foreignKey: 'organizationId', as: 'gymListing' });
+Tenant.hasMany(GymListing, { foreignKey: 'organizationId', as: 'gymListings' });
+GymListing.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // Tenant / GymListing ↔ CapacityEvent (audit trail — see CapacityEvent.model.js).
 // constraints: false on both associations deliberately — an append-only
 // audit log should never be blocked from writing, or have its own rows
 // cascade-deleted, by referential churn on the rows it describes.
-Tenant.hasMany(CapacityEvent, { foreignKey: 'tenantId', as: 'capacityEvents', constraints: false });
-CapacityEvent.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
+Tenant.hasMany(CapacityEvent, { foreignKey: 'organizationId', as: 'capacityEvents', constraints: false });
+CapacityEvent.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant', constraints: false });
 GymListing.hasMany(CapacityEvent, { foreignKey: 'listingId', as: 'capacityEvents', constraints: false });
 CapacityEvent.belongsTo(GymListing, { foreignKey: 'listingId', as: 'listing', constraints: false });
 
@@ -141,12 +141,12 @@ BillingPlan.hasMany(TenantSubscription, { foreignKey: 'billingPlanId', as: 'tena
 TenantSubscription.belongsTo(BillingPlan, { foreignKey: 'billingPlanId', as: 'billingPlan' });
 
 // Tenant ↔ PlatformInvoice
-Tenant.hasMany(PlatformInvoice, { foreignKey: 'tenantId', as: 'platformInvoices' });
-PlatformInvoice.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasMany(PlatformInvoice, { foreignKey: 'organizationId', as: 'platformInvoices' });
+PlatformInvoice.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // TenantSubscription ↔ PlatformInvoice
-TenantSubscription.hasMany(PlatformInvoice, { foreignKey: 'tenantSubscriptionId', as: 'invoices' });
-PlatformInvoice.belongsTo(TenantSubscription, { foreignKey: 'tenantSubscriptionId', as: 'subscription' });
+TenantSubscription.hasMany(PlatformInvoice, { foreignKey: 'organizationSubscriptionId', as: 'invoices' });
+PlatformInvoice.belongsTo(TenantSubscription, { foreignKey: 'organizationSubscriptionId', as: 'subscription' });
 
 // City / Area ↔ GymListing
 City.hasMany(GymListing, { foreignKey: 'cityId', as: 'gymListings' });
@@ -160,35 +160,35 @@ User.hasMany(UserGymMembership, { foreignKey: 'userId', as: 'gymMemberships', on
 UserGymMembership.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
 // Tenant ↔ UserGymMembership
-Tenant.hasMany(UserGymMembership, { foreignKey: 'tenantId', as: 'memberMemberships' });
-UserGymMembership.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasMany(UserGymMembership, { foreignKey: 'organizationId', as: 'memberMemberships' });
+UserGymMembership.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // GymListing ↔ UserGymMembership
-GymListing.hasMany(UserGymMembership, { foreignKey: 'gymListingId', as: 'memberships' });
-UserGymMembership.belongsTo(GymListing, { foreignKey: 'gymListingId', as: 'gymListing' });
+GymListing.hasMany(UserGymMembership, { foreignKey: 'businessId', as: 'memberships' });
+UserGymMembership.belongsTo(GymListing, { foreignKey: 'businessId', as: 'gymListing' });
 
 // GymListing ↔ GymReview
-GymListing.hasMany(GymReview, { foreignKey: 'gymListingId', as: 'reviews', onDelete: 'CASCADE' });
-GymReview.belongsTo(GymListing, { foreignKey: 'gymListingId', as: 'gym' });
+GymListing.hasMany(GymReview, { foreignKey: 'businessId', as: 'reviews', onDelete: 'CASCADE' });
+GymReview.belongsTo(GymListing, { foreignKey: 'businessId', as: 'gym' });
 
 // User ↔ GymReview
 User.hasMany(GymReview, { foreignKey: 'userId', as: 'gymReviews', onDelete: 'CASCADE' });
 GymReview.belongsTo(User, { foreignKey: 'userId', as: 'reviewer' });
 
 // Tenant ↔ GymReview
-Tenant.hasMany(GymReview, { foreignKey: 'tenantId', as: 'gymReviews' });
-GymReview.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasMany(GymReview, { foreignKey: 'organizationId', as: 'gymReviews' });
+GymReview.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // NEW-256: names for the CMS report queue. No database constraints (p031 creates none).
 ContentReport.belongsTo(User, { foreignKey: 'reporterUserId', as: 'reporter', constraints: false });
 ContentReport.belongsTo(User, { foreignKey: 'targetUserId', as: 'targetUser', constraints: false });
 ContentReport.belongsTo(User, { foreignKey: 'handledByUserId', as: 'handledBy', constraints: false });
 UserBlock.belongsTo(User, { foreignKey: 'userId', as: 'user', constraints: false });
-UserBlock.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
+UserBlock.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant', constraints: false });
 
 // Tenant ↔ Device
-Tenant.hasMany(Device, { foreignKey: 'tenantId', as: 'devices', onDelete: 'CASCADE' });
-Device.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasMany(Device, { foreignKey: 'organizationId', as: 'devices', onDelete: 'CASCADE' });
+Device.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // Device ↔ DeviceMember
 Device.hasMany(DeviceMember, { foreignKey: 'deviceId', as: 'members', onDelete: 'CASCADE' });
@@ -201,8 +201,8 @@ DeviceMember.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 // TenantInvitation associations
 User.hasMany(TenantInvitation, { foreignKey: 'invitedBy', as: 'sentTenantInvitations' });
 TenantInvitation.belongsTo(User, { foreignKey: 'invitedBy', as: 'inviter' });
-Tenant.hasMany(TenantInvitation, { foreignKey: 'tenantId', as: 'invitations' });
-TenantInvitation.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+Tenant.hasMany(TenantInvitation, { foreignKey: 'organizationId', as: 'invitations' });
+TenantInvitation.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant' });
 
 // PlatformAuditLog associations
 User.hasMany(PlatformAuditLog, { foreignKey: 'actorUserId', as: 'platformAuditLogs' });
@@ -211,8 +211,8 @@ PlatformAuditLog.belongsTo(User, { foreignKey: 'actorUserId', as: 'actor' });
 // AuditLog (HTTP mutation audit trail) associations
 User.hasMany(AuditLog, { foreignKey: 'userId', as: 'auditLogs', constraints: false });
 AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user', constraints: false });
-Tenant.hasMany(AuditLog, { foreignKey: 'tenantId', as: 'auditLogs', constraints: false });
-AuditLog.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant', constraints: false });
+Tenant.hasMany(AuditLog, { foreignKey: 'organizationId', as: 'auditLogs', constraints: false });
+AuditLog.belongsTo(Tenant, { foreignKey: 'organizationId', as: 'tenant', constraints: false });
 
 // Discovery snapshot (PERF-06): a write to any platform model the public listing
 // reads (listing status/featured, tenant status, ratings, cities/areas) drops it.

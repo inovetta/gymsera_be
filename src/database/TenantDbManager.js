@@ -7,7 +7,7 @@ const slowQuery = require('./slow-query');
  * TenantDbManager
  *
  * Maintains a pool of Sequelize instances, one per tenant.
- * Keyed by tenantId — connections are reused across requests.
+ * Keyed by organizationId — connections are reused across requests.
  *
  * PERF-07 (spec §10.7): the map is bounded.
  *  - Each tenant pool holds at most TENANT_POOL_MAX_CONNECTIONS connections
@@ -20,7 +20,7 @@ const slowQuery = require('./slow-query');
  *    map stays above the cap until one goes idle (it is a soft cap by design).
  *
  * Usage:
- *   const { models } = await TenantDbManager.getConnection(tenantId, encryptedConnStr);
+ *   const { models } = await TenantDbManager.getConnection(organizationId, encryptedConnStr);
  *   const { Gym, Branch } = models;
  */
 const intEnv = (name, fallback, min = 1) => {
@@ -30,7 +30,7 @@ const intEnv = (name, fallback, min = 1) => {
 
 class TenantDbManager {
   constructor() {
-    /** @type {Map<string, { sequelize: Sequelize, models: object, tenantId: string, lastUsedAt: number }>} */
+    /** @type {Map<string, { sequelize: Sequelize, models: object, organizationId: string, lastUsedAt: number }>} */
     this.pool = new Map();
     /** @type {Map<string, Promise<object>>} in-flight creations, so one tenant never gets two pools */
     this.creating = new Map();
@@ -48,27 +48,27 @@ class TenantDbManager {
 
   /**
    * Return (or create) the Sequelize instance + models for a tenant.
-   * @param {string} tenantId              UUID of the tenant
+   * @param {string} organizationId              UUID of the tenant
    * @param {string} encryptedConnStr      AES-256 encrypted MySQL connection URL
    */
-  async getConnection(tenantId, encryptedConnStr) {
-    const existing = this.pool.get(tenantId);
+  async getConnection(organizationId, encryptedConnStr) {
+    const existing = this.pool.get(organizationId);
     if (existing) {
       existing.lastUsedAt = Date.now();
       return existing;
     }
 
-    const inFlight = this.creating.get(tenantId);
+    const inFlight = this.creating.get(organizationId);
     if (inFlight) return inFlight;
 
-    const promise = this._create(tenantId, encryptedConnStr).finally(() => {
-      this.creating.delete(tenantId);
+    const promise = this._create(organizationId, encryptedConnStr).finally(() => {
+      this.creating.delete(organizationId);
     });
-    this.creating.set(tenantId, promise);
+    this.creating.set(organizationId, promise);
     return promise;
   }
 
-  async _create(tenantId, encryptedConnStr) {
+  async _create(organizationId, encryptedConnStr) {
     const connUrl = decrypt(encryptedConnStr);
     const { maxConnections, idleMs } = this.config;
 
@@ -104,9 +104,9 @@ class TenantDbManager {
     // Schema alterations and data backfills are strictly performed via the versioned
     // tenant migration runner (src/database/tenant-migration-runner.js), NEVER on getConnection.
 
-    const entry = { sequelize, models, tenantId, lastUsedAt: Date.now() };
-    this.pool.set(tenantId, entry);
-    this._evictIdleOverCap(tenantId).catch(() => {});
+    const entry = { sequelize, models, organizationId, lastUsedAt: Date.now() };
+    this.pool.set(organizationId, entry);
+    this._evictIdleOverCap(organizationId).catch(() => {});
     return entry;
   }
 
@@ -129,7 +129,7 @@ class TenantDbManager {
 
     const now = Date.now();
     const candidates = [...this.pool.values()]
-      .filter((e) => e.tenantId !== keepTenantId && this._isIdle(e, now, minIdleBeforeEvictMs))
+      .filter((e) => e.organizationId !== keepTenantId && this._isIdle(e, now, minIdleBeforeEvictMs))
       .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
 
     let evicted = 0;
@@ -137,8 +137,8 @@ class TenantDbManager {
       if (this.pool.size <= cap) break;
       // Re-check just before closing: a request may have borrowed it meanwhile.
       if (!this._isIdle(entry, Date.now(), minIdleBeforeEvictMs)) continue;
-      if (this.pool.get(entry.tenantId) !== entry) continue;
-      this.pool.delete(entry.tenantId);
+      if (this.pool.get(entry.organizationId) !== entry) continue;
+      this.pool.delete(entry.organizationId);
       await entry.sequelize.close().catch(() => {});
       this.evictions += 1;
       evicted += 1;
@@ -180,10 +180,10 @@ class TenantDbManager {
    * Close and remove a tenant connection from the pool.
    * Called during tenant suspension or when cleaning up stale connections.
    */
-  async release(tenantId) {
-    const entry = this.pool.get(tenantId);
+  async release(organizationId) {
+    const entry = this.pool.get(organizationId);
     if (entry) {
-      this.pool.delete(tenantId);
+      this.pool.delete(organizationId);
       await entry.sequelize.close();
     }
   }
@@ -193,14 +193,14 @@ class TenantDbManager {
    */
   async releaseAll() {
     const promises = [];
-    for (const [tenantId] of this.pool) {
-      promises.push(this.release(tenantId));
+    for (const [organizationId] of this.pool) {
+      promises.push(this.release(organizationId));
     }
     await Promise.all(promises);
   }
 
   /**
-   * Return all currently-pooled [tenantId, tenantDb] entries.
+   * Return all currently-pooled [organizationId, tenantDb] entries.
    * Used by the subscription expiry cron to iterate live connections.
    * @returns {Array<[string, { sequelize, models }]>}
    */
@@ -212,9 +212,9 @@ class TenantDbManager {
     const rows = [];
     for (const e of this.pool.values()) {
       const p = e.sequelize.connectionManager && e.sequelize.connectionManager.pool;
-      rows.push({ tenantId: e.tenantId, connections: (p && p.size) || 0, inUse: (p && p.using) || 0, waiting: (p && p.waiting) || 0 });
+      rows.push({ organizationId: e.organizationId, connections: (p && p.size) || 0, inUse: (p && p.using) || 0, waiting: (p && p.waiting) || 0 });
     }
-    rows.sort((a, b) => b.inUse - a.inUse || b.waiting - a.waiting || b.connections - a.connections || String(a.tenantId).localeCompare(String(b.tenantId)));
+    rows.sort((a, b) => b.inUse - a.inUse || b.waiting - a.waiting || b.connections - a.connections || String(a.organizationId).localeCompare(String(b.organizationId)));
     return rows.slice(0, limit);
   }
 

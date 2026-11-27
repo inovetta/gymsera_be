@@ -39,7 +39,7 @@ describe('NEW-212 POST /payments/:id/printed', () => {
 
   it.each(['frontDesk', 'trainer', 'cleaner'])('%s records it only with payments.view at the branch', async (name) => {
     const payment = await newPayment();
-    const grants = await accessService.resolve(dbHarness.tenant1, personas[name].tenantId, personas[name].user.id, branchId);
+    const grants = await accessService.resolve(dbHarness.tenant1, personas[name].organizationId, personas[name].user.id, branchId);
     const res = await asPersona(name).post(`/payments/${payment.id}/printed`);
     await payment.reload();
     if (grants.has('payments.view')) {

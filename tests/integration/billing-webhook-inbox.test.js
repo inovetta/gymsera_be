@@ -47,10 +47,10 @@ describe('BILL-12: billing webhook inbox', () => {
     await factories.createGymListing(tenant.id);
     plan3 = await factories.createBillingPlan({ branchCount: 3, sortOrder: 3 });
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5 });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
-  const activeRows = () => TenantSubscription.findAll({ where: { tenantId: tenant.id, status: 'ACTIVE' } });
+  const activeRows = () => TenantSubscription.findAll({ where: { organizationId: tenant.id, status: 'ACTIVE' } });
 
   describe('Apple App Store Server Notifications', () => {
     test('the same notification delivered 3× is stored once and applied once', async () => {
@@ -182,7 +182,7 @@ describe('BILL-12: billing webhook inbox', () => {
   describe('Stripe webhooks', () => {
     test('a replayed event is a no-op, and state comes from the re-fetched subscription, not the payload', async () => {
       await plan3.update({ stripeMonthlyPriceId: 'price_3m' });
-      const live = fakes.stripeSubscription({ id: 'sub_1', priceId: 'price_3m', tenantId: tenant.id });
+      const live = fakes.stripeSubscription({ id: 'sub_1', priceId: 'price_3m', organizationId: tenant.id });
       const { retrieve } = fakes.installStripeFakes({ subscriptions: { sub_1: live } });
 
       // The payload's copy is stale ("canceled"); Stripe's API says active.

@@ -40,38 +40,38 @@ const { sequelize } = require('../database/platform');
       console.log('  row count:', count[0].c);
     }
 
-    // 3. Collation of tenant_subscriptions.platform_package_id and row count
+    // 3. Collation of organization_subscriptions.platform_package_id and row count
     const [tenantSubTable] = await sequelize.query(
-      'SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenant_subscriptions\''
+      'SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'organization_subscriptions\''
     );
-    console.log(`\ntenant_subscriptions table exists: ${tenantSubTable.length > 0 ? 'YES' : 'no'}`);
+    console.log(`\norganization_subscriptions table exists: ${tenantSubTable.length > 0 ? 'YES' : 'no'}`);
     if (tenantSubTable.length > 0) {
       const [cols] = await sequelize.query(
-        'SELECT COLUMN_NAME, COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenant_subscriptions\' AND COLUMN_NAME IN (\'platform_package_id\', \'branch_count\', \'over_quota_count\')'
+        'SELECT COLUMN_NAME, COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'organization_subscriptions\' AND COLUMN_NAME IN (\'platform_package_id\', \'branch_count\', \'over_quota_count\')'
       );
       cols.forEach((c) => console.log(' ', JSON.stringify(c)));
-      const [count] = await sequelize.query('SELECT COUNT(*) as c FROM tenant_subscriptions');
+      const [count] = await sequelize.query('SELECT COUNT(*) as c FROM organization_subscriptions');
       console.log('  row count:', count[0].c);
       const [activeIap] = await sequelize.query(
-        'SELECT COUNT(*) as c FROM tenant_subscriptions WHERE status = \'ACTIVE\' AND branch_count IS NOT NULL'
+        'SELECT COUNT(*) as c FROM organization_subscriptions WHERE status = \'ACTIVE\' AND branch_count IS NOT NULL'
       );
       console.log('  ACTIVE store-verified (IAP) subscriptions:', activeIap[0].c);
     }
 
-    // 4. Any existing FK on tenant_subscriptions.platform_package_id, and its current definition
+    // 4. Any existing FK on organization_subscriptions.platform_package_id, and its current definition
     const [fks] = await sequelize.query(
       `SELECT kcu.CONSTRAINT_NAME, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, rc.UPDATE_RULE, rc.DELETE_RULE
        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
        JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-       WHERE kcu.TABLE_SCHEMA = DATABASE() AND kcu.TABLE_NAME = 'tenant_subscriptions' AND kcu.COLUMN_NAME = 'platform_package_id'`
+       WHERE kcu.TABLE_SCHEMA = DATABASE() AND kcu.TABLE_NAME = 'organization_subscriptions' AND kcu.COLUMN_NAME = 'platform_package_id'`
     );
-    console.log('\nExisting FK on tenant_subscriptions.platform_package_id:', fks.length > 0 ? JSON.stringify(fks[0]) : 'none found');
+    console.log('\nExisting FK on organization_subscriptions.platform_package_id:', fks.length > 0 ? JSON.stringify(fks[0]) : 'none found');
 
-    // 5. gym_listings row count and reserved_slots presence (sanity, not a migration risk)
+    // 5. business_listings (gym_listings before p033, R-120) row count and reserved_slots presence (sanity, not a migration risk)
     const [glCols] = await sequelize.query(
-      'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'gym_listings\' AND COLUMN_NAME = \'reserved_slots\''
+      'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'business_listings\' AND COLUMN_NAME = \'reserved_slots\''
     );
-    console.log(`\ngym_listings.reserved_slots already exists: ${glCols.length > 0 ? 'YES' : 'no'}`);
+    console.log(`\nbusiness_listings.reserved_slots already exists: ${glCols.length > 0 ? 'YES' : 'no'}`);
 
     console.log('\n--- Done. No writes were made. ---');
   } catch (err) {

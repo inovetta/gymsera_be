@@ -41,7 +41,7 @@ describe('BILL-06: server-side Android acknowledgement', () => {
     tenant = await factories.createTenant({ connectionStringEncrypted: dbHarness.tenant1.encryptedConnStr });
     await factories.createGymListing(tenant.id);
     plan3 = await factories.createBillingPlan({ branchCount: 3, sortOrder: 3 });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const unacked = (overrides = {}) =>

@@ -28,7 +28,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   const book = (persona, body) => asPersona(persona).post('/subscriptions', body);
   const quote = (persona, q) => asPersona(persona).get(
-    `/subscriptions/quote?planId=${q.planId}&gymListingId=${q.gymListingId}&branchId=${q.branchId}`
+    `/subscriptions/quote?planId=${q.planId}&businessId=${q.businessId}&branchId=${q.branchId}`
   );
 
   beforeAll(async () => {
@@ -37,7 +37,7 @@ describe('Phase 7 P7a: booking and payment', () => {
     ctx = require('../harness/personas').personaManager.context;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'P7a Monthly',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'P7a Monthly',
       price: '5000.00', joiningFee: '700.00', securityFee: '300.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
@@ -50,7 +50,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   beforeEach(() => cache._resetForTests());
 
-  const body = () => ({ planId: plan.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id });
+  const body = () => ({ planId: plan.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id });
 
   describe('BUG-34 / NEW-150: the total is the server price, no fee, no promo', () => {
     test('quote = plan + joining + security, in the branch currency; booking charges exactly that', async () => {
@@ -91,7 +91,7 @@ describe('Phase 7 P7a: booking and payment', () => {
         expect(res.body.data.price).toBe(5000);
       }
       const anon = await require('supertest')(require('../harness/personas').personaManager.server)
-        .get(`/api/v1/subscriptions/quote?planId=${plan.id}&gymListingId=${ctx.listing1.id}&branchId=${ctx.branch1.id}`);
+        .get(`/api/v1/subscriptions/quote?planId=${plan.id}&businessId=${ctx.listing1.id}&branchId=${ctx.branch1.id}`);
       expect(anon.status).toBe(401);
     });
 
@@ -160,7 +160,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   describe('BUG-35: bank details are real or null', () => {
     const details = async () => {
-      const res = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}/payment-details`);
+      const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.businessId}/payment-details`);
       expect(res.status).toBe(200);
       return res.body.data.paymentDetails;
     };
@@ -184,24 +184,26 @@ describe('Phase 7 P7a: booking and payment', () => {
 
   describe('NEW-159: a gym that is not live cannot be opened or booked', () => {
     afterEach(async () => {
-      await TenantSubscription.update({ status: 'ACTIVE' }, { where: { tenantId: ctx.tenant1.id } });
+      await TenantSubscription.update({ status: 'ACTIVE' }, { where: { organizationId: ctx.tenant1.id } });
       await ctx.tenant1Db.models.Branch.update({ travelerVisibilityStatus: 'active' }, { where: { id: ctx.branch1.id } });
     });
 
-    const detail = (id) => asPersona('member').get(`/discovery/gyms/${id}`);
+    const detail = (id) => asPersona('member').get(`/discovery/branches/${id}`);
+    const businessDetail = (id) => asPersona('member').get(`/discovery/businesses/${id}`);
 
-    test('live: detail opens by branch id and by listing id', async () => {
+    test('live: the branch detail opens by branch id and the business detail by business id (one id, one meaning)', async () => {
       expect((await detail(ctx.branch1.id)).status).toBe(200);
-      expect((await detail(ctx.listing1.id)).status).toBe(200);
+      expect((await businessDetail(ctx.listing1.id)).status).toBe(200);
+      expect((await businessDetail(ctx.branch1.id)).status).toBe(404);
     });
 
     test('no entitled subscription: detail 404, payment details 404, quote and booking 409 gym_not_bookable', async () => {
-      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { tenantId: ctx.tenant1.id } });
+      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { organizationId: ctx.tenant1.id } });
       const gone = await detail(ctx.branch1.id);
       expect(gone.status).toBe(404);
       expect(gone.body.code).toBe('gym_not_available');
       expect((await detail(ctx.listing1.id)).status).toBe(404);
-      expect((await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}/payment-details`)).status).toBe(404);
+      expect((await asPersona('member').get(`/discovery/businesses/${ctx.branch1.businessId}/payment-details`)).status).toBe(404);
 
       const q = await quote('member', body());
       expect(q.status).toBe(409);
@@ -220,7 +222,7 @@ describe('Phase 7 P7a: booking and payment', () => {
 
     test('the listing of another tenant stays open while this one is not live', async () => {
       await makeBranchLive(ctx.tenant2Db, ctx.branch2.id);
-      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { tenantId: ctx.tenant1.id } });
+      await TenantSubscription.update({ status: 'EXPIRED' }, { where: { organizationId: ctx.tenant1.id } });
       expect((await detail(ctx.branch2.id)).status).toBe(200);
       const listing2 = await GymListing.findByPk(ctx.listing2.id);
       expect(listing2.status).toBe('ACTIVE');

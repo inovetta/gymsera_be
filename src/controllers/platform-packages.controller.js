@@ -33,14 +33,14 @@ const getPackage = async (req, res, next) => {
 // ── POST /platform-packages — create package (admin) ────────────────────────
 const createPackage = async (req, res, next) => {
   try {
-    const { name, description, price, billingCycle, maxOrganizations, maxBranches, maxTrainers, maxMembers, featureFlagsJson } = req.body;
+    const { name, description, price, billingCycle, maxBusinesses, maxBranches, maxTrainers, maxMembers, featureFlagsJson } = req.body;
 
     const pkg = await PlatformPackage.create({
       name,
       description: description || null,
       price,
       billingCycle: billingCycle || 'MONTHLY',
-      maxOrganizations: maxOrganizations || 1,
+      maxBusinesses: maxBusinesses || 1,
       maxBranches: maxBranches || 1,
       maxTrainers: maxTrainers || 5,
       maxMembers: maxMembers || 200,
@@ -60,7 +60,7 @@ const updatePackage = async (req, res, next) => {
     const pkg = await PlatformPackage.findByPk(req.params.id);
     if (!pkg) throw createError('Package not found', 404);
 
-    const fields = ['name', 'description', 'price', 'billingCycle', 'maxOrganizations', 'maxBranches', 'maxTrainers', 'maxMembers', 'featureFlagsJson', 'status'];
+    const fields = ['name', 'description', 'price', 'billingCycle', 'maxBusinesses', 'maxBranches', 'maxTrainers', 'maxMembers', 'featureFlagsJson', 'status'];
     fields.forEach((f) => {
       if (req.body[f] !== undefined) pkg[f] = req.body[f];
     });

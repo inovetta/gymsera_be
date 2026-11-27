@@ -18,7 +18,7 @@ describe('R-83: a billing-locked branch is hidden from travellers', () => {
   let ctx; let plan; let memberSubId;
 
   const get = (path) => asPersona('member').get(`/discovery${path}`);
-  const listedIds = async () => (await get('/gyms?page=1&limit=50')).body.data.gyms.map((g) => g.id);
+  const listedIds = async () => (await get('/branches?page=1&limit=50')).body.data.branches.map((g) => g.id);
   const lock = () => ctx.tenant1Db.models.Branch.update(
     { billingLockedAt: new Date(), billingLockReason: 'test' }, { where: { id: ctx.branch1.id } }
   );
@@ -29,11 +29,11 @@ describe('R-83: a billing-locked branch is hidden from travellers', () => {
     ctx = require('../harness/personas').personaManager.context;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'R-83 Monthly', price: '3000.00',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'R-83 Monthly', price: '3000.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     const sub = await subscriptionService.subscribe(personas.member.user.id, {
-      planId: plan.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: plan.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     memberSubId = sub.id || sub.subscription?.id;
   });
@@ -50,16 +50,16 @@ describe('R-83: a billing-locked branch is hidden from travellers', () => {
 
   test('unlocked: listed and its detail opens', async () => {
     expect(await listedIds()).toContain(ctx.branch1.id);
-    expect((await get(`/gyms/${ctx.branch1.id}`)).status).toBe(200);
+    expect((await get(`/branches/${ctx.branch1.id}`)).status).toBe(200);
   });
 
   test('locked: not in lists or the organization branches; detail 404 gym_not_available', async () => {
     await lock();
     expect(await listedIds()).not.toContain(ctx.branch1.id);
-    const branches = await get(`/organizations/${ctx.branch1.gymId}/branches`);
+    const branches = await get(`/businesses/${ctx.branch1.businessId}/branches`);
     const ids = branches.status === 200 ? (branches.body.data.branches || []).map((b) => b.id) : [];
     expect(ids).not.toContain(ctx.branch1.id);
-    const detail = await get(`/gyms/${ctx.branch1.id}`);
+    const detail = await get(`/branches/${ctx.branch1.id}`);
     expect(detail.status).toBe(404);
     expect(detail.body.code).toBe('gym_not_available');
   });
@@ -67,7 +67,7 @@ describe('R-83: a billing-locked branch is hidden from travellers', () => {
   test('locked: a new booking is refused before anything is written', async () => {
     await lock();
     const res = await asPersona('member').post('/subscriptions', {
-      planId: plan.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: plan.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     expect(res.status).toBe(409);
     expect(res.body.code || res.body.error?.code).toBe('gym_not_bookable');

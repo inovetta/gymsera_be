@@ -58,8 +58,8 @@ const registerTenantModels = (sequelize) => {
   Payout.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
 
   // Gym ↔ Branch
-  Gym.hasMany(Branch, { foreignKey: 'gymId', as: 'branches', onDelete: 'CASCADE' });
-  Branch.belongsTo(Gym, { foreignKey: 'gymId', as: 'gym' });
+  Gym.hasMany(Branch, { foreignKey: 'businessId', as: 'branches', onDelete: 'CASCADE' });
+  Branch.belongsTo(Gym, { foreignKey: 'businessId', as: 'gym' });
 
   // Branch ↔ BranchVisibilityHistory
   Branch.hasMany(BranchVisibilityHistory, { foreignKey: 'branchId', as: 'visibilityHistory', onDelete: 'CASCADE' });
@@ -70,8 +70,8 @@ const registerTenantModels = (sequelize) => {
   GymStaff.belongsTo(Branch, { foreignKey: 'branchId', as: 'branch' });
 
   // Gym ↔ MembershipPlan (gym-wide plans)
-  Gym.hasMany(MembershipPlan, { foreignKey: 'gymId', as: 'membershipPlans' });
-  MembershipPlan.belongsTo(Gym, { foreignKey: 'gymId', as: 'gym' });
+  Gym.hasMany(MembershipPlan, { foreignKey: 'businessId', as: 'membershipPlans' });
+  MembershipPlan.belongsTo(Gym, { foreignKey: 'businessId', as: 'gym' });
 
   // Branch ↔ MembershipPlan (branch-specific plans)
   Branch.hasMany(MembershipPlan, { foreignKey: 'branchId', as: 'branchPlans' });

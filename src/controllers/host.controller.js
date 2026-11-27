@@ -2,7 +2,7 @@ const TenantDbManager = require('../database/TenantDbManager');
 const { Tenant, TenantSubscription, GymListing, User, PlatformAuditLog } = require('../models/platform');
 const { sendSuccess, createError, buildPagination } = require('../utils/response.utils');
 const { likeContains } = require('../utils/sql-like');
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const gymService = require('../services/gym.service');
 const { assertAreaInCity } = require('../services/places.service');
 const areaRequests = require('../services/area-requests.service');
@@ -42,7 +42,7 @@ const _weeklyCheckins = async (AttendanceLog, where, todayStr, timezone) => {
 /**
  * GET /host/status — where the caller stands as a host (Phase 7 P2). Only
  * `authenticate`: the answer is about the gym the caller owns, found by ownership,
- * so a token issued before they became a host (role MEMBER, no tenantId) still gets
+ * so a token issued before they became a host (role MEMBER, no organizationId) still gets
  * the right answer (BUG-11). A non-host gets NONE.
  */
 /**
@@ -96,13 +96,13 @@ const getHostStatus = async (req, res, next) => {
 
 const getTodaySummary = async (req, res, next) => {
   try {
-    // P2 / BUG-11: the host's own tenant by ownership, not the token's tenantId, which
+    // P2 / BUG-11: the host's own tenant by ownership, not the token's organizationId, which
     // is null in a token issued before the tenant existed and then answered "DRAFT"
     // for a host already under review.
     const hostStatus = await hostStatusService.getHostStatus(req.user.id || req.user.sub);
-    const tenantId = hostStatus.tenantId;
+    const organizationId = hostStatus.organizationId;
 
-    if (!tenantId) {
+    if (!organizationId) {
       return sendSuccess(res, {
         state: 'A',
         applicationStatus: 'DRAFT',
@@ -111,7 +111,7 @@ const getTodaySummary = async (req, res, next) => {
       });
     }
 
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     if (!tenant || tenant.status === 'DRAFT') {
       return sendSuccess(res, {
         state: 'A',
@@ -135,9 +135,9 @@ const getTodaySummary = async (req, res, next) => {
     // until the app was reloaded (BUG-11).
     let tenantDb;
     try {
-      tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+      tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
     } catch (err) {
-      console.warn(`[today-summary] tenant ${tenantId} database unavailable: ${err.message}`);
+      console.warn(`[today-summary] tenant ${organizationId} database unavailable: ${err.message}`);
       const unavailable = createError('We could not load your gym right now. Please try again.', 503);
       unavailable.code = 'tenant_unavailable';
       throw unavailable;
@@ -242,7 +242,7 @@ const getTodaySummary = async (req, res, next) => {
     // 6. Membership inquiries unanswered: query platform database
     let pendingInquiries = 0;
     try {
-      pendingInquiries = await inboxService.countPendingInquiries(tenantId);
+      pendingInquiries = await inboxService.countPendingInquiries(organizationId);
     } catch (e) {
       pendingInquiries = 0;
     }
@@ -270,10 +270,10 @@ const getTodaySummary = async (req, res, next) => {
 
 const getBranchQuota = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    const { organizationId } = req.query;
+    const organizationId = req.user.organizationId;
+    const { businessId } = req.query;
 
-    if (!tenantId) {
+    if (!organizationId) {
       return sendSuccess(res, {
         maxBranches: 1,
         usedBranches: 0,
@@ -281,7 +281,7 @@ const getBranchQuota = async (req, res, next) => {
       });
     }
 
-    const data = await branchQuotaService.getBranchQuota(tenantId, { organizationId });
+    const data = await branchQuotaService.getBranchQuota(organizationId, { businessId });
     return sendSuccess(res, data);
   } catch (err) {
     next(err);
@@ -290,82 +290,64 @@ const getBranchQuota = async (req, res, next) => {
 
 const getOrganizationQuota = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
-      return sendSuccess(res, {
-        maxOrganizations: 1,
-        usedOrganizations: 0,
-        remainingOrganizations: 1,
-        canCreateNext: true,
-        blockingListingStatus: null,
-      });
-    }
-
-    const tenant = await Tenant.findByPk(tenantId);
-    if (!tenant) throw createError('Tenant not found', 404);
-
-    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
-    const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub);
-
-    const allListings = await GymListing.findAll({
-      where: {
-        tenantId,
-        status: { [Op.ne]: 'INACTIVE' }
-      },
-      attributes: ['id', 'status'],
-      order: [['created_at', 'ASC']],
+    const organizationId = req.user.organizationId;
+    if (!organizationId) return sendSuccess(res, {
+      pool: { max: 0, used: 0, reserved: 0, free: 0 },
+      canAddBusiness: false, blockingBusinessStatus: null,
     });
-
-    let usedOrganizations = allListings.length;
-    let canCreateNext = true;
-    let blockingListingStatus = null;
-
-    if (tenant.status !== 'ACTIVE') {
-      // First organization is in draft/review state (no listing record in DB yet)
-      usedOrganizations = Math.max(1, allListings.length);
-      canCreateNext = false;
-      if (tenant.status === 'DRAFT') {
-        blockingListingStatus = 'draft';
-      } else if (tenant.status === 'PENDING_REVIEW' || tenant.status === 'UNDER_REVIEW') {
-        blockingListingStatus = 'under_review';
-      } else if (tenant.status === 'REJECTED') {
-        blockingListingStatus = 'rejected';
-      }
-    } else {
-      // Tenant is active, check the GymListing records
-      const blockingListing = allListings.find(
-        (l) => l.status === 'DRAFT' || l.status === 'PENDING'
-      );
-      canCreateNext = !blockingListing && (maxOrganizations - usedOrganizations) > 0;
-      if (blockingListing) {
-        blockingListingStatus = blockingListing.status === 'DRAFT' ? 'draft' : 'under_review';
-      }
+    const tenant = await Tenant.findByPk(organizationId);
+    if (!tenant) throw createError('Organization not found', 404);
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId);
+    const max = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
+    const maxBusinesses = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub);
+    const businesses = await GymListing.findAll({
+      where: { organizationId, status: { [Op.ne]: 'INACTIVE' } },
+      attributes: ['id', 'status', 'reservedSlots'],
+      order: [['createdAt', 'ASC']],
+    });
+    const reserved = businesses.reduce((sum, business) => sum + Number(business.reservedSlots || 0), 0);
+    let used = 0;
+    if (tenant.connectionStringEncrypted && tenant.connectionStringEncrypted !== 'PENDING_PROVISIONING') {
+      const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+      used = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
     }
-
-    const remainingOrganizations = Math.max(0, maxOrganizations - usedOrganizations);
-    const hasOrganizationLimit = maxOrganizations !== subscriptionQuotaService.UNLIMITED_ORGANIZATIONS;
-
+    const free = Math.max(0, max - used - reserved);
+    const blocking = tenant.status === 'ACTIVE'
+      ? businesses.find((b) => ['DRAFT', 'PENDING'].includes(b.status))?.status || null
+      : tenant.status;
+    const donorAvailable = businesses.some((b) => b.status === 'ACTIVE' && b.reservedSlots > 0);
     return sendSuccess(res, {
-      maxOrganizations,
-      usedOrganizations,
-      remainingOrganizations,
-      hasOrganizationLimit,
-      canCreateNext,
-      blockingListingStatus,
-      blockingOrganizationStatus: blockingListingStatus,
+      pool: { max, used, reserved, free },
+      canAddBusiness: !blocking && businesses.length < maxBusinesses && (free > 0 || donorAvailable),
+      blockingBusinessStatus: blocking,
     });
-  } catch (err) {
-    next(err);
+  } catch (err) { next(err); }
+};
+
+const _branchCountsByBusiness = async (organizationId) => {
+  const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'connectionStringEncrypted'] });
+  if (!tenant?.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') return {};
+  try {
+    const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
+    const rows = await tenantDb.models.Branch.findAll({
+      where: { status: 'ACTIVE' },
+      attributes: ['businessId', [fn('COUNT', col('id')), 'count']],
+      group: ['businessId'],
+      raw: true,
+    });
+    return Object.fromEntries(rows.map((r) => [r.businessId, parseInt(r.count, 10) || 0]));
+  } catch (_) {
+    return {};
   }
 };
 
 const getListings = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
+    const organizationId = req.user.organizationId;
+    if (!organizationId) {
       // FLOW-05 diagnostic: the only way this endpoint answers an empty list
       // to a host. Seen right after onboarding, it means a stale token.
-      console.warn('[FLOW-05] GET /host/listings: token has no tenantId; returning an empty list');
+      console.warn('[FLOW-05] GET /host/listings: token has no organizationId; returning an empty list');
       return sendSuccess(res, []);
     }
 
@@ -375,7 +357,7 @@ const getListings = async (req, res, next) => {
     // disappear from here the same way a deleted branch disappears from
     // its own list.
     const listings = await GymListing.findAll({
-      where: { tenantId, status: { [Op.ne]: 'INACTIVE' } },
+      where: { organizationId, status: { [Op.ne]: 'INACTIVE' } },
       order: [['updated_at', 'DESC']]
     });
 
@@ -383,13 +365,18 @@ const getListings = async (req, res, next) => {
     if (process.env.DEBUG_FLOW05 === 'true') {
       const byStatus = {};
       for (const l of listings) byStatus[l.status] = (byStatus[l.status] || 0) + 1;
-      const header = req.headers['x-tenant-id'];
-      const headerVsToken = !header ? 'absent' : (header === tenantId ? 'matches' : 'differs');
-      console.log(`[FLOW-05] GET /host/listings: ${listings.length} listing(s) ${JSON.stringify(byStatus)}; X-Tenant-Id ${headerVsToken}`);
+      const header = req.headers['x-organization-id'];
+      const headerVsToken = !header ? 'absent' : (header === organizationId ? 'matches' : 'differs');
+      console.log(`[FLOW-05] GET /host/listings: ${listings.length} listing(s) ${JSON.stringify(byStatus)}; X-Organization-Id ${headerVsToken}`);
     }
 
-    // NEW-265 (A4 reads): each organization's pending or rejected area request.
-    return sendSuccess(res, await areaRequests.withPendingAreas('listing', tenantId, listings));
+    // NEW-265 (A4 reads): each organization's pending or rejected area request; S4: active branchCount per business.
+    const [withPending, branchCounts] = await Promise.all([
+      areaRequests.withPendingAreas('business', organizationId, listings),
+      listings.length ? _branchCountsByBusiness(organizationId) : {},
+    ]);
+    const withCounts = withPending.map((b) => ({ ...b, branchCount: branchCounts[b.id] || 0 }));
+    return sendSuccess(res, await subscriptionQuotaService.attachCanReceiveBranches(withCounts, { organizationId }));
   } catch (err) {
     next(err);
   }
@@ -413,11 +400,26 @@ const getListings = async (req, res, next) => {
  */
 const uploadListingStagingImages = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
 
-    const urls = await storageService.uploadImages(req.files, `hosts/${tenantId}/organizations/staging`);
+    const urls = await storageService.uploadImages(req.files, `hosts/${organizationId}/organizations/staging`);
+    return sendSuccess(res, { urls }, 'Images uploaded');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * R-120 A3 J13: stateless image upload for a first-time host, who has no organization yet. Stores the files under the
+ * caller's own folder and returns the URLs; saves nothing about a business, an organization or a draft.
+ */
+const uploadStagingImages = async (req, res, next) => {
+  try {
+    if (!req.files || req.files.length === 0) throw createError('At least one image is required', 422);
+    const userId = req.user.sub || req.user.id;
+    const urls = await storageService.uploadImages(req.files, `users/${userId}/staging`);
     return sendSuccess(res, { urls }, 'Images uploaded');
   } catch (err) {
     next(err);
@@ -426,13 +428,14 @@ const uploadListingStagingImages = async (req, res, next) => {
 
 const createListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     // R-113 H4: the first branch's week, checked before the organisation is created.
     // NEW-297 (R-117): the old opening / closing pair too (H5), checked by the same rules, never dropped.
+    const firstBranch = req.body.firstBranch;
     const hoursBody = {};
     for (const k of ['hours', 'openingTime', 'closingTime']) {
-      if (Object.prototype.hasOwnProperty.call(req.body, k)) hoursBody[k] = req.body[k];
+      if (Object.prototype.hasOwnProperty.call(firstBranch, k)) hoursBody[k] = firstBranch[k];
     }
     const hasHours = Object.keys(hoursBody).length > 0;
     if (hasHours) require('../services/branch-hours.service').resolveWrite(hoursBody, {});
@@ -440,7 +443,7 @@ const createListing = async (req, res, next) => {
     const platformTx = await Tenant.sequelize.transaction();
     try {
       // Lock tenant row in platform DB to serialize creations
-      const tenant = await Tenant.findByPk(tenantId, {
+      const tenant = await Tenant.findByPk(organizationId, {
         lock: true,
         transaction: platformTx,
       });
@@ -461,12 +464,12 @@ const createListing = async (req, res, next) => {
       }
 
       // Check organization quota and sequential approval gate
-      const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
-      const maxOrganizations = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub, { transaction: platformTx });
+      const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId, { transaction: platformTx });
+      const maxBusinesses = await subscriptionQuotaService.resolveMaxOrganizations(tenant, activeSub, { transaction: platformTx });
 
       const existingListings = await GymListing.findAll({
         where: {
-          tenantId,
+          organizationId,
           status: { [Op.ne]: 'INACTIVE' },
         },
         attributes: ['id', 'status'],
@@ -486,140 +489,70 @@ const createListing = async (req, res, next) => {
         throw err;
       }
 
-      if (existingListings.length >= maxOrganizations) {
+      if (existingListings.length >= maxBusinesses) {
         const err = createError('Organization limit reached', 403);
         err.code = 'organization_limit_reached';
         throw err;
       }
 
-      const { gymName, gymDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude, googlePlaceId, address, packages, images } = req.body;
-      if (!gymName) throw createError('gymName is required', 400);
+      const { businessName, businessDescription, genderType, logoUrl, coverImageUrl, contactPhone } = req.body;
+      const { cityId, latitude, longitude, packages } = firstBranch;
+      if (!businessName) throw createError('businessName is required', 400);
       // NEW-259: a real area belongs to the city sent. NEW-265 (A4, R-109 F5): or a pending request of the
       // organization's city (the one saved below), linked to the listing and to its first branch.
-      const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
-        cityId: req.body.areaRequestId ? (cityId || tenant.cityId) : cityId,
+      const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(firstBranch), {
+        cityId: firstBranch.areaRequestId ? (cityId || tenant.cityId) : cityId,
         userId: req.user.sub || req.user.id,
-        tenantId,
+        organizationId,
       });
       const areaValues = areaRequests.rowValues(areaChoice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
-      // How this organization's first branch gets filled:
-      //   'new'     (default) — build a real branch immediately, same as
-      //             before; requires packages, consumes 1 unit of capacity.
-      //   'reserve' — no branch yet, just earmark 1 unit of capacity on this
-      //             organization (a "slot") to be built later from the Gyms
-      //             tab, or moved to a different organization first.
-      //   'none'    — refused (NEW-168): it made a bare organization for the
-      //             move-branch flow, which P5b removed (R-81); an organization
-      //             is never empty (CAP-07).
-      if (req.body.branchSource === 'none') {
-        throw createError('An organization needs its first branch. Add the branch with its plans.', 422, 'organization_needs_branch');
-      }
-      const branchSource = ['new', 'reserve'].includes(req.body.branchSource) ? req.body.branchSource : 'new';
-      if (branchSource === 'new' && (!Array.isArray(packages) || packages.length === 0)) {
-        throw createError('At least 1 membership package/plan is required to create an organization', 400);
-      }
-      // Phase 7 P5 (NEW-147): the same rule gym.service.js#_createBranchRecord enforces, checked here
-      // too because the organization's tenant-DB gym is created before the branch (and outside the
-      // platform transaction), so a refusal there would leave an orphan gym behind.
-      if (branchSource === 'new' && !packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
+      if (!packages.some((pkg) => pkg && pkg.name && pkg.price != null && pkg.isPublic !== false)) {
         throw createError('Show at least one plan to travellers before you submit.', 422, 'visible_plan_required');
       }
-
       const targetCityId = cityId || tenant.cityId;
-      if (!targetCityId) throw createError('cityId is required', 400);
+      if (!targetCityId) throw createError('cityId is required', 422, 'city_required');
 
-      // Organizations are free to create, but every organization comes with
-      // its own first branch, and branches (real or reserved) are what the
-      // subscription actually charges for — so 'new'/'reserve' must be
-      // gated by the SAME tenant-wide capacity createBranch uses, checked
-      // before anything is created so a rejected request never leaves behind
-      // an organization with no branch and no reservation in it.
-      // Set when this organization's unit has to come from an unbuilt slot
-      // parked on a sibling organization rather than from free capacity.
-      // Released below, once there's a listing id to attribute it to.
+      // One reserved unit holds the submitted first branch until business approval.
+      const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
+      const usedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, req.tenantDb, { transaction: platformTx });
       let slotDonorListing = null;
-
-      if (branchSource !== 'none') {
-        const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub, { transaction: platformTx });
-        const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, req.tenantDb, { transaction: platformTx });
-        if (usedCapacity >= maxBranches) {
-          // Every paid unit is allocated — but "allocated" includes unbuilt
-          // reservedSlots parked on other organizations, and one of those is
-          // exactly the unit this organization needs. A host who paid for 3
-          // branches, built 1, and holds 2 parked slots is not out of
-          // capacity; the capacity is just sitting somewhere else.
-          //
-          // Before the slot concept was removed from the UI, the host fixed
-          // this by hand ("move an unused slot here") through
-          // transferReservedSlots. There's no such flow to send them to any
-          // more — the app presents one tenant-wide pool — so the same
-          // transfer happens here instead, invisibly and atomically.
-          //
-          // Capacity-neutral by construction: the donor loses exactly the
-          // one unit this organization consumes (a real branch for 'new', a
-          // reservation for 'reserve'), so getUsedCapacity is unchanged
-          // either way and the subscription's limit is never exceeded.
-          slotDonorListing = await GymListing.findOne({
-            where: {
-              tenantId,
-              status: { [Op.ne]: 'INACTIVE' },
-              reservedSlots: { [Op.gt]: 0 },
-            },
-            // Draw from whichever organization is hoarding the most, so a
-            // host with slots spread around keeps the widest spread.
-            order: [['reservedSlots', 'DESC']],
-            lock: true,
-            transaction: platformTx,
-          });
-
-          if (!slotDonorListing) {
-            const err = createError('Branch limit reached', 403);
-            err.code = 'branch_limit_reached';
-            throw err;
-          }
-        }
+      if (usedCapacity >= maxBranches) {
+        slotDonorListing = await GymListing.findOne({
+          where: { organizationId, status: 'ACTIVE', reservedSlots: { [Op.gt]: 0 } },
+          order: [['reservedSlots', 'DESC']],
+          lock: true,
+          transaction: platformTx,
+        });
+        if (!slotDonorListing) throw createError('Branch limit reached', 403, 'branch_limit_reached');
       }
 
       const listing = await GymListing.create({
-        tenantId,
+        organizationId,
         cityId: targetCityId,
         ...areaValues,
-        title: gymName,
-        shortDescription: gymDescription || null,
+        name: businessName,
+        description: businessDescription || null,
         genderType: genderType || 'MIXED',
-        logoUrl: logoUrl || tenant.logoUrl || null,
-        coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
+        logoUrl: logoUrl || null, // F9: a new business never borrows another business's logo
+        coverImageUrl: coverImageUrl || null, // F9: nor its cover
         contactPhone: contactPhone || tenant.phone || null,
         latitude: latitude || null,
         longitude: longitude || null,
         status: 'PENDING',
-        reservedSlots: branchSource === 'reserve' ? 1 : 0,
+        reservedSlots: 1,
+        firstBranchDraft: { ...firstBranch, cityId: targetCityId, areaId: areaValues.areaId, ...(areaValues.areaRequestId && { areaRequestId: areaValues.areaRequestId }), submittedBy: req.user.sub || req.user.id, submittedAt: new Date().toISOString() },
       }, { transaction: platformTx });
 
-      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'listing', targetId: listing.id }, { transaction: platformTx });
+      await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction: platformTx });
 
-      if (branchSource === 'reserve') {
-        // Drawing 1 unit of already-available tenant-wide capacity (checked
-        // above) into this brand-new organization as an unbuilt slot — same
-        // shape as any other slot attribution, so it gets the same audit
-        // trail treatment.
-        await subscriptionQuotaService.recordCapacityEvent(
-          {
-            tenantId,
-            listingId: listing.id,
-            action: 'SLOT_ATTRIBUTED_UPGRADE',
-            delta: 1,
-            reservedSlotsBefore: 0,
-            reservedSlotsAfter: 1,
-            actorUserId: req.user.sub || req.user.id,
-            actorType: 'HOST',
-            reason: `Organization "${gymName}" created with a reserved slot (build later)`,
-            idempotencyKey: `slot_attribute_reserve:${listing.id}`,
-          },
-          { transaction: platformTx }
-        );
-      }
+      await subscriptionQuotaService.recordCapacityEvent({
+        organizationId, listingId: listing.id, action: 'SLOT_ATTRIBUTED_UPGRADE', delta: 1,
+        reservedSlotsBefore: 0, reservedSlotsAfter: 1,
+        actorUserId: req.user.sub || req.user.id, actorType: 'HOST',
+        reason: `Business "${businessName}" submitted with its first branch held until approval`,
+        idempotencyKey: `slot_attribute_reserve:${listing.id}`,
+      }, { transaction: platformTx });
 
       if (slotDonorListing) {
         // The other half of the transfer decided during the capacity check
@@ -629,7 +562,7 @@ const createListing = async (req, res, next) => {
         // Keyed on the new listing so a retried create can never release two.
         const { applied } = await subscriptionQuotaService.recordCapacityEvent(
           {
-            tenantId,
+            organizationId,
             listingId: slotDonorListing.id,
             action: 'SLOT_TRANSFERRED',
             delta: -1,
@@ -637,7 +570,7 @@ const createListing = async (req, res, next) => {
             reservedSlotsAfter: slotDonorListing.reservedSlots - 1,
             actorUserId: req.user.sub || req.user.id,
             actorType: 'HOST',
-            reason: `1 unbuilt slot released to new organization "${gymName}" (${listing.id})`,
+            reason: `1 unbuilt slot released to new organization "${businessName}" (${listing.id})`,
             idempotencyKey: `slot_transfer:new_org:${listing.id}`,
           },
           { transaction: platformTx }
@@ -655,54 +588,21 @@ const createListing = async (req, res, next) => {
       // to a completely different one if this step were skipped for
       // 'reserve'/'none'.
       const gym = await req.tenantDb.models.Gym.create({
-        name: gymName,
-        description: gymDescription || null,
+        id: listing.id, // R-120 NEW-308 (option S): one id per business
+        name: businessName,
+        description: businessDescription || null,
         contactPhone: contactPhone || tenant.phone || null,
         genderType: genderType || 'MIXED',
-        logoUrl: logoUrl || tenant.logoUrl || null,
-        coverImageUrl: coverImageUrl || tenant.coverImageUrl || null,
-        gymListingId: listing.id,
+        logoUrl: logoUrl || null, // F9: a new business never borrows another business's logo
+        coverImageUrl: coverImageUrl || null, // F9: nor its cover
       });
 
-      let branch = null;
-      if (branchSource === 'new') {
-        // CAP-03: Route through gymService.createBranch with caller's transaction
-        // and capacity already verified/settled above.
-        const branchResult = await gymService.createBranch(
-          req.tenantDb,
-          tenantId,
-          {
-            branchName: gymName,
-            address,
-            addressLine1: address,
-            cityId: targetCityId,
-            areaId: areaValues.areaId,
-            ...(areaValues.areaRequestId ? { areaRequestId: areaValues.areaRequestId } : {}), // NEW-265: second link
-            latitude,
-            longitude,
-            googlePlaceId: googlePlaceId || null, // NEW-140: the address picked from Google
-            facilitiesJson: Array.isArray(req.body.facilitiesJson) ? req.body.facilitiesJson : null, // NEW-266
-            ...hoursBody, // R-113 H4; NEW-297: or the old pair
-            phone: contactPhone || tenant.phone || null,
-            images: Array.isArray(images) && images.length > 0
-              ? images
-              : (coverImageUrl ? [coverImageUrl] : []),
-            packages,
-            gymListingId: listing.id,
-          },
-          req.user.sub || req.user.id,
-          {
-            transaction: platformTx,
-            skipCapacityCheck: true,
-            skipCapacityEvent: !!slotDonorListing,
-            reason: `Initial branch "${gymName}" created with new organization`,
-          }
-        );
-        branch = branchResult.branch;
-      }
-
       await platformTx.commit();
-      return sendSuccess(res, { ...listing.toJSON(), branch }, 'Listing created successfully', 201);
+      return sendSuccess(res, {
+        business: await subscriptionQuotaService.attachCanReceiveBranches(listing, { organizationId, tenantDb: req.tenantDb }),
+        branch: null,
+        heldFirstBranch: true,
+      }, 'Business submitted for review', 201);
     } catch (err) {
       await platformTx.rollback();
       throw err;
@@ -712,17 +612,85 @@ const createListing = async (req, res, next) => {
   }
 };
 
-/**
- * The tenant-DB gym of one organization. A gym from before organizations has no gymListingId; it
- * belongs to the tenant's first organization (same rule as gym.service.js#_syncGymListing).
- */
-const _organizationGym = async (tenantDb, listing) => {
-  const { Gym } = tenantDb.models;
-  const linked = await Gym.findOne({ where: { gymListingId: listing.id } });
-  if (linked) return linked;
-  const first = await GymListing.findOne({ where: { tenantId: listing.tenantId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
-  return first && first.id === listing.id ? Gym.findOne({ where: { gymListingId: null } }) : null;
+const updateHeldFirstBranch = async (req, res, next) => {
+  try {
+    const organizationId = req.user.organizationId;
+    const listing = await GymListing.findOne({ where: { id: req.params.businessId, organizationId } });
+    if (!listing) throw createError('Business not found', 404);
+    if (listing.status === 'ACTIVE' || !listing.firstBranchDraft) {
+      throw createError('The first branch has already been built', 409, 'first_branch_already_built');
+    }
+    const { submittedBy, submittedAt, ...stored } = listing.firstBranchDraft;
+    const merged = { ...stored, ...req.body };
+    if (req.body.areaId != null) delete merged.areaRequestId;
+    if (req.body.areaRequestId != null) delete merged.areaId;
+    require('../validators/first-branch.validator').validateFirstBranch(merged);
+    const hoursBody = {};
+    for (const key of ['hours', 'openingTime', 'closingTime']) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) hoursBody[key] = req.body[key];
+    }
+    if (Object.keys(hoursBody).length) require('../services/branch-hours.service').resolveWrite(hoursBody, stored);
+    const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(merged), {
+      cityId: merged.cityId, userId: req.user.sub || req.user.id, organizationId,
+    });
+    const areaValues = areaRequests.rowValues(areaChoice) || {};
+    await GymListing.sequelize.transaction(async (transaction) => {
+      await listing.update({
+        cityId: merged.cityId,
+        ...areaValues,
+        firstBranchDraft: { ...merged, ...areaValues, submittedBy, submittedAt },
+      }, { transaction });
+      await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction });
+    });
+    return sendSuccess(res, {
+      business: await subscriptionQuotaService.attachCanReceiveBranches(listing, { organizationId, tenantDb: req.tenantDb }),
+    }, 'First branch updated');
+  } catch (err) { next(err); }
 };
+
+// ── NEW-303 M2: business KYC documents (D10, A2 H3, J11) ───────────────────────
+const _ownBusiness = async (req) => {
+  const listing = await GymListing.findOne({ where: { id: req.params.businessId, organizationId: req.user.organizationId } });
+  if (!listing) throw createError('Business not found', 404);
+  return listing;
+};
+
+const uploadBusinessKycDocuments = async (req, res, next) => {
+  try {
+    const listing = await _ownBusiness(req);
+    const files = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
+    const documents = await require('../services/business-kyc.service').uploadDocuments({
+      listing, files, type: req.body.type, userId: req.user.sub || req.user.id,
+    });
+    return sendSuccess(res, { documents }, 'Documents uploaded', 201);
+  } catch (err) { next(err); }
+};
+
+const listBusinessKycDocuments = async (req, res, next) => {
+  try {
+    const listing = await _ownBusiness(req);
+    return sendSuccess(res, { documents: require('../services/business-kyc.service').publicDocuments(listing) });
+  } catch (err) { next(err); }
+};
+
+const streamBusinessKycDocument = async (req, res, next) => {
+  try {
+    const listing = await _ownBusiness(req);
+    const { stream, contentType, contentLength } = await require('../services/business-kyc.service').streamDocument({
+      listing, documentId: req.params.documentId, userId: req.user.sub || req.user.id, isPlatformAdmin: false,
+      reqInfo: { ip: req.ip, userAgent: req.get('user-agent') },
+    });
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    if (stream.pipe) stream.pipe(res); else res.send(stream);
+  } catch (err) { next(err); }
+};
+
+/** The tenant-DB gym of one organization: option S (R-120 NEW-308), the same id as its listing. */
+const _organizationGym = async (tenantDb, listing) => tenantDb.models.Gym.findByPk(listing.id);
 
 /**
  * GET /host/listings/:id — one organization and its own gym details (Phase 7 P5, BUG-22: Edit
@@ -730,13 +698,20 @@ const _organizationGym = async (tenantDb, listing) => {
  */
 const getListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
-    const listing = await GymListing.findOne({ where: { id: req.params.id, tenantId } });
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
+    const listing = await GymListing.findOne({ where: { id: req.params.businessId, organizationId } });
     if (!listing) throw createError('Organization not found or access denied', 404);
     const gym = await _organizationGym(req.tenantDb, listing);
-    const pendingArea = await areaRequests.pendingAreaFor('listing', tenantId, listing.id); // NEW-265
-    return sendSuccess(res, { ...listing.toJSON(), pendingArea, gym: gym ? gym.toJSON() : null });
+    const [pendingArea, branchCount] = await Promise.all([
+      areaRequests.pendingAreaFor('business', organizationId, listing.id), // NEW-265
+      req.tenantDb.models.Branch.count({ where: { businessId: listing.id, status: 'ACTIVE' } }),
+    ]);
+    const payload = await subscriptionQuotaService.attachCanReceiveBranches(
+      { ...listing.toJSON(), branchCount, pendingArea, gym: gym ? gym.toJSON() : null },
+      { organizationId, tenantDb: req.tenantDb }
+    );
+    return sendSuccess(res, payload);
   } catch (err) {
     next(err);
   }
@@ -744,21 +719,21 @@ const getListing = async (req, res, next) => {
 
 const updateListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
 
-    const { id } = req.params;
-    if (!id) throw createError('Organization ID is required', 400);
+    const { businessId: id } = req.params;
+    if (!id) throw createError('Business ID is required', 400);
 
     const listing = await GymListing.findOne({
-      where: { id, tenantId }
+      where: { id, organizationId }
     });
 
     if (!listing) {
       throw createError('Organization not found or access denied', 404);
     }
 
-    const { gymName, gymDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
+    const { businessName, businessDescription, genderType, cityId, logoUrl, coverImageUrl, contactPhone, latitude, longitude } = req.body;
     // Phase 7 P5 (BUG-22): the rest of Edit Organization, for this organization only.
     // category and establishedYear live on the organization; the gym has no columns for them.
     const { category, establishedYear, contactEmail, website, imagesJson } = req.body;
@@ -767,16 +742,16 @@ const updateListing = async (req, res, next) => {
     // NEW-265 (A4, R-109 F1): an area request, kept when neither key is sent, cleared by null or a real area.
     const nextCityId = cityId !== undefined ? cityId : listing.cityId;
     const areaChoice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(req.body), {
-      cityId: nextCityId, userId: req.user.sub || req.user.id, tenantId,
+      cityId: nextCityId, userId: req.user.sub || req.user.id, organizationId,
     });
     if (areaChoice.kind === 'keep' && cityId !== undefined) {
       await assertAreaInCity({ cityId: nextCityId, areaId: listing.areaId });
-      await areaRequests.assertKeptLinkInCity({ tenantId, target: 'listing', targetId: listing.id, cityId: nextCityId });
+      await areaRequests.assertKeptLinkInCity({ organizationId, target: 'business', targetId: listing.id, cityId: nextCityId });
     }
 
     const updates = {};
-    if (gymName !== undefined) updates.title = gymName;
-    if (gymDescription !== undefined) updates.shortDescription = gymDescription;
+    if (businessName !== undefined) updates.name = businessName;
+    if (businessDescription !== undefined) updates.description = businessDescription;
     if (genderType !== undefined) updates.genderType = genderType;
     if (cityId !== undefined) updates.cityId = cityId;
     Object.assign(updates, areaRequests.rowValues(areaChoice) || {});
@@ -792,18 +767,18 @@ const updateListing = async (req, res, next) => {
 
     // NEW-196 (R-89): every organization edit is in the platform audit log with its actor (field
     // names only, no values), in the same transaction: an edit that cannot be audited is not saved.
-    const fields = ['gymName', 'gymDescription', 'genderType', 'cityId', 'areaId', 'areaRequestId', 'logoUrl', 'coverImageUrl',
+    const fields = ['businessName', 'businessDescription', 'genderType', 'cityId', 'areaId', 'areaRequestId', 'logoUrl', 'coverImageUrl',
       'contactPhone', 'latitude', 'longitude', 'category', 'establishedYear', 'contactEmail', 'website', 'imagesJson']
       .filter((f) => req.body[f] !== undefined);
     await GymListing.sequelize.transaction(async (transaction) => {
       await listing.update(updates, { transaction });
-      await areaRequests.applyChoiceToLink(areaChoice, { tenantId, target: 'listing', targetId: listing.id }, { transaction });
+      await areaRequests.applyChoiceToLink(areaChoice, { organizationId, target: 'business', targetId: listing.id }, { transaction });
       await PlatformAuditLog.create({
         actorUserId: req.user.id || req.user.sub,
         action: 'organization.profile_updated',
         targetType: 'GymListing',
         targetId: listing.id,
-        details: { tenantId, fields, asOwner: req.user.isOwner === true },
+        details: { organizationId, fields, asOwner: req.user.isOwner === true },
         createdAt: new Date(),
       }, { transaction });
     });
@@ -812,8 +787,8 @@ const updateListing = async (req, res, next) => {
     const gym = await _organizationGym(req.tenantDb, listing);
     if (gym) {
       const gymUpdates = {};
-      if (gymName !== undefined) gymUpdates.name = gymName;
-      if (gymDescription !== undefined) gymUpdates.description = gymDescription;
+      if (businessName !== undefined) gymUpdates.name = businessName;
+      if (businessDescription !== undefined) gymUpdates.description = businessDescription;
       if (genderType !== undefined) gymUpdates.genderType = genderType;
       if (contactPhone !== undefined) gymUpdates.contactPhone = contactPhone || null;
       if (logoUrl !== undefined) gymUpdates.logoUrl = logoUrl || null;
@@ -824,7 +799,7 @@ const updateListing = async (req, res, next) => {
       await gym.update(gymUpdates);
     }
 
-    return sendSuccess(res, listing, 'Organization updated successfully');
+    return sendSuccess(res, await subscriptionQuotaService.attachCanReceiveBranches(listing, { organizationId, tenantDb: req.tenantDb }), 'Organization updated successfully');
   } catch (err) {
     next(err);
   }
@@ -835,7 +810,7 @@ const updateListing = async (req, res, next) => {
  * Body:
  *   Re-auth (required unless exempt): { password } or { provider, idToken } / { reauthProvider, reauthIdToken }
  *     - Exempt ONLY if ALL of these hold (NEW-38 rollback window):
- *       1. Belongs to caller (listing.tenantId === tenantId)
+ *       1. Belongs to caller (listing.organizationId === organizationId)
  *       2. Zero branches (zero ACTIVE or INACTIVE in tenant DB)
  *       3. Created < 5 minutes ago
  *       4. No strategy/cascade flag set
@@ -844,22 +819,22 @@ const updateListing = async (req, res, next) => {
  */
 const deleteListing = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
-    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
+    const { businessId: id } = req.params;
     const { strategy, password, provider, reauthProvider, idToken, reauthIdToken } = req.body || {};
 
     const userId = req.user.sub || req.user.id;
 
     // Check exemption from re-auth: empty organization rollback within 5 minutes of creation
     const listing = await GymListing.findByPk(id);
-    const belongsToCaller = Boolean(listing && listing.tenantId === tenantId && listing.status !== 'INACTIVE');
+    const belongsToCaller = Boolean(listing && listing.organizationId === organizationId && listing.status !== 'INACTIVE');
 
     let hasZeroBranches = false;
     if (belongsToCaller && req.tenantDb && req.tenantDb.models && req.tenantDb.models.Branch) {
       const branchCount = await req.tenantDb.models.Branch.count({
         where: {
-          gymListingId: id,
+          businessId: id,
           status: { [Op.in]: ['ACTIVE', 'INACTIVE'] },
         },
       });
@@ -885,7 +860,7 @@ const deleteListing = async (req, res, next) => {
       });
     }
 
-    const result = await gymService.deleteOrganization(req.tenantDb, tenantId, id, {
+    const result = await gymService.deleteOrganization(req.tenantDb, organizationId, id, {
       strategy,
       deletedByUserId: userId,
     });
@@ -926,11 +901,11 @@ const resumeBranch = async (req, res, next) => {
  */
 const restoreBranch = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
     const { branchId } = req.params;
 
-    const result = await gymService.restoreBranch(req.tenantDb, tenantId, branchId, req.user.sub || req.user.id);
+    const result = await gymService.restoreBranch(req.tenantDb, organizationId, branchId, req.user.sub || req.user.id);
     return sendSuccess(res, result, 'Branch restored successfully');
   } catch (err) {
     next(err);
@@ -939,25 +914,25 @@ const restoreBranch = async (req, res, next) => {
 
 /**
  * POST /host/listings/:id/reserved-slots/transfer
- * Body: { toListingId, count }
+ * Body: { toBusinessId, count }
  * Moves unbuilt (paid, not-yet-a-real-branch) capacity from :id to
- * toListingId — used both from the Gyms tab's "swap branches between
+ * toBusinessId — used both from the Gyms tab's "swap branches between
  * organizations" and from the "create new organization" wizard's option to
  * assign an already-owned unused slot to the new organization instead of
  * building/buying a fresh branch.
  */
 const transferReservedSlots = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
-    const { id } = req.params;
-    const { toListingId, count } = req.body;
-    if (!toListingId) throw createError('toListingId is required', 400);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
+    const { businessId: id } = req.params;
+    const { toBusinessId, count } = req.body;
+    if (!toBusinessId) throw createError('toBusinessId is required', 400);
 
     const result = await gymService.transferReservedSlots(
-      tenantId,
+      organizationId,
       id,
-      toListingId,
+      toBusinessId,
       count ? parseInt(count, 10) : 1,
       req.user.sub || req.user.id
     );
@@ -969,8 +944,8 @@ const transferReservedSlots = async (req, res, next) => {
 
 const getCurrentSubscription = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) throw createError('Tenant not found', 404);
+    const organizationId = req.user.organizationId;
+    if (!organizationId) throw createError('Tenant not found', 404);
 
     // Read-only (NEW-15, owner decision R-21): this endpoint never creates a
     // plan. It used to create a 30-day ACTIVE/PAID row whenever there was no
@@ -979,20 +954,20 @@ const getCurrentSubscription = async (req, res, next) => {
     // The entitling row: ACTIVE, or GRACE while a failed renewal is retried —
     // then `paymentIssue` carries the provider's own page to fix the payment
     // (BILL-04, spec §7.4). Null otherwise.
-    const subscription = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const subscription = await subscriptionQuotaService.getActiveSubscription(organizationId);
 
     if (!subscription) {
       // P7c item 5 (NEW-174, R-82): a plan that ended, is on hold, paused or refunded is still
       // this host's plan: answered as it is (entitled: false, why, where to fix it, when the
       // branches lock), never as "no subscription". 404 only when there never was one.
-      const lapsed = await subscriptionQuotaService.getLapsedSubscription(tenantId);
+      const lapsed = await subscriptionQuotaService.getLapsedSubscription(organizationId);
       if (!lapsed) throw createError('No active subscription found', 404);
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'status', 'connectionStringEncrypted'] });
+      const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'status', 'connectionStringEncrypted'] });
       const tenantDb =
         tenant?.status === 'ACTIVE' && tenant.connectionStringEncrypted
-          ? await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted)
+          ? await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted)
           : null;
-      const state = await require('../services/branch-billing-lock.service').getOverQuotaState(tenantId, tenantDb, {
+      const state = await require('../services/branch-billing-lock.service').getOverQuotaState(organizationId, tenantDb, {
         readOnly: true,
       });
       return sendSuccess(res, {
@@ -1017,7 +992,7 @@ const getCurrentSubscription = async (req, res, next) => {
 
     // BILL-09: Check if any superseded subscription for this tenant is still billing at the store
     const duplicateRow = await TenantSubscription.findOne({
-      where: { tenantId, duplicateBilling: true },
+      where: { organizationId, duplicateBilling: true },
       attributes: ['id', 'platform', 'externalOriginalTransactionId'],
     });
 
@@ -1160,8 +1135,8 @@ const getBranchDashboard = async (req, res, next) => {
     if (req.user.role !== 'GYM_HOST' && req.user.isHost !== true) {
       try {
         const userId = req.user.id || req.user.sub;
-        const tenantId = req.user.tenantId || req.tenantDb?.tenantId;
-        const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+        const organizationId = req.user.organizationId || req.tenantDb?.organizationId;
+        const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
         canSeeRevenue = grants.has('dashboard.revenue.view');
       } catch (err) {
         console.warn('[dashboard] revenue-permission check failed, defaulting to hidden:', err.message);
@@ -1532,7 +1507,7 @@ const createBranchMember = async (req, res, next) => {
     const { branchId } = req.params;
     const result = await gymService.enrollMember(
       req.tenantDb,
-      req.user.tenantId,
+      req.user.organizationId,
       { ...req.body, branchId },
       req.user
     );
@@ -1577,11 +1552,11 @@ const resubmitBranchReview = async (req, res, next) => {
 
 const listInquiries = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
+    const organizationId = req.user.organizationId;
+    if (!organizationId) {
       return sendSuccess(res, [], 'No inquiries found');
     }
-    const inquiries = await inboxService.listInquiries(tenantId);
+    const inquiries = await inboxService.shapeConversations(await inboxService.listInquiries(organizationId));
     return sendSuccess(res, inquiries, 'Inquiries retrieved');
   } catch (err) {
     next(err);
@@ -1590,10 +1565,10 @@ const listInquiries = async (req, res, next) => {
 
 const getInquiryDetail = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    const organizationId = req.user.organizationId;
     const { inquiryId } = req.params;
-    const result = await inboxService.getInquiryDetail(inquiryId, tenantId);
-    return sendSuccess(res, result, 'Inquiry details retrieved');
+    const result = await inboxService.getInquiryDetail(inquiryId, organizationId);
+    return sendSuccess(res, { ...result, conversation: await inboxService.shapeConversations(result.conversation) }, 'Inquiry details retrieved');
   } catch (err) {
     next(err);
   }
@@ -1601,14 +1576,14 @@ const getInquiryDetail = async (req, res, next) => {
 
 const replyToInquiry = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    const organizationId = req.user.organizationId;
     const { inquiryId } = req.params;
     const { text } = req.body;
     if (!text || !text.trim()) {
       throw createError('Message text is required', 400);
     }
-    const message = await inboxService.replyToInquiry(inquiryId, req.user.id, text.trim(), tenantId, {
-      clientMessageId: req.body.clientMessageId ?? req.body.client_message_id,
+    const message = await inboxService.replyToInquiry(inquiryId, req.user.id, text.trim(), organizationId, {
+      clientMessageId: req.body.clientMessageId,
     });
     return sendSuccess(res, message, 'Reply sent successfully', 201);
   } catch (err) {
@@ -1618,9 +1593,9 @@ const replyToInquiry = async (req, res, next) => {
 
 const markInquiryRead = async (req, res, next) => {
   try {
-    const tenantId = req.user.tenantId;
+    const organizationId = req.user.organizationId;
     const { inquiryId } = req.params;
-    const result = await inboxService.markInquiryRead(inquiryId, tenantId);
+    const result = await inboxService.markInquiryRead(inquiryId, organizationId);
     return sendSuccess(res, result, 'Inquiry marked as read');
   } catch (err) {
     next(err);
@@ -1633,12 +1608,12 @@ const findOrCreateConversation = async (req, res, next) => {
     if (!userId) {
       throw createError('userId is required to start a conversation', 400);
     }
-    const tenantId = req.user.tenantId;
-    if (!tenantId) {
+    const organizationId = req.user.organizationId;
+    if (!organizationId) {
       throw createError('Tenant not found for host', 404);
     }
     const conversation = await inboxService.findOrCreateHostConversation(
-      tenantId,
+      organizationId,
       userId,
       branchId,
       initialMessage
@@ -1656,7 +1631,12 @@ module.exports = {
   getOrganizationQuota,
   getListings,
   uploadListingStagingImages,
+  uploadStagingImages,
   createListing,
+  updateHeldFirstBranch,
+  uploadBusinessKycDocuments,
+  listBusinessKycDocuments,
+  streamBusinessKycDocument,
   getListing,
   updateListing,
   deleteListing,

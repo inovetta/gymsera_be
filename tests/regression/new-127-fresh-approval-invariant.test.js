@@ -32,14 +32,14 @@ beforeAll(async () => {
   await setupTestDatabases();
   await City.findOrCreate({ where: { id: 1 }, defaults: { id: 1, name: 'Karachi', isActive: true } });
   const admin = await factories.createUser({ email: 'admin-n127f@gymsera.test', role: 'PLATFORM_ADMIN' });
-  const tenantCode = `test_n127f_${Date.now().toString(36)}`;
-  dbName = `gymsera_${tenantCode}`;
+  const organizationCode = `test_n127f_${Date.now().toString(36)}`;
+  dbName = `gymsera_${organizationCode}`;
   tenant = await factories.createTenant({
-    tenantCode,
+    organizationCode,
     status: 'PENDING_REVIEW',
     connectionStringEncrypted: null,
     paymentMethod: 'BANK_TRANSFER',
-    mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] },
+    firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }] },
   });
   await adminService.approveTenant(tenant.id, admin.id);
   await tenant.reload();
@@ -80,7 +80,7 @@ describe('NEW-127: a fresh approval leaves a complete tenant database', () => {
   test('provisioning recorded its last step: provisioning_state = ACTIVE (NULL on the 2026-09-26 build)', async () => {
     const conn = await getAdminConnection();
     const platformDb = tenant.sequelize.config.database;
-    const [[row]] = await conn.query(`SELECT provisioning_state AS state FROM \`${platformDb}\`.tenants WHERE id = ?`, [tenant.id]);
+    const [[row]] = await conn.query(`SELECT provisioning_state AS state FROM \`${platformDb}\`.organizations WHERE id = ?`, [tenant.id]);
     expect(row.state).toBe('ACTIVE');
   });
 
@@ -109,7 +109,7 @@ describe('NEW-127: the production check after a deploy (docs/sql/new-127-fresh-a
     const { TARGET_SCHEMA_VERSION } = require('../../src/database/tenant-migration-runner');
     const { status, out } = cli();
     const grid1 = out.slice(out.indexOf('Grid 1'), out.indexOf('Grid 2'));
-    expect(grid1).toMatch(new RegExp(`\\|\\s*${tenant.tenantCode}\\s*\\|`));
+    expect(grid1).toMatch(new RegExp(`\\|\\s*${tenant.organizationCode}\\s*\\|`));
     expect(grid1).toMatch(/\|\s*ACTIVE\s*\|\s*ACTIVE\s*\|\s*NULL\s*\|\s*52\s*\|\s*1\s*\|\s*1\s*\|\s*4\s*\|\s*PASS\s*\|/);
     const t = TARGET_SCHEMA_VERSION;
     expect(out.slice(out.indexOf('Grid 2'))).toMatch(new RegExp(`\\|\\s*${t}\\s*\\|\\s*1\\s*\\|\\s*${t}\\s*\\|`));

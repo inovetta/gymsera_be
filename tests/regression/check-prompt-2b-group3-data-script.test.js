@@ -14,7 +14,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
   let platformSeq;
   let branchId;
   let listingId;
-  let tenantId;
+  let organizationId;
   let memberUserId;
 
   beforeAll(async () => {
@@ -31,7 +31,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     const listing = await GymListing.findOne();
     listingId = listing.id;
     const tenant = await Tenant.findOne({ where: { status: 'ACTIVE' } });
-    tenantId = tenant.id;
+    organizationId = tenant.id;
     memberUserId = personas.member.user.id;
 
     // 1. Seed legacy staff invite (FLOW-12): pending with null invite_token_hash / token_expires_at
@@ -55,10 +55,10 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     });
     await GymReview.create({
       id: uuidv4(),
-      gymListingId: listingId,
+      businessId: listingId,
       branchId,
       userId: nonMemberUser.id,
-      tenantId,
+      organizationId,
       rating: 5,
       title: 'Great Facility',
       body: 'Nice place!',
@@ -68,7 +68,7 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     // 3. Seed active subscription on legacy static QR (FLOW-09): qr_code LIKE 'GE-%'
     const plan = await MembershipPlan.create({
       id: uuidv4(),
-      gymId: branch.gymId,
+      businessId: branch.businessId,
       branchId,
       name: 'Standard Monthly',
       durationType: 'MONTHLY',
@@ -126,8 +126,8 @@ describe('Rule 8: Read-only check script against migrated schema asserts zero wr
     // Snapshot table counts before running check script
     const getCounts = async () => {
       const [pUsers] = await platformSeq.query('SELECT COUNT(*) AS c FROM users', { type: QueryTypes.SELECT });
-      const [pTenants] = await platformSeq.query('SELECT COUNT(*) AS c FROM tenants', { type: QueryTypes.SELECT });
-      const [pReviews] = await platformSeq.query('SELECT COUNT(*) AS c FROM gym_reviews', { type: QueryTypes.SELECT });
+      const [pTenants] = await platformSeq.query('SELECT COUNT(*) AS c FROM organizations', { type: QueryTypes.SELECT });
+      const [pReviews] = await platformSeq.query('SELECT COUNT(*) AS c FROM business_reviews', { type: QueryTypes.SELECT });
       const [tStaff] = await tenant1Seq.query('SELECT COUNT(*) AS c FROM gym_staff', { type: QueryTypes.SELECT });
       const [tSubs] = await tenant1Seq.query('SELECT COUNT(*) AS c FROM member_subscriptions', { type: QueryTypes.SELECT });
       const [tLedger] = await tenant1Seq.query('SELECT COUNT(*) AS c FROM ledger_days', { type: QueryTypes.SELECT });

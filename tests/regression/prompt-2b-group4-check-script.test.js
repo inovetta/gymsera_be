@@ -23,7 +23,7 @@ describe('gymsera-prompt-2b-group4-check.js (read-only)', () => {
 
   const subscribe = async (tag) => {
     const user = await createUser({ role: 'MEMBER', email: `g4check.${tag}@gymsera.test`, fullName: `G4 ${tag}` });
-    const r = await subscriptionService.subscribe(user.id, { planId: basic.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id });
+    const r = await subscriptionService.subscribe(user.id, { planId: basic.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id });
     return { user, ...r };
   };
 
@@ -35,11 +35,11 @@ describe('gymsera-prompt-2b-group4-check.js (read-only)', () => {
     await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     const { MembershipPlan, Payment } = ctx.tenant1Db.models;
     basic = await MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'G4 Basic',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'G4 Basic',
       price: '1000.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });
     premium = await MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'G4 Premium',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'G4 Premium',
       price: '1500.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
 
@@ -87,7 +87,7 @@ describe('gymsera-prompt-2b-group4-check.js (read-only)', () => {
       'CHECKSUM TABLE payments, invoices, member_subscriptions, membership_plans, schema_migrations',
       { type: QueryTypes.SELECT }
     );
-    const p = await h.platform.sequelize.query('CHECKSUM TABLE user_gym_memberships, tenants', { type: QueryTypes.SELECT });
+    const p = await h.platform.sequelize.query('CHECKSUM TABLE member_subscription_index, tenants', { type: QueryTypes.SELECT });
     return JSON.stringify([...t, ...p]);
   };
 

@@ -142,17 +142,17 @@ const TABLES = {
  * for every other tenant.
  *
  * @param {import('sequelize').Sequelize} sequelize
- * @param {string} tenantId  for log context
+ * @param {string} organizationId  for log context
  * @returns {Promise<string[]>} tables that were created or already present
  */
-const ensureAccessControlTables = async (sequelize, tenantId) => {
+const ensureAccessControlTables = async (sequelize, organizationId) => {
   const ready = [];
   for (const [table, ddl] of Object.entries(TABLES)) {
     try {
       await sequelize.query(ddl);
       ready.push(table);
     } catch (err) {
-      console.warn(`[RBAC] tenant ${tenantId}: could not ensure ${table} — ${err.message}`);
+      console.warn(`[RBAC] tenant ${organizationId}: could not ensure ${table} — ${err.message}`);
     }
   }
   return ready;

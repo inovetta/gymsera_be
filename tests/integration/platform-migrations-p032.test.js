@@ -44,10 +44,10 @@ describe('Platform migration p032 (area requests)', () => {
   const createExistingTables = async () => {
     // The three existing tables p032 adds columns to, with a row each that must keep its values.
     await seq.query('CREATE TABLE areas (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, city_id INT NOT NULL, name VARCHAR(100) NOT NULL, google_place_id VARCHAR(255) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
-    await seq.query('CREATE TABLE tenants (id CHAR(36) BINARY NOT NULL PRIMARY KEY, city_id INT NULL, area_id INT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    await seq.query('CREATE TABLE organizations (id CHAR(36) BINARY NOT NULL PRIMARY KEY, city_id INT NULL, area_id INT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
     await seq.query('CREATE TABLE gym_listings (id CHAR(36) BINARY NOT NULL PRIMARY KEY, city_id INT NULL, area_id INT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
     await seq.query('INSERT INTO areas (id, city_id, name, google_place_id) VALUES (7, 3, \'Hayatabad\', \'pl-h\')');
-    await seq.query('INSERT INTO tenants (id, city_id, area_id) VALUES (\'t-1\', 3, 7)');
+    await seq.query('INSERT INTO organizations (id, city_id, area_id) VALUES (\'t-1\', 3, 7)');
     await seq.query('INSERT INTO gym_listings (id, city_id, area_id) VALUES (\'l-1\', 3, 7)');
   };
 
@@ -133,7 +133,7 @@ describe('Platform migration p032 (area requests)', () => {
     expect(await columnType('areas', 'latitude')).toBe('decimal(10,8) NULL');
     expect(await columnType('areas', 'longitude')).toBe('decimal(11,8) NULL');
     expect(await columnType('areas', 'radius_m')).toBe('int NULL');
-    for (const table of ['tenants', 'gym_listings']) {
+    for (const table of ['organizations', 'gym_listings']) {
       expect(await columnType(table, 'area_status')).toBe('varchar(20) NULL');
       expect(await columnType(table, 'area_request_id')).toBe('int NULL');
     }
@@ -141,7 +141,7 @@ describe('Platform migration p032 (area requests)', () => {
     // Nothing back-filled: the existing rows are exactly as they were, new columns NULL.
     const [area] = await seq.query('SELECT * FROM areas WHERE id = 7', { type: QueryTypes.SELECT });
     expect(area).toMatchObject({ city_id: 3, name: 'Hayatabad', google_place_id: 'pl-h', latitude: null, longitude: null, radius_m: null });
-    const [tenant] = await seq.query('SELECT * FROM tenants WHERE id = \'t-1\'', { type: QueryTypes.SELECT });
+    const [tenant] = await seq.query('SELECT * FROM organizations WHERE id = \'t-1\'', { type: QueryTypes.SELECT });
     expect(tenant).toMatchObject({ city_id: 3, area_id: 7, area_status: null, area_request_id: null });
     const [listing] = await seq.query('SELECT * FROM gym_listings WHERE id = \'l-1\'', { type: QueryTypes.SELECT });
     expect(listing).toMatchObject({ city_id: 3, area_id: 7, area_status: null, area_request_id: null });
@@ -173,11 +173,11 @@ describe('Platform migration p032 (area requests)', () => {
   test('the documented rollback works, and the migration applies again after it', async () => {
     for (const t of TABLES) await seq.query(`DROP TABLE \`${t}\``);
     await seq.query('ALTER TABLE `areas` DROP COLUMN `latitude`, DROP COLUMN `longitude`, DROP COLUMN `radius_m`');
-    await seq.query('ALTER TABLE `tenants` DROP COLUMN `area_status`, DROP COLUMN `area_request_id`');
+    await seq.query('ALTER TABLE `organizations` DROP COLUMN `area_status`, DROP COLUMN `area_request_id`');
     await seq.query('ALTER TABLE `gym_listings` DROP COLUMN `area_status`, DROP COLUMN `area_request_id`');
     await seq.query('DELETE FROM `schema_migrations` WHERE `version` = 32');
     for (const t of TABLES) expect(await hasTable(t)).toBe(false);
-    expect(await columnType('tenants', 'area_status')).toBeNull();
+    expect(await columnType('organizations', 'area_status')).toBeNull();
 
     const res = await runPlatformMigrations(seq, { targetVersion: 32 });
     expect(res.applied).toEqual([P032]);
@@ -197,13 +197,13 @@ describe('Platform migration p032 (area requests)', () => {
       logging: false,
     });
     try {
-      await small.query('CREATE TABLE tenants (id CHAR(36) BINARY NOT NULL PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+      await small.query('CREATE TABLE organizations (id CHAR(36) BINARY NOT NULL PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
       const mig = PLATFORM_MIGRATIONS.find((m) => m.version === 32);
       await expect(mig.up(small)).resolves.toBeNull();
-      const cols = await small.query('SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenants\' ORDER BY c', { type: QueryTypes.SELECT });
+      const cols = await small.query('SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'organizations\' ORDER BY c', { type: QueryTypes.SELECT });
       expect(cols.map((r) => r.c)).toEqual(['area_request_id', 'area_status', 'id']);
       const tables = await small.query('SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY t', { type: QueryTypes.SELECT });
-      expect(tables.map((r) => r.t).sort()).toEqual(['area_aliases', 'area_request_links', 'area_requests', 'tenants']);
+      expect(tables.map((r) => r.t).sort()).toEqual(['area_aliases', 'area_request_links', 'area_requests', 'organizations']);
     } finally {
       await small.close().catch(() => {});
       await conn.query(`DROP DATABASE IF EXISTS \`${db}\``).catch(() => {});

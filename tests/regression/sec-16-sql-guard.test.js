@@ -54,7 +54,7 @@ describe('SEC-16: searches against the database', () => {
   });
 
   const search = async (q) => {
-    const res = await asPersona('platformAdmin', { 'X-Tenant-Id': personas.owner.tenantId }).get('/users').query({ q });
+    const res = await asPersona('platformAdmin', { 'X-Organization-Id': personas.owner.organizationId }).get('/users').query({ q });
     return res;
   };
   const names = (res) => res.body.data.users.map((u) => u.fullName).sort();
@@ -105,9 +105,9 @@ describe('SEC-16: searches against the database', () => {
   });
 
   test('a repeated or object-shaped q does not 500', async () => {
-    const repeated = await asPersona('platformAdmin', { 'X-Tenant-Id': personas.owner.tenantId }).get('/users?q=plain&q=fit');
+    const repeated = await asPersona('platformAdmin', { 'X-Organization-Id': personas.owner.organizationId }).get('/users?q=plain&q=fit');
     expect(repeated.status).toBe(200);
-    const object = await asPersona('platformAdmin', { 'X-Tenant-Id': personas.owner.tenantId }).get('/users?q[$ne]=x');
+    const object = await asPersona('platformAdmin', { 'X-Organization-Id': personas.owner.organizationId }).get('/users?q[$ne]=x');
     expect(object.status).toBeLessThan(500);
   });
 });

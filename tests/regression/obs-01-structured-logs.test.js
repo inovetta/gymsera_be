@@ -35,7 +35,7 @@ beforeAll(async () => {
   // Stand-in for authenticate / tenantContext: they set these on req.
   app.use((req, _res, next) => {
     if (req.headers['x-test-user']) req.user = { id: req.headers['x-test-user'] };
-    if (req.headers['x-test-tenant']) req.tenantId = req.headers['x-test-tenant'];
+    if (req.headers['x-test-tenant']) req.organizationId = req.headers['x-test-tenant'];
     next();
   });
   const router = express.Router();
@@ -99,7 +99,7 @@ describe('OBS-01: X-Request-Id', () => {
 });
 
 describe('OBS-01: access line', () => {
-  test('carries requestId, tenantId, userId, route pattern, status and latency', async () => {
+  test('carries requestId, organizationId, userId, route pattern, status and latency', async () => {
     await request(server)
       .get('/api/v1/members/abc-123?token=secret-t&email=leak@x.test')
       .set('X-Request-Id', 'req-1')
@@ -110,7 +110,7 @@ describe('OBS-01: access line', () => {
     expect(access).toMatchObject({
       level: 'info',
       requestId: 'req-1',
-      tenantId: 'tenant-4',
+      organizationId: 'tenant-4',
       userId: 'user-9',
       method: 'GET',
       route: '/api/v1/members/:id',
@@ -151,7 +151,7 @@ describe('OBS-01: console lines carry the request context', () => {
     const consoleLines = parsed().filter((l) => l.source === 'console');
     expect(consoleLines).toHaveLength(2);
     for (const l of consoleLines) {
-      expect(l).toMatchObject({ requestId: 'req-ctx', userId: 'user-2', tenantId: 'tenant-2' });
+      expect(l).toMatchObject({ requestId: 'req-ctx', userId: 'user-2', organizationId: 'tenant-2' });
     }
     expect(consoleLines[0].level).toBe('info');
     expect(consoleLines[1].level).toBe('warn');

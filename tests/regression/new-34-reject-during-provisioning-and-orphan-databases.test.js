@@ -109,7 +109,7 @@ describe('NEW-34: reject during provisioning, and orphan databases', () => {
       const token = signToken({ sub: admin.id, id: admin.id, role: 'PLATFORM_ADMIN', isVerified: true });
 
       const res = await request(app)
-        .post(`/api/v1/admin/tenants/${t.id}/reject`)
+        .post(`/api/v1/admin/organizations/${t.id}/reject`)
         .set('Authorization', `Bearer ${token}`)
         .send({ reason: 'not a real gym' });
 
@@ -219,14 +219,14 @@ describe('NEW-34: reject during provisioning, and orphan databases', () => {
     test('REFUSES a database that only the naming rule maps to a tenant: tenants.db_name must hold the name (NEW-137, R-79)', async () => {
       // Eligible in every other way (REJECTED > 90 days, no money rows), but its row has no db_name.
       const code = `test_n37_${uuidv4().slice(0, 8)}`;
-      const t = await mkTenant({ tenantCode: code, status: 'REJECTED', rejectedAt: new Date(Date.now() - 100 * DAY) });
+      const t = await mkTenant({ organizationCode: code, status: 'REJECTED', rejectedAt: new Date(Date.now() - 100 * DAY) });
       const dbName = `gymsera_${code}`;
       createdDbs.push(dbName);
       await adminConn.query(`CREATE DATABASE \`${dbName}\``);
       expect((await Tenant.findByPk(t.id)).dbName).toBeNull();
 
       const dry = await dropOrphanTenantDatabase({ dbName, adminConn });
-      expect(dry).toMatchObject({ eligible: false, tenantId: null });
+      expect(dry).toMatchObject({ eligible: false, organizationId: null });
       expect(dry.reason).toMatch(/tenants\.db_name/);
       await expect(dropOrphanTenantDatabase({ dbName, adminConn, apply: true, confirm: dbName })).rejects.toThrow(/tenants\.db_name/);
       expect(await dbExists(dbName)).toBe(true);

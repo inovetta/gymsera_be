@@ -8,7 +8,7 @@
  *
  * Writes nothing. Safe to run on production.
  *
- *   node scripts/diagnose-tenant-capacity.js <tenantId>
+ *   node scripts/diagnose-tenant-capacity.js <organizationId>
  */
 require('dotenv').config();
 
@@ -19,24 +19,24 @@ const subscriptionQuotaService = require('../src/services/subscription-quota.ser
 const line = (n = 74) => console.log('─'.repeat(n));
 
 (async () => {
-  const tenantId = process.argv[2];
-  if (!tenantId) {
-    console.error('Usage: node scripts/diagnose-tenant-capacity.js <tenantId>');
+  const organizationId = process.argv[2];
+  if (!organizationId) {
+    console.error('Usage: node scripts/diagnose-tenant-capacity.js <organizationId>');
     process.exit(1);
   }
 
   try {
     await sequelize.authenticate();
 
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     if (!tenant) {
-      console.error(`No tenant with id ${tenantId}`);
+      console.error(`No tenant with id ${organizationId}`);
       process.exit(1);
     }
 
     console.log('');
     line();
-    console.log(`TENANT  ${tenant.businessName || tenant.id}`);
+    console.log(`TENANT  ${tenant.organizationName || tenant.id}`);
     line();
     console.log(`  id               : ${tenant.id}`);
     console.log(`  status           : ${tenant.status}`);
@@ -56,7 +56,7 @@ const line = (n = 74) => console.log('─'.repeat(n));
     line();
 
     const subs = await TenantSubscription.findAll({
-      where: { tenantId },
+      where: { organizationId },
       include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches'] }],
       order: [['createdAt', 'DESC']],
     });
@@ -86,7 +86,7 @@ const line = (n = 74) => console.log('─'.repeat(n));
     console.log('WHAT THE CAPACITY CHECK ACTUALLY SEES');
     line();
 
-    const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     console.log(`  getActiveSubscription → ${activeSub ? `${activeSub.id} (${activeSub.platform || 'legacy'}, branchCount ${activeSub.branchCount})` : 'null'}`);
 
     const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
@@ -100,13 +100,13 @@ const line = (n = 74) => console.log('─'.repeat(n));
     let activeBranches = null;
 
     if (tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted) {
-      const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-      usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+      const tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
+      usedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
       activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
 
       const listings = await GymListing.findAll({
-        where: { tenantId },
-        attributes: ['id', 'title', 'status', 'reservedSlots'],
+        where: { organizationId },
+        attributes: ['id', 'name', 'status', 'reservedSlots'],
       });
 
       console.log('');
@@ -114,11 +114,11 @@ const line = (n = 74) => console.log('─'.repeat(n));
       let reservedTotal = 0;
       for (const l of listings) {
         const branchesHere = await tenantDb.models.Branch.count({
-          where: { status: 'ACTIVE', gymListingId: l.id },
+          where: { status: 'ACTIVE', businessId: l.id },
         });
         if (l.status !== 'INACTIVE') reservedTotal += l.reservedSlots;
         console.log(
-          `    ${(l.title || l.id).padEnd(24)} ${l.status.padEnd(9)} ` +
+          `    ${(l.name || l.id).padEnd(24)} ${l.status.padEnd(9)} ` +
           `activeBranches ${branchesHere}  reservedSlots ${l.reservedSlots}` +
           (l.status === 'INACTIVE' ? '   (INACTIVE — not counted)' : '')
         );
@@ -138,17 +138,17 @@ const line = (n = 74) => console.log('─'.repeat(n));
     try {
       const tenantDbForAudit =
         tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted
-          ? await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted)
+          ? await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted)
           : null;
-      const audit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDbForAudit);
+      const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDbForAudit);
 
       console.log('');
       line();
       console.log(`INTEGRITY AUDIT  ${audit.ok ? 'PASS' : '*** FAIL ***'}`);
       line();
-      for (const l of audit.listings) {
+      for (const l of audit.businesses) {
         console.log(
-          `  ${(l.title || l.listingId).padEnd(24)} reservedSlots ${l.actualReservedSlots}` +
+          `  ${(l.businessName || l.businessId).padEnd(24)} reservedSlots ${l.actualReservedSlots}` +
           `  ledger ${l.ledgerReservedSlots}` +
           (l.drift !== 0 ? `   <== DRIFT ${l.drift > 0 ? '+' : ''}${l.drift}` : '')
         );

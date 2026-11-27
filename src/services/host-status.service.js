@@ -2,7 +2,7 @@
  * Where a host stands: one answer for every client (Phase 7 P2, BUG-11/12/13/18/24).
  *
  * Before this, each host tab guessed from a different source — /host/today-summary's
- * A/B/C state (read from the JWT's tenantId), the listings' statuses, constants on
+ * A/B/C state (read from the JWT's organizationId), the listings' statuses, constants on
  * Host Profile — so one host saw "under review" on one tab and "Verified, Growth Plan"
  * on another while their payment was still due. The status here is derived only from
  * stored facts: the tenant the caller OWNS (never a selector the client sends), its
@@ -77,10 +77,10 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
     return {
       status: HostStatus.NONE,
       nextAction: NextAction.BECOME_HOST,
-      tenantId: null,
-      gymName: null,
+      organizationId: null,
+      firstBusinessName: null,
       applicationSubmitted: false,
-      listingComplete: false,
+      firstBusinessComplete: false,
       payment: { done: false, entitled: false, method: null },
       plan: null,
       verification: { status: KycStatus.NOT_SUBMITTED, verified: false },
@@ -89,7 +89,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
   }
 
   const plans = mainBranchPlans(tenant);
-  const listingComplete = Array.isArray(plans) && plans.length > 0;
+  const firstBusinessComplete = Array.isArray(plans) && plans.length > 0;
   const entitled = !!entitledSub;
   const paid = entitled && entitledSub.paymentStatus === 'PAID';
   const submitted = tenant.status !== TenantStatus.DRAFT;
@@ -113,7 +113,7 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
   } else if (tenant.status === TenantStatus.ACTIVE) {
     status = HostStatus.APPROVED;
     nextAction = paid ? NextAction.NONE : entitled ? NextAction.PAY_SUBSCRIPTION : NextAction.CHOOSE_PLAN;
-  } else if (!listingComplete) {
+  } else if (!firstBusinessComplete) {
     status = HostStatus.DRAFT;
     nextAction = NextAction.COMPLETE_LISTING;
   } else if (!paid) {
@@ -128,12 +128,12 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
   return {
     status,
     nextAction,
-    tenantId: tenant.id,
-    gymName: tenant.gymName || tenant.businessName || null,
+    organizationId: tenant.id,
+    firstBusinessName: tenant.firstBusinessName || tenant.organizationName || null,
     // R-112 (C5): the brand the host typed (null until Step 2 saves it).
-    brandName: tenant.businessName || null,
+    organizationName: tenant.organizationName || null,
     applicationSubmitted: submitted && status !== HostStatus.REJECTED,
-    listingComplete,
+    firstBusinessComplete,
     payment: { done: paid, entitled, method: tenant.paymentMethod || null },
     plan: paid ? planOf(entitledSub) : null,
     verification: {
@@ -145,21 +145,49 @@ const deriveHostStatus = ({ tenant, entitledSub = null }) => {
 };
 
 const TENANT_ATTRIBUTES = [
-  'id', 'gymName', 'businessName', 'status', 'kycStatus', 'mainBranchDataJson', 'paymentMethod', 'rejectionReason',
+  'id', 'firstBusinessName', 'organizationName', 'status', 'kycStatus', 'firstBranchDraft', 'paymentMethod', 'rejectionReason',
 ];
 
 /** The tenant the user owns (one per owner, registerTenant), or null. */
 const findOwnedTenant = (userId) =>
   Tenant.findOne({ where: { ownerUserId: userId }, attributes: TENANT_ATTRIBUTES, order: [['createdAt', 'DESC']] });
 
-/** The caller's host status. Two indexed reads; no tenant database is opened. */
+/**
+ * NEW-303 M3e (S2): what the host does next for the first business, once the organization is approved and that
+ * business waits with its first branch held (M2d, R-121):
+ *   { key: 'upload_proof_of_premises', businessId }   no proof of premises uploaded yet (D10)
+ *   { key: 'wait_for_business_approval', businessId } the proof is there; the business waits for the admin
+ * null otherwise (no organization, not approved yet, or the first business is approved).
+ */
+const NextStep = {
+  UPLOAD_PROOF_OF_PREMISES: 'upload_proof_of_premises',
+  WAIT_FOR_BUSINESS_APPROVAL: 'wait_for_business_approval',
+};
+
+const firstBusinessNextStep = async (tenant) => {
+  if (!tenant || tenant.status !== TenantStatus.ACTIVE) return null;
+  const { GymListing } = require('../models/platform');
+  const first = await GymListing.findOne({
+    where: { organizationId: tenant.id },
+    order: [['createdAt', 'ASC'], ['id', 'ASC']],
+  });
+  if (!first || first.status !== 'PENDING' || !first.firstBranchDraft) return null;
+  const missing = require('./business-kyc.service').missingForApproval(first);
+  return {
+    key: missing.includes('PROOF_OF_PREMISES') ? NextStep.UPLOAD_PROOF_OF_PREMISES : NextStep.WAIT_FOR_BUSINESS_APPROVAL,
+    businessId: first.id,
+  };
+};
+
+/** The caller's host status. Indexed platform reads only; no tenant database is opened. */
 const getHostStatus = async (userId) => {
   const tenant = userId ? await findOwnedTenant(userId) : null;
   const entitledSub = tenant ? await subscriptionQuotaService.getActiveSubscription(tenant.id) : null;
   // NEW-265 (R-109 F3): the organisation's or draft first branch's area request, for "Choose your area
   // again" (status rejected) or "under review"; null when none.
   const area = tenant ? await require('./area-requests.service').hostStatusArea(tenant) : null;
-  return { ...deriveHostStatus({ tenant, entitledSub }), area };
+  const nextStep = await firstBusinessNextStep(tenant);
+  return { ...deriveHostStatus({ tenant, entitledSub }), area, nextStep };
 };
 
-module.exports = { HostStatus, NextAction, deriveHostStatus, getHostStatus };
+module.exports = { HostStatus, NextAction, NextStep, deriveHostStatus, getHostStatus };

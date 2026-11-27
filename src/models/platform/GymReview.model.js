@@ -9,7 +9,8 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      gymListingId: {
+      businessId: {
+        field: 'business_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: false,
       },
@@ -24,7 +25,7 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       // The tenant the user is subscribed to (for verification)
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
       },
@@ -53,15 +54,15 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'gym_reviews',
+      tableName: 'business_reviews', // R-120 NEW-306 (p033)
       underscored: true,
       timestamps: true,
       indexes: [
-        { fields: ['gym_listing_id', 'status'] },
+        { fields: ['business_id', 'status'] },
         { fields: ['branch_id', 'status'] },
         { fields: ['user_id'] },
         // One review per user per branch (branch-level uniqueness)
-        { name: 'gym_reviews_branch_user_unique', unique: true, fields: ['branch_id', 'user_id'] },
+        { name: 'business_reviews_branch_user_unique', unique: true, fields: ['branch_id', 'user_id'] },
       ],
     }
   );

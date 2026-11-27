@@ -26,14 +26,14 @@ const _ensureSchema = async (tenantDb) => {
  * Resolve a tenant DB connection from a GymListing UUID.
  * Used by public-facing routes that don't have JWT tenantContext.
  */
-const _tenantFromGymListing = async (gymListingId) => {
+const _tenantFromGymListing = async (businessId) => {
   let listing = await GymListing.findOne({
-    where: { id: gymListingId, status: 'ACTIVE' },
-    attributes: ['id', 'tenantId', 'title', 'branchId'],
+    where: { id: businessId, status: 'ACTIVE' },
+    attributes: ['id', 'organizationId', 'name', 'primaryBranchId'],
   });
 
-  let tenantId = listing ? listing.tenantId : null;
-  let branchId = listing ? listing.branchId : null;
+  let organizationId = listing ? listing.organizationId : null;
+  let branchId = listing ? listing.primaryBranchId : null;
 
   if (!listing) {
     // If listing not found, it could be a branch ID directly
@@ -47,14 +47,14 @@ const _tenantFromGymListing = async (gymListingId) => {
         if (!t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
         const tenantDb = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
         const { Branch } = tenantDb.models;
-        const branch = await Branch.findByPk(gymListingId);
+        const branch = await Branch.findByPk(businessId);
         if (branch) {
-          tenantId = t.id;
+          organizationId = t.id;
           branchId = branch.id;
-          if (branch.gymListingId) {
+          if (branch.businessId) {
             listing = await GymListing.findOne({
-              where: { id: branch.gymListingId, status: 'ACTIVE' },
-              attributes: ['id', 'tenantId', 'title', 'branchId'],
+              where: { id: branch.businessId, status: 'ACTIVE' },
+              attributes: ['id', 'organizationId', 'name', 'primaryBranchId'],
             });
           }
           break;
@@ -65,10 +65,10 @@ const _tenantFromGymListing = async (gymListingId) => {
     }
   }
 
-  if (!tenantId) throw createError('Gym not found or not active', 404);
+  if (!organizationId) throw createError('Gym not found or not active', 404);
 
   const tenant = await Tenant.findOne({
-    where: { id: tenantId, status: 'ACTIVE' },
+    where: { id: organizationId, status: 'ACTIVE' },
     attributes: ['id', 'connectionStringEncrypted'],
   });
   if (!tenant) throw createError('Gym tenant not available', 503);
@@ -82,10 +82,10 @@ const _tenantFromGymListing = async (gymListingId) => {
 };
 
 /**
- * Resolve the tenant's Gym record (needed for new plan gymId).
+ * Resolve the tenant's Gym record (needed for new plan businessId).
  */
 const _getGym = async (models) => {
-  const gym = await models.Gym.findOne();
+  const gym = await models.Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (!gym) throw createError('Gym profile not found', 404);
   return gym;
 };
@@ -108,32 +108,29 @@ const _getGym = async (models) => {
  * transaction through makes this UPDATE part of the same unit of work
  * instead of a competing one.
  */
-const _syncMinPrice = async (tenantDb, gymId, { transaction } = {}) => {
+const _syncMinPrice = async (tenantDb, businessId, { transaction } = {}) => {
   try {
     const { MembershipPlan } = tenantDb.models;
 
     // 1. Check for a manually featured plan
     let featured = await MembershipPlan.findOne({
-      where: { gymId, isFeatured: true, status: 'ACTIVE', isDeactivated: false },
+      where: { businessId, isFeatured: true, status: 'ACTIVE', isDeactivated: false },
       attributes: ['price'],
     });
 
     // 2. Fall back to cheapest public plan
     if (!featured) {
       featured = await MembershipPlan.findOne({
-        where: { gymId, status: 'ACTIVE', isPublic: true, isDeactivated: false },
+        where: { businessId, status: 'ACTIVE', isPublic: true, isDeactivated: false },
         order: [['price', 'ASC']],
         attributes: ['price'],
       });
     }
 
-    // Find the GymListing linked to this tenant
-    const gym = await tenantDb.models.Gym.findOne({ attributes: ['gymListingId'] });
-    if (!gym || !gym.gymListingId) return;
-
+    // Option S (R-120 NEW-308): the business id is the listing id.
     await GymListing.update(
       { minPrice: featured ? parseFloat(featured.price) : null },
-      { where: { id: gym.gymListingId }, transaction }
+      { where: { id: businessId }, transaction }
     );
   } catch (err) {
     // Non-fatal: log and continue — minPrice sync failure shouldn't block the plan operation
@@ -161,8 +158,8 @@ const withCurrency = async (tenantDb, plans, branchId = null) => {
 };
 
 // ── Public: list active + public plans for a gym ──────────────────────────────
-const listPublic = async (gymListingId, branchId) => {
-  const { tenantDb, models, branchId: resolvedBranchId } = await _tenantFromGymListing(gymListingId);
+const listPublic = async (businessId, branchId) => {
+  const { tenantDb, models, branchId: resolvedBranchId } = await _tenantFromGymListing(businessId);
   const targetBranchId = branchId || resolvedBranchId;
 
   const where = { status: 'ACTIVE', isDeactivated: false, isPublic: true };
@@ -179,8 +176,8 @@ const listPublic = async (gymListingId, branchId) => {
 };
 
 // ── Public: single plan ───────────────────────────────────────────────────────
-const getPublic = async (planId, gymListingId) => {
-  const { tenantDb, models, branchId } = await _tenantFromGymListing(gymListingId);
+const getPublic = async (planId, businessId) => {
+  const { tenantDb, models, branchId } = await _tenantFromGymListing(businessId);
   const plan = await models.MembershipPlan.findOne({
     where: { id: planId, status: 'ACTIVE', isDeactivated: false, isPublic: true },
   });
@@ -188,49 +185,49 @@ const getPublic = async (planId, gymListingId) => {
   return withCurrency(tenantDb, plan, branchId);
 };
 
-const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
-  if (!tenantId) return;
+const _ensureTenantOnboardingPlans = async (tenantDb, organizationId) => {
+  if (!organizationId) return;
   try {
     const { MembershipPlan, Branch, Gym } = tenantDb.models;
     const planCount = await MembershipPlan.count();
     if (planCount > 0) return;
 
-    const tenant = await Tenant.findByPk(tenantId);
+    const tenant = await Tenant.findByPk(organizationId);
     if (!tenant) return;
 
-    let b = tenant.mainBranchDataJson;
+    let b = tenant.firstBranchDraft;
     if (typeof b === 'string') {
       try { b = JSON.parse(b); } catch (e) { b = {}; }
     }
     b = b || {};
 
-    const rawPlans = (Array.isArray(b.plans) && b.plans.length > 0)
-      ? b.plans
-      : (Array.isArray(b.packages) && b.packages.length > 0 ? b.packages : []);
+    const rawPlans = Array.isArray(b.packages) ? b.packages : []; // FirstBranch names only (S3)
 
-    let gym = await Gym.findOne();
-    if (!gym && tenant.gymName) {
+    let gym = await Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
+    if (!gym && tenant.firstBusinessName) {
+      const firstListing = await GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC']], attributes: ['id'] });
       gym = await Gym.create({
-        name: tenant.gymName,
-        description: tenant.gymDescription || null,
+        ...(firstListing ? { id: firstListing.id } : {}), // option S: the business id is the listing id
+        name: tenant.firstBusinessName,
+        description: tenant.firstBusinessDescription || null,
         contactPhone: tenant.phone || null,
         genderType: tenant.genderType || 'MIXED',
       });
     }
 
     if (gym) {
-      let branch = await Branch.findOne({ where: { gymId: gym.id } }) || await Branch.findOne();
+      let branch = await Branch.findOne({ where: { businessId: gym.id }, order: [['createdAt', 'ASC'], ['id', 'ASC']] }) || await Branch.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
       if (!branch) {
         const gymService = require('./gym.service');
         branch = await gymService.createBranch(
           tenantDb,
           gym.id,
           {
-            branchName: b.name || tenant.gymName || 'Main Branch',
+            branchName: b.branchName || tenant.firstBusinessName || 'Main Branch',
             address: b.address || tenant.address || null,
             cityId: b.cityId || tenant.cityId || null,
           },
-          tenantId,
+          organizationId,
           {
             skipCapacityCheck: true,
             skipCapacityEvent: true,
@@ -263,7 +260,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
             const isPublic = p.isPublic !== undefined ? Boolean(p.isPublic) : true;
 
             await MembershipPlan.create({
-              gymId: gym.id,
+              businessId: gym.id,
               branchId: branch.id,
               name: p.name.trim(),
               description: p.description || null,
@@ -279,7 +276,7 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
               isDeactivated: false,
               status: 'ACTIVE',
             });
-            console.log(`[MembershipPlan] Auto-synced onboarding plan '${p.name}' for tenant ${tenantId}`);
+            console.log(`[MembershipPlan] Auto-synced onboarding plan '${p.name}' for tenant ${organizationId}`);
           } catch (err) {
             console.warn('[MembershipPlan] Auto-sync plan error:', err.message);
           }
@@ -293,9 +290,9 @@ const _ensureTenantOnboardingPlans = async (tenantDb, tenantId) => {
 };
 
 // ── Host: list all active and inactive plans for the gym ──────────────────────
-const listForHost = async (tenantDb, branchId, tenantId, branchIds) => {
+const listForHost = async (tenantDb, branchId, organizationId, branchIds) => {
   await _ensureSchema(tenantDb);
-  await _ensureTenantOnboardingPlans(tenantDb, tenantId);
+  await _ensureTenantOnboardingPlans(tenantDb, organizationId);
 
   const { MembershipPlan, Branch } = tenantDb.models;
   const activeBranches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
@@ -346,7 +343,7 @@ const createPlan = async (tenantDb, data, { transaction } = {}) => {
   }
 
   const plan = await MembershipPlan.create({
-    gymId: gym.id,
+    businessId: gym.id,
     branchId: data.branchId || null,
     name: data.name,
     description: data.description || null,
@@ -419,7 +416,7 @@ const updatePlan = async (tenantDb, planId, data) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -449,7 +446,7 @@ const deletePlan = async (tenantDb, planId) => {
   const gym = await _getGym(tenantDb.models);
 
   const plan = await MembershipPlan.findOne({
-    where: { id: planId, gymId: gym.id, status: 'ACTIVE' },
+    where: { id: planId, businessId: gym.id, status: 'ACTIVE' },
   });
   if (!plan) throw createError('Plan not found', 404);
 
@@ -470,7 +467,7 @@ const toggleStatus = async (tenantDb, planId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id, status: 'ACTIVE' } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id, status: 'ACTIVE' } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -500,7 +497,7 @@ const togglePublic = async (tenantDb, planId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -527,7 +524,7 @@ const updatePoster = async (tenantDb, planId, file) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -553,7 +550,7 @@ const setFeatured = async (tenantDb, planId) => {
   const { MembershipPlan, Branch } = tenantDb.models;
   const gym = await _getGym(tenantDb.models);
 
-  const plan = await MembershipPlan.findOne({ where: { id: planId, gymId: gym.id } });
+  const plan = await MembershipPlan.findOne({ where: { id: planId, businessId: gym.id } });
   if (!plan) throw createError('Plan not found', 404);
 
   if (plan.branchId) {
@@ -569,7 +566,7 @@ const setFeatured = async (tenantDb, planId) => {
   // Clear featured flag on all other plans for this gym
   await MembershipPlan.update(
     { isFeatured: false },
-    { where: { gymId: gym.id } }
+    { where: { businessId: gym.id } }
   );
 
   // Set featured on this plan (if toggling ON)

@@ -62,7 +62,7 @@ const listGyms = async (req, res, next) => {
       offset,
     });
 
-    return sendSuccess(res, { gyms: result.gyms }, 'OK', 200, result.pagination);
+    return sendSuccess(res, { branches: result.branches }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
   }
@@ -91,7 +91,7 @@ const mapGyms = async (req, res, next) => {
   try {
     const { cityId, audience } = req.query;
     const gyms = await discoveryService.mapGyms({ cityId: cityId || null, audience: audience || null });
-    return sendSuccess(res, { gyms });
+    return sendSuccess(res, { branches: gyms });
   } catch (err) {
     next(err);
   }
@@ -102,7 +102,7 @@ const featuredGyms = async (req, res, next) => {
   try {
     const { limit = 12 } = req.query;
     const gyms = await discoveryService.featuredGyms({ limit });
-    return sendSuccess(res, { gyms });
+    return sendSuccess(res, { branches: gyms });
   } catch (err) {
     next(err);
   }
@@ -113,16 +113,16 @@ const topRatedGyms = async (req, res, next) => {
   try {
     const { cityId, limit = 12 } = req.query;
     const gyms = await discoveryService.topRatedGyms({ cityId: cityId || null, limit });
-    return sendSuccess(res, { gyms });
+    return sendSuccess(res, { branches: gyms });
   } catch (err) {
     next(err);
   }
 };
 
-// ── GET /discovery/gyms/:id ───────────────────────────────────────────────────
-const getGym = async (req, res, next) => {
+// ── GET /discovery/businesses/:businessId ───────────────────────────────────────────────────
+const getBusiness = async (req, res, next) => {
   try {
-    const result = await discoveryService.getGym(req.params.id);
+    const result = await discoveryService.getBusinessPublic(req.params.businessId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -130,9 +130,19 @@ const getGym = async (req, res, next) => {
 };
 
 // ── GET /discovery/gyms/:id/payment-details ───────────────────────────────────
+// ── GET /discovery/branches/:branchId ─────────────────────────────────────────
+const getBranch = async (req, res, next) => {
+  try {
+    const result = await discoveryService.getBranchDetail(req.params.branchId);
+    return sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const getPaymentDetails = async (req, res, next) => {
   try {
-    const result = await discoveryService.getPaymentDetails(req.params.id);
+    const result = await discoveryService.getPaymentDetails(req.params.businessId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -143,12 +153,11 @@ const getPaymentDetails = async (req, res, next) => {
 const listReviews = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 10, 50);
-    const { id } = req.params;
+    const { businessId: id } = req.params;
     const listing = await discoveryService.getGymListingByIdentifier(id);
-    if (!listing) return res.status(404).json({ success: false, message: 'Gym not found' });
-
-    // :id may be a listing id or a branch id; scope to the branch only in the latter case.
-    const branchId = listing.id === id ? undefined : id;
+    // One id, one meaning (contract rule 4): this route takes a business id; a branch's reviews are under /discovery/branches/:branchId/reviews.
+    if (!listing || listing.id !== id) return res.status(404).json({ success: false, message: 'Business not found' });
+    const branchId = undefined;
     const viewerUserId = req.user ? req.user.sub || req.user.id : null; // NEW-256
     const result = await discoveryService.listReviews(listing.id, branchId, { page, limit, offset, viewerUserId });
     return sendSuccess(res, { reviews: result.reviews }, 'OK', 200, result.pagination);
@@ -161,10 +170,10 @@ const listReviews = async (req, res, next) => {
 const submitReview = async (req, res, next) => {
   try {
     const { branchId, rating, title, body, text } = req.body || {};
-    const targetBranchId = branchId || req.params.id;
+    const targetBranchId = branchId || req.params.businessId;
     const review = await discoveryService.submitReview(
       req.user.sub || req.user.id,
-      req.params.id,
+      req.params.businessId,
       targetBranchId,
       { rating, title, body: body || text }
     );
@@ -178,8 +187,8 @@ const submitReview = async (req, res, next) => {
 const adminListReviews = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, 20, 100);
-    const { gymListingId, status } = req.query;
-    const result = await discoveryService.adminListReviews({ gymListingId, status, page, limit, offset });
+    const { businessId, status } = req.query;
+    const result = await discoveryService.adminListReviews({ businessId, status, page, limit, offset });
     return sendSuccess(res, { reviews: result.reviews }, 'OK', 200, result.pagination);
   } catch (err) {
     next(err);
@@ -202,7 +211,7 @@ const submitInquiry = async (req, res, next) => {
       req.user.sub,
       req.params.branchId,
       req.body.message,
-      { clientMessageId: req.body.clientMessageId ?? req.body.client_message_id }
+      { clientMessageId: req.body.clientMessageId }
     );
     return sendSuccess(res, result, 'Inquiry submitted successfully', 201);
   } catch (err) {
@@ -276,16 +285,16 @@ const listOrganizations = async (req, res, next) => {
 
 const listOrganizationBranches = async (req, res, next) => {
   try {
-    const result = await discoveryService.listOrganizationBranches(req.params.gymId);
+    const result = await discoveryService.listOrganizationBranches(req.params.businessId);
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
   }
 };
 
-const getTopHosts = async (req, res, next) => {
+const getTopBusinesses = async (req, res, next) => {
   try {
-    const result = await discoveryService.listTopHosts();
+    const result = await discoveryService.listTopBusinesses();
     return sendSuccess(res, result);
   } catch (err) {
     next(err);
@@ -300,7 +309,8 @@ module.exports = {
   mapGyms,
   featuredGyms,
   topRatedGyms,
-  getGym,
+  getBusiness,
+  getBranch,
   getPaymentDetails,
   listReviews,
   submitReview,
@@ -312,5 +322,5 @@ module.exports = {
   submitBranchReview,
   listOrganizations,
   listOrganizationBranches,
-  getTopHosts,
+  getTopBusinesses,
 };

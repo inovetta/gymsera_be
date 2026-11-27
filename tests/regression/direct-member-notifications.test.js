@@ -88,7 +88,7 @@ describe('Direct Member Notifications (Option B - Redis/Bull removed for member 
 
     const plan = await tenantDb.models.MembershipPlan.create({
       id: uuidv4(),
-      gymId: branch.gymId,
+      businessId: branch.businessId,
       branchId: branch.id,
       name: 'Gold Monthly',
       durationType: 'MONTHLY',
@@ -112,11 +112,11 @@ describe('Direct Member Notifications (Option B - Redis/Bull removed for member 
     await UserGymMembership.create({
       id: uuidv4(),
       userId: member.id,
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       branchId: branch.id,
-      gymListingId: gymListing.id,
+      businessId: gymListing.id,
       subscriptionId: sub.id,
-      gymName: 'Iron Fitness',
+      businessName: 'Iron Fitness',
       planName: plan.name,
       status: SubscriptionStatus.ACTIVE,
       startDate: '2026-08-01',
@@ -158,7 +158,7 @@ describe('Direct Member Notifications (Option B - Redis/Bull removed for member 
 
     const plan = await tenantDb.models.MembershipPlan.create({
       id: uuidv4(),
-      gymId: branch.gymId,
+      businessId: branch.businessId,
       branchId: branch.id,
       name: 'Standard Membership',
       durationType: 'MONTHLY',
@@ -182,11 +182,11 @@ describe('Direct Member Notifications (Option B - Redis/Bull removed for member 
     await UserGymMembership.create({
       id: uuidv4(),
       userId: member.id,
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       branchId: branch.id,
-      gymListingId: gymListing.id,
+      businessId: gymListing.id,
       subscriptionId: sub.id,
-      gymName: 'Iron Fitness',
+      businessName: 'Iron Fitness',
       planName: plan.name,
       status: SubscriptionStatus.ACTIVE,
       startDate: '2026-08-29',

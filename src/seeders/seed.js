@@ -255,7 +255,7 @@ const PACKAGES = [
     description: 'Perfect for a single-branch gym just getting started. Core membership and attendance management.',
     price: 4999.00,
     billingCycle: 'MONTHLY',
-    maxOrganizations: 1,
+    maxBusinesses: 1,
     maxBranches: 1,
     maxTrainers: 5,
     maxMembers: 150,
@@ -270,7 +270,7 @@ const PACKAGES = [
     description: 'For growing gyms. Multi-branch support, trainer management, and advanced analytics.',
     price: 9999.00,
     billingCycle: 'MONTHLY',
-    maxOrganizations: 2,
+    maxBusinesses: 2,
     maxBranches: 3,
     maxTrainers: 20,
     maxMembers: 500,
@@ -285,7 +285,7 @@ const PACKAGES = [
     description: 'For large gym chains. Unlimited branches, full feature set, priority support.',
     price: 24999.00,
     billingCycle: 'MONTHLY',
-    maxOrganizations: 5,
+    maxBusinesses: 5,
     maxBranches: 10,
     maxTrainers: 100,
     maxMembers: 5000,
@@ -663,15 +663,15 @@ async function seedTenantsAndListings(userMap) {
     {
       _key: 'tenant1',
       data: {
-        tenantCode:    'IRONPEAK',
-        businessName:  'Iron Peak Fitness Pvt Ltd',
+        organizationCode:    'IRONPEAK',
+        organizationName:  'Iron Peak Fitness Pvt Ltd',
         ownerUserId:   userMap.host1.id,
         email:         'ahmed@ironpeak.com',
         phone:         '+923001234567',
         cityId:        cities['Karachi'].id,
         address:       'Plot 12, DHA Phase 5, Karachi',
-        gymName:       'Iron Peak Fitness',
-        gymDescription:'State-of-the-art gym with Olympic lifting platforms, powerlifting racks, and a dedicated cardio zone. Certified trainers, nutrition counseling, and group fitness classes.',
+        firstBusinessName:       'Iron Peak Fitness',
+        firstBusinessDescription:'State-of-the-art gym with Olympic lifting platforms, powerlifting racks, and a dedicated cardio zone. Certified trainers, nutrition counseling, and group fitness classes.',
         genderType:    'MIXED',
         status:        'ACTIVE',
         kycStatus:     'APPROVED',
@@ -696,15 +696,15 @@ async function seedTenantsAndListings(userMap) {
     {
       _key: 'tenant2',
       data: {
-        tenantCode:    'VITALITYFIT',
-        businessName:  'Vitality Fit Studio LLC',
+        organizationCode:    'VITALITYFIT',
+        organizationName:  'Vitality Fit Studio LLC',
         ownerUserId:   userMap.host2.id,
         email:         'sara@vitalityfit.com',
         phone:         '+923211234567',
         cityId:        cities['Lahore'].id,
         address:       'Block D, DHA Phase 4, Lahore',
-        gymName:       'Vitality Fit Studio',
-        gymDescription:'Premium ladies-only fitness studio with Pilates, Zumba, aerial yoga, and personalized coaching. Transforming lives through holistic wellness.',
+        firstBusinessName:       'Vitality Fit Studio',
+        firstBusinessDescription:'Premium ladies-only fitness studio with Pilates, Zumba, aerial yoga, and personalized coaching. Transforming lives through holistic wellness.',
         genderType:    'FEMALE_ONLY',
         status:        'ACTIVE',
         kycStatus:     'APPROVED',
@@ -729,15 +729,15 @@ async function seedTenantsAndListings(userMap) {
     {
       _key: 'tenant3',
       data: {
-        tenantCode:    'POWERZONE',
-        businessName:  'PowerZone Gym & Fitness',
+        organizationCode:    'POWERZONE',
+        organizationName:  'PowerZone Gym & Fitness',
         ownerUserId:   userMap.host3.id,
         email:         'usman@powerzone.com',
         phone:         '+923451234567',
         cityId:        cities['Rawalpindi'].id,
         address:       'Main Boulevard, DHA Rawalpindi',
-        gymName:       'PowerZone Gym',
-        gymDescription:'Rawalpindi\'s premier strength and conditioning facility. Heavy iron, functional training, combat sports, and a protein cafe.',
+        firstBusinessName:       'PowerZone Gym',
+        firstBusinessDescription:'Rawalpindi\'s premier strength and conditioning facility. Heavy iron, functional training, combat sports, and a protein cafe.',
         genderType:    'MIXED',
         status:        'ACTIVE',
         kycStatus:     'APPROVED',
@@ -762,15 +762,15 @@ async function seedTenantsAndListings(userMap) {
     {
       _key: 'tenant4',
       data: {
-        tenantCode:    'FITLIFE',
-        businessName:  'FitLife Studio Islamabad',
+        organizationCode:    'FITLIFE',
+        organizationName:  'FitLife Studio Islamabad',
         ownerUserId:   userMap.host4.id,
         email:         'nadia@fitlife.com',
         phone:         '+923361234567',
         cityId:        cities['Islamabad'].id,
         address:       'F-8 Markaz, Islamabad',
-        gymName:       'FitLife Studio',
-        gymDescription:'Islamabad\'s top women-only fitness destination. Yoga, spinning, HIIT, and luxury spa facilities in a serene environment.',
+        firstBusinessName:       'FitLife Studio',
+        firstBusinessDescription:'Islamabad\'s top women-only fitness destination. Yoga, spinning, HIIT, and luxury spa facilities in a serene environment.',
         genderType:    'FEMALE_ONLY',
         status:        'ACTIVE',
         kycStatus:     'APPROVED',
@@ -795,15 +795,15 @@ async function seedTenantsAndListings(userMap) {
     {
       _key: 'tenant5',
       data: {
-        tenantCode:    'CHAMPIONS',
-        businessName:  'Champions Athletic Club',
+        organizationCode:    'CHAMPIONS',
+        organizationName:  'Champions Athletic Club',
         ownerUserId:   userMap.host5.id,
         email:         'zain@champions.com',
         phone:         '+923121234567',
         cityId:        cities['Faisalabad'].id,
         address:       'Peoples Colony, Faisalabad',
-        gymName:       'Champions Athletic Club',
-        gymDescription:'Mixed martial arts, boxing, wrestling, and general fitness under one roof. Faisalabad\'s home of combat sports and strength training.',
+        firstBusinessName:       'Champions Athletic Club',
+        firstBusinessDescription:'Mixed martial arts, boxing, wrestling, and general fitness under one roof. Faisalabad\'s home of combat sports and strength training.',
         genderType:    'MIXED',
         status:        'ACTIVE',
         kycStatus:     'APPROVED',
@@ -832,7 +832,7 @@ async function seedTenantsAndListings(userMap) {
 
   for (const td of tenantDefs) {
     const [tenant, wasCreated] = await Tenant.findOrCreate({
-      where:    { tenantCode: td.data.tenantCode },
+      where:    { organizationCode: td.data.organizationCode },
       defaults: td.data,
     });
     tenantMap[td._key] = tenant;
@@ -842,19 +842,20 @@ async function seedTenantsAndListings(userMap) {
     const { paymentDetailsJson } = td.data;
     if (paymentDetailsJson) {
       await PayoutAccount.findOrCreate({
-        where: { tenantId: tenant.id, scopeKey: PayoutAccount.scopeKeyFor(null), provider: 'BANK_TRANSFER' },
-        defaults: { tenantId: tenant.id, organizationId: null, detailsJson: paymentDetailsJson },
+        where: { organizationId: tenant.id, scopeKey: PayoutAccount.scopeKeyFor(null), provider: 'BANK_TRANSFER' },
+        defaults: { organizationId: tenant.id, businessId: null, detailsJson: paymentDetailsJson },
       });
     }
 
     await TenantSubscription.findOrCreate({
-      where: { tenantId: tenant.id },
+      where: { organizationId: tenant.id },
       defaults: {
-        tenantId:          tenant.id,
+        organizationId:          tenant.id,
         platformPackageId: td.pkg.id,
         status:            'ACTIVE',
         startDate:         td.subStart,
-        endDate:           td.subEnd,
+        // A seeded hosting plan must still be running when the seed is used (else the expiry cron ends it).
+        endDate:           td.subEnd > new Date().toISOString().slice(0, 10) ? td.subEnd : new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
         amount:            td.pkg.price,
         billingCycle:      td.pkg.billingCycle,
         paymentStatus:     'PAID',
@@ -869,11 +870,11 @@ async function seedTenantsAndListings(userMap) {
   const listingDefs = [
     // Iron Peak
     {
-      tenantId:         tenantMap.tenant1.id,
+      organizationId:         tenantMap.tenant1.id,
       cityId:           cities['Karachi'].id,
       areaId:           areas['karachi_dha5'].id,
-      title:            'Iron Peak Fitness — DHA Phase 5 Karachi',
-      shortDescription: 'Karachi\'s premier powerlifting & bodybuilding gym. Olympic platforms, full cardio suite, protein bar.',
+      name:            'Iron Peak Fitness — DHA Phase 5 Karachi',
+      description: 'Karachi\'s premier powerlifting & bodybuilding gym. Olympic platforms, full cardio suite, protein bar.',
       genderType:       'MIXED',
       averageRating:    4.7,
       latitude:         24.80413,
@@ -887,11 +888,11 @@ async function seedTenantsAndListings(userMap) {
       status:           'ACTIVE',
     },
     {
-      tenantId:         tenantMap.tenant1.id,
+      organizationId:         tenantMap.tenant1.id,
       cityId:           cities['Karachi'].id,
       areaId:           areas['karachi_clifton'].id,
-      title:            'Iron Peak Fitness — Clifton Karachi',
-      shortDescription: 'Iron Peak\'s Clifton branch — full weights room, group classes, and sports nutrition.',
+      name:            'Iron Peak Fitness — Clifton Karachi',
+      description: 'Iron Peak\'s Clifton branch — full weights room, group classes, and sports nutrition.',
       genderType:       'MIXED',
       averageRating:    4.5,
       latitude:         24.81068,
@@ -906,11 +907,11 @@ async function seedTenantsAndListings(userMap) {
     },
     // Vitality Fit
     {
-      tenantId:         tenantMap.tenant2.id,
+      organizationId:         tenantMap.tenant2.id,
       cityId:           cities['Lahore'].id,
       areaId:           areas['lahore_dha4'].id,
-      title:            'Vitality Fit Studio — DHA Lahore',
-      shortDescription: 'Ladies-only wellness studio: Pilates, Zumba, aerial yoga & personal coaching.',
+      name:            'Vitality Fit Studio — DHA Lahore',
+      description: 'Ladies-only wellness studio: Pilates, Zumba, aerial yoga & personal coaching.',
       genderType:       'FEMALE_ONLY',
       averageRating:    4.9,
       latitude:         31.47715,
@@ -924,11 +925,11 @@ async function seedTenantsAndListings(userMap) {
       status:           'ACTIVE',
     },
     {
-      tenantId:         tenantMap.tenant2.id,
+      organizationId:         tenantMap.tenant2.id,
       cityId:           cities['Lahore'].id,
       areaId:           areas['lahore_gulberg'].id,
-      title:            'Vitality Fit Studio — Gulberg Lahore',
-      shortDescription: 'Vitality Fit\'s Gulberg studio — dance fitness, spinning, and wellness therapy.',
+      name:            'Vitality Fit Studio — Gulberg Lahore',
+      description: 'Vitality Fit\'s Gulberg studio — dance fitness, spinning, and wellness therapy.',
       genderType:       'FEMALE_ONLY',
       averageRating:    4.6,
       latitude:         31.51620,
@@ -943,11 +944,11 @@ async function seedTenantsAndListings(userMap) {
     },
     // PowerZone
     {
-      tenantId:         tenantMap.tenant3.id,
+      organizationId:         tenantMap.tenant3.id,
       cityId:           cities['Rawalpindi'].id,
       areaId:           areas['pindi_dha'].id,
-      title:            'PowerZone Gym — DHA Rawalpindi',
-      shortDescription: 'Heavy iron, functional training & combat sports. Rawalpindi\'s #1 strength gym.',
+      name:            'PowerZone Gym — DHA Rawalpindi',
+      description: 'Heavy iron, functional training & combat sports. Rawalpindi\'s #1 strength gym.',
       genderType:       'MIXED',
       averageRating:    4.6,
       latitude:         33.53260,
@@ -961,11 +962,11 @@ async function seedTenantsAndListings(userMap) {
       status:           'ACTIVE',
     },
     {
-      tenantId:         tenantMap.tenant3.id,
+      organizationId:         tenantMap.tenant3.id,
       cityId:           cities['Rawalpindi'].id,
       areaId:           areas['pindi_bahria'].id,
-      title:            'PowerZone Gym — Bahria Town Rawalpindi',
-      shortDescription: 'PowerZone\'s Bahria Town branch — full gym, cardio zone, and MMA ring.',
+      name:            'PowerZone Gym — Bahria Town Rawalpindi',
+      description: 'PowerZone\'s Bahria Town branch — full gym, cardio zone, and MMA ring.',
       genderType:       'MIXED',
       averageRating:    4.4,
       latitude:         33.52400,
@@ -980,11 +981,11 @@ async function seedTenantsAndListings(userMap) {
     },
     // FitLife
     {
-      tenantId:         tenantMap.tenant4.id,
+      organizationId:         tenantMap.tenant4.id,
       cityId:           cities['Islamabad'].id,
       areaId:           areas['islamabad_f8'].id,
-      title:            'FitLife Studio — F-8 Islamabad',
-      shortDescription: 'Islamabad\'s top women-only studio. Yoga, HIIT, spinning, and luxury spa.',
+      name:            'FitLife Studio — F-8 Islamabad',
+      description: 'Islamabad\'s top women-only studio. Yoga, HIIT, spinning, and luxury spa.',
       genderType:       'FEMALE_ONLY',
       averageRating:    4.8,
       latitude:         33.70756,
@@ -999,11 +1000,11 @@ async function seedTenantsAndListings(userMap) {
     },
     // Champions
     {
-      tenantId:         tenantMap.tenant5.id,
+      organizationId:         tenantMap.tenant5.id,
       cityId:           cities['Faisalabad'].id,
       areaId:           areas['fsd_peoples'].id,
-      title:            'Champions Athletic Club — Peoples Colony Faisalabad',
-      shortDescription: 'MMA, boxing, wrestling & general fitness. Faisalabad\'s combat sports HQ.',
+      name:            'Champions Athletic Club — Peoples Colony Faisalabad',
+      description: 'MMA, boxing, wrestling & general fitness. Faisalabad\'s combat sports HQ.',
       genderType:       'MIXED',
       averageRating:    4.5,
       latitude:         31.41500,
@@ -1018,11 +1019,11 @@ async function seedTenantsAndListings(userMap) {
     },
     // Coming soon (filter testing)
     {
-      tenantId:         tenantMap.tenant1.id,
+      organizationId:         tenantMap.tenant1.id,
       cityId:           cities['Islamabad'].id,
       areaId:           areas['islamabad_e11'].id,
-      title:            'Iron Peak Fitness — E-11 Islamabad (Coming Soon)',
-      shortDescription: 'Iron Peak expanding to Islamabad. Pre-registration open.',
+      name:            'Iron Peak Fitness — E-11 Islamabad (Coming Soon)',
+      description: 'Iron Peak expanding to Islamabad. Pre-registration open.',
       genderType:       'MIXED',
       averageRating:    0,
       latitude:         33.72380,
@@ -1041,11 +1042,13 @@ async function seedTenantsAndListings(userMap) {
   let listingsCreated = 0;
 
   for (const ld of listingDefs) {
+    // NEW-303 M2: a seeded live business is an approved one (enterprise §1.4), else travellers never see it.
+    const approved = ld.status === 'ACTIVE' ? { kycStatus: 'APPROVED', approvedAt: new Date() } : {};
     const [listing, wasCreated] = await GymListing.findOrCreate({
-      where:    { title: ld.title, tenantId: ld.tenantId },
-      defaults: ld,
+      where:    { name: ld.name, organizationId: ld.organizationId },
+      defaults: { ...ld, ...approved },
     });
-    listingMap[listing.title] = listing;
+    listingMap[listing.name] = listing;
     if (wasCreated) listingsCreated++;
   }
 
@@ -1070,27 +1073,27 @@ async function seedUserGymMemberships(userMap, tenantMap, listingMap) {
   const ch_peoples  = listingMap['Champions Athletic Club — Peoples Colony Faisalabad'];
 
   const memberships = [
-    { userId: userMap.member1.id,  tenantId: t1.id, gymListingId: ip_dha.id,     gymName: ip_dha.title,     planName: 'Premium Monthly',    startDate: '2024-03-01', endDate: '2026-03-01', status: 'ACTIVE' },
-    { userId: userMap.member2.id,  tenantId: t1.id, gymListingId: ip_dha.id,     gymName: ip_dha.title,     planName: 'Starter Monthly',    startDate: '2024-04-01', endDate: '2026-04-01', status: 'ACTIVE' },
-    { userId: userMap.member3.id,  tenantId: t1.id, gymListingId: ip_clifton.id,  gymName: ip_clifton.title, planName: 'Starter Monthly',    startDate: '2024-05-01', endDate: '2026-05-01', status: 'ACTIVE' },
-    { userId: userMap.member4.id,  tenantId: t2.id, gymListingId: vf_dha.id,     gymName: vf_dha.title,     planName: 'Premium Quarterly',  startDate: '2024-06-01', endDate: '2026-06-01', status: 'ACTIVE' },
-    { userId: userMap.member5.id,  tenantId: t2.id, gymListingId: vf_dha.id,     gymName: vf_dha.title,     planName: 'Premium Monthly',    startDate: '2024-07-01', endDate: '2026-07-01', status: 'ACTIVE' },
-    { userId: userMap.member6.id,  tenantId: t2.id, gymListingId: vf_gulberg.id, gymName: vf_gulberg.title, planName: 'Starter Monthly',    startDate: '2024-08-01', endDate: '2025-08-01', status: 'ACTIVE' },
-    { userId: userMap.member7.id,  tenantId: t3.id, gymListingId: pz_dha.id,     gymName: pz_dha.title,     planName: 'Fighter Monthly',    startDate: '2024-09-01', endDate: '2026-09-01', status: 'ACTIVE' },
-    { userId: userMap.member8.id,  tenantId: t4.id, gymListingId: fl_f8.id,      gymName: fl_f8.title,      planName: 'Wellness Monthly',   startDate: '2024-10-01', endDate: '2026-10-01', status: 'ACTIVE' },
-    { userId: userMap.member9.id,  tenantId: t4.id, gymListingId: fl_f8.id,      gymName: fl_f8.title,      planName: 'Starter Monthly',    startDate: '2024-11-01', endDate: '2025-11-01', status: 'ACTIVE' },
-    { userId: userMap.member10.id, tenantId: t5.id, gymListingId: ch_peoples.id, gymName: ch_peoples.title, planName: 'Martial Arts Monthly', startDate: '2024-12-01', endDate: '2026-12-01', status: 'ACTIVE' },
-    { userId: userMap.member11.id, tenantId: t5.id, gymListingId: ch_peoples.id, gymName: ch_peoples.title, planName: 'General Fitness',    startDate: '2025-01-01', endDate: '2026-01-01', status: 'ACTIVE' },
-    { userId: userMap.member12.id, tenantId: t2.id, gymListingId: vf_dha.id,     gymName: vf_dha.title,     planName: 'Yearly Premium',     startDate: '2025-02-01', endDate: '2026-02-01', status: 'ACTIVE' },
-    { userId: userMap.member13.id, tenantId: t1.id, gymListingId: ip_dha.id,     gymName: ip_dha.title,     planName: 'Monthly',            startDate: '2025-03-01', endDate: '2025-06-01', status: 'EXPIRED' },
-    { userId: userMap.member14.id, tenantId: t3.id, gymListingId: pz_dha.id,     gymName: pz_dha.title,     planName: 'Starter Monthly',    startDate: '2025-04-01', endDate: '2026-04-01', status: 'ACTIVE' },
-    { userId: userMap.member15.id, tenantId: t1.id, gymListingId: ip_clifton.id, gymName: ip_clifton.title, planName: 'Annual',             startDate: '2025-05-01', endDate: '2026-05-01', status: 'ACTIVE' },
+    { userId: userMap.member1.id,  organizationId: t1.id, businessId: ip_dha.id,     gymName: ip_dha.title,     planName: 'Premium Monthly',    startDate: '2024-03-01', endDate: '2026-03-01', status: 'ACTIVE' },
+    { userId: userMap.member2.id,  organizationId: t1.id, businessId: ip_dha.id,     gymName: ip_dha.title,     planName: 'Starter Monthly',    startDate: '2024-04-01', endDate: '2026-04-01', status: 'ACTIVE' },
+    { userId: userMap.member3.id,  organizationId: t1.id, businessId: ip_clifton.id,  gymName: ip_clifton.title, planName: 'Starter Monthly',    startDate: '2024-05-01', endDate: '2026-05-01', status: 'ACTIVE' },
+    { userId: userMap.member4.id,  organizationId: t2.id, businessId: vf_dha.id,     gymName: vf_dha.title,     planName: 'Premium Quarterly',  startDate: '2024-06-01', endDate: '2026-06-01', status: 'ACTIVE' },
+    { userId: userMap.member5.id,  organizationId: t2.id, businessId: vf_dha.id,     gymName: vf_dha.title,     planName: 'Premium Monthly',    startDate: '2024-07-01', endDate: '2026-07-01', status: 'ACTIVE' },
+    { userId: userMap.member6.id,  organizationId: t2.id, businessId: vf_gulberg.id, gymName: vf_gulberg.title, planName: 'Starter Monthly',    startDate: '2024-08-01', endDate: '2025-08-01', status: 'ACTIVE' },
+    { userId: userMap.member7.id,  organizationId: t3.id, businessId: pz_dha.id,     gymName: pz_dha.title,     planName: 'Fighter Monthly',    startDate: '2024-09-01', endDate: '2026-09-01', status: 'ACTIVE' },
+    { userId: userMap.member8.id,  organizationId: t4.id, businessId: fl_f8.id,      gymName: fl_f8.title,      planName: 'Wellness Monthly',   startDate: '2024-10-01', endDate: '2026-10-01', status: 'ACTIVE' },
+    { userId: userMap.member9.id,  organizationId: t4.id, businessId: fl_f8.id,      gymName: fl_f8.title,      planName: 'Starter Monthly',    startDate: '2024-11-01', endDate: '2025-11-01', status: 'ACTIVE' },
+    { userId: userMap.member10.id, organizationId: t5.id, businessId: ch_peoples.id, gymName: ch_peoples.title, planName: 'Martial Arts Monthly', startDate: '2024-12-01', endDate: '2026-12-01', status: 'ACTIVE' },
+    { userId: userMap.member11.id, organizationId: t5.id, businessId: ch_peoples.id, gymName: ch_peoples.title, planName: 'General Fitness',    startDate: '2025-01-01', endDate: '2026-01-01', status: 'ACTIVE' },
+    { userId: userMap.member12.id, organizationId: t2.id, businessId: vf_dha.id,     gymName: vf_dha.title,     planName: 'Yearly Premium',     startDate: '2025-02-01', endDate: '2026-02-01', status: 'ACTIVE' },
+    { userId: userMap.member13.id, organizationId: t1.id, businessId: ip_dha.id,     gymName: ip_dha.title,     planName: 'Monthly',            startDate: '2025-03-01', endDate: '2025-06-01', status: 'EXPIRED' },
+    { userId: userMap.member14.id, organizationId: t3.id, businessId: pz_dha.id,     gymName: pz_dha.title,     planName: 'Starter Monthly',    startDate: '2025-04-01', endDate: '2026-04-01', status: 'ACTIVE' },
+    { userId: userMap.member15.id, organizationId: t1.id, businessId: ip_clifton.id, gymName: ip_clifton.title, planName: 'Annual',             startDate: '2025-05-01', endDate: '2026-05-01', status: 'ACTIVE' },
   ];
 
   let created = 0;
   for (const m of memberships) {
     const exists = await UserGymMembership.findOne({
-      where: { userId: m.userId, gymListingId: m.gymListingId },
+      where: { userId: m.userId, businessId: m.businessId },
     });
     if (!exists) {
       await UserGymMembership.create({ ...m, subscriptionId: uuidv4() });
@@ -1111,31 +1114,31 @@ async function seedReviews(userMap, tenantMap, listingMap) {
 
   const reviews = [
     // Iron Peak DHA
-    { gymListingId: ip_dha.id,     userId: userMap.member1.id,  tenantId: tenantMap.tenant1.id, rating: 5, title: 'Best gym in DHA!', body: 'Amazing equipment, super clean facility. The trainers are very knowledgeable and the powerlifting section is world-class. Highly recommend Iron Peak to anyone serious about fitness.', status: 'APPROVED' },
-    { gymListingId: ip_dha.id,     userId: userMap.member2.id,  tenantId: tenantMap.tenant1.id, rating: 4, title: 'Great gym, slightly crowded evenings', body: 'Great selection of equipment and the staff is very helpful. Gets a bit crowded after 6pm but overall fantastic experience. The protein bar is a nice touch!', status: 'APPROVED' },
-    { gymListingId: ip_dha.id,     userId: userMap.member3.id,  tenantId: tenantMap.tenant1.id, rating: 3, title: 'Good but parking is an issue', body: 'Equipment is solid and staff is friendly. However parking at DHA Phase 5 is a nightmare during peak hours. Hope they sort that out.', status: 'PENDING' },
-    { gymListingId: ip_dha.id,     userId: userMap.member13.id, tenantId: tenantMap.tenant1.id, rating: 5, title: 'Transformed my physique in 6 months', body: 'I joined Iron Peak as a complete beginner and my trainer Faisal completely transformed my approach to fitness. World-class facility, worth every rupee.', status: 'APPROVED' },
+    { businessId: ip_dha.id,     userId: userMap.member1.id,  organizationId: tenantMap.tenant1.id, rating: 5, title: 'Best gym in DHA!', body: 'Amazing equipment, super clean facility. The trainers are very knowledgeable and the powerlifting section is world-class. Highly recommend Iron Peak to anyone serious about fitness.', status: 'APPROVED' },
+    { businessId: ip_dha.id,     userId: userMap.member2.id,  organizationId: tenantMap.tenant1.id, rating: 4, title: 'Great gym, slightly crowded evenings', body: 'Great selection of equipment and the staff is very helpful. Gets a bit crowded after 6pm but overall fantastic experience. The protein bar is a nice touch!', status: 'APPROVED' },
+    { businessId: ip_dha.id,     userId: userMap.member3.id,  organizationId: tenantMap.tenant1.id, rating: 3, title: 'Good but parking is an issue', body: 'Equipment is solid and staff is friendly. However parking at DHA Phase 5 is a nightmare during peak hours. Hope they sort that out.', status: 'PENDING' },
+    { businessId: ip_dha.id,     userId: userMap.member13.id, organizationId: tenantMap.tenant1.id, rating: 5, title: 'Transformed my physique in 6 months', body: 'I joined Iron Peak as a complete beginner and my trainer Faisal completely transformed my approach to fitness. World-class facility, worth every rupee.', status: 'APPROVED' },
     // Iron Peak Clifton
-    { gymListingId: ip_clifton.id, userId: userMap.member15.id, tenantId: tenantMap.tenant1.id, rating: 4, title: 'Solid gym in Clifton', body: 'Great alternative to the DHA branch if you live in Clifton. All the important equipment is there. Staff could be more attentive but overall good experience.', status: 'APPROVED' },
+    { businessId: ip_clifton.id, userId: userMap.member15.id, organizationId: tenantMap.tenant1.id, rating: 4, title: 'Solid gym in Clifton', body: 'Great alternative to the DHA branch if you live in Clifton. All the important equipment is there. Staff could be more attentive but overall good experience.', status: 'APPROVED' },
     // Vitality Fit DHA
-    { gymListingId: vf_dha.id,     userId: userMap.member4.id,  tenantId: tenantMap.tenant2.id, rating: 5, title: 'Perfect ladies-only studio!', body: 'Finally a place where I feel completely comfortable working out. The Pilates classes are top-notch, the instructors are certified and very attentive. The cafe has amazing smoothies too.', status: 'APPROVED' },
-    { gymListingId: vf_dha.id,     userId: userMap.member5.id,  tenantId: tenantMap.tenant2.id, rating: 5, title: 'Transformed my life in 3 months', body: 'Joined for Zumba and ended up doing personal training as well. The holistic approach here is unlike any other gym I\'ve been to. The aerial yoga classes are breathtaking!', status: 'APPROVED' },
-    { gymListingId: vf_dha.id,     userId: userMap.member12.id, tenantId: tenantMap.tenant2.id, rating: 5, title: 'Best investment in my health', body: 'Sara and her team have created something truly special. The spa facilities are luxurious and the trainers genuinely care about your progress. 10/10 recommend.', status: 'APPROVED' },
+    { businessId: vf_dha.id,     userId: userMap.member4.id,  organizationId: tenantMap.tenant2.id, rating: 5, title: 'Perfect ladies-only studio!', body: 'Finally a place where I feel completely comfortable working out. The Pilates classes are top-notch, the instructors are certified and very attentive. The cafe has amazing smoothies too.', status: 'APPROVED' },
+    { businessId: vf_dha.id,     userId: userMap.member5.id,  organizationId: tenantMap.tenant2.id, rating: 5, title: 'Transformed my life in 3 months', body: 'Joined for Zumba and ended up doing personal training as well. The holistic approach here is unlike any other gym I\'ve been to. The aerial yoga classes are breathtaking!', status: 'APPROVED' },
+    { businessId: vf_dha.id,     userId: userMap.member12.id, organizationId: tenantMap.tenant2.id, rating: 5, title: 'Best investment in my health', body: 'Sara and her team have created something truly special. The spa facilities are luxurious and the trainers genuinely care about your progress. 10/10 recommend.', status: 'APPROVED' },
     // PowerZone
-    { gymListingId: pz_dha.id,     userId: userMap.member7.id,  tenantId: tenantMap.tenant3.id, rating: 5, title: 'Rawalpindi\'s finest!', body: 'The MMA section is phenomenal. Coach Umer is one of the best in Pakistan. The strength training area has everything you need. Very professional environment.', status: 'APPROVED' },
-    { gymListingId: pz_dha.id,     userId: userMap.member14.id, tenantId: tenantMap.tenant3.id, rating: 4, title: 'Great for combat sports', body: 'Excellent boxing and wrestling facilities. The sparring sessions are well-organized. Could use more cardio equipment but overall a solid gym.', status: 'APPROVED' },
+    { businessId: pz_dha.id,     userId: userMap.member7.id,  organizationId: tenantMap.tenant3.id, rating: 5, title: 'Rawalpindi\'s finest!', body: 'The MMA section is phenomenal. Coach Umer is one of the best in Pakistan. The strength training area has everything you need. Very professional environment.', status: 'APPROVED' },
+    { businessId: pz_dha.id,     userId: userMap.member14.id, organizationId: tenantMap.tenant3.id, rating: 4, title: 'Great for combat sports', body: 'Excellent boxing and wrestling facilities. The sparring sessions are well-organized. Could use more cardio equipment but overall a solid gym.', status: 'APPROVED' },
     // FitLife
-    { gymListingId: fl_f8.id,      userId: userMap.member8.id,  tenantId: tenantMap.tenant4.id, rating: 5, title: 'The best women-only gym in Islamabad', body: 'The spinning classes are incredible and the yoga studio has such a calming atmosphere. The spa services are a great bonus. Really worth the premium price.', status: 'APPROVED' },
-    { gymListingId: fl_f8.id,      userId: userMap.member9.id,  tenantId: tenantMap.tenant4.id, rating: 4, title: 'Love the HIIT classes', body: 'The HIIT and functional training classes are my favourites. The trainers push you just the right amount. Parking can be tricky in F-8 but the gym itself is excellent.', status: 'APPROVED' },
+    { businessId: fl_f8.id,      userId: userMap.member8.id,  organizationId: tenantMap.tenant4.id, rating: 5, title: 'The best women-only gym in Islamabad', body: 'The spinning classes are incredible and the yoga studio has such a calming atmosphere. The spa services are a great bonus. Really worth the premium price.', status: 'APPROVED' },
+    { businessId: fl_f8.id,      userId: userMap.member9.id,  organizationId: tenantMap.tenant4.id, rating: 4, title: 'Love the HIIT classes', body: 'The HIIT and functional training classes are my favourites. The trainers push you just the right amount. Parking can be tricky in F-8 but the gym itself is excellent.', status: 'APPROVED' },
     // Champions
-    { gymListingId: ch_peoples.id, userId: userMap.member10.id, tenantId: tenantMap.tenant5.id, rating: 5, title: 'Faisalabad\'s MMA capital', body: 'This is the real deal for combat sports in Faisalabad. The coaches are highly experienced and the training atmosphere is very motivating. Boxing, wrestling, and BJJ all under one roof!', status: 'APPROVED' },
-    { gymListingId: ch_peoples.id, userId: userMap.member11.id, tenantId: tenantMap.tenant5.id, rating: 4, title: 'Great for serious athletes', body: 'Very professional setup. The strength training area is well-equipped. Would love to see some AC added in summer but the training quality compensates for that.', status: 'APPROVED' },
+    { businessId: ch_peoples.id, userId: userMap.member10.id, organizationId: tenantMap.tenant5.id, rating: 5, title: 'Faisalabad\'s MMA capital', body: 'This is the real deal for combat sports in Faisalabad. The coaches are highly experienced and the training atmosphere is very motivating. Boxing, wrestling, and BJJ all under one roof!', status: 'APPROVED' },
+    { businessId: ch_peoples.id, userId: userMap.member11.id, organizationId: tenantMap.tenant5.id, rating: 4, title: 'Great for serious athletes', body: 'Very professional setup. The strength training area is well-equipped. Would love to see some AC added in summer but the training quality compensates for that.', status: 'APPROVED' },
   ];
 
   let created = 0;
   for (const r of reviews) {
     const exists = await GymReview.findOne({
-      where: { gymListingId: r.gymListingId, userId: r.userId },
+      where: { businessId: r.businessId, userId: r.userId },
     });
     if (!exists) {
       await GymReview.create(r);

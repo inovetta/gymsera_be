@@ -43,7 +43,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
     platformSeq = dbHarness.platform.sequelize;
     platformModels = require('../../src/models/platform');
 
-    testTenantId = personaManager.personas.owner.tenantId;
+    testTenantId = personaManager.personas.owner.organizationId;
     ownerId = personaManager.personas.owner.user.id;
 
     const { Gym, Branch, MembershipPlan } = models;
@@ -67,7 +67,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
     }
 
     branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Karachi Central',
       timezone: 'Asia/Karachi',
     });
@@ -79,7 +79,7 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
     });
 
     plan = await MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'Monthly Standard',
       price: 5000,
@@ -110,10 +110,10 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
 
       await UserGymMembership.create({
         userId: user.id,
-        gymListingId: listing.id,
-        tenantId: testTenantId,
+        businessId: listing.id,
+        organizationId: testTenantId,
         subscriptionId: sub.id,
-        gymName: 'Flow06 Fitness',
+        businessName: 'Flow06 Fitness',
         planName: plan.name,
         startDate: '2026-05-01',
         endDate: '2026-05-31',
@@ -154,10 +154,10 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
 
       await UserGymMembership.create({
         userId: user.id,
-        gymListingId: listing.id,
-        tenantId: testTenantId,
+        businessId: listing.id,
+        organizationId: testTenantId,
         subscriptionId: expiredSub.id,
-        gymName: 'Flow06 Fitness',
+        businessName: 'Flow06 Fitness',
         planName: plan.name,
         startDate: '2026-01-01',
         endDate: '2026-01-31',
@@ -194,10 +194,10 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
 
       await UserGymMembership.create({
         userId: user.id,
-        gymListingId: listing.id,
-        tenantId: testTenantId,
+        businessId: listing.id,
+        organizationId: testTenantId,
         subscriptionId: activeSub.id,
-        gymName: 'Flow06 Fitness',
+        businessName: 'Flow06 Fitness',
         planName: plan.name,
         startDate: todayInTz,
         endDate: futureEnd,
@@ -234,10 +234,10 @@ describe('FLOW-06: Subscription Dates, Freeze Extension & Branch Timezone Expiry
 
       await UserGymMembership.create({
         userId: user.id,
-        gymListingId: listing.id,
-        tenantId: testTenantId,
+        businessId: listing.id,
+        organizationId: testTenantId,
         subscriptionId: frozenSub.id,
-        gymName: 'Flow06 Fitness',
+        businessName: 'Flow06 Fitness',
         planName: plan.name,
         startDate: '2026-01-01',
         endDate: futureEndDate,

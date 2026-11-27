@@ -162,9 +162,9 @@ describe('OBS-03: request rate, latency and errors by route pattern', () => {
   });
 
   test('a parameterised route is labelled by its pattern, not the value', async () => {
-    await request(app).get('/api/v1/discovery/gyms/11111111-2222-3333-4444-555555555555');
+    await request(app).get('/api/v1/discovery/businesses/11111111-2222-3333-4444-555555555555');
     const text = (await scrape()).text;
-    expect(text).toMatch(/route="\/api\/v1\/discovery\/gyms\/:id"/);
+    expect(text).toMatch(/route="\/api\/v1\/discovery\/businesses\/:businessId"/);
     expect(text).not.toContain('11111111-2222-3333-4444-555555555555');
   });
 
@@ -197,7 +197,7 @@ describe('OBS-03: request rate, latency and errors by route pattern', () => {
 
 describe('OBS-03: database pools (totals plus the top 10 tenants)', () => {
   const fakePool = (id, using, waiting, size) => ({
-    tenantId: id,
+    organizationId: id,
     lastUsedAt: Date.now(),
     sequelize: { connectionManager: { pool: { size, using, waiting } }, close: async () => {} },
   });

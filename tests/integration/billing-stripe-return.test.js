@@ -42,12 +42,12 @@ describe('BILL-14: Stripe return is verified server-side', () => {
     otherTenant = await factories.createTenant({ connectionStringEncrypted: dbHarness.tenant2.encryptedConnStr });
     await factories.createGymListing(tenant.id);
     await factories.createBillingPlan({ branchCount: 3, stripeMonthlyPriceId: 'price_3m' });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
 
     sessions = {
-      cs_paid: { id: 'cs_paid', status: 'complete', payment_status: 'paid', subscription: 'sub_paid', metadata: { tenantId: tenant.id } },
-      cs_open: { id: 'cs_open', status: 'open', payment_status: 'unpaid', subscription: null, metadata: { tenantId: tenant.id } },
-      cs_other: { id: 'cs_other', status: 'complete', payment_status: 'paid', subscription: 'sub_other', metadata: { tenantId: otherTenant.id } },
+      cs_paid: { id: 'cs_paid', status: 'complete', payment_status: 'paid', subscription: 'sub_paid', metadata: { organizationId: tenant.id } },
+      cs_open: { id: 'cs_open', status: 'open', payment_status: 'unpaid', subscription: null, metadata: { organizationId: tenant.id } },
+      cs_other: { id: 'cs_other', status: 'complete', payment_status: 'paid', subscription: 'sub_other', metadata: { organizationId: otherTenant.id } },
     };
     jest.spyOn(stripeBilling.stripeApi, 'retrieveCheckoutSession').mockImplementation(async (id) => {
       if (!sessions[id]) throw Object.assign(new Error('No such checkout.session'), { statusCode: 404 });
@@ -78,7 +78,7 @@ describe('BILL-14: Stripe return is verified server-side', () => {
   });
 
   test('once the webhook has created the subscription → entitled', async () => {
-    const live = fakes.stripeSubscription({ id: 'sub_paid', priceId: 'price_3m', tenantId: tenant.id });
+    const live = fakes.stripeSubscription({ id: 'sub_paid', priceId: 'price_3m', organizationId: tenant.id });
     fakes.installStripeFakes({ subscriptions: { sub_paid: live } });
     await request(app).post('/api/v1/billing/webhooks/stripe')
       .send({ id: 'evt_done', type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_paid' } } });

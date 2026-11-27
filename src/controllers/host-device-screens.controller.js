@@ -53,7 +53,7 @@ const deviceAudits = wrap(async (req, res) => sendSuccess(res, await screens.dev
 const unlinkedForDevice = wrap(async (req, res) => sendSuccess(res, await screens.unlinkedUsers(req.tenantDb, { deviceIds: [req.params.id] })));
 
 const unlinkedAll = wrap(async (req, res) => {
-  const list = await registry.listDevices({ tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, branchIds: branchScope(req) });
+  const list = await registry.listDevices({ organizationId: req.tenantDb.organizationId, tenantDb: req.tenantDb, branchIds: branchScope(req) });
   return sendSuccess(res, await screens.unlinkedUsers(req.tenantDb, { deviceIds: list.map((d) => d.id) }));
 });
 
@@ -121,7 +121,7 @@ const unpairDevice = wrap(async (req, res) => {
       throw createError('Type the device name to confirm the wipe.', 422, 'wipe_confirmation_required');
     }
   }
-  const result = await registry.unpairDevice({ tenantId: req.tenantDb.tenantId, tenantDb: req.tenantDb, deviceId: req.params.id, wipe });
+  const result = await registry.unpairDevice({ organizationId: req.tenantDb.organizationId, tenantDb: req.tenantDb, deviceId: req.params.id, wipe });
   await record(req, wipe ? 'devices.removed_with_wipe' : 'devices.removed', { targetType: 'device', targetId: req.params.id, branchId: req.deviceBranchId, after: result });
   return sendSuccess(res, { id: req.params.id, ...result }, wipe
     ? 'The device will delete every GymsEra user the next time it connects, then it is removed.'

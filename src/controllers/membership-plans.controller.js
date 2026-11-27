@@ -2,21 +2,21 @@ const membershipPlanService = require('../services/membership-plan.service');
 const { sendSuccess } = require('../utils/response.utils');
 const { resolveBranchScope } = require('../utils/branchAccess.utils');
 
-// ── GET /membership-plans?gymListingId=<uuid>&branchId=<uuid> (public) ────────
+// ── GET /membership-plans?businessId=<uuid>&branchId=<uuid> (public) ────────
 const listPublic = async (req, res, next) => {
   try {
-    const { gymListingId, branchId } = req.query;
-    const plans = await membershipPlanService.listPublic(gymListingId, branchId);
+    const { businessId, branchId } = req.query;
+    const plans = await membershipPlanService.listPublic(businessId, branchId);
     return sendSuccess(res, { plans });
   } catch (err) {
     next(err);
   }
 };
 
-// ── GET /membership-plans/:id?gymListingId=<uuid> (public) ───────────────────
+// ── GET /membership-plans/:id?businessId=<uuid> (public) ───────────────────
 const getPublic = async (req, res, next) => {
   try {
-    const plan = await membershipPlanService.getPublic(req.params.id, req.query.gymListingId);
+    const plan = await membershipPlanService.getPublic(req.params.id, req.query.businessId);
     return sendSuccess(res, { plan });
   } catch (err) {
     next(err);
@@ -26,9 +26,9 @@ const getPublic = async (req, res, next) => {
 // ── GET /membership-plans/host (auth + tenantContext) ─────────────────────────
 const listForHost = async (req, res, next) => {
   try {
-    const tenantId = req.user?.tenantId || req.tenantDb?.tenantId;
+    const organizationId = req.user?.organizationId || req.tenantDb?.organizationId;
     const scope = await resolveBranchScope(req, req.query.branchId, 'plans.view', 'plans');
-    const plans = await membershipPlanService.listForHost(req.tenantDb, scope.branchId, tenantId, scope.branchIds);
+    const plans = await membershipPlanService.listForHost(req.tenantDb, scope.branchId, organizationId, scope.branchIds);
     return sendSuccess(res, { plans });
   } catch (err) {
     next(err);

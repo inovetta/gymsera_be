@@ -3,17 +3,17 @@
  "routes": [
   {
    "method": "PATCH",
-   "path": "/api/v1/tenants/me",
+   "path": "/api/v1/organizations/me",
    "allowed": [
     "areaId",
     "areaRequestId",
-    "businessName",
     "cityId",
     "email",
+    "organizationName",
     "phone"
    ],
    "clientKeys": [
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"
@@ -21,7 +21,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/select-package",
+   "path": "/api/v1/organizations/:p/select-package",
    "allowed": [
     "packageId"
    ],
@@ -30,18 +30,8 @@
    ]
   },
   {
-   "method": "PUT",
-   "path": "/api/v1/tenants/:p/onboarding-images",
-   "allowed": [
-    "imagesJson"
-   ],
-   "clientKeys": [
-    "imagesJson"
-   ]
-  },
-  {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/finalize",
+   "path": "/api/v1/organizations/:p/finalize",
    "allowed": [
     "bankTransferRef",
     "paymentMethod"
@@ -53,13 +43,13 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/tenants/:p/kyc-documents/:p",
+   "path": "/api/v1/organizations/:p/kyc-documents/:p",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/gyms/profile/images",
+   "path": "/api/v1/organizations/me/businesses/:p/profile/images",
    "allowed": [
     "imageUrl"
    ],
@@ -67,9 +57,9 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/gyms/branches/:p",
+   "path": "/api/v1/organizations/me/branches/:p",
    "allowed": [
-    "confirmOrganizationDeletion",
+    "confirmBusinessDeletion",
     "idToken",
     "password",
     "provider",
@@ -80,7 +70,7 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/gyms/branches/:p/images",
+   "path": "/api/v1/organizations/me/branches/:p/images",
    "allowed": [
     "imageUrl"
    ],
@@ -88,7 +78,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/branches/:p/staff",
+   "path": "/api/v1/organizations/me/branches/:p/staff",
    "allowed": [
     "designation",
     "userId"
@@ -100,13 +90,13 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/gyms/branches/:p/staff/:p",
+   "path": "/api/v1/organizations/me/branches/:p/staff/:p",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/members/enroll",
+   "path": "/api/v1/organizations/me/members/enroll",
    "allowed": [
     "branchId",
     "email",
@@ -131,7 +121,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/staff",
+   "path": "/api/v1/organizations/me/staff",
    "allowed": [
     "assignToAllBranches",
     "branchIds",
@@ -153,7 +143,7 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/gyms/staff/:p",
+   "path": "/api/v1/organizations/me/staff/:p",
    "allowed": [],
    "clientKeys": []
   },
@@ -226,54 +216,37 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/host/listings",
+   "path": "/api/v1/host/businesses",
+   "stage": 1,
    "allowed": [
-    "address",
-    "areaId",
-    "areaRequestId",
-    "branchSource",
-    "cityId",
-    "closingTime",
+    "businessDescription",
+    "businessName",
     "contactPhone",
     "coverImageUrl",
     "facilitiesJson",
+    "firstBranch",
     "genderType",
-    "googlePlaceId",
-    "gymDescription",
-    "gymName",
-    "hours",
-    "images",
-    "latitude",
-    "logoUrl",
-    "longitude",
-    "openingTime",
-    "packages"
+    "logoUrl"
    ],
    "clientKeys": [
-    "address",
-    "areaId",
-    "branchSource",
-    "cityId",
+    "businessDescription",
+    "businessName",
     "contactPhone",
     "coverImageUrl",
+    "facilitiesJson",
+    "firstBranch",
     "genderType",
-    "googlePlaceId",
-    "gymDescription",
-    "gymName",
-    "hours",
-    "images",
-    "latitude",
-    "logoUrl",
-    "longitude",
-    "packages"
+    "logoUrl"
    ]
   },
   {
    "method": "PUT",
-   "path": "/api/v1/host/listings/:p",
+   "path": "/api/v1/host/businesses/:p",
    "allowed": [
     "areaId",
     "areaRequestId",
+    "businessDescription",
+    "businessName",
     "category",
     "cityId",
     "contactEmail",
@@ -281,8 +254,6 @@
     "coverImageUrl",
     "establishedYear",
     "genderType",
-    "gymDescription",
-    "gymName",
     "imagesJson",
     "latitude",
     "logoUrl",
@@ -293,10 +264,12 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/host/listings/:p",
+   "path": "/api/v1/host/businesses/:p",
    "allowed": [
     "areaId",
     "areaRequestId",
+    "businessDescription",
+    "businessName",
     "category",
     "cityId",
     "contactEmail",
@@ -304,8 +277,6 @@
     "coverImageUrl",
     "establishedYear",
     "genderType",
-    "gymDescription",
-    "gymName",
     "imagesJson",
     "latitude",
     "logoUrl",
@@ -321,8 +292,8 @@
     "coverImageUrl",
     "establishedYear",
     "genderType",
-    "gymDescription",
-    "gymName",
+    "businessDescription",
+    "businessName",
     "imagesJson",
     "latitude",
     "logoUrl",
@@ -332,7 +303,7 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/host/listings/:p",
+   "path": "/api/v1/host/businesses/:p",
    "allowed": [
     "cascade",
     "cascadeDelete",
@@ -352,14 +323,14 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/host/listings/:p/reserved-slots/transfer",
+   "path": "/api/v1/host/businesses/:p/reserved-slots/transfer",
    "allowed": [
     "count",
-    "toListingId"
+    "toBusinessId"
    ],
    "clientKeys": [
     "count",
-    "toListingId"
+    "toBusinessId"
    ]
   },
   {
@@ -381,7 +352,7 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/host/branches/:p/listing-content",
+   "path": "/api/v1/host/branches/:p/public-content",
    "allowed": [
     "address",
     "addressLine1",
@@ -438,7 +409,7 @@
    "method": "DELETE",
    "path": "/api/v1/host/branches/:p",
    "allowed": [
-    "confirmOrganizationDeletion",
+    "confirmBusinessDeletion",
     "idToken",
     "password",
     "provider",
@@ -446,7 +417,7 @@
     "reauthProvider"
    ],
    "clientKeys": [
-    "confirmOrganizationDeletion",
+    "confirmBusinessDeletion",
     "idToken",
     "password",
     "provider"
@@ -539,7 +510,6 @@
    "path": "/api/v1/host/inbox/inquiries/:p/reply",
    "allowed": [
     "clientMessageId",
-    "client_message_id",
     "text"
    ],
    "clientKeys": [
@@ -722,13 +692,13 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/me/saved-gyms/:p",
+   "path": "/api/v1/me/saved-businesses/:p",
    "allowed": [],
    "clientKeys": []
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/me/saved-gyms/:p",
+   "path": "/api/v1/me/saved-businesses/:p",
    "allowed": [],
    "clientKeys": []
   },
@@ -757,7 +727,6 @@
    "path": "/api/v1/me/inbox/:p/reply",
    "allowed": [
     "clientMessageId",
-    "client_message_id",
     "text"
    ],
    "clientKeys": [

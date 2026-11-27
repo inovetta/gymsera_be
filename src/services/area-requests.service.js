@@ -258,12 +258,12 @@ const createAreaRequest = async ({ userId, cityId, name, confirmNotListed = fals
 /**
  * The request is the caller's, or of the caller's tenant (a link of that tenant, or made by its owner).
  */
-const isCallersRequest = async (request, { userId, tenantId }) => {
+const isCallersRequest = async (request, { userId, organizationId }) => {
   if (!request) return false;
   if (request.requestedByUserId === userId) return true;
-  if (!tenantId) return false;
-  if (await AreaRequestLink.count({ where: { areaRequestId: request.id, tenantId } })) return true;
-  const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId'] });
+  if (!organizationId) return false;
+  if (await AreaRequestLink.count({ where: { areaRequestId: request.id, organizationId } })) return true;
+  const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId'] });
   return Boolean(tenant && tenant.ownerUserId === request.requestedByUserId);
 };
 
@@ -311,7 +311,7 @@ const parseAreaChoice = (src = {}) => {
  * Checks a choice against the record's city and the caller. A request that is already approved / merged
  * becomes its area. Returns the choice with `area` / `request` loaded.
  */
-const resolveAreaChoice = async (choice, { cityId, userId, tenantId }) => {
+const resolveAreaChoice = async (choice, { cityId, userId, organizationId }) => {
   if (choice.kind === 'keep' || choice.kind === 'clear') return choice;
   const places = require('./places.service');
   if (choice.kind === 'area') {
@@ -320,7 +320,7 @@ const resolveAreaChoice = async (choice, { cityId, userId, tenantId }) => {
   }
   const id = Number(choice.requestId);
   const request = Number.isInteger(id) && id > 0 ? await AreaRequest.findByPk(id) : null;
-  if (!(await isCallersRequest(request, { userId, tenantId }))) throw createError(NOT_FOUND_MESSAGE, 404, 'area_request_not_found');
+  if (!(await isCallersRequest(request, { userId, organizationId }))) throw createError(NOT_FOUND_MESSAGE, 404, 'area_request_not_found');
   if (!cityId || Number(request.cityId) !== Number(cityId)) {
     throw createError(places.AREA_NOT_LISTED_MESSAGE, 422, 'area_not_listed');
   }
@@ -340,9 +340,9 @@ const rowValues = (choice) => {
 };
 
 /** Writes / removes the link of one location for a resolved choice (keep = nothing). */
-const applyChoiceToLink = async (choice, { tenantId, target, targetId }, { transaction } = {}) => {
-  if (!choice || choice.kind === 'keep' || !tenantId || !targetId) return;
-  const where = { target, tenantId, targetId: String(targetId) };
+const applyChoiceToLink = async (choice, { organizationId, target, targetId }, { transaction } = {}) => {
+  if (!choice || choice.kind === 'keep' || !organizationId || !targetId) return;
+  const where = { target, organizationId, targetId: String(targetId) };
   if (choice.kind !== 'request') {
     await AreaRequestLink.destroy({ where, transaction });
     return;
@@ -356,9 +356,9 @@ const applyChoiceToLink = async (choice, { tenantId, target, targetId }, { trans
 };
 
 /** Same-city check for a link kept while the record's city changes (as NEW-259 does for areas). */
-const assertKeptLinkInCity = async ({ tenantId, target, targetId, cityId }) => {
-  if (!tenantId || !targetId || !cityId) return;
-  const link = await AreaRequestLink.findOne({ where: { target, tenantId, targetId: String(targetId) } });
+const assertKeptLinkInCity = async ({ organizationId, target, targetId, cityId }) => {
+  if (!organizationId || !targetId || !cityId) return;
+  const link = await AreaRequestLink.findOne({ where: { target, organizationId, targetId: String(targetId) } });
   if (!link) return;
   const request = await AreaRequest.findByPk(link.areaRequestId, { attributes: ['id', 'cityId', 'status'] });
   if (!request || !['pending_review', 'rejected'].includes(request.status)) return;
@@ -379,11 +379,11 @@ const shapePending = (request) => (request && ['pending_review', 'rejected'].inc
   : null);
 
 /** pendingArea for many locations of one target: Map<targetId, pendingArea>. */
-const pendingAreasFor = async (target, tenantId, targetIds) => {
+const pendingAreasFor = async (target, organizationId, targetIds) => {
   const ids = [...new Set((targetIds || []).filter(Boolean).map(String))];
   const out = new Map();
-  if (!tenantId || !ids.length) return out;
-  const links = await AreaRequestLink.findAll({ where: { target, tenantId, targetId: { [Op.in]: ids } } });
+  if (!organizationId || !ids.length) return out;
+  const links = await AreaRequestLink.findAll({ where: { target, organizationId, targetId: { [Op.in]: ids } } });
   if (!links.length) return out;
   const requests = await AreaRequest.findAll({ where: { id: { [Op.in]: [...new Set(links.map((l) => l.areaRequestId))] } } });
   const byId = new Map(requests.map((r) => [r.id, r]));
@@ -394,13 +394,13 @@ const pendingAreasFor = async (target, tenantId, targetIds) => {
   return out;
 };
 
-const pendingAreaFor = async (target, tenantId, targetId) =>
-  (await pendingAreasFor(target, tenantId, [targetId])).get(String(targetId)) || null;
+const pendingAreaFor = async (target, organizationId, targetId) =>
+  (await pendingAreasFor(target, organizationId, [targetId])).get(String(targetId)) || null;
 
 /** Adds `pendingArea` to plain objects (rows) of one target, by `idKey`. */
-const withPendingAreas = async (target, tenantId, rows, idKey = 'id') => {
+const withPendingAreas = async (target, organizationId, rows, idKey = 'id') => {
   const list = rows.map((r) => (r && typeof r.toJSON === 'function' ? r.toJSON() : { ...r }));
-  const map = await pendingAreasFor(target, tenantId, list.map((r) => r[idKey]));
+  const map = await pendingAreasFor(target, organizationId, list.map((r) => r[idKey]));
   return list.map((r) => ({ ...r, pendingArea: map.get(String(r[idKey])) || null }));
 };
 
@@ -410,23 +410,23 @@ const withPendingAreas = async (target, tenantId, rows, idKey = 'id') => {
  */
 const hostStatusArea = async (tenant) => {
   if (!tenant) return null;
-  const tenantPending = await pendingAreaFor('tenant', tenant.id, tenant.id);
-  const branchPending = await pendingAreaFor('main_branch', tenant.id, tenant.id);
+  const tenantPending = await pendingAreaFor('organization', tenant.id, tenant.id);
+  const branchPending = await pendingAreaFor('first_branch_draft', tenant.id, tenant.id);
   const shape = (p, target) => ({ status: p.status, name: p.name, rejectReason: p.rejectReason, target });
-  if (tenantPending && tenantPending.status === 'rejected') return shape(tenantPending, 'tenant');
-  if (branchPending && branchPending.status === 'rejected') return shape(branchPending, 'main_branch');
-  if (tenantPending) return shape(tenantPending, 'tenant');
-  if (branchPending) return shape(branchPending, 'main_branch');
+  if (tenantPending && tenantPending.status === 'rejected') return shape(tenantPending, 'organization');
+  if (branchPending && branchPending.status === 'rejected') return shape(branchPending, 'first_branch_draft');
+  if (tenantPending) return shape(tenantPending, 'organization');
+  if (branchPending) return shape(branchPending, 'first_branch_draft');
   return null;
 };
 
 // ── Discovery (A5): which branches wait on a request ─────────────────────────
 
-/** Set of `${tenantId}:${branchId}` whose own link is pending or rejected. */
+/** Set of `${organizationId}:${branchId}` whose own link is pending or rejected. */
 const waitingBranchKeys = async () => {
   const rows = await AreaRequestLink.findAll({
     where: { target: 'branch' },
-    attributes: ['tenantId', 'targetId', 'areaRequestId'],
+    attributes: ['organizationId', 'targetId', 'areaRequestId'],
     raw: true,
   });
   if (!rows.length) return new Set();
@@ -436,7 +436,7 @@ const waitingBranchKeys = async () => {
     raw: true,
   });
   const openIds = new Set(open.map((r) => r.id));
-  return new Set(rows.filter((r) => openIds.has(r.areaRequestId)).map((r) => `${r.tenantId}:${r.targetId}`));
+  return new Set(rows.filter((r) => openIds.has(r.areaRequestId)).map((r) => `${r.organizationId}:${r.targetId}`));
 };
 
 // ── A9 rule 3: approval (provisioning) carries the links over ─────────────────
@@ -455,10 +455,10 @@ const openRequestOfLink = async (link) => {
 
 /** Provisioning step 3: the new listing takes the tenant's link (copied; the tenant keeps its own). */
 const carryTenantLinkToListing = async (tenant, listing) => {
-  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'tenant', tenantId: tenant.id, targetId: String(tenant.id) } });
+  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'organization', organizationId: tenant.id, targetId: String(tenant.id) } });
   const request = await openRequestOfLink(tenantLink);
   if (!request) return;
-  await applyChoiceToLink({ kind: 'request', requestId: request.id }, { tenantId: tenant.id, target: 'listing', targetId: listing.id });
+  await applyChoiceToLink({ kind: 'request', requestId: request.id }, { organizationId: tenant.id, target: 'business', targetId: listing.id });
   await listing.update({ areaId: null, areaStatus: request.status === 'rejected' ? 'rejected' : 'pending_review', areaRequestId: request.id });
 };
 
@@ -468,7 +468,7 @@ const carryTenantLinkToListing = async (tenant, listing) => {
  * Returns { areaId, link: request | null } for the branch row about to be created.
  */
 const firstBranchArea = async (tenant, draft, branchCityId) => {
-  const ownLink = await AreaRequestLink.findOne({ where: { target: 'main_branch', tenantId: tenant.id, targetId: String(tenant.id) } });
+  const ownLink = await AreaRequestLink.findOne({ where: { target: 'first_branch_draft', organizationId: tenant.id, targetId: String(tenant.id) } });
   const ownRequest = await openRequestOfLink(ownLink);
   if (ownRequest) return { areaId: null, request: ownRequest };
   if (draft.areaId) return { areaId: draft.areaId, request: null };
@@ -476,7 +476,7 @@ const firstBranchArea = async (tenant, draft, branchCityId) => {
     const area = await Area.findByPk(tenant.areaId, { attributes: ['id', 'cityId'] });
     return { areaId: area && Number(area.cityId) === Number(branchCityId) ? area.id : null, request: null };
   }
-  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'tenant', tenantId: tenant.id, targetId: String(tenant.id) } });
+  const tenantLink = await AreaRequestLink.findOne({ where: { target: 'organization', organizationId: tenant.id, targetId: String(tenant.id) } });
   const tenantRequest = await openRequestOfLink(tenantLink);
   if (tenantRequest && Number(tenantRequest.cityId) === Number(branchCityId)) return { areaId: null, request: tenantRequest };
   return { areaId: null, request: null };
@@ -485,9 +485,9 @@ const firstBranchArea = async (tenant, draft, branchCityId) => {
 /** Provisioning step 4, after the branch exists: main_branch → branch link (or the tenant's, old data). */
 const carryLinkToFirstBranch = async (tenant, branch, request) => {
   if (request) {
-    await applyChoiceToLink({ kind: 'request', requestId: request.id }, { tenantId: tenant.id, target: 'branch', targetId: branch.id });
+    await applyChoiceToLink({ kind: 'request', requestId: request.id }, { organizationId: tenant.id, target: 'branch', targetId: branch.id });
   }
-  await AreaRequestLink.destroy({ where: { target: 'main_branch', tenantId: tenant.id, targetId: String(tenant.id) } });
+  await AreaRequestLink.destroy({ where: { target: 'first_branch_draft', organizationId: tenant.id, targetId: String(tenant.id) } });
 };
 
 // ── A6: admin queue ───────────────────────────────────────────────────────────
@@ -496,23 +496,23 @@ const PAGE_MAX = 50;
 
 const titleFor = async (link) => {
   const TenantDbManager = require('../database/TenantDbManager');
-  const base = { tenantId: link.tenantId, listingId: null, branchId: null, title: null, latitude: null, longitude: null };
+  const base = { organizationId: link.organizationId, listingId: null, branchId: null, title: null, latitude: null, longitude: null };
   const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   try {
-    if (link.target === 'tenant' || link.target === 'main_branch') {
-      const t = await Tenant.findByPk(link.tenantId, { attributes: ['id', 'gymName', 'businessName', 'latitude', 'longitude', 'mainBranchDataJson'] });
+    if (link.target === 'organization' || link.target === 'first_branch_draft') {
+      const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'firstBusinessName', 'organizationName', 'latitude', 'longitude', 'firstBranchDraft'] });
       if (!t) return base;
-      const mb = parseJson(t.mainBranchDataJson);
-      if (link.target === 'main_branch') {
-        return { ...base, title: mb.name || t.gymName || t.businessName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
+      const mb = parseJson(t.firstBranchDraft);
+      if (link.target === 'first_branch_draft') {
+        return { ...base, title: mb.branchName || t.firstBusinessName || t.organizationName || null, latitude: num(mb.latitude ?? t.latitude), longitude: num(mb.longitude ?? t.longitude) };
       }
-      return { ...base, title: t.gymName || t.businessName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
+      return { ...base, title: t.firstBusinessName || t.organizationName || null, latitude: num(t.latitude), longitude: num(t.longitude) };
     }
-    if (link.target === 'listing') {
-      const l = await GymListing.findByPk(link.targetId, { attributes: ['id', 'title', 'latitude', 'longitude'] });
-      return { ...base, listingId: link.targetId, title: l ? l.title : null, latitude: num(l?.latitude), longitude: num(l?.longitude) };
+    if (link.target === 'business') {
+      const l = await GymListing.findByPk(link.targetId, { attributes: ['id', 'name', 'latitude', 'longitude'] });
+      return { ...base, listingId: link.targetId, title: l ? l.name : null, latitude: num(l?.latitude), longitude: num(l?.longitude) };
     }
-    const t = await Tenant.findByPk(link.tenantId, { attributes: ['id', 'connectionStringEncrypted'] });
+    const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'connectionStringEncrypted'] });
     const out = { ...base, branchId: link.targetId };
     if (!t || !t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') return out;
     const db = await TenantDbManager.getConnection(t.id, t.connectionStringEncrypted);
@@ -644,38 +644,38 @@ const assertSameCity = (recordCityId, areaCityId) => {
 const propagate = async (requestIds, areaId) => {
   const TenantDbManager = require('../database/TenantDbManager');
   const area = await Area.findByPk(areaId, { attributes: ['id', 'cityId'] });
-  if (!area) return { propagated: 0, failed: [{ tenantId: null, error: 'area_not_found' }] };
+  if (!area) return { propagated: 0, failed: [{ organizationId: null, error: 'area_not_found' }] };
   const links = await AreaRequestLink.findAll({ where: { areaRequestId: { [Op.in]: requestIds }, propagatedAt: null }, order: [['id', 'ASC']] });
   let propagated = 0;
   const failed = [];
   for (const link of links) {
     try {
       const reqId = link.areaRequestId;
-      if (link.target === 'tenant') {
+      if (link.target === 'organization') {
         const t = await Tenant.findByPk(link.targetId);
         if (!t) throw new Error('tenant_not_found');
         assertSameCity(t.cityId, area.cityId);
         await t.update({ areaId, areaStatus: null, areaRequestId: null });
-      } else if (link.target === 'listing') {
+      } else if (link.target === 'business') {
         const l = await GymListing.findByPk(link.targetId);
         if (!l) throw new Error('listing_not_found');
-        if (l.tenantId !== link.tenantId) throw new Error('listing_not_of_tenant');
+        if (l.organizationId !== link.organizationId) throw new Error('listing_not_of_tenant');
         assertSameCity(l.cityId, area.cityId);
         await l.update({ areaId, areaStatus: null, areaRequestId: null });
-      } else if (link.target === 'main_branch') {
+      } else if (link.target === 'first_branch_draft') {
         const t = await Tenant.findByPk(link.targetId);
         if (!t) throw new Error('tenant_not_found');
-        const mb = { ...parseJson(t.mainBranchDataJson) };
+        const mb = { ...parseJson(t.firstBranchDraft) };
         assertSameCity(mb.cityId || t.cityId, area.cityId);
         if (mb.areaRequestId === undefined || mb.areaRequestId === null || Number(mb.areaRequestId) === Number(reqId)) {
           mb.areaId = areaId;
           delete mb.areaRequestId;
           delete mb.areaStatus;
           delete mb.pendingArea;
-          await t.update({ mainBranchDataJson: mb });
+          await t.update({ firstBranchDraft: mb });
         }
       } else {
-        const t = await Tenant.findByPk(link.tenantId, { attributes: ['id', 'connectionStringEncrypted', 'dbName'] });
+        const t = await Tenant.findByPk(link.organizationId, { attributes: ['id', 'connectionStringEncrypted', 'dbName'] });
         if (!t || !t.connectionStringEncrypted || t.connectionStringEncrypted === 'PENDING_PROVISIONING') throw new Error('tenant_database_not_ready');
         // Self-review: only the database named in tenants.db_name (the one provisioning built the
         // stored connection from); anything else is refused and reported, never written.
@@ -691,7 +691,7 @@ const propagate = async (requestIds, areaId) => {
     } catch (err) {
       const msg = String(err.message || err).slice(0, 300);
       await link.update({ propagationError: msg }).catch(() => {});
-      failed.push({ tenantId: link.tenantId, error: msg });
+      failed.push({ organizationId: link.organizationId, error: msg });
     }
   }
   try { require('./discovery-cache.service').invalidate(); } catch { /* best effort */ }
@@ -791,17 +791,17 @@ const reject = async (id, { reason, applyToGroup } = {}, adminId) => {
     // The gyms' markers (R-109): tenants, listings and draft first branches; branch rows keep their link.
     const links = await AreaRequestLink.findAll({ where: { areaRequestId: { [Op.in]: ids } }, transaction });
     for (const l of links) {
-      if (l.target === 'tenant') {
+      if (l.target === 'organization') {
         await Tenant.update({ areaStatus: 'rejected' }, { where: { id: l.targetId, areaRequestId: l.areaRequestId }, transaction });
-      } else if (l.target === 'listing') {
+      } else if (l.target === 'business') {
         await GymListing.update({ areaStatus: 'rejected' }, { where: { id: l.targetId, areaRequestId: l.areaRequestId }, transaction });
-      } else if (l.target === 'main_branch') {
+      } else if (l.target === 'first_branch_draft') {
         const t = await Tenant.findByPk(l.targetId, { transaction });
         if (t) {
-          const mb = { ...parseJson(t.mainBranchDataJson) };
+          const mb = { ...parseJson(t.firstBranchDraft) };
           if (Number(mb.areaRequestId) === Number(l.areaRequestId)) {
             mb.areaStatus = 'rejected';
-            await t.update({ mainBranchDataJson: mb }, { transaction });
+            await t.update({ firstBranchDraft: mb }, { transaction });
           }
         }
       }

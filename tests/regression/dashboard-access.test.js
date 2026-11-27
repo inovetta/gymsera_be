@@ -50,7 +50,7 @@ describe('GET /host/branches/:branchId/dashboard — revenue masking', () => {
 
   it('hides every financial figure from someone without dashboard.revenue.view', async () => {
     accessService.resolve.mockResolvedValue(grantsWith(['dashboard.view']));
-    const req = baseReq({ id: 'trainer-1', tenantId: 'tenant-1', role: 'BRANCH_MANAGER' });
+    const req = baseReq({ id: 'trainer-1', organizationId: 'tenant-1', role: 'BRANCH_MANAGER' });
     const res = fakeRes();
     const next = jest.fn();
 
@@ -68,7 +68,7 @@ describe('GET /host/branches/:branchId/dashboard — revenue masking', () => {
 
   it('shows the financial figures to someone who holds dashboard.revenue.view', async () => {
     accessService.resolve.mockResolvedValue(grantsWith(['dashboard.view', 'dashboard.revenue.view']));
-    const req = baseReq({ id: 'admin-1', tenantId: 'tenant-1', role: 'BRANCH_MANAGER' });
+    const req = baseReq({ id: 'admin-1', organizationId: 'tenant-1', role: 'BRANCH_MANAGER' });
     const res = fakeRes();
     const next = jest.fn();
 
@@ -80,7 +80,7 @@ describe('GET /host/branches/:branchId/dashboard — revenue masking', () => {
   });
 
   it('the owner sees revenue without ever resolving grants', async () => {
-    const req = baseReq({ id: 'owner-1', tenantId: 'tenant-1', role: 'GYM_HOST', isHost: true });
+    const req = baseReq({ id: 'owner-1', organizationId: 'tenant-1', role: 'GYM_HOST', isHost: true });
     const res = fakeRes();
     const next = jest.fn();
 
@@ -93,7 +93,7 @@ describe('GET /host/branches/:branchId/dashboard — revenue masking', () => {
 
   it('fails closed: a permission-resolution error still hides revenue', async () => {
     accessService.resolve.mockRejectedValue(new Error('tenant db unreachable'));
-    const req = baseReq({ id: 'trainer-1', tenantId: 'tenant-1', role: 'BRANCH_MANAGER' });
+    const req = baseReq({ id: 'trainer-1', organizationId: 'tenant-1', role: 'BRANCH_MANAGER' });
     const res = fakeRes();
     const next = jest.fn();
 

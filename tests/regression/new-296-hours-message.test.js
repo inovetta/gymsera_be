@@ -11,6 +11,7 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
 const { signToken } = require('../../src/utils/jwt.utils');
+const { firstBranchInput } = require('../harness/first-branch-input');
 const hours = require('../../src/services/branch-hours.service');
 
 const MESSAGE = 'Closing time is before opening time. Check AM/PM, or pick a closing time up to 12:00 PM the next day.';
@@ -55,7 +56,7 @@ describe('NEW-296: the after-midnight message, the rule unchanged', () => {
   });
 });
 
-describe('NEW-296: Become a Host step 3 (POST /tenants/:id/gym-profile, the old pair)', () => {
+describe('NEW-296: Become a Host step 3 (POST /tenants/:id/first-business, the old pair)', () => {
   beforeAll(async () => {
     const h = await setupTestDatabases();
     await setupPersonas(h);
@@ -74,15 +75,16 @@ describe('NEW-296: Become a Host step 3 (POST /tenants/:id/gym-profile, the old 
 
   test('18:00-14:00 is refused with the new sentence; 06:00-00:00 (12 AM closing) is stored', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { openingTime: '18:00', closingTime: '14:00' } });
+    const profile = (firstBranch) => ({ organizationName: 'Hours Brand', firstBusinessName: 'G', firstBranch }); // A3 J10
+    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send(profile(await firstBranchInput({ openingTime: '18:00', closingTime: '14:00' })));
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
     expect(JSON.stringify(bad.body)).toContain(MESSAGE);
 
-    const ok = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { openingTime: '06:00', closingTime: '00:00' } });
+    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send(profile(await firstBranchInput({ openingTime: '06:00', closingTime: '00:00' })));
     expect(ok.status).toBe(200);
     await tenant.reload();
-    expect([tenant.mainBranchDataJson.openingTime, tenant.mainBranchDataJson.closingTime]).toEqual(['06:00', '00:00']);
-    expect(tenant.mainBranchDataJson.hoursJson.days.sun.slots).toEqual([{ open: '06:00', close: '00:00', for: 'all' }]);
+    expect([tenant.firstBranchDraft.openingTime, tenant.firstBranchDraft.closingTime]).toEqual(['06:00', '00:00']);
+    expect(tenant.firstBranchDraft.hours.days.sun.slots).toEqual([{ open: '06:00', close: '00:00', for: 'all' }]);
   });
 });

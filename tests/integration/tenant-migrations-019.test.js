@@ -32,7 +32,7 @@ describe('Tenant migration 019 (branches.currency, GLB-02)', () => {
 
   test('--dry-run lists 019 and writes nothing', async () => {
     await toPre019();
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', dryRun: true, targetVersion: 19 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', dryRun: true, targetVersion: 19 });
     expect(res.wouldRun).toContain(M019);
     expect(await col()).toBeUndefined();
     expect(await recorded()).toBeUndefined();
@@ -41,7 +41,7 @@ describe('Tenant migration 019 (branches.currency, GLB-02)', () => {
   test('skips (not recorded) when branches.currency exists with another type', async () => {
     await toPre019();
     await tenantSeq.query('ALTER TABLE `branches` ADD COLUMN `currency` INT NULL');
-    const res = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 19 });
+    const res = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 19 });
     expect(res.applied).not.toContain(M019);
     expect(await recorded()).toBeUndefined();
     expect((await col()).DATA_TYPE).toBe('int');
@@ -49,7 +49,7 @@ describe('Tenant migration 019 (branches.currency, GLB-02)', () => {
 
   test('adds the column with PKR for every existing branch, then a re-run does nothing', async () => {
     await toPre019();
-    const res1 = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 19 });
+    const res1 = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 19 });
     expect(res1.applied).toContain(M019);
     const c = await col();
     expect(c.DATA_TYPE).toBe('varchar');
@@ -58,7 +58,7 @@ describe('Tenant migration 019 (branches.currency, GLB-02)', () => {
     const [{ n }] = await tenantSeq.query("SELECT COUNT(*) AS n FROM branches WHERE currency <> 'PKR'", { type: QueryTypes.SELECT });
     expect(Number(n)).toBe(0);
 
-    const res2 = await runTenantMigrations(tenantSeq, { tenantId: 'test-tenant-2', targetVersion: 19 });
+    const res2 = await runTenantMigrations(tenantSeq, { organizationId: 'test-tenant-2', targetVersion: 19 });
     expect(res2.applied).not.toContain(M019);
   });
 });

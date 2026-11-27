@@ -34,7 +34,7 @@ const listen = (app) => new Promise((resolve) => {
 
 describe('the API request timeout never answers a device (NEW-240)', () => {
   test('a device request slower than the timeout gets its own text answer, not a JSON 408; the API still gets 408', async () => {
-    const branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const d = await w.device(w.db1, { branch, name: 'Slow Door' });
 
     // The app's order (app.js): the timeout, then the push-host guard and the device router. 150 ms here.

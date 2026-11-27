@@ -61,7 +61,7 @@ const makeOrg = async (title, count = 2) => {
 const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), endDate = day(20), mirror = false } = {}) => {
   const plan = await models.MembershipPlan.create({
     branchId: branch.id,
-    gymId: branch.gymId,
+    businessId: branch.businessId,
     name: `Plan ${uuidv4().slice(0, 6)}`,
     price: 5000,
     durationType: 'MONTHLY',
@@ -81,10 +81,10 @@ const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), 
     const { UserGymMembership } = require('../../src/models/platform');
     await UserGymMembership.create({
       userId: member.id,
-      tenantId: ctx.tenant1.id,
-      gymListingId: branch.gymListingId,
+      organizationId: ctx.tenant1.id,
+      businessId: branch.businessId,
       subscriptionId: sub.id,
-      gymName: 'Alpha Fitness Club',
+      businessName: 'Alpha Fitness Club',
       planName: plan.name,
       status,
     });
@@ -93,7 +93,7 @@ const addMembership = async (branch, { status = 'ACTIVE', startDate = day(-10), 
 };
 
 const deleteBranch = (branch) =>
-  asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: PASSWORD, confirmOrganizationDeletion: true });
+  asPersona('owner').delete(`/organizations/me/branches/${branch.id}`, { password: PASSWORD, confirmBusinessDeletion: true });
 
 const statusOf = async (branch) => (await models.Branch.findByPk(branch.id)).status;
 
@@ -154,7 +154,7 @@ describe('P5b item 3: a branch with members or money in progress is not deleted'
   test('the block is checked after the password (a wrong password is still 401)', async () => {
     const { branches: [branch] } = await makeOrg('Block After Reauth');
     await addMembership(branch);
-    const res = await asPersona('owner').delete(`/gyms/branches/${branch.id}`, { password: 'wrong-password' });
+    const res = await asPersona('owner').delete(`/organizations/me/branches/${branch.id}`, { password: 'wrong-password' });
     expect(res.status).toBe(401);
   });
 
@@ -192,10 +192,11 @@ describe('P5b item 3: deleting an organization is all or nothing', () => {
     const { listing, branches: [clean, busy] } = await makeOrg('Org Partly Busy');
     await addMembership(busy);
 
-    const res = await asPersona('owner').delete(`/host/listings/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
+    const res = await asPersona('owner').delete(`/host/businesses/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('organization_delete_blocked');
-    expect(res.body.data.listingId).toBe(listing.id);
+    expect(res.body.data.businessId).toBe(listing.id);
+    expect(res.body.data).not.toHaveProperty('listingId');
     expect(res.body.data.counts.activeMemberships).toBe(1);
     expect(res.body.data.branches).toEqual([
       expect.objectContaining({ branchId: busy.id, branchName: busy.branchName, counts: expect.objectContaining({ activeMemberships: 1 }) }),
@@ -209,7 +210,7 @@ describe('P5b item 3: deleting an organization is all or nothing', () => {
   test('every branch clean → all branches and the organization are deleted', async () => {
     const { GymListing } = require('../../src/models/platform');
     const { listing, branches } = await makeOrg('Org All Clean', 3);
-    const res = await asPersona('owner').delete(`/host/listings/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
+    const res = await asPersona('owner').delete(`/host/businesses/${listing.id}`, { password: PASSWORD, strategy: 'deleteBranches' });
     expect(res.status).toBe(200);
     for (const b of branches) {
       // eslint-disable-next-line no-await-in-loop

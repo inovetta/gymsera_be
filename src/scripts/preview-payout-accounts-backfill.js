@@ -17,12 +17,12 @@ const printPlan = (plan, log = console.log) => {
   log(`Tenants with saved bank details: ${plan.tenantsScanned}`);
   log(`WOULD COPY to a tenant default payout account: ${plan.copy.length}`);
   for (const item of plan.copy) {
-    log(`  - tenant ${item.tenantId}: fields [${item.keys.join(', ')}], changed at ${item.detailsUpdatedAt || 'unknown'}`);
+    log(`  - tenant ${item.organizationId}: fields [${item.keys.join(', ')}], changed at ${item.detailsUpdatedAt || 'unknown'}`);
   }
   log(`Already have a tenant default (left alone): ${plan.alreadyHaveDefault.length}`);
   plan.alreadyHaveDefault.forEach((id) => log(`  - tenant ${id}`));
   log(`Empty or unreadable (not copied): ${plan.emptyOrUnreadable.length}`);
-  plan.emptyOrUnreadable.forEach((r) => log(`  - tenant ${r.tenantId}: ${r.reason}`));
+  plan.emptyOrUnreadable.forEach((r) => log(`  - tenant ${r.organizationId}: ${r.reason}`));
   log('=========================================');
 };
 

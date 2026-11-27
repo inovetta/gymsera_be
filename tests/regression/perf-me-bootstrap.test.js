@@ -1,7 +1,7 @@
 /**
  * GET /me/bootstrap (API-03, spec §4.3 / §10.2): one call for the app shell.
  * Obeys SEC-02: the tenant comes only from the caller's verified memberships;
- * X-Tenant-Id merely SELECTS among them. Returns only what the caller may see.
+ * X-Organization-Id merely SELECTS among them. Returns only what the caller may see.
  */
 const { Sequelize } = require('sequelize');
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
@@ -17,8 +17,8 @@ describe('GET /me/bootstrap', () => {
     const h = await setupTestDatabases();
     personas = await setupPersonas(h);
     await startTestServer();
-    tenant1 = personas.owner.tenantId;
-    tenant2 = personas.otherTenantOwner.tenantId;
+    tenant1 = personas.owner.organizationId;
+    tenant2 = personas.otherTenantOwner.organizationId;
     Sequelize.prototype.query = async function spy(...a) { queries += 1; return origQuery.apply(this, a); };
   });
   afterAll(async () => {
@@ -34,10 +34,10 @@ describe('GET /me/bootstrap', () => {
     expect(res.status).toBe(200);
     const d = res.body.data;
     expect(d.user).toMatchObject({ id: personas.owner.user.id, email: personas.owner.user.email });
-    expect(d.organizations.map((o) => o.tenantId)).toEqual([tenant1]);
+    expect(d.organizations.map((o) => o.organizationId)).toEqual([tenant1]);
     expect(d.organizations[0].isOwner).toBe(true);
     expect(d.organizations[0].orgPermissions).toEqual(['*']);
-    expect(d.activeTenant).toMatchObject({ tenantId: tenant1, isOwner: true, status: 'ACTIVE' });
+    expect(d.activeTenant).toMatchObject({ organizationId: tenant1, isOwner: true, status: 'ACTIVE' });
     expect(typeof d.activeTenant.name).toBe('string');
     expect(d.quota).toMatchObject({ maxBranches: expect.any(Number), usedBranches: expect.any(Number) });
     expect(d.unread).toMatchObject({ notifications: expect.any(Number), pendingApprovals: expect.any(Number) });
@@ -48,10 +48,10 @@ describe('GET /me/bootstrap', () => {
     const res = await boot('manager');
     expect(res.status).toBe(200);
     const d = res.body.data;
-    expect(d.activeTenant).toMatchObject({ tenantId: tenant1, isOwner: false });
+    expect(d.activeTenant).toMatchObject({ organizationId: tenant1, isOwner: false });
     expect(d.quota).toBeNull();
     expect(d.organizations[0].orgPermissions).not.toContain('*');
-    expect(d.organizations.map((o) => o.tenantId)).toEqual([tenant1]);
+    expect(d.organizations.map((o) => o.organizationId)).toEqual([tenant1]);
   });
 
   test('member without any gym: empty contexts, no active tenant, no quota', async () => {
@@ -67,13 +67,13 @@ describe('GET /me/bootstrap', () => {
   test('other tenant\'s owner never sees tenant 1 anywhere in the payload', async () => {
     const res = await boot('otherTenantOwner');
     expect(res.status).toBe(200);
-    expect(res.body.data.activeTenant.tenantId).toBe(tenant2);
+    expect(res.body.data.activeTenant.organizationId).toBe(tenant2);
     const text = JSON.stringify(res.body.data);
     expect(text).not.toContain(tenant1);
     expect(text).not.toMatch(/connection/i);
   });
 
-  describe('SEC-02: X-Tenant-Id only selects among the caller\'s tenants', () => {
+  describe('SEC-02: X-Organization-Id only selects among the caller\'s tenants', () => {
     test.each([
       ['member', 'tenant1'],
       ['manager', 'tenant2'],
@@ -81,21 +81,21 @@ describe('GET /me/bootstrap', () => {
       ['otherTenantOwner', 'tenant1'],
     ])('%s forging the %s id is refused and learns nothing', async (persona, which) => {
       const forged = which === 'tenant1' ? tenant1 : tenant2;
-      const res = await boot(persona, { 'X-Tenant-Id': forged });
+      const res = await boot(persona, { 'X-Organization-Id': forged });
       expect(res.status).toBe(404);
       expect(res.body.data == null).toBe(true);
       expect(JSON.stringify(res.body)).not.toContain('permissions');
     });
 
     test('a made-up id is refused the same way', async () => {
-      const res = await boot('owner', { 'X-Tenant-Id': '00000000-0000-4000-8000-000000000000' });
+      const res = await boot('owner', { 'X-Organization-Id': '00000000-0000-4000-8000-000000000000' });
       expect(res.status).toBe(404);
     });
 
     test('a header naming one of the caller\'s own tenants selects it', async () => {
-      const res = await boot('owner', { 'X-Tenant-Id': tenant1 });
+      const res = await boot('owner', { 'X-Organization-Id': tenant1 });
       expect(res.status).toBe(200);
-      expect(res.body.data.activeTenant.tenantId).toBe(tenant1);
+      expect(res.body.data.activeTenant.organizationId).toBe(tenant1);
     });
   });
 
@@ -122,7 +122,7 @@ describe('GET /me/bootstrap', () => {
     const owner = await boot('owner');
     const other = await boot('otherTenantOwner', { 'If-None-Match': owner.headers.etag });
     expect(other.status).toBe(200);
-    expect(other.body.data.activeTenant.tenantId).toBe(tenant2);
+    expect(other.body.data.activeTenant.organizationId).toBe(tenant2);
   });
 
   test('anonymous is refused', async () => {

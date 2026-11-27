@@ -21,16 +21,16 @@ const registerTenantModels = require('../models/tenant');
 const { encrypt }        = require('../utils/crypto.utils');
 const { getTenantDbConfig } = require('../services/tenant-provisioning.service');
 
-const buildDbName = (tenantCode) => {
-  const safe = tenantCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+const buildDbName = (organizationCode) => {
+  const safe = organizationCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
   return `gymsera_${safe}`;
 };
 
 async function provisionTenant(tenant, dbConfig) {
-  const dbName  = buildDbName(tenant.tenantCode);
+  const dbName  = buildDbName(tenant.organizationCode);
   const connUrl = `mysql://${dbConfig.appUser}:${dbConfig.appPassword}@${dbConfig.host}:${dbConfig.port}/${dbName}`;
 
-  console.log(`\n🔧 Provisioning '${tenant.tenantCode}' → DB: ${dbName}`);
+  console.log(`\n🔧 Provisioning '${tenant.organizationCode}' → DB: ${dbName}`);
 
   // Create DB + grant access
   const adminConn = await mysql.createConnection({
@@ -77,8 +77,8 @@ async function provisionTenant(tenant, dbConfig) {
 
     const { runTenantMigrations } = require('../database/tenant-migration-runner');
     await runTenantMigrations(tenantSeq, {
-      tenantId: tenant.id,
-      gymName: tenant.gymName,
+      organizationId: tenant.id,
+      gymName: tenant.firstBusinessName,
     });
     console.log('   ✅ Tenant migrations applied to latest version');
   } finally {
@@ -111,7 +111,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log(`Found ${tenants.length} tenant(s) to provision: ${tenants.map(t => t.tenantCode).join(', ')}`);
+  console.log(`Found ${tenants.length} tenant(s) to provision: ${tenants.map(t => t.organizationCode).join(', ')}`);
 
   for (const tenant of tenants) {
     await provisionTenant(tenant, dbConfig);

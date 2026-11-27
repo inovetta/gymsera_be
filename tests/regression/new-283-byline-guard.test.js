@@ -1,14 +1,8 @@
 /**
- * NEW-283 (owner, build 27): "by <brand>" under a gym's name only when the account has exactly one
- * live brand.
- *
- * The brand is the account's (tenants.business_name, R-112), and the app (gym_detail_screen.dart
- * brandByline) and the website (NEW-269) print it under every gym of the account. A host with two
- * brands (two live organisations) then showed the first brand's name on the second brand's gyms.
- *
- * Now the gym detail (GET /discovery/gyms/:id) sends tenant.businessName only when the account has
- * exactly one ACTIVE organisation; otherwise null, which every client (build 26 included) already
- * reads as "no byline". The server decides, so old builds and the website are guarded too.
+ * NEW-283 (owner, build 27) was "by <brand>" under a gym's name only for an account with exactly one live brand.
+ * R-120 (owner decision D3, API contract v2 §1 rule 7) replaces it with the stricter rule: the organization's name never
+ * reaches a traveller. No traveller response carries `organizationName`, an `organization` object or a `tenant` object,
+ * whatever the account looks like (one live business, a pending or rejected second one, two live ones).
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
@@ -19,10 +13,17 @@ const { GymListing, Tenant } = require('../../src/models/platform');
 describe('NEW-283: the brand byline only for an account with exactly one live brand', () => {
   let ctx;
   const extra = [];
-  const brandOnDetail = async () => {
-    const res = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}`);
-    expect(res.status).toBe(200);
-    return res.body.data.gym.tenant?.businessName ?? null;
+  // Both detail answers: the branch detail and the business detail. Nothing of the organization's name is in either.
+  const expectNoBrand = async () => {
+    for (const path of [`/discovery/branches/${ctx.branch1.id}`, `/discovery/businesses/${ctx.listing1.id}`]) {
+      const res = await asPersona('member').get(path);
+      expect(res.status).toBe(200);
+      const text = JSON.stringify(res.body);
+      expect(text).not.toContain('Iron Brand');
+      expect(text).not.toContain('"organizationName"');
+      expect(text).not.toContain('"tenant"');
+      expect(text).not.toContain('"organization"');
+    }
   };
 
   beforeAll(async () => {
@@ -31,10 +32,10 @@ describe('NEW-283: the brand byline only for an account with exactly one live br
     ctx = require('../harness/personas').personaManager.context;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'N283 Monthly', price: '3000.00',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'N283 Monthly', price: '3000.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
-    await Tenant.update({ businessName: 'Iron Brand' }, { where: { id: ctx.tenant1.id } });
+    await Tenant.update({ organizationName: 'Iron Brand' }, { where: { id: ctx.tenant1.id } });
   });
   afterAll(async () => {
     await stopTestServer();
@@ -50,19 +51,19 @@ describe('NEW-283: the brand byline only for an account with exactly one live br
     extra.push(l.id);
   };
 
-  test('one live organisation: the brand is sent', async () => {
-    expect(await GymListing.count({ where: { tenantId: ctx.tenant1.id, status: 'ACTIVE' } })).toBe(1);
-    expect(await brandOnDetail()).toBe('Iron Brand');
+  test('one live organisation: the brand is not sent', async () => {
+    expect(await GymListing.count({ where: { organizationId: ctx.tenant1.id, status: 'ACTIVE' } })).toBe(1);
+    await expectNoBrand();
   });
 
-  test('a second organisation that is not live yet (pending, rejected) does not count', async () => {
+  test('a second organisation that is not live yet (pending, rejected): the brand is not sent', async () => {
     await addOrganisation('PENDING');
     await addOrganisation('REJECTED');
-    expect(await brandOnDetail()).toBe('Iron Brand');
+    await expectNoBrand();
   });
 
-  test('two live organisations: no brand, so the first brand is never shown on another brand\'s gyms', async () => {
+  test('two live organisations: the brand is not sent either', async () => {
     await addOrganisation('ACTIVE');
-    expect(await brandOnDetail()).toBeNull();
+    await expectNoBrand();
   });
 });

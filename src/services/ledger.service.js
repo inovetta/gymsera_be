@@ -505,7 +505,7 @@ const closeDay = async (ctx, { ledgerDayId }) => {
 
   try {
     const { emitToBranch } = require('../socket');
-    emitToBranch(ctx.tenantId, ledgerDay.branchId, 'ledger_updated', {
+    emitToBranch(ctx.organizationId, ledgerDay.branchId, 'ledger_updated', {
       branchId: ledgerDay.branchId,
       businessDate: ledgerDay.businessDate,
       status: 'CLOSED',
@@ -663,10 +663,10 @@ const listOpenDaysAllBranches = async (tenantDb) => {
 };
 
 /** Broadcast used by payment.service.js on every collection/verify/reject. */
-const notifyLedgerUpdated = (tenantId, branchId, businessDate) => {
+const notifyLedgerUpdated = (organizationId, branchId, businessDate) => {
   try {
     const { emitToBranch } = require('../socket');
-    emitToBranch(tenantId, branchId, 'ledger_updated', { branchId, businessDate, status: 'OPEN' });
+    emitToBranch(organizationId, branchId, 'ledger_updated', { branchId, businessDate, status: 'OPEN' });
   } catch (_) { /* non-fatal — a missed real-time nudge, not a data problem */ }
 };
 

@@ -26,14 +26,21 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       // Tenant the subscription lives in
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
       },
       // GymListing ID (for quick display without tenant DB round-trip)
-      gymListingId: {
+      businessId: {
+        field: 'business_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: false,
+      },
+      // R-120 NEW-309 (contract A3 J3): the branch the subscription is at (tenant database branch id); p036.
+      branchId: {
+        field: 'branch_id',
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       // MemberSubscription UUID in the tenant DB
       subscriptionId: {
@@ -41,7 +48,8 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       // Denormalised fields for fast listing without hitting tenant DB
-      gymName: {
+      businessName: {
+        field: 'business_name', // R-120 NEW-306 (p033)
         type: DataTypes.STRING(200),
         allowNull: true,
       },
@@ -64,14 +72,14 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'user_gym_memberships',
+      tableName: 'member_subscription_index', // R-120 NEW-306 (p033)
       underscored: true,
       timestamps: true,
       indexes: [
         { fields: ['user_id', 'status'] },
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['subscription_id'] },
-        { fields: ['gym_listing_id'] },
+        { fields: ['business_id'] },
       ],
     }
   );

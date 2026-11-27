@@ -52,7 +52,7 @@ afterAll(async () => { await w.settled(); await require('../harness').teardownTe
 
 test(`${DEVICES} devices, ${MEMBERS} members, ${PUSHES} pushes at once during the first sync`, async () => {
   const branches = [];
-  for (let i = 0; i < BRANCHES; i++) branches.push(await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: `Load ${i}` }));
+  for (let i = 0; i < BRANCHES; i++) branches.push(await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: `Load ${i}` }));
   const members = new Map(branches.map((b) => [b.id, []]));
   const all = [];
   for (let j = 0; j < MEMBERS; j++) {

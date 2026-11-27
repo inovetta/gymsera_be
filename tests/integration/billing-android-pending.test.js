@@ -45,7 +45,7 @@ describe('BILL-08: pending Android purchases', () => {
     tenant = await factories.createTenant({ connectionStringEncrypted: dbHarness.tenant1.encryptedConnStr });
     await factories.createGymListing(tenant.id);
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5 });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
     ({ truth, ack } = fakes.installGoogleFakes({
       'tok-pend': fakes.googlePurchase({
         productId: plan5.androidProductId,
@@ -91,7 +91,7 @@ describe('BILL-08: pending Android purchases', () => {
     });
     await rtdn('pend-2', 4); // SUBSCRIPTION_PURCHASED
     const row = await TenantSubscription.findOne({ where: { externalOriginalTransactionId: 'tok-pend' } });
-    expect(row).toMatchObject({ status: 'ACTIVE', branchCount: 5, tenantId: tenant.id });
+    expect(row).toMatchObject({ status: 'ACTIVE', branchCount: 5, organizationId: tenant.id });
     expect(await maxBranches()).toBe(5);
     expect(ack).toHaveBeenCalledWith('tok-pend', plan5.androidProductId);
   });

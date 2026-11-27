@@ -138,22 +138,22 @@ const lines = (...l) => `${l.flat().join('\n')}\n`;
 const OK = lines('OK');
 
 // ── Resolve the caller ────────────────────────────────────────────────────────
-const tenantCache = new Map(); // tenantId → { enc, at }  (connection string only; 60 s)
+const tenantCache = new Map(); // organizationId → { enc, at }  (connection string only; 60 s)
 
-async function tenantDbFor(tenantId) {
-  const cached = tenantCache.get(tenantId);
+async function tenantDbFor(organizationId) {
+  const cached = tenantCache.get(organizationId);
   let enc = cached && Date.now() - cached.at < 60000 ? cached.enc : null;
   if (!enc) {
     const { Tenant } = require('../models/platform');
-    const tenant = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+    const tenant = await Tenant.findOne({ where: { id: organizationId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
     if (!tenant || !tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
-      tenantCache.delete(tenantId);
+      tenantCache.delete(organizationId);
       return null;
     }
     enc = tenant.connectionStringEncrypted;
-    tenantCache.set(tenantId, { enc, at: Date.now() });
+    tenantCache.set(organizationId, { enc, at: Date.now() });
   }
-  return require('../database/TenantDbManager').getConnection(tenantId, enc);
+  return require('../database/TenantDbManager').getConnection(organizationId, enc);
 }
 
 async function isLegacySerial(sn) {
@@ -198,7 +198,7 @@ async function resolveCaller(c) {
 
 async function withTenant(device) {
   if (device.status === 'disabled') return { kind: 'disabled', device };
-  const tenantDb = await tenantDbFor(device.tenant_id);
+  const tenantDb = await tenantDbFor(device.organization_id);
   if (!tenantDb) return { kind: 'disabled', device };
   return { kind: 'device', device, tenantDb };
 }
@@ -237,7 +237,7 @@ async function handleWiping(c, { device, tenantDb }) {
     const results = protocol.parseDevicecmd(c.body);
     c.logCount = results.length;
     if (results.length) await registry.recordResults(tenantDb, device, results);
-    await registry.finishWipe({ tenantId: device.tenant_id, tenantDb, deviceId: device.id });
+    await registry.finishWipe({ organizationId: device.organization_id, tenantDb, deviceId: device.id });
     return [200, OK];
   }
   if (c.endpoint === 'registry') return [200, lines(`RegistryCode=${device.registry_code}`)];
@@ -276,7 +276,7 @@ async function handleDevice(c, { device, tenantDb }) {
           // to take them (device-import.service#stageUploads), or they are dropped.
           const imports = require('../services/devices/device-import.service');
           if (!(await imports.latestImport(tenantDb, device.id))) {
-            await imports.startImport(tenantDb, { tenantId: device.tenant_id, deviceId: device.id, askDevice: false });
+            await imports.startImport(tenantDb, { organizationId: device.organization_id, deviceId: device.id, askDevice: false });
           }
         }
         // Echo (or zero), then a re-read's forced OPERLOG / BIODATA 0 while the device is in import hold (NEW-242).
@@ -310,7 +310,7 @@ async function handleDevice(c, { device, tenantDb }) {
       if (String(c.query.type || '').toLowerCase() === 'biodata') {
         // ENROLL_BIO result (§7.6): the same as a template upload.
         c.logTable = 'BioData';
-        c.logCount = sdev ? await ingest.ingestTemplates(tenantDb, device.tenant_id, sdev, 'BioData', c.body) : 0;
+        c.logCount = sdev ? await ingest.ingestTemplates(tenantDb, device.organization_id, sdev, 'BioData', c.body) : 0;
         return [200, OK];
       }
       if (table === 'tabledata' || table === 'errorlog') {
@@ -320,8 +320,8 @@ async function handleDevice(c, { device, tenantDb }) {
         c.logCount = protocol.recordCount(c.body, c.query.count);
         if (sdev) {
           if (lower === 'user') await ingest.ingestUsers(tenantDb, sdev, c.body);
-          else if (lower === 'biodata' || lower === 'templatev10') await ingest.ingestTemplates(tenantDb, device.tenant_id, sdev, lower, c.body);
-          else if (lower === 'biophoto' || lower === 'userpic' || lower === 'attphoto') await ingest.ingestPhotos(tenantDb, device.tenant_id, sdev, lower, c.body);
+          else if (lower === 'biodata' || lower === 'templatev10') await ingest.ingestTemplates(tenantDb, device.organization_id, sdev, lower, c.body);
+          else if (lower === 'biophoto' || lower === 'userpic' || lower === 'attphoto') await ingest.ingestPhotos(tenantDb, device.organization_id, sdev, lower, c.body);
           else if (lower === 'errorlog') await ingest.ingestErrorlog(tenantDb, sdev, c.body);
         }
         return [200, table === 'errorlog' ? OK : lines(`${name}=${c.logCount}`)];
@@ -340,7 +340,7 @@ async function handleDevice(c, { device, tenantDb }) {
         // staging failure is answered 503 (the device sends the post again), at most attStageRetries times.
         const key = stageKey(device.id, table, c.body);
         try {
-          const res = await ingest.ingestAttUploads(tenantDb, device.tenant_id, sdev, table, c.body);
+          const res = await ingest.ingestAttUploads(tenantDb, device.organization_id, sdev, table, c.body);
           stageFailures.delete(key);
           c.logCount = res.users + res.templates + res.oplog;
         } catch (err) {
@@ -358,7 +358,7 @@ async function handleDevice(c, { device, tenantDb }) {
           }).catch(() => {});
         }
       } else if ((table === 'operlog' || table === 'biodata') && sdev) {
-        const res = await ingest.ingestAttUploads(tenantDb, device.tenant_id, sdev, table, c.body);
+        const res = await ingest.ingestAttUploads(tenantDb, device.organization_id, sdev, table, c.body);
         c.logCount = res.users + res.templates + res.oplog;
       } else if (table === 'rtstate') {
         const rows = sdev ? await ingest.ingestState(tenantDb, sdev, c.body) : protocol.parseRecords(c.body);

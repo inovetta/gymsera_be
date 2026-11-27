@@ -121,12 +121,12 @@ describe('closeDay — race-safe conditional update', () => {
       findByPk: jest.fn().mockResolvedValue(day),
       update: jest.fn().mockResolvedValue([1]),
     };
-    return { tenantDb: { models: { Payment, LedgerDay }, tenantId: 'tenant-1' }, day, LedgerDay };
+    return { tenantDb: { models: { Payment, LedgerDay }, organizationId: 'tenant-1' }, day, LedgerDay };
   };
 
   it('closes an OPEN day and stamps who/when', async () => {
     const { tenantDb, LedgerDay } = buildTenantDb();
-    const ctx = { tenantDb, tenantId: 'tenant-1', userId: 'user-1' };
+    const ctx = { tenantDb, organizationId: 'tenant-1', userId: 'user-1' };
 
     await ledgerService.closeDay(ctx, { ledgerDayId: 'day-1' });
 
@@ -142,7 +142,7 @@ describe('closeDay — race-safe conditional update', () => {
 
   it('rejects closing a day that is already CLOSED', async () => {
     const { tenantDb } = buildTenantDb({ status: 'CLOSED' });
-    const ctx = { tenantDb, tenantId: 'tenant-1', userId: 'user-1' };
+    const ctx = { tenantDb, organizationId: 'tenant-1', userId: 'user-1' };
 
     await expect(ledgerService.closeDay(ctx, { ledgerDayId: 'day-1' })).rejects.toThrow(/already closed/);
   });
@@ -150,7 +150,7 @@ describe('closeDay — race-safe conditional update', () => {
   it('rejects with 409 when a concurrent close won the race (0 rows affected)', async () => {
     const { tenantDb, LedgerDay } = buildTenantDb();
     LedgerDay.update.mockResolvedValue([0]); // someone else's UPDATE already flipped status
-    const ctx = { tenantDb, tenantId: 'tenant-1', userId: 'user-1' };
+    const ctx = { tenantDb, organizationId: 'tenant-1', userId: 'user-1' };
 
     await expect(ledgerService.closeDay(ctx, { ledgerDayId: 'day-1' })).rejects.toThrow(
       /just closed by someone else/
@@ -160,7 +160,7 @@ describe('closeDay — race-safe conditional update', () => {
   it('404s when the ledger day does not exist', async () => {
     const { tenantDb, LedgerDay } = buildTenantDb();
     LedgerDay.findByPk.mockResolvedValue(null);
-    const ctx = { tenantDb, tenantId: 'tenant-1', userId: 'user-1' };
+    const ctx = { tenantDb, organizationId: 'tenant-1', userId: 'user-1' };
 
     await expect(ledgerService.closeDay(ctx, { ledgerDayId: 'missing' })).rejects.toThrow(/not found/);
   });

@@ -28,7 +28,7 @@ afterAll(async () => {
 });
 
 const get = (path, token) =>
-  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId);
+  request(app).get(`/api/v1${path}`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
 const thisMonth = () => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][new Date().getMonth()];
 const monthRevenue = (res) => res.body.data.data.find((m) => m.month === thisMonth()).revenue;

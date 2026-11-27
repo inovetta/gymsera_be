@@ -47,10 +47,10 @@ const queue = async (tenantDb, deviceId, kind, n = 1, extra = {}) => {
 
 const create = (over = {}) =>
   devices.createDevice({
-    tenantId: ctx.tenant1.id,
+    organizationId: ctx.tenant1.id,
     tenantDb: ctx.tenant1Db,
     branchId: ctx.branch1.id,
-    organizationId: ctx.branch1.gymId || null,
+    businessId: ctx.branch1.businessId || null,
     name: 'Front door IN',
     direction: 'in',
     createdBy: owner.user.id,
@@ -193,7 +193,7 @@ describe('claim, bind, no auto-join (§4.2)', () => {
     const { device } = await create();
     const old = sim(device);
     await old.connect();
-    const { device: repaired } = await devices.repairDevice({ tenantId: ctx.tenant1.id, deviceId: device.id });
+    const { device: repaired } = await devices.repairDevice({ organizationId: ctx.tenant1.id, deviceId: device.id });
     expect(repaired.deviceKey).not.toBe(device.deviceKey);
     const row = await platformRow(device.id);
     expect(row).toMatchObject({ serial_number: null, previous_serial_number: old.sn, status: 'awaiting_connection' });
@@ -209,10 +209,10 @@ describe('claim, bind, no auto-join (§4.2)', () => {
     const d = sim(device);
     await d.connect();
     await queue(ctx.tenant1Db, device.id, 'info');
-    await devices.setEnabled({ tenantId: ctx.tenant1.id, tenantDb: ctx.tenant1Db, deviceId: device.id, enabled: false });
+    await devices.setEnabled({ organizationId: ctx.tenant1.id, tenantDb: ctx.tenant1Db, deviceId: device.id, enabled: false });
     expect((await d.poll()).text).toBe('OK\n');
     expect((await d.registry()).status).toBe(406);
-    await devices.unpairDevice({ tenantId: ctx.tenant1.id, tenantDb: ctx.tenant1Db, deviceId: device.id });
+    await devices.unpairDevice({ organizationId: ctx.tenant1.id, tenantDb: ctx.tenant1Db, deviceId: device.id });
     expect((await platformRow(device.id))).toMatchObject({ status: 'removed', serial_number: null, previous_serial_number: d.sn });
     expect((await d.registry()).status).toBe(406);
   });
@@ -380,7 +380,7 @@ describe('tenant isolation (§14 point 5)', () => {
   test('devices of two tenants polling the same process only ever get their own commands', async () => {
     const { device: a } = await create();
     const { device: b } = await devices.createDevice({
-      tenantId: ctx.tenant2.id, tenantDb: ctx.tenant2Db, branchId: ctx.branch2.id, name: 'Other gym', direction: 'in',
+      organizationId: ctx.tenant2.id, tenantDb: ctx.tenant2Db, branchId: ctx.branch2.id, name: 'Other gym', direction: 'in',
     });
     const da = sim(a);
     const db = sim(b);
@@ -420,7 +420,7 @@ describe('the old router\'s devices (platform `devices`, ATTLOG) keep working', 
   test('a serial registered in the old table: heartbeat OK, ATTLOG answered OK: n', async () => {
     const { Device } = require('../../src/models/platform');
     const sn = nextSn();
-    await Device.create({ tenantId: ctx.tenant1.id, branchId: ctx.branch1.id, serialNumber: sn, name: 'Old reader', status: 'ACTIVE' });
+    await Device.create({ organizationId: ctx.tenant1.id, branchId: ctx.branch1.id, serialNumber: sn, name: 'Old reader', status: 'ACTIVE' });
     const d = new ZkDeviceSimulator({ baseUrl, sn });
     expect((await d.poll()).text).toBe('OK\n');
     const res = await d.upload('ATTLOG', '9999\t2026-11-10 10:00:00\t0\t1\t0');

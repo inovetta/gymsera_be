@@ -40,7 +40,7 @@ describe('Integration Test Harness & Factories', () => {
 
     // 2. GymListing
     const listing = await factories.createGymListing(tenant.id, { title: 'Factory Listing' });
-    expect(listing.title).toBe('Factory Listing');
+    expect(listing.name).toBe('Factory Listing');
 
     // 3. Branch in tenant DB
     const branch = await factories.createBranch(dbHarness.tenant1, listing.id, {
@@ -57,7 +57,7 @@ describe('Integration Test Harness & Factories', () => {
       scopeType: 'BRANCH',
       scopeId: branch.id,
       branchIds: [branch.id],
-      tenantId: tenant.id,
+      organizationId: tenant.id,
     });
     expect(assignment.roleKey).toBe('MANAGER');
     expect(assignment.roleLevel).toBe(60);
@@ -86,8 +86,8 @@ describe('Integration Test Harness & Factories', () => {
       expect(resOwner.body).toHaveProperty('success');
     }
 
-    // 4. Manager call to /gyms/branches
-    const resManager = await asPersona('manager').get('/gyms/branches');
+    // 4. Manager call to /organizations/me/branches
+    const resManager = await asPersona('manager').get('/organizations/me/branches');
     expect([200, 403, 404]).toContain(resManager.status);
   });
 });

@@ -3,7 +3,7 @@
  * area travellers see (A5, A9 rule 4).
  *
  * Before: no queue existed (a typed area had no path); provisioning gave the first branch
- * `mainBranchData.areaId || tenants.area_id` whatever the cities (tenant-provisioning.service.js:475);
+ * `firstBranchDraft.areaId || tenants.area_id` whatever the cities (tenant-provisioning.service.js:475);
  * discovery took `branch || listing || tenant` area (discovery.service.js:213) and showed the listing's
  * area object first (:255), so a branch in another city than its organisation was filed under the
  * organisation's area.
@@ -35,10 +35,10 @@ const makeRequest = (userId, city, name, extra = {}) => M.AreaRequest.create({
   cityId: city.id, name, nameKey: keyOf(name), source: 'typed', status: 'pending_review',
   requestedByUserId: userId, openKey: `${userId}:${city.id}:${keyOf(name)}`, ...extra,
 });
-const link = (request, tenantId, target, targetId) => M.AreaRequestLink.create({
-  areaRequestId: request.id, tenantId, target, targetId: String(targetId),
+const link = (request, organizationId, target, targetId) => M.AreaRequestLink.create({
+  areaRequestId: request.id, organizationId, target, targetId: String(targetId),
 });
-const linkOf = (target, tenantId, targetId) => M.AreaRequestLink.findOne({ where: { target, tenantId, targetId: String(targetId) } });
+const linkOf = (target, organizationId, targetId) => M.AreaRequestLink.findOne({ where: { target, organizationId, targetId: String(targetId) } });
 
 beforeAll(async () => {
   const h = await setupTestDatabases();
@@ -72,16 +72,16 @@ describe('A6: the admin queue', () => {
     draft = await factories.createTenant({
       ownerUserId: host2.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
       gymName: 'Draft Gym', latitude: 34.01, longitude: 71.51,
-      mainBranchDataJson: { name: 'Main', cityId: peshawar.id, areaId: null, areaRequestId: null, areaStatus: 'pending_review' },
+      firstBranchDraft: { branchName: 'Main', cityId: peshawar.id, areaId: null, areaRequestId: null, areaStatus: 'pending_review' },
     });
     r1 = await makeRequest(host2.id, peshawar, 'Shinwari Town');
     r2 = await makeRequest(ownerUserId, peshawar, 'shinwari  town');
-    await draft.update({ areaStatus: 'pending_review', areaRequestId: r1.id, mainBranchDataJson: { ...draft.mainBranchDataJson, areaRequestId: r1.id } });
-    await link(r1, draft.id, 'tenant', draft.id);
-    await link(r1, draft.id, 'main_branch', draft.id);
+    await draft.update({ areaStatus: 'pending_review', areaRequestId: r1.id, firstBranchDraft: { ...draft.firstBranchDraft, areaRequestId: r1.id } });
+    await link(r1, draft.id, 'organization', draft.id);
+    await link(r1, draft.id, 'first_branch_draft', draft.id);
     await ctx.tenant1Db.models.Branch.update({ cityId: peshawar.id, areaId: null }, { where: { id: ctx.branch1.id } });
     await M.GymListing.update({ cityId: peshawar.id, areaId: null, areaStatus: 'pending_review', areaRequestId: r2.id }, { where: { id: ctx.listing1.id } });
-    await link(r2, ctx.tenant1.id, 'listing', ctx.listing1.id);
+    await link(r2, ctx.tenant1.id, 'business', ctx.listing1.id);
     await link(r2, ctx.tenant1.id, 'branch', ctx.branch1.id);
   });
 
@@ -98,9 +98,9 @@ describe('A6: the admin queue', () => {
     expect(g).toMatchObject({ cityId: peshawar.id, cityName: 'Peshawar265a', name: 'Shinwari Town', source: 'typed', gymCount: 4 });
     expect(g.requestedBy.map((u) => u.userId).sort()).toEqual([host2.id, ownerUserId].sort());
     expect(g.gyms).toEqual(expect.arrayContaining([
-      expect.objectContaining({ tenantId: draft.id, listingId: null, branchId: null, title: 'Draft Gym', latitude: 34.01, longitude: 71.51 }),
-      expect.objectContaining({ tenantId: ctx.tenant1.id, listingId: ctx.listing1.id }),
-      expect.objectContaining({ tenantId: ctx.tenant1.id, branchId: ctx.branch1.id }),
+      expect.objectContaining({ organizationId: draft.id, listingId: null, branchId: null, title: 'Draft Gym', latitude: 34.01, longitude: 71.51 }),
+      expect.objectContaining({ organizationId: ctx.tenant1.id, listingId: ctx.listing1.id }),
+      expect.objectContaining({ organizationId: ctx.tenant1.id, branchId: ctx.branch1.id }),
     ]));
     expect(res.body.data.pagination).toMatchObject({ page: 1 });
     expect(Array.isArray(g.similar)).toBe(true);
@@ -119,7 +119,7 @@ describe('A6: the admin queue', () => {
       expect(await M.AreaRequest.findByPk(r.id)).toMatchObject({ status: 'approved', resolvedAreaId: area.id, openKey: null, decidedBy: admin.id });
     }
     expect(await M.Tenant.findByPk(draft.id)).toMatchObject({ areaId: area.id, areaStatus: null, areaRequestId: null });
-    const mb = (await M.Tenant.findByPk(draft.id)).mainBranchDataJson;
+    const mb = (await M.Tenant.findByPk(draft.id)).firstBranchDraft;
     expect(mb.areaId).toBe(area.id);
     expect(mb.areaRequestId).toBeUndefined();
     expect(mb.areaStatus).toBeUndefined();
@@ -206,9 +206,9 @@ describe('A6: the admin queue', () => {
       ownerUserId: host3.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING', cityId: peshawar.id,
     });
     const r = await makeRequest(host3.id, peshawar, 'Fake Place');
-    await t.update({ areaStatus: 'pending_review', areaRequestId: r.id, mainBranchDataJson: { name: 'M', areaRequestId: r.id, areaStatus: 'pending_review' } });
-    await link(r, t.id, 'tenant', t.id);
-    await link(r, t.id, 'main_branch', t.id);
+    await t.update({ areaStatus: 'pending_review', areaRequestId: r.id, firstBranchDraft: { branchName: 'M', areaRequestId: r.id, areaStatus: 'pending_review' } });
+    await link(r, t.id, 'organization', t.id);
+    await link(r, t.id, 'first_branch_draft', t.id);
     expect((await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/reject`).send({ reason: 'x' })).status).toBe(422);
 
     const res = await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/reject`).send({ reason: 'Not an area of Peshawar' });
@@ -216,8 +216,8 @@ describe('A6: the admin queue', () => {
     expect(await M.AreaRequest.findByPk(r.id)).toMatchObject({ status: 'rejected', rejectReason: 'Not an area of Peshawar', openKey: null });
     await t.reload();
     expect(t).toMatchObject({ areaStatus: 'rejected', areaId: null, areaRequestId: r.id });
-    expect(t.mainBranchDataJson.areaStatus).toBe('rejected');
-    expect(await linkOf('tenant', t.id, t.id)).not.toBeNull();
+    expect(t.firstBranchDraft.areaStatus).toBe('rejected');
+    expect(await linkOf('organization', t.id, t.id)).not.toBeNull();
     const note = await M.Notification.findOne({ where: { type: 'area_request_decided', userId: host3.id } });
     expect(note.message).toContain('was not accepted: Not an area of Peshawar. Please pick your area again.');
     expect(await M.PlatformAuditLog.count({ where: { action: 'areas.request.reject' } })).toBe(1);
@@ -231,7 +231,7 @@ describe('A6: the admin queue', () => {
     await link(r, ctx.tenant1.id, 'branch', missingBranchId);
     const res = await asPersona('platformAdmin').post(`/admin/area-requests/${r.id}/approve`).send({ name: 'Retry Town', latitude: 34, longitude: 71.5 });
     expect(res.status).toBe(200);
-    expect(res.body.data.failed).toEqual([{ tenantId: ctx.tenant1.id, error: expect.any(String) }]);
+    expect(res.body.data.failed).toEqual([{ organizationId: ctx.tenant1.id, error: expect.any(String) }]);
     const l = await linkOf('branch', ctx.tenant1.id, missingBranchId);
     expect(l.propagatedAt).toBeNull();
     expect(l.propagationError).toBeTruthy();
@@ -276,61 +276,62 @@ describe('A9 rule 3: approval carries the areas and links over', () => {
   });
 
   const pendingTenant = async (key, overrides) => {
-    const tenantCode = `test_n265_${key}_${Date.now().toString(36)}`;
-    dbNames.push(`gymsera_${tenantCode}`);
+    const organizationCode = `test_n265_${key}_${Date.now().toString(36)}`;
+    dbNames.push(`gymsera_${organizationCode}`);
     const owner = await factories.createUser({ email: `${key}-${Date.now()}@new265p.test`, role: 'GYM_HOST' });
     return factories.createTenant({
-      tenantCode, ownerUserId: owner.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
+      organizationCode, ownerUserId: owner.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER',
       cityId: peshawar.id, gymName: `Gym ${key}`, ...overrides,
     });
   };
   const approve = async (tenant) => {
     await adminService().approveTenant(tenant.id, admin.id);
+    await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d: the business approval builds the first branch
     await tenant.reload();
     const db = await TenantDbManager().getConnection(tenant.id, tenant.connectionStringEncrypted);
-    const listing = await M.GymListing.findOne({ where: { tenantId: tenant.id } });
+    const listing = await M.GymListing.findOne({ where: { organizationId: tenant.id } });
     const branch = await db.models.Branch.findOne();
     return { listing, branch };
   };
 
   test('the draft branch\'s own area wins; the listing takes the tenant\'s', async () => {
-    const t = await pendingTenant('own', { areaId: hayatabad.id, mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id, areaId: universityTown.id } });
+    const t = await pendingTenant('own', { areaId: hayatabad.id, firstBranchDraft: { branchName: 'Main', packages: plans, cityId: peshawar.id, areaId: universityTown.id } });
     const { listing, branch } = await approve(t);
     expect(listing.areaId).toBe(hayatabad.id);
     expect(branch.areaId).toBe(universityTown.id);
   });
 
   test('links move: tenant → listing (marker on the listing), main_branch → branch', async () => {
-    const t = await pendingTenant('links', { mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id } });
+    const t = await pendingTenant('links', { firstBranchDraft: { branchName: 'Main', packages: plans, cityId: peshawar.id } });
     const rt = await makeRequest(t.ownerUserId, peshawar, 'Org Pending Town');
     const rb = await makeRequest(t.ownerUserId, peshawar, 'Branch Pending Town');
-    await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id, mainBranchDataJson: { ...t.mainBranchDataJson, areaRequestId: rb.id, areaStatus: 'pending_review' } });
-    await link(rt, t.id, 'tenant', t.id);
-    await link(rb, t.id, 'main_branch', t.id);
+    await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id, firstBranchDraft: { ...t.firstBranchDraft, areaRequestId: rb.id, areaStatus: 'pending_review' } });
+    await link(rt, t.id, 'organization', t.id);
+    await link(rb, t.id, 'first_branch_draft', t.id);
     const { listing, branch } = await approve(t);
     expect(listing).toMatchObject({ areaId: null, areaStatus: 'pending_review', areaRequestId: rt.id });
-    expect(await linkOf('listing', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
+    expect(await linkOf('business', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
     expect(branch.areaId).toBeNull();
     expect(await linkOf('branch', t.id, branch.id)).toMatchObject({ areaRequestId: rb.id });
-    expect(await linkOf('main_branch', t.id, t.id)).toBeNull();
+    expect(await linkOf('first_branch_draft', t.id, t.id)).toBeNull();
   });
 
   test('a draft without its own area takes the tenant\'s only in the same city', async () => {
-    const same = await pendingTenant('same', { areaId: hayatabad.id, mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id } });
+    const same = await pendingTenant('same', { areaId: hayatabad.id, firstBranchDraft: { branchName: 'Main', packages: plans, cityId: peshawar.id } });
     expect((await approve(same)).branch.areaId).toBe(hayatabad.id);
-    const other = await pendingTenant('other', { areaId: hayatabad.id, mainBranchDataJson: { name: 'Main', plans, cityId: lahore.id } });
+    const other = await pendingTenant('other', { areaId: hayatabad.id, firstBranchDraft: { branchName: 'Main', packages: plans, cityId: lahore.id } });
     const res = await approve(other);
     expect(res.branch.cityId).toBe(lahore.id);
     expect(res.branch.areaId).toBeNull();
   });
 
   test('a tenant link also covers the branch in the old-data fallback (same city)', async () => {
-    const t = await pendingTenant('fallback', { mainBranchDataJson: { name: 'Main', plans, cityId: peshawar.id } });
+    const t = await pendingTenant('fallback', { firstBranchDraft: { branchName: 'Main', packages: plans, cityId: peshawar.id } });
     const rt = await makeRequest(t.ownerUserId, peshawar, 'Fallback Town');
     await t.update({ areaStatus: 'pending_review', areaRequestId: rt.id });
-    await link(rt, t.id, 'tenant', t.id);
+    await link(rt, t.id, 'organization', t.id);
     const { listing, branch } = await approve(t);
-    expect(await linkOf('listing', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
+    expect(await linkOf('business', t.id, listing.id)).toMatchObject({ areaRequestId: rt.id });
     expect(await linkOf('branch', t.id, branch.id)).toMatchObject({ areaRequestId: rt.id });
     expect(branch.areaId).toBeNull();
   });
@@ -340,9 +341,9 @@ describe('A5 / A9 rule 4: the area a traveller sees', () => {
   const cache = () => require('../../src/services/discovery-cache.service');
   const gyms = async () => {
     cache().invalidate();
-    const res = await asPersona('anonymous').get('/discovery/gyms?page=1&limit=50');
+    const res = await asPersona('anonymous').get('/discovery/branches?page=1&limit=50');
     expect(res.status).toBe(200);
-    const list = res.body.data.gyms || res.body.data.items || res.body.data;
+    const list = res.body.data.branches;
     return new Map(list.map((g) => [g.branchId || g.id, g]));
   };
   let b;

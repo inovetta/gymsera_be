@@ -14,7 +14,7 @@ async function test() {
   for (const tenant of tenants) {
     if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') continue;
     try {
-      console.log(`Connecting to Tenant DB for ${tenant.businessName} (ID: ${tenant.id})...`);
+      console.log(`Connecting to Tenant DB for ${tenant.organizationName} (ID: ${tenant.id})...`);
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
       const { Branch } = tenantDb.models;
       const branches = await Branch.findAll();

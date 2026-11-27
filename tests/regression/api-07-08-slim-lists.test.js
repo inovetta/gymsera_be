@@ -28,7 +28,7 @@ describe('API-07/08: slim list DTOs', () => {
     await startTestServer();
     const branch = await h.tenant1.models.Branch.findOne();
     const plan = await h.tenant1.models.MembershipPlan.create({
-      gymId: branch.gymId, branchId: branch.id, name: 'Std', price: 3000,
+      businessId: branch.businessId, branchId: branch.id, name: 'Std', price: 3000,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     const u = await factories.createUser({ email: 'slim@api07.test', fullName: 'Slim Member', role: 'MEMBER' });

@@ -26,7 +26,7 @@ const logRedaction = require('../../src/utils/log-redaction');
 let w; let branch;
 beforeAll(async () => {
   w = await createWorld();
-  branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Hardening Branch' });
+  branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Hardening Branch' });
 }, 120000);
 afterAll(async () => { await w.settled(); await require('../harness').teardownTestDatabases(); });
 afterEach(() => {
@@ -167,8 +167,8 @@ describe('wrong serial', () => {
     await Notification.destroy({ where: { userId: w.owner.user.id, type: 'device_serial_mismatch' } });
     const thief = new ZkDeviceSimulator({ baseUrl: w.baseUrl, sn: `THIEF${crypto.randomBytes(3).toString('hex')}`, key: d.device.deviceKey });
     expect((await thief.poll()).status).toBe(406);
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     const sent = await Notification.findAll({ where: { userId: w.owner.user.id, type: 'device_serial_mismatch' }, raw: true });
     expect(sent).toHaveLength(1);
     expect(sent[0].message).toMatch(/Serial Door/);

@@ -2,7 +2,7 @@
 --
 -- From the app folder that holds server.js and .env (no mysql client needed):
 --   node src/scripts/run-sql-check.js docs/sql/new-127-tenant-history.sql
--- SELECTs only, over `tenants`, `tenant_subscriptions` and information_schema. No personal data.
+-- SELECTs only, over `organizations`, `organization_subscriptions` and information_schema. No personal data.
 -- Send the agent all four grids.
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -10,7 +10,7 @@
 --    NULL = approved by code older than that), deletion record.
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.tenant_code,
+  t.organization_code,
   t.db_name,
   t.status,
   t.kyc_status,
@@ -21,8 +21,8 @@ SELECT
   t.provisioning_error,
   t.status_before_deletion,
   t.deletion_requested_at
-FROM tenants t
-WHERE t.tenant_code = 'GYM-4814C134';
+FROM organizations t
+WHERE t.organization_code = 'GYM-4814C134';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. Its database: when its tables were made. A first table before 2026-09-26 means it was
@@ -30,17 +30,17 @@ WHERE t.tenant_code = 'GYM-4814C134';
 --    (v11) and payouts (v12) are created by migrations or by the model sync of later code.
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.tenant_code,
+  t.organization_code,
   COUNT(*) AS table_count,
   MIN(x.CREATE_TIME) AS first_table_created,
   MAX(x.CREATE_TIME) AS last_table_created,
   SUM(CASE WHEN x.TABLE_NAME = 'capacity_outbox' THEN 1 ELSE 0 END) AS has_capacity_outbox,
   SUM(CASE WHEN x.TABLE_NAME = 'idempotency_records' THEN 1 ELSE 0 END) AS has_idempotency_records,
   SUM(CASE WHEN x.TABLE_NAME = 'payouts' THEN 1 ELSE 0 END) AS has_payouts
-FROM tenants t
+FROM organizations t
 JOIN information_schema.TABLES x ON x.TABLE_SCHEMA = t.db_name
-WHERE t.tenant_code = 'GYM-4814C134'
-GROUP BY t.tenant_code;
+WHERE t.organization_code = 'GYM-4814C134'
+GROUP BY t.organization_code;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. Its hosting subscriptions, oldest first. An expired row followed by a new one around
@@ -54,9 +54,9 @@ SELECT
   s.end_date,
   s.created_at,
   s.updated_at
-FROM tenant_subscriptions s
-JOIN tenants t ON t.id = s.tenant_id
-WHERE t.tenant_code = 'GYM-4814C134'
+FROM organization_subscriptions s
+JOIN organizations t ON t.id = s.organization_id
+WHERE t.organization_code = 'GYM-4814C134'
 ORDER BY s.created_at;
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ ORDER BY s.created_at;
 --    (any status). has_* = 1 and 1 is healthy.
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.tenant_code,
+  t.organization_code,
   t.status,
   t.created_at,
   t.approved_at,
@@ -74,7 +74,7 @@ SELECT
      WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = 'schema_migrations') AS has_schema_migrations,
   (SELECT COUNT(*) FROM information_schema.COLUMNS c
      WHERE c.TABLE_SCHEMA = t.db_name AND c.TABLE_NAME = 'branches' AND c.COLUMN_NAME = 'currency') AS has_branches_currency
-FROM tenants t
+FROM organizations t
 WHERE t.db_name IS NOT NULL
   AND (t.created_at >= '2026-10-24'
        OR t.approved_at >= '2026-10-24'

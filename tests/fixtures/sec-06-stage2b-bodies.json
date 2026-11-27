@@ -3,15 +3,15 @@
  "routes": [
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/invoices",
+   "path": "/api/v1/admin/organizations/:p/invoices",
    "allowed": [
     "description",
     "dueDate",
     "notes",
+    "organizationSubscriptionId",
     "status",
     "subtotal",
-    "taxAmount",
-    "tenantSubscriptionId"
+    "taxAmount"
    ],
    "clientKeys": [
     "description",
@@ -20,12 +20,12 @@
     "status",
     "subtotal",
     "taxAmount",
-    "tenantSubscriptionId"
+    "organizationSubscriptionId"
    ]
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/admin/tenants/:p/invoices/:p",
+   "path": "/api/v1/admin/organizations/:p/invoices/:p",
    "allowed": [
     "dueDate",
     "notes",
@@ -112,7 +112,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/auth/tenant-invitations/accept",
+   "path": "/api/v1/auth/organization-invitations/accept",
    "allowed": [
     "fullName",
     "password",
@@ -125,7 +125,7 @@
    "method": "POST",
    "path": "/api/v1/billing/android/sync",
    "allowed": [
-    "organizationId",
+    "businessId",
     "productId",
     "purchaseToken"
    ],
@@ -150,7 +150,7 @@
    "method": "POST",
    "path": "/api/v1/billing/ios/sync",
    "allowed": [
-    "organizationId",
+    "businessId",
     "transactionId"
    ],
    "clientKeys": [
@@ -214,7 +214,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/branches",
+   "path": "/api/v1/organizations/me/branches",
    "allowed": [
     "address",
     "addressLine1",
@@ -222,6 +222,7 @@
     "areaId",
     "areaRequestId",
     "branchName",
+    "businessId",
     "category",
     "cityId",
     "closingTime",
@@ -232,7 +233,6 @@
     "facilitiesJson",
     "floorArea",
     "googlePlaceId",
-    "gymListingId",
     "hours",
     "imagesJson",
     "latitude",
@@ -260,7 +260,7 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/gyms/branches/:p",
+   "path": "/api/v1/organizations/me/branches/:p",
    "allowed": [
     "address",
     "areaId",
@@ -299,7 +299,7 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/gyms/profile",
+   "path": "/api/v1/organizations/me/businesses/:p/profile",
    "allowed": [
     "address",
     "category",
@@ -359,6 +359,7 @@
     "areaId",
     "areaRequestId",
     "branchName",
+    "businessId",
     "category",
     "cityId",
     "closingTime",
@@ -370,7 +371,6 @@
     "facilitiesJson",
     "floorArea",
     "googlePlaceId",
-    "gymListingId",
     "hours",
     "imagesJson",
     "latitude",
@@ -397,7 +397,7 @@
     "facilitiesJson",
     "floorArea",
     "googlePlaceId",
-    "gymListingId",
+    "businessId",
     "imagesJson",
     "latitude",
     "longitude",
@@ -514,8 +514,8 @@
     "featureFlags",
     "featureFlagsJson",
     "maxBranches",
+    "maxBusinesses",
     "maxMembers",
-    "maxOrganizations",
     "maxTrainers",
     "name",
     "price"
@@ -527,7 +527,7 @@
     "featureFlagsJson",
     "maxBranches",
     "maxMembers",
-    "maxOrganizations",
+    "maxBusinesses",
     "maxTrainers",
     "name",
     "price"
@@ -605,48 +605,41 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/gym-profile",
+   "path": "/api/v1/organizations/:p/first-business",
+   "stage": 1,
    "allowed": [
-    "address",
-    "businessName",
     "coverImageUrl",
+    "firstBranch",
+    "firstBusinessDescription",
+    "firstBusinessName",
     "genderType",
-    "gymDescription",
-    "gymName",
-    "kycDocumentsJson",
-    "latitude",
     "logoUrl",
-    "longitude",
-    "mainBranchData"
+    "organizationName"
    ],
    "clientKeys": [
-    "address",
-    "businessName",
     "coverImageUrl",
+    "firstBranch",
+    "firstBusinessDescription",
+    "firstBusinessName",
     "genderType",
-    "gymDescription",
-    "gymName",
-    "kycDocumentsJson",
-    "latitude",
     "logoUrl",
-    "longitude",
-    "mainBranchData"
+    "organizationName"
    ]
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/register",
+   "path": "/api/v1/organizations/register",
    "allowed": [
     "areaId",
     "areaRequestId",
-    "businessName",
     "cityId",
     "email",
+    "organizationName",
     "phone"
    ],
    "clientKeys": [
     "areaId",
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"

@@ -41,8 +41,8 @@ const T = {}; // device templates by name
 
 beforeAll(async () => {
   w = await createWorld();
-  branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'GBS Branch' });
-  other = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Other Org Branch' });
+  branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'GBS Branch' });
+  other = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Other Org Branch' });
 
   // GymsEra members. X already holds PIN 1001 from a door at another organization's branch.
   for (const [k, name] of [['x', 'Xavier GymsEra'], ['ali', 'Ali Import'], ['sara', 'Sara Import'], ['omar', 'Omar Import'], ['old', 'Old Import'], ['q', 'Qasim Import']]) {
@@ -94,8 +94,8 @@ describe('hold: a device added "import first"', () => {
 
   test('reconcile, sweep, audit and Push now leave it alone', async () => {
     expect(await sync.reconcileMember(w.db1, m.sara.id, 'test')).not.toHaveProperty(door.id);
-    await jobs.syncTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, new Date());
-    await jobs.auditTenant({ tenantId: w.ctx.tenant1.id, db: w.db1 }, new Date(Date.now() + 23 * 3600000));
+    await jobs.syncTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, new Date());
+    await jobs.auditTenant({ organizationId: w.ctx.tenant1.id, db: w.db1 }, new Date(Date.now() + 23 * 3600000));
     const push = await owner().post(`/host/members/${m.sara.id}/device-push`, { deviceIds: [door.id] });
     expect(push.status).toBe(409);
     expect(code(push)).toBe('device_in_import');
@@ -402,7 +402,7 @@ describe('cut-over', () => {
 
 describe('size caps', () => {
   test('users and template size over the caps: truncated and counted, never stored', async () => {
-    const b = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const b = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const d = await w.device(w.db1, { branch: b, registryBody: REG, name: 'Big', importFirst: true });
     for (let i = 1; i <= 5; i++) d.sim.seedUser({ pin: 600 + i, name: `U${i}` });
     d.sim.seedBio({ pin: 601, type: 9, majorVer: '40', minorVer: '1', tmp: 'A'.repeat(40000) });
@@ -423,7 +423,7 @@ describe('size caps', () => {
 
 describe('cancel', () => {
   test('cancel releases the hold (refused once applied); identity checks stay', async () => {
-    const b = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const b = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const d = await w.device(w.db1, { branch: b, registryBody: REG, name: 'Cancel', importFirst: true });
     const res = await owner().post(`/host/devices/${d.id}/imports`, {});
     await d.sim.drain();

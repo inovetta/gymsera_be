@@ -51,10 +51,10 @@ const _getTravelerVisibleListingIds = async () => {
         const { Branch } = tenantDb.models;
         const branches = await Branch.findAll({
           where: TRAVELLER_VISIBLE_BRANCH(),
-          attributes: ['id', 'gymListingId'],
+          attributes: ['id', 'businessId'],
         });
         for (const b of branches) {
-          if (b.gymListingId) listingIds.push(b.gymListingId);
+          if (b.businessId) listingIds.push(b.businessId);
         }
       } catch (err) {
         // Ignore unreachable DBs
@@ -92,10 +92,10 @@ const entitlesTravellers = (row) =>
 const _liveTenants = async (attributes) => {
   const entitled = await TenantSubscription.findAll({
     where: { status: { [Op.in]: ENTITLING_STATUSES }, ...travellerEnvironmentWhere() },
-    attributes: ['tenantId'],
+    attributes: ['organizationId'],
     raw: true,
   });
-  const ids = [...new Set(entitled.map((r) => r.tenantId))];
+  const ids = [...new Set(entitled.map((r) => r.organizationId))];
   if (ids.length === 0) return [];
   return Tenant.findAll({ where: { status: 'ACTIVE', id: { [Op.in]: ids } }, attributes });
 };
@@ -107,8 +107,8 @@ const _liveTenants = async (attributes) => {
 const isLiveForTravellers = async (id, { fresh = false } = {}) => {
   const live = await _getAllActiveBranches({ fresh });
   if (live.some((b) => b.id === id)) return true;
-  const listing = await GymListing.findByPk(id, { attributes: ['tenantId', 'status'] });
-  return !!listing && listing.status === 'ACTIVE' && live.some((b) => b.tenantId === listing.tenantId);
+  const listing = await GymListing.findByPk(id, { attributes: ['organizationId', 'status'] });
+  return !!listing && listing.status === 'ACTIVE' && live.some((b) => b.organizationId === listing.organizationId);
 };
 
 /** NEW-159: a booking (or its quote) is for a branch that is live right now (fresh: it authorizes a write). */
@@ -124,8 +124,8 @@ const assertBranchBookable = async (branchId) => {
  * and spaces) read once ("heist", not "heist - heist"); otherwise "Organization · Branch".
  */
 const _sameName = (a, b) => a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase();
-const displayName = (organizationName, branchName) => {
-  const org = (organizationName || '').trim();
+const displayName = (businessName, branchName) => {
+  const org = (businessName || '').trim();
   const branch = (branchName || '').trim();
   if (!branch) return org;
   if (!org) return branch;
@@ -139,7 +139,8 @@ const _buildAllActiveBranches = async () => {
   const [tenants, listings, cities, areas] = await Promise.all([
     _liveTenants(['id', 'connectionStringEncrypted', 'cityId', 'areaId', 'areaStatus']),
     GymListing.findAll({
-      where: { status: 'ACTIVE' },
+      // NEW-303 M2 (enterprise §1.4): travellers see only approved businesses; the plan check is _liveTenants.
+      where: { status: 'ACTIVE', kycStatus: 'APPROVED' },
       include: [
         { model: City, as: 'city', attributes: ['id', 'name'] },
         { model: Area, as: 'area', attributes: ['id', 'name', 'cityId'] },
@@ -190,17 +191,18 @@ const _buildAllActiveBranches = async () => {
           }),
           MembershipPlan.findAll({
             where: { status: 'ACTIVE', isPublic: true },
-            attributes: ['price', 'branchId', 'isFeatured'],
+            attributes: ['price', 'businessId', 'branchId', 'isFeatured'],
             raw: true,
           })
         ]);
 
         for (const b of branches) {
-          const listing = b.gymListingId ? listingMap.get(b.gymListingId) : null;
-          const gym = gymMap.get(b.gymId) || gyms[0];
+          const listing = b.businessId ? listingMap.get(b.businessId) : null;
+          const gym = gymMap.get(b.businessId);
+          if (!listing || !gym) continue;
 
           // Compute branch-specific minPrice dynamically based on public plans
-          const branchPlans = plans.filter(p => p.branchId === null || p.branchId === b.id);
+          const branchPlans = plans.filter(p => p.businessId === b.businessId && (p.branchId === null || p.branchId === b.id));
           // Only show branches that have at least 1 active public plan
           if (branchPlans.length === 0) continue;
 
@@ -218,21 +220,23 @@ const _buildAllActiveBranches = async () => {
           // Map to unified branch object
           const mappedBranch = {
             id: b.id, // primary unit is branch id!
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             branchId: b.id,
-            gymId: gym.id,
+            businessId: gym.id,
             cityId: finalCityId,
             areaId: finalAreaId,
-            title: displayName(gym.name, b.branchName),
-            organizationName: gym.name || null,
+            displayName: displayName(gym.name, b.branchName),
+            businessName: gym.name || null,
+            businessVerified: !!listing.verifiedAt, // D11
             branchName: b.branchName || null,
-            shortDescription: gym.description || b.tagline,
+            description: gym.description || b.tagline,
             logoUrl: gym.logoUrl,
             // BUG-28: the branch's first photo, else the organization's cover or first photo, else
             // the listing's cover; null = the client's neutral placeholder.
             coverImageUrl: _firstPhoto(b.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || (listing && listing.coverImageUrl) || null,
-            organization: {
+            business: {
               name: gym.name || null,
+              businessVerified: !!listing.verifiedAt,
               description: gym.description || null,
               logoUrl: gym.logoUrl || null,
               coverImageUrl: gym.coverImageUrl || null,
@@ -251,7 +255,6 @@ const _buildAllActiveBranches = async () => {
             minPrice,
             // NEW-145: the price is in the branch's currency (GLB-02, BUG-09).
             currency: b.currency || DEFAULT_CURRENCY,
-            gymListingId: b.gymListingId || null,
             status: 'ACTIVE',
             createdAt: b.createdAt,
             city: (listing && listing.city) ? listing.city : (cityMap.get(finalCityId) || null),
@@ -304,7 +307,7 @@ const filterBranches = (branches, {
   }
   if (search) {
     const s = search.toLowerCase();
-    filtered = filtered.filter(b => b.title?.toLowerCase().includes(s));
+    filtered = filtered.filter(b => b.displayName?.toLowerCase().includes(s));
   }
   if (priceMin !== undefined && priceMin !== null && priceMin !== '') filtered = filtered.filter(b => b.minPrice >= parseFloat(priceMin));
   if (priceMax !== undefined && priceMax !== null && priceMax !== '') filtered = filtered.filter(b => b.minPrice <= parseFloat(priceMax));
@@ -393,7 +396,7 @@ const listGyms = async ({
   const offset = (page - 1) * limit;
   const paginated = sorted.slice(offset, offset + limit);
 
-  return { gyms: paginated, branches: paginated, pagination: buildPagination(sorted.length, page, limit) };
+  return { branches: paginated, pagination: buildPagination(sorted.length, page, limit) };
 };
 
 /**
@@ -406,7 +409,7 @@ const _tenantsBranchOwnerFirst = async (tenants, branchId) => {
     const snapshot = await _getAllActiveBranches();
     const hit = snapshot.find((b) => b.id === branchId || b.branchId === branchId);
     if (!hit) return tenants;
-    return [...tenants.filter((t) => t.id === hit.tenantId), ...tenants.filter((t) => t.id !== hit.tenantId)];
+    return [...tenants.filter((t) => t.id === hit.organizationId), ...tenants.filter((t) => t.id !== hit.organizationId)];
   } catch (_) {
     return tenants;
   }
@@ -421,7 +424,7 @@ const getGym = async (id) => {
       {
         model: Tenant,
         as: 'tenant',
-        attributes: ['id', 'businessName', 'email', 'phone'],
+        attributes: ['id', 'organizationName', 'email', 'phone'],
         include: [
           {
             model: User,
@@ -449,15 +452,15 @@ const getGym = async (id) => {
         const branch = await Branch.findByPk(id);
         if (branch) {
           branchRecord = branch;
-          if (branch.gymListingId) {
-            listing = await GymListing.findByPk(branch.gymListingId, {
+          if (branch.businessId) {
+            listing = await GymListing.findByPk(branch.businessId, {
               include: [
                 { model: City, as: 'city', attributes: ['id', 'name'] },
                 { model: Area, as: 'area', attributes: ['id', 'name'] },
                 {
                   model: Tenant,
                   as: 'tenant',
-                  attributes: ['id', 'businessName', 'email', 'phone'],
+                  attributes: ['id', 'organizationName', 'email', 'phone'],
                   include: [
                     {
                       model: User,
@@ -485,7 +488,7 @@ const getGym = async (id) => {
   let branches = [];
   try {
     const tenant = await Tenant.findOne({
-      where: { id: listing.tenantId, status: 'ACTIVE' },
+      where: { id: listing.organizationId, status: 'ACTIVE' },
       attributes: ['id', 'connectionStringEncrypted'],
     });
 
@@ -493,77 +496,56 @@ const getGym = async (id) => {
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
       const { MembershipPlan, Branch, Gym } = tenantDb.models;
 
-      let gymIdToUse = null;
+      const gymIdToUse = listing.id;
       let resolvedBranch = branchRecord || null;
-      if (branchRecord) {
-        gymIdToUse = branchRecord.gymId;
-      } else if (listing && listing.branchId) {
-        const primaryBranch = await Branch.findByPk(listing.branchId);
+      if (!branchRecord && listing.primaryBranchId) {
+        const primaryBranch = await Branch.findOne({ where: { id: listing.primaryBranchId, businessId: listing.id, status: 'ACTIVE' } });
         if (primaryBranch) {
-          gymIdToUse = primaryBranch.gymId;
           resolvedBranch = primaryBranch;
         }
       }
 
-      if (!gymIdToUse) {
-        const fallbackBranch = await Branch.findOne({ where: { status: 'ACTIVE' } });
-        if (fallbackBranch) {
-          gymIdToUse = fallbackBranch.gymId;
-          resolvedBranch = fallbackBranch;
-        }
+      if (!resolvedBranch) {
+        resolvedBranch = await Branch.findOne({
+          where: { businessId: listing.id, status: 'ACTIVE' },
+          order: [['createdAt', 'ASC'], ['id', 'ASC']],
+        });
       }
 
-      branchRecord = resolvedBranch;
-
-      const gym = gymIdToUse
-        ? await Gym.findByPk(gymIdToUse)
-        : await Gym.findOne();
+      const gym = await Gym.findByPk(gymIdToUse);
 
       [membershipPlans, branches] = await Promise.all([
         MembershipPlan.findAll({
-          where: { status: 'ACTIVE', isPublic: true },
-          attributes: ['id', 'name', 'description', 'durationType', 'durationValue', 'price', 'joiningFee', 'securityFee', 'isTrial', 'branchId', 'freezeLimitDays', 'visitLimit', 'isFeatured'],
+          where: { businessId: listing.id, status: 'ACTIVE', isPublic: true },
+          attributes: ['id', 'businessId', 'name', 'description', 'durationType', 'durationValue', 'price', 'joiningFee', 'securityFee', 'isTrial', 'branchId', 'freezeLimitDays', 'visitLimit', 'isFeatured'],
           order: [['price', 'ASC']],
         }),
         Branch.findAll({
           where: {
             ...TRAVELLER_VISIBLE_BRANCH(),
-            ...(gymIdToUse ? { gymId: gymIdToUse } : {}),
+            businessId: gymIdToUse,
           },
           // R-113 H6: hoursJson and timezone for the week and "open now" (Branch#toJSON).
-          attributes: ['id', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hoursJson', 'timezone', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
+          attributes: ['id', 'businessId', 'branchName', 'address', 'phone', 'openingTime', 'closingTime', 'hoursJson', 'timezone', 'facilitiesJson', 'imagesJson', 'latitude', 'longitude', 'cityId', 'areaId'],
           order: [['createdAt', 'ASC']],
         }),
       ]);
 
-      // Resolve branchId -> gymListingId mapping
-      const tenantListings = await GymListing.findAll({
-        where: { tenantId: listing.tenantId, status: 'ACTIVE' },
-        attributes: ['id', 'branchId'],
-      });
-
-      const branchToListingMap = {};
-      for (const tl of tenantListings) {
-        if (tl.branchId) {
-          branchToListingMap[tl.branchId] = tl.id;
-        }
-      }
-
       branches = branches.map(b => {
         // R-113 H6: the same branch object as everywhere else (Branch#toJSON adds the week and "open now").
         const plainBranch = b.toJSON();
-        plainBranch.gymListingId = branchToListingMap[plainBranch.id] || null;
         return plainBranch;
       });
 
       // If we found by branchRecord, let's override title and other branch specific fields in the listing
       if (branchRecord && gym) {
         listing = listing.get({ plain: true });
-        listing.id = branchRecord.id; // Override gymListingId with branchId so client matches
-        listing.title = displayName(gym.name, branchRecord.branchName);
-        listing.organizationName = gym.name || null;
+        listing.id = branchRecord.id; // Override businessId with branchId so client matches
+        listing.title = displayName(gym.name, branchRecord.branchName); // card label; becomes displayName with the discovery rows (group 3)
+        listing.businessName = gym.name || null;
+        listing.businessVerified = !!listing.verifiedAt; // D11
         listing.branchName = branchRecord.branchName || null;
-        listing.shortDescription = gym.description || branchRecord.tagline;
+        listing.shortDescription = gym.description || branchRecord.tagline; // becomes description with the discovery rows (group 3)
         listing.coverImageUrl = _firstPhoto(branchRecord.imagesJson) || gym.coverImageUrl || _firstPhoto(gym.imagesJson) || listing.coverImageUrl || null;
         listing.latitude = branchRecord.latitude ? parseFloat(branchRecord.latitude) : listing.latitude;
         listing.longitude = branchRecord.longitude ? parseFloat(branchRecord.longitude) : listing.longitude;
@@ -597,7 +579,7 @@ const getGym = async (id) => {
       // NEW-145: the detail's price is in the branch's currency.
       listing.currency = (resolvedBranch && resolvedBranch.currency) || DEFAULT_CURRENCY;
       if (listing.reviewCount === undefined) {
-        listing.reviewCount = await GymReview.count({ where: { gymListingId: listing.id, status: 'APPROVED' } });
+        listing.reviewCount = await GymReview.count({ where: { businessId: listing.id, status: 'APPROVED' } });
       }
       // BUG-09: each plan says which currency it is sold in.
       await require('./membership-plan.service').withCurrency(tenantDb, membershipPlans, resolvedBranch ? resolvedBranch.id : null);
@@ -609,13 +591,60 @@ const getGym = async (id) => {
   }
 
   const normalizedGym = _normalizeFacilities(listing);
+  normalizedGym.businessVerified = !!listing.verifiedAt;
   // NEW-283: the brand is the account's (R-112). With two or more live organisations it would show the
   // first brand's name under another brand's gyms, so it is sent only for exactly one live organisation.
-  if (normalizedGym.tenant && normalizedGym.tenantId) {
-    const liveBrands = await GymListing.count({ where: { tenantId: normalizedGym.tenantId, status: 'ACTIVE' } });
-    if (liveBrands !== 1) normalizedGym.tenant = { ...normalizedGym.tenant, businessName: null };
+  if (normalizedGym.tenant && normalizedGym.organizationId) {
+    const liveBrands = await GymListing.count({ where: { organizationId: normalizedGym.organizationId, status: 'ACTIVE' } });
+    if (liveBrands !== 1) normalizedGym.tenant = { ...normalizedGym.tenant, organizationName: null };
   }
   return { gym: { ...normalizedGym, branches }, membershipPlans };
+};
+
+// ── getBusinessPublic / getBranchDetail (API contract v2 §3: BusinessPublic, BranchDetail) ───────────────────────
+// One id, one meaning (rule 4): `/discovery/businesses/:businessId` takes a business id, `/discovery/branches/:branchId` a branch id.
+// Both are built from getGym (which also decides "live for travellers"), reshaped to the contract keys. The organization's
+// name, its `tenant` object and its review fields are never sent (D3).
+const BUSINESS_PUBLIC_KEYS = [
+  'id', 'organizationId', 'primaryBranchId', 'cityId', 'areaId', 'name', 'description', 'logoUrl', 'coverImageUrl',
+  'genderType', 'averageRating', 'reviewCount', 'latitude', 'longitude', 'isFeatured', 'contactPhone', 'website',
+  'facilitiesJson', 'imagesJson', 'category', 'establishedYear', 'floorArea', 'postalCode', 'country', 'minPrice',
+  'currency', 'businessVerified', 'city', 'area',
+];
+const _toBusinessPublic = (gym) => {
+  const out = {};
+  for (const k of BUSINESS_PUBLIC_KEYS) out[k] = gym[k] === undefined ? null : gym[k];
+  const owner = gym.tenant && gym.tenant.owner;
+  out.host = owner ? { id: owner.id, fullName: owner.fullName, profileImageUrl: owner.profileImageUrl, createdAt: owner.createdAt } : null;
+  out.branches = gym.branches || [];
+  return out;
+};
+
+const getBusinessPublic = async (businessId) => {
+  const listing = await GymListing.findByPk(businessId, { attributes: ['id'] });
+  if (!listing) throw createError('Business not found', 404);
+  const { gym, membershipPlans } = await getGym(businessId);
+  return { business: _toBusinessPublic(gym), membershipPlans };
+};
+
+const getBranchDetail = async (branchId) => {
+  const cards = await _getAllActiveBranches();
+  const card = cards.find((b) => b.id === branchId);
+  if (!card) throw createError('This gym is not available right now.', 404, 'gym_not_available');
+  const currencyOf = new Map(cards.map((b) => [b.id, b.currency]));
+  const { business, membershipPlans } = await getBusinessPublic(card.businessId);
+  const { branches: _branches, ...businessOnly } = business;
+  return {
+    branch: card,
+    business: businessOnly,
+    // BUG-09: a plan says which currency it is sold in: its own branch's, and at this branch a business-wide plan is sold in this branch's currency.
+    membershipPlans: membershipPlans
+      .filter((p) => p.branchId == null || p.branchId === branchId)
+      .map((p) => {
+        const plain = typeof p.toJSON === 'function' ? p.toJSON() : { ...p };
+        return { ...plain, currency: (plain.branchId && currencyOf.get(plain.branchId)) || card.currency };
+      }),
+  };
 };
 
 // ── listCities ────────────────────────────────────────────────────────────────
@@ -689,7 +718,7 @@ const nearbyGyms = async ({ lat, lng, radiusKm = 10, limit = 20, page = 1, audie
   const offset = (page - 1) * limit;
   const paginated = sorted.slice(offset, offset + parseInt(limit));
 
-  return { gyms: paginated, branches: paginated };
+  return { branches: paginated };
 };
 
 // ── mapGyms ───────────────────────────────────────────────────────────────────
@@ -732,22 +761,22 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
   const branches = await _getAllActiveBranches();
   const byGym = new Map();
   for (const b of branches) {
-    const key = `${b.tenantId}:${b.gymId}`;
+    const key = `${b.organizationId}:${b.businessId}`;
     if (!byGym.has(key)) byGym.set(key, []);
     byGym.get(key).push(b);
   }
 
   const orgs = [...byGym.values()].map((list) => {
     const first = list[0];
-    const org = first.organization || {};
+    const org = first.business || {};
     const reviewCount = list.reduce((n, b) => n + (b.reviewCount || 0), 0);
     // Weighted by each branch's approved reviews (BUG-27); 0 with none.
     const ratingSum = list.reduce((n, b) => n + (b.averageRating || 0) * (b.reviewCount || 0), 0);
     const averageRating = reviewCount > 0 ? Math.round((ratingSum / reviewCount) * 10) / 10 : 0;
     return {
-      id: first.gymId,
-      gymId: first.gymId,
-      tenantId: first.tenantId,
+      id: first.businessId,
+      businessId: first.businessId,
+      organizationId: first.organizationId,
       name: org.name,
       description: org.description,
       logoUrl: org.logoUrl,
@@ -762,18 +791,18 @@ const listOrganizations = async ({ featured, page = 1, limit = 12 }) => {
 
   const offset = (page - 1) * limit;
   return {
-    organizations: orgs.slice(offset, offset + parseInt(limit)),
+    businesses: orgs.slice(offset, offset + parseInt(limit)),
     pagination: buildPagination(orgs.length, page, limit),
   };
 };
 
 // ── listOrganizationBranches ──────────────────────────────────────────────────
-const listOrganizationBranches = async (gymId) => {
+const listOrganizationBranches = async (businessId) => {
   const branches = (await _getAllActiveBranches())
-    .filter((b) => b.gymId === gymId)
+    .filter((b) => b.businessId === businessId)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   if (branches.length === 0) throw createError('Organization not found', 404);
-  return { gyms: branches, branches };
+  return { branches };
 };
 
 // ── getGymListingByIdentifier (helper) ────────────────────────────────────────
@@ -782,11 +811,11 @@ const getGymListingByIdentifier = async (identifier) => {
   let listing = await GymListing.findByPk(identifier);
   if (listing) return listing;
 
-  // 2. Branch ID → gymListingId lookup
+  // 2. Branch ID → businessId lookup
   const branches = await _getAllActiveBranches();
   const matched = branches.find(b => b.id === identifier || b.branchId === identifier);
-  if (matched && matched.gymListingId) {
-    listing = await GymListing.findByPk(matched.gymListingId);
+  if (matched && matched.businessId) {
+    listing = await GymListing.findByPk(matched.businessId);
     if (listing) return listing;
   }
 
@@ -794,9 +823,9 @@ const getGymListingByIdentifier = async (identifier) => {
   //    so reviews summary/list don't 404 (they'll just return empty data)
   if (matched) {
     return {
-      id: matched.gymListingId || matched.id,
-      tenantId: matched.tenantId,
-      title: matched.title,
+      id: matched.businessId || matched.id,
+      organizationId: matched.organizationId,
+      title: matched.displayName,
       averageRating: matched.averageRating || 0,
       _isSynthetic: true,
     };
@@ -807,8 +836,8 @@ const getGymListingByIdentifier = async (identifier) => {
 
 // ── _recalculateAverageRating (helper) ────────────────────────────────────────
 // Recalculates averageRating on GymListing based on all approved reviews for that branch.
-const _recalculateAverageRating = async (gymListingId, branchId) => {
-  const where = { gymListingId, status: 'APPROVED' };
+const _recalculateAverageRating = async (businessId, branchId) => {
+  const where = { businessId, status: 'APPROVED' };
   if (branchId) where.branchId = branchId;
 
   const result = await GymReview.findOne({
@@ -821,7 +850,7 @@ const _recalculateAverageRating = async (gymListingId, branchId) => {
   // Update listing-level average (reflects the overall gym, not per-branch)
   await GymListing.update(
     { averageRating: parseFloat(avg.toFixed(2)) },
-    { where: { id: gymListingId } }
+    { where: { id: businessId } }
   );
 };
 
@@ -831,16 +860,16 @@ const _recalculateAverageRating = async (gymListingId, branchId) => {
  * branchId is required to scope reviews to a specific branch.
  * If no GymListing is found (synthetic), we still return the branch-scoped summary.
  */
-const getReviewsSummary = async (gymListingId, branchId, { viewerUserId = null } = {}) => {
+const getReviewsSummary = async (businessId, branchId, { viewerUserId = null } = {}) => {
   const where = { status: 'APPROVED' };
   if (branchId) {
     where.branchId = branchId;
-  } else if (gymListingId) {
-    where.gymListingId = gymListingId;
+  } else if (businessId) {
+    where.businessId = businessId;
   }
 
   // Try to get stored average from listing for display
-  const listing = await GymListing.findByPk(gymListingId).catch(() => null);
+  const listing = await GymListing.findByPk(businessId).catch(() => null);
   if (!listing && !branchId) {
     return {
       averageRating: 0,
@@ -887,21 +916,21 @@ const getReviewsSummary = async (gymListingId, branchId, { viewerUserId = null }
   };
 };
 
-const submitReview = async (userId, gymListingId, branchId, { rating, title, body }) => {
+const submitReview = async (userId, businessId, branchId, { rating, title, body }) => {
   if (!branchId) throw createError('branchId is required to submit a review', 400);
   // NEW-256: the word filter runs before anything else is looked up or stored.
   await require('./moderation-words.service').assertClean(title, body);
 
-  // Find the tenantId of this branch (fresh: this read authorizes a write)
+  // Find the organizationId of this branch (fresh: this read authorizes a write)
   const branches = await _getAllActiveBranches({ fresh: true });
   const matched = branches.find(b => b.id === branchId || b.branchId === branchId);
   if (!matched) throw createError('Branch not found', 404);
 
-  const tenantId = matched.tenantId;
+  const organizationId = matched.organizationId;
 
   // Retrieve the tenant DB connection to query its source-of-truth subscriptions table
   const tenant = await Tenant.findOne({
-    where: { id: tenantId, status: 'ACTIVE' },
+    where: { id: organizationId, status: 'ACTIVE' },
   });
   if (!tenant || !tenant.connectionStringEncrypted) {
     throw createError('Gym organization database is not active', 403);
@@ -945,13 +974,13 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
       status: 'PENDING',
       adminNote: null,
     });
-    await _recalculateAverageRating(gymListingId, branchId);
+    await _recalculateAverageRating(businessId, branchId);
   } else {
     review = await GymReview.create({
-      gymListingId: gymListingId || null,
+      businessId: businessId || null,
       branchId,
       userId,
-      tenantId,
+      organizationId,
       rating,
       title: title || null,
       body: body || null,
@@ -976,7 +1005,7 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
         type: 'review_submitted',
         title: 'New Review Submitted',
         message: `New review submitted for ${branchName} by ${travelerName}: ${rating} stars.`,
-        deepLink: '/host/listings',
+        deepLink: '/host/businesses',
         metadataJson: { branchId, reviewId: finalReview.id },
       });
     }
@@ -992,7 +1021,7 @@ const submitReview = async (userId, gymListingId, branchId, { rating, title, bod
  * Branch-scoped review listing.
  * If branchId is provided, only returns reviews for that specific branch.
  */
-const listReviews = async (gymListingId, branchId, { page, limit, offset, sort = 'recent', filter = 'all', viewerUserId = null }) => {
+const listReviews = async (businessId, branchId, { page, limit, offset, sort = 'recent', filter = 'all', viewerUserId = null }) => {
   const where = { status: 'APPROVED' };
 
   // NEW-256: a review the viewer reported is hidden from them at once.
@@ -1002,8 +1031,8 @@ const listReviews = async (gymListingId, branchId, { page, limit, offset, sort =
   // Scope to branch if provided, else fall back to listing-level
   if (branchId) {
     where.branchId = branchId;
-  } else if (gymListingId) {
-    where.gymListingId = gymListingId;
+  } else if (businessId) {
+    where.businessId = businessId;
   }
 
   if (filter && filter !== 'all' && filter !== 'All') {
@@ -1036,16 +1065,16 @@ const listReviews = async (gymListingId, branchId, { page, limit, offset, sort =
 };
 
 // ── adminListReviews ──────────────────────────────────────────────────────────
-const adminListReviews = async ({ gymListingId, status, page, limit, offset }) => {
+const adminListReviews = async ({ businessId, status, page, limit, offset }) => {
   const where = {};
-  if (gymListingId) where.gymListingId = gymListingId;
+  if (businessId) where.businessId = businessId;
   if (status) where.status = status;
 
   const { count, rows } = await GymReview.findAndCountAll({
     where,
     include: [
       { model: User, as: 'reviewer', attributes: ['id', 'fullName', 'email'] },
-      { model: GymListing, as: 'gym', attributes: ['id', 'title'] },
+      { model: GymListing, as: 'gym', attributes: ['id', 'name'] },
     ],
     order: [['createdAt', 'DESC']],
     limit,
@@ -1058,13 +1087,13 @@ const adminListReviews = async ({ gymListingId, status, page, limit, offset }) =
   // A branch travellers cannot see is not in the snapshot: the organization's title is used.
   let titles = new Map();
   try {
-    titles = new Map((await _getAllActiveBranches()).map((b) => [b.branchId, b.title]));
+    titles = new Map((await _getAllActiveBranches()).map((b) => [b.branchId, b.displayName]));
   } catch (err) {
     console.warn('[adminListReviews] branch titles unavailable:', err.message);
   }
   const reviews = rows.map((r) => {
     const json = typeof r.toJSON === 'function' ? r.toJSON() : { ...r };
-    json.gymTitle = (r.branchId && titles.get(r.branchId)) || (json.gym && json.gym.title) || null;
+    json.businessName = (r.branchId && titles.get(r.branchId)) || (json.gym && json.gym.name) || null;
     return json;
   });
 
@@ -1087,15 +1116,15 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
   const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
   await review.update({ status: newStatus, adminNote: adminNote || null });
 
-  await _recalculateAverageRating(review.gymListingId);
+  await _recalculateAverageRating(review.businessId);
 
   // Create unified Traveler and Host notifications
   try {
     const { Tenant, GymListing } = require('../models/platform');
     const notificationsService = require('./notifications.service');
-    const listing = await GymListing.findByPk(review.gymListingId);
-    const branchName = listing ? listing.title : 'Gym';
-    const tenant = await Tenant.findByPk(review.tenantId);
+    const listing = await GymListing.findByPk(review.businessId);
+    const branchName = listing ? listing.name : 'Gym';
+    const tenant = await Tenant.findByPk(review.organizationId);
 
     if (action === 'approve') {
       await notificationsService.createNotification({
@@ -1126,7 +1155,7 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
           type: 'review_rejected',
           title: 'Review Flagged by Admin',
           message: `A review for ${branchName} was hidden by admin. Reason: ${adminNote || 'None'}.`,
-          deepLink: '/host/listings',
+          deepLink: '/host/businesses',
           metadataJson: { reviewId: review.id },
         });
       }
@@ -1140,8 +1169,8 @@ const moderateReview = async (reviewId, { action, adminNote }) => {
 
 
 const _resolveTenantId = async (id) => {
-  const listing = await GymListing.findByPk(id, { attributes: ['tenantId'] });
-  if (listing) return listing.tenantId;
+  const listing = await GymListing.findByPk(id, { attributes: ['organizationId'] });
+  if (listing) return listing.organizationId;
 
   // Search by branch ID
   const tenants = await Tenant.findAll({
@@ -1206,20 +1235,20 @@ const travellerPaymentDetails = (json) => {
   return Object.keys(details).length > 0 ? details : null;
 };
 
-const getPaymentDetails = async (gymListingId) => {
-  const tenantId = await _resolveTenantId(gymListingId);
-  if (!tenantId || !(await isLiveForTravellers(gymListingId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
+const getPaymentDetails = async (businessId) => {
+  const organizationId = await _resolveTenantId(businessId);
+  if (!organizationId || !(await isLiveForTravellers(businessId))) throw createError('This gym is not available right now.', 404, 'gym_not_available');
 
   // P7b (R-94): the payout account of this organization (or of the branch's organization), else
   // the tenant default. `id` is an organization (gym listing) id or a branch id.
   const payoutAccountService = require('./payout-account.service');
-  const listing = await GymListing.findByPk(gymListingId, { attributes: ['id', 'tenantId'] });
-  const account = listing && listing.tenantId === tenantId
-    ? await payoutAccountService.resolve({ tenantId, organizationId: listing.id })
+  const listing = await GymListing.findByPk(businessId, { attributes: ['id', 'organizationId'] });
+  const account = listing && listing.organizationId === organizationId
+    ? await payoutAccountService.resolve({ organizationId, businessId: listing.id })
     : await payoutAccountService.resolveForBranch(
-      await TenantDbManager.getConnection(tenantId, (await Tenant.findByPk(tenantId, { attributes: ['connectionStringEncrypted'] })).connectionStringEncrypted),
-      tenantId,
-      gymListingId
+      await TenantDbManager.getConnection(organizationId, (await Tenant.findByPk(organizationId, { attributes: ['connectionStringEncrypted'] })).connectionStringEncrypted),
+      organizationId,
+      businessId
     );
 
   return {
@@ -1227,74 +1256,34 @@ const getPaymentDetails = async (gymListingId) => {
   };
 };
 
-const listTopHosts = async () => {
-  const branches = await _getAllActiveBranches();
-
-  // Group branches by tenantId
-  const tenantBranchesMap = {};
-  for (const b of branches) {
-    if (!tenantBranchesMap[b.tenantId]) {
-      tenantBranchesMap[b.tenantId] = [];
-    }
-    tenantBranchesMap[b.tenantId].push(b);
+const listTopBusinesses = async () => {
+  const cards = await _getAllActiveBranches();
+  const byBusiness = new Map();
+  for (const b of cards) {
+    if (!byBusiness.has(b.businessId)) byBusiness.set(b.businessId, []);
+    byBusiness.get(b.businessId).push(b);
   }
-
-  // Get active tenants with owners
-  const tenants = await Tenant.findAll({
-    where: { status: 'ACTIVE' },
-    include: [
-      {
-        model: User,
-        as: 'owner',
-        attributes: ['id', 'fullName', 'profileImageUrl'],
-      },
-    ],
-  });
-
-  // Fetch approved review stats for tenants
-  const reviewStats = await GymReview.findAll({
-    attributes: [
-      'tenantId',
-      [fn('AVG', col('rating')), 'avgRating'],
-      [fn('COUNT', col('id')), 'reviewCount'],
-    ],
-    where: { status: 'APPROVED' },
-    group: ['tenantId'],
-    raw: true,
-  });
-
-  const ratingMap = new Map(
-    reviewStats.map((r) => [r.tenantId, parseFloat(parseFloat(r.avgRating || 0).toFixed(2))])
-  );
-  const reviewCountMap = new Map(reviewStats.map((r) => [r.tenantId, Number(r.reviewCount) || 0]));
-
-  const topHosts = tenants
-    .map((tenant) => {
-      const tenantBranches = tenantBranchesMap[tenant.id] || [];
-      const averageRating = ratingMap.get(tenant.id) || 0.0;
-
-      // Use first branch cover or owner avatar as fallback
-      const coverImageUrl = tenantBranches.length > 0 ? tenantBranches[0].coverImageUrl : null;
-      const logoUrl = tenant.owner ? tenant.owner.profileImageUrl : null;
-
+  // API contract v2 §3 TopBusiness: one row per business (was one per organization with the owner's name).
+  return [...byBusiness.values()]
+    .map((list) => {
+      const first = list[0];
+      const reviewCount = list.reduce((n, b) => n + (b.reviewCount || 0), 0);
+      const ratingSum = list.reduce((n, b) => n + (b.averageRating || 0) * (b.reviewCount || 0), 0);
+      const biz = first.business || {};
       return {
-        id: tenant.id,
-        tenantId: tenant.id,
-        businessName: tenant.businessName,
-        ownerName: tenant.owner ? tenant.owner.fullName : null,
-        logoUrl,
-        coverImageUrl,
-        averageRating,
-        // BUG-27: approved reviews; 0 = "New".
-        reviewCount: reviewCountMap.get(tenant.id) || 0,
-        branchesCount: tenantBranches.length,
-        branches: tenantBranches,
+        id: first.businessId,
+        businessId: first.businessId,
+        organizationId: first.organizationId,
+        businessName: first.businessName || biz.name || null,
+        logoUrl: biz.logoUrl || null,
+        coverImageUrl: biz.coverImageUrl || list.map((b) => b.coverImageUrl).find(Boolean) || null,
+        averageRating: reviewCount > 0 ? Math.round((ratingSum / reviewCount) * 100) / 100 : 0,
+        reviewCount, // BUG-27: approved reviews; 0 = "New"
+        branchCount: list.length,
+        branches: list,
       };
     })
-    .filter((host) => host.branchesCount > 0) // Only hosts with active branches
-    .sort((a, b) => b.averageRating - a.averageRating); // Sort by average rating descending
-
-  return topHosts;
+    .sort((a, b) => b.averageRating - a.averageRating || b.reviewCount - a.reviewCount);
 };
 
 module.exports = {
@@ -1303,6 +1292,9 @@ module.exports = {
   displayName,
   listGyms,
   getGym,
+  getBusinessPublic,
+  getBranchDetail,
+  BUSINESS_PUBLIC_KEYS,
   getPaymentDetails,
   isLiveForTravellers,
   entitlesTravellers,
@@ -1319,7 +1311,7 @@ module.exports = {
   moderateReview,
   getReviewsSummary,
   getGymListingByIdentifier,
-  listTopHosts,
+  listTopBusinesses,
   listOrganizations,
   listOrganizationBranches,
 };

@@ -6,6 +6,8 @@
 > and `--keep-admin`, tenant drops use only `tenants.db_name` (R-79), and `tests/regression/reset-platform-data.test.js`
 > passes in the full suite.
 
+> **R-120 / Release 1.1.0 (2026-11-27): schema & keep-list.** Platform migrations `p033`–`p038` renamed `tenants` → `organizations`, `tenant_subscriptions` → `organization_subscriptions`, `tenant_invitations` → `organization_invitations`, `user_org_index` → `user_organization_index`, `gym_listings` → `business_listings` (adding `first_branch_draft_json`, `kyc_*`), `gym_reviews` → `business_reviews`, `saved_gyms` → `saved_businesses`, and `user_gym_memberships` → `member_subscription_index`; organization DB migrations `030`–`032` renamed `gyms` → `businesses` and moved refund columns to `branches`. `platform-reset.service.js` classifies every base table in `information_schema.tables` (`KEEP_TABLES`, `users` `KEEP_ADMINS_ONLY`, or `EMPTY`), including keeping `moderation_words` (`p031`). Use `docs/sql/launch-wipe-inventory.sql` and `docs/sql/tenant-db-name-before-drop.sql` after `p033`–`p038`.
+
 Owner: Amir. Script: `src/scripts/reset-platform-data.js` (service `src/services/platform-reset.service.js`).
 Target: the Windows / IIS API server with MySQL 5.7. The database holds TEST data only (R-19), but the wipe cannot be
 undone except from the dumps in section 4. Do the steps in order and tick them.
@@ -28,11 +30,11 @@ Contents: [1 Where test data lives](#1-where-test-data-lives-and-what-to-keep) �
 
 | Place | What is there | Removed by | Keep |
 |---|---|---|---|
-| Platform database (`PLATFORM_DB_NAME`) | users, tenants, subscriptions, listings, reviews, messages, notifications, OTPs, refresh tokens, push tokens (`device_tokens`), access devices, billing events, payout accounts, audit logs, idempotency rows, … | the script (section 5): every table not in the keep list is emptied | `schema_migrations`, `billing_plans`, `billing_plan_prices`, `platform_packages` (plans catalogue), `cities`, `areas`, and the platform admins named with `--keep-admin` |
-| Tenant databases (one per tenant, name in `tenants.db_name`) | members' subscriptions, payments, invoices, ledger, staff, roles, device commands, biometric templates (encrypted), import staging, attendance | the script with `--drop-tenant-databases` | nothing |
-| Databases on the server that no tenant names (orphans, half-provisioned, scratch copies) | anything | **not** the script | owner decides each one (2.4) |
-| R2 public bucket (`R2_BUCKET`) | gym / tenant / listing / branch photos, plan posters, profile photos | by hand (section 6) | `cities/`, `areas/`, `profiles/<kept admin id>.*` |
-| R2 private bucket (`R2_KYC_BUCKET`, else `<R2_BUCKET>-kyc`) | KYC documents, payment proofs, plan-payment proofs, biometric photos, door capture photos | by hand (section 6) | nothing |
+| Platform database (`PLATFORM_DB_NAME`, 41 base tables at `v38`) | `organizations`, `organization_subscriptions`, `organization_invitations`, `user_organization_index`, `business_listings`, `business_reviews`, `saved_businesses`, `member_subscription_index`, messages, conversations, notifications, OTPs, refresh tokens, `device_tokens`, `access_devices`/`devices`/`device_members`/`unclaimed_device_contacts`, `content_reports`, `user_blocks`, `area_requests`/`area_request_links`/`area_aliases`, `billing_events`, `billing_offers`, `billing_plan_price_checks`, `capacity_events`, `payout_accounts`, `plan_payment_requests`, `platform_invoices`, `audit_logs`, `platform_audit_logs`, `idempotency_records`, non-admin `users` | the script (section 5): every base table outside `KEEP_TABLES` is emptied (`EMPTY`), and `users` keeps only named admins (`KEEP_ADMINS_ONLY`) | `schema_migrations`, `billing_plans`, `billing_plan_prices`, `platform_packages`, `cities`, `areas`, `moderation_words`, and the `PLATFORM_ADMIN` rows named with `--keep-admin` |
+| Organization databases (one per org, name in `organizations.db_name`, `030`–`032` `businesses`, `branches`, …) | members' subscriptions, payments, invoices, ledger, staff, roles, device commands, biometric templates (encrypted), import staging, attendance | **dropped** (`DROP DATABASE IF EXISTS`) by the script with `--drop-tenant-databases` (or left in place if omitted) | nothing (each new organization gets a clean DB provisioned at `v32` when approved) |
+| Databases on the server that no organization names (orphans, half-provisioned, scratch copies) | anything | **not** touched by the script | owner decides each one (2.4) |
+| R2 public bucket (`R2_BUCKET`) | business/branch/organization photos, plan posters, staging uploads (`hosts/`, `users/`), profile photos | by hand (section 6) | `cities/`, `areas/`, `profiles/<kept admin id>.*` |
+| R2 private bucket (`R2_KYC_BUCKET`, else `<R2_BUCKET>-kyc`) | organization & business KYC documents (`PROOF_OF_PREMISES`, `BUSINESS_REGISTRATION`, `OWNER_ID`), payment proofs, plan-payment proofs, biometric photos, door capture photos | by hand (section 6) | nothing |
 | API server disk | `logs\` (error journal `errors-*.jsonl`, `scheduled-*.log`), `iisnode\` stdout/stderr logs, `%TEMP%\gymsera-logs\`; local fallbacks `public\uploads\` and `storage\private\kyc\` (must be empty in production, SEC-08) | by hand (section 7) | `logs\reset-*.jsonl` from this wipe; `.env` |
 | Redis | not used in production (R-88, `DISABLE_REDIS=true`) | nothing to do | n/a |
 | Scheduled jobs | Task Scheduler tasks `GymsEra\*`. Job locks are MySQL `GET_LOCK` (held only while a job runs, nothing stored); job work rows live in the databases above | disabled before, enabled after | the tasks themselves |
@@ -211,16 +213,16 @@ node src\scripts\reset-platform-data.js --keep-admin <admin1@…>,<admin2@…> -
 Expected (one JSON line each, prefixed `[reset]`):
 ```
 [reset] {"at":"…","event":"start","mode":"DRY_RUN","database":"<platform db>","host":"<host>","dropTenantDatabases":true}
-[reset] {"at":"…","event":"plan","tables":[{"name":"areas","rows":N,"action":"KEEP"}, …],"users":{"total":N,"keep":2,"remove":N},"adminIdsKept":["…","…"],"tenantDatabases":[{"tenantId":"…","tenantCode":"GYM-…","status":"…","dbName":"…","droppable":true}, …]}
+[reset] {"at":"…","event":"plan","tables":[{"name":"areas","rows":N,"action":"KEEP"}, …],"users":{"total":N,"keep":2,"remove":N},"adminIdsKept":["…","…"],"tenantDatabases":[{"organizationId":"…","organizationCode":"GYM-…","status":"…","dbName":"…","droppable":true}, …]}
 [reset] {"at":"…","event":"dry_run_done","note":"nothing was changed; …"}
 
 DRY_RUN: log written to C:\inetpub\gymsera_be\logs\reset-<time>.jsonl
 Nothing was changed.
 ```
 Tick:
-- [ ] The six keep tables say `KEEP`, `users` says `KEEP_ADMINS_ONLY`, every other table `EMPTY`.
+- [ ] All seven keep tables (`schema_migrations`, `billing_plans`, `billing_plan_prices`, `platform_packages`, `cities`, `areas`, `moderation_words`) say `KEEP`, `users` says `KEEP_ADMINS_ONLY`, every other table says `EMPTY`.
 - [ ] `users.keep` = the number of admins you named; `adminIdsKept` are ids from inventory list (4).
-- [ ] `tenantDatabases` holds exactly the non-NULL rows of list (1), each `tenantCode` with the same `dbName`, all
+- [ ] `tenantDatabases` holds exactly the non-NULL rows of list (1), each `organizationCode` with the same `dbName`, all
   `droppable: true` (a `droppable: false` name is left in place and logged `tenant_database_refused`).
 - [ ] It includes the production-check test gym **GYM-16516973** (approved 2026-10-28, NEW-127), with the `db_name`
   the R-79 query prints for it. Its name is not written here on purpose.
@@ -308,8 +310,9 @@ If the bucket is production-only (2.3), delete the whole folders instead (`…/b
 |---|---|---|
 | `gyms/logos/gym-<T>.*`, `gyms/covers/gym-<T>.*`, `gyms/<T>/images/` | gym logo, cover, photos | delete |
 | `tenants/logos/tenant-<T>.*`, `tenants/covers/tenant-<T>.*`, `tenants/<T>/onboarding-images/` | onboarding logo, cover, photos | delete |
-| `hosts/<T>/organizations/staging/` | photos of an additional organization before approval | delete |
-| `gym-listings/logos/`, `gym-listings/covers/`, `gym-listings/<listing id>/images/` | listing images | delete the folders |
+| `hosts/<T>/organizations/staging/` | photos of an additional business before approval | delete |
+| `users/<user id>/staging/` | stateless first-time host photos (`POST /host/staging-images`) | delete the folder |
+| `gym-listings/logos/`, `gym-listings/covers/`, `gym-listings/<listing id>/images/` | business listing images | delete the folders |
 | `branches/<branch id>/images/` | branch photos | delete the folder |
 | `plans/posters/` | membership plan posters | delete the folder |
 | `profiles/<user id>.*` | every user's profile photo | delete all **except** `profiles/<kept admin id>.*` (ids from the dry run's `adminIdsKept`) |
@@ -321,6 +324,7 @@ rclone delete gymsera-r2:<R2_BUCKET>/gyms/ --dry-run
 rclone delete gymsera-r2:<R2_BUCKET>/gyms/
 rclone delete gymsera-r2:<R2_BUCKET>/tenants/
 rclone delete gymsera-r2:<R2_BUCKET>/hosts/
+rclone delete gymsera-r2:<R2_BUCKET>/users/
 rclone delete gymsera-r2:<R2_BUCKET>/gym-listings/
 rclone delete gymsera-r2:<R2_BUCKET>/branches/
 rclone delete gymsera-r2:<R2_BUCKET>/plans/
@@ -361,10 +365,10 @@ then have to come from the dumps, one tenant at a time.
 ## 8. Verify after the wipe
 
 - [ ] `node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql`: list (1) empty; list (4) = the kept
-  admins; counts: `users` = the kept admins, `tenants`, `tenant_subscriptions`, `gym_listings`, `device_tokens` 0;
-  `billing_plans`, `billing_plan_prices`, `platform_packages`, `cities`, `areas`, `schema_migrations` unchanged from
+  admins; counts: `users` = the kept admins, `organizations`, `organization_subscriptions`, `business_listings`, `device_tokens` = `0` (and `business_reviews`, `saved_businesses`, `member_subscription_index`, `user_organization_index` = `0`);
+  `billing_plans`, `billing_plan_prices`, `platform_packages`, `cities`, `areas`, `moderation_words`, `schema_migrations` unchanged from
   `inventory-before.txt`.
-- [ ] Inventory list (3) no longer shows the tenant databases, nor any leftover you decided to drop (5.3).
+- [ ] Inventory list (3) no longer shows the dropped organization databases, nor any leftover you decided to drop (5.3).
 - [ ] Log in to the CMS as a kept admin. `GET /api/v1/billing/plans` returns the plans; cities and areas load in the app.
 - [ ] `auditCapacity` (`capacity-audit.md`): zero findings on an empty platform.
 - [ ] The traveller app shows no gyms.
@@ -375,18 +379,12 @@ then have to come from the dumps, one tenant at a time.
 
 ## 9. First day after the wipe
 
-In this order. Mobile is the reference; the CMS can do the same steps where noted.
+In this order (matching the 1.1.0 Organization → Business → First Branch onboarding flow). Mobile is the reference; the CMS can do the same steps where noted.
 
-1. **The real host signs up** in the GymsEra app (production build): account, gym (organization) and main branch
-   details, photos, KYC documents. Use a real store account, not a phone signed into a sandbox tester.
-2. **Approve the gym** as a platform admin in the CMS: check the photos (NEW-158), approve. Provisioning creates the
-   tenant database. Check: the R-79 query for the new `tenant_code` returns one row with `provisioning_state = ACTIVE`
-   and a `db_name`; `node src\scripts\run-tenant-migrations.js --check` exits 0.
-3. **Activate the gym plan.** The host buys the plan in the app (App Store / Google Play, production), or pays by bank
-   transfer and a platform admin approves it in the CMS (Plan payments). Check: the plan shows Active in the host app.
-4. **Membership plans.** The host creates them (app, or CMS), at least one public plan with **Show to Travellers** on.
-   Check: `node src\scripts\why-not-live.js --branch <branch name>` passes every condition; the gym appears in the
-   traveller app.
+1. **The host signs up** in the GymsEra app: account, Become a Host (`POST /organizations/register`), first business + first branch (`POST /organizations/:organizationId/first-business` with `firstBranch` and ≥3 photos), package selection, owner ID KYC, and finalize. Use a real store account (not a sandbox tester) for production, or fake names + `+` alias emails (`name+host@…`) if creating App Store review / demo data.
+2. **Approve the organization** as a platform admin in the CMS (`POST /admin/organizations/:organizationId/approve`): provisioning creates the fresh organization database at `v32` and creates the held `PENDING` first business. Check: the R-79 query for `organization_code` returns `provisioning_state = ACTIVE` and a `db_name`; `node src\scripts\run-tenant-migrations.js --check` exits 0.
+3. **Upload proof of premises & approve the business:** the host uploads `PROOF_OF_PREMISES` (and optional `BUSINESS_REGISTRATION` for verified badge) via `/host/businesses/:businessId/kyc-documents`; platform admin approves the business (`POST /admin/businesses/:businessId/approve`), which builds the held first branch cleanly.
+4. **Activate plan & membership plans:** activate the subscription (paid / manual grant in CMS), then create at least one public membership plan with **Show to Travellers** on. Check: `node src\scripts\why-not-live.js --branch <branch name>` passes every condition; the demo/first branch appears in traveller discovery.
 5. **Refund policy.** CMS › Subscriptions › Refund policy, or app › Profile › Refund policy. It is off by default
    (`refunds_allowed = 0`); turn it on with the window the gym wants, or leave it off on purpose.
 6. **Clear the old users from the access device** (section 10, method A), **before** it is added.

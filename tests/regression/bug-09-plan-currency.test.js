@@ -7,7 +7,7 @@
  * organization's first branch (the branch a new branch copies its currency from).
  *
  * Become a Host has no branch yet: the tenant payload says which currency approval will give the
- * first branch (`mainBranchCurrency`, R-80: PKR today), and provisioning uses that same value.
+ * first branch (`firstBranchCurrency`, R-80: PKR today), and provisioning uses that same value.
  */
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona, factories } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
@@ -26,8 +26,8 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
-  first = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id }, order: [['createdAt', 'ASC']] });
+  listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
+  first = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id }, order: [['createdAt', 'ASC']] });
   await first.update({ currency: 'PKR' });
   usd = await factories.createBranch(tenantDb, listing.id, { name: 'USD branch', currency: 'USD' });
   // created_at has 1-second precision; make "first" unambiguous rather than relying on test timing.
@@ -35,7 +35,7 @@ beforeAll(async () => {
 
   const { MembershipPlan, Gym } = tenantDb.models;
   const gym = await Gym.findOne();
-  const base = { gymId: gym.id, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true };
+  const base = { businessId: gym.id, durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true };
   usdPlan = await MembershipPlan.create({ ...base, branchId: usd.id, name: 'USD monthly', price: 30 });
   pkrPlan = await MembershipPlan.create({ ...base, branchId: first.id, name: 'PKR monthly', price: 5000 });
   gymWide = await MembershipPlan.create({ ...base, branchId: null, name: 'Everywhere', price: 7000 });
@@ -86,40 +86,61 @@ describe('BUG-09: plan payloads carry the branch currency', () => {
   });
 
   test('public list for a branch and the public plan carry the currency', async () => {
-    const list = await asPersona('anonymous').get(`/membership-plans?gymListingId=${listing.id}&branchId=${usd.id}`);
+    const list = await asPersona('anonymous').get(`/membership-plans?businessId=${listing.id}&branchId=${usd.id}`);
     expect(list.status).toBe(200);
     const c = byId(list.body.data.plans);
     expect(c[usdPlan.id]).toBe('USD');
     expect(c[gymWide.id]).toBe('USD');
 
-    const one = await asPersona('anonymous').get(`/membership-plans/${usdPlan.id}?gymListingId=${listing.id}`);
+    const one = await asPersona('anonymous').get(`/membership-plans/${usdPlan.id}?businessId=${listing.id}`);
     expect(one.status).toBe(200);
     expect(one.body.data.plan.currency).toBe('USD');
   });
 
   test('discovery gym detail of the USD branch: its plans are USD', async () => {
-    const res = await asPersona('anonymous').get(`/discovery/gyms/${usd.id}`);
+    const res = await asPersona('anonymous').get(`/discovery/branches/${usd.id}`);
     expect(res.status).toBe(200);
     const c = byId(res.body.data.membershipPlans);
     expect(c[usdPlan.id]).toBe('USD');
     expect(c[gymWide.id]).toBe('USD');
     expect(c[pkrPlan.id]).toBeUndefined(); // another branch's plan is not shown here
   });
+
+  test('business detail keeps both of its branches and excludes another business in the same organization', async () => {
+    const otherListing = await factories.createGymListing(personas.owner.organizationId, { name: 'Other Business' });
+    const otherBranch = await factories.createBranch(tenantDb, otherListing.id, { name: 'Other Branch', currency: 'EUR' });
+    const otherPlan = await tenantDb.models.MembershipPlan.create({
+      businessId: otherListing.id, branchId: otherBranch.id, name: 'Other Monthly',
+      durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true, price: 25,
+    });
+    await factories.makeBranchLive(tenantDb, first);
+    await factories.makeBranchLive(tenantDb, otherBranch);
+
+    const res = await asPersona('anonymous').get(`/discovery/businesses/${listing.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.business.id).toBe(listing.id);
+    const planIds = res.body.data.membershipPlans.map((plan) => plan.id);
+    expect(planIds).toEqual(expect.arrayContaining([usdPlan.id, pkrPlan.id, gymWide.id]));
+    expect(planIds).not.toContain(otherPlan.id);
+    const branchIds = res.body.data.business.branches.map((branch) => branch.id);
+    expect(branchIds).toEqual(expect.arrayContaining([first.id, usd.id]));
+    expect(branchIds).not.toContain(otherBranch.id);
+  });
 });
 
 describe('BUG-09: Become a Host says which currency the first branch will get', () => {
-  test('GET /tenants/me carries mainBranchCurrency, the value provisioning uses', async () => {
+  test('GET /tenants/me carries firstBranchCurrency, the value provisioning uses', async () => {
     const user = await factories.createUser({ email: 'draft@bug09.test', role: 'GYM_HOST', isHost: true });
     await factories.createTenant({
       ownerUserId: user.id, status: 'DRAFT', connectionStringEncrypted: 'PENDING_PROVISIONING',
-      mainBranchDataJson: { branchName: 'Main', plans: [{ name: 'Monthly', price: 5000 }] },
+      firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 5000 }] },
     });
     const { signToken } = require('../../src/utils/jwt.utils');
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'GYM_HOST', isVerified: true });
-    const res = await asPersona('anonymous', { Authorization: `Bearer ${token}` }).get('/tenants/me');
+    const res = await asPersona('anonymous', { Authorization: `Bearer ${token}` }).get('/organizations/me');
     expect(res.status).toBe(200);
     const { firstBranchCurrency } = require('../../src/utils/currency.utils');
     expect(firstBranchCurrency()).toBe('PKR');
-    expect(res.body.data.tenant.mainBranchCurrency).toBe(firstBranchCurrency());
+    expect(res.body.data.organization.firstBranchCurrency).toBe(firstBranchCurrency());
   });
 });

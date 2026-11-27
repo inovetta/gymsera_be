@@ -23,13 +23,13 @@ beforeAll(async () => {
   h = await setupTestDatabases();
   const personas = await setupPersonas(h);
   const team = await buildTwoBranchTeam(h, personas);
-  await h.platform.sequelize.query('UPDATE tenants SET db_name = :db WHERE id = \'test-tenant-1\' OR tenant_code = \'GYM-TENANT1\'', { replacements: { db: h.tenant1.database } });
-  await h.platform.sequelize.query('UPDATE tenants SET db_name = :db WHERE id = \'test-tenant-2\' OR tenant_code = \'GYM-TENANT2\'', { replacements: { db: h.tenant2.database } });
+  await h.platform.sequelize.query('UPDATE organizations SET db_name = :db WHERE id = \'test-tenant-1\' OR organization_code = \'GYM-TENANT1\'', { replacements: { db: h.tenant1.database } });
+  await h.platform.sequelize.query('UPDATE organizations SET db_name = :db WHERE id = \'test-tenant-2\' OR organization_code = \'GYM-TENANT2\'', { replacements: { db: h.tenant2.database } });
   // Tenant 1 as GYM-4814C134: no schema_migrations, no branches.currency.
   await h.tenant1.sequelize.query('DROP TABLE `schema_migrations`');
   await h.tenant1.sequelize.query('ALTER TABLE `branches` DROP COLUMN `currency`');
-  [tenant] = await h.platform.sequelize.query('SELECT tenant_code, db_name FROM tenants WHERE id = :id', {
-    replacements: { id: team.tenantId },
+  [tenant] = await h.platform.sequelize.query('SELECT organization_code, db_name FROM organizations WHERE id = :id', {
+    replacements: { id: team.organizationId },
     type: h.platform.sequelize.QueryTypes.SELECT,
   });
 });
@@ -58,7 +58,7 @@ test('the NEW-124 check runs to the end on a tenant without schema_migrations: b
 test('grid 2 reports the tenant that has no schema_migrations table, and its missing branches.currency', () => {
   const { out } = cli([CHECK_SQL]);
   const grid2 = out.slice(out.indexOf('Grid 2'));
-  const row = (table, column) => new RegExp(`\\|\\s*${tenant.tenant_code}\\s*\\|\\s*${tenant.db_name}\\s*\\|\\s*${table}\\s*\\|\\s*${column}\\s*\\|`);
+  const row = (table, column) => new RegExp(`\\|\\s*${tenant.organization_code}\\s*\\|\\s*${tenant.db_name}\\s*\\|\\s*${table}\\s*\\|\\s*${column}\\s*\\|`);
   expect(grid2).toMatch(row('schema_migrations', '\\(table\\)'));
   expect(grid2).toMatch(row('branches', 'currency'));
   // The tenant that has everything is not listed.
@@ -70,7 +70,7 @@ test('the NEW-127 history check passes the guard and runs to Done (four grids; g
   expect(out).toMatch(/^Done: 4 grids\./m);
   expect(status).toBe(0);
   const grid4 = out.slice(out.indexOf('Grid 4'));
-  expect(grid4).toMatch(new RegExp(`\\|\\s*${tenant.tenant_code}\\s*\\|`));
+  expect(grid4).toMatch(new RegExp(`\\|\\s*${tenant.organization_code}\\s*\\|`));
 });
 
 test('the link vanishing during grid 2 (no error event; the process would just end) prints an ERROR naming the statement and exits non-zero', () => {

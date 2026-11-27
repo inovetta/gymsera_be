@@ -16,7 +16,7 @@ const { daysFromToday } = require('../harness/dates');
 describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & duplicate window', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let appServer;
   let branch;
   let memberUser;
@@ -27,13 +27,13 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
 
     const { Branch, MembershipPlan, MemberSubscription } = dbHarness.tenant1.models;
     branch = await Branch.findOne({ where: { status: 'ACTIVE' } });
 
     plan = await MembershipPlan.create({
-      gymId: branch.gymId || branch.id,
+      businessId: branch.businessId || branch.id,
       branchId: branch.id,
       name: 'Standard Monthly',
       price: 5000,
@@ -68,12 +68,12 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     });
 
     const { UserGymMembership, GymListing } = require('../../src/models/platform');
-    const listing = await GymListing.findOne({ where: { tenantId } });
+    const listing = await GymListing.findOne({ where: { organizationId } });
     await UserGymMembership.create({
       userId: memberUser.id,
-      tenantId,
+      organizationId,
       branchId: branch.id,
-      gymListingId: listing ? listing.id : branch.id,
+      businessId: listing ? listing.id : branch.id,
       subscriptionId: subscription.id,
       planName: plan.name,
       status: 'ACTIVE',
@@ -209,7 +209,7 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     const validQrToken = generateAttendanceQrToken({
       subscriptionId: subscription.id,
       userId: memberUser.id,
-      tenantId,
+      organizationId,
       branchId: branch.id,
     });
 
@@ -230,7 +230,7 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     const reusableQrToken = generateAttendanceQrToken({
       subscriptionId: subscription.id,
       userId: memberUser.id,
-      tenantId,
+      organizationId,
       branchId: branch.id,
     });
 
@@ -267,7 +267,7 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
       {
         subscriptionId: subscription.id,
         userId: memberUser.id,
-        tenantId,
+        organizationId,
         branchId: branch.id,
       },
       -10 // expired
@@ -293,7 +293,7 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     const token1 = generateAttendanceQrToken({
       subscriptionId: subscription.id,
       userId: memberUser.id,
-      tenantId,
+      organizationId,
       branchId: branch.id,
     });
     const res1 = await request(appServer)
@@ -306,7 +306,7 @@ describe('FLOW-09: Attendance QR rotating signed tokens, raw ID rejection & dupl
     const token2 = generateAttendanceQrToken({
       subscriptionId: subscription.id,
       userId: memberUser.id,
-      tenantId,
+      organizationId,
       branchId: branch.id,
     });
     const res2 = await request(appServer)

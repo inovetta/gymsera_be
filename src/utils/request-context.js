@@ -3,7 +3,7 @@
  *
  * One AsyncLocalStorage store per request, opened by
  * `middleware/requestContext.js`. It holds the request id and a reference to
- * the request, so the logger can add `tenantId` and `userId` at the moment a
+ * the request, so the logger can add `organizationId` and `userId` at the moment a
  * line is written, after authentication has run, without every middleware
  * having to copy them in.
  */
@@ -26,10 +26,10 @@ const logFields = () => {
   if (!ctx) return {};
   const req = ctx.req;
   const userId = req && req.user ? req.user.id || req.user.sub : undefined;
-  const tenantId = req && req.tenantId ? req.tenantId : undefined;
+  const organizationId = req && req.organizationId ? req.organizationId : undefined;
   return {
     requestId: ctx.requestId,
-    ...(tenantId !== undefined && { tenantId }),
+    ...(organizationId !== undefined && { organizationId }),
     ...(userId !== undefined && { userId }),
   };
 };

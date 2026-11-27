@@ -3,7 +3,7 @@ const { redactString } = require('../utils/log-redaction');
 
 /**
  * One access-log line per finished request (OBS-01), replacing morgan:
- * route, status and latencyMs, plus requestId / tenantId / userId from the
+ * route, status and latencyMs, plus requestId / organizationId / userId from the
  * request context. `route` is the matched pattern (`/api/v1/members/:id`), not
  * the URL, so it is safe to group by and carries no ids or tokens; the raw URL
  * is logged separately and redacted (SEC-07).
@@ -20,7 +20,7 @@ const accessLog = (req, res, next) => {
       {
         source: 'access',
         requestId: req.id,
-        ...(req.tenantId !== undefined && { tenantId: req.tenantId }),
+        ...(req.organizationId !== undefined && { organizationId: req.organizationId }),
         ...(userId !== undefined && { userId }),
         method: req.method,
         route,

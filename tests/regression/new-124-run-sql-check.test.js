@@ -45,7 +45,7 @@ describe('NEW-124 run-sql-check: statement guard (no database)', () => {
     'SELECT 1',
     '(SELECT 1) UNION ALL (SELECT 2)',
     'SET @x = 1',
-    'SET @a := 1, @b = (SELECT COUNT(*) FROM tenants)',
+    'SET @a := 1, @b = (SELECT COUNT(*) FROM organizations)',
     'SET SESSION group_concat_max_len = 100000',
     'SET @@SESSION.sql_mode = \'\'',
     'PREPARE s FROM \'SELECT 1\'',
@@ -58,10 +58,10 @@ describe('NEW-124 run-sql-check: statement guard (no database)', () => {
   });
 
   test.each([
-    'INSERT INTO tenants (id) VALUES (1)',
-    'UPDATE tenants SET status = 1',
-    'DELETE FROM tenants',
-    'REPLACE INTO tenants VALUES (1)',
+    'INSERT INTO organizations (id) VALUES (1)',
+    'UPDATE organizations SET status = 1',
+    'DELETE FROM organizations',
+    'REPLACE INTO organizations VALUES (1)',
     'DROP TABLE tenants',
     'DROP PREPARE s',
     'CREATE TABLE x (id INT)',
@@ -74,21 +74,21 @@ describe('NEW-124 run-sql-check: statement guard (no database)', () => {
     'HANDLER tenants OPEN',
     'SHOW GRANTS',
     'USE other_db',
-    'WITH x AS (SELECT 1) DELETE FROM tenants',
+    'WITH x AS (SELECT 1) DELETE FROM organizations',
     'SET GLOBAL max_connections = 1',
     'SET PASSWORD = \'x\'',
     'SET autocommit = 0',
     'SET NAMES latin1',
-    'SELECT * FROM tenants INTO OUTFILE \'/tmp/x\'',
-    'SELECT * FROM tenants INTO DUMPFILE \'/tmp/x\'',
-    'SELECT id INTO @v FROM tenants LIMIT 1',
-    'SELECT * FROM tenants FOR UPDATE',
-    'SELECT * FROM tenants LOCK IN SHARE MODE',
+    'SELECT * FROM organizations INTO OUTFILE \'/tmp/x\'',
+    'SELECT * FROM organizations INTO DUMPFILE \'/tmp/x\'',
+    'SELECT id INTO @v FROM organizations LIMIT 1',
+    'SELECT * FROM organizations FOR UPDATE',
+    'SELECT * FROM organizations LOCK IN SHARE MODE',
     'SELECT SLEEP(10)',
     'SELECT LOAD_FILE(\'/etc/passwd\')',
     'SELECT GET_LOCK(\'x\', 10)',
     'SELECT BENCHMARK(1000000, MD5(1))',
-    'PREPARE s FROM \'DELETE FROM tenants\'',
+    'PREPARE s FROM \'DELETE FROM organizations\'',
     'PREPARE s FROM \'SELECT 1; DROP TABLE tenants\'',
     'SELECT 1 /*!50000 ; DROP TABLE tenants */',
   ])('refuses %s', (sql) => {
@@ -103,7 +103,7 @@ describe('NEW-124 run-sql-check: statement guard (no database)', () => {
   });
 
   test('a file with one bad statement is refused whole, before any connection', () => {
-    const file = sqlFile('bad.sql', 'SELECT 1;\nDELETE FROM tenants;\nSELECT 2;');
+    const file = sqlFile('bad.sql', 'SELECT 1;\nDELETE FROM organizations;\nSELECT 2;');
     let status = 0;
     let output = '';
     try {
@@ -156,8 +156,8 @@ describe('NEW-124 run-sql-check: against the test databases', () => {
     team = await buildTwoBranchTeam(h, personas);
     // The harness leaves tenants.db_name empty; production fills it (NEW-122). Point it at the
     // real test tenant databases so the check reads their information_schema.
-    await h.platform.sequelize.query('UPDATE tenants SET db_name = :db WHERE id = \'test-tenant-1\' OR tenant_code = \'GYM-TENANT1\'', { replacements: { db: h.tenant1.database } });
-    await h.platform.sequelize.query('UPDATE tenants SET db_name = :db WHERE id = \'test-tenant-2\' OR tenant_code = \'GYM-TENANT2\'', { replacements: { db: h.tenant2.database } });
+    await h.platform.sequelize.query('UPDATE organizations SET db_name = :db WHERE id = \'test-tenant-1\' OR organization_code = \'GYM-TENANT1\'', { replacements: { db: h.tenant1.database } });
+    await h.platform.sequelize.query('UPDATE organizations SET db_name = :db WHERE id = \'test-tenant-2\' OR organization_code = \'GYM-TENANT2\'', { replacements: { db: h.tenant2.database } });
     // One tenant database below schema v19, as in production.
     await h.tenant1.sequelize.query('ALTER TABLE `branches` DROP COLUMN `currency`');
   });
@@ -180,9 +180,9 @@ describe('NEW-124 run-sql-check: against the test databases', () => {
     expect(text).toMatch(/Grid 1 \(line \d+\)/);
     expect(text).toMatch(/Grid 2 \(line \d+\)/);
     // Grid 1 header row and the tenant below v19
-    expect(text).toMatch(/\|\s*tenant_id\s*\|\s*tenant_code\s*\|\s*gym_name\s*\|\s*db_name\s*\|/);
-    const [tenant] = await h.platform.sequelize.query('SELECT tenant_code, db_name FROM tenants WHERE id = :id', {
-      replacements: { id: team.tenantId },
+    expect(text).toMatch(/\|\s*organization_id\s*\|\s*organization_code\s*\|\s*first_business_name\s*\|\s*db_name\s*\|/);
+    const [tenant] = await h.platform.sequelize.query('SELECT organization_code, db_name FROM organizations WHERE id = :id', {
+      replacements: { id: team.organizationId },
       type: h.platform.sequelize.QueryTypes.SELECT,
     });
     const grid1Row = text.split('\n').find((l) => l.includes(` ${tenant.db_name} `) && /\|\s*0\s*\|\s*$/.test(l.trimEnd()));
@@ -190,15 +190,15 @@ describe('NEW-124 run-sql-check: against the test databases', () => {
     const okRow = text.split('\n').find((l) => l.includes(` ${h.tenant2.database} `) && /\|\s*1\s*\|\s*1\s*\|$/.test(l.trimEnd()));
     expect(okRow).toBeTruthy();
     // Grid 2 lists the missing column
-    expect(text).toMatch(new RegExp(`\\|\\s*${tenant.tenant_code}\\s*\\|\\s*${tenant.db_name}\\s*\\|\\s*branches\\s*\\|\\s*currency\\s*\\|`));
+    expect(text).toMatch(new RegExp(`\\|\\s*${tenant.organization_code}\\s*\\|\\s*${tenant.db_name}\\s*\\|\\s*branches\\s*\\|\\s*currency\\s*\\|`));
   });
 
   test('no password, no gym name (personal data) and no e-mail in the output', async () => {
     const out = capture();
     await run({ sqlPath: CHECK_SQL, write: out.write });
     const text = out.text();
-    const [rows] = await h.platform.sequelize.query('SELECT gym_name FROM tenants WHERE status = \'ACTIVE\'');
-    for (const { gym_name: name } of rows) if (name) expect(text).not.toContain(name);
+    const [rows] = await h.platform.sequelize.query('SELECT first_business_name FROM organizations WHERE status = \'ACTIVE\'');
+    for (const { first_business_name: name } of rows) if (name) expect(text).not.toContain(name);
     expect(text).toMatch(/\[hidden\]/);
     const pass = process.env.PLATFORM_DB_PASS;
     if (pass) expect(text).not.toContain(pass);
@@ -212,20 +212,20 @@ describe('NEW-124 run-sql-check: against the test databases', () => {
   });
 
   test('PREPARE FROM @var: the real value is checked before it runs', async () => {
-    const [[before]] = await h.platform.sequelize.query('SELECT COUNT(*) AS n FROM tenants');
+    const [[before]] = await h.platform.sequelize.query('SELECT COUNT(*) AS n FROM organizations');
     const bad = capture();
     const badCode = await run({
-      sqlPath: sqlFile('prep-bad.sql', 'SET @q = CONCAT(\'DELETE \', \'FROM tenants\');\nPREPARE s FROM @q;\nEXECUTE s;'),
+      sqlPath: sqlFile('prep-bad.sql', 'SET @q = CONCAT(\'DELETE \', \'FROM organizations\');\nPREPARE s FROM @q;\nEXECUTE s;'),
       write: bad.write,
     });
     expect(badCode).not.toBe(0);
     expect(bad.text()).toMatch(/REFUSED/);
-    const [[after]] = await h.platform.sequelize.query('SELECT COUNT(*) AS n FROM tenants');
+    const [[after]] = await h.platform.sequelize.query('SELECT COUNT(*) AS n FROM organizations');
     expect(after.n).toBe(before.n);
 
     const good = capture();
     const goodCode = await run({
-      sqlPath: sqlFile('prep-good.sql', 'SET @q = CONCAT(\'SELECT COUNT(*) AS \', \'tenant_count FROM tenants\');\nPREPARE s FROM @q;\nEXECUTE s;\nDEALLOCATE PREPARE s;'),
+      sqlPath: sqlFile('prep-good.sql', 'SET @q = CONCAT(\'SELECT COUNT(*) AS \', \'tenant_count FROM organizations\');\nPREPARE s FROM @q;\nEXECUTE s;\nDEALLOCATE PREPARE s;'),
       write: good.write,
     });
     expect(goodCode).toBe(0);
@@ -237,7 +237,7 @@ describe('NEW-124 run-sql-check: against the test databases', () => {
     const { openReadOnlyConnection } = require('../../src/scripts/run-sql-check');
     const conn = await openReadOnlyConnection();
     try {
-      await expect(conn.query('UPDATE tenants SET gym_name = gym_name WHERE id = \'none\'')).rejects.toThrow(/READ ONLY/i);
+      await expect(conn.query('UPDATE organizations SET first_business_name = first_business_name WHERE id = \'none\'')).rejects.toThrow(/READ ONLY/i);
     } finally {
       await conn.end();
     }

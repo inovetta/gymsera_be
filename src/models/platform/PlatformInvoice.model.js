@@ -17,14 +17,15 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      tenantSubscriptionId: {
+      organizationSubscriptionId: {
+        field: 'organization_subscription_id', // R-120 NEW-307 (p034)
         type: DataTypes.UUID,
         allowNull: true,
-        comment: 'Link to tenant_subscriptions — null for manual/standalone invoices',
+        comment: 'Link to organization_subscriptions — null for manual/standalone invoices',
       },
       invoiceNo: {
         type: DataTypes.STRING(50),
@@ -76,8 +77,8 @@ module.exports = (sequelize) => {
       timestamps: true,
       indexes: [
         { name: 'platform_invoices_invoice_no_unique', unique: true, fields: ['invoice_no'] },
-        { fields: ['tenant_id'] },
-        { fields: ['tenant_subscription_id'] },
+        { fields: ['organization_id'] },
+        { name: 'platform_invoices_organization_subscription_id', fields: ['organization_subscription_id'] },
         { fields: ['status'] },
         { fields: ['due_date'] },
       ],

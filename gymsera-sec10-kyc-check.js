@@ -61,7 +61,7 @@ async function main() {
 
   try {
     const [rows] = await conn.query(
-      `SELECT id, tenant_code, business_name, email, status, kyc_status, 
+      `SELECT id, organization_code AS tenant_code, organization_name AS business_name, email, status, kyc_status, 
               kyc_documents_json, rejected_at, created_at, updated_at
        FROM \`tenants\`
        ORDER BY created_at ASC`
@@ -130,8 +130,8 @@ async function main() {
         if (hasDocs) {
           overdueRetentionCount++;
           findings.push({
-            tenantCode: r.tenant_code || r.id,
-            businessName: r.business_name,
+            organizationCode: r.tenant_code || r.id,
+            organizationName: r.business_name,
             status: r.status,
             kycStatus: r.kyc_status,
             rejectedAt: r.rejected_at,
@@ -144,8 +144,8 @@ async function main() {
         }
       } else if (tenantExposed > 0) {
         findings.push({
-          tenantCode: r.tenant_code || r.id,
-          businessName: r.business_name,
+          organizationCode: r.tenant_code || r.id,
+          organizationName: r.business_name,
           status: r.status,
           kycStatus: r.kyc_status,
           rejectedAt: r.rejected_at,
@@ -169,7 +169,7 @@ async function main() {
     if (findings.length > 0) {
       console.log('TENANTS REQUIRING ATTENTION:');
       for (const f of findings) {
-        console.log(`  - [${f.tenantCode}] "${f.businessName}" (${f.status}/${f.kycStatus}): ${f.issue} (Docs: ${f.docCount})`);
+        console.log(`  - [${f.organizationCode}] "${f.organizationName}" (${f.status}/${f.kycStatus}): ${f.issue} (Docs: ${f.docCount})`);
       }
       console.log('\nRECOMMENDED ACTIONS:');
       if (overdueRetentionCount > 0) {

@@ -11,7 +11,7 @@ const { startTestServer, stopTestServer } = require('../harness/test-server');
 describe('FLOW-10: Review moderation, active/past subscription requirement, and controller argument fixes', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let appServer;
   let branch;
   let gymListing;
@@ -22,21 +22,21 @@ describe('FLOW-10: Review moderation, active/past subscription requirement, and 
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
 
     const { Branch, MembershipPlan } = dbHarness.tenant1.models;
     const { GymListing } = require('../../src/models/platform');
 
     branch = await Branch.findOne({ where: { status: 'ACTIVE' } });
-    gymListing = await GymListing.findOne({ where: { tenantId } });
+    gymListing = await GymListing.findOne({ where: { organizationId } });
 
     await branch.update({
       travelerVisibilityStatus: 'active',
-      gymListingId: gymListing.id,
+      businessId: gymListing.id,
     });
 
     plan = await MembershipPlan.create({
-      gymId: branch.gymId || branch.id,
+      businessId: branch.businessId || branch.id,
       branchId: branch.id,
       name: 'Standard Monthly',
       price: 5000,
@@ -94,7 +94,7 @@ describe('FLOW-10: Review moderation, active/past subscription requirement, and 
     expect(res.body.message || res.body.error?.message).toMatch(/active or past membership/i);
   });
 
-  test('2. POST /discovery/gyms/:id/reviews succeeds without crashing on req.body as branchId', async () => {
+  test('2. POST /discovery/businesses/:id/reviews succeeds without crashing on req.body as branchId', async () => {
     const { MemberSubscription } = dbHarness.tenant1.models;
 
     // Upgrade subscription to ACTIVE
@@ -104,7 +104,7 @@ describe('FLOW-10: Review moderation, active/past subscription requirement, and 
     );
 
     const res = await request(appServer)
-      .post(`/api/v1/discovery/gyms/${gymListing.id}/reviews`)
+      .post(`/api/v1/discovery/businesses/${gymListing.id}/reviews`)
       .set('Authorization', `Bearer ${memberToken}`)
       .send({
         branchId: branch.id,

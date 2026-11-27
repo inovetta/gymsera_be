@@ -45,7 +45,7 @@ const _resolveTarget = async ({ reporterUserId, reporterTenantId, targetType, ta
     if (review.userId === reporterUserId) throw createError('You cannot report your own review', 400, 'own_content');
     return {
       targetUserId: review.userId,
-      tenantId: review.tenantId || null,
+      organizationId: review.organizationId || null,
       conversationId: null,
       snapshotText: [review.title, review.body].filter(Boolean).join('\n') || null,
     };
@@ -55,7 +55,7 @@ const _resolveTarget = async ({ reporterUserId, reporterTenantId, targetType, ta
   if (!message) throw createError('Message not found', 404, 'not_found');
   const conversation = await Conversation.findByPk(message.conversationId);
   const isTraveller = conversation && conversation.userId === reporterUserId;
-  const isGym = conversation && reporterTenantId && conversation.tenantId === reporterTenantId;
+  const isGym = conversation && reporterTenantId && conversation.organizationId === reporterTenantId;
   // Not your conversation: answered like a message that does not exist.
   if (!isTraveller && !isGym) throw createError('Message not found', 404, 'not_found');
   if (message.senderId === reporterUserId) throw createError('You cannot report your own message', 400, 'own_content');
@@ -66,7 +66,7 @@ const _resolveTarget = async ({ reporterUserId, reporterTenantId, targetType, ta
   const author = message.senderId ? await User.findByPk(message.senderId, { attributes: ['id'] }) : null;
   return {
     targetUserId: author ? author.id : null,
-    tenantId: conversation.tenantId || null,
+    organizationId: conversation.organizationId || null,
     conversationId: conversation.id,
     snapshotText: message.text,
   };

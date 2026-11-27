@@ -1,5 +1,5 @@
 /**
- * NEW-48: GET /gyms/members for a multi-branch Branch Manager.
+ * NEW-48: GET /organizations/me/members for a multi-branch Branch Manager.
  *
  * Verifies:
  * 1. Multi-branch Manager (3 branches) sees members across all 3 branches without query branchId.
@@ -21,7 +21,7 @@ const { daysFromToday } = require('../harness/dates'); // NEW-207: no calendar d
 let app;
 let dbHarness;
 let personas;
-let tenantId;
+let organizationId;
 let branchA;
 let branchB;
 let branchC;
@@ -38,15 +38,15 @@ beforeAll(async () => {
   app = await startTestServer();
 
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
 
-  const listing = await GymListing.findOne({ where: { tenantId } });
-  branchA = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
+  branchA = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
   branchC = await factories.createBranch(tenantDb, listing.id, { name: 'Branch C' });
 
   const plan = await tenantDb.models.MembershipPlan.create({
-    gymId: branchA.gymId,
+    businessId: branchA.businessId,
     branchId: branchA.id,
     name: 'Standard Monthly',
     price: 3000,
@@ -90,7 +90,7 @@ beforeAll(async () => {
   // 1. Manager of all 3 branches
   managerThree = await teamMember({
     tenantDb,
-    tenantId,
+    organizationId,
     email: 'mgr-three@new48.test',
     roleKey: 'MANAGER',
     scopeType: 'BRANCH',
@@ -100,7 +100,7 @@ beforeAll(async () => {
   // 2. Manager of only Branch A
   managerOne = await teamMember({
     tenantDb,
-    tenantId,
+    organizationId,
     email: 'mgr-one@new48.test',
     roleKey: 'MANAGER',
     scopeType: 'BRANCH',
@@ -110,8 +110,8 @@ beforeAll(async () => {
   // 3. Front Desk with members.view OFF (override DENY)
   const fdUser = await factories.createUser({ email: 'fd-off@new48.test', role: 'MEMBER', fullName: 'FrontDesk Off' });
   const fdAssignment = await factories.createRoleAssignment(
-    { ...tenantDb, tenantId },
-    { userId: fdUser.id, roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [branchA.id], overrides: { tenantId } }
+    { ...tenantDb, organizationId },
+    { userId: fdUser.id, roleKey: 'DESK', scopeType: 'BRANCH', branchIds: [branchA.id], overrides: { organizationId } }
   );
   await tenantDb.models.AssignmentOverride.create({
     assignmentId: fdAssignment.id,
@@ -119,10 +119,10 @@ beforeAll(async () => {
     effect: 'DENY',
     createdBy: fdUser.id,
   });
-  await membershipService.syncUserOrgIndex(tenantId, fdUser.id, tenantDb);
+  await membershipService.syncUserOrgIndex(organizationId, fdUser.id, tenantDb);
   frontDeskOff = {
     user: fdUser,
-    token: signToken({ sub: fdUser.id, id: fdUser.id, email: fdUser.email, role: 'MEMBER', isVerified: true, tenantId }),
+    token: signToken({ sub: fdUser.id, id: fdUser.id, email: fdUser.email, role: 'MEMBER', isVerified: true, organizationId }),
   };
 });
 
@@ -133,11 +133,11 @@ afterAll(async () => {
 
 const getMembers = (token, query = '') =>
   request(app)
-    .get(`/api/v1/gyms/members${query}`)
+    .get(`/api/v1/organizations/me/members${query}`)
     .set('Authorization', `Bearer ${token}`)
-    .set('X-Tenant-Id', tenantId);
+    .set('X-Organization-Id', organizationId);
 
-describe('NEW-48: GET /gyms/members multi-branch access and permission enforcement', () => {
+describe('NEW-48: GET /organizations/me/members multi-branch access and permission enforcement', () => {
   test('manager of three branches sees members at all three', async () => {
     const res = await getMembers(managerThree.token);
     expect(res.status).toBe(200);

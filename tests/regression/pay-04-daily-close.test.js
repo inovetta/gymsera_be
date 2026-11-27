@@ -35,7 +35,7 @@ describe('PAY-04: Daily Close Immutable and Timezone-Safe (spec §6.3, §12)', (
 
     const tenantRecord = await createTenant({
       id: '44444444-4444-4444-8444-444444444444',
-      tenantCode: 'GYM-CLOSE',
+      organizationCode: 'GYM-CLOSE',
       gymName: 'Close Gym',
       ownerUserId: testUser.id,
       connectionStringEncrypted: tenant1.encryptedConnStr,
@@ -47,7 +47,7 @@ describe('PAY-04: Daily Close Immutable and Timezone-Safe (spec §6.3, §12)', (
 
     ctx = {
       tenantDb: tenant1,
-      tenantId: tenantRecord.id,
+      organizationId: tenantRecord.id,
       userId: testUser.id,
       branchId: branch.id,
     };

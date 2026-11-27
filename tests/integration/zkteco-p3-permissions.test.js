@@ -13,19 +13,19 @@ const { getPermission } = require('../../src/constants/permissions');
 
 let w;
 let home; let away; let doorHome; let doorAway; let member;
-const PA = { 'X-Tenant-Id': null };
+const PA = { 'X-Organization-Id': null };
 
 beforeAll(async () => {
   w = await createWorld();
   home = w.ctx.branch1; // the manager's and the front desk's branch
-  away = await w.branch(w.db1, { gymId: w.ctx.branch1.gymId, name: 'Away Branch' });
+  away = await w.branch(w.db1, { businessId: w.ctx.branch1.businessId, name: 'Away Branch' });
   doorHome = await w.device(w.db1, { branch: home, name: 'Home Door' });
   doorAway = await w.device(w.db1, { branch: away, name: 'Away Door' });
   member = await w.member('Permission Member');
   await w.subscribe(w.db1, { user: member, branch: home });
   await doorHome.sim.drain();
   await doorAway.sim.drain();
-  PA['X-Tenant-Id'] = w.ctx.tenant1.id;
+  PA['X-Organization-Id'] = w.ctx.tenant1.id;
 });
 afterAll(async () => { await w.settled(); await require('../harness').teardownTestDatabases(); });
 

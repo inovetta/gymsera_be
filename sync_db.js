@@ -19,14 +19,14 @@ async function main() {
         await tenantSeq.authenticate();
         registerTenantModels(tenantSeq);
         await tenantSeq.sync({ force: false, alter: true });
-        console.log(`Synced tenant: ${tenant.tenantCode} successfully`);
+        console.log(`Synced tenant: ${tenant.organizationCode} successfully`);
       } catch (err) {
-        console.error(`Failed to sync tenant: ${tenant.tenantCode}: ${err.message}`);
+        console.error(`Failed to sync tenant: ${tenant.organizationCode}: ${err.message}`);
       } finally {
         await tenantSeq.close();
       }
     } else {
-      console.log(`Skipped tenant: ${tenant.tenantCode} (PENDING_PROVISIONING)`);
+      console.log(`Skipped tenant: ${tenant.organizationCode} (PENDING_PROVISIONING)`);
     }
   }
 }

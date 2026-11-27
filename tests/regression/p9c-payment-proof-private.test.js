@@ -10,7 +10,7 @@
  * Now: the bytes go to the private store (decision R-27: private R2 bucket, or
  * storage/private outside every public web root), the row keeps a private key, and the file is
  * served only by `GET /payments/:id/proof` (tenant context + `payments.view` on the payment's
- * branch; platform admins through their X-Tenant-Id). `proofUrl` in API answers is that route.
+ * branch; platform admins through their X-Organization-Id). `proofUrl` in API answers is that route.
  */
 const fs = require('fs');
 const path = require('path');
@@ -37,7 +37,7 @@ describe('P9c A: payment proofs are stored privately and served only to the rece
     const user = await createUser({ role: 'MEMBER', email: `p9c.a${n}@gymsera.test`, fullName: `P9c Traveller ${n}` });
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true });
     const { subscription, payment } = await subscriptionService.subscribe(user.id, {
-      planId: plan.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: plan.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     return { user, token, subscription, payment };
   };
@@ -51,7 +51,7 @@ describe('P9c A: payment proofs are stored privately and served only to the rece
     ctx = require('../harness/personas').personaManager.context;
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'P9c Proof Plan',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'P9c Proof Plan',
       price: '1500.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     jpeg = await sharp({ create: { width: 32, height: 24, channels: 3, background: { r: 10, g: 120, b: 200 } } }).jpeg().toBuffer();
@@ -104,7 +104,7 @@ describe('P9c A: payment proofs are stored privately and served only to the rece
     for (const persona of ['manager', 'frontDesk']) {
       expect((await asPersona(persona).get(`/payments/${t.payment.id}/proof`)).status).toBe(200);
     }
-    const admin = await asPersona('platformAdmin', { 'X-Tenant-Id': ctx.tenant1.id }).get(`/payments/${t.payment.id}/proof`);
+    const admin = await asPersona('platformAdmin', { 'X-Organization-Id': ctx.tenant1.id }).get(`/payments/${t.payment.id}/proof`);
     expect(admin.status).toBe(200);
 
     const audits = await PlatformAuditLog.count({ where: { action: 'PAYMENT_PROOF_ACCESSED', targetId: t.payment.id } });
@@ -118,13 +118,13 @@ describe('P9c A: payment proofs are stored privately and served only to the rece
 
     // Other tenant's owner, in their own tenant and pointing at tenant 1.
     expect((await asPersona('otherTenantOwner').get(url)).status).toBe(404);
-    expect((await asPersona('otherTenantOwner', { 'X-Tenant-Id': ctx.tenant1.id }).get(url)).status).toBe(404);
+    expect((await asPersona('otherTenantOwner', { 'X-Organization-Id': ctx.tenant1.id }).get(url)).status).toBe(404);
     // Same tenant, no payments.view.
     for (const persona of ['trainer', 'cleaner']) {
       expect((await asPersona(persona).get(url)).status).toBe(404);
     }
     // The traveller who uploaded it is not host staff.
-    const own = await request(server()).get(`/api/v1${url}`).set('Authorization', `Bearer ${t.token}`).set('X-Tenant-Id', ctx.tenant1.id);
+    const own = await request(server()).get(`/api/v1${url}`).set('Authorization', `Bearer ${t.token}`).set('X-Organization-Id', ctx.tenant1.id);
     expect([403, 404]).toContain(own.status);
     expect((await asPersona('anonymous').get(url)).status).toBe(401);
   });

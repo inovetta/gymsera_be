@@ -34,13 +34,13 @@ router.use(authenticate, tenantContext, authorize('GYM_HOST', 'BRANCH_MANAGER'))
  *       200:
  *         description: Gym profile
  */
-router.get('/profile', gymsController.getProfile);
+router.get('/businesses/:businessId/profile', gymsController.getProfile);
 
 // NEW-45: the gym's public profile and photos need listing.manage (organization-wide).
-router.post('/profile/logo', can('listing.manage', { orgWide: true }), upload.image('logo'), upload.handleMulterError, validate.allowBody([]), gymsController.uploadLogo);
-router.post('/profile/cover', can('listing.manage', { orgWide: true }), upload.image('cover'), upload.handleMulterError, validate.allowBody([]), gymsController.uploadCover);
-router.post('/profile/images', can('listing.manage', { orgWide: true }), upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), gymsController.uploadGymImages);
-router.delete('/profile/images', can('listing.manage', { orgWide: true }), validate.allowBody(['imageUrl']), gymsController.deleteGymImage);
+router.post('/businesses/:businessId/profile/logo', can('listing.manage', { orgWide: true }), upload.image('logo'), upload.handleMulterError, validate.allowBody([]), gymsController.uploadLogo);
+router.post('/businesses/:businessId/profile/cover', can('listing.manage', { orgWide: true }), upload.image('cover'), upload.handleMulterError, validate.allowBody([]), gymsController.uploadCover);
+router.post('/businesses/:businessId/profile/images', can('listing.manage', { orgWide: true }), upload.images('images', 10), upload.handleMulterError, validate.allowBody([]), gymsController.uploadGymImages);
+router.delete('/businesses/:businessId/profile/images', can('listing.manage', { orgWide: true }), validate.allowBody(['imageUrl']), gymsController.deleteGymImage);
 
 /**
  * @swagger
@@ -83,7 +83,7 @@ router.delete('/profile/images', can('listing.manage', { orgWide: true }), valid
  *       200:
  *         description: Profile updated
  */
-router.patch('/profile', can('listing.manage', { orgWide: true }), validate.strict(gymsValidators.updateProfile, { stage: 2, allow: ['address', 'email', 'latitude', 'longitude', 'phone'] }), gymsController.updateProfile);
+router.patch('/businesses/:businessId/profile', can('listing.manage', { orgWide: true }), validate.strict(gymsValidators.updateProfile, { stage: 2, allow: ['address', 'email', 'latitude', 'longitude', 'phone'] }), gymsController.updateProfile);
 
 // ── Branches ──────────────────────────────────────────────────────────────────
 /**
@@ -218,7 +218,7 @@ router.patch(
  *       200:
  *         description: Branch deactivated
  */
-router.delete('/branches/:branchId', authorize('GYM_HOST'), validate.allowBody(['confirmOrganizationDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), gymsController.deleteBranch);
+router.delete('/branches/:branchId', authorize('GYM_HOST'), validate.allowBody(['confirmBusinessDeletion', 'idToken', 'password', 'provider', 'reauthIdToken', 'reauthProvider']), gymsController.deleteBranch);
 
 // ── Branch images ──────────────────────────────────────────────────────────────
 // NEW-45: a branch's photos need branch.settings at that branch.

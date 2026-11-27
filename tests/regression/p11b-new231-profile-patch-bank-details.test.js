@@ -2,8 +2,8 @@
  * P11b, NEW-231 (found while fixing NEW-228; owner rule 2026-11-07, R-97: "never the full number,
  * for any role other than the owner").
  *
- * GET /gyms/profile hides the bank details from anyone without payouts.bank.manage (NEW-45,
- * gyms.controller getProfile), but PATCH /gyms/profile answered with gymService.updateProfile's
+ * GET /organizations/me/businesses/{businessId}/profile hides the bank details from anyone without payouts.bank.manage (NEW-45,
+ * gyms.controller getProfile), but PATCH /organizations/me/businesses/{businessId}/profile answered with gymService.updateProfile's
  * result unfiltered: an organization admin (listing.manage, no payouts.bank.manage) who saved the
  * listing's description got the tenant's full payout account back in the answer.
  */
@@ -22,7 +22,7 @@ beforeAll(async () => {
   ctx = require('../harness/personas').personaManager.context;
   ({ PayoutAccount } = require('../../src/models/platform'));
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
+  await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
 });
 
 afterAll(async () => {
@@ -30,9 +30,9 @@ afterAll(async () => {
   await teardownTestDatabases();
 });
 
-describe('NEW-231: PATCH /gyms/profile answers bank details only to the owner', () => {
+describe('NEW-231: PATCH /organizations/me/businesses/{businessId}/profile answers bank details only to the owner', () => {
   test('organization admin saves the description → 200, no bank details in the answer', async () => {
-    const res = await asPersona('orgAdmin').patch('/gyms/profile', { description: 'Open early every day' });
+    const res = await asPersona('orgAdmin').patch('/organizations/me/businesses/{businessId}/profile', { description: 'Open early every day' });
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).not.toContain(DETAILS.accountNumber);
     expect(res.body.data.gym.paymentDetailsJson).toBeUndefined();
@@ -40,12 +40,12 @@ describe('NEW-231: PATCH /gyms/profile answers bank details only to the owner', 
   });
 
   test('the organization admin still cannot change the bank details (403, as before)', async () => {
-    const res = await asPersona('orgAdmin').patch('/gyms/profile', { paymentDetailsJson: { bankName: 'Hacker Bank' }, password: PASSWORD });
+    const res = await asPersona('orgAdmin').patch('/organizations/me/businesses/{businessId}/profile', { paymentDetailsJson: { bankName: 'Hacker Bank' }, password: PASSWORD });
     expect(res.status).toBe(403);
   });
 
   test('owner: the answer still carries the bank details (unchanged)', async () => {
-    const res = await asPersona('owner').patch('/gyms/profile', { description: 'Open early every day' });
+    const res = await asPersona('owner').patch('/organizations/me/businesses/{businessId}/profile', { description: 'Open early every day' });
     expect(res.status).toBe(200);
     expect(res.body.data.gym.paymentDetailsJson).toEqual(DETAILS);
   });

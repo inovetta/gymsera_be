@@ -46,7 +46,7 @@ describe('P7c item 6: an Apple refund reversal makes the same period entitled ag
     const listing = await factories.createGymListing(tenant.id);
     await factories.createBranch(dbHarness.tenant1, listing.id);
     plan5 = await factories.createBillingPlan({ branchCount: 5, sortOrder: 5 });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const maxBranches = async () => {
@@ -78,10 +78,10 @@ describe('P7c item 6: an Apple refund reversal makes the same period entitled ag
 
   test('the BILL-02 guard still holds for Google: a voided purchase re-synced with the same period stays REVOKED', async () => {
     fakes.installGoogleFakes({ 'tok-void': fakes.googlePurchase({ productId: plan5.androidProductId }) });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', tenantId: tenant.id });
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', tenantId: tenant.id, revoked: true });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', organizationId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', organizationId: tenant.id, revoked: true });
     expect((await row('tok-void')).status).toBe('REVOKED');
-    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', tenantId: tenant.id });
+    await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-void', organizationId: tenant.id });
     expect((await row('tok-void')).status).toBe('REVOKED');
   });
 });

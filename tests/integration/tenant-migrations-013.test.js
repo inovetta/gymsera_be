@@ -31,7 +31,7 @@ describe('Tenant Migration 013 (add role_assignment version) Integration Tests (
     expect(colsBefore.version).toBeUndefined();
 
     const res = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       dryRun: true,
       targetVersion: 13,
     });
@@ -58,7 +58,7 @@ describe('Tenant Migration 013 (add role_assignment version) Integration Tests (
     await tenantSeq.query('DELETE FROM schema_migrations WHERE version = 13').catch(() => {});
 
     const res = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 13,
     });
 
@@ -79,7 +79,7 @@ describe('Tenant Migration 013 (add role_assignment version) Integration Tests (
     await tenantSeq.query('DELETE FROM schema_migrations WHERE version = 13').catch(() => {});
 
     const res = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 13,
     });
 
@@ -92,7 +92,7 @@ describe('Tenant Migration 013 (add role_assignment version) Integration Tests (
 
     // Re-run should be idempotent
     const rerun = await runTenantMigrations(tenantSeq, {
-      tenantId: 'test-tenant-2',
+      organizationId: 'test-tenant-2',
       targetVersion: 13,
     });
     expect(rerun.applied).toHaveLength(0);

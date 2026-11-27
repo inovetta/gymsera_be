@@ -28,8 +28,8 @@ const ALLOWED_NON_LOGIN_OPERATIONAL_ROUTES = [
   { method: 'POST', path: '/api/v1/auth/logout', reason: 'Public logout: revokes refresh token or user sessions (AUTH-02)' },
   { method: 'POST', path: '/api/v1/auth/password-reset/request', reason: 'Public password reset request: generates secure password reset token' },
   { method: 'POST', path: '/api/v1/auth/password-reset/confirm', reason: 'Public password reset confirm: applies new password via validated reset token' },
-  { method: 'GET', path: '/api/v1/auth/tenant-invitations/verify', reason: 'Public tenant invitation token verification: validates invitation token before registration' },
-  { method: 'POST', path: '/api/v1/auth/tenant-invitations/accept', reason: 'Public tenant invitation accept: creates tenant and owner account via validated invitation token' },
+  { method: 'GET', path: '/api/v1/auth/organization-invitations/verify', reason: 'Public tenant invitation token verification: validates invitation token before registration' },
+  { method: 'POST', path: '/api/v1/auth/organization-invitations/accept', reason: 'Public tenant invitation accept: creates tenant and owner account via validated invitation token' },
 
   // Metrics scrape (key checked; disabled with a 404 unless METRICS_KEY is set)
   { method: 'GET', path: '/metrics', reason: 'Prometheus scrape endpoint (OBS-03): requires Authorization: Bearer METRICS_KEY (24+ chars, from the environment); answers 404 when no key is configured; rate limited' },

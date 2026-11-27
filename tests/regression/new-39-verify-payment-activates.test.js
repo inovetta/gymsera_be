@@ -30,7 +30,7 @@ describe('NEW-39: verifyPayment completes the whole member checkout', () => {
     await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
 
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId,
+      businessId: ctx.branch1.businessId,
       branchId: ctx.branch1.id,
       name: 'NEW-39 Monthly',
       price: '3000.10',
@@ -51,7 +51,7 @@ describe('NEW-39: verifyPayment completes the whole member checkout', () => {
     const member = personas.member.user;
     const { subscription, payment } = await subscriptionService.subscribe(member.id, {
       planId: plan.id,
-      gymListingId: ctx.listing1.id,
+      businessId: ctx.listing1.id,
       branchId: ctx.branch1.id,
     });
     expect(subscription.status).toBe('PENDING');
@@ -81,7 +81,7 @@ describe('NEW-39: verifyPayment completes the whole member checkout', () => {
     const member2 = await createUser({ role: 'MEMBER', email: 'new39.m2@gymsera.test', fullName: 'New39 Two' });
     const { subscription, payment } = await subscriptionService.subscribe(member2.id, {
       planId: plan.id,
-      gymListingId: ctx.listing1.id,
+      businessId: ctx.listing1.id,
       branchId: ctx.branch1.id,
     });
 

@@ -87,13 +87,13 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
 
   describe('Lifecycle Enforcement: createAdminTenantBranch and createListing', () => {
     let dbHarness;
-    let tenantId;
+    let organizationId;
     let personas;
 
     beforeAll(async () => {
       dbHarness = await setupTestDatabases();
       personas = await setupPersonas(dbHarness);
-      tenantId = personas.owner.tenantId;
+      organizationId = personas.owner.organizationId;
     });
 
     afterAll(async () => {
@@ -102,59 +102,54 @@ describe('CAP-03: Branch Lifecycle and Source Scan Guard', () => {
 
     test('createAdminTenantBranch enforces subscription capacity via createBranch', async () => {
       // Set platform subscription branchCount to 1, currently 1 active branch
-      let sub = await TenantSubscription.findOne({ where: { tenantId } });
+      let sub = await TenantSubscription.findOne({ where: { organizationId } });
       if (sub) {
         await sub.update({ branchCount: 1 });
       } else {
-        await factories.createTenantSubscription(tenantId, { branchCount: 1, status: 'ACTIVE' });
+        await factories.createTenantSubscription(organizationId, { branchCount: 1, status: 'ACTIVE' });
       }
 
       // Attempting to create a 2nd branch via adminService.createAdminTenantBranch should throw 403 / capacity exceeded
       await expect(
-        adminService.createAdminTenantBranch(tenantId, {
+        adminService.createAdminTenantBranch(organizationId, {
           branchName: 'Admin Branch Over Capacity',
           address: '123 Test St',
         }, personas.platformAdmin.user.id)
       ).rejects.toThrow('Branch limit reached');
     });
 
-    test('createListing with branchSource: new consumes capacity or donor slots via createBranch', async () => {
-      let sub = await TenantSubscription.findOne({ where: { tenantId } });
+    test('Add Business reserves capacity and approval builds its first branch via createBranch', async () => {
+      let sub = await TenantSubscription.findOne({ where: { organizationId } });
       if (sub) {
         await sub.update({ branchCount: 2 });
       } else {
-        await factories.createTenantSubscription(tenantId, { branchCount: 2, status: 'ACTIVE' });
+        await factories.createTenantSubscription(organizationId, { branchCount: 2, status: 'ACTIVE' });
       }
 
-      // Host creates listing with branchSource: 'new'
-      const res = await asPersona('owner').post('/host/listings', {
-        gymName: 'Host Created New Org',
-        branchSource: 'new',
-        branchName: 'Host Created New Branch',
-        address: '456 Host Ave',
-        packages: [
-          { name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }
-        ],
+      const { firstBranchInput } = require('../harness/first-branch-input');
+      const res = await asPersona('owner').post('/host/businesses', {
+        businessName: 'Host Created New Org',
+        firstBranch: await firstBranchInput({ branchName: 'Host Created New Branch', address: '456 Host Ave',
+          packages: [{ name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
       });
 
       expect([200, 201]).toContain(res.status);
       expect(res.body.success).toBe(true);
 
-      // Verify branch was created in tenantDb with ACTIVE status
+      expect(res.body.data.branch).toBeNull();
+      await require('../harness/business-proof').addProof(res.body.data.business.id);
+      await require('../../src/services/admin.service').approveBusiness(res.body.data.business.id, personas.platformAdmin.user.id);
+      // Approval builds the held first branch with ACTIVE status.
       const { Branch } = dbHarness.tenant1.models;
-      const branch = await Branch.findOne({ where: { branchName: 'Host Created New Org' } });
+      const branch = await Branch.findOne({ where: { branchName: 'Host Created New Branch' } });
       expect(branch).not.toBeNull();
       expect(branch.status).toBe('ACTIVE');
 
-      // Now at 2 active branches (capacity 2). Next attempt to create branchSource: 'new' without donor slot must fail
-      const failRes = await asPersona('owner').post('/host/listings', {
-        gymName: 'Listing Over Capacity',
-        branchSource: 'new',
-        branchName: 'Over Capacity Branch',
-        address: '789 Fail Ave',
-        packages: [
-          { name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }
-        ],
+      // Now at 2 active branches (capacity 2). Another first branch needs a free unit.
+      const failRes = await asPersona('owner').post('/host/businesses', {
+        businessName: 'Listing Over Capacity',
+        firstBranch: await firstBranchInput({ branchName: 'Over Capacity Branch', address: '789 Fail Ave',
+          packages: [{ name: 'Monthly Pass', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
       });
 
       expect([400, 403]).toContain(failRes.status);

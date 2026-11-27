@@ -37,7 +37,7 @@ describe('NEW-84b: conversation_updated is branch-scoped', () => {
     team = await buildTwoBranchTeam(dbHarness, personas);
     staffB = await teamMember({
       tenantDb: dbHarness.tenant1,
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
       email: 'desk-b@new84b.test',
       roleKey: 'DESK',
       scopeType: 'BRANCH',
@@ -48,7 +48,7 @@ describe('NEW-84b: conversation_updated is branch-scoped', () => {
       where: { id: 1 },
       defaults: { id: 1, name: 'Karachi', isActive: true },
     });
-    await factories.createGymListing(team.tenantId, { branchId: team.branchB.id });
+    await factories.createGymListing(team.organizationId, { branchId: team.branchB.id });
 
     socketGateway = require('../../src/socket');
     ledgerService = require('../../src/services/ledger.service');
@@ -95,13 +95,13 @@ describe('NEW-84b: conversation_updated is branch-scoped', () => {
 
   const ownerToken = async () => {
     const { Tenant } = require('../../src/models/platform');
-    const tenant = await Tenant.findByPk(team.tenantId);
+    const tenant = await Tenant.findByPk(team.organizationId);
     return signToken({
       sub: tenant.ownerUserId,
       id: tenant.ownerUserId,
       role: 'GYM_HOST',
       isVerified: true,
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
     });
   };
 
@@ -112,7 +112,7 @@ describe('NEW-84b: conversation_updated is branch-scoped', () => {
   beforeAll(async () => {
     const { Conversation } = require('../../src/models/platform');
     conversationB = await Conversation.create({
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
       branchId: team.branchB.id,
       userId: traveler.id,
       type: 'INQUIRY',
@@ -143,7 +143,7 @@ describe('NEW-84b: conversation_updated is branch-scoped', () => {
   test('a branch-A conversation reaches branch-A staff', async () => {
     const { Conversation } = require('../../src/models/platform');
     const conversationA = await Conversation.create({
-      tenantId: team.tenantId,
+      organizationId: team.organizationId,
       branchId: team.branchA.id,
       userId: traveler.id,
       type: 'INQUIRY',

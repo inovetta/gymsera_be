@@ -31,7 +31,7 @@ const FACE = (extra = '') => 'DeviceType=acc,~DeviceName=SpeedFace Sim,FirmVer=S
 const owner = () => asPersona('owner');
 const at = (db, sql, rep) => db.query(sql, { replacements: utc(rep) });
 const platformRow = async (id) => (await platformDb.query('SELECT * FROM access_devices WHERE id = ?', { replacements: [id], type: QueryTypes.SELECT }))[0];
-const newOrgBranch = async () => w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+const newOrgBranch = async () => w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
 const withFace = async (user) => {
   await biometrics.recordConsent(w.db1, { memberId: user.id, method: 'in_person' });
   await biometrics.storeTemplates(w.db1, { memberId: user.id, deviceId: null, templates: [{ pin: '1', type: 9, no: 0, index: 0, valid: 1, duress: 0, majorVer: '58', minorVer: '1', format: 0, tmp: fx.TEMPLATE }] });
@@ -80,9 +80,9 @@ describe('wipe on unpair (§10.3)', () => {
     const b2 = await newOrgBranch();
     const silent = await w.device(w.db1, { branch: b2, registryBody: FACE(), name: 'Silent' });
     await owner().delete(`/host/devices/${silent.id}`, { wipeDevice: true, confirmName: 'Silent' });
-    expect(await jobs.finishWipes({ tenantId: w.db1.tenantId, db: w.db1 })).toBe(0);
+    expect(await jobs.finishWipes({ organizationId: w.db1.organizationId, db: w.db1 })).toBe(0);
     await at(w.db1.sequelize, 'UPDATE device_commands SET created_at = ? WHERE device_id = ? AND kind = \'wipe\'', [new Date(Date.now() - 8 * 86400000), silent.id]);
-    expect(await jobs.finishWipes({ tenantId: w.db1.tenantId, db: w.db1 })).toBe(1);
+    expect(await jobs.finishWipes({ organizationId: w.db1.organizationId, db: w.db1 })).toBe(1);
     expect((await platformRow(silent.id)).status).toBe('removed');
   });
 
@@ -190,11 +190,11 @@ describe('owner alerts per device (§13)', () => {
 
   test('capacity at 90% of MaxUserCount: one notification per incident', async () => {
     for (let i = 0; i < 9; i++) await w.subscribe(w.db1, { user: await w.member(`Cap ${i}`), branch });
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     const sent = await alertsFor('device_capacity');
     expect(sent.length).toBe(1);
     expect(sent[0].message).toMatch(/Small Door is at 90% of its user capacity \(9 of 10\)/);
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     expect((await alertsFor('device_capacity')).length).toBe(1);
   });
 
@@ -202,11 +202,11 @@ describe('owner alerts per device (§13)', () => {
     const put = await owner().put(`/host/devices/branch-settings/${branch.id}`, { alertsEnabled: false });
     expect(put.status).toBe(200);
     for (let i = 0; i < 20; i++) await sync.logError(w.db1, door.id, { kind: 'command_failed', code: -1 });
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     expect((await alertsFor('device_error_rate')).length).toBe(0);
     await owner().put(`/host/devices/branch-settings/${branch.id}`, { alertsEnabled: true });
     await w.db1.sequelize.query('UPDATE access_device_details SET alerts_json = NULL WHERE id = ?', { replacements: [door.id] });
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     const sent = await alertsFor('device_error_rate');
     expect(sent.length).toBe(1);
     expect(sent[0].message).toMatch(/Small Door reported 20 errors in the last hour/);
@@ -215,7 +215,7 @@ describe('owner alerts per device (§13)', () => {
   test('offline: no owner notification when the branch turned alerts off (the incident is still recorded)', async () => {
     await owner().put(`/host/devices/branch-settings/${branch.id}`, { alertsEnabled: false });
     await at(platformDb, 'UPDATE access_devices SET last_seen_at = ? WHERE id = ?', [new Date(Date.now() - 3600000), door.id]);
-    await jobs.watchdogTenant({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.watchdogTenant({ organizationId: w.db1.organizationId, db: w.db1 });
     expect((await alertsFor('device_offline')).length).toBe(0);
     const [det] = await w.q(w.db1, 'SELECT offline_notified_at FROM access_device_details WHERE id = ?', [door.id]);
     expect(det.offline_notified_at).not.toBeNull();
@@ -363,10 +363,10 @@ describe('member self-withdrawal (§14)', () => {
 
     const list = await me.get('/me/biometric-consents');
     expect(list.status).toBe(200);
-    const gym = list.body.data.gyms.find((g) => g.tenantId === w.db1.tenantId);
+    const gym = list.body.data.gyms.find((g) => g.organizationId === w.db1.organizationId);
     expect(gym.consent).toMatchObject({ consented: true, templates: 1 });
 
-    const res = await me.delete(`/me/biometric-consents/${w.db1.tenantId}`);
+    const res = await me.delete(`/me/biometric-consents/${w.db1.organizationId}`);
     expect(res.status).toBe(200);
     expect(res.body.data.templatesDeleted).toBe(1);
     await w.settled();
@@ -374,7 +374,7 @@ describe('member self-withdrawal (§14)', () => {
     expect(door.sim.holds(pin).bioTypes).toEqual([]);
     expect(door.sim.holds(pin).user).not.toBeNull(); // still a member: card / PIN entry keeps working
     // Another tenant's id: nothing there.
-    expect((await me.delete(`/me/biometric-consents/${w.db2.tenantId}`)).status).toBe(404);
+    expect((await me.delete(`/me/biometric-consents/${w.db2.organizationId}`)).status).toBe(404);
   });
 });
 

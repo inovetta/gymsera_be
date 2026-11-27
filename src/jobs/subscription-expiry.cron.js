@@ -32,10 +32,10 @@ const WARNING_DAYS = EXPIRING_SOON_DAYS; // NEW-244: the same window the host li
 
 /**
  * Process one tenant's member_subscriptions table.
- * @param {string} tenantId
+ * @param {string} organizationId
  * @param {{ sequelize, models }} tenantDb
  */
-const _processTenant = async (tenantId, tenantDb) => {
+const _processTenant = async (organizationId, tenantDb) => {
   const { MemberSubscription, Branch } = tenantDb.models;
   const { computeBusinessDate } = require('../services/ledger.service');
 
@@ -45,10 +45,10 @@ const _processTenant = async (tenantId, tenantDb) => {
     try {
       const exp = await paymentService.expireStalePendingPayments(tenantDb);
       if (exp.expired > 0) {
-        console.log(`[Cron] Tenant ${tenantId}: ${exp.expired} pending payment(s) expired, ${exp.membershipsCancelled} unpaid membership(s) cancelled`);
+        console.log(`[Cron] Tenant ${organizationId}: ${exp.expired} pending payment(s) expired, ${exp.membershipsCancelled} unpaid membership(s) cancelled`);
       }
     } catch (err) {
-      console.error(`[Cron] Tenant ${tenantId}: pending payment expiry failed:`, err.message);
+      console.error(`[Cron] Tenant ${organizationId}: pending payment expiry failed:`, err.message);
     }
   }
 
@@ -90,7 +90,7 @@ const _processTenant = async (tenantId, tenantDb) => {
         { status: SubscriptionStatus.EXPIRED },
         { where: { subscriptionId: { [Op.in]: subIds } } }
       );
-      console.log(`[Cron] Tenant ${tenantId} (${tz}): expired ${subIds.length} subscription(s)`);
+      console.log(`[Cron] Tenant ${organizationId} (${tz}): expired ${subIds.length} subscription(s)`);
     }
 
     // ── 2. Unfreeze / transition elapsed FROZEN subscriptions (FLOW-06) ────────
@@ -111,7 +111,7 @@ const _processTenant = async (tenantId, tenantDb) => {
         { status: nextStatus, endDate: sub.endDate },
         { where: { subscriptionId: sub.id } }
       );
-      console.log(`[Cron] Tenant ${tenantId} (${tz}): unfroze subscription ${sub.id} -> ${nextStatus}`);
+      console.log(`[Cron] Tenant ${organizationId} (${tz}): unfroze subscription ${sub.id} -> ${nextStatus}`);
     }
 
     // ── 3. Queue expiry-warning notifications (3-day window) ──────────────────
@@ -138,10 +138,10 @@ const _processTenant = async (tenantId, tenantDb) => {
       // Get gym name from platform index
       const index = await UserGymMembership.findOne({
         where: { subscriptionId: sub.id },
-        attributes: ['gymName'],
+        attributes: ['businessName'],
       });
 
-      const gymName = index?.gymName || 'your gym';
+      const businessName = index?.businessName || 'your gym';
 
       // 1. In-app notification, WebSocket broadcast, and FCM push
       await notificationsService.createNotification({
@@ -149,12 +149,12 @@ const _processTenant = async (tenantId, tenantDb) => {
         role: 'traveler',
         type: 'expiry',
         title: 'Plan Expiring Soon',
-        message: `Your membership at ${gymName} expires on ${sub.endDate}. Renew now!`,
+        message: `Your membership at ${businessName} expires on ${sub.endDate}. Renew now!`,
         deepLink: '/traveler/subscriptions',
         metadataJson: {
           event: 'subscription_expiring_soon',
           subscriptionId: sub.id,
-          gymName,
+          businessName,
           endDate: sub.endDate,
         },
       }).catch((notifErr) => {
@@ -165,7 +165,7 @@ const _processTenant = async (tenantId, tenantDb) => {
       await emailService.sendSubscriptionExpiringSoonEmail(
         user.email,
         user.fullName,
-        gymName,
+        businessName,
         sub.endDate
       ).catch((mailErr) => {
         console.warn('[Email Error] Failed to send SUBSCRIPTION_EXPIRING_SOON email:', mailErr.message);
@@ -213,11 +213,11 @@ const _processPlatformSubscriptions = async () => {
     if (!owner) continue;
     try {
       await emailService.sendTenantSubscriptionWarningEmail(owner.email, owner.fullName, {
-        businessName: sub.tenant.businessName,
+        organizationName: sub.tenant.organizationName,
         packageName: sub.package?.name || 'Platform',
         endDate: sub.endDate,
       });
-      console.log(`[Cron] Sent subscription warning to ${owner.email} (tenant: ${sub.tenantId})`);
+      console.log(`[Cron] Sent subscription warning to ${owner.email} (tenant: ${sub.organizationId})`);
     } catch (err) {
       console.error(`[Cron] Failed to send warning email to ${owner.email}:`, err.message);
     }
@@ -254,14 +254,14 @@ const _processPlatformSubscriptions = async () => {
         await expirePayLaterGrace(sub);
       } else {
         await sub.update({ status: 'EXPIRED' });
-        await require('../services/host-plan-notice.service').notifyHostOfPlanChange(sub.tenantId, 'expired', sub);
+        await require('../services/host-plan-notice.service').notifyHostOfPlanChange(sub.organizationId, 'expired', sub);
       }
 
       // REL-04: Never mutate tenant status from billing jobs (tenant stays as-is, capacity handles quota)
       const tenant = sub.tenant;
       if (!tenant) continue;
 
-      console.log(`[Cron] Subscription expired for tenant ${tenant.id} (${tenant.businessName})`);
+      console.log(`[Cron] Subscription expired for tenant ${tenant.id} (${tenant.organizationName})`);
     } catch (err) {
       console.error(`[Cron] Failed to process expired subscription ${sub.id}:`, err.message);
     }
@@ -289,7 +289,7 @@ const _reconcileCapacityForAllTenants = async () => {
   const todayStr = new Date().toISOString().split('T')[0];
   const activeSubs = await TenantSubscription.findAll({
     where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES }, branchCount: { [Op.ne]: null } },
-    attributes: ['id', 'tenantId', 'branchCount'],
+    attributes: ['id', 'organizationId', 'branchCount'],
   });
   // Tenants with no entitling plan but an ended or expired one (P7c, R-82, NEW-171):
   // entitled to 0 branches, so their slots are trimmed and, after the 7-day grace,
@@ -298,21 +298,21 @@ const _reconcileCapacityForAllTenants = async () => {
     (
       await TenantSubscription.findAll({
         where: { status: { [Op.in]: subscriptionQuotaService.ENTITLING_STATUSES } },
-        attributes: ['tenantId'],
+        attributes: ['organizationId'],
       })
-    ).map((r) => r.tenantId)
+    ).map((r) => r.organizationId)
   );
   const lapsedTenantIds = [
     ...new Set(
       (
         await TenantSubscription.findAll({
           where: { status: { [Op.in]: subscriptionQuotaService.ENDED_STATUSES } },
-          attributes: ['tenantId'],
+          attributes: ['organizationId'],
         })
-      ).map((r) => r.tenantId)
+      ).map((r) => r.organizationId)
     ),
   ].filter((id) => !entitledTenantIds.has(id));
-  for (const tenantId of lapsedTenantIds) activeSubs.push({ tenantId, branchCount: 0 });
+  for (const organizationId of lapsedTenantIds) activeSubs.push({ organizationId, branchCount: 0 });
 
   let reconciled = 0;
   let audited = 0;
@@ -324,14 +324,14 @@ const _reconcileCapacityForAllTenants = async () => {
     auditFailedTenantIds: [],
   };
   for (const sub of activeSubs) {
-    const tenant = await Tenant.findByPk(sub.tenantId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
+    const tenant = await Tenant.findByPk(sub.organizationId, { attributes: ['id', 'connectionStringEncrypted', 'status'] });
     if (!tenant || tenant.status !== 'ACTIVE' || !tenant.connectionStringEncrypted) continue;
 
     try {
       const tenantDb = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
       const platformTx = await platformSequelize.transaction();
       try {
-        const result = await subscriptionQuotaService.reconcileCapacity(sub.tenantId, tenantDb, sub.branchCount, {
+        const result = await subscriptionQuotaService.reconcileCapacity(sub.organizationId, tenantDb, sub.branchCount, {
           transaction: platformTx,
           idempotencyPrefix: `cron:${todayStr}`,
           actorType: 'SYSTEM',
@@ -340,7 +340,7 @@ const _reconcileCapacityForAllTenants = async () => {
         if (result.trimmedSlots > 0 || result.overQuotaCount > 0) {
           reconciled++;
           console.log(
-            `[Cron] Tenant ${sub.tenantId}: capacity reconciliation trimmed ${result.trimmedSlots} slot(s)` +
+            `[Cron] Tenant ${sub.organizationId}: capacity reconciliation trimmed ${result.trimmedSlots} slot(s)` +
               `${result.overQuotaCount > 0 ? `, over-quota by ${result.overQuotaCount}` : ''}`
           );
         }
@@ -352,14 +352,14 @@ const _reconcileCapacityForAllTenants = async () => {
       // Enforce branch billing locks on over-quota tenants (CAP-01)
       try {
         const branchBillingLockService = require('../services/branch-billing-lock.service');
-        const lockRes = await branchBillingLockService.enforceBranchBillingLocksForTenant(sub.tenantId, tenantDb);
+        const lockRes = await branchBillingLockService.enforceBranchBillingLocksForTenant(sub.organizationId, tenantDb);
         if (lockRes.lockedCount > 0 || lockRes.unlockedCount > 0) {
           console.log(
-            `[Cron] Tenant ${sub.tenantId}: branch billing lock sweep: locked ${lockRes.lockedCount}, unlocked ${lockRes.unlockedCount}`
+            `[Cron] Tenant ${sub.organizationId}: branch billing lock sweep: locked ${lockRes.lockedCount}, unlocked ${lockRes.unlockedCount}`
           );
         }
       } catch (lockErr) {
-        console.error(`[Cron] Branch billing lock sweep failed for tenant ${sub.tenantId}:`, lockErr.message);
+        console.error(`[Cron] Branch billing lock sweep failed for tenant ${sub.organizationId}:`, lockErr.message);
       }
 
       // Integrity check, after reconciliation rather than before, so what it
@@ -375,21 +375,21 @@ const _reconcileCapacityForAllTenants = async () => {
       // trail disagree, and silently rewriting one to match the other would
       // destroy the only evidence of what went wrong. A human decides.
       try {
-        const audit = await subscriptionQuotaService.auditCapacity(sub.tenantId, tenantDb);
+        const audit = await subscriptionQuotaService.auditCapacity(sub.organizationId, tenantDb);
         if (!audit.ok) {
           audited++;
-          if (audit.driftedListings.length || audit.overQuotaMismatch || audit.invariantHolds === false) {
-            found.driftTenantIds.push(sub.tenantId);
-            found.driftedListingCount += audit.driftedListings.length;
+          if (audit.driftedBusinesses.length || audit.overQuotaMismatch || audit.invariantHolds === false) {
+            found.driftTenantIds.push(sub.organizationId);
+            found.driftedListingCount += audit.driftedBusinesses.length;
             if (audit.overQuotaMismatch) found.overQuotaMismatchCount += 1;
             if (audit.invariantHolds === false) found.invariantBrokenCount += 1;
           }
-          if (audit.emptyActiveOrgs && audit.emptyActiveOrgs.length) {
-            found.emptyOrgTenantIds.push(sub.tenantId);
-            found.emptyOrgCount += audit.emptyActiveOrgs.length;
+          if (audit.emptyActiveBusinesses && audit.emptyActiveBusinesses.length) {
+            found.emptyOrgTenantIds.push(sub.organizationId);
+            found.emptyOrgCount += audit.emptyActiveBusinesses.length;
           }
           console.warn(
-            `[Cron] CAPACITY AUDIT FAILED tenant ${sub.tenantId} (${audit.businessName}): ` +
+            `[Cron] CAPACITY AUDIT FAILED tenant ${sub.organizationId} (${audit.organizationName}): ` +
               `${audit.activeBranches} active + ${audit.usedCapacity - audit.activeBranches} reserved ` +
               `vs plan ${audit.maxBranches}` +
               (audit.totalDrift !== 0 ? `, ledger drift ${audit.totalDrift > 0 ? '+' : ''}${audit.totalDrift}` : '') +
@@ -397,21 +397,21 @@ const _reconcileCapacityForAllTenants = async () => {
                 ? `, overQuotaCount recorded ${audit.recordedOverQuota} but should be ${audit.expectedOverQuota}`
                 : '')
           );
-          for (const d of audit.driftedListings) {
+          for (const d of audit.driftedBusinesses) {
             console.warn(
-              `[Cron]   listing "${d.title}" (${d.listingId}): reservedSlots ${d.actualReservedSlots}, ` +
+              `[Cron]   business "${d.businessName}" (${d.businessId}): reservedSlots ${d.actualReservedSlots}, ` +
                 `ledger says ${d.ledgerReservedSlots} (drift ${d.drift > 0 ? '+' : ''}${d.drift})`
             );
           }
         }
       } catch (auditErr) {
-        found.auditFailedTenantIds.push(sub.tenantId);
-        console.error(`[Cron] Capacity audit failed for tenant ${sub.tenantId}:`, auditErr.message);
+        found.auditFailedTenantIds.push(sub.organizationId);
+        console.error(`[Cron] Capacity audit failed for tenant ${sub.organizationId}:`, auditErr.message);
       }
     } catch (err) {
       // The audit never ran for this tenant: that is an unchecked tenant, not a clean one.
-      found.auditFailedTenantIds.push(sub.tenantId);
-      console.error(`[Cron] Capacity reconciliation failed for tenant ${sub.tenantId}:`, err.message);
+      found.auditFailedTenantIds.push(sub.organizationId);
+      console.error(`[Cron] Capacity reconciliation failed for tenant ${sub.organizationId}:`, err.message);
     }
   }
 

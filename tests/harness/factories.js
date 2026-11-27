@@ -94,9 +94,9 @@ async function createTenant(overrides = {}) {
 
   const tenant = await Tenant.create({
     id,
-    tenantCode: overrides.tenantCode || `GYM-${suffix}`,
-    gymName: overrides.gymName || `Test Gym ${suffix}`,
-    businessName: overrides.businessName || `Test Gym Enterprises ${suffix}`,
+    organizationCode: overrides.organizationCode || `GYM-${suffix}`,
+    firstBusinessName: overrides.firstBusinessName || overrides.gymName || `Test Gym ${suffix}`,
+    organizationName: overrides.organizationName || `Test Gym Enterprises ${suffix}`,
     email: overrides.email || `tenant_${suffix.toLowerCase()}@gymseratest.com`,
     phone: overrides.phone || '+923007654321',
     cityId: overrides.cityId || 1,
@@ -112,19 +112,21 @@ async function createTenant(overrides = {}) {
 /**
  * Creates a GymListing in platform DB
  */
-async function createGymListing(tenantId, overrides = {}) {
+async function createGymListing(organizationId, overrides = {}) {
   const id = overrides.id || uuidv4();
   const suffix = id.slice(0, 6);
 
   return GymListing.create({
     id,
-    tenantId,
+    organizationId,
     cityId: overrides.cityId || 1,
-    branchId: overrides.branchId || uuidv4(),
-    title: overrides.title || `Organization ${suffix}`,
+    primaryBranchId: overrides.primaryBranchId || overrides.branchId || uuidv4(),
+    name: overrides.name || overrides.title || `Organization ${suffix}`,
     tagline: overrides.tagline || 'Excellence in fitness',
     slug: overrides.slug || `org-${suffix}`,
     status: overrides.status || 'ACTIVE',
+    // NEW-303 M2: an ACTIVE business is an approved one unless a test says otherwise.
+    kycStatus: overrides.kycStatus || ((overrides.status || 'ACTIVE') === 'ACTIVE' ? 'APPROVED' : 'NOT_SUBMITTED'),
     reservedSlots: overrides.reservedSlots !== undefined ? overrides.reservedSlots : 0,
     contactPhone: overrides.contactPhone || '+923001112233',
     contactEmail: overrides.contactEmail || `org_${suffix}@gymseratest.com`,
@@ -135,31 +137,30 @@ async function createGymListing(tenantId, overrides = {}) {
 /**
  * Creates a Branch in tenant DB
  */
-async function createBranch(tenantDb, gymListingId, overrides = {}) {
+async function createBranch(tenantDb, listingBusinessId, overrides = {}) {
   const id = overrides.id || uuidv4();
   const suffix = id.slice(0, 6);
   const BranchModel = tenantDb.models ? tenantDb.models.Branch : tenantDb.Branch;
   const GymModel = tenantDb.models ? tenantDb.models.Gym : tenantDb.Gym;
 
-  let gymId = overrides.gymId;
-  if (!gymId && GymModel) {
-    let gym = await GymModel.findOne();
+  // R-120 NEW-308 (option S): the business row has the id of its business_listings row.
+  let businessId = overrides.businessId;
+  if (!businessId && GymModel) {
+    let gym = listingBusinessId ? await GymModel.findByPk(listingBusinessId) : await GymModel.findOne();
     if (!gym) {
       gym = await GymModel.create({
-        id: uuidv4(),
+        id: listingBusinessId || uuidv4(),
         name: overrides.gymName || `Gym ${suffix}`,
-        gymListingId,
       });
     }
-    gymId = gym.id;
+    businessId = gym.id;
   }
 
   const branchName = overrides.branchName || overrides.name || `Branch ${suffix}`;
 
   return BranchModel.create({
     id,
-    gymId,
-    gymListingId,
+    businessId,
     branchName,
     status: overrides.status || 'ACTIVE',
     timezone: overrides.timezone || 'Asia/Karachi',
@@ -172,14 +173,14 @@ async function createBranch(tenantDb, gymListingId, overrides = {}) {
 /**
  * Creates a TenantSubscription in platform DB
  */
-async function createTenantSubscription(tenantId, overrides = {}) {
+async function createTenantSubscription(organizationId, overrides = {}) {
   const id = overrides.id || uuidv4();
   const now = new Date();
   const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   return TenantSubscription.create({
     id,
-    tenantId,
+    organizationId,
     branchCount: overrides.branchCount || 5,
     status: overrides.status || 'ACTIVE',
     platform: overrides.platform || 'MANUAL',
@@ -244,14 +245,14 @@ async function createRoleAssignment(tenantDb, { userId, roleKey = 'MANAGER', sco
 
   // Also sync to UserOrgIndex if platform model is available
   try {
-    const tenantId = overrides.tenantId || (tenantDb.tenantId);
-    if (tenantId && userId) {
+    const organizationId = overrides.organizationId || (tenantDb.organizationId);
+    if (organizationId && userId) {
       await UserOrgIndex.findOrCreate({
-        where: { userId, tenantId },
+        where: { userId, organizationId },
         defaults: {
           id: uuidv4(),
           userId,
-          tenantId,
+          organizationId,
           roleKey,
           status: 'ACTIVE',
         },
@@ -296,13 +297,13 @@ async function makeBranchLive(tenantDb, branch) {
   const { Branch, MembershipPlan } = tenantDb.models || tenantDb;
   const row = typeof branch === 'string' ? await Branch.findByPk(branch) : branch;
   await row.update({ status: 'ACTIVE', travelerVisibilityStatus: 'active', adminSuspended: false });
-  if (row.gymListingId) {
-    await GymListing.update({ status: 'ACTIVE' }, { where: { id: row.gymListingId } });
+  if (row.businessId) {
+    await GymListing.update({ status: 'ACTIVE', kycStatus: 'APPROVED' }, { where: { id: row.businessId } });
   }
   const visible = await MembershipPlan.count({ where: { branchId: row.id, status: 'ACTIVE', isPublic: true } });
   if (visible === 0) {
     await MembershipPlan.create({
-      gymId: row.gymId, branchId: row.id, name: 'Visible Monthly', price: 1000,
+      businessId: row.businessId, branchId: row.id, name: 'Visible Monthly', price: 1000,
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
   }
@@ -311,21 +312,21 @@ async function makeBranchLive(tenantDb, branch) {
 
 /**
  * P7b (R-94): the tenant's payout account (bank details), the one store the API reads. Replaces
- * seeding tenants.payment_details_json, which the API no longer reads. organizationId null = the
+ * seeding tenants.payment_details_json, which the API no longer reads. businessId null = the
  * tenant default; detailsUpdatedAt null = no SEC-13 cooling period.
  */
-async function setPayoutAccount(tenantId, details, { organizationId = null, detailsUpdatedAt = null } = {}) {
+async function setPayoutAccount(organizationId, details, { businessId = null, detailsUpdatedAt = null } = {}) {
   const { PayoutAccount } = require('../../src/models/platform');
-  const scopeKey = PayoutAccount.scopeKeyFor(organizationId);
-  const existing = await PayoutAccount.findOne({ where: { tenantId, scopeKey, provider: 'BANK_TRANSFER' } });
+  const scopeKey = PayoutAccount.scopeKeyFor(businessId);
+  const existing = await PayoutAccount.findOne({ where: { organizationId, scopeKey, provider: 'BANK_TRANSFER' } });
   if (existing) return existing.update({ detailsJson: details, detailsUpdatedAt, status: 'ACTIVE' });
-  return PayoutAccount.create({ tenantId, organizationId, detailsJson: details, detailsUpdatedAt });
+  return PayoutAccount.create({ organizationId, businessId, detailsJson: details, detailsUpdatedAt });
 }
 
 /** P7b: the tenant default payout account row (or null). */
-async function getTenantPayoutAccount(tenantId) {
+async function getTenantPayoutAccount(organizationId) {
   const { PayoutAccount } = require('../../src/models/platform');
-  return PayoutAccount.findOne({ where: { tenantId, scopeKey: 'TENANT', provider: 'BANK_TRANSFER' } });
+  return PayoutAccount.findOne({ where: { organizationId, scopeKey: 'ORGANIZATION', provider: 'BANK_TRANSFER' } });
 }
 
 module.exports = {

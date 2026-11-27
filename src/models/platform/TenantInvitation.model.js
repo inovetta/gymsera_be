@@ -31,10 +31,10 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'owner_phone',
       },
-      businessName: {
+      organizationName: {
         type: DataTypes.STRING(200),
         allowNull: false,
-        field: 'business_name',
+        field: 'organization_name',
       },
       email: {
         type: DataTypes.STRING(150),
@@ -74,14 +74,14 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'accepted_at',
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: true,
-        field: 'tenant_id',
+        field: 'organization_id',
       },
     },
     {
-      tableName: 'tenant_invitations',
+      tableName: 'organization_invitations', // R-120 NEW-307 (p034)
       underscored: true,
       timestamps: true,
       indexes: [

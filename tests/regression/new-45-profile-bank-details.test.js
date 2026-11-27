@@ -1,5 +1,5 @@
 /**
- * NEW-45 (b) — GET /gyms/profile shows the payout bank details only to someone who
+ * NEW-45 (b) — GET /organizations/me/businesses/{businessId}/profile shows the payout bank details only to someone who
  * holds payouts.bank.manage (the owner). Everyone else gets the profile without them.
  *
  * Before: every team member received paymentDetailsJson (bank account) with the profile.
@@ -18,7 +18,7 @@ beforeAll(async () => {
   const personas = await setupPersonas(dbHarness);
   team = await buildTwoBranchTeam(dbHarness, personas);
   const { Tenant } = require('../../src/models/platform');
-  await require('../harness/factories').setPayoutAccount(team.tenantId, BANK); // P7b (R-94): the payout account store
+  await require('../harness/factories').setPayoutAccount(team.organizationId, BANK); // P7b (R-94): the payout account store
   app = await startTestServer();
 });
 
@@ -28,9 +28,9 @@ afterAll(async () => {
 });
 
 const profile = (token) =>
-  request(app).get('/api/v1/gyms/profile').set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId);
+  request(app).get(`/api/v1/organizations/me/businesses/${team.branchA.businessId}/profile`).set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId);
 
-describe('NEW-45: bank details on GET /gyms/profile', () => {
+describe('NEW-45: bank details on GET /organizations/me/businesses/{businessId}/profile', () => {
   test.each([
     ['Front Desk', () => team.frontDeskOff.token],
     ['Branch Manager', () => team.managerA.token],

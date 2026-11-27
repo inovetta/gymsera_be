@@ -12,7 +12,7 @@ const { sendSuccess, createError } = require('../utils/response.utils');
 
 const userIdOf = (req) => req.user?.id || req.user?.sub || null;
 const roleKeyOf = (req) => (req.grants && req.grants.roleKeys && req.grants.roleKeys[0]) || null;
-const tenantIdOf = (req) => req.tenantId || req.tenantDb.tenantId;
+const tenantIdOf = (req) => req.organizationId || req.tenantDb.organizationId;
 const wrap = (fn) => async (req, res, next) => {
   try {
     return await fn(req, res);
@@ -28,7 +28,7 @@ const importOf = (req) => imports.importOf(req.tenantDb, req.params.id, req.para
 
 // ── Import ────────────────────────────────────────────────────────────────────
 const startImport = wrap(async (req, res) => {
-  const out = await imports.startImport(req.tenantDb, { tenantId: tenantIdOf(req), deviceId: req.params.id, byUserId: userIdOf(req) });
+  const out = await imports.startImport(req.tenantDb, { organizationId: tenantIdOf(req), deviceId: req.params.id, byUserId: userIdOf(req) });
   if (!out.reused) await record(req, 'devices.import_started', { importId: out.import.id });
   return out.reused
     ? sendSuccess(res, out, 'This device is already being imported.')
@@ -74,7 +74,7 @@ const rollback = wrap(async (req, res) => {
 
 // NEW-242: "Read all users again" (T&A PUSH device in hold): one read-only CHECK, OPERLOG / BIODATA stamps 0.
 const reread = wrap(async (req, res) => {
-  const out = await imports.reread(req.tenantDb, { tenantId: tenantIdOf(req), deviceId: req.params.id, importId: req.params.importId, byUserId: userIdOf(req) });
+  const out = await imports.reread(req.tenantDb, { organizationId: tenantIdOf(req), deviceId: req.params.id, importId: req.params.importId, byUserId: userIdOf(req) });
   await record(req, 'devices.import_reread', { importId: out.import.id });
   return sendSuccess(res, out, 'Asked the device to send all its users again. Nothing on the device changes. This takes a few minutes.', 202);
 });
@@ -86,18 +86,18 @@ const cancel = wrap(async (req, res) => {
 });
 
 // ── Cut-over ──────────────────────────────────────────────────────────────────
-const getCutover = wrap(async (req, res) => sendSuccess(res, { cutover: await imports.cutover(req.tenantDb, { tenantId: tenantIdOf(req), deviceId: req.params.id }) }));
+const getCutover = wrap(async (req, res) => sendSuccess(res, { cutover: await imports.cutover(req.tenantDb, { organizationId: tenantIdOf(req), deviceId: req.params.id }) }));
 
 const goLive = wrap(async (req, res) => {
   const cutover = await imports.goLive(req.tenantDb, {
-    tenantId: tenantIdOf(req), deviceId: req.params.id, byUserId: userIdOf(req), removeUnmatched: req.body.removeUnmatched === true,
+    organizationId: tenantIdOf(req), deviceId: req.params.id, byUserId: userIdOf(req), removeUnmatched: req.body.removeUnmatched === true,
   });
   await record(req, 'devices.import_live', { importId: cutover.import?.id || null, removeUnmatched: req.body.removeUnmatched === true });
   return sendSuccess(res, { cutover }, 'Live. GymsEra now manages who this device lets in.');
 });
 
 const gbsStopped = wrap(async (req, res) => {
-  const cutover = await imports.markGbsStopped(req.tenantDb, { tenantId: tenantIdOf(req), deviceId: req.params.id });
+  const cutover = await imports.markGbsStopped(req.tenantDb, { organizationId: tenantIdOf(req), deviceId: req.params.id });
   await record(req, 'devices.gymbiosync_stopped', {});
   return sendSuccess(res, { cutover });
 });
@@ -105,7 +105,7 @@ const gbsStopped = wrap(async (req, res) => {
 // ── Move ──────────────────────────────────────────────────────────────────────
 const moveDevice = wrap(async (req, res) => {
   const from = req.deviceBranchId;
-  const out = await registry.moveDevice({ tenantId: tenantIdOf(req), tenantDb: req.tenantDb, deviceId: req.params.id, branchId: req.body.branchId });
+  const out = await registry.moveDevice({ organizationId: tenantIdOf(req), tenantDb: req.tenantDb, deviceId: req.params.id, branchId: req.body.branchId });
   await record(req, 'devices.moved', { fromBranchId: from, toBranchId: req.body.branchId, queued: out.sync.queued });
   return sendSuccess(res, out, 'Device moved. It now lets in this branch\'s members.');
 });

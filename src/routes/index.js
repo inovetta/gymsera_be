@@ -177,12 +177,12 @@ router.use('/auth', require('./auth.routes'));
 router.use('/cities',            require('./cities.routes'));
 router.use('/places',            require('./places.routes'));
 router.use('/platform-packages', require('./platform-packages.routes'));
-router.use('/tenants',           require('./tenants.routes'));
+router.use('/organizations',      require('./tenants.routes'));
 router.use('/billing',           require('./billing.routes'));
 router.use('/admin/billing-plans', require('./billing-plans.routes'));
 router.use('/admin',             require('./admin.routes'));
 
-router.use('/gyms',      require('./gyms.routes'));
+router.use('/organizations/me', require('./gyms.routes'));
 router.use('/discovery', require('./discovery.routes'));
 router.use('/host/devices', require('./host-devices.routes')); // ZKTeco access devices (before /host)
 router.use('/host', require('./host-device-push.routes')); // ZKTeco manual push, member / branch device views (before /host)

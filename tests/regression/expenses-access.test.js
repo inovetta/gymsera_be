@@ -28,7 +28,7 @@ describe('expenses endpoints — permission-aware access, not legacy-only', () =
   const baseReq = (overrides = {}) => ({
     params: { branchId },
     query: {},
-    user: { id: 'user-1', tenantId: 'tenant-1', role: 'BRANCH_MANAGER' },
+    user: { id: 'user-1', organizationId: 'tenant-1', role: 'BRANCH_MANAGER' },
     tenantDb: {
       models: {
         Expense: { findAndCountAll: jest.fn().mockResolvedValue({ count: 0, rows: [] }) },
@@ -88,7 +88,7 @@ describe('expenses endpoints — permission-aware access, not legacy-only', () =
   });
 
   it('the owner always passes, without ever resolving grants', async () => {
-    const req = baseReq({ user: { id: 'owner-1', tenantId: 'tenant-1', role: 'GYM_HOST', isHost: true } });
+    const req = baseReq({ user: { id: 'owner-1', organizationId: 'tenant-1', role: 'GYM_HOST', isHost: true } });
     const res = fakeRes();
     const next = jest.fn();
 

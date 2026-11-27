@@ -276,14 +276,14 @@ router.get('/attendance', meController.getMyAttendance);
 // ZKTeco Phase 3 (spec §14): the member's own biometric consent per gym; withdraw at any time.
 router.get('/biometric-consents', require('../controllers/me-biometrics.controller').list);
 router.delete(
-  '/biometric-consents/:tenantId',
-  validate.strict([require('express-validator').param('tenantId').isUUID().withMessage('Unknown gym')], { stage: 2 }),
+  '/biometric-consents/:organizationId',
+  validate.strict([require('express-validator').param('organizationId').isUUID().withMessage('Unknown gym')], { stage: 2 }),
   require('../controllers/me-biometrics.controller').withdraw
 );
 
-router.get('/saved-gyms', meController.getSavedGyms);
-router.post('/saved-gyms/:gymId', validate.allowBody([]), meController.saveGym);
-router.delete('/saved-gyms/:gymId', validate.allowBody([]), meController.unsaveGym);
+router.get('/saved-businesses', meController.getSavedGyms);
+router.post('/saved-businesses/:businessId', validate.allowBody([]), meController.saveGym);
+router.delete('/saved-businesses/:businessId', validate.allowBody([]), meController.unsaveGym);
 
 /**
  * @swagger
@@ -307,7 +307,7 @@ router.post('/cancel-deletion', validate.allowBody([]), meController.cancelDelet
 // ── Traveler Inbox ────────────────────────────────────────────────────────────
 router.get('/inbox', meController.listMyInbox);
 router.get('/inbox/:conversationId', meController.getMyConversation);
-router.post('/inbox/:conversationId/reply', validate.allowBody(['clientMessageId', 'client_message_id', 'text']), meController.replyToMyConversation);
+router.post('/inbox/:conversationId/reply', validate.allowBody(['clientMessageId', 'text']), meController.replyToMyConversation);
 router.patch('/inbox/:conversationId/read', validate.allowBody([]), meController.markMyConversationRead);
 // NEW-256: the traveller blocks / unblocks the gym of a conversation; Settings › Blocked lists them.
 router.post('/inbox/:conversationId/block', validate.strict(moderationValidators.travellerConversation), moderationController.blockTraveller);
@@ -340,7 +340,7 @@ router.get('/context', require('../controllers/context.controller').getContext);
  *     summary: App-shell bootstrap — user, contexts, active tenant, quota, unread counts
  *     description: >
  *       One request after sign-in. Tenants come only from the caller's verified
- *       memberships; X-Tenant-Id may only select one of them (404 otherwise).
+ *       memberships; X-Organization-Id may only select one of them (404 otherwise).
  *       Supports ETag / If-None-Match (304). Cache-Control is private.
  *     tags: [Me]
  *     responses:
@@ -349,7 +349,7 @@ router.get('/context', require('../controllers/context.controller').getContext);
  *       304:
  *         description: Unchanged since the supplied ETag
  *       404:
- *         description: X-Tenant-Id names a tenant the caller does not belong to
+ *         description: X-Organization-Id names a tenant the caller does not belong to
  */
 router.get('/bootstrap', require('../controllers/context.controller').getBootstrap);
 

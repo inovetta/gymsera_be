@@ -18,10 +18,10 @@ module.exports = (sequelize) => {
         defaultValue: false,
         field: 'is_system',
       },
-      gymId: {
+      businessId: {
         type: DataTypes.UUID,
         allowNull: true,
-        field: 'gym_id',
+        field: 'business_id',
       },
     },
     {

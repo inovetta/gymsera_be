@@ -12,15 +12,10 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      gymId: {
+      businessId: {
+        field: 'business_id', // R-120 NEW-306 (tenant 030)
         type: DataTypes.UUID,
         allowNull: false,
-      },
-      gymListingId: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        field: 'gym_listing_id',
-        comment: 'Cross-DB reference to GymListing id on the platform DB',
       },
       branchName: {
         type: DataTypes.STRING(200),
@@ -69,6 +64,19 @@ module.exports = (sequelize) => {
         type: DataTypes.JSON,
         allowNull: true,
         field: 'hours_json',
+      },
+      // NEW-253 (R-103) / NEW-303 M3 (D12): the refund policy belongs to the branch. Off by default; the window is in
+      // days from the payment (null = no limit).
+      refundsAllowed: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'refunds_allowed',
+      },
+      refundWindowDays: {
+        type: DataTypes.SMALLINT.UNSIGNED,
+        allowNull: true,
+        field: 'refund_window_days',
       },
       phone: {
         type: DataTypes.STRING(25),
@@ -218,7 +226,7 @@ module.exports = (sequelize) => {
       underscored: true,
       timestamps: true,
       indexes: [
-        { fields: ['gym_id'] },
+        { fields: ['business_id'] },
         { fields: ['status'] },
         { fields: ['city_id', 'area_id'] },
       ],

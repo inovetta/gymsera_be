@@ -157,13 +157,13 @@ const rtdnAuthHeader = (claims = {}, { privateKey } = {}) => {
 
 /** A Stripe subscription object, as Stripe's API would report it. */
 const stripeSubscription = ({
-  id, priceId, status = 'active', tenantId, cancelAtPeriodEnd = false, unitAmount = undefined, currency = 'pkr',
+  id, priceId, status = 'active', organizationId, cancelAtPeriodEnd = false, unitAmount = undefined, currency = 'pkr',
 }) => ({
   id,
   object: 'subscription',
   status,
   cancel_at_period_end: cancelAtPeriodEnd,
-  metadata: tenantId ? { tenantId } : {},
+  metadata: organizationId ? { organizationId } : {},
   items: {
     data: [
       {

@@ -1,7 +1,7 @@
 /**
  * Phase 7 P5 — NEW-147 (found in P4; the BUG-22 New Organization walk goes through the same code).
  *
- * New Organization > "Build a brand new branch" (POST /host/listings) and Add Branch
+ * New Organization > "Build a brand new branch" (POST /host/businesses) and Add Branch
  * (POST /host/branches) both build through gym.service.js#_createBranchRecord, which created every
  * plan with isPublic: true, so "Show to Travellers" off was ignored. After: isPublic is kept
  * (absent = visible, as provisioning does), and a branch whose plans are all hidden is refused
@@ -10,6 +10,9 @@
 const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
 const { stopTestServer } = require('../harness/test-server');
 const { GymListing, TenantSubscription } = require('../../src/models/platform');
+const { firstBranchInput } = require('../harness/first-branch-input');
+const { personaManager } = require('../harness/personas');
+const adminService = require('../../src/services/admin.service');
 
 let personas;
 let tenantDb;
@@ -21,9 +24,9 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  primary = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId }, order: [['createdAt', 'ASC']] });
+  primary = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId }, order: [['createdAt', 'ASC']] });
   // Room for the organizations and branches these tests build.
-  const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { tenantId: personas.owner.tenantId } });
+  const [updated] = await TenantSubscription.update({ branchCount: 50 }, { where: { organizationId: personas.owner.organizationId } });
   expect(updated).toBeGreaterThan(0);
 });
 
@@ -34,14 +37,19 @@ afterAll(async () => {
 
 // A PENDING organization blocks creating the next one until an admin approves it.
 const approvePending = () =>
-  GymListing.update({ status: 'ACTIVE' }, { where: { tenantId: personas.owner.tenantId, status: 'PENDING' } });
+  GymListing.update({ status: 'ACTIVE' }, { where: { organizationId: personas.owner.organizationId, status: 'PENDING' } });
 
-const newOrg = async (gymName, packages = [plan(`${gymName} Monthly`)]) => {
+const newOrg = async (businessName, packages = [plan(`${businessName} Monthly`)]) => {
   await approvePending();
-  const res = await asPersona('owner').post('/host/listings', { gymName, branchSource: 'new', cityId: 1, packages });
+  const res = await asPersona('owner').post('/host/businesses', {
+    businessName, firstBranch: await firstBranchInput({ branchName: businessName, packages }),
+  });
   expect(res.status).toBe(201);
-  await approvePending();
-  return res.body.data;
+  expect(res.body.data.branch).toBeNull();
+  await require('../harness/business-proof').addProof(res.body.data.business.id);
+  await adminService.approveBusiness(res.body.data.business.id, personaManager.personas.platformAdmin.user.id);
+  const listing = await GymListing.findByPk(res.body.data.business.id);
+  return { branch: { id: listing.primaryBranchId } };
 };
 
 const plansOf = async (branchId) =>
@@ -61,20 +69,20 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
 
   test('New Organization: every plan hidden = 422 visible_plan_required, nothing created', async () => {
     await approvePending();
-    const before = await GymListing.count({ where: { tenantId: personas.owner.tenantId } });
-    const res = await asPersona('owner').post('/host/listings', {
-      gymName: 'P5 Hidden Org', branchSource: 'new', cityId: 1, packages: [plan('Hidden', false)],
+    const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
+    const res = await asPersona('owner').post('/host/businesses', {
+      businessName: 'P5 Hidden Org', firstBranch: await firstBranchInput({ branchName: 'P5 Hidden Org', packages: [plan('Hidden', false)] }),
     });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('visible_plan_required');
-    expect(await GymListing.count({ where: { tenantId: personas.owner.tenantId } })).toBe(before);
+    expect(await GymListing.count({ where: { organizationId: personas.owner.organizationId } })).toBe(before);
     expect(await tenantDb.models.Branch.count({ where: { branchName: 'P5 Hidden Org' } })).toBe(0);
     expect(await tenantDb.models.Gym.count({ where: { name: 'P5 Hidden Org' } })).toBe(0);
   });
 
   test('Add Branch: hidden plans stay hidden; all hidden = 422, no branch', async () => {
     const ok = await asPersona('owner').post('/host/branches', {
-      branchName: 'P5 Add Branch', gymListingId: primary.id, address: '1 Mall Road', cityId: 1,
+      branchName: 'P5 Add Branch', businessId: primary.id, address: '1 Mall Road', cityId: 1,
       packages: [plan('A visible', true), plan('B hidden', false)],
     });
     expect(ok.status).toBe(201);
@@ -82,7 +90,7 @@ describe('NEW-147: "Show to Travellers" is kept when a branch is built', () => {
     expect((await plansOf(branchId)).map((p) => [p.name, p.isPublic])).toEqual([['A visible', true], ['B hidden', false]]);
 
     const refused = await asPersona('owner').post('/host/branches', {
-      branchName: 'P5 Add Branch Hidden', gymListingId: primary.id, address: '1 Mall Road', cityId: 1,
+      branchName: 'P5 Add Branch Hidden', businessId: primary.id, address: '1 Mall Road', cityId: 1,
       packages: [plan('Hidden', false)],
     });
     expect(refused.status).toBe(422);

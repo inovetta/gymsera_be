@@ -10,9 +10,9 @@ async function run() {
     console.log(`Found ${tenants.length} active tenants.`);
 
     for (const tenant of tenants) {
-      if (tenant.tenantCode === 'inovetta1') {
+      if (tenant.organizationCode === 'inovetta1') {
         const connUrl = decrypt(tenant.connectionStringEncrypted);
-        console.log(`Syncing database for tenant ${tenant.tenantCode} using connection URL...`);
+        console.log(`Syncing database for tenant ${tenant.organizationCode} using connection URL...`);
         const tenantSeq = new Sequelize(connUrl, {
           dialect: 'mysql',
           logging: console.log, // log SQL queries

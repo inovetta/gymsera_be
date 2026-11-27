@@ -1,7 +1,8 @@
 /**
  * NEW-253 (R-103): refunds on subscription cancellation.
  *
- *  - Policy per gym (`gyms.refunds_allowed`, `gyms.refund_window_days`, tenant migration 028). Off by default.
+ *  - Policy per branch (`branches.refunds_allowed`, `branches.refund_window_days`, tenant migration 032; was per gym
+ *    in 028). Off by default.
  *  - What can be refunded: the subscription's latest COMPLETED membership payment, up to its remaining
  *    refundable balance (PAY-07). Suggested amount: prorated by the unused days of the current period.
  *  - Staff cancel with refund: cancel + refund in one transaction when the caller refunds directly
@@ -30,32 +31,31 @@ const coded = (message, status, code) => {
 };
 
 const REASONS = {
-  refunds_disabled: 'This gym does not give refunds',
+  refunds_disabled: 'This branch does not give refunds',
   no_refundable_payment: 'There is no completed payment on this subscription to refund',
   already_refunded: 'The payment on this subscription has already been refunded',
   refund_window_closed: 'The refund period for this payment has ended',
   not_cancelled: 'Cancel the subscription first, then ask for a refund',
 };
 
-/** The refund policy of the gym the branch belongs to (the tenant's first gym when the branch has none). */
+/**
+ * The refund policy of one branch (enterprise D12): it lives only on the branch, with no business default and no
+ * fallback. A branch that cannot be found refunds nothing.
+ */
 const policyFor = async (tenantDb, branchId) => {
-  const { Gym, Branch } = tenantDb.models;
-  const branch = branchId ? await Branch.findByPk(branchId, { attributes: ['id', 'gymId', 'timezone'] }) : null;
-  let gym = branch && branch.gymId ? await Gym.findByPk(branch.gymId) : null;
-  if (!gym) gym = await Gym.findOne({ order: [['createdAt', 'ASC']] });
+  const { Branch } = tenantDb.models;
+  const branch = branchId ? await Branch.findByPk(branchId, { attributes: ['id', 'businessId', 'branchName', 'timezone', 'refundsAllowed', 'refundWindowDays'] }) : null;
   return {
-    gymId: gym ? gym.id : null,
-    refundsAllowed: Boolean(gym && gym.refundsAllowed),
-    refundWindowDays: gym && gym.refundWindowDays != null ? Number(gym.refundWindowDays) : null,
+    branchId: branch ? branch.id : null,
+    businessId: branch ? branch.businessId : null,
+    branchName: branch ? branch.branchName : null,
+    refundsAllowed: Boolean(branch && branch.refundsAllowed),
+    refundWindowDays: branch && branch.refundWindowDays != null ? Number(branch.refundWindowDays) : null,
     timezone: (branch && branch.timezone) || 'Asia/Karachi',
   };
 };
 
-/** Change the policy of the branch's gym. Audited (before / after). */
-const updatePolicy = async (ctx, branchId, { refundsAllowed, refundWindowDays }) => {
-  const { Gym } = ctx.tenantDb.models;
-  const current = await policyFor(ctx.tenantDb, branchId);
-  if (!current.gymId) throw createError('Gym not found', 404);
+const _validatePolicyChanges = ({ refundsAllowed, refundWindowDays }) => {
   const changes = {};
   if (refundsAllowed !== undefined) {
     if (typeof refundsAllowed !== 'boolean') throw coded('refundsAllowed must be true or false', 422, 'invalid_refund_policy');
@@ -66,16 +66,68 @@ const updatePolicy = async (ctx, branchId, { refundsAllowed, refundWindowDays })
     if (!ok) throw coded('refundWindowDays must be empty (no limit) or a whole number of days from 1 to 3650', 422, 'invalid_refund_policy');
     changes.refundWindowDays = refundWindowDays;
   }
-  await Gym.update(changes, { where: { id: current.gymId } });
+  return changes;
+};
+
+/** Change the policy of one branch. Audited (before / after). */
+const updatePolicy = async (ctx, branchId, input) => {
+  const { Branch } = ctx.tenantDb.models;
+  const current = await policyFor(ctx.tenantDb, branchId);
+  if (!current.branchId) throw createError('Branch not found', 404);
+  const changes = _validatePolicyChanges(input);
+  await Branch.update(changes, { where: { id: branchId } });
   const next = await policyFor(ctx.tenantDb, branchId);
-  await auditService.record(ctx, {
+  await auditService.record({ ...ctx, branchId }, {
     action: 'refunds.policy.update',
-    targetType: 'gym',
-    targetId: current.gymId,
+    targetType: 'branch',
+    targetId: branchId,
     before: { refundsAllowed: current.refundsAllowed, refundWindowDays: current.refundWindowDays },
     after: { refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays },
   });
-  return { gymId: next.gymId, refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays };
+  return { branchId, refundsAllowed: next.refundsAllowed, refundWindowDays: next.refundWindowDays };
+};
+
+/**
+ * `applyToAllBranches` (G9): every non-deleted branch of the organization where `canChange(branchId)` holds; the
+ * others are skipped and listed. One audit row per branch changed.
+ */
+const updatePolicyForAll = async (ctx, input, canChange) => {
+  const { Branch } = ctx.tenantDb.models;
+  const changes = _validatePolicyChanges(input);
+  const branches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'], order: [['createdAt', 'ASC'], ['id', 'ASC']] });
+  const updatedBranchIds = [];
+  const skippedBranchIds = [];
+  for (const { id } of branches) {
+    if (await canChange(id)) {
+      await updatePolicy(ctx, id, changes);
+      updatedBranchIds.push(id);
+    } else {
+      skippedBranchIds.push(id);
+    }
+  }
+  return { updatedBranchIds, skippedBranchIds };
+};
+
+/** GET without `branchId` (G9): the policy of every non-deleted branch `canSee` allows. */
+const listPolicies = async (tenantDb, canSee) => {
+  const { Branch } = tenantDb.models;
+  const branches = await Branch.findAll({
+    where: { status: 'ACTIVE' },
+    attributes: ['id', 'businessId', 'branchName', 'refundsAllowed', 'refundWindowDays'],
+    order: [['createdAt', 'ASC'], ['id', 'ASC']],
+  });
+  const out = [];
+  for (const b of branches) {
+    if (!(await canSee(b.id))) continue;
+    out.push({
+      branchId: b.id,
+      branchName: b.branchName,
+      businessId: b.businessId,
+      refundsAllowed: Boolean(b.refundsAllowed),
+      refundWindowDays: b.refundWindowDays != null ? Number(b.refundWindowDays) : null,
+    });
+  }
+  return out;
 };
 
 const _days = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
@@ -331,5 +383,5 @@ const listRequests = async (tenantDb, { branchIds = null, status = null } = {}) 
 };
 
 module.exports = {
-  REASONS, policyFor, updatePolicy, quote, assertEligible, pickAmount, memberStatus, requestRefund, decide, listRequests, serializeRequest,
+  REASONS, policyFor, updatePolicy, updatePolicyForAll, listPolicies, quote, assertEligible, pickAmount, memberStatus, requestRefund, decide, listRequests, serializeRequest,
 };

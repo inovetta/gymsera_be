@@ -21,7 +21,7 @@ const ensureDefaultCategories = async (tenantDb) => {
     const categoriesToCreate = DEFAULT_CATEGORIES.map((name) => ({
       name,
       isSystem: true,
-      gymId: null,
+      businessId: null,
     }));
     await ExpenseCategory.bulkCreate(categoriesToCreate);
   }

@@ -11,15 +11,15 @@ const WEB = (process.env.APP_URL || process.env.FRONTEND_URL || 'https://gymsera
 
 describe('UX-22: team welcome e-mail', () => {
   let branchId;
-  let tenantId;
+  let organizationId;
   let mail;
 
   beforeAll(async () => {
     const h = await setupTestDatabases();
     const personas = await setupPersonas(h);
-    tenantId = personas.owner.tenantId;
-    const listing = await GymListing.findOne({ where: { tenantId } });
-    branchId = (await h.tenant1.models.Branch.findOne({ where: { gymListingId: listing.id } })).id;
+    organizationId = personas.owner.organizationId;
+    const listing = await GymListing.findOne({ where: { organizationId } });
+    branchId = (await h.tenant1.models.Branch.findOne({ where: { businessId: listing.id } })).id;
   });
   afterAll(async () => {
     await teardownTestDatabases();
@@ -73,8 +73,8 @@ describe('UX-22: team welcome e-mail', () => {
     expect(res.body.data.tempPassword.length).toBeGreaterThanOrEqual(8);
   });
 
-  test('POST /gyms/staff behaves the same', async () => {
-    const res = await asPersona('owner').post('/gyms/staff', {
+  test('POST /organizations/me/staff behaves the same', async () => {
+    const res = await asPersona('owner').post('/organizations/me/staff', {
       fullName: 'Legacy Path',
       email: 'ux22.staff@example.test',
       designation: 'Receptionist',

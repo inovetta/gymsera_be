@@ -35,13 +35,13 @@ router.use(authenticate);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [planId, gymListingId, branchId]
+ *             required: [planId, businessId, branchId]
  *             properties:
  *               planId:
  *                 type: string
  *                 format: uuid
  *                 description: MembershipPlan UUID (from tenant DB)
- *               gymListingId:
+ *               businessId:
  *                 type: string
  *                 format: uuid
  *                 description: GymListing UUID (from discovery endpoint)
@@ -74,7 +74,7 @@ router.post('/', validate.strict(validators.subscribe), controller.subscribe);
  *       - bearerAuth: []
  *     parameters:
  *       - { in: query, name: planId, required: true, schema: { type: string, format: uuid } }
- *       - { in: query, name: gymListingId, required: true, schema: { type: string, format: uuid } }
+ *       - { in: query, name: businessId, required: true, schema: { type: string, format: uuid } }
  *       - { in: query, name: branchId, required: true, schema: { type: string, format: uuid } }
  *     responses:
  *       200:

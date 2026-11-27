@@ -23,8 +23,8 @@ const canManageTrainer = (permissionKey) => async (req, _res, next) => {
       allowed = await hasBranchAccess(req, trainer.branchId, permissionKey);
     } else {
       const userId = req.user.id || req.user.sub;
-      const tenantId = req.tenantDb.tenantId || req.user.tenantId;
-      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, null);
+      const organizationId = req.tenantDb.organizationId || req.user.organizationId;
+      const grants = await accessService.resolve(req.tenantDb, organizationId, userId, null);
       allowed = grants.has(permissionKey);
     }
     if (!allowed) return next(createError('You do not have permission to assign a trainer here', 403));

@@ -28,7 +28,7 @@ describe('NEW-40: member self-renew waits for a verified payment', () => {
     const user = await createUser({ role: 'MEMBER', email: `new40.m${n}@gymsera.test`, fullName: `New40 Member ${n}` });
     const token = signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true });
     const { subscription, payment } = await subscriptionService.subscribe(user.id, {
-      planId: plan.id, gymListingId: ctx.listing1.id, branchId: ctx.branch1.id,
+      planId: plan.id, businessId: ctx.listing1.id, branchId: ctx.branch1.id,
     });
     return { user, token, subscription, payment };
   };
@@ -52,7 +52,7 @@ describe('NEW-40: member self-renew waits for a verified payment', () => {
     // Phase 7 P7a (NEW-159): only a live branch (R-77) takes a booking.
     await require('../harness/factories').makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     plan = await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'New40 Monthly',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'New40 Monthly',
       price: '2000.15', joiningFee: '300.00', durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE',
       isPublic: true, // shown to travellers: a traveller books only a visible plan (NEW-163)
     });

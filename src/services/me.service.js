@@ -17,7 +17,7 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
 
   const resolvedSubscriptionId = index.subscriptionId || subscriptionId;
 
-  const tenant = await Tenant.findOne({ where: { id: index.tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+  const tenant = await Tenant.findOne({ where: { id: index.organizationId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
   if (!tenant) throw createError('Gym tenant is not available', 503);
   const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
   return { models, index, resolvedSubscriptionId };
@@ -25,21 +25,21 @@ const _resolveBySubscriptionId = async (subscriptionId, userId) => {
 
 /**
  * Load all tenant DBs the user has memberships in.
- * Returns an array of { tenantId, models } — empty array if no memberships.
+ * Returns an array of { organizationId, models } — empty array if no memberships.
  */
 const _getAllTenantDbs = async (userId) => {
   const rows = await UserGymMembership.findAll({
     where: { userId },
-    attributes: ['tenantId'],
-    group: ['tenantId'],
+    attributes: ['organizationId'],
+    group: ['organizationId'],
   });
   const results = await Promise.all(
-    rows.map(async ({ tenantId }) => {
+    rows.map(async ({ organizationId }) => {
       try {
-        const tenant = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+        const tenant = await Tenant.findOne({ where: { id: organizationId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
         if (!tenant) return null;
         const { models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
-        return { tenantId, models };
+        return { organizationId, models };
       } catch {
         return null;
       }
@@ -64,7 +64,7 @@ const getMyProfile = async (userId, tenantDb = null) => {
     });
     if (membership) {
       const tenant = await Tenant.findOne({
-        where: { id: membership.tenantId, status: 'ACTIVE' },
+        where: { id: membership.organizationId, status: 'ACTIVE' },
         attributes: ['id', 'connectionStringEncrypted'],
       });
       if (tenant && tenant.connectionStringEncrypted) {
@@ -132,7 +132,7 @@ const updateMyProfile = async (userId, updates, tenantDb = null) => {
     });
     if (membership) {
       const tenant = await Tenant.findOne({
-        where: { id: membership.tenantId, status: 'ACTIVE' },
+        where: { id: membership.organizationId, status: 'ACTIVE' },
         attributes: ['id', 'connectionStringEncrypted'],
       });
       if (tenant && tenant.connectionStringEncrypted) {
@@ -351,14 +351,14 @@ const uploadPaymentProof = async (userId, paymentId, file) => {
   const tenantDbs = await _getAllTenantDbs(userId);
   if (tenantDbs.length === 0) throw createError('Payment not found or does not belong to you', 404);
 
-  for (const { tenantId, models } of tenantDbs) {
+  for (const { organizationId, models } of tenantDbs) {
     const payment = await models.Payment.findOne({ where: { id: paymentId, userId } });
     if (payment) {
       if (payment.status !== 'PENDING') {
         throw createError('Proof can only be uploaded for pending payments', 400);
       }
       // P9c (A): the file is stored (private store) before the row points at it.
-      await require('./payment-proof.service').storeProof({ tenantId, payment, file });
+      await require('./payment-proof.service').storeProof({ organizationId, payment, file });
       return { proofUrl: payment.proofUrl };
     }
   }
@@ -446,28 +446,32 @@ const getSavedGyms = async (userId) => {
         } else {
           raw.facilitiesJson = [];
         }
-        return raw;
+        // API contract v2 A3 J2: the BusinessPublic keys (no `branches`), nothing of the account's own rows.
+        const { BUSINESS_PUBLIC_KEYS } = require('./discovery.service');
+        const out = {};
+        for (const k of BUSINESS_PUBLIC_KEYS) out[k] = raw[k] === undefined ? null : raw[k];
+        return out;
       }
       return null;
     })
     .filter(Boolean);
 };
 
-const saveGym = async (userId, gymListingId) => {
-  const gym = await GymListing.findByPk(gymListingId);
+const saveGym = async (userId, businessId) => {
+  const gym = await GymListing.findByPk(businessId);
   if (!gym || gym.status !== 'ACTIVE') {
     throw createError('Gym not found or inactive', 404);
   }
 
   const [saved] = await SavedGym.findOrCreate({
-    where: { userId, gymListingId },
+    where: { userId, businessId },
   });
   return saved;
 };
 
-const unsaveGym = async (userId, gymListingId) => {
+const unsaveGym = async (userId, businessId) => {
   await SavedGym.destroy({
-    where: { userId, gymListingId },
+    where: { userId, businessId },
   });
 };
 

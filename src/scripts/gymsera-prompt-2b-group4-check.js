@@ -78,7 +78,7 @@ const ttlHours = () => {
 async function discoverTenantDbs(platformSeq, logger) {
   const TenantDbManager = require('../database/TenantDbManager');
   const tenants = await platformSeq.query(
-    'SELECT id, tenant_code, connection_string_encrypted FROM tenants WHERE status = \'ACTIVE\'',
+    'SELECT id, organization_code AS tenant_code, connection_string_encrypted FROM organizations WHERE status = \'ACTIVE\'',
     { type: QueryTypes.SELECT }
   );
   const out = [];
@@ -113,7 +113,7 @@ async function runGroup4Check(options = {}) {
         });
         if (rows.length > 0) {
           results[name].count += rows.length;
-          results[name].byTenant.push({ tenantCode: tenant.code, count: rows.length, sample: rows.slice(0, SAMPLE) });
+          results[name].byTenant.push({ organizationCode: tenant.code, count: rows.length, sample: rows.slice(0, SAMPLE) });
         }
       } catch (err) {
         logger(`[Tenant ${tenant.code}] ${name} failed: ${err.message}`);
@@ -123,7 +123,7 @@ async function runGroup4Check(options = {}) {
 
   for (const [name, r] of Object.entries(results)) {
     logger(`${name}: ${r.count}`);
-    for (const t of r.byTenant) logger(`  ${t.tenantCode}: ${t.count} — ${JSON.stringify(t.sample)}`);
+    for (const t of r.byTenant) logger(`  ${t.organizationCode}: ${t.count} — ${JSON.stringify(t.sample)}`);
   }
   logger('Done. 0 writes performed.');
   return results;

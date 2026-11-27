@@ -12,13 +12,13 @@ const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = 
 const { stopTestServer } = require('../harness/test-server');
 const { Tenant } = require('../../src/models/platform');
 
-let tenantId;
+let organizationId;
 const pdf = () => Buffer.from('%PDF-1.5 a document');
 
 beforeAll(async () => {
   const h = await setupTestDatabases();
   await setupPersonas(h);
-  tenantId = h.tenant1.tenantId || '11111111-1111-4111-8111-111111111111';
+  organizationId = h.tenant1.organizationId || '11111111-1111-4111-8111-111111111111';
 });
 
 afterAll(async () => {
@@ -27,7 +27,7 @@ afterAll(async () => {
 });
 
 const upload = (documentType, persona = 'owner') => {
-  const req = asPersona(persona).post(`/tenants/${tenantId}/kyc-documents`);
+  const req = asPersona(persona).post(`/organizations/${organizationId}/kyc-documents`);
   if (documentType !== undefined) req.field('documentType', documentType);
   return req.attach('documents', pdf(), { filename: 'doc.pdf', contentType: 'application/pdf' });
 };
@@ -40,11 +40,11 @@ describe('R-85: KYC documents by type', () => {
   });
 
   test('an unknown type is refused before anything is stored', async () => {
-    const before = (await Tenant.findByPk(tenantId)).kycDocumentsJson;
+    const before = (await Tenant.findByPk(organizationId)).kycDocumentsJson;
     const res = await upload('SELFIE_WITH_CAT');
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('invalid_document_type');
-    expect((await Tenant.findByPk(tenantId)).kycDocumentsJson).toEqual(before);
+    expect((await Tenant.findByPk(organizationId)).kycDocumentsJson).toEqual(before);
   });
 
   test('no type (older app builds) is still accepted', async () => {
@@ -53,7 +53,7 @@ describe('R-85: KYC documents by type', () => {
   });
 
   test('the list says which type each document is', async () => {
-    const res = await asPersona('owner').get(`/tenants/${tenantId}/kyc-documents`);
+    const res = await asPersona('owner').get(`/organizations/${organizationId}/kyc-documents`);
     expect(res.status).toBe(200);
     const types = res.body.data.map((d) => d.documentType);
     expect(types).toEqual(expect.arrayContaining(['OWNER_ID', 'BUSINESS_REGISTRATION', 'PROOF_OF_PREMISES']));

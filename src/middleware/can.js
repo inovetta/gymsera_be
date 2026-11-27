@@ -64,19 +64,19 @@ const attachGrants = (opts = {}) => async (req, _res, next) => {
     if (!req.tenantDb) return next(createError('This route requires a tenant context', 400));
 
     const userId = req.user.id || req.user.sub;
-    const tenantId = req.tenantDb.tenantId || req.user.tenantId;
+    const organizationId = req.tenantDb.organizationId || req.user.organizationId;
     const branchId = resolveBranchId(req, opts);
 
     if (await hasAllBranches(req)) {
       req.grants = accessService.ownerGrants();
       req.branchId = branchId;
-      req.tenantId = tenantId;
+      req.organizationId = organizationId;
       return next();
     }
 
-    req.grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+    req.grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
     req.branchId = branchId;
-    req.tenantId = tenantId;
+    req.organizationId = organizationId;
     return next();
   } catch (err) {
     return next(err);
@@ -98,17 +98,17 @@ const can = (permissionKey, opts = {}) => async (req, _res, next) => {
     if (!req.tenantDb) return next(createError('This route requires a tenant context', 400));
 
     const userId = req.user.id || req.user.sub;
-    const tenantId = req.tenantDb.tenantId || req.user.tenantId;
+    const organizationId = req.tenantDb.organizationId || req.user.organizationId;
     const branchId = opts.orgWide ? null : resolveBranchId(req, opts);
 
     if (await hasAllBranches(req)) {
       req.grants = accessService.ownerGrants();
       req.branchId = branchId;
-      req.tenantId = tenantId;
+      req.organizationId = organizationId;
       return next();
     }
 
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+    const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
 
     const required = opts.requireDirect ? `${permissionKey}.direct` : permissionKey;
     if (!grants.has(required)) {
@@ -119,7 +119,7 @@ const can = (permissionKey, opts = {}) => async (req, _res, next) => {
 
     req.grants = grants;
     req.branchId = branchId;
-    req.tenantId = tenantId;
+    req.organizationId = organizationId;
     return next();
   } catch (err) {
     return next(err);
@@ -138,24 +138,24 @@ can.any = (permissionKeys, opts = {}) => async (req, _res, next) => {
     if (!req.tenantDb) return next(createError('This route requires a tenant context', 400));
 
     const userId = req.user.id || req.user.sub;
-    const tenantId = req.tenantDb.tenantId || req.user.tenantId;
+    const organizationId = req.tenantDb.organizationId || req.user.organizationId;
     const branchId = opts.orgWide ? null : resolveBranchId(req, opts);
 
     if (await hasAllBranches(req)) {
       req.grants = accessService.ownerGrants();
       req.branchId = branchId;
-      req.tenantId = tenantId;
+      req.organizationId = organizationId;
       return next();
     }
 
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+    const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
     if (!permissionKeys.some((k) => grants.has(k))) {
       return next(createError('You do not have permission to access this resource', 403));
     }
 
     req.grants = grants;
     req.branchId = branchId;
-    req.tenantId = tenantId;
+    req.organizationId = organizationId;
     return next();
   } catch (err) {
     return next(err);

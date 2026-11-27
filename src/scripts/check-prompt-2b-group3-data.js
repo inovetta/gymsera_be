@@ -36,17 +36,17 @@ async function checkHistoricalData(options = {}) {
   // ── FLOW-10 Check: Reviews auto-approved or without active/past subscription ─
   try {
     const allReviews = await pSeq.query(
-      'SELECT id, branch_id, user_id, tenant_id, rating, status, created_at FROM gym_reviews',
+      'SELECT id, branch_id, user_id, organization_id, rating, status, created_at FROM business_reviews', // R-120: gym_reviews before p033
       { type: QueryTypes.SELECT }
     );
 
     for (const rev of allReviews) {
       // Check if user had active/past subscription for that tenant in UserGymMembership
       let sub = null;
-      if (rev.tenant_id) {
+      if (rev.organization_id) {
         [sub] = await pSeq.query(
-          'SELECT id, status FROM user_gym_memberships WHERE user_id = ? AND tenant_id = ? AND status IN (\'ACTIVE\', \'EXPIRED\', \'FROZEN\') LIMIT 1',
-          { replacements: [rev.user_id, rev.tenant_id], type: QueryTypes.SELECT }
+          'SELECT id, status FROM member_subscription_index WHERE user_id = ? AND organization_id = ? AND status IN (\'ACTIVE\', \'EXPIRED\', \'FROZEN\') LIMIT 1',
+          { replacements: [rev.user_id, rev.organization_id], type: QueryTypes.SELECT }
         );
       }
       if (!sub) {
@@ -55,7 +55,7 @@ async function checkHistoricalData(options = {}) {
           reviewId: rev.id,
           userId: rev.user_id,
           branchId: rev.branch_id,
-          tenantId: rev.tenant_id,
+          organizationId: rev.organization_id,
           status: rev.status,
           reason: 'NO_VALID_SUBSCRIPTION_FOUND',
         });
@@ -69,12 +69,12 @@ async function checkHistoricalData(options = {}) {
   let tenantDbsToInspect = [];
   if (options.tenantDbs) {
     tenantDbsToInspect = options.tenantDbs.map((tdb, idx) => ({
-      code: tdb.tenantCode || tdb.code || `TENANT_${idx + 1}`,
+      code: tdb.organizationCode || tdb.code || `TENANT_${idx + 1}`,
       sequelize: tdb.sequelize,
     }));
   } else {
     const tenants = await pSeq.query(
-      'SELECT id, business_name, tenant_code, connection_string_encrypted FROM tenants WHERE status = \'ACTIVE\'',
+      'SELECT id, organization_name AS business_name, organization_code AS tenant_code, connection_string_encrypted FROM organizations WHERE status = \'ACTIVE\'',
       { type: QueryTypes.SELECT }
     );
     logger(`[Platform DB] Found ${tenants.length} active tenant(s) to inspect.\n`);
@@ -105,7 +105,7 @@ async function checkHistoricalData(options = {}) {
       if (legacyInvites.length > 0) {
         results.staffInvites.legacyInvitesCount += legacyInvites.length;
         results.staffInvites.details.push({
-          tenantCode: tenant.code,
+          organizationCode: tenant.code,
           count: legacyInvites.length,
           sampleIds: legacyInvites.slice(0, 5).map((s) => s.id),
         });
@@ -123,7 +123,7 @@ async function checkHistoricalData(options = {}) {
       if (staticSubs.length > 0) {
         results.attendanceQr.staticQrSubscriptionsCount += staticSubs.length;
         results.attendanceQr.details.push({
-          tenantCode: tenant.code,
+          organizationCode: tenant.code,
           count: staticSubs.length,
           sampleSubIds: staticSubs.slice(0, 5).map((s) => s.id),
         });
@@ -142,7 +142,7 @@ async function checkHistoricalData(options = {}) {
       if (missedDays.length > 0) {
         results.ledger.missedOpenDaysCount += missedDays.length;
         results.ledger.details.push({
-          tenantCode: tenant.code,
+          organizationCode: tenant.code,
           type: 'MISSED_OPEN_DAYS',
           days: missedDays,
         });

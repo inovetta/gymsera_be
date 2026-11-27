@@ -66,7 +66,7 @@ register({
 
     const enrolled = await gymService.enrollMember(
       ctx.tenantDb,
-      ctx.tenantId,
+      ctx.organizationId,
       enrollPayload,
       { role: 'GYM_HOST', id: ctx.userId },
       collection

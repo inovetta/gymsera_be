@@ -4,7 +4,7 @@
  * devices.view  list, detail                 (owner, org admin, manager, branch admin, front desk)
  * devices.manage add, edit, unpair            (owner, org admin, manager at their own branch)
  * devices.manage organization-wide: re-pair   (owner, org admin; spec §4.2 rule 3)
- * Platform admins: read with X-Tenant-Id, never write (§12). Mutations are audit-logged by
+ * Platform admins: read with X-Organization-Id, never write (§12). Mutations are audit-logged by
  * the /api/v1 auditLog middleware.
  *
  * Not to be confused with /devices and /admin/devices (devices.routes.js): the old router's

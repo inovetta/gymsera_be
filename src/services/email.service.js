@@ -196,7 +196,7 @@ const sendPaymentFailedEmail = async (to, fullName, gymName, amount, currency) =
 
 // ── Platform invoice emails ────────────────────────────────────────────────────
 
-const _invoiceBase = ({ invoiceNo, businessName, description, totalAmount, dueDate, paidAt, bodyHtml, headerColor, headerLabel }) => `
+const _invoiceBase = ({ invoiceNo, organizationName, description, totalAmount, dueDate, paidAt, bodyHtml, headerColor, headerLabel }) => `
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -245,12 +245,12 @@ const _invoiceBase = ({ invoiceNo, businessName, description, totalAmount, dueDa
 </body>
 </html>`;
 
-const sendPlatformInvoiceReminderEmail = async (to, fullName, { invoiceNo, description, totalAmount, dueDate, businessName }) => {
+const sendPlatformInvoiceReminderEmail = async (to, fullName, { invoiceNo, description, totalAmount, dueDate, organizationName }) => {
   const body = `
     <p style="font-size:15px;color:#334155;margin:0 0 8px">Hi <strong>${fullName}</strong>,</p>
     <p style="font-size:15px;color:#334155;margin:0 0 20px">
       This is a friendly reminder that you have an outstanding invoice for your GymsEra platform subscription for
-      <strong>${businessName}</strong>. Please arrange payment before the due date to avoid any service interruption.
+      <strong>${organizationName}</strong>. Please arrange payment before the due date to avoid any service interruption.
     </p>
     <div style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;padding:14px 18px;margin-bottom:24px">
       <p style="margin:0;font-size:13px;color:#92400e;font-weight:600">⚠️ Payment Due</p>
@@ -260,16 +260,16 @@ const sendPlatformInvoiceReminderEmail = async (to, fullName, { invoiceNo, descr
   await sendMail({
     to,
     subject: `GymsEra — Invoice ${invoiceNo} Payment Reminder`,
-    text: `Hi ${fullName},\n\nThis is a reminder that invoice ${invoiceNo} for ${businessName} amounting to PKR ${totalAmount} is due on ${dueDate || 'soon'}. Please arrange payment to avoid service interruption.`,
-    html: _invoiceBase({ invoiceNo, businessName, description, totalAmount, dueDate, paidAt: null, bodyHtml: body, headerColor: '#f59e0b', headerLabel: 'Payment Due' }),
+    text: `Hi ${fullName},\n\nThis is a reminder that invoice ${invoiceNo} for ${organizationName} amounting to PKR ${totalAmount} is due on ${dueDate || 'soon'}. Please arrange payment to avoid service interruption.`,
+    html: _invoiceBase({ invoiceNo, organizationName, description, totalAmount, dueDate, paidAt: null, bodyHtml: body, headerColor: '#f59e0b', headerLabel: 'Payment Due' }),
   });
 };
 
-const sendPlatformInvoicePaidEmail = async (to, fullName, { invoiceNo, description, totalAmount, paidAt, businessName }) => {
+const sendPlatformInvoicePaidEmail = async (to, fullName, { invoiceNo, description, totalAmount, paidAt, organizationName }) => {
   const body = `
     <p style="font-size:15px;color:#334155;margin:0 0 8px">Hi <strong>${fullName}</strong>,</p>
     <p style="font-size:15px;color:#334155;margin:0 0 20px">
-      We have received your payment for your GymsEra platform subscription for <strong>${businessName}</strong>.
+      We have received your payment for your GymsEra platform subscription for <strong>${organizationName}</strong>.
       Thank you for your prompt payment — your subscription remains fully active.
     </p>
     <div style="background:#dcfce7;border-left:4px solid #16a34a;border-radius:4px;padding:14px 18px;margin-bottom:24px">
@@ -280,13 +280,13 @@ const sendPlatformInvoicePaidEmail = async (to, fullName, { invoiceNo, descripti
   await sendMail({
     to,
     subject: `GymsEra — Invoice ${invoiceNo} Payment Confirmed`,
-    text: `Hi ${fullName},\n\nWe have received your payment for invoice ${invoiceNo} for ${businessName}. Amount: PKR ${totalAmount}. Thank you!`,
-    html: _invoiceBase({ invoiceNo, businessName, description, totalAmount, dueDate: null, paidAt, bodyHtml: body, headerColor: '#16a34a', headerLabel: 'Payment Confirmed' }),
+    text: `Hi ${fullName},\n\nWe have received your payment for invoice ${invoiceNo} for ${organizationName}. Amount: PKR ${totalAmount}. Thank you!`,
+    html: _invoiceBase({ invoiceNo, organizationName, description, totalAmount, dueDate: null, paidAt, bodyHtml: body, headerColor: '#16a34a', headerLabel: 'Payment Confirmed' }),
   });
 };
 
 // ── Tenant subscription warning (2 days before platform subscription expires) ─
-const sendTenantSubscriptionWarningEmail = async (to, fullName, { businessName, packageName, endDate }) => {
+const sendTenantSubscriptionWarningEmail = async (to, fullName, { organizationName, packageName, endDate }) => {
   const formattedEnd = endDate ? new Date(endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -298,7 +298,7 @@ const sendTenantSubscriptionWarningEmail = async (to, fullName, { businessName, 
 </td></tr>
 <tr><td style="padding:36px 40px;">
 <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${fullName}</strong>,</p>
-<p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">Your <strong>${packageName}</strong> platform subscription for <strong>${businessName}</strong> is expiring on <strong>${formattedEnd}</strong> — that's in 2 days.</p>
+<p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">Your <strong>${packageName}</strong> platform subscription for <strong>${organizationName}</strong> is expiring on <strong>${formattedEnd}</strong> — that's in 2 days.</p>
 <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:20px;margin:0 0 24px;">
 <p style="color:#92400e;margin:0;font-size:14px;font-weight:600;">⚠️ What happens if you don't renew?</p>
 <ul style="color:#92400e;font-size:14px;margin:8px 0 0;padding-left:20px;line-height:1.8;">
@@ -319,12 +319,12 @@ const sendTenantSubscriptionWarningEmail = async (to, fullName, { businessName, 
     to,
     subject: `⚠️ Action Required: Your ${packageName} subscription expires in 2 days`,
     html,
-    text: `Hi ${fullName}, your ${packageName} subscription for ${businessName} expires on ${formattedEnd}. Please renew to keep your account active.`,
+    text: `Hi ${fullName}, your ${packageName} subscription for ${organizationName} expires on ${formattedEnd}. Please renew to keep your account active.`,
   });
 };
 
 // ── Tenant account auto-suspended (subscription expired) ──────────────────────
-const sendTenantSubscriptionSuspendedEmail = async (to, fullName, { businessName, packageName, endDate }) => {
+const sendTenantSubscriptionSuspendedEmail = async (to, fullName, { organizationName, packageName, endDate }) => {
   const formattedEnd = endDate ? new Date(endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -336,7 +336,7 @@ const sendTenantSubscriptionSuspendedEmail = async (to, fullName, { businessName
 </td></tr>
 <tr><td style="padding:36px 40px;">
 <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${fullName}</strong>,</p>
-<p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">Your <strong>${packageName}</strong> subscription for <strong>${businessName}</strong> expired on <strong>${formattedEnd}</strong>. Your account has been automatically suspended.</p>
+<p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">Your <strong>${packageName}</strong> subscription for <strong>${organizationName}</strong> expired on <strong>${formattedEnd}</strong>. Your account has been automatically suspended.</p>
 <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:20px;margin:0 0 24px;">
 <p style="color:#991b1b;margin:0;font-size:14px;font-weight:600;">What this means:</p>
 <ul style="color:#991b1b;font-size:14px;margin:8px 0 0;padding-left:20px;line-height:1.8;">
@@ -358,14 +358,14 @@ const sendTenantSubscriptionSuspendedEmail = async (to, fullName, { businessName
 
   await sendMail({
     to,
-    subject: `🚫 Account Suspended: ${businessName} subscription expired`,
+    subject: `🚫 Account Suspended: ${organizationName} subscription expired`,
     html,
-    text: `Hi ${fullName}, your ${packageName} subscription for ${businessName} expired on ${formattedEnd}. Your account has been suspended. Please contact your administrator to renew.`,
+    text: `Hi ${fullName}, your ${packageName} subscription for ${organizationName} expired on ${formattedEnd}. Your account has been suspended. Please contact your administrator to renew.`,
   });
 };
 
 // ── Tenant account reactivated (new subscription assigned) ────────────────────
-const sendTenantAccountReactivatedEmail = async (to, fullName, { businessName, packageName, endDate }) => {
+const sendTenantAccountReactivatedEmail = async (to, fullName, { organizationName, packageName, endDate }) => {
   const formattedEnd = endDate ? new Date(endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
@@ -377,7 +377,7 @@ const sendTenantAccountReactivatedEmail = async (to, fullName, { businessName, p
 </td></tr>
 <tr><td style="padding:36px 40px;">
 <p style="color:#374151;font-size:15px;margin:0 0 20px;">Hi <strong>${fullName}</strong>,</p>
-<p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">Great news! Your <strong>${packageName}</strong> subscription for <strong>${businessName}</strong> has been renewed and your account is now fully active until <strong>${formattedEnd}</strong>.</p>
+<p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;">Great news! Your <strong>${packageName}</strong> subscription for <strong>${organizationName}</strong> has been renewed and your account is now fully active until <strong>${formattedEnd}</strong>.</p>
 <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:20px;margin:0 0 24px;">
 <p style="color:#166534;margin:0;font-size:14px;font-weight:600;">✅ Everything is restored:</p>
 <ul style="color:#166534;font-size:14px;margin:8px 0 0;padding-left:20px;line-height:1.8;">
@@ -395,9 +395,9 @@ const sendTenantAccountReactivatedEmail = async (to, fullName, { businessName, p
 
   await sendMail({
     to,
-    subject: `✅ Account Reactivated: ${businessName} is back online`,
+    subject: `✅ Account Reactivated: ${organizationName} is back online`,
     html,
-    text: `Hi ${fullName}, your ${packageName} subscription for ${businessName} has been renewed. Your account is active until ${formattedEnd}.`,
+    text: `Hi ${fullName}, your ${packageName} subscription for ${organizationName} has been renewed. Your account is active until ${formattedEnd}.`,
   });
 };
 
@@ -422,16 +422,16 @@ const _lockSentence = (lockDate) =>
     : 'Your branches are locked: no new members, sales or plans. Members can still check in for 7 days after the lock.';
 
 /** The plan has expired: its own template (the "expires in 2 days" warning was sent again before P7c). */
-const sendTenantSubscriptionExpiredEmail = async (to, fullName, { businessName, endDate, branchesLockAt }) => {
+const sendTenantSubscriptionExpiredEmail = async (to, fullName, { organizationName, endDate, branchesLockAt }) => {
   const ended = _formatDay(endDate);
   const paragraphs = [
-    `The GymsEra plan for ${businessName} ${ended ? `ended on ${ended}` : 'has ended'}.`,
+    `The GymsEra plan for ${organizationName} ${ended ? `ended on ${ended}` : 'has ended'}.`,
     _lockSentence(_formatDay(branchesLockAt)),
     'Choose a plan in the GymsEra app (Profile, My Subscription) to keep everything open.',
   ];
   await sendMail({
     to,
-    subject: `Your GymsEra plan for ${businessName} has ended`,
+    subject: `Your GymsEra plan for ${organizationName} has ended`,
     html: _hostPlanNotice({ fullName, heading: 'Your plan has ended', color: '#dc2626', paragraphs }),
     text: `Hi ${fullName},\n\n${paragraphs.join('\n\n')}\n\nGymsEra`,
   });
@@ -441,28 +441,28 @@ const sendTenantSubscriptionExpiredEmail = async (to, fullName, { businessName, 
  * The provider changed what the plan covers: kind 'on_hold' (a renewal payment failed),
  * 'refunded' (refund or chargeback) or 'downgraded' (the smaller plan took effect).
  */
-const sendTenantPlanChangedEmail = async (to, fullName, { kind, businessName, storeName, branchCount, branchesLockAt }) => {
+const sendTenantPlanChangedEmail = async (to, fullName, { kind, organizationName, storeName, branchCount, branchesLockAt }) => {
   const lock = _lockSentence(_formatDay(branchesLockAt));
   const content = {
     on_hold: {
-      subject: `Payment problem: your GymsEra plan for ${businessName} is on hold`,
+      subject: `Payment problem: your GymsEra plan for ${organizationName} is on hold`,
       heading: 'Your plan is on hold',
       paragraphs: [
-        `${storeName || 'Your store'} couldn't take the renewal payment for ${businessName}, so the plan is on hold.`,
+        `${storeName || 'Your store'} couldn't take the renewal payment for ${organizationName}, so the plan is on hold.`,
         `Update your payment method in ${storeName || 'your store account'} to get it back.`,
         lock,
       ],
     },
     refunded: {
-      subject: `Your GymsEra plan for ${businessName} was refunded`,
+      subject: `Your GymsEra plan for ${organizationName} was refunded`,
       heading: 'Your plan was refunded',
-      paragraphs: [`The plan for ${businessName} was refunded, so it no longer covers your branches.`, lock, 'Choose a plan in the GymsEra app to keep everything open.'],
+      paragraphs: [`The plan for ${organizationName} was refunded, so it no longer covers your branches.`, lock, 'Choose a plan in the GymsEra app to keep everything open.'],
     },
     downgraded: {
-      subject: `Your GymsEra plan for ${businessName} now covers ${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}`,
+      subject: `Your GymsEra plan for ${organizationName} now covers ${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}`,
       heading: 'Your plan has changed',
       paragraphs: [
-        `The plan for ${businessName} now covers ${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}.`,
+        `The plan for ${organizationName} now covers ${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}.`,
         'If you have more active branches than that, the extra ones are locked after 7 days, starting with the ones you did not choose to keep.',
       ],
     },
@@ -476,16 +476,16 @@ const sendTenantPlanChangedEmail = async (to, fullName, { kind, businessName, st
   });
 };
 
-const sendTenantInvitationEmail = async (to, fullName, businessName, inviteUrl) => {
+const sendTenantInvitationEmail = async (to, fullName, organizationName, inviteUrl) => {
   await sendMail({
     to,
-    subject: `GymsEra — Invitation to manage ${businessName}`,
-    text: `Hi ${fullName},\n\nYou have been invited to manage ${businessName} on GymsEra.\n\nPlease click the link below to accept the invitation and activate your account:\n${inviteUrl}\n\nThis invitation link expires in 7 days.\n\nIf you did not expect this invitation, please ignore this email.`,
+    subject: `GymsEra — Invitation to manage ${organizationName}`,
+    text: `Hi ${fullName},\n\nYou have been invited to manage ${organizationName} on GymsEra.\n\nPlease click the link below to accept the invitation and activate your account:\n${inviteUrl}\n\nThis invitation link expires in 7 days.\n\nIf you did not expect this invitation, please ignore this email.`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px">
         <h2 style="color:#1a1a2e">Gym Business Invitation</h2>
         <p>Hi <strong>${fullName}</strong>,</p>
-        <p>You have been invited to set up and manage <strong>${businessName}</strong> on the GymsEra platform.</p>
+        <p>You have been invited to set up and manage <strong>${organizationName}</strong> on the GymsEra platform.</p>
         <p>Please click the button below to accept your invitation, verify your email, and activate your account:</p>
         <div style="margin:28px 0;text-align:center">
           <a href="${inviteUrl}" style="background:#e94560;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:6px;font-weight:bold;display:inline-block">Accept Invitation</a>

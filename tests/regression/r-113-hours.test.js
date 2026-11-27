@@ -13,6 +13,7 @@ const { makeBranchLive } = require('../harness/factories');
 const { signToken } = require('../../src/utils/jwt.utils');
 const cache = require('../../src/services/discovery-cache.service');
 const subscriptionQuotaService = require('../../src/services/subscription-quota.service');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const slot = (open, close, forWho = 'all') => ({ open, close, for: forWho });
@@ -61,9 +62,9 @@ describe('H4: the writes that take a weekly schedule', () => {
     expect(res.body.data.branch.timezone).toBe('Asia/Karachi');
   });
 
-  test('POST /gyms/branches: an invalid week is refused (422 hours_invalid with the field paths); nothing is created', async () => {
+  test('POST /organizations/me/branches: an invalid week is refused (422 hours_invalid with the field paths); nothing is created', async () => {
     const before = await Branch().count();
-    const res = await asPersona('owner').post('/gyms/branches').send(branchBody({ hours: week({ all: [slot('25:99', '22:00')] }) }));
+    const res = await asPersona('owner').post('/organizations/me/branches').send(branchBody({ hours: week({ all: [slot('25:99', '22:00')] }) }));
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('hours_invalid');
     expect(JSON.stringify(res.body)).toContain('days.mon.slots[0].open');
@@ -76,10 +77,10 @@ describe('H4: the writes that take a weekly schedule', () => {
     expect(res.body.code).toBe('hours_invalid');
   });
 
-  test('PATCH /host/branches/:id/listing-content saves the whole week (all seven days, closed days kept: NEW-270 / NEW-272)', async () => {
+  test('PATCH /host/branches/:id/public-content saves the whole week (all seven days, closed days kept: NEW-270 / NEW-272)', async () => {
     const created = await asPersona('owner').post('/host/branches').send(branchBody({ openingTime: '06:00', closingTime: '22:00' }));
     const id = created.body.data.branch.id;
-    const res = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ hours: WEEKLY });
+    const res = await asPersona('owner').patch(`/host/branches/${id}/public-content`).send({ hours: WEEKLY });
     expect(res.status).toBe(200);
     const row = await Branch().findByPk(id);
     expect(row.hoursJson.days.sat.slots).toHaveLength(2);
@@ -89,24 +90,29 @@ describe('H4: the writes that take a weekly schedule', () => {
   test('hours: null clears the schedule and the pair', async () => {
     const created = await asPersona('owner').post('/host/branches').send(branchBody({ hours: WEEKLY }));
     const id = created.body.data.branch.id;
-    expect((await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ hours: null })).status).toBe(200);
+    expect((await asPersona('owner').patch(`/host/branches/${id}/public-content`).send({ hours: null })).status).toBe(200);
     const row = await Branch().findByPk(id);
     expect([row.hoursJson, row.openingTime, row.closingTime]).toEqual([null, null, null]);
   });
 
-  test('POST /host/listings (another organisation) gives its first branch the week', async () => {
-    const res = await asPersona('owner').post('/host/listings').send({
-      gymName: `R113 Org ${Date.now()}`, packages: [{ name: 'Monthly', price: 50 }], hours: WEEKLY,
+  test('POST /host/businesses (another organisation) gives its first branch the week', async () => {
+    const res = await asPersona('owner').post('/host/businesses').send({
+      businessName: `R113 Org ${Date.now()}`,
+      firstBranch: await firstBranchInput({ packages: [{ name: 'Monthly', price: 50 }], hours: WEEKLY }),
     });
     expect(res.status).toBe(201);
-    const row = await Branch().findByPk(res.body.data.branch.id);
+    const listingId = res.body.data.business.id;
+    await require('../harness/business-proof').addProof(listingId);
+    await require('../../src/services/admin.service').approveBusiness(listingId, admin.id);
+    const listing = await require('../../src/models/platform').GymListing.findByPk(listingId);
+    const row = await Branch().findByPk(listing.primaryBranchId);
     expect(row.hoursJson.days.sun.closed).toBe(true);
   });
 
-  test('admin PATCH /admin/tenants/:id/branches/:branchId takes the week too', async () => {
+  test('admin PATCH /admin/organizations/:id/branches/:branchId takes the week too', async () => {
     const created = await asPersona('owner').post('/host/branches').send(branchBody());
     const id = created.body.data.branch.id;
-    const res = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${id}`).send({ hours: WEEKLY });
+    const res = await asPersona('platformAdmin').patch(`/admin/organizations/${ctx.tenant1.id}/branches/${id}`).send({ hours: WEEKLY });
     expect(res.status).toBe(200);
     expect((await Branch().findByPk(id)).hoursJson.days.sun.closed).toBe(true);
   });
@@ -128,10 +134,10 @@ describe('H5: old clients (builds up to 26, the CMS, the website) keep working',
   test('the old pair on a weekly schedule: 409 hours_schedule_newer, nothing changed; the same pair sent back is fine', async () => {
     const created = await asPersona('owner').post('/host/branches').send(branchBody({ hours: WEEKLY }));
     const id = created.body.data.branch.id;
-    const refused = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ openingTime: '07:00', closingTime: '21:00' });
+    const refused = await asPersona('owner').patch(`/host/branches/${id}/public-content`).send({ openingTime: '07:00', closingTime: '21:00' });
     expect(refused.status).toBe(409);
     expect(refused.body.code).toBe('hours_schedule_newer');
-    const same = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ openingTime: '06:00', closingTime: '19:00', tagline: 'Kept' });
+    const same = await asPersona('owner').patch(`/host/branches/${id}/public-content`).send({ openingTime: '06:00', closingTime: '19:00', tagline: 'Kept' });
     expect(same.status).toBe(200);
     const row = await Branch().findByPk(id);
     expect(row.hoursJson.days.sun.closed).toBe(true);
@@ -140,7 +146,7 @@ describe('H5: old clients (builds up to 26, the CMS, the website) keep working',
 
   test('the admin form (old pair) cannot flatten a weekly schedule either', async () => {
     const created = await asPersona('owner').post('/host/branches').send(branchBody({ hours: WEEKLY }));
-    const res = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${created.body.data.branch.id}`).send({ openingTime: '05:00', closingTime: '23:00' });
+    const res = await asPersona('platformAdmin').patch(`/admin/organizations/${ctx.tenant1.id}/branches/${created.body.data.branch.id}`).send({ openingTime: '05:00', closingTime: '23:00' });
     expect(res.status).toBe(409);
   });
 
@@ -154,9 +160,9 @@ describe('H5: old clients (builds up to 26, the CMS, the website) keep working',
       { replacements: [id] }
     );
 
-    const app = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ openingTime: '00:00', closingTime: '00:00', tagline: 'Kept' });
+    const app = await asPersona('owner').patch(`/host/branches/${id}/public-content`).send({ openingTime: '00:00', closingTime: '00:00', tagline: 'Kept' });
     expect(app.status).toBe(200);
-    const cms = await asPersona('platformAdmin').patch(`/admin/tenants/${ctx.tenant1.id}/branches/${id}`).send({ branchName: 'Renamed by admin', openingTime: '00:00', closingTime: '00:00' });
+    const cms = await asPersona('platformAdmin').patch(`/admin/organizations/${ctx.tenant1.id}/branches/${id}`).send({ branchName: 'Renamed by admin', openingTime: '00:00', closingTime: '00:00' });
     expect(cms.status).toBe(200);
     const row = await Branch().findByPk(id);
     expect(row.tagline).toBe('Kept');
@@ -164,7 +170,7 @@ describe('H5: old clients (builds up to 26, the CMS, the website) keep working',
     expect(row.hoursJson).toBeNull();
     expect([row.openingTime, row.closingTime]).toEqual(['00:00', '00:00']);
 
-    const changed = await asPersona('owner').patch(`/host/branches/${id}/listing-content`).send({ openingTime: '05:00', closingTime: '05:00' });
+    const changed = await asPersona('owner').patch(`/host/branches/${id}/public-content`).send({ openingTime: '05:00', closingTime: '05:00' });
     expect(changed.status).toBe(422);
     expect(changed.body.code).toBe('hours_invalid');
   });
@@ -174,7 +180,7 @@ describe('H6: every branch object reads the schedule', () => {
   beforeAll(async () => {
     await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
     await ctx.tenant1Db.models.MembershipPlan.create({
-      gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'R113 Monthly', price: '3000.00',
+      businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'R113 Monthly', price: '3000.00',
       durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', isPublic: true,
     });
     await Branch().update({ hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' }, { where: { id: ctx.branch1.id } });
@@ -190,16 +196,16 @@ describe('H6: every branch object reads the schedule', () => {
   });
 
   test('the gym detail\'s branches', async () => {
-    const res = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}`);
+    const res = await asPersona('member').get(`/discovery/branches/${ctx.branch1.id}`);
     expect(res.status).toBe(200);
-    const b = res.body.data.gym.branches.find((x) => x.id === ctx.branch1.id);
+    const b = [res.body.data.branch].find((x) => x.id === ctx.branch1.id);
     for (const f of H6_FIELDS) expect(b).toHaveProperty(f);
     expect(b.openingTime).toBe('06:00');
   });
 
   test('the traveller list items', async () => {
-    const res = await asPersona('member').get('/discovery/gyms?page=1&limit=50');
-    const item = res.body.data.gyms.find((g) => g.id === ctx.branch1.id);
+    const res = await asPersona('member').get('/discovery/branches?page=1&limit=50');
+    const item = res.body.data.branches.find((g) => g.id === ctx.branch1.id);
     expect(item).toBeDefined();
     for (const f of ['hoursToday', 'openNow', 'openNowFor', 'nextChange', 'timezone']) expect(item).toHaveProperty(f);
   });
@@ -221,26 +227,27 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     return { tenant, as: () => asPersona('anonymous', { Authorization: `Bearer ${token}` }) };
   };
 
-  test('gym-profile checks mainBranchData.hoursJson and stores it with its summary pair', async () => {
+  test('first-business checks firstBranch.hours and stores its summary pair', async () => {
     const { tenant, as } = await draftHost();
-    const bad = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { hoursJson: week({ all: [slot('08:00', '08:00')] }) } });
+    const bad = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'R113 Brand', firstBusinessName: 'Gym', firstBranch: await firstBranchInput({ hours: week({ all: [slot('08:00', '08:00')] }) }) });
     expect(bad.status).toBe(422);
     expect(bad.body.code).toBe('hours_invalid');
-    const ok = await as().post(`/tenants/${tenant.id}/gym-profile`).send({ gymName: 'G', mainBranchData: { hoursJson: WEEKLY } });
+    const ok = await as().post(`/organizations/${tenant.id}/first-business`).send({ organizationName: 'R113 Brand', firstBusinessName: 'Gym', firstBranch: await firstBranchInput({ hours: WEEKLY }) });
     expect(ok.status).toBe(200);
     await tenant.reload();
-    expect(tenant.mainBranchDataJson.hoursJson.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);
-    expect([tenant.mainBranchDataJson.openingTime, tenant.mainBranchDataJson.closingTime]).toEqual(['06:00', '19:00']);
+    expect(tenant.firstBranchDraft.hours.days.mon.slots.map((s) => s.open)).toEqual(['06:00', '16:00']);
+    expect([tenant.firstBranchDraft.openingTime, tenant.firstBranchDraft.closingTime]).toEqual(['06:00', '19:00']);
   });
 
   test('approval gives the first branch the week', async () => {
-    const tenantCode = `test_r113_${Date.now().toString(36)}`;
-    dbNames.push(`gymsera_${tenantCode}`);
+    const organizationCode = `test_r113_${Date.now().toString(36)}`;
+    dbNames.push(`gymsera_${organizationCode}`);
     const tenant = await factories.createTenant({
-      tenantCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER', cityId: 1,
-      mainBranchDataJson: { name: 'Main', cityId: 1, plans: [{ name: 'Monthly', price: 3000 }], hoursJson: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
+      organizationCode, status: 'PENDING_REVIEW', connectionStringEncrypted: null, paymentMethod: 'BANK_TRANSFER', cityId: 1,
+      firstBranchDraft: { branchName: 'Main', cityId: 1, packages: [{ name: 'Monthly', price: 3000 }], hours: WEEKLY, openingTime: '06:00', closingTime: '19:00' },
     });
     await require('../../src/services/admin.service').approveTenant(tenant.id, admin.id);
+    await require('../harness/business-proof').approveFirstBusiness(tenant.id, admin.id); // M2d
     await tenant.reload();
     const db = await require('../../src/database/TenantDbManager').getConnection(tenant.id, tenant.connectionStringEncrypted);
     const branch = await db.models.Branch.findOne();
@@ -284,7 +291,7 @@ describe('H4: Become a Host keeps the week and approval copies it', () => {
     });
 
     test('GET /discovery/gyms rejects invalid audience with 422', async () => {
-      const res = await asPersona('anonymous').get('/discovery/gyms?audience=other');
+      const res = await asPersona('anonymous').get('/discovery/branches?audience=other');
       expect(res.status).toBe(422);
       expect(JSON.stringify(res.body)).toContain('audience must be women or men');
     });
@@ -317,16 +324,16 @@ describe('H7: what audience=women|men keeps, on list, nearby and map', () => {
 
   const ours = (items) => Object.keys(ids).filter((k) => items.some((g) => g.id === ids[k])).sort();
   const routes = {
-    list: (q) => `/discovery/gyms?page=1&limit=50${q}`,
-    nearby: (q) => `/discovery/gyms/nearby?lat=${LAT}&lng=${LNG}&radius=5&limit=50${q}`,
-    map: (q) => `/discovery/gyms/map?cityId=1${q}`,
+    list: (q) => `/discovery/branches?page=1&limit=50${q}`,
+    nearby: (q) => `/discovery/branches/nearby?lat=${LAT}&lng=${LNG}&radius=5&limit=50${q}`,
+    map: (q) => `/discovery/branches/map?cityId=1${q}`,
   };
 
   test.each(Object.keys(routes))('%s: women keeps the branch with a women slot only; men the one with a men slot; none keeps all three', async (route) => {
     const get = async (q) => {
       const res = await asPersona('anonymous').get(routes[route](q));
       expect(res.status).toBe(200);
-      return ours(res.body.data.gyms);
+      return ours(res.body.data.branches);
     };
     expect(await get('')).toEqual(['allOnly', 'men', 'women']);
     expect(await get('&audience=women')).toEqual(['women']);
@@ -344,7 +351,7 @@ describe('r113-hours-precheck (read-only counts for the owner)', () => {
     );
     const { precheck, report } = require('../../src/scripts/r113-hours-precheck');
     const result = await precheck();
-    const mine = result.tenants.find((t) => t.tenantCode === ctx.tenant1.tenantCode);
+    const mine = result.tenants.find((t) => t.organizationCode === ctx.tenant1.organizationCode);
     expect(mine).toBeDefined();
     expect(mine.error).toBeUndefined();
     expect(mine.hoursJsonColumn).toBe(true);
@@ -354,7 +361,7 @@ describe('r113-hours-precheck (read-only counts for the owner)', () => {
 
     let out = '';
     report(result, (s) => { out += s; });
-    expect(out).toContain(`${ctx.tenant1.tenantCode} (`);
+    expect(out).toContain(`${ctx.tenant1.organizationCode} (`);
     expect(out).not.toMatch(/mysql:\/\/|password|127\.0\.0\.1|localhost/i);
     const before = await Branch().count();
     await precheck();

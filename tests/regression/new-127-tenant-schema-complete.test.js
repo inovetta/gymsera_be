@@ -3,7 +3,7 @@
  * `branches.currency` (tenant migration 019), while the other 30 tenants have both; its approved
  * host's Gyms tab answers `database_error`.
  *
- * Provisioning (approve from the CMS = POST /admin/tenants/:id/approve → approveTenant →
+ * Provisioning (approve from the CMS = POST /admin/organizations/:id/approve → approveTenant →
  * processTenantProvisioning) runs every migration in step 6 on today's code, so a fresh approval
  * cannot produce that database. What can leave a tenant live below target:
  *   1. step 6 set ACTIVE even when a migration was skipped ("resolve it by hand"), so
@@ -58,17 +58,17 @@ afterAll(async () => {
 
 const nextCode = () => {
   seq += 1;
-  const tenantCode = `test_n127_${Date.now().toString(36)}_${seq}`;
-  createdDbs.push(`gymsera_${tenantCode}`);
-  return tenantCode;
+  const organizationCode = `test_n127_${Date.now().toString(36)}_${seq}`;
+  createdDbs.push(`gymsera_${organizationCode}`);
+  return organizationCode;
 };
 
 const pendingTenant = () => factories.createTenant({
-  tenantCode: nextCode(),
+  organizationCode: nextCode(),
   status: 'PENDING_REVIEW',
   connectionStringEncrypted: null,
   paymentMethod: 'BANK_TRANSFER',
-  mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] },
+  firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }] },
 });
 
 const tenantUrl = (dbName) => {
@@ -103,8 +103,8 @@ const hasColumn = async (dbName, table, column) => {
  * no schema_migrations at all and no branches.currency.
  */
 const tenantWithDb = async ({ status, shape }) => {
-  const tenantCode = nextCode();
-  const dbName = `gymsera_${tenantCode}`;
+  const organizationCode = nextCode();
+  const dbName = `gymsera_${organizationCode}`;
   const conn = await getAdminConnection();
   await conn.query(`CREATE DATABASE \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   const url = tenantUrl(dbName);
@@ -112,25 +112,25 @@ const tenantWithDb = async ({ status, shape }) => {
   try {
     const models = registerTenantModels(s);
     await s.sync();
-    await runner.runTenantMigrations(s, { tenantId: tenantCode });
-    const gym = await models.Gym.create({ name: 'N127 Gym', gymListingId: 'listing-n127' });
-    await models.Branch.create({ gymId: gym.id, branchName: 'Main', gymListingId: 'listing-n127' });
+    await runner.runTenantMigrations(s, { organizationId: organizationCode });
+    const gym = await models.Gym.create({ name: 'N127 Gym', id: 'listing-n127' });
+    await models.Branch.create({ businessId: gym.id, branchName: 'Main' });
     if (shape === 'v18') await s.query('DELETE FROM schema_migrations WHERE version >= 19');
     if (shape === 'legacy') await s.query('DROP TABLE schema_migrations');
     if (shape === 'v18' || shape === 'legacy') await s.query('ALTER TABLE branches DROP COLUMN currency');
   } finally {
     await s.close();
   }
-  const tenant = await factories.createTenant({ tenantCode, status, connectionStringEncrypted: encrypt(url) });
+  const tenant = await factories.createTenant({ organizationCode, status, connectionStringEncrypted: encrypt(url) });
   await tenant.update({ dbName });
   return { tenant, dbName };
 };
 
 describe('NEW-127: provisioning ends with every tenant migration recorded', () => {
-  test('approve from the CMS (POST /admin/tenants/:id/approve): ACTIVE, schema_migrations present, every version 1..target recorded, branches.currency present', async () => {
+  test('approve from the CMS (POST /admin/organizations/:id/approve): ACTIVE, schema_migrations present, every version 1..target recorded, branches.currency present', async () => {
     const tenant = await pendingTenant();
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ photosChecked: true });
     expect(res.status).toBe(200);
@@ -149,7 +149,7 @@ describe('NEW-127: provisioning ends with every tenant migration recorded', () =
     jest.spyOn(last, 'up').mockImplementation(async () => ({ skipped: true, reason: 'column_exists_with_other_type' }));
 
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ photosChecked: true });
     expect(res.status).toBe(502);
@@ -163,7 +163,7 @@ describe('NEW-127: provisioning ends with every tenant migration recorded', () =
     // Resolved by hand → the admin's Resume finishes it.
     last.up.mockImplementation(realUp);
     const resumed = await request(app)
-      .post(`/api/v1/admin/tenants/${tenant.id}/approve`)
+      .post(`/api/v1/admin/organizations/${tenant.id}/approve`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ photosChecked: true });
     expect(resumed.status).toBe(200);
@@ -178,7 +178,7 @@ describe('NEW-127: the deploy runner reaches every tenant that can come back to 
     const { tenant, dbName } = await tenantWithDb({ status, shape: 'v18' });
 
     const summary = await runner.runAllTenantMigrations();
-    const report = summary.reports.find((r) => r.tenantId === tenant.id);
+    const report = summary.reports.find((r) => r.organizationId === tenant.id);
     expect(report).toEqual(expect.objectContaining({ success: true, initialVersion: 18, finalVersion: TARGET_SCHEMA_VERSION }));
     expect(await recordedVersions(dbName)).toEqual(ALL_VERSIONS);
     expect(await hasColumn(dbName, 'branches', 'currency')).toBe(true);
@@ -189,10 +189,10 @@ describe('NEW-127: the deploy runner reaches every tenant that can come back to 
 
     for (const dryRun of [true, false]) {
       const summary = await runner.runAllTenantMigrations({ dryRun });
-      const report = summary.reports.find((r) => r.tenantId === tenant.id);
+      const report = summary.reports.find((r) => r.organizationId === tenant.id);
       expect(report.success).toBe(false);
       expect(report.error).toMatch(/no schema_migrations/);
-      expect(report.error).toContain(`repair-tenant-schema.js --tenant ${tenant.tenantCode}`);
+      expect(report.error).toContain(`repair-tenant-schema.js --tenant ${tenant.organizationCode}`);
     }
     expect(await recordedVersions(dbName)).toBeNull();
     expect(await hasColumn(dbName, 'branches', 'currency')).toBe(false);
@@ -203,10 +203,10 @@ describe('NEW-127: the deploy runner reaches every tenant that can come back to 
     const legacy = await tenantWithDb({ status: 'ACTIVE', shape: 'legacy' });
 
     const result = await runner.checkTenantSchemaVersions();
-    const b = result.behind.find((x) => x.tenantId === behind.tenant.id);
-    const l = result.behind.find((x) => x.tenantId === legacy.tenant.id);
+    const b = result.behind.find((x) => x.organizationId === behind.tenant.id);
+    const l = result.behind.find((x) => x.organizationId === legacy.tenant.id);
     expect(b).toEqual(expect.objectContaining({ currentVersion: 18, targetVersion: TARGET_SCHEMA_VERSION, hasMigrationTable: true }));
-    expect(l).toEqual(expect.objectContaining({ currentVersion: 0, hasMigrationTable: false, tenantCode: legacy.tenant.tenantCode }));
+    expect(l).toEqual(expect.objectContaining({ currentVersion: 0, hasMigrationTable: false, organizationCode: legacy.tenant.organizationCode }));
   });
 });
 

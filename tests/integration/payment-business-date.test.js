@@ -52,7 +52,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
 
     const tenantRecord = await createTenant({
       id: '22222222-2222-4222-8222-222222222222',
-      tenantCode: 'GYM-BDATE',
+      organizationCode: 'GYM-BDATE',
       gymName: 'Timezone Gym',
       ownerUserId: testUser.id,
       connectionStringEncrypted: tenant1.encryptedConnStr,
@@ -159,7 +159,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
   test('Path 4: gym.service.js enrollMember stamps business_date at write time', async () => {
     const { MembershipPlan } = tenant1.models;
     const plan = await MembershipPlan.create({
-      gymId: branchKarachi.gymId,
+      businessId: branchKarachi.businessId,
       branchId: branchKarachi.id,
       name: 'Karachi Morning Plan',
       price: 6000,
@@ -190,7 +190,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
   test('Path 5: Approval command (member.commands.js) stamps business_date on execution', async () => {
     const { MembershipPlan } = tenant1.models;
     const plan = await MembershipPlan.create({
-      gymId: branchKarachi.gymId,
+      businessId: branchKarachi.businessId,
       branchId: branchKarachi.id,
       name: 'Approval Plan',
       price: 7000,
@@ -205,7 +205,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
 
     const ctx = {
       tenantDb: tenant1,
-      tenantId: '22222222-2222-4222-8222-222222222222',
+      organizationId: '22222222-2222-4222-8222-222222222222',
       branchId: branchKarachi.id,
       userId: testUser.id,
       role: 'GYM_HOST',
@@ -227,7 +227,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
   test('Path 6: me.service.js submitPaymentRequest preserves and sets businessDate', async () => {
     const { MemberSubscription, MembershipPlan } = tenant1.models;
     const plan = await MembershipPlan.create({
-      gymId: branchKarachi.gymId,
+      businessId: branchKarachi.businessId,
       branchId: branchKarachi.id,
       name: 'Traveler Plan',
       price: 3500,
@@ -248,9 +248,9 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
     const { UserGymMembership } = require('../../src/models/platform');
     await UserGymMembership.create({
       userId: testUser.id,
-      tenantId: '22222222-2222-4222-8222-222222222222',
+      organizationId: '22222222-2222-4222-8222-222222222222',
       subscriptionId: sub.id,
-      gymListingId: gymListing.id,
+      businessId: gymListing.id,
       status: 'ACTIVE',
     });
 
@@ -309,7 +309,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
 
     // Run migrations
     const result = await runTenantMigrations(tenant1.sequelize, {
-      tenantId: '22222222-2222-4222-8222-222222222222',
+      organizationId: '22222222-2222-4222-8222-222222222222',
       gymName: 'Timezone Gym',
     });
 
@@ -512,7 +512,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       await seq.query('DELETE FROM schema_migrations WHERE version = 6');
 
       const result = await runTenantMigrations(seq, {
-        tenantId: '22222222-2222-4222-8222-222222222222',
+        organizationId: '22222222-2222-4222-8222-222222222222',
         gymName: 'Timezone Gym',
       });
 
@@ -549,7 +549,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       // 4. Run migrations
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const result = await runTenantMigrations(seq, {
-        tenantId: '22222222-2222-4222-8222-222222222222',
+        organizationId: '22222222-2222-4222-8222-222222222222',
         gymName: 'Timezone Gym',
       });
 
@@ -701,7 +701,7 @@ describe('Payment Business Date & Branch Timezone (Step 2.6)', () => {
       // Re-run Migration 004
       await seq.query('DELETE FROM schema_migrations WHERE version >= 4');
       await runTenantMigrations(seq, {
-        tenantId: '22222222-2222-4222-8222-222222222222',
+        organizationId: '22222222-2222-4222-8222-222222222222',
         gymName: 'Timezone Gym',
       });
 

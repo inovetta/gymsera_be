@@ -85,21 +85,21 @@ const getPlans = async (req, res, next) => {
  */
 const syncIosPurchase = async (req, res, next) => {
   try {
-    const { transactionId, organizationId } = req.body;
+    const { transactionId, businessId } = req.body;
     if (!transactionId) throw createError('transactionId is required', 400);
 
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
 
-    // organizationId is optional — the org the purchase was initiated from,
+    // businessId is optional — the org the purchase was initiated from,
     // if the app knows it (e.g. the upsell flow reached from a specific
     // organization's "need more capacity" prompt). Used only to decide where
     // an upgrade's new capacity lands as a spendable slot; a downgrade never
     // reads it. Same entry point as the App Store notification processor.
     const subscription = await appleBilling.syncFromApple({
       transactionId,
-      tenantId,
-      originListingId: organizationId || null,
+      organizationId,
+      originListingId: businessId || null,
     });
 
     return sendSuccess(res, { subscription }, 'Subscription synced');
@@ -152,19 +152,19 @@ const appleWebhook = async (req, res) => {
  */
 const syncAndroidPurchase = async (req, res, next) => {
   try {
-    const { purchaseToken, organizationId } = req.body;
+    const { purchaseToken, businessId } = req.body;
     if (!purchaseToken) throw createError('purchaseToken is required', 400);
 
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
 
     // Same entry point as the RTDN processor; it also acknowledges the
     // purchase server-side (BILL-06). `productId` from the client is not used
     // — Google's own response says what was bought.
     const subscription = await googlePlayBilling.syncFromGoogle({
       purchaseToken,
-      tenantId,
-      originListingId: organizationId || null,
+      organizationId,
+      originListingId: businessId || null,
     });
 
     // Not paid yet (cash, carrier billing…) or that payment was cancelled
@@ -229,10 +229,10 @@ const createStripeCheckoutSession = async (req, res, next) => {
     if (!billingPlanId || !billingCycle) throw createError('billingPlanId and billingCycle are required', 400);
     if (!successUrl || !cancelUrl) throw createError('successUrl and cancelUrl are required', 400);
 
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
 
-    const session = await stripeBilling.createCheckoutSession(tenantId, billingPlanId, billingCycle, {
+    const session = await stripeBilling.createCheckoutSession(organizationId, billingPlanId, billingCycle, {
       successUrl,
       cancelUrl,
       currency,
@@ -252,9 +252,9 @@ const createStripeCheckoutSession = async (req, res, next) => {
  */
 const getStripeCheckoutSession = async (req, res, next) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
-    const status = await stripeBilling.getCheckoutSessionStatus(tenantId, req.params.id);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
+    const status = await stripeBilling.getCheckoutSessionStatus(organizationId, req.params.id);
     return sendSuccess(res, status, 'Checkout session status');
   } catch (err) {
     next(err);
@@ -275,10 +275,10 @@ const changeStripePlan = async (req, res, next) => {
     const { billingPlanId, billingCycle } = req.body;
     if (!billingPlanId || !billingCycle) throw createError('billingPlanId and billingCycle are required', 400);
 
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
 
-    const result = await stripeBilling.changeSubscriptionPlan(tenantId, billingPlanId, billingCycle);
+    const result = await stripeBilling.changeSubscriptionPlan(organizationId, billingPlanId, billingCycle);
     return sendSuccess(res, result, 'Plan change requested');
   } catch (err) {
     next(err);
@@ -297,10 +297,10 @@ const createStripePortalSession = async (req, res, next) => {
     const { returnUrl } = req.body;
     if (!returnUrl) throw createError('returnUrl is required', 400);
 
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
 
-    const session = await stripeBilling.createBillingPortalSession(tenantId, returnUrl);
+    const session = await stripeBilling.createBillingPortalSession(organizationId, returnUrl);
     return sendSuccess(res, session, 'Billing portal session created');
   } catch (err) {
     next(err);
@@ -348,9 +348,9 @@ const stripeWebhook = async (req, res) => {
  */
 const getDowngradePreview = async (req, res, next) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
-    const preview = await subscriptionMigration.previewDowngrade(tenantId, req.query.billingPlanId);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
+    const preview = await subscriptionMigration.previewDowngrade(organizationId, req.query.billingPlanId);
     return sendSuccess(res, preview, 'Downgrade preview');
   } catch (err) {
     next(err);
@@ -365,11 +365,11 @@ const getDowngradePreview = async (req, res, next) => {
  */
 const putDowngradeChoice = async (req, res, next) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) throw createError('No tenant context for this account', 400);
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) throw createError('No tenant context for this account', 400);
     const { billingPlanId, keepBranchIds } = req.body || {};
     const subscription = await subscriptionMigration.recordDowngradeChoice(
-      tenantId,
+      organizationId,
       { billingPlanId, keepBranchIds },
       { actorUserId: req.user.sub || req.user.id, req }
     );
@@ -397,19 +397,19 @@ const purchaseIntent = async (req, res, next) => {
     const { Tenant } = require('../models/platform');
 
     // NEW-103 / SEC-02: the tenant comes from the login, never from the body.
-    let tenantId = req.user.tenantId;
-    if (!tenantId) {
+    let organizationId = req.user.organizationId;
+    if (!organizationId) {
       const owned = await Tenant.findOne({
         where: { ownerUserId: req.user.id || req.user.sub },
         attributes: ['id'],
       });
-      tenantId = owned?.id;
+      organizationId = owned?.id;
     }
-    if (!tenantId) {
+    if (!organizationId) {
       throw createError('Tenant not found for authenticated user', 404);
     }
 
-    const answer = await storePurchaseCheck.evaluate({ tenantId, planId, platform, billingCycle });
+    const answer = await storePurchaseCheck.evaluate({ organizationId, planId, platform, billingCycle });
     return sendSuccess(res, answer);
   } catch (err) {
     next(err);

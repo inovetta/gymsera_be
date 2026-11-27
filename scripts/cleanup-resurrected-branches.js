@@ -13,7 +13,7 @@
  *
  * If a branch turns out to be the last active one in its organization,
  * deleteBranch's own guard requires an explicit confirmation — this script
- * passes confirmOrganizationDeletion: true, because putting a resurrected
+ * passes confirmBusinessDeletion: true, because putting a resurrected
  * branch back to the INACTIVE state it should already be in is finishing
  * what was already, legitimately, decided; not a new decision. The
  * organization's capacity is never lost either way — it returns to the
@@ -60,7 +60,7 @@ const BRANCH_IDS = [
         continue;
       }
 
-      await gymService.deleteBranch(tenantDb, id, null, { confirmOrganizationDeletion: true });
+      await gymService.deleteBranch(tenantDb, id, null, { confirmBusinessDeletion: true });
       console.log(`  [done] ${name} (${id}): deleted properly — capacity credited, ledger correct`);
     } catch (err) {
       console.error(`  [FAILED] ${name} (${id}): ${err.message}`);

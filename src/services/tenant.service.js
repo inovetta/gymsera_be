@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const { Tenant, User, PlatformPackage, City, TenantSubscription, PlatformAuditLog } = require('../models/platform');
 const kycStorageService = require('./kyc-storage.service');
 const { createError } = require('../utils/response.utils');
@@ -9,13 +8,8 @@ const { validateBrandName } = require('./brand-name.service');
 const { TenantStatus, KycStatus } = require('../constants/subscription-status');
 const { UserRole } = require('../constants/roles');
 
-/**
- * Generate a unique tenant code in the format GYM-XXXXXX (uppercase alphanumeric).
- */
-const _generateTenantCode = () => {
-  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return `GYM-${suffix}`;
-};
+/** The organization code (one generator, R-120 NEW-307): `ORG-` + 8 uppercase hex characters. */
+const _generateTenantCode = () => require('../utils/organization-code.utils').generateOrganizationCode();
 
 /**
  * Ensure the generated tenant code is actually unique in the DB.
@@ -25,8 +19,8 @@ const _uniqueTenantCode = async () => {
   let attempts = 0;
   do {
     code = _generateTenantCode();
-    // eslint-disable-next-line no-await-in-loop
-    const existing = await Tenant.findOne({ where: { tenantCode: code } });
+     
+    const existing = await Tenant.findOne({ where: { organizationCode: code } });
     if (!existing) return code;
     attempts++;
   } while (attempts < 10);
@@ -38,22 +32,22 @@ const _uniqueTenantCode = async () => {
  * A verified user registers as a GYM_HOST.
  * Creates a Tenant record (PENDING_REVIEW) and upgrades the user's role.
  */
-const registerTenant = async ({ userId, businessName, email, phone, cityId, areaId, areaRequestId }) => {
+const registerTenant = async ({ userId, organizationName, email, phone, cityId, areaId, areaRequestId }) => {
   // Each user may own only one tenant (prevent duplicates)
   const existing = await Tenant.findOne({ where: { ownerUserId: userId } });
   if (existing) throw createError('You have already registered a gym business', 409);
   // NEW-259: a real area belongs to the city. NEW-265 (A4): or a pending area request of this person.
   const choice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice({ areaId, areaRequestId }), {
-    cityId, userId, tenantId: null,
+    cityId, userId, organizationId: null,
   });
   const area = areaRequests.rowValues(choice) || { areaId: null, areaStatus: null, areaRequestId: null };
 
-  const tenantCode = await _uniqueTenantCode();
+  const organizationCode = await _uniqueTenantCode();
 
   const tenant = await Tenant.create({
-    tenantCode,
+    organizationCode,
     // R-112 (C2): build 26 sends no name here (the column is NOT NULL); Step 2 saves the brand.
-    businessName: businessName || '',
+    organizationName: organizationName || '',
     email,
     phone: phone || null,
     cityId: cityId || null,
@@ -63,7 +57,7 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
     kycStatus: KycStatus.NOT_SUBMITTED,
     onboardingStep: 1,
   });
-  await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'tenant', targetId: tenant.id });
+  await areaRequests.applyChoiceToLink(choice, { organizationId: tenant.id, target: 'organization', targetId: tenant.id });
 
   // Upgrade user role to GYM_HOST and set isHost to true. This is an account flag
   // (the host area, onboarding routes). It grants nothing inside any tenant:
@@ -78,40 +72,48 @@ const registerTenant = async ({ userId, businessName, email, phone, cityId, area
  * Host submits gym profile details and KYC documents.
  * Moves the tenant to step 2 and sets kycStatus to PENDING.
  */
-const submitGymProfile = async (tenantId, userId, profileData) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const submitGymProfile = async (organizationId, userId, profileData) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   if (![TenantStatus.DRAFT, TenantStatus.PENDING_REVIEW, TenantStatus.UNDER_REVIEW].includes(tenant.status)) {
     throw createError('Gym profile cannot be updated at this stage', 400);
   }
 
-  const { gymName, gymDescription, genderType, address, latitude, longitude, mainBranchData, kycDocumentsJson, logoUrl, coverImageUrl } = profileData;
+  const { firstBusinessName, firstBusinessDescription, genderType, logoUrl, coverImageUrl, firstBranch } = profileData;
+  const { address, latitude, longitude } = firstBranch;
+  // NEW-303 M3e (S3): the draft stores the FirstBranch names only (branchName, packages, googlePlaceId, hours, …;
+  // API contract A2 H2). No second set (name / plans / placeId / hoursJson) and no compatibility copies.
+  const { facilities, ...firstBranchKeys } = firstBranch;
+  const firstBranchDraft = {
+    ...firstBranchKeys,
+    facilitiesJson: firstBranch.facilitiesJson || facilities || null,
+  };
   // R-112 (C1, C3): the brand the host typed on Step 2, checked before anything is saved.
-  const businessName = profileData.businessName !== undefined ? await validateBrandName(profileData.businessName) : undefined;
+  const organizationName = profileData.organizationName !== undefined ? await validateBrandName(profileData.organizationName) : undefined;
 
-  let existingMainBranch = tenant.mainBranchDataJson;
+  let existingMainBranch = tenant.firstBranchDraft;
   if (typeof existingMainBranch === 'string') {
     try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
   }
-  const mergedMainBranchData = mainBranchData !== undefined ? {
+  const mergedMainBranchData = firstBranchDraft !== undefined ? {
     ...(existingMainBranch || {}),
-    ...mainBranchData,
-  } : tenant.mainBranchDataJson;
+    ...firstBranchDraft,
+  } : tenant.firstBranchDraft;
 
-  // R-113 H4 / H5: the draft first branch's week (`mainBranchData.hoursJson`, Become a Host), checked and
+  // R-113 H4 / H5: the draft first branch's week (`firstBranchDraft.hours`, Become a Host), checked and
   // stored with its summary pair; an older build's pair follows the same old-client rules as a branch.
-  if (mainBranchData && typeof mainBranchData === 'object' && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
-    const has = (k) => Object.prototype.hasOwnProperty.call(mainBranchData, k);
-    if (has('hoursJson') || has('openingTime') || has('closingTime')) {
+  if (firstBranchDraft && typeof firstBranchDraft === 'object' && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
+    const has = (k) => Object.prototype.hasOwnProperty.call(firstBranchDraft, k);
+    if (has('hours') || has('openingTime') || has('closingTime')) {
       const stored = existingMainBranch || {};
       const hm = (t) => (typeof t === 'string' && t ? t.slice(0, 5) : null);
-      const body = has('hoursJson')
-        ? { hours: mainBranchData.hoursJson, ...(has('openingTime') && { openingTime: mainBranchData.openingTime }), ...(has('closingTime') && { closingTime: mainBranchData.closingTime }) }
-        : { ...(has('openingTime') && { openingTime: mainBranchData.openingTime }), ...(has('closingTime') && { closingTime: mainBranchData.closingTime }) };
-      const values = branchHours.resolveWrite(body, { hoursJson: stored.hoursJson || null, openingTime: hm(stored.openingTime), closingTime: hm(stored.closingTime) });
-      const next = values || { hoursJson: stored.hoursJson || null, openingTime: stored.openingTime || null, closingTime: stored.closingTime || null };
-      mergedMainBranchData.hoursJson = next.hoursJson;
+      const body = has('hours')
+        ? { hours: firstBranchDraft.hours, ...(has('openingTime') && { openingTime: firstBranchDraft.openingTime }), ...(has('closingTime') && { closingTime: firstBranchDraft.closingTime }) }
+        : { ...(has('openingTime') && { openingTime: firstBranchDraft.openingTime }), ...(has('closingTime') && { closingTime: firstBranchDraft.closingTime }) };
+      const values = branchHours.resolveWrite(body, { hoursJson: stored.hours || null, openingTime: hm(stored.openingTime), closingTime: hm(stored.closingTime) });
+      const next = values || { hoursJson: stored.hours || null, openingTime: stored.openingTime || null, closingTime: stored.closingTime || null };
+      mergedMainBranchData.hours = next.hoursJson;
       mergedMainBranchData.openingTime = next.openingTime;
       mergedMainBranchData.closingTime = next.closingTime;
     }
@@ -119,13 +121,13 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
 
   // NEW-265 (A4, R-109 F1): the draft first branch's area. A key not sent keeps the stored area or
   // request; `areaId: null` / `areaRequestId: null` or a new real area clears the request.
-  const branchChoice = mainBranchData && typeof mainBranchData === 'object'
-    ? areaRequests.parseAreaChoice(mainBranchData)
+  const branchChoice = firstBranchDraft && typeof firstBranchDraft === 'object'
+    ? areaRequests.parseAreaChoice(firstBranchDraft)
     : { kind: 'keep' };
   const branchCityId = mergedMainBranchData && mergedMainBranchData.cityId ? mergedMainBranchData.cityId : tenant.cityId;
   let resolvedBranchChoice = { kind: 'keep' };
   if (branchChoice.kind !== 'keep') {
-    resolvedBranchChoice = await areaRequests.resolveAreaChoice(branchChoice, { cityId: branchCityId, userId, tenantId: tenant.id });
+    resolvedBranchChoice = await areaRequests.resolveAreaChoice(branchChoice, { cityId: branchCityId, userId, organizationId: tenant.id });
     const values = areaRequests.rowValues(resolvedBranchChoice);
     mergedMainBranchData.areaId = values.areaId;
     if (values.areaRequestId) {
@@ -135,37 +137,37 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
       delete mergedMainBranchData.areaRequestId;
       delete mergedMainBranchData.areaStatus;
     }
-  } else if (mainBranchData && mainBranchData.cityId !== undefined) {
+  } else if (firstBranchDraft && firstBranchDraft.cityId !== undefined) {
     // NEW-259: the main branch's area belongs to its city (the branch's, else the business's).
     await assertAreaInCity({ cityId: branchCityId, areaId: mergedMainBranchData.areaId });
-    await areaRequests.assertKeptLinkInCity({ tenantId: tenant.id, target: 'main_branch', targetId: tenant.id, cityId: branchCityId });
+    await areaRequests.assertKeptLinkInCity({ organizationId: tenant.id, target: 'first_branch_draft', targetId: tenant.id, cityId: branchCityId });
   }
   if (mergedMainBranchData && typeof mergedMainBranchData === 'object') delete mergedMainBranchData.pendingArea; // a read-only view
 
   // R-112 (C3): the draft first branch is named after the gym; a new gym name carries over unless the host
   // gave the branch a name of its own.
   let mainBranchDataToSave = mergedMainBranchData;
-  if (gymName && gymName !== tenant.gymName && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
-    const branchName = typeof mergedMainBranchData.name === 'string' ? mergedMainBranchData.name.trim() : '';
-    if (!branchName || branchName === tenant.gymName) mainBranchDataToSave = { ...mergedMainBranchData, name: gymName };
+  if (firstBusinessName && firstBusinessName !== tenant.firstBusinessName && mergedMainBranchData && typeof mergedMainBranchData === 'object') {
+    const branchName = typeof mergedMainBranchData.branchName === 'string' ? mergedMainBranchData.branchName.trim() : '';
+    if (!branchName || branchName === tenant.firstBusinessName) mainBranchDataToSave = { ...mergedMainBranchData, branchName: firstBusinessName };
   }
 
   await tenant.update({
-    ...(businessName !== undefined && { businessName }),
-    gymName: gymName || tenant.gymName,
-    gymDescription: gymDescription !== undefined ? gymDescription : tenant.gymDescription,
-    genderType: genderType || tenant.genderType,
+    ...(organizationName !== undefined && { organizationName }),
+    firstBusinessName: firstBusinessName || tenant.firstBusinessName,
+    firstBusinessDescription: firstBusinessDescription !== undefined ? firstBusinessDescription : tenant.firstBusinessDescription,
+    ...(genderType !== undefined && { genderType: genderType || null }),
+    ...(logoUrl !== undefined && { logoUrl: logoUrl || null }),
+    ...(coverImageUrl !== undefined && { coverImageUrl: coverImageUrl || null }),
     address: address !== undefined ? address : tenant.address,
     latitude: latitude !== undefined ? latitude : tenant.latitude,
     longitude: longitude !== undefined ? longitude : tenant.longitude,
-    mainBranchDataJson: mainBranchDataToSave,
-    kycDocumentsJson: kycDocumentsJson || tenant.kycDocumentsJson,
-    logoUrl: logoUrl || tenant.logoUrl,
-    coverImageUrl: coverImageUrl || tenant.coverImageUrl,
+    firstBranchDraft: mainBranchDataToSave,
+    firstBranchCurrency: firstBranch.currency || tenant.firstBranchCurrency,
     kycStatus: KycStatus.PENDING,
-    onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || mainBranchData !== undefined) ? 3 : 2),
+    onboardingStep: Math.max(tenant.onboardingStep, (address !== undefined || firstBranchDraft !== undefined) ? 3 : 2),
   });
-  await areaRequests.applyChoiceToLink(resolvedBranchChoice, { tenantId: tenant.id, target: 'main_branch', targetId: tenant.id });
+  await areaRequests.applyChoiceToLink(resolvedBranchChoice, { organizationId: tenant.id, target: 'first_branch_draft', targetId: tenant.id });
 
   return { tenant };
 };
@@ -175,8 +177,8 @@ const submitGymProfile = async (tenantId, userId, profileData) => {
  * Host selects or changes their SaaS package.
  * Allowed during onboarding and for active tenants wanting to upgrade/downgrade.
  */
-const selectPackage = async (tenantId, userId, packageId) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const selectPackage = async (organizationId, userId, packageId) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   const allowedStatuses = [
@@ -200,51 +202,9 @@ const selectPackage = async (tenantId, userId, packageId) => {
   return { tenant, package: pkg };
 };
 
-// ── updateOnboardingImages ───────────────────────────────────────────────────
-/**
- * Onboarding Step 4 photos, before the tenant has a real database.
- *
- * There is no Branch row yet — provisioning (and the actual `Branch.create()`)
- * only runs later, when an admin approves the application (see
- * tenant-provisioning.service.js). Until then, `mainBranchDataJson` on this
- * platform-DB Tenant row is the only place branch data can live at all —
- * exactly the same pattern submitGymProfile already uses for name/address/
- * hours. Provisioning reads `imagesJson` off this same blob to seed the real
- * Branch once it exists.
- */
-const updateOnboardingImages = async (tenantId, userId, imagesJson) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
-  if (!tenant) throw createError('Tenant not found or access denied', 404);
-
-  let existingMainBranch = tenant.mainBranchDataJson;
-  if (typeof existingMainBranch === 'string') {
-    try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
-  }
-
-  const mergedMainBranchData = { ...(existingMainBranch || {}), imagesJson };
-  await tenant.update({ mainBranchDataJson: mergedMainBranchData });
-
-  return { imagesJson };
-};
-
-/** Newly uploaded URLs appended to whatever's already there — the add half of Step 4. */
-const addOnboardingImages = async (tenantId, userId, newUrls) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
-  if (!tenant) throw createError('Tenant not found or access denied', 404);
-
-  let existingMainBranch = tenant.mainBranchDataJson;
-  if (typeof existingMainBranch === 'string') {
-    try { existingMainBranch = JSON.parse(existingMainBranch); } catch (e) { existingMainBranch = {}; }
-  }
-  const existingImages = Array.isArray(existingMainBranch?.imagesJson) ? existingMainBranch.imagesJson : [];
-  const imagesJson = [...existingImages, ...newUrls];
-
-  return updateOnboardingImages(tenantId, userId, imagesJson);
-};
-
 // ── updateMyTenant ────────────────────────────────────────────────────────────
 /**
- * Host updates their business contact info (businessName, email, phone, cityId).
+ * Host updates their business contact info (organizationName, email, phone, cityId).
  */
 const updateMyTenant = async (userId, updates) => {
   const tenant = await Tenant.findOne({
@@ -261,11 +221,11 @@ const updateMyTenant = async (userId, updates) => {
   }
   if (sendsArea && [TenantStatus.DRAFT, TenantStatus.PENDING_REVIEW].includes(tenant.status)) {
     const choice = await areaRequests.resolveAreaChoice(areaRequests.parseAreaChoice(updates), {
-      cityId: tenant.cityId, userId, tenantId: tenant.id,
+      cityId: tenant.cityId, userId, organizationId: tenant.id,
     });
     const values = areaRequests.rowValues(choice);
     if (values) await tenant.update(values); // the other fields stay ACTIVE-only, as before
-    await areaRequests.applyChoiceToLink(choice, { tenantId: tenant.id, target: 'tenant', targetId: tenant.id });
+    await areaRequests.applyChoiceToLink(choice, { organizationId: tenant.id, target: 'organization', targetId: tenant.id });
     await tenant.reload({ include: [{ model: City, as: 'city', attributes: ['id', 'name'] }] });
     return { tenant };
   }
@@ -277,25 +237,25 @@ const updateMyTenant = async (userId, updates) => {
   const { email, phone, cityId } = updates;
   // R-112 (C4): the brand follows the Step 2 rules (C1); a change is audited. The stored name sent back
   // unchanged is not re-checked (C7: an older name must not block editing the other fields).
-  const unchangedBrand = typeof updates.businessName === 'string'
-    && areaRequests.cleanAreaName(updates.businessName) === (tenant.businessName || '').trim();
-  const businessName = updates.businessName !== undefined && !unchangedBrand
-    ? await validateBrandName(updates.businessName)
+  const unchangedBrand = typeof updates.organizationName === 'string'
+    && areaRequests.cleanAreaName(updates.organizationName) === (tenant.organizationName || '').trim();
+  const organizationName = updates.organizationName !== undefined && !unchangedBrand
+    ? await validateBrandName(updates.organizationName)
     : undefined;
-  const previousBusinessName = tenant.businessName;
+  const previousBusinessName = tenant.organizationName;
   await tenant.update({
-    ...(businessName !== undefined && { businessName }),
+    ...(organizationName !== undefined && { organizationName }),
     ...(email !== undefined && { email }),
     ...(phone !== undefined && { phone }),
     ...(cityId !== undefined && { cityId }),
   });
-  if (businessName !== undefined && businessName !== previousBusinessName) {
+  if (organizationName !== undefined && organizationName !== previousBusinessName) {
     await PlatformAuditLog.create({
       actorUserId: userId,
       action: 'tenant.brand_renamed',
       targetType: 'tenant',
       targetId: tenant.id,
-      details: { from: previousBusinessName, to: businessName },
+      details: { from: previousBusinessName, to: organizationName },
       createdAt: new Date(),
     });
   }
@@ -312,8 +272,8 @@ const updateMyTenant = async (userId, updates) => {
  * the 90-day retention sweep (R-16) already removed them, in which case the host uploads them again.
  * Only the owner, only from REJECTED; the next step is the ordinary gym-profile → finalize path.
  */
-const reapplyTenant = async (tenantId, userId) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const reapplyTenant = async (organizationId, userId) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
   if (tenant.status !== TenantStatus.REJECTED) {
     const err = createError('Only a rejected application can be reopened.', 409);
@@ -348,15 +308,14 @@ const reapplyTenant = async (tenantId, userId) => {
 
 /**
  * The membership plans the host entered for the main branch during onboarding
- * (`mainBranchDataJson.plans`, older drafts `.packages`), or null. Submitting needs at
+ * (`firstBranchDraft.packages`, the FirstBranch name), or null. Submitting needs at
  * least one; host-status.service.js uses the same rule for "listing complete".
  */
 const mainBranchPlans = (tenant) => {
-  let mainBranch = tenant.mainBranchDataJson;
+  let mainBranch = tenant.firstBranchDraft;
   if (typeof mainBranch === 'string') {
     try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = {}; }
   }
-  if (mainBranch && Array.isArray(mainBranch.plans)) return mainBranch.plans;
   if (mainBranch && Array.isArray(mainBranch.packages)) return mainBranch.packages;
   return null;
 };
@@ -366,8 +325,8 @@ const mainBranchPlans = (tenant) => {
  * Called when the gym owner completes the payment step during onboarding.
  * Saves payment method + bank reference and creates a pending TenantSubscription.
  */
-const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransferRef }) => {
-  const tenant = await Tenant.findOne({ where: { id: tenantId, ownerUserId: userId } });
+const finalizeApplication = async (organizationId, userId, { paymentMethod, bankTransferRef }) => {
+  const tenant = await Tenant.findOne({ where: { id: organizationId, ownerUserId: userId } });
   if (!tenant) throw createError('Tenant not found or access denied', 404);
 
   // Validate that the main branch has at least 1 membership plan configured
@@ -403,9 +362,9 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
         role: 'admin',
         type: 'tenant_submitted_review',
         title: 'New Organization Submitted',
-        message: `New organization pending review: ${tenant.gymName || tenant.businessName} (Host: ${hostName}).`,
-        deepLink: `/admin/tenants/${tenant.id}`,
-        metadataJson: { tenantId: tenant.id },
+        message: `New organization pending review: ${tenant.firstBusinessName || tenant.organizationName} (Host: ${hostName}).`,
+        deepLink: `/admin/organizations/${tenant.id}`,
+        metadataJson: { organizationId: tenant.id },
       });
     }
   } catch (notifErr) {
@@ -416,7 +375,7 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
   // GRACE plan instead (BILL-13, subscription-migration.service.js#startPayLaterGrace).
   // It used to get an ACTIVE plan for the whole package cycle here, unpaid.
   if (tenant.selectedPackageId && tenant.paymentMethod !== 'PAY_LATER') {
-    const existingSub = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
+    const existingSub = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
     if (!existingSub) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
       if (pkg) {
@@ -428,7 +387,7 @@ const finalizeApplication = async (tenantId, userId, { paymentMethod, bankTransf
         else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
 
         await TenantSubscription.create({
-          tenantId: tenant.id,
+          organizationId: tenant.id,
           platformPackageId: pkg.id,
           startDate: start.toISOString().split('T')[0],
           endDate: end.toISOString().split('T')[0],
@@ -462,7 +421,7 @@ const getMyTenant = async (userId) => {
   if (!tenant) throw createError('No gym business registered for this account', 404);
 
   const subscription = await TenantSubscription.findOne({
-    where: { tenantId: tenant.id },
+    where: { organizationId: tenant.id },
     order: [['created_at', 'DESC']],
     include: [{ model: PlatformPackage, as: 'package', required: false }],
   });
@@ -473,8 +432,8 @@ const getMyTenant = async (userId) => {
 /**
  * Uploads KYC documents to private storage and updates tenant record (SEC-10).
  */
-const uploadKycDocuments = async ({ tenantId, userId, userRole, files, documentType }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const uploadKycDocuments = async ({ organizationId, userId, userRole, files, documentType }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   // Authorization: must be the tenant owner or PLATFORM_ADMIN
@@ -491,7 +450,7 @@ const uploadKycDocuments = async ({ tenantId, userId, userRole, files, documentT
     const docDescriptor = await kycStorageService.uploadKycDocument({
       buffer: file.buffer,
       mimetype: file.mimetype,
-      tenantId,
+      organizationId,
       originalName: file.originalname,
       documentType,
     });
@@ -531,8 +490,8 @@ const uploadKycDocuments = async ({ tenantId, userId, userRole, files, documentT
 /**
  * Lists KYC documents for a tenant with secure stream URLs.
  */
-const getKycDocuments = async ({ tenantId, userId, userRole }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const getKycDocuments = async ({ organizationId, userId, userRole }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   // Authorization: must be the tenant owner or PLATFORM_ADMIN
@@ -549,15 +508,15 @@ const getKycDocuments = async ({ tenantId, userId, userRole }) => {
     size: doc.size,
     documentType: doc.documentType,
     uploadedAt: doc.uploadedAt,
-    streamUrl: `/api/v1/tenants/${tenant.id}/kyc-documents/${doc.documentId}/stream`,
+    streamUrl: `/api/v1/organizations/${tenant.id}/kyc-documents/${doc.documentId}/stream`,
   }));
 };
 
 /**
  * Streams a private KYC document with access audit logging (SEC-10).
  */
-const getKycDocumentStream = async ({ tenantId, documentId, userId, userRole, reqInfo }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const getKycDocumentStream = async ({ organizationId, documentId, userId, userRole, reqInfo }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   // Authorization: must be the tenant owner or PLATFORM_ADMIN
@@ -594,8 +553,8 @@ const getKycDocumentStream = async ({ tenantId, documentId, userId, userRole, re
 /**
  * Deletes a KYC document from storage and tenant record.
  */
-const deleteKycDocument = async ({ tenantId, documentId, userId, userRole }) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const deleteKycDocument = async ({ organizationId, documentId, userId, userRole }) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
   if (tenant.ownerUserId !== userId && userRole !== UserRole.PLATFORM_ADMIN) {
@@ -633,8 +592,6 @@ module.exports = {
   registerTenant,
   submitGymProfile,
   selectPackage,
-  updateOnboardingImages,
-  addOnboardingImages,
   finalizeApplication,
   mainBranchPlans,
   getMyTenant,

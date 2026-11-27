@@ -35,11 +35,11 @@ describe('P5b item 8: Move branch is gone', () => {
 
   test('POST /host/branches/:branchId/move answers 404 and the branch stays in its organization', async () => {
     const { GymListing } = require('../../src/models/platform');
-    const target = await GymListing.create({ tenantId: ctx.tenant1.id, title: 'P5b Move Target', status: 'ACTIVE', cityId: 1 });
+    const target = await GymListing.create({ organizationId: ctx.tenant1.id, name: 'P5b Move Target', status: 'ACTIVE', cityId: 1 });
     const res = await asPersona('owner').post(`/host/branches/${ctx.branch1.id}/move`, { targetListingId: target.id });
     expect(res.status).toBe(404);
     const branch = await dbHarness.tenant1.models.Branch.findByPk(ctx.branch1.id);
-    expect(branch.gymListingId).toBe(ctx.listing1.id);
+    expect(branch.businessId).toBe(ctx.listing1.id);
   });
 
   test('the service has no moveBranch', () => {
@@ -50,7 +50,7 @@ describe('P5b item 8: Move branch is gone', () => {
     const { GymListing } = require('../../src/models/platform');
     const source = await factories.createGymListing(ctx.tenant1.id, { title: 'P5b Move Source' });
     const branch = await factories.createBranch(dbHarness.tenant1, source.id, { name: 'P5b Source Branch' });
-    const res = await asPersona('owner').delete(`/host/listings/${source.id}`, {
+    const res = await asPersona('owner').delete(`/host/businesses/${source.id}`, {
       password: 'Test@12345',
       strategy: 'moveBranches',
       targetListingId: ctx.listing1.id,
@@ -59,7 +59,7 @@ describe('P5b item 8: Move branch is gone', () => {
     expect(res.body.code).toBe('invalid_strategy');
     expect((await GymListing.findByPk(source.id)).status).toBe('ACTIVE');
     const reloaded = await dbHarness.tenant1.models.Branch.findByPk(branch.id);
-    expect(reloaded.gymListingId).toBe(source.id);
+    expect(reloaded.businessId).toBe(source.id);
     expect(reloaded.status).toBe('ACTIVE');
   });
 });

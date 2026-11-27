@@ -14,10 +14,10 @@ const hasBranchAccess = async (req, branchId, permissionKey) => {
   if (!branchId) return false;
 
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
-  if (userId && tenantId && req.tenantDb) {
+  const organizationId = req.user?.organizationId || req.tenantDb?.organizationId || req.organizationId;
+  if (userId && organizationId && req.tenantDb) {
     try {
-      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+      const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
       if (grants.has(permissionKey)) return true;
     } catch (err) {
       console.warn('[branchAccess] permission resolution failed:', err.message);
@@ -35,11 +35,11 @@ const hasDirectBranchAccess = async (req, branchId, permissionKey) => {
   if (!branchId) return false;
 
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
-  if (!userId || !tenantId || !req.tenantDb) return false;
+  const organizationId = req.user?.organizationId || req.tenantDb?.organizationId || req.organizationId;
+  if (!userId || !organizationId || !req.tenantDb) return false;
 
   try {
-    const grants = await accessService.resolve(req.tenantDb, tenantId, userId, branchId);
+    const grants = await accessService.resolve(req.tenantDb, organizationId, userId, branchId);
     return grants.has(`${permissionKey}.direct`);
   } catch (err) {
     console.warn('[branchAccess] direct permission resolution failed:', err.message);
@@ -63,8 +63,8 @@ const hasAllBranches = async (req) => {
     return true;
   }
   const userId = req?.user?.id || req?.user?.sub;
-  const tenantId = req?.tenantDb?.tenantId || req?.tenantId || req?.user?.tenantId;
-  if (!userId || !tenantId) return false;
+  const organizationId = req?.tenantDb?.organizationId || req?.organizationId || req?.user?.organizationId;
+  if (!userId || !organizationId) return false;
 
   try {
     const membershipService = require('../services/membership.service');
@@ -72,7 +72,7 @@ const hasAllBranches = async (req) => {
       statuses: ['ACTIVE', 'SUSPENDED'],
       attributes: ['id'],
     });
-    if (owned.some((t) => t.id === tenantId)) {
+    if (owned.some((t) => t.id === organizationId)) {
       if (req.user) req.user.isOwner = true;
       return true;
     }
@@ -111,15 +111,15 @@ const branchIdsWithPermission = async (req, permissionKey) => {
 const branchIdsWithAnyGrant = async (req) => {
   if (await hasAllBranches(req)) return null;
   const userId = req.user?.id || req.user?.sub;
-  const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
-  if (!userId || !tenantId || !req.tenantDb) return [];
+  const organizationId = req.user?.organizationId || req.tenantDb?.organizationId || req.organizationId;
+  if (!userId || !organizationId || !req.tenantDb) return [];
 
   const { Branch } = req.tenantDb.models;
   const branches = await Branch.findAll({ where: { status: 'ACTIVE' }, attributes: ['id'] });
   const allowed = [];
   for (const { id } of branches) {
     try {
-      const grants = await accessService.resolve(req.tenantDb, tenantId, userId, id);
+      const grants = await accessService.resolve(req.tenantDb, organizationId, userId, id);
       if (grants.isOwner || grants.keys().length > 0) allowed.push(id);
     } catch (err) {
       console.warn('[branchAccess] permission resolution failed:', err.message);

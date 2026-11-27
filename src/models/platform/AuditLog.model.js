@@ -23,10 +23,10 @@ module.exports = (sequelize) => {
         allowNull: true,
         field: 'user_id',
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: true,
-        field: 'tenant_id',
+        field: 'organization_id',
       },
       method: {
         type: DataTypes.STRING(10),
@@ -68,7 +68,7 @@ module.exports = (sequelize) => {
       timestamps: false,
       indexes: [
         { fields: ['user_id'] },
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['created_at'] },
       ],
     }

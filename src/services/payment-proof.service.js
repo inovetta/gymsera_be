@@ -4,7 +4,7 @@
  * Payment proofs (bank-transfer receipts) — Phase 7 P9c item A.
  *
  * The bytes live in the one private store (decision R-27, kyc-storage.service.js), under
- * `tenants/<tenantId>/payment-proofs/`. The payment row keeps `private:<key>`; API answers never
+ * `tenants/<organizationId>/payment-proofs/`. The payment row keeps `private:<key>`; API answers never
  * show the key: Payment#proofUrl reads as the authenticated route `/api/v1/payments/<id>/proof`
  * (payments.controller.js#getProof), which only the receiving host's staff with `payments.view`
  * on the payment's branch and platform admins can open. There is no public URL.
@@ -26,12 +26,12 @@ const proofRoute = (paymentId) => `/api/v1/payments/${paymentId}/proof`;
 /**
  * Stores the uploaded proof for `payment` (a tenant Payment instance) and points the row at it.
  * The previous private file, if any, is removed after the row is saved.
- * @param {{ tenantId: string, payment: object, file: { buffer: Buffer, mimetype: string } }} params
+ * @param {{ organizationId: string, payment: object, file: { buffer: Buffer, mimetype: string } }} params
  */
-const storeProof = async ({ tenantId, payment, file }) => {
-  if (!tenantId) throw new Error('storeProof: tenantId is required');
+const storeProof = async ({ organizationId, payment, file }) => {
+  if (!organizationId) throw new Error('storeProof: organizationId is required');
   const ext = EXT[file.mimetype] || 'jpg';
-  const key = `tenants/${tenantId}/payment-proofs/${payment.id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+  const key = `tenants/${organizationId}/payment-proofs/${payment.id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
   await privateStore.putPrivateObject({ buffer: file.buffer, mimetype: file.mimetype, key });
 
   const previousKey = keyOf(payment.getDataValue('proofUrl'));

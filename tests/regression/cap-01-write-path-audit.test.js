@@ -16,7 +16,7 @@ const { SubscriptionStatus } = require('../../src/constants/subscription-status'
 
 describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -26,27 +26,26 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
 
     const { Branch, Gym } = tenantDb.models;
     activeGym = await Gym.findOne();
     if (!activeGym) {
-      const listing = await factories.createGymListing(tenantId, {
+      const listing = await factories.createGymListing(organizationId, {
         title: 'Audit Locked Gym Listing',
         status: 'ACTIVE',
         reservedSlots: 0,
       });
       activeGym = await Gym.create({
-        gymListingId: listing.id,
+        id: listing.id,
         name: 'Audit Locked Gym',
       });
     }
 
     lockedBranch = await Branch.create({
-      gymId: activeGym.id,
-      gymListingId: activeGym.gymListingId,
+      businessId: activeGym.id,
       branchName: 'Audit Locked Branch',
       status: 'ACTIVE',
       billingLockedAt: new Date(),
@@ -63,7 +62,7 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
     beforeAll(async () => {
       const { MembershipPlan } = tenantDb.models;
       testPlan = await MembershipPlan.create({
-        gymId: activeGym.id,
+        businessId: activeGym.id,
         branchId: lockedBranch.id,
         name: 'Pre-existing Locked Plan',
         durationType: 'MONTHLY',
@@ -127,7 +126,7 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
     beforeAll(async () => {
       const { MemberSubscription, MembershipPlan } = tenantDb.models;
       const plan = await MembershipPlan.create({
-        gymId: activeGym.id,
+        businessId: activeGym.id,
         branchId: lockedBranch.id,
         name: 'Sub Test Plan',
         durationType: 'MONTHLY',
@@ -254,7 +253,7 @@ describe('CAP-01 Write-Path Audit: checkBranchBillingLock enforcement', () => {
 
       const ctx = {
         tenantDb,
-        tenantId,
+        organizationId,
         grants: {
           isOwner: true,
           assignmentIds: [],

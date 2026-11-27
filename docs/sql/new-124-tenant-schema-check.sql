@@ -9,7 +9,7 @@
 --
 -- Without a mysql client (the API server), from the app folder that holds server.js and .env:
 --   node src/scripts/run-sql-check.js docs/sql/new-124-tenant-schema-check.sql
--- It uses the API's PLATFORM_DB_* settings, runs read-only, and prints gym_name as [hidden].
+-- It uses the API's PLATFORM_DB_* settings, runs read-only, and prints first_business_name as [hidden].
 --
 -- Send the agent both result grids.
 
@@ -18,9 +18,9 @@
 --    the database have `schema_migrations` at all? has_branches_currency = 0 confirms NEW-124.
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.id         AS tenant_id,
-  t.tenant_code,
-  t.gym_name,
+  t.id         AS organization_id,
+  t.organization_code,
+  t.first_business_name,
   t.db_name,
   t.updated_at AS tenant_updated_at,
   t.status,
@@ -28,13 +28,15 @@ SELECT
      WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = 'schema_migrations') AS has_schema_migrations,
   (SELECT COUNT(*) FROM information_schema.COLUMNS c
      WHERE c.TABLE_SCHEMA = t.db_name AND c.TABLE_NAME = 'branches' AND c.COLUMN_NAME = 'currency') AS has_branches_currency
-FROM tenants t
+FROM organizations t
 WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
 ORDER BY t.updated_at DESC;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 2. Every column the code selects from `branches` and `gyms` (generated from
---    src/models/tenant/Branch.model.js and Gym.model.js on 2026-10-26) that a live tenant
+-- 2. Every column the code selects from `branches` and `businesses` (generated from
+--    src/models/tenant/Branch.model.js and Gym.model.js on 2026-10-26; R-120: `gyms` → `businesses`,
+--    `branches.gym_id` → `business_id` by tenant migration 030, so a database before 030 lists
+--    `branches.business_id` as missing) that a live tenant
 --    database does NOT have, plus one row `schema_migrations | (table)` for a tenant database
 --    with no migration table at all (NEW-127/128: such a database needs
 --    `node src/scripts/repair-tenant-schema.js --tenant <code>`, not the normal runner).
@@ -43,15 +45,14 @@ ORDER BY t.updated_at DESC;
 --    migration step (NEW-127).
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-  t.tenant_code,
+  t.organization_code,
   t.db_name,
   e.table_name,
   e.column_name AS missing_column
-FROM tenants t
+FROM organizations t
 JOIN (
   SELECT 'branches' AS table_name, 'id' AS column_name
-  UNION ALL SELECT 'branches' AS table_name, 'gym_id' AS column_name
-  UNION ALL SELECT 'branches' AS table_name, 'gym_listing_id' AS column_name
+  UNION ALL SELECT 'branches' AS table_name, 'business_id' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'branch_name' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'address' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'city_id' AS column_name
@@ -88,20 +89,19 @@ JOIN (
   UNION ALL SELECT 'branches' AS table_name, 'billing_lock_reason' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'created_at' AS column_name
   UNION ALL SELECT 'branches' AS table_name, 'updated_at' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'id' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'name' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'description' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'contact_phone' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'contact_email' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'website' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'gender_type' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'logo_url' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'cover_image_url' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'social_links_json' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'images_json' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'gym_listing_id' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'created_at' AS column_name
-  UNION ALL SELECT 'gyms' AS table_name, 'updated_at' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'id' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'name' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'description' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'contact_phone' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'contact_email' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'website' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'gender_type' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'logo_url' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'cover_image_url' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'social_links_json' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'images_json' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'created_at' AS column_name
+  UNION ALL SELECT 'businesses' AS table_name, 'updated_at' AS column_name
 ) e
 WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
   AND EXISTS (SELECT 1 FROM information_schema.TABLES x
@@ -111,12 +111,12 @@ WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
                       AND c.COLUMN_NAME = e.column_name)
 UNION ALL
 SELECT
-  t.tenant_code,
+  t.organization_code,
   t.db_name,
   'schema_migrations' AS table_name,
   '(table)' AS missing_column
-FROM tenants t
+FROM organizations t
 WHERE t.status IN ('ACTIVE', 'SUSPENDED', 'PENDING_DELETION')
   AND NOT EXISTS (SELECT 1 FROM information_schema.TABLES x
                     WHERE x.TABLE_SCHEMA = t.db_name AND x.TABLE_NAME = 'schema_migrations')
-ORDER BY tenant_code, table_name, missing_column;
+ORDER BY organization_code, table_name, missing_column;

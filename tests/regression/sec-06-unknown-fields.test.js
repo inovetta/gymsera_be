@@ -39,12 +39,12 @@ describe('SEC-06: validate.strict', () => {
   });
 
   test('an unknown top-level field is a 422 that names every unknown field', async () => {
-    const r = await run(validate.strict(chains), { email: 'a@b.co', role: 'PLATFORM_ADMIN', tenantId: 'x' });
+    const r = await run(validate.strict(chains), { email: 'a@b.co', role: 'PLATFORM_ADMIN', organizationId: 'x' });
     expect(r.nexted).toBe(false);
     expect(r.status).toBe(422);
     const fields = JSON.stringify(r.payload);
     expect(fields).toContain('role');
-    expect(fields).toContain('tenantId');
+    expect(fields).toContain('organizationId');
     expect(fields).toContain('unknown_field');
   });
 

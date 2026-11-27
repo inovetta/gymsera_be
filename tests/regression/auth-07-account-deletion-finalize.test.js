@@ -62,11 +62,11 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     const listing = await factories.createGymListing(tenant.id);
     // P7b (R-94): bank details live in payout_accounts (tenant default and an organization override).
     await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000000' });
-    await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000001' }, { organizationId: listing.id });
+    await factories.setPayoutAccount(tenant.id, { iban: 'PK00TEST000000000001' }, { businessId: listing.id });
     const branch = await factories.createBranch(tenantDbCtx, listing.id, { name: 'Main' });
     await factories.createTenantSubscription(tenant.id, { platform: 'MANUAL', status: 'ACTIVE' });
     await PlatformInvoice.create({
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       invoiceNo: `INV-${uuidv4().slice(0, 8)}`,
       description: 'Plan',
       subtotal: 1000,
@@ -81,9 +81,9 @@ describe('AUTH-07: day-30 deletion sweep', () => {
   const seedMember = async ({ db, tenant, listing, branch }, tag = 'm') => {
     const member = await factories.createUser({ role: 'MEMBER', email: `${tag}_${uuidv4().slice(0, 6)}@gymseratest.com`, phone: '+923009998888' });
     const { models } = db;
-    const plan = await models.MembershipPlan.create({ gymId: (await models.Gym.findOne())?.id || uuidv4(), name: 'Monthly', price: 3000 }).catch(async () => {
+    const plan = await models.MembershipPlan.create({ businessId: (await models.Gym.findOne())?.id || uuidv4(), name: 'Monthly', price: 3000 }).catch(async () => {
       const gym = await models.Gym.create({ name: 'G' });
-      return models.MembershipPlan.create({ gymId: gym.id, name: 'Monthly', price: 3000 });
+      return models.MembershipPlan.create({ businessId: gym.id, name: 'Monthly', price: 3000 });
     });
     const sub = await models.MemberSubscription.create({
       userId: member.id,
@@ -106,10 +106,10 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     });
     await UserGymMembership.create({
       userId: member.id,
-      tenantId: tenant.id,
-      gymListingId: listing.id,
+      organizationId: tenant.id,
+      businessId: listing.id,
       subscriptionId: sub.id,
-      gymName: 'Test Gym',
+      businessName: 'Test Gym',
       planName: 'Monthly',
       startDate: sub.startDate,
       endDate: sub.endDate,
@@ -117,7 +117,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     });
     await RefreshToken.create({ userId: member.id, familyId: uuidv4(), token: `h-${uuidv4()}`, expiresAt: new Date(Date.now() + DAY), isRevoked: false });
     await DeviceToken.create({ userId: member.id, token: `fcm-${uuidv4()}`, platform: 'ios' });
-    await SavedGym.create({ userId: member.id, gymListingId: listing.id });
+    await SavedGym.create({ userId: member.id, businessId: listing.id });
     await Notification.create({ userId: member.id, role: 'traveler', type: 'X', title: 't', message: 'm' });
     return { member, sub, payment, plan };
   };
@@ -198,12 +198,12 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     beforeAll(async () => {
       gym = await seedGym(db2);
       m = await seedMember(gym, 'gymmember');
-      await factories.createRoleAssignment(db2, { userId: (await factories.createUser({ role: 'BRANCH_MANAGER' })).id, roleKey: 'BRANCH_MANAGER', scopeType: 'BRANCH', scopeId: gym.branch.id, branchIds: [gym.branch.id], tenantId: gym.tenant.id });
+      await factories.createRoleAssignment(db2, { userId: (await factories.createUser({ role: 'BRANCH_MANAGER' })).id, roleKey: 'BRANCH_MANAGER', scopeType: 'BRANCH', scopeId: gym.branch.id, branchIds: [gym.branch.id], organizationId: gym.tenant.id });
       await request(gym.owner);
       moneyBefore = await money(db2);
       platformMoneyBefore = {
-        subs: (await TenantSubscription.findAll({ where: { tenantId: gym.tenant.id }, order: [['id', 'ASC']], raw: true })).map((s) => ({ id: s.id, status: s.status, amount: String(s.amount), platform: s.platform })),
-        invoices: (await PlatformInvoice.findAll({ where: { tenantId: gym.tenant.id }, order: [['id', 'ASC']], raw: true })).map((i) => ({ id: i.id, invoiceNo: i.invoiceNo, total: String(i.totalAmount), status: i.status })),
+        subs: (await TenantSubscription.findAll({ where: { organizationId: gym.tenant.id }, order: [['id', 'ASC']], raw: true })).map((s) => ({ id: s.id, status: s.status, amount: String(s.amount), platform: s.platform })),
+        invoices: (await PlatformInvoice.findAll({ where: { organizationId: gym.tenant.id }, order: [['id', 'ASC']], raw: true })).map((i) => ({ id: i.id, invoiceNo: i.invoiceNo, total: String(i.totalAmount), status: i.status })),
       };
       jest.spyOn(storageService, 'deleteImage').mockResolvedValue(undefined);
       await runDeletionFinalizeSweep({ now: AFTER_WINDOW() });
@@ -214,11 +214,11 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       const t = await Tenant.findByPk(gym.tenant.id);
       expect(t.status).toBe('DELETED');
       expect(t.deletedAt).toBeTruthy();
-      expect(t.businessName).toBe(gym.tenant.businessName);
+      expect(t.organizationName).toBe(gym.tenant.organizationName);
       expect(t.connectionStringEncrypted).toBe(gym.tenant.connectionStringEncrypted); // the database is kept (R-28)
       expect([t.phone, t.address, t.bankTransferRef, t.paymentDetailsJson]).toEqual([null, null, null, null]);
       // P7b (R-94): every payout account of the tenant is gone too.
-      expect(await PayoutAccount.count({ where: { tenantId: gym.tenant.id } })).toBe(0);
+      expect(await PayoutAccount.count({ where: { organizationId: gym.tenant.id } })).toBe(0);
       expect(t.email).toMatch(/@deleted\.gymsera\.invalid$/); // NOT NULL column: a placeholder
       // The tenant database is still there, with its tables and rows.
       const [{ n }] = await db2.sequelize.query('SELECT COUNT(*) AS n FROM payments', { type: QueryTypes.SELECT });
@@ -227,9 +227,9 @@ describe('AUTH-07: day-30 deletion sweep', () => {
 
     test('FINANCIAL RECORDS ARE UNCHANGED: payments, platform subscriptions and invoices (R-16)', async () => {
       expect(await money(db2)).toEqual(moneyBefore);
-      const subs = await TenantSubscription.findAll({ where: { tenantId: gym.tenant.id }, order: [['id', 'ASC']], raw: true });
+      const subs = await TenantSubscription.findAll({ where: { organizationId: gym.tenant.id }, order: [['id', 'ASC']], raw: true });
       expect(subs.map((s) => ({ id: s.id, status: s.status, amount: String(s.amount), platform: s.platform }))).toEqual(platformMoneyBefore.subs);
-      const invoices = await PlatformInvoice.findAll({ where: { tenantId: gym.tenant.id }, order: [['id', 'ASC']], raw: true });
+      const invoices = await PlatformInvoice.findAll({ where: { organizationId: gym.tenant.id }, order: [['id', 'ASC']], raw: true });
       expect(invoices.map((i) => ({ id: i.id, invoiceNo: i.invoiceNo, total: String(i.totalAmount), status: i.status }))).toEqual(platformMoneyBefore.invoices);
     });
 
@@ -251,9 +251,9 @@ describe('AUTH-07: day-30 deletion sweep', () => {
       const member = await User.findByPk(m.member.id);
       expect(member.status).toBe('ACTIVE');
       expect(member.email).toBe(m.member.email);
-      const membership = await UserGymMembership.findOne({ where: { userId: m.member.id, tenantId: gym.tenant.id } });
+      const membership = await UserGymMembership.findOne({ where: { userId: m.member.id, organizationId: gym.tenant.id } });
       expect(membership.status).toBe('CANCELLED');
-      expect(membership.gymName).toBe('Test Gym'); // the gym's name stays on their history
+      expect(membership.businessName).toBe('Test Gym'); // the gym's name stays on their history
     });
 
     test('the listing is INACTIVE and its contact details are removed', async () => {
@@ -296,10 +296,10 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     test('its KYC documents are purged 90 days after the DELETION finished (R-16), not before', async () => {
       await Tenant.update({ kycDocumentsJson: [{ key: 'kyc/a.pdf', type: 'CNIC' }] }, { where: { id: gym.tenant.id } });
       const early = await runKycRetentionSweep({ dryRun: true, olderThanDays: 90 });
-      expect(early.details.map((d) => d.tenantId)).not.toContain(gym.tenant.id);
+      expect(early.details.map((d) => d.organizationId)).not.toContain(gym.tenant.id);
       await Tenant.update({ deletedAt: new Date(Date.now() - 91 * DAY) }, { where: { id: gym.tenant.id } });
       const late = await runKycRetentionSweep({ dryRun: true, olderThanDays: 90 });
-      expect(late.details.map((d) => d.tenantId)).toContain(gym.tenant.id);
+      expect(late.details.map((d) => d.organizationId)).toContain(gym.tenant.id);
     });
   });
 
@@ -404,7 +404,7 @@ describe('AUTH-07: day-30 deletion sweep', () => {
     test('a Stripe subscription whose cancel failed at request time is retried at day 30', async () => {
       const gym = await seedGym(db2);
       await TenantSubscription.create({
-        tenantId: gym.tenant.id,
+        organizationId: gym.tenant.id,
         platform: 'STRIPE',
         status: 'ACTIVE',
         externalOriginalTransactionId: 'sub_retry_me',

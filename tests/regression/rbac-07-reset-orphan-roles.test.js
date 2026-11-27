@@ -1,7 +1,7 @@
 /**
  * Regression: RBAC-07 residual role correction script (gymsera-rbac07-reset-orphan-roles.js)
  *
- * Fixtures reproduce what the legacy /gyms/staff flow left behind: a platform user whose
+ * Fixtures reproduce what the legacy /organizations/me/staff flow left behind: a platform user whose
  * users.role was raised to BRANCH_MANAGER while their only trace is someone else's staff
  * row. Verifies:
  * 1. PREVIEW makes zero writes and decides CORRECT only for live LIKELY_BUG_ORPHAN users.
@@ -57,7 +57,7 @@ describe('RBAC-07 residual: reset orphaned BRANCH_MANAGER roles', () => {
     // gym_staff.branch_id has a foreign key to branches: give each tenant a real branch.
     const branchIn = async (models) => {
       const gym = await models.Gym.create({ name: 'RBAC-07 Test Gym' });
-      const branch = await models.Branch.create({ gymId: gym.id, branchName: 'Main', timezone: 'Asia/Karachi' });
+      const branch = await models.Branch.create({ businessId: gym.id, branchName: 'Main', timezone: 'Asia/Karachi' });
       return branch.id;
     };
     const b1 = await branchIn(t1Models);

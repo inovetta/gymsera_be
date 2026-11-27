@@ -32,12 +32,12 @@ describe('PAY-05: Gapless per-branch invoice sequences', () => {
       });
     }
     branchA = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Downtown Branch',
       timezone: 'Asia/Karachi',
     });
     branchB = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Uptown Branch',
       timezone: 'Asia/Karachi',
     });

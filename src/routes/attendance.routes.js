@@ -172,27 +172,27 @@ router.post(
     }
     next();
   },
-  // Device-specific tenant resolver — uses tenantId from body (no JWT available)
+  // Device-specific tenant resolver — uses organizationId from body (no JWT available)
   async (req, res, next) => {
     try {
-      const tenantId = req.body.tenantId;
-      if (!tenantId) return res.status(400).json({ success: false, message: 'tenantId is required in device payload' });
+      const organizationId = req.body.organizationId;
+      if (!organizationId) return res.status(400).json({ success: false, message: 'organizationId is required in device payload' });
 
       const { safeRedisGet, safeRedisSetex } = require('../config/redis.config');
       const TenantDbManager = require('../database/TenantDbManager');
       const { Tenant } = require('../models/platform');
 
-      const cacheKey = `tenant:${tenantId}:connStr`;
+      const cacheKey = `tenant:${organizationId}:connStr`;
       let encryptedConnStr = await safeRedisGet(cacheKey);
 
       if (!encryptedConnStr) {
-        const tenant = await Tenant.findOne({ where: { id: tenantId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
+        const tenant = await Tenant.findOne({ where: { id: organizationId, status: 'ACTIVE' }, attributes: ['id', 'connectionStringEncrypted'] });
         if (!tenant || !tenant.connectionStringEncrypted) return res.status(404).json({ success: false, message: 'Tenant not found or not active' });
         encryptedConnStr = tenant.connectionStringEncrypted;
         await safeRedisSetex(cacheKey, 3600, encryptedConnStr);
       }
 
-      req.tenantDb = await TenantDbManager.getConnection(tenantId, encryptedConnStr);
+      req.tenantDb = await TenantDbManager.getConnection(organizationId, encryptedConnStr);
       next();
     } catch (err) {
       next(err);

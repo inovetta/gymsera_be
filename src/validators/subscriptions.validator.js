@@ -7,9 +7,9 @@ const subscribe = [
   body('planId')
     .notEmpty().withMessage('planId is required')
     .isUUID(4).withMessage('planId must be a valid UUID'),
-  body('gymListingId')
-    .notEmpty().withMessage('gymListingId is required')
-    .isUUID(4).withMessage('gymListingId must be a valid UUID'),
+  body('businessId')
+    .notEmpty().withMessage('businessId is required')
+    .isUUID(4).withMessage('businessId must be a valid UUID'),
   body('branchId')
     .notEmpty().withMessage('branchId is required')
     .isUUID(4).withMessage('branchId must be a valid UUID'),
@@ -26,9 +26,9 @@ const quote = [
   query('planId')
     .notEmpty().withMessage('planId is required')
     .isUUID(4).withMessage('planId must be a valid UUID'),
-  query('gymListingId')
-    .notEmpty().withMessage('gymListingId is required')
-    .isUUID(4).withMessage('gymListingId must be a valid UUID'),
+  query('businessId')
+    .notEmpty().withMessage('businessId is required')
+    .isUUID(4).withMessage('businessId must be a valid UUID'),
   query('branchId')
     .notEmpty().withMessage('branchId is required')
     .isUUID(4).withMessage('branchId must be a valid UUID'),
@@ -105,6 +105,7 @@ const decideRefund = [
 
 const refundPolicy = [
   body('branchId').optional({ values: 'null' }).isUUID().withMessage('branchId must be a valid UUID'),
+  body('applyToAllBranches').optional().isBoolean({ strict: true }).withMessage('applyToAllBranches must be true or false'),
   body('refundsAllowed').optional().isBoolean({ strict: true }).withMessage('refundsAllowed must be true or false'),
   body('refundWindowDays').optional({ values: 'null' }).isInt({ min: 1, max: 3650 }).toInt().withMessage('refundWindowDays must be 1 to 3650, or empty for no limit'),
 ];

@@ -69,7 +69,7 @@ const migratePlatform = async () => {
   const { sequelize } = require('../database/platform');
 
   const statements = [
-    `CREATE TABLE IF NOT EXISTS user_org_index (
+    `CREATE TABLE IF NOT EXISTS user_organization_index (
        user_id      CHAR(36)    NOT NULL,
        tenant_id    CHAR(36)    NOT NULL,
        role_key     VARCHAR(40) NOT NULL,
@@ -206,7 +206,7 @@ const main = async () => {
   const totals = { created: 0, skipped: 0, users: 0, branchLinks: 0, failed: 0 };
 
   for (const tenant of tenants) {
-    const label = tenant.tenantCode || tenant.gymName || tenant.id;
+    const label = tenant.organizationCode || tenant.firstBusinessName || tenant.id;
     if (!tenant.connectionStringEncrypted || tenant.connectionStringEncrypted === 'PENDING_PROVISIONING') {
       console.log(`  ${label}: skipped — not provisioned`);
       continue;

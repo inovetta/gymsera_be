@@ -4,11 +4,11 @@
  *
  *   node src/scripts/reset-platform-data.js --keep-admin a@x.com,b@y.com                 # dry run (the default)
  *   node src/scripts/reset-platform-data.js --keep-admin a@x.com --confirm --db <name> --host <host>
- *   ...  --drop-tenant-databases                                                         # also drops tenants.db_name databases
+ *   ...  --drop-tenant-databases                                                         # also drops organizations.db_name databases
  *
- * Keeps schema_migrations, billing_plans, billing_plan_prices, platform_packages, cities, areas and the named platform
- * admins; empties every other platform table. A real run needs --confirm AND the exact database name AND host that the
- * environment points at. Writes logs/reset-<time>.jsonl (ids, names and counts only).
+ * Keeps schema_migrations, billing_plans, billing_plan_prices, platform_packages, cities, areas, moderation_words, and
+ * the named platform admins; empties every other platform table. A real run needs --confirm AND the exact database name
+ * AND host that the environment points at. Writes logs/reset-<time>.jsonl (ids, names and counts only).
  */
 require('dotenv').config();
 const mysql = require('mysql2/promise');

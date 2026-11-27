@@ -11,7 +11,7 @@ const { GymListing, CapacityEvent, Notification } = require('../../src/models/pl
 
 describe('CAP-05: Rejecting a Pending Organization Returns Capacity via deleteBranch', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -20,7 +20,7 @@ describe('CAP-05: Rejecting a Pending Organization Returns Capacity via deleteBr
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
     adminUser = personas.platformAdmin.user;
@@ -33,33 +33,32 @@ describe('CAP-05: Rejecting a Pending Organization Returns Capacity via deleteBr
   test('Creating org consumes 1 capacity -> admin reject calls deleteBranch -> usedCapacity restored -> CapacityEvent recorded', async () => {
     const { Branch, Gym } = tenantDb.models;
 
-    const initialUsedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const initialUsedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
 
     // 2. Host creates a new organization with a new branch (status: PENDING)
-    const pendingListing = await factories.createGymListing(tenantId, {
+    const pendingListing = await factories.createGymListing(organizationId, {
       title: 'Pending New Org',
       status: 'PENDING',
       reservedSlots: 0,
       hostId: hostUser.id,
     });
     const pendingGym = await Gym.create({
-      gymListingId: pendingListing.id,
+      id: pendingListing.id,
       name: 'Pending Gym',
     });
     const pendingBranch = await Branch.create({
-      gymId: pendingGym.id,
-      gymListingId: pendingListing.id,
+      businessId: pendingGym.id,
       branchName: 'Pending Branch 1',
       status: 'ACTIVE',
     });
     await pendingListing.update({ branchId: pendingBranch.id });
 
     // Capacity consumed: should now be initial + 1 = 2
-    const capacityAfterOrgCreation = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const capacityAfterOrgCreation = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     expect(capacityAfterOrgCreation).toBe(initialUsedCapacity + 1);
 
     // 3. Admin rejects the pending organization
-    const rejectionResult = await adminService.rejectTenant(
+    const rejectionResult = await adminService.rejectBusiness(
       pendingListing.id,
       adminUser.id,
       'Documentation does not meet platform requirements'
@@ -79,7 +78,7 @@ describe('CAP-05: Rejecting a Pending Organization Returns Capacity via deleteBr
     // 6. Verify CapacityEvent was recorded for the branch deletion
     const deleteEvent = await CapacityEvent.findOne({
       where: {
-        tenantId,
+        organizationId,
         branchId: pendingBranch.id,
         action: 'BRANCH_DELETED',
       },
@@ -88,7 +87,7 @@ describe('CAP-05: Rejecting a Pending Organization Returns Capacity via deleteBr
     expect(deleteEvent.delta).toBe(1);
 
     // 7. Verify usedCapacity is restored back to initialUsedCapacity
-    const capacityAfterRejection = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const capacityAfterRejection = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     expect(capacityAfterRejection).toBe(initialUsedCapacity);
 
     // 8. Verify host received a notification explaining rejection and capacity return

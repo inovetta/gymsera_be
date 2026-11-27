@@ -86,14 +86,14 @@ describe('auditCapacity over active tenants', () => {
       listActiveTenants: async () => tenants,
       getTenantDb: async (t) => (t.id === 'd' ? null : {}),
       auditCapacity: async (id) => {
-        if (id === 'b') return { ok: false, driftedListings: [{}, {}] };
+        if (id === 'b') return { ok: false, driftedBusinesses: [{}, {}] };
         if (id === 'c') throw new Error('connection refused');
         return { ok: true };
       },
     });
     expect(r).toMatchObject({ ok: false, tenants: 4, passed: 1 });
-    expect(r.failed).toEqual([{ tenantId: 'b', error: null, driftedListings: 2 }, { tenantId: 'c', error: 'connection refused' }]);
-    expect(r.skipped).toEqual([{ tenantId: 'd', reason: 'no tenant database connection' }]);
+    expect(r.failed).toEqual([{ organizationId: 'b', error: null, driftedBusinesses: 2 }, { organizationId: 'c', error: 'connection refused' }]);
+    expect(r.skipped).toEqual([{ organizationId: 'd', reason: 'no tenant database connection' }]);
   });
 
   test('is green when every tenant passes', async () => {

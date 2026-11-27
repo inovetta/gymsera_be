@@ -25,7 +25,7 @@ const REG = (dateFmt = 1) => 'DeviceType=acc,~DeviceName=SpeedFace Sim,FirmVer=S
   'MultiBioDataSupport=0:1:0:0:0:0:0:0:0:1:0,MultiBioPhotoSupport=0:0:0:0:0:0:0:0:0:1:0,MultiBioVersion=0:10.0:0:0:0:0:0:0:0:40.1:0,' +
   `DateFmtFunOn=${dateFmt}`;
 
-const freshBranch = async () => w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+const freshBranch = async () => w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
 const events = (deviceId) => w.q(w.db1, 'SELECT * FROM device_access_events WHERE device_id = ? ORDER BY id', [deviceId]);
 const attendance = (userId) => w.q(w.db1, 'SELECT * FROM attendance_logs WHERE user_id = ? ORDER BY check_in_at', [userId]);
 

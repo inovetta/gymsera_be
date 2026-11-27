@@ -85,12 +85,12 @@ describe('API-06: ETag, 304 and Cache-Control', () => {
     const bad = await get('/payments', {}); // no token → 401
     expect(bad.status).toBe(401);
     expect(bad.headers['cache-control'] || '').not.toMatch(/public/);
-    const missing = await get('/discovery/gyms/00000000-0000-4000-8000-000000000000', as('owner'));
+    const missing = await get('/discovery/businesses/00000000-0000-4000-8000-000000000000', as('owner'));
     expect(missing.headers['cache-control'] || '').not.toMatch(/public/);
   });
 
   test('mutations are never answered 304', async () => {
-    const r = await asPersona('owner').post('/host/listings', { gymName: 'Etag Org', branchSource: 'none', cityId: 1 });
+    const r = await asPersona('owner').post('/host/businesses', { businessName: 'Etag Org', branchSource: 'none', cityId: 1 });
     expect(r.status).not.toBe(304);
   });
 });

@@ -45,24 +45,24 @@ const url = (db) => {
  */
 const legacyTenant = async (alter = async () => {}) => {
   n += 1;
-  const tenantCode = `test_n127r_${Date.now().toString(36)}_${n}`;
-  const db = `gymsera_${tenantCode}`;
+  const organizationCode = `test_n127r_${Date.now().toString(36)}_${n}`;
+  const db = `gymsera_${organizationCode}`;
   createdDbs.push(db);
   const conn = await getAdminConnection();
   await conn.query(`CREATE DATABASE \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   const seq = new Sequelize(url(db), { dialect: 'mysql', logging: false });
   const models = registerTenantModels(seq);
   await seq.sync();
-  await runTenantMigrations(seq, { tenantId: tenantCode });
-  const gym = await models.Gym.create({ name: 'Repair Gym', gymListingId: 'listing-n127r' });
-  await models.Branch.create({ gymId: gym.id, branchName: 'Main', gymListingId: 'listing-n127r' });
-  await models.Branch.create({ gymId: gym.id, branchName: 'Second', gymListingId: 'listing-n127r' });
+  await runTenantMigrations(seq, { organizationId: organizationCode });
+  const gym = await models.Gym.create({ name: 'Repair Gym', id: 'listing-n127r' });
+  await models.Branch.create({ businessId: gym.id, branchName: 'Main' });
+  await models.Branch.create({ businessId: gym.id, branchName: 'Second' });
   await seq.query('DROP TABLE schema_migrations');
   await seq.query('ALTER TABLE branches DROP COLUMN currency');
   await alter(seq);
-  const tenant = await factories.createTenant({ tenantCode, status: 'ACTIVE', connectionStringEncrypted: encrypt(url(db)) });
+  const tenant = await factories.createTenant({ organizationCode, status: 'ACTIVE', connectionStringEncrypted: encrypt(url(db)) });
   await tenant.update({ dbName: db });
-  return { tenant, tenantCode, db, seq };
+  return { tenant, organizationCode, db, seq };
 };
 
 /** Everything that would show a write: tables, columns of every table, row counts. */
@@ -101,16 +101,16 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
   });
 
   test('dry run (the default): reports every other migration present and 019 to run, changes nothing', async () => {
-    const { tenantCode, db, seq } = await legacyTenant();
+    const { organizationCode, db, seq } = await legacyTenant();
     try {
       const before = await fingerprint(db);
       const out = capture();
-      const code = await main(['--tenant', tenantCode], { write: out.write });
+      const code = await main(['--tenant', organizationCode], { write: out.write });
       expect(code).toBe(0);
       expect(out.text()).toMatch(/DRY RUN complete\. Nothing was changed/);
       expect(out.text()).toMatch(/Would run 1 migration\(s\): 019_add_branch_currency/);
       expect(out.text()).toContain(`Would record ${ALL_VERSIONS.length - 1} migration(s) as already applied`);
-      expect(out.text()).toContain(`--apply --confirm ${tenantCode}`);
+      expect(out.text()).toContain(`--apply --confirm ${organizationCode}`);
       expect(await fingerprint(db)).toEqual(before);
     } finally {
       await seq.close();
@@ -118,10 +118,10 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
   });
 
   test('--apply without the matching --confirm is refused before connecting', async () => {
-    const { tenantCode, db, seq } = await legacyTenant();
+    const { organizationCode, db, seq } = await legacyTenant();
     try {
       const before = await fingerprint(db);
-      for (const argv of [['--tenant', tenantCode, '--apply'], ['--tenant', tenantCode, '--apply', '--confirm', 'GYM-OTHER']]) {
+      for (const argv of [['--tenant', organizationCode, '--apply'], ['--tenant', organizationCode, '--apply', '--confirm', 'GYM-OTHER']]) {
         const out = capture();
         expect(await main(argv, { write: out.write })).toBe(2);
         expect(out.text()).toMatch(/REFUSED: --apply needs --confirm/);
@@ -133,7 +133,7 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
   });
 
   test('--apply --confirm: records the others without running them, runs 019 only, every version recorded, rows kept', async () => {
-    const { tenantCode, db, seq } = await legacyTenant();
+    const { organizationCode, db, seq } = await legacyTenant();
     try {
       const ran = [];
       for (const m of MIGRATIONS) {
@@ -141,7 +141,7 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
         jest.spyOn(m, 'up').mockImplementation(async (...args) => { ran.push(m.version); return real(...args); });
       }
       const out = capture();
-      const code = await main(['--tenant', tenantCode, '--apply', '--confirm', tenantCode], { write: out.write });
+      const code = await main(['--tenant', organizationCode, '--apply', '--confirm', organizationCode], { write: out.write });
       expect(code).toBe(0);
       expect(out.text()).toMatch(new RegExp(`DONE: tenant .* is at v${ALL_VERSIONS[ALL_VERSIONS.length - 1]}, every migration recorded`));
       expect(ran).toEqual([19]);
@@ -152,7 +152,7 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
 
       // A second repair is refused: the normal runner owns it now.
       const again = capture();
-      expect(await main(['--tenant', tenantCode, '--apply', '--confirm', tenantCode], { write: again.write })).toBe(2);
+      expect(await main(['--tenant', organizationCode, '--apply', '--confirm', organizationCode], { write: again.write })).toBe(2);
       expect(again.text()).toMatch(/schema_migrations already exists: use node src\/scripts\/run-tenant-migrations\.js/);
     } finally {
       jest.restoreAllMocks();
@@ -161,13 +161,13 @@ describe('NEW-127 repair: baseline, then apply only what is missing', () => {
   });
 
   test('a migration missing in the middle (008, one column gone) runs too; nothing else does', async () => {
-    const { tenantCode, seq } = await legacyTenant(async (s) => {
+    const { organizationCode, seq } = await legacyTenant(async (s) => {
       await s.query('ALTER TABLE branches DROP COLUMN admin_suspended_at');
     });
     try {
       const inspection = await inspectTenantSchema(seq);
       expect(inspection.toApply).toEqual([8, 19]);
-      expect(await main(['--tenant', tenantCode, '--apply', '--confirm', tenantCode], { write: () => {} })).toBe(0);
+      expect(await main(['--tenant', organizationCode, '--apply', '--confirm', organizationCode], { write: () => {} })).toBe(0);
       expect(await recorded(seq)).toEqual(ALL_VERSIONS);
     } finally {
       await seq.close();
@@ -185,10 +185,10 @@ describe('NEW-127 repair: an unexpected schema is refused, nothing written', () 
   ];
 
   test.each(refusedCases)('%s', async (_label, alter, reason) => {
-    const { tenantCode, db, seq } = await legacyTenant(alter);
+    const { organizationCode, db, seq } = await legacyTenant(alter);
     try {
       const before = await fingerprint(db);
-      for (const argv of [['--tenant', tenantCode], ['--tenant', tenantCode, '--apply', '--confirm', tenantCode]]) {
+      for (const argv of [['--tenant', organizationCode], ['--tenant', organizationCode, '--apply', '--confirm', organizationCode]]) {
         const out = capture();
         expect(await main(argv, { write: out.write })).toBe(2);
         expect(out.text()).toMatch(/REFUSED, unexpected schema\. Nothing was changed/);
@@ -208,9 +208,9 @@ describe('NEW-127 repair: an unexpected schema is refused, nothing written', () 
 });
 
 test('the CLI dry run ends on its own with exit 0 and prints no connection secret', async () => {
-  const { tenantCode, seq } = await legacyTenant();
+  const { organizationCode, seq } = await legacyTenant();
   await seq.close();
-  const r = spawnSync(process.execPath, [SCRIPT, '--tenant', tenantCode], { env: process.env, encoding: 'utf8', timeout: 60000 });
+  const r = spawnSync(process.execPath, [SCRIPT, '--tenant', organizationCode], { env: process.env, encoding: 'utf8', timeout: 60000 });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   expect(r.signal).toBeNull();
   expect(r.status).toBe(0);

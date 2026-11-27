@@ -86,8 +86,8 @@ const getTenantDbConfig = (env = process.env) => {
  * Sanitise a tenant code into a valid MySQL database name.
  * Format: gymsera_gym_XXXXXXXX  (lowercase, hyphens → underscores)
  */
-const buildDbName = (tenantCode) => {
-  const safe = tenantCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+const buildDbName = (organizationCode) => {
+  const safe = organizationCode.toLowerCase().replace(/[^a-z0-9_]/g, '_');
   return `gymsera_${safe}`;
 };
 
@@ -171,9 +171,9 @@ const provisioningSummary = (tenant, now = new Date()) => {
   };
 };
 
-const lockLost = (tenantId) => {
+const lockLost = (organizationId) => {
   const err = new Error(
-    `Provisioning of tenant ${tenantId} stopped: another run took over, or the tenant is no longer APPROVED.`
+    `Provisioning of tenant ${organizationId} stopped: another run took over, or the tenant is no longer APPROVED.`
   );
   err.code = 'PROVISIONING_LOCK_LOST';
   return err;
@@ -182,14 +182,14 @@ const lockLost = (tenantId) => {
 const leaseUntil = () => new Date(Date.now() + PROVISIONING_LEASE_MS);
 
 /** Takes the lease if nobody holds a live one. Returns the token, or null. */
-const claimLease = async (tenantId) => {
+const claimLease = async (organizationId) => {
   const token = crypto.randomUUID();
   const now = new Date();
   const [affected] = await Tenant.update(
     { provisioningLockToken: token, provisioningLockedUntil: leaseUntil() },
     {
       where: {
-        id: tenantId,
+        id: organizationId,
         status: TenantStatus.APPROVED,
         [Op.or]: [
           { provisioningLockToken: null },
@@ -203,32 +203,32 @@ const claimLease = async (tenantId) => {
 };
 
 /** Writes `fields` only while this run still holds the lease on an APPROVED tenant. */
-const writeUnderLease = async (tenantId, token, fields) => {
-  const where = { id: tenantId, provisioningLockToken: token, status: TenantStatus.APPROVED };
+const writeUnderLease = async (organizationId, token, fields) => {
+  const where = { id: organizationId, provisioningLockToken: token, status: TenantStatus.APPROVED };
   const [affected] = await Tenant.update(fields, { where });
   // MySQL counts changed rows: a renewal within the same second (DATETIME has
   // 1-second precision) changes nothing, so confirm the lease is still ours.
-  if (affected !== 1 && (await Tenant.count({ where })) !== 1) throw lockLost(tenantId);
+  if (affected !== 1 && (await Tenant.count({ where })) !== 1) throw lockLost(organizationId);
 };
 
-const releaseLease = async (tenantId, token, error) => {
+const releaseLease = async (organizationId, token, error) => {
   const message = redactString(String(error?.message || error || 'Unknown error')).slice(0, 500);
   await Tenant.update(
     { provisioningLockToken: null, provisioningLockedUntil: null, provisioningError: message },
-    { where: { id: tenantId, provisioningLockToken: token } }
-  ).catch((err) => console.warn(`[Provisioning] Could not release the lease for tenant ${tenantId}:`, err.message));
+    { where: { id: organizationId, provisioningLockToken: token } }
+  ).catch((err) => console.warn(`[Provisioning] Could not release the lease for tenant ${organizationId}:`, err.message));
 };
 
 const onboardingBranchData = (tenant) => {
-  let b = tenant.mainBranchDataJson || {};
+  let b = tenant.firstBranchDraft || {};
   if (typeof b === 'string') {
     try { b = JSON.parse(b); } catch (e) { b = {}; }
   }
   return b;
 };
 
-const firstListing = (tenantId) =>
-  GymListing.findOne({ where: { tenantId }, order: [['createdAt', 'ASC']] });
+const firstListing = (organizationId) =>
+  GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC']] });
 
 /**
  * Per-run context. The tenant DB connection is opened lazily, so a resumed run
@@ -236,7 +236,7 @@ const firstListing = (tenantId) =>
  */
 const createRunContext = (tenant) => {
   const dbConfig = getTenantDbConfig();
-  const dbName = buildDbName(tenant.tenantCode);
+  const dbName = buildDbName(tenant.organizationCode);
   const ctx = {
     tenant,
     dbConfig,
@@ -283,7 +283,7 @@ const createRunContext = (tenant) => {
       if (!ctx.models) {
         ctx.models = registerTenantModels(seq);
         seq.models = ctx.models;
-        seq.tenantId = tenant.id;
+        seq.organizationId = tenant.id;
       }
       return seq;
     },
@@ -355,7 +355,7 @@ const stepSyncModels = async (ctx) => {
  * It used to fall back to city id 1, which filed the gym under an unrelated city.
  */
 const resolveTenantCityId = async (tenant) => {
-  let mainBranch = tenant.mainBranchDataJson;
+  let mainBranch = tenant.firstBranchDraft;
   if (typeof mainBranch === 'string') {
     try { mainBranch = JSON.parse(mainBranch); } catch (e) { mainBranch = null; }
   }
@@ -366,12 +366,40 @@ const resolveTenantCityId = async (tenant) => {
   return null;
 };
 
-// ── Step 3: GymListing on the platform DB (found by tenantId, else created) ──
+/**
+ * NEW-303 M2d: the organization's onboarding draft (`firstBranchDraft`, already in FirstBranch names, S3) as the FirstBranch the
+ * held first branch needs (API contract A2 H2), so business approval builds it through the one branch-create path.
+ */
+const _heldFirstBranch = async (tenant, b, cityId) => {
+  const branchCityId = b.cityId || cityId || tenant.cityId || null;
+  const area = await areaRequests.firstBranchArea(tenant, b, branchCityId);
+  const packages = Array.isArray(b.packages) ? b.packages : [];
+  const hours = b.hours && typeof b.hours === 'object' ? { hours: b.hours } : _draftPair(b.openingTime, b.closingTime);
+  return {
+    branchName: b.branchName || tenant.firstBusinessName || 'Main Branch',
+    address: b.address || tenant.address || null,
+    cityId: branchCityId,
+    ...(area.request ? { areaRequestId: area.request.id } : { areaId: area.areaId }),
+    latitude: b.latitude != null ? b.latitude : tenant.latitude,
+    longitude: b.longitude != null ? b.longitude : tenant.longitude,
+    googlePlaceId: b.googlePlaceId || null,
+    currency: firstBranchCurrency(), // BUG-09 / R-80
+    phone: b.phone || tenant.phone || null,
+    ...hours,
+    imagesJson: Array.isArray(b.imagesJson) ? b.imagesJson : [],
+    facilitiesJson: Array.isArray(b.facilitiesJson) && b.facilitiesJson.length > 0 ? b.facilitiesJson : null,
+    packages,
+    submittedBy: tenant.ownerUserId || null,
+    submittedAt: new Date().toISOString(),
+  };
+};
+
+// ── Step 3: GymListing on the platform DB (found by organizationId, else created) ──
 const stepCreateListing = async (ctx) => {
   const { tenant } = ctx;
   let existingListing = await firstListing(tenant.id);
 
-  if (!existingListing && tenant.gymName) {
+  if (!existingListing && tenant.firstBusinessName) {
     // NEW-113: never city id 1 by default. approveTenant refuses a gym with no known
     // city before provisioning starts; this re-check covers a resumed run.
     const safeCityId = await resolveTenantCityId(tenant);
@@ -392,24 +420,31 @@ const stepCreateListing = async (ctx) => {
 
     // Not swallowed (FLOW-02): without a listing the branch below would be
     // built unattached and the tenant activated with no public listing.
+    // NEW-303 M2d (owner 2026-11-25, "uniform"): the first business is created PENDING with its first branch
+    // held, exactly like Add Business. The same business approval (proof of premises + 3 photos) builds the branch.
+    const draft = onboardingBranchData(tenant);
+    const heldBranch = await _heldFirstBranch(tenant, draft, safeCityId);
     existingListing = await GymListing.create({
-      tenantId: tenant.id,
+      organizationId: tenant.id,
       cityId: safeCityId,
       areaId: safeAreaId,
-      title: tenant.gymName,
-      shortDescription: tenant.gymDescription || null,
+      name: tenant.firstBusinessName,
+      description: tenant.firstBusinessDescription || null,
       logoUrl: tenant.logoUrl || null,
       coverImageUrl: tenant.coverImageUrl || null,
       genderType: tenant.genderType || 'MIXED',
       contactPhone: tenant.phone || null,
       latitude: safeLat,
       longitude: safeLng,
-      status: 'ACTIVE',
+      status: 'PENDING',
+      kycStatus: 'NOT_SUBMITTED',
+      firstBranchDraft: heldBranch,
     });
     console.log(`[Provisioning] GymListing created for tenant ${tenant.id}`);
   }
 
-  if (existingListing && existingListing.status !== 'ACTIVE') {
+  // A business holding its first branch waits for its own approval (M2d); any other listing goes live as before.
+  if (existingListing && existingListing.status !== 'ACTIVE' && !existingListing.firstBranchDraft) {
     await existingListing.update({ status: 'ACTIVE' }).catch(() => {});
   }
   // NEW-265 (A9 rule 3): the listing takes the first-branch default (R-111; above) or its pending request (a `listing`
@@ -420,7 +455,7 @@ const stepCreateListing = async (ctx) => {
 // ── Step 4: Gym, initial Branch and its membership plans (tenant DB) ─────────
 const stepCreateBranch = async (ctx) => {
   const { tenant, dbName } = ctx;
-  if (!tenant.gymName) return;
+  if (!tenant.firstBusinessName) return;
 
   const tenantDb = await ctx.tenantDb();
   const { models } = ctx;
@@ -428,26 +463,26 @@ const stepCreateBranch = async (ctx) => {
   const listingId = listing ? listing.id : null;
 
   // ── Gym record (one per tenant DB) ─────────────────────────────────────────
-  let gymId = null;
-  let gym = await models.Gym.findOne();
+  let businessId = null;
+  let gym = await models.Gym.findOne({ order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (!gym) {
     gym = await models.Gym.create({
-      name: tenant.gymName,
-      description: tenant.gymDescription || null,
+      ...(listingId ? { id: listingId } : {}), // R-120 NEW-308 (option S): one id per business
+      name: tenant.firstBusinessName,
+      description: tenant.firstBusinessDescription || null,
       contactPhone: tenant.phone || null,
       genderType: tenant.genderType || 'MIXED',
       logoUrl: tenant.logoUrl || null,
       coverImageUrl: tenant.coverImageUrl || null,
-      gymListingId: listingId,
     });
-    gymId = gym.id;
-    console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${gymId})`);
+    businessId = gym.id;
+    console.log(`[Provisioning] Gym record created in '${dbName}' (id: ${businessId})`);
   } else {
-    gymId = gym.id;
-    if (listingId && !gym.gymListingId) {
-      await gym.update({ gymListingId: listingId }).catch(() => {});
-    }
+    businessId = gym.id;
   }
+
+  // NEW-303 M2d: a first business that holds its branch gets only its Gym row here; business approval builds the branch.
+  if (listing && listing.firstBranchDraft && listing.status === 'PENDING') return;
 
   // ── Initial Branch from onboarding data ────────────────────────────────────
   const b = onboardingBranchData(tenant);
@@ -456,7 +491,7 @@ const stepCreateBranch = async (ctx) => {
   const safeBranchLng = b.longitude != null ? parseFloat(Number(b.longitude).toFixed(7)) : (tenant.longitude != null ? parseFloat(Number(tenant.longitude).toFixed(7)) : null);
 
   // Step 4's photos — see tenant.service.js#addOnboardingImages — live
-  // on this same mainBranchDataJson blob until now, since there was no
+  // on this same firstBranchDraft blob until now, since there was no
   // Branch row for them to attach to any earlier than this.
   const onboardingImages = Array.isArray(b.imagesJson) ? b.imagesJson : [];
   // NEW-266: the amenities picked in Become a Host live on the same draft until now.
@@ -467,31 +502,29 @@ const stepCreateBranch = async (ctx) => {
   const firstBranchCityId = b.cityId || tenant.cityId || null;
   const firstArea = await areaRequests.firstBranchArea(tenant, b, firstBranchCityId);
 
-  let branch = await models.Branch.findOne({ where: { gymId } });
+  let branch = await models.Branch.findOne({ where: { businessId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (!branch) {
     // CAP-03: Route through gymService.createBranch
     const gymService = require('./gym.service');
-    const rawPackages = (Array.isArray(b.packages) && b.packages.length > 0)
-      ? b.packages
-      : (Array.isArray(b.plans) && b.plans.length > 0 ? b.plans : []);
+    const rawPackages = Array.isArray(b.packages) ? b.packages : [];
     const branchResult = await gymService.createBranch(
       tenantDb,
       tenant.id,
       {
-        gymListingId: listingId,
-        branchName: b.name || tenant.gymName || 'Main Branch',
+        businessId: listingId,
+        branchName: b.branchName || tenant.firstBusinessName || 'Main Branch',
         address: b.address || tenant.address || null,
         addressLine1: b.address || tenant.address || null,
         cityId: firstBranchCityId,
         areaId: firstArea.areaId,
         latitude: safeBranchLat,
         longitude: safeBranchLng,
-        googlePlaceId: b.placeId || null, // Phase 7 P3: the address the host picked from Google
+        googlePlaceId: b.googlePlaceId || null, // Phase 7 P3: the address the host picked from Google
         currency: firstBranchCurrency(), // BUG-09 / R-80: the currency Become a Host showed
         phone: b.phone || tenant.phone || null,
         // R-113 H4: the draft's week (Become a Host); older drafts keep their pair.
-        ...(b.hoursJson && typeof b.hoursJson === 'object'
-          ? { hours: b.hoursJson }
+        ...(b.hours && typeof b.hours === 'object'
+          ? { hours: b.hours }
           : _draftPair(b.openingTime, b.closingTime)),
         images: onboardingImages,
         // NEW-266: the amenities picked in Become a Host.
@@ -511,8 +544,7 @@ const stepCreateBranch = async (ctx) => {
     console.log(`[Provisioning] Initial Branch created in '${dbName}' (id: ${branch.id})`);
   } else {
     const updates = {};
-    if (listingId && !branch.gymListingId) updates.gymListingId = listingId;
-    if (b.name && !branch.branchName) updates.branchName = b.name;
+    if (b.branchName && !branch.branchName) updates.branchName = b.branchName;
     if (b.address && !branch.address) updates.address = b.address;
     // Only fill in if the branch has no photos of its own yet — never
     // clobber photos a host already added post-provisioning via the
@@ -538,14 +570,12 @@ const stepCreateBranch = async (ctx) => {
 
   // Link primary branchId back to GymListing on platform DB
   if (listingId && branch?.id) {
-    await GymListing.update({ branchId: branch.id }, { where: { id: listingId } }).catch(() => {});
+    await GymListing.update({ primaryBranchId: branch.id }, { where: { id: listingId } }).catch(() => {});
   }
 
   // ── Initial membership plans for the initial branch (found by branch + name) ──
   if (branch?.id) {
-    const rawPlans = (Array.isArray(b.plans) && b.plans.length > 0)
-      ? b.plans
-      : (Array.isArray(b.packages) && b.packages.length > 0 ? b.packages : []);
+    const rawPlans = Array.isArray(b.packages) ? b.packages : []; // FirstBranch names only (S3)
 
     let lowestPrice = null;
 
@@ -595,7 +625,7 @@ const stepCreateBranch = async (ctx) => {
           console.log(`[Provisioning] Updated existing MembershipPlan '${p.name}' in '${dbName}'`);
         } else {
           await models.MembershipPlan.create({
-            gymId,
+            businessId,
             branchId: branch.id,
             name: p.name.trim(),
             description: p.description || null,
@@ -655,10 +685,10 @@ const stepLinkSubscription = async (ctx) => {
   await require('./subscription-migration.service').planForApproval(tenant);
 
   // Legacy package plan when the tenant still has no plan row at all (found
-  // by tenantId). Not swallowed any more (FLOW-02): a tenant must not become
+  // by organizationId). Not swallowed any more (FLOW-02): a tenant must not become
   // ACTIVE without its plan.
   if (tenant.selectedPackageId) {
-    const existingSub = await TenantSubscription.findOne({ where: { tenantId: tenant.id } });
+    const existingSub = await TenantSubscription.findOne({ where: { organizationId: tenant.id } });
     if (!existingSub) {
       const pkg = await PlatformPackage.findByPk(tenant.selectedPackageId);
       if (pkg) {
@@ -671,7 +701,7 @@ const stepLinkSubscription = async (ctx) => {
         else if (cycle === 'YEARLY') end.setFullYear(end.getFullYear() + 1);
 
         await TenantSubscription.create({
-          tenantId: tenant.id,
+          organizationId: tenant.id,
           platformPackageId: pkg.id,
           startDate: start.toISOString().split('T')[0],
           endDate: end.toISOString().split('T')[0],
@@ -694,15 +724,16 @@ const stepLinkSubscription = async (ctx) => {
   // written in one platform transaction, so a resumed run never applies it
   // twice or records one without the other.
   const listing = await firstListing(tenant.id);
-  if (listing && tenant.gymName) {
+  if (listing && tenant.firstBusinessName) {
     const activeSub = await subscriptionQuotaService.getActiveSubscription(tenant.id);
     const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
-    const extraSlots = maxBranches - 1; // 1 branch was built in step 4
+    // M2d: a held first branch is one of the unbuilt slots; otherwise step 4 built 1 branch.
+    const extraSlots = listing.firstBranchDraft ? maxBranches : maxBranches - 1;
     if (extraSlots > 0) {
       await GymListing.sequelize.transaction(async (transaction) => {
         const { applied } = await subscriptionQuotaService.recordCapacityEvent(
           {
-            tenantId: tenant.id,
+            organizationId: tenant.id,
             listingId: listing.id,
             action: 'SLOT_ATTRIBUTED_UPGRADE',
             delta: extraSlots,
@@ -728,7 +759,7 @@ const stepActivate = async (ctx, token) => {
   const { tenant, dbName } = ctx;
   const seq = await ctx.tenantDb();
   const { runTenantMigrations, missingTenantMigrations, MIGRATIONS } = require('../database/tenant-migration-runner');
-  await runTenantMigrations(seq, { tenantId: tenant.id, gymName: tenant.gymName });
+  await runTenantMigrations(seq, { organizationId: tenant.id, gymName: tenant.firstBusinessName });
   // NEW-127: a skipped migration ("resolve it by hand") is not recorded; the tenant must not go
   // live below target. It stays APPROVED at SUBSCRIPTION_LINKED and the admin's Resume retries.
   const missing = await missingTenantMigrations(seq);
@@ -772,7 +803,7 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
       await emailService.sendTenantApprovedEmail(
         tenant.owner.email,
         tenant.owner.fullName,
-        tenant.businessName
+        tenant.organizationName
       );
     } catch (err) {
       console.error(`[Provisioning] Failed to send approval email for tenant ${tenant.id}:`, err.message);
@@ -787,9 +818,9 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
         role: 'host',
         type: 'host_update',
         title: 'Host Application Approved',
-        message: `Your organization ${tenant.gymName || tenant.businessName} has been approved.`,
+        message: `Your organization ${tenant.firstBusinessName || tenant.organizationName} has been approved.`,
         deepLink: '/host/profile',
-        metadataJson: { tenantId: tenant.id }
+        metadataJson: { organizationId: tenant.id }
       });
     }
   } catch (notifErr) {
@@ -801,64 +832,64 @@ const afterActivation = async (tenant, connectionStringEncrypted) => {
 
 /**
  * Provision (or resume provisioning) an APPROVED tenant.
- * @param {string} tenantId
+ * @param {string} organizationId
  * @returns {Promise<{ activated?: boolean, alreadyActive?: boolean, inProgress?: boolean }>}
  *   `inProgress`: another run holds the lease; nothing was done.
  * @throws the step's error (the tenant stays APPROVED at the last finished step).
  */
-const processTenantProvisioning = async (tenantId) => {
-  console.log(`[Provisioning] Starting for tenant ${tenantId}`);
+const processTenantProvisioning = async (organizationId) => {
+  console.log(`[Provisioning] Starting for tenant ${organizationId}`);
 
-  const current = await Tenant.findByPk(tenantId);
-  if (!current) throw new Error(`Tenant ${tenantId} not found in platform DB`);
+  const current = await Tenant.findByPk(organizationId);
+  if (!current) throw new Error(`Tenant ${organizationId} not found in platform DB`);
   if (current.status === TenantStatus.ACTIVE && current.connectionStringEncrypted) {
-    console.log(`[Provisioning] Tenant ${tenantId} is already ACTIVE — skipping`);
+    console.log(`[Provisioning] Tenant ${organizationId} is already ACTIVE — skipping`);
     return { alreadyActive: true };
   }
   if (current.status !== TenantStatus.APPROVED) {
-    throw new Error(`Tenant ${tenantId} is ${current.status}, not APPROVED — nothing to provision`);
+    throw new Error(`Tenant ${organizationId} is ${current.status}, not APPROVED — nothing to provision`);
   }
 
   // Credentials are checked before the lease is taken: a server that is not
   // configured must not leave a lease behind (R-25).
   getTenantDbConfig();
 
-  const token = await claimLease(tenantId);
+  const token = await claimLease(organizationId);
   if (!token) {
-    console.log(`[Provisioning] Tenant ${tenantId} is being provisioned by another run — not starting a second one`);
+    console.log(`[Provisioning] Tenant ${organizationId} is being provisioned by another run — not starting a second one`);
     return { inProgress: true };
   }
 
-  const tenant = await Tenant.findByPk(tenantId, {
+  const tenant = await Tenant.findByPk(organizationId, {
     include: [{ model: User, as: 'owner', attributes: ['id', 'fullName', 'email'] }],
   });
   const ctx = createRunContext(tenant);
   let connectionStringEncrypted;
   try {
     const done = stepNumber(tenant.provisioningState); // 0 = nothing done yet
-    if (done > 0) console.log(`[Provisioning] Resuming tenant ${tenantId} after step ${done}/6 (${tenant.provisioningState})`);
+    if (done > 0) console.log(`[Provisioning] Resuming tenant ${organizationId} after step ${done}/6 (${tenant.provisioningState})`);
 
     for (const step of PROVISIONING_STEPS.slice(done)) {
       await runHook(step, 'before');
-      await writeUnderLease(tenantId, token, { provisioningLockedUntil: leaseUntil() });
+      await writeUnderLease(organizationId, token, { provisioningLockedUntil: leaseUntil() });
       if (step === 'ACTIVE') {
         connectionStringEncrypted = await stepActivate(ctx, token);
       } else {
         await STEP_WORK[step](ctx);
         await runHook(step, 'after');
-        await writeUnderLease(tenantId, token, { provisioningState: step, provisioningLockedUntil: leaseUntil() });
-        console.log(`[Provisioning] Tenant ${tenantId}: step ${stepNumber(step)}/6 ${step} done`);
+        await writeUnderLease(organizationId, token, { provisioningState: step, provisioningLockedUntil: leaseUntil() });
+        console.log(`[Provisioning] Tenant ${organizationId}: step ${stepNumber(step)}/6 ${step} done`);
       }
     }
   } catch (err) {
-    if (err.code !== 'PROVISIONING_LOCK_LOST') await releaseLease(tenantId, token, err);
+    if (err.code !== 'PROVISIONING_LOCK_LOST') await releaseLease(organizationId, token, err);
     throw err;
   } finally {
     await ctx.close();
   }
 
   await afterActivation(tenant, connectionStringEncrypted);
-  console.log(`[Provisioning] ✅ Tenant ${tenantId} fully provisioned and ACTIVE`);
+  console.log(`[Provisioning] ✅ Tenant ${organizationId} fully provisioned and ACTIVE`);
   return { activated: true };
 };
 

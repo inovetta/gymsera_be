@@ -113,8 +113,8 @@ describe('R-25: approval with a bad credential fails loudly and activates nothin
     hostUser = await createUser({ role: 'GYM_HOST' });
   });
 
-  const pendingTenant = (tenantCode) =>
-    createTenant({ tenantCode, gymName: `R25 ${tenantCode}`, ownerUserId: hostUser.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, mainBranchDataJson: { name: 'Main', plans: [{ name: 'Monthly', price: 3000 }] } });
+  const pendingTenant = (organizationCode) =>
+    createTenant({ organizationCode, gymName: `R25 ${organizationCode}`, ownerUserId: hostUser.id, status: 'PENDING_REVIEW', connectionStringEncrypted: null, firstBranchDraft: { branchName: 'Main', packages: [{ name: 'Monthly', price: 3000 }] } });
 
   const dbExists = async (name) => {
     const conn = await getAdminConnection();
@@ -194,8 +194,8 @@ describe('R-25: read-only check script for tenants already stored with admin cre
     await resetTestDatabases();
     await require('../../src/models/platform').City.findOrCreate({ where: { id: 1 }, defaults: { id: 1, name: 'Karachi', isActive: true } });
     const { Tenant } = require('../../src/models/platform');
-    await createTenant({ tenantCode: 'r25chk_ok', connectionStringEncrypted: conn('tenant_app') });
-    await createTenant({ tenantCode: 'r25chk_admin', connectionStringEncrypted: conn('prov_admin', 'secret-admin') });
+    await createTenant({ organizationCode: 'r25chk_ok', connectionStringEncrypted: conn('tenant_app') });
+    await createTenant({ organizationCode: 'r25chk_admin', connectionStringEncrypted: conn('prov_admin', 'secret-admin') });
     const before = JSON.stringify(await Tenant.findAll({ order: [['id', 'ASC']], raw: true }));
 
     const { spawnSync } = require('child_process');

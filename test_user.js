@@ -6,8 +6,8 @@ async function main() {
     await sequelize.authenticate();
     console.log('Database connected successfully.');
 
-    const gymId = '00410ec3-06f3-45ae-97e0-0efc4d1afec5';
-    const result = await discoveryService.getGym(gymId);
+    const businessId = '00410ec3-06f3-45ae-97e0-0efc4d1afec5';
+    const result = await discoveryService.getGym(businessId);
     console.log('gymKeys =', Object.keys(result.gym));
     console.log('gym.branchId =', result.gym.branchId);
     console.log('gym.title =', result.gym.title);

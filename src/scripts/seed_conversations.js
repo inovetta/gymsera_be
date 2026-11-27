@@ -47,12 +47,12 @@ async function seed() {
   console.log(`Found ${users.length} member users.`);
 
   for (const tenant of tenants) {
-    const listings = await GymListing.findAll({ where: { tenantId: tenant.id } });
-    console.log(`Tenant ${tenant.businessName} has ${listings.length} listings.`);
+    const listings = await GymListing.findAll({ where: { organizationId: tenant.id } });
+    console.log(`Tenant ${tenant.organizationName} has ${listings.length} listings.`);
 
     for (const listing of listings) {
-      if (!listing.branchId) continue;
-      console.log(`Seeding conversations for branch: ${listing.title}`);
+      if (!listing.primaryBranchId) continue;
+      console.log(`Seeding conversations for branch: ${listing.name}`);
 
       for (let i = 0; i < Math.min(dummyConversations.length, users.length); i++) {
         const user = users[i];
@@ -61,8 +61,8 @@ async function seed() {
         // Check if conversation already exists
         let conversation = await Conversation.findOne({
           where: {
-            tenantId: tenant.id,
-            branchId: listing.branchId,
+            organizationId: tenant.id,
+            branchId: listing.primaryBranchId,
             userId: user.id,
             type: dummy.type
           }
@@ -70,8 +70,8 @@ async function seed() {
 
         if (!conversation) {
           conversation = await Conversation.create({
-            tenantId: tenant.id,
-            branchId: listing.branchId,
+            organizationId: tenant.id,
+            branchId: listing.primaryBranchId,
             userId: user.id,
             type: dummy.type,
             unreadCountHost: 0,

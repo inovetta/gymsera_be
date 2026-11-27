@@ -63,19 +63,19 @@ describe('P10 item 3: capacity ledger audit on lapsed and over-quota tenants', (
     await branches(listing, 1);
 
     const before = await subscriptionQuotaService.auditCapacity(t.id, h.tenant1);
-    expect(before.listings[0]).toMatchObject({ actualReservedSlots: 2, ledgerReservedSlots: 0, drift: 2 });
+    expect(before.businesses[0]).toMatchObject({ actualReservedSlots: 2, ledgerReservedSlots: 0, drift: 2 });
 
     await reconcileCapacityForAllTenants();
 
     const after = await subscriptionQuotaService.auditCapacity(t.id, h.tenant1);
-    expect(after.listings[0]).toMatchObject({ actualReservedSlots: 0, ledgerReservedSlots: -2, drift: 2 });
-    const trims = await CapacityEvent.findAll({ where: { tenantId: t.id, action: 'SLOT_TRIMMED_DOWNGRADE' } });
+    expect(after.businesses[0]).toMatchObject({ actualReservedSlots: 0, ledgerReservedSlots: -2, drift: 2 });
+    const trims = await CapacityEvent.findAll({ where: { organizationId: t.id, action: 'SLOT_TRIMMED_DOWNGRADE' } });
     expect(trims.map((e) => e.delta)).toEqual([-2]); // one trim, recorded once: no double decrement
     // A second run the same day trims nothing and records nothing.
     await reconcileCapacityForAllTenants();
-    expect(await CapacityEvent.count({ where: { tenantId: t.id, action: 'SLOT_TRIMMED_DOWNGRADE' } })).toBe(1);
+    expect(await CapacityEvent.count({ where: { organizationId: t.id, action: 'SLOT_TRIMMED_DOWNGRADE' } })).toBe(1);
     // The drift is still reported (the data needs an owner decision), now as drift only.
-    expect(after.driftedListings).toHaveLength(1);
+    expect(after.driftedBusinesses).toHaveLength(1);
     expect(after.invariantHolds).toBe(true);
   });
 

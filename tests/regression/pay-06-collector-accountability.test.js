@@ -150,7 +150,7 @@ describe('PAY-06: Collector accountability & cash per collector at daily close',
     const ledgerBefore = await ledgerService.getDayLedger(tenant1Db, branch.id, businessDate);
     const ctx = {
       tenantDb: tenant1Db,
-      tenantId: personas.owner.tenantId,
+      organizationId: personas.owner.organizationId,
       userId: personas.manager.user.id,
       branchId: branch.id,
     };

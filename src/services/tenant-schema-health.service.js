@@ -21,7 +21,7 @@ let inFlight = null;
 
 const commandFor = (t) => (t.hasMigrationTable
   ? 'node src/scripts/run-tenant-migrations.js --dry-run, then without --dry-run'
-  : `${repairCommand(t.tenantCode)} (dry run), then add --apply --confirm ${t.tenantCode}`);
+  : `${repairCommand(t.organizationCode)} (dry run), then add --apply --confirm ${t.organizationCode}`);
 
 async function check() {
   const result = await checkTenantSchemaVersions();
@@ -29,17 +29,17 @@ async function check() {
 
   for (const t of result.behind) {
     console.error(
-      `[TenantSchema] BEHIND: tenant ${t.tenantCode} (${t.status}) is at v${t.currentVersion}` +
+      `[TenantSchema] BEHIND: tenant ${t.organizationCode} (${t.status}) is at v${t.currentVersion}` +
         `${t.hasMigrationTable ? '' : ' with NO schema_migrations table'}, target v${t.targetVersion}; ` +
         `missing ${t.missingVersions.join(', ')}. Fix: ${commandFor(t)}`
     );
   }
   for (const f of result.failed) {
-    console.error(`[TenantSchema] UNCHECKED: tenant ${f.tenantCode || '(list)'}: ${f.error}`);
+    console.error(`[TenantSchema] UNCHECKED: tenant ${f.organizationCode || '(list)'}: ${f.error}`);
   }
 
   if (result.behind.length || result.failed.length) {
-    const tenantIds = [...result.behind, ...result.failed].map((t) => t.tenantId).filter(Boolean);
+    const tenantIds = [...result.behind, ...result.failed].map((t) => t.organizationId).filter(Boolean);
     await require('./alert.service')
       .raise('TENANT_SCHEMA_BEHIND', { behindCount: result.behind.length, failedCount: result.failed.length, tenantIds })
       .catch((err) => console.error(`[TenantSchema] alert not raised: ${err.message}`));
@@ -55,7 +55,7 @@ async function runTenantSchemaCheck() {
     inFlight = check()
       .catch((err) => {
         console.error(`[TenantSchema] check failed: ${err.message}`);
-        last = { checked: 0, behind: [], failed: [{ tenantId: null, tenantCode: null, error: err.message }], checkedAt: new Date().toISOString() };
+        last = { checked: 0, behind: [], failed: [{ organizationId: null, organizationCode: null, error: err.message }], checkedAt: new Date().toISOString() };
         return last;
       })
       .finally(() => { inFlight = null; });

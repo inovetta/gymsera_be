@@ -9,10 +9,11 @@ const gymService = require('../../src/services/gym.service');
 const subscriptionQuotaService = require('../../src/services/subscription-quota.service');
 const { GymListing, TenantSubscription, CapacityEvent } = require('../../src/models/platform');
 const { Op } = require('sequelize');
+const { firstBranchInput } = require('../harness/first-branch-input');
 
 describe('CAP-08: Branch Capacity Concurrency Controls', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -20,7 +21,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
   });
@@ -34,37 +35,37 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
 
     // 1. Reset active branches and set capacity to exactly 3
     await Branch.update({ status: 'INACTIVE' }, { where: {} });
-    await GymListing.update({ status: 'INACTIVE', reservedSlots: 0 }, { where: { tenantId } });
+    await GymListing.update({ status: 'INACTIVE', reservedSlots: 0 }, { where: { organizationId } });
 
-    let sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    let sub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     if (sub) {
       await sub.update({ branchCount: 3, overQuotaCount: 0 });
     } else {
-      sub = await factories.createTenantSubscription(tenantId, { branchCount: 3, overQuotaCount: 0 });
+      sub = await factories.createTenantSubscription(organizationId, { branchCount: 3, overQuotaCount: 0 });
     }
 
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Concurrency Org',
       status: 'ACTIVE',
       reservedSlots: 0,
       hostId: hostUser.id,
     });
     await Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Concurrency Gym',
     });
 
     // Verify initial capacity is 0 used out of 3 max
-    const initialUsed = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const initialUsed = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     expect(initialUsed).toBe(0);
 
     // 2. Launch 20 concurrent createBranch requests
     const branchPromises = Array.from({ length: 20 }, (_, i) =>
       gymService.createBranch(
         tenantDb,
-        tenantId,
+        organizationId,
         {
-          gymListingId: listing.id,
+          businessId: listing.id,
           branchName: `Parallel Branch ${i + 1}`,
           packages: [
             {
@@ -97,10 +98,10 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     const activeBranches = await Branch.count({ where: { status: 'ACTIVE' } });
     expect(activeBranches).toBe(3);
 
-    const usedCapacity = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const usedCapacity = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     expect(usedCapacity).toBe(3);
 
-    const audit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDb);
+    const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
     expect(audit.invariantHolds).toBe(true);
     expect(audit.totalDrift).toBe(0);
     expect(audit.ok).toBe(true);
@@ -110,29 +111,29 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     const { Branch } = tenantDb.models;
 
     // Ensure we have capacity room
-    let sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    let sub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     await sub.update({ branchCount: 10, overQuotaCount: 0 });
 
     // Clean up inactive listings from test 1
-    await GymListing.update({ status: 'INACTIVE', reservedSlots: 0 }, { where: { tenantId } });
+    await GymListing.update({ status: 'INACTIVE', reservedSlots: 0 }, { where: { organizationId } });
 
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Del-Restore Org',
       status: 'ACTIVE',
       reservedSlots: 0,
       hostId: hostUser.id,
     });
     await tenantDb.models.Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Del-Restore Gym',
     });
 
     // Create 2 branches in this listing so deleting one does not delete the org
     await gymService.createBranch(
       tenantDb,
-      tenantId,
+      organizationId,
       {
-        gymListingId: listing.id,
+        businessId: listing.id,
         branchName: 'Keep Org Alive Branch',
         packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
@@ -141,9 +142,9 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
 
     const b2Result = await gymService.createBranch(
       tenantDb,
-      tenantId,
+      organizationId,
       {
-        gymListingId: listing.id,
+        businessId: listing.id,
         branchName: 'Contended Branch',
         packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
@@ -156,11 +157,11 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
       tenantDb,
       targetBranch.id,
       hostUser.id,
-      { confirmOrganizationDeletion: false }
+      { confirmBusinessDeletion: false }
     );
     const restorePromise = gymService.restoreBranch(
       tenantDb,
-      tenantId,
+      organizationId,
       targetBranch.id,
       hostUser.id
     );
@@ -182,7 +183,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     }
 
     // Capacity invariant and audit must be clean regardless of race outcome
-    const audit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDb);
+    const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
     expect(audit.invariantHolds).toBe(true);
     expect(audit.totalDrift).toBe(0);
     expect(audit.ok).toBe(true);
@@ -191,12 +192,12 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     // Make sure targetBranch is active first
     const currentBranch = await Branch.findByPk(targetBranch.id);
     if (currentBranch.status === 'INACTIVE') {
-      await gymService.restoreBranch(tenantDb, tenantId, targetBranch.id, hostUser.id);
+      await gymService.restoreBranch(tenantDb, organizationId, targetBranch.id, hostUser.id);
     }
 
     const [dupDel1, dupDel2] = await Promise.allSettled([
-      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmOrganizationDeletion: false }),
-      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmOrganizationDeletion: false }),
+      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmBusinessDeletion: false }),
+      gymService.deleteBranch(tenantDb, targetBranch.id, hostUser.id, { confirmBusinessDeletion: false }),
     ]);
 
     const dupDelSuccess = [dupDel1, dupDel2].filter((r) => r.status === 'fulfilled');
@@ -208,8 +209,8 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
 
     // Also test parallel duplicate restores: exactly one succeeds, the other fails with 404
     const [dupRes1, dupRes2] = await Promise.allSettled([
-      gymService.restoreBranch(tenantDb, tenantId, targetBranch.id, hostUser.id),
-      gymService.restoreBranch(tenantDb, tenantId, targetBranch.id, hostUser.id),
+      gymService.restoreBranch(tenantDb, organizationId, targetBranch.id, hostUser.id),
+      gymService.restoreBranch(tenantDb, organizationId, targetBranch.id, hostUser.id),
     ]);
 
     const dupResSuccess = [dupRes1, dupRes2].filter((r) => r.status === 'fulfilled');
@@ -219,7 +220,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     expect(dupResFail.length).toBe(1);
     expect(dupResFail[0].reason.statusCode).toBe(404);
 
-    const postAudit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDb);
+    const postAudit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
     expect(postAudit.invariantHolds).toBe(true);
     expect(postAudit.totalDrift).toBe(0);
     expect(postAudit.ok).toBe(true);
@@ -234,20 +235,20 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     // Donor listing has reservedSlots = 1.
     // Total usedCapacity = 2 (= maxBranches). Free capacity = 0.
     // Exactly 1 donor slot exists on the donor listing.
-    let sub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+    let sub = await subscriptionQuotaService.getActiveSubscription(organizationId);
     await sub.update({ branchCount: 2, overQuotaCount: 0 });
 
     // Clean up previous listings
-    await GymListing.update({ status: 'INACTIVE', reservedSlots: 0 }, { where: { tenantId } });
+    await GymListing.update({ status: 'INACTIVE', reservedSlots: 0 }, { where: { organizationId } });
 
-    const donorListing = await factories.createGymListing(tenantId, {
+    const donorListing = await factories.createGymListing(organizationId, {
       title: 'Donor Org',
       status: 'ACTIVE',
       reservedSlots: 0,
       hostId: hostUser.id,
     });
     await tenantDb.models.Gym.create({
-      gymListingId: donorListing.id,
+      id: donorListing.id,
       name: 'Donor Gym',
     });
 
@@ -255,9 +256,9 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     await Branch.update({ status: 'INACTIVE' }, { where: {} });
     await gymService.createBranch(
       tenantDb,
-      tenantId,
+      organizationId,
       {
-        gymListingId: donorListing.id,
+        businessId: donorListing.id,
         branchName: 'Sole Active Branch',
         packages: [{ name: 'Monthly', price: 50 }], // NEW-146: no invented plan
       },
@@ -267,7 +268,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
 
     // Give donorListing 1 reserved slot with matching CapacityEvent so auditCapacity ledger has 0 drift
     await subscriptionQuotaService.recordCapacityEvent({
-      tenantId,
+      organizationId,
       listingId: donorListing.id,
       action: 'SLOT_ATTRIBUTED_UPGRADE',
       delta: 1,
@@ -280,24 +281,20 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     });
     await donorListing.update({ reservedSlots: 1 });
 
-    const usedBefore = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const usedBefore = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     expect(usedBefore).toBe(2); // 1 active branch + 1 reserved slot = 2 (maxBranches = 2)
 
     // Two parallel requests to create a new organization competing for the single donor slot
-    const createReq1 = asPersona('owner').post('/host/listings', {
-      gymName: 'Contender Org 1',
-      branchSource: 'new',
-      branchName: 'Contender Branch 1',
-      address: '101 Street',
-      packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
+    const createReq1 = asPersona('owner').post('/host/businesses', {
+      businessName: 'Contender Org 1',
+      firstBranch: await firstBranchInput({ branchName: 'Contender Branch 1', address: '101 Street',
+        packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
     });
 
-    const createReq2 = asPersona('owner').post('/host/listings', {
-      gymName: 'Contender Org 2',
-      branchSource: 'new',
-      branchName: 'Contender Branch 2',
-      address: '102 Street',
-      packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }],
+    const createReq2 = asPersona('owner').post('/host/businesses', {
+      businessName: 'Contender Org 2',
+      firstBranch: await firstBranchInput({ branchName: 'Contender Branch 2', address: '102 Street',
+        packages: [{ name: 'Monthly', price: 50, durationType: 'MONTHLY', durationValue: 1 }] }),
     });
 
     const [res1, res2] = await Promise.all([createReq1, createReq2]);
@@ -314,7 +311,7 @@ describe('CAP-08: Branch Capacity Concurrency Controls', () => {
     expect(donorListing.reservedSlots).toBe(0);
 
     // Verify the capacity invariant holds and no capacity was duplicated
-    const finalAudit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDb);
+    const finalAudit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
     expect(finalAudit.invariantHolds).toBe(true);
     expect(finalAudit.totalDrift).toBe(0);
     expect(finalAudit.ok).toBe(true);

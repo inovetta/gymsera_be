@@ -17,7 +17,7 @@ async function run() {
         const { sequelize, models } = await TenantDbManager.getConnection(tenant.id, tenant.connectionStringEncrypted);
         const branch = await models.Branch.findByPk(branchId);
         if (branch) {
-          console.log(`Branch found in tenant: ${tenant.tenantCode}`);
+          console.log(`Branch found in tenant: ${tenant.organizationCode}`);
           found = true;
 
           const requests = await models.StaffActionRequest.findAll();
@@ -27,7 +27,7 @@ async function run() {
           }
         }
       } catch (err) {
-        console.error(`Error with tenant ${tenant.tenantCode}:`, err);
+        console.error(`Error with tenant ${tenant.organizationCode}:`, err);
       }
     }
 

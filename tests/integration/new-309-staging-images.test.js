@@ -1,0 +1,67 @@
+/**
+ * R-120 A3 J13 (owner J12): POST /host/staging-images, a stateless image upload for a first-time host who has no
+ * organization yet. It stores the files and returns the URLs; it saves nothing about a business or a draft.
+ */
+const { setupTestDatabases, teardownTestDatabases, setupPersonas, asPersona } = require('../harness');
+const { stopTestServer } = require('../harness/test-server');
+const { Tenant, GymListing } = require('../../src/models/platform');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const sharp = require('sharp');
+
+// A 1 x 1 PNG.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+let uploadDir;
+let h;
+beforeAll(async () => {
+  uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gymsera-staging-images-'));
+  process.env.TEST_LOCAL_UPLOAD_DIR = uploadDir;
+  h = await setupTestDatabases();
+  await setupPersonas(h);
+});
+afterAll(async () => {
+  delete process.env.TEST_LOCAL_UPLOAD_DIR;
+  if (uploadDir) fs.rmSync(uploadDir, { recursive: true, force: true });
+  await stopTestServer();
+  await teardownTestDatabases();
+});
+
+describe('POST /host/staging-images', () => {
+  test('a signed-in user with no organization uploads and gets URLs; no organization or business row is created', async () => {
+    const before = [await Tenant.count(), await GymListing.count()];
+    const res = await asPersona('member').post('/host/staging-images').attach('images', PNG, 'a.png').attach('images', PNG, 'b.png');
+    expect(res.status).toBe(200);
+    expect(res.body.data.urls).toHaveLength(2);
+    for (const u of res.body.data.urls) {
+      expect(typeof u).toBe('string');
+      const key = new URL(u).pathname.replace(/^\/uploads\//, '');
+      const saved = fs.readFileSync(path.join(uploadDir, key));
+      expect((await sharp(saved).metadata()).format).toBe('png');
+      expect(await sharp(saved).ensureAlpha().raw().toBuffer()).toEqual(
+        await sharp(PNG).ensureAlpha().raw().toBuffer()
+      );
+    }
+    expect([await Tenant.count(), await GymListing.count()]).toEqual(before);
+  });
+
+  test('no file: 422; anonymous: 401', async () => {
+    expect((await asPersona('member').post('/host/staging-images')).status).toBe(422);
+    expect((await asPersona('anonymous').post('/host/staging-images').attach('images', PNG, 'a.png')).status).toBe(401);
+  });
+  test('a body field is refused with 422: the route takes files only (a new route, so stage 1: reject, not log)', async () => {
+    const res = await asPersona('member').post('/host/staging-images').field('gymName', 'x').attach('images', PNG, 'a.png');
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('validation_error');
+  });
+
+  test('a platform admin gets 403, with and without a file', async () => {
+    expect((await asPersona('platformAdmin').post('/host/staging-images').attach('images', PNG, 'a.png')).status).toBe(403);
+    expect((await asPersona('platformAdmin').post('/host/staging-images')).status).toBe(403);
+  });
+
+  test('auth runs before the upload: an anonymous caller is 401 even with a file', async () => {
+    expect((await asPersona('anonymous').post('/host/staging-images').attach('images', PNG, 'a.png')).status).toBe(401);
+  });
+});

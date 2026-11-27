@@ -97,12 +97,12 @@ function computeRawEndDate(startDate, durationValue = 1, durationType = 'MONTHLY
  * Inspect one tenant database for subscription date defects.
  *
  * @param {Sequelize} tenantSeq - Connected Sequelize instance
- * @param {object} context - Tenant context { tenantId, gymName, tenantCode }
+ * @param {object} context - Tenant context { organizationId, gymName, organizationCode }
  * @param {object} [options]
  * @param {boolean} [options.quiet=false]
  * @param {string|Date} [options.todayOverride] - Override current date for deterministic testing
  * @returns {Promise<{
- *   tenantId: string,
+ *   organizationId: string,
  *   gymName: string,
  *   scannedCount: number,
  *   anomaliesCount: number,
@@ -250,7 +250,7 @@ async function processTenantSubscriptionDatesCheck(tenantSeq, context = {}, opti
   }
 
   if (!options.quiet) {
-    console.log(`[${context.gymName || context.tenantId || 'Tenant'}] Scanned: ${subscriptions.length} subscriptions, Found: ${anomalies.length} anomaly(ies).`);
+    console.log(`[${context.gymName || context.organizationId || 'Tenant'}] Scanned: ${subscriptions.length} subscriptions, Found: ${anomalies.length} anomaly(ies).`);
     if (options.verbose) {
       if (anomalies.length === 0) {
         console.log('  (No subscription date anomalies detected)');
@@ -271,7 +271,7 @@ async function processTenantSubscriptionDatesCheck(tenantSeq, context = {}, opti
   }
 
   return {
-    tenantId: context.tenantId || 'unknown',
+    organizationId: context.organizationId || 'unknown',
     gymName: context.gymName || 'unknown',
     scannedCount: subscriptions.length,
     anomaliesCount: anomalies.length,
@@ -299,8 +299,8 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
     const filter = String(options.tenantFilter).trim().toLowerCase();
     activeTenants = activeTenants.filter((t) => {
       const idMatch = t.id?.toLowerCase() === filter;
-      const codeMatch = t.tenantCode?.toLowerCase() === filter;
-      const businessMatch = t.businessName?.toLowerCase().includes(filter);
+      const codeMatch = t.organizationCode?.toLowerCase() === filter;
+      const businessMatch = t.organizationName?.toLowerCase().includes(filter);
       const gymMatch = t.gymName?.toLowerCase().includes(filter);
       return idMatch || codeMatch || businessMatch || gymMatch;
     });
@@ -331,9 +331,9 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
       const result = await processTenantSubscriptionDatesCheck(
         tenantSeq,
         {
-          tenantId: tenant.id,
-          gymName: tenant.businessName || tenant.gymName || tenant.tenantCode,
-          tenantCode: tenant.tenantCode,
+          organizationId: tenant.id,
+          gymName: tenant.organizationName || tenant.firstBusinessName || tenant.organizationCode,
+          organizationCode: tenant.organizationCode,
         },
         options
       );
@@ -342,10 +342,10 @@ async function checkAllTenantsSubscriptionDates(options = {}) {
       totalScanned += result.scannedCount;
       totalAnomalies += result.anomaliesCount;
     } catch (err) {
-      console.error(`❌ [Tenant Error] ${tenant.gymName || tenant.tenantCode} (${tenant.id}):`, err.message);
+      console.error(`❌ [Tenant Error] ${tenant.firstBusinessName || tenant.organizationCode} (${tenant.id}):`, err.message);
       reports.push({
-        tenantId: tenant.id,
-        gymName: tenant.businessName || tenant.gymName || tenant.tenantCode,
+        organizationId: tenant.id,
+        gymName: tenant.organizationName || tenant.firstBusinessName || tenant.organizationCode,
         success: false,
         error: err.message,
       });

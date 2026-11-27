@@ -42,11 +42,44 @@ const createMessageOnce = async (attrs, rawClientMessageId) => {
   }
 };
 
-const listInquiries = async (tenantId) => {
+/**
+ * API contract v2 A3 J6: a conversation nests `business { id, name }` (was `gymListing { id, title, logoUrl, branchId }`) and
+ * `branchName` (read from the organization's database; null when it cannot be read). The conversation's own
+ * `branchId` and `organizationId` stay. Takes one conversation or a list (model rows or plain objects).
+ */
+const shapeConversations = async (input) => {
+  const list = Array.isArray(input) ? input : [input];
+  const plain = list.map((c) => (c && typeof c.toJSON === 'function' ? c.toJSON() : { ...c }));
+  const idsByOrg = new Map();
+  for (const c of plain) {
+    if (!c.organizationId || !c.branchId) continue;
+    if (!idsByOrg.has(c.organizationId)) idsByOrg.set(c.organizationId, new Set());
+    idsByOrg.get(c.organizationId).add(c.branchId);
+  }
+  const names = new Map();
+  const { Tenant } = require('../models/platform');
+  const TenantDbManager = require('../database/TenantDbManager');
+  await Promise.all([...idsByOrg].map(async ([organizationId, ids]) => {
+    try {
+      const org = await Tenant.findByPk(organizationId, { attributes: ['id', 'connectionStringEncrypted'] });
+      if (!org || !org.connectionStringEncrypted || org.connectionStringEncrypted === 'PENDING_PROVISIONING') return;
+      const db = await TenantDbManager.getConnection(org.id, org.connectionStringEncrypted);
+      const rows = await db.models.Branch.findAll({ where: { id: [...ids] }, attributes: ['id', 'branchName'] });
+      for (const r of rows) names.set(r.id, r.branchName);
+    } catch (_) { /* the name is a convenience; the conversation still reads */ }
+  }));
+  const shaped = plain.map((c) => {
+    const { gymListing, ...rest } = c;
+    return { ...rest, business: gymListing ? { id: gymListing.id, name: gymListing.name } : null, branchName: names.get(c.branchId) || null };
+  });
+  return Array.isArray(input) ? shaped : shaped[0];
+};
+
+const listInquiries = async (organizationId) => {
   // NEW-256: a traveller this gym blocked is hidden from the gym's inbox.
-  const blockedUserIds = await userBlocks.userIdsBlockedByTenant(tenantId);
+  const blockedUserIds = await userBlocks.userIdsBlockedByTenant(organizationId);
   return Conversation.findAll({
-    where: { tenantId, ...(blockedUserIds.length ? { userId: { [Op.notIn]: blockedUserIds } } : {}) },
+    where: { organizationId, ...(blockedUserIds.length ? { userId: { [Op.notIn]: blockedUserIds } } : {}) },
     include: [
       {
         model: User,
@@ -56,7 +89,7 @@ const listInquiries = async (tenantId) => {
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ],
     order: [['lastMessageAt', 'DESC']],
@@ -67,17 +100,17 @@ const listInquiries = async (tenantId) => {
  * NEW-257: the gym side of the inbox always scopes to the caller's tenant. No tenant (a GYM_HOST
  * token without one) used to drop the filter and reach any gym's conversation; now it finds none.
  */
-const _gymConversationWhere = (conversationId, tenantId) => {
-  if (!tenantId) {
+const _gymConversationWhere = (conversationId, organizationId) => {
+  if (!organizationId) {
     const err = new Error('Conversation not found');
     err.statusCode = 404;
     throw err;
   }
-  return { id: conversationId, tenantId };
+  return { id: conversationId, organizationId };
 };
 
-const getInquiryDetail = async (conversationId, tenantId) => {
-  const whereClause = _gymConversationWhere(conversationId, tenantId);
+const getInquiryDetail = async (conversationId, organizationId) => {
+  const whereClause = _gymConversationWhere(conversationId, organizationId);
   const conversation = await Conversation.findOne({
     where: whereClause,
     include: [
@@ -89,7 +122,7 @@ const getInquiryDetail = async (conversationId, tenantId) => {
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ]
   });
@@ -105,11 +138,11 @@ const getInquiryDetail = async (conversationId, tenantId) => {
     order: [['createdAt', 'ASC']],
   });
 
-  return { conversation, messages, block: await userBlocks.blockStateFor(conversation, BlockSide.TENANT) };
+  return { conversation, messages, block: await userBlocks.blockStateFor(conversation, BlockSide.ORGANIZATION) };
 };
 
-const replyToInquiry = async (conversationId, senderId, text, tenantId, options = {}) => {
-  const whereClause = _gymConversationWhere(conversationId, tenantId);
+const replyToInquiry = async (conversationId, senderId, text, organizationId, options = {}) => {
+  const whereClause = _gymConversationWhere(conversationId, organizationId);
   const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
@@ -118,7 +151,7 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
   }
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
-  await userBlocks.assertCanMessage(conversation.userId, conversation.tenantId, BlockSide.TENANT);
+  await userBlocks.assertCanMessage(conversation.userId, conversation.organizationId, BlockSide.ORGANIZATION);
   await moderationWords.assertClean(text);
 
   const { message, created } = await createMessageOnce(
@@ -137,8 +170,8 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
   try {
     const { GymListing } = require('../models/platform');
     const notificationsService = require('./notifications.service');
-    const listing = await GymListing.findByPk(conversation.gymListingId);
-    const tenantName = listing ? listing.title : 'GymsEra Host';
+    const listing = await GymListing.findByPk(conversation.businessId);
+    const tenantName = listing ? listing.name : 'GymsEra Host';
 
     await notificationsService.createNotification({
       userId: conversation.userId,
@@ -181,8 +214,8 @@ const replyToInquiry = async (conversationId, senderId, text, tenantId, options 
   return message;
 };
 
-const markInquiryRead = async (conversationId, tenantId) => {
-  const whereClause = _gymConversationWhere(conversationId, tenantId);
+const markInquiryRead = async (conversationId, organizationId) => {
+  const whereClause = _gymConversationWhere(conversationId, organizationId);
   const conversation = await Conversation.findOne({ where: whereClause });
   if (!conversation) {
     const err = new Error('Conversation not found');
@@ -211,11 +244,11 @@ const markInquiryRead = async (conversationId, tenantId) => {
 };
 
 const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}) => {
-  // Find GymListing mapping to the branchId or gymId
+  // Find GymListing mapping to the branchId or businessId
   const listing = await GymListing.findOne({
     where: {
       [Op.or]: [
-        { branchId: branchIdOrGymId },
+        { primaryBranchId: branchIdOrGymId },
         { id: branchIdOrGymId }
       ]
     }
@@ -227,10 +260,10 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
     throw err;
   }
 
-  const finalBranchId = listing.branchId || branchIdOrGymId;
+  const finalBranchId = listing.primaryBranchId || branchIdOrGymId;
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
-  await userBlocks.assertCanMessage(userId, listing.tenantId, BlockSide.USER);
+  await userBlocks.assertCanMessage(userId, listing.organizationId, BlockSide.USER);
   await moderationWords.assertClean(text);
 
   // Find or create Conversation
@@ -238,7 +271,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
     where: {
       userId,
       branchId: finalBranchId,
-      tenantId: listing.tenantId,
+      organizationId: listing.organizationId,
     },
     defaults: {
       type: 'INQUIRY',
@@ -282,9 +315,9 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
       message: messagePayload,
       conversationId: conversation.id,
     });
-    if (listing && listing.tenantId) {
+    if (listing && listing.organizationId) {
       // Only the staff of this conversation's branch (NEW-84).
-      socketGateway.emitToBranch(listing.tenantId, conversation.branchId, 'new_message', {
+      socketGateway.emitToBranch(listing.organizationId, conversation.branchId, 'new_message', {
         message: messagePayload,
         conversationId: conversation.id,
       });
@@ -301,7 +334,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
   try {
     const { Tenant, User: PlatformUser } = require('../models/platform');
     const notificationsService = require('./notifications.service');
-    const tenant = await Tenant.findByPk(listing.tenantId);
+    const tenant = await Tenant.findByPk(listing.organizationId);
 
     const travelerUser = await PlatformUser.findByPk(userId);
     const travelerName = travelerUser ? travelerUser.fullName : 'Traveler';
@@ -312,7 +345,7 @@ const createTravelerInquiry = async (userId, branchIdOrGymId, text, options = {}
         role: 'host',
         type: 'inquiry_received',
         title: 'New Inquiry Received',
-        message: `New inquiry from ${travelerName} about ${listing.title}.`,
+        message: `New inquiry from ${travelerName} about ${listing.name}.`,
         deepLink: '/host/inbox',
         metadataJson: { conversationId: conversation.id, branchId: finalBranchId },
       });
@@ -330,12 +363,12 @@ const listTravelerConversations = async (userId) => {
   // NEW-256: a gym this traveller blocked is hidden from the traveller's inbox.
   const blockedTenantIds = await userBlocks.tenantIdsBlockedByUser(userId);
   return Conversation.findAll({
-    where: { userId, ...(blockedTenantIds.length ? { tenantId: { [Op.notIn]: blockedTenantIds } } : {}) },
+    where: { userId, ...(blockedTenantIds.length ? { organizationId: { [Op.notIn]: blockedTenantIds } } : {}) },
     include: [
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ],
     order: [['lastMessageAt', 'DESC']],
@@ -349,7 +382,7 @@ const getTravelerConversationDetail = async (conversationId, userId) => {
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       }
     ]
   });
@@ -377,7 +410,7 @@ const replyAsUser = async (conversationId, userId, text, options = {}) => {
   }
 
   // NEW-256: no message between a blocked pair, and none with a listed word.
-  await userBlocks.assertCanMessage(conversation.userId, conversation.tenantId, BlockSide.USER);
+  await userBlocks.assertCanMessage(conversation.userId, conversation.organizationId, BlockSide.USER);
   await moderationWords.assertClean(text);
 
   const { message, created } = await createMessageOnce(
@@ -442,7 +475,7 @@ const markTravelerRead = async (conversationId, userId) => {
   return { success: true };
 };
 
-const findOrCreateHostConversation = async (tenantId, userId, branchId, initialMessage = null) => {
+const findOrCreateHostConversation = async (organizationId, userId, branchId, initialMessage = null) => {
   const user = await User.findByPk(userId);
   if (!user) {
     const err = new Error('Member user not found');
@@ -457,7 +490,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
     listing = await GymListing.findOne({
       where: {
         [Op.or]: [
-          { branchId: finalBranchId },
+          { primaryBranchId: finalBranchId },
           { id: finalBranchId },
         ],
       },
@@ -465,19 +498,19 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
   }
 
   if (!listing) {
-    listing = await GymListing.findOne({ where: { tenantId } });
-    if (listing && listing.branchId && !finalBranchId) {
-      finalBranchId = listing.branchId;
+    listing = await GymListing.findOne({ where: { organizationId }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
+    if (listing && listing.primaryBranchId && !finalBranchId) {
+      finalBranchId = listing.primaryBranchId;
     }
   }
 
   if (!finalBranchId) {
-    finalBranchId = listing ? listing.branchId : tenantId;
+    finalBranchId = listing ? listing.primaryBranchId : organizationId;
   }
 
   // NEW-256: an opening message is a message (blocked pair, listed word).
   if (initialMessage) {
-    await userBlocks.assertCanMessage(userId, tenantId, BlockSide.TENANT);
+    await userBlocks.assertCanMessage(userId, organizationId, BlockSide.ORGANIZATION);
     await moderationWords.assertClean(initialMessage);
   }
 
@@ -485,7 +518,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
   let conversation = await Conversation.findOne({
     where: {
       userId,
-      tenantId,
+      organizationId,
       branchId: finalBranchId,
     },
     include: [
@@ -497,7 +530,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
       {
         model: GymListing,
         as: 'gymListing',
-        attributes: ['id', 'title', 'logoUrl', 'branchId'],
+        attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
       },
     ],
   });
@@ -505,7 +538,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
   if (!conversation) {
     conversation = await Conversation.create({
       userId,
-      tenantId,
+      organizationId,
       branchId: finalBranchId,
       type: 'MEMBER',
       lastMessageText: initialMessage || 'Conversation started',
@@ -517,7 +550,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
     if (initialMessage) {
       await Message.create({
         conversationId: conversation.id,
-        senderId: tenantId,
+        senderId: organizationId,
         senderType: 'HOST',
         text: initialMessage,
         isRead: false,
@@ -534,7 +567,7 @@ const findOrCreateHostConversation = async (tenantId, userId, branchId, initialM
         {
           model: GymListing,
           as: 'gymListing',
-          attributes: ['id', 'title', 'logoUrl', 'branchId'],
+          attributes: ['id', 'name', 'logoUrl', 'primaryBranchId'],
         },
       ],
     });
@@ -561,16 +594,17 @@ const setTravelerBlock = async (conversationId, userId, blocked) => {
 };
 
 /** The gym blocks (or unblocks) the traveller of one of its conversations. */
-const setHostBlock = async (conversationId, tenantId, actorUserId, blocked) => {
-  if (!tenantId) throw _notFound();
-  const conversation = await Conversation.findOne({ where: { id: conversationId, tenantId } });
+const setHostBlock = async (conversationId, organizationId, actorUserId, blocked) => {
+  if (!organizationId) throw _notFound();
+  const conversation = await Conversation.findOne({ where: { id: conversationId, organizationId } });
   if (!conversation) throw _notFound();
-  if (blocked) await userBlocks.block(conversation, BlockSide.TENANT, actorUserId);
-  else await userBlocks.unblock(conversation, BlockSide.TENANT);
-  return userBlocks.blockStateFor(conversation, BlockSide.TENANT);
+  if (blocked) await userBlocks.block(conversation, BlockSide.ORGANIZATION, actorUserId);
+  else await userBlocks.unblock(conversation, BlockSide.ORGANIZATION);
+  return userBlocks.blockStateFor(conversation, BlockSide.ORGANIZATION);
 };
 
 module.exports = {
+  shapeConversations,
   setTravelerBlock,
   setHostBlock,
   listInquiries,

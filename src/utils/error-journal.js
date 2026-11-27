@@ -113,7 +113,7 @@ const record = (req, res, startedAt) => {
       code: res.locals?.errorCode || null,
       method: req.method,
       path: (req.originalUrl || req.url || '').split('?')[0],
-      ...(req.tenantId && { tenantId: req.tenantId }),
+      ...(req.organizationId && { organizationId: req.organizationId }),
       ...(userId && { userId }),
       durationMs: startedAt ? Date.now() - startedAt : null,
       ...(res.locals?.journalError && { error: errorFields(res.locals.journalError) }),

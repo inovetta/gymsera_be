@@ -51,7 +51,7 @@ describe('RT-04: socket room authorization', () => {
     traveler = await factories.createUser();
     stranger = await factories.createUser();
     conversation = await Conversation.create({
-      id: uuidv4(), tenantId: tenantA.id, branchId: uuidv4(), userId: traveler.id, type: 'INQUIRY',
+      id: uuidv4(), organizationId: tenantA.id, branchId: uuidv4(), userId: traveler.id, type: 'INQUIRY',
     });
   });
 
@@ -61,8 +61,8 @@ describe('RT-04: socket room authorization', () => {
 
   const tokenFor = (claims) => signToken({ isVerified: true, ...claims });
   const memberToken = (user) => tokenFor({ sub: user.id, id: user.id, role: 'MEMBER' });
-  const hostToken = (tenant, tenantId = tenant.id) =>
-    tokenFor({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', tenantId });
+  const hostToken = (tenant, organizationId = tenant.id) =>
+    tokenFor({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', organizationId });
 
   const connect = (token, { viaQuery = false } = {}) => new Promise((resolve, reject) => {
     const socket = ioClient(url, {

@@ -39,11 +39,11 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   const personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
-  const branch = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  const listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
+  const branch = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   const gym = await tenantDb.models.Gym.findOne();
   plan = await tenantDb.models.MembershipPlan.create({
-    gymId: gym.id, branchId: branch.id, name: 'Poster plan', durationType: 'MONTHLY', durationValue: 1,
+    businessId: gym.id, branchId: branch.id, name: 'Poster plan', durationType: 'MONTHLY', durationValue: 1,
     price: 5000, status: 'ACTIVE', isPublic: false,
   });
   jpeg = await sharp({ create: { width: 12, height: 8, channels: 3, background: { r: 200, g: 10, b: 10 } } }).jpeg().toBuffer();

@@ -10,7 +10,7 @@
  *    POST /actions/payouts.request answer 404 `payouts_not_available`, for every caller, before
  *    authentication, tenant context or body checks; nothing is written;
  *  - GET / PUT /host/payout-account stay live either way (owner answer, 2026-11-08): it holds the bank
- *    details travellers pay into by bank transfer (GET /discovery/gyms/:id/payment-details);
+ *    details travellers pay into by bank transfer (GET /discovery/businesses/:id/payment-details);
  *  - GET /meta/app-config (and GET /me/bootstrap, which carries it) answers `features.payouts`, so the
  *    CMS and the app hide the payout entries;
  *  - on: every payout route behaves as before (the existing payout suites run with it on, see
@@ -63,7 +63,7 @@ beforeAll(async () => {
   ({ Payout, ApprovalRequest } = ctx.tenant1Db.models);
   await makeBranchLive(ctx.tenant1Db, ctx.branch1.id);
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
+  await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: new Date(Date.now() - 3 * 86400000) });
   await ctx.tenant1Db.models.Payment.create({
     userId: personas.member.user.id,
     branchId: ctx.branch1.id,
@@ -102,7 +102,7 @@ describe.each([
 
   test.each(PAYOUT_ROUTES)('every persona: %s %s → 404', async (method, path) => {
     for (const persona of PERSONAS) {
-      expectNotAvailable(await call(persona, method, path, persona === 'platformAdmin' ? { 'X-Tenant-Id': ctx.tenant1.id } : {}));
+      expectNotAvailable(await call(persona, method, path, persona === 'platformAdmin' ? { 'X-Organization-Id': ctx.tenant1.id } : {}));
     }
     expectNotAvailable(await anonymous(method, path));
   });
@@ -123,7 +123,7 @@ describe.each([
   });
 
   test('travellers still get the bank details', async () => {
-    const res = await asPersona('member').get(`/discovery/gyms/${ctx.branch1.id}/payment-details`);
+    const res = await asPersona('member').get(`/discovery/businesses/${ctx.branch1.businessId}/payment-details`);
     expect(res.status).toBe(200);
     expect(res.body.data.paymentDetails).toMatchObject({ accountNumber: DETAILS.accountNumber });
   });
@@ -162,7 +162,7 @@ describe('PAYOUTS_ENABLED "true": payouts behave as before', () => {
 
   test('the usual refusals are unchanged: traveller 403, platform admin 403', async () => {
     expect((await call('member', 'get', '/host/payouts')).status).toBe(403);
-    const admin = await call('platformAdmin', 'post', '/host/payouts', { 'X-Tenant-Id': ctx.tenant1.id });
+    const admin = await call('platformAdmin', 'post', '/host/payouts', { 'X-Organization-Id': ctx.tenant1.id });
     expect(admin.status).toBe(403);
     expect(admin.body.code).toBe('payout_request_not_for_platform_admins');
   });

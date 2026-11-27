@@ -30,7 +30,7 @@ router.use(authenticate, tenantContext);
  * the route is declared. Resolve grants first, then enforce the key the caller
  * named — which is exactly what can() does, one step later.
  */
-// NEW-232 (R-98): actions a platform admin never performs in a gym, even with X-Tenant-Id.
+// NEW-232 (R-98): actions a platform admin never performs in a gym, even with X-Organization-Id.
 const PLATFORM_ADMIN_REFUSED = {
   'payouts.request': refusePlatformAdmin.payoutRequest,
 };

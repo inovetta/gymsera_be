@@ -33,7 +33,7 @@ describe('PAY-12: Ledger Adjustments through Approval Engine', () => {
 
     const branch = await dbHarness.tenant1.models.Branch.findOne();
     branchId = branch.id;
-    const testTenantId = personaManager.personas.owner.tenantId;
+    const testTenantId = personaManager.personas.owner.organizationId;
 
     // Create a Branch Admin persona (BR_ADMIN role) with REQUEST tier for ledger.verify
     const brAdminUser = await createUser({
@@ -47,10 +47,10 @@ describe('PAY-12: Ledger Adjustments through Approval Engine', () => {
       scopeType: 'BRANCH',
       scopeId: branchId,
       branchIds: [branchId],
-      overrides: { tenantId: testTenantId },
+      overrides: { organizationId: testTenantId },
     });
     await UserOrgIndex.findOrCreate({
-      where: { userId: brAdminUser.id, tenantId: testTenantId },
+      where: { userId: brAdminUser.id, organizationId: testTenantId },
       defaults: {
         roleKey: 'BR_ADMIN',
         roleLevel: 40,
@@ -64,13 +64,13 @@ describe('PAY-12: Ledger Adjustments through Approval Engine', () => {
       email: brAdminUser.email,
       role: 'BRANCH_MANAGER',
       isVerified: true,
-      tenantId: testTenantId,
+      organizationId: testTenantId,
       branchId,
     });
     personaManager.personas.brAdmin = {
       user: brAdminUser,
       token: brAdminToken,
-      tenantId: testTenantId,
+      organizationId: testTenantId,
     };
 
     // Create an open LedgerDay

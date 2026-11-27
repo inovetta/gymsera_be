@@ -47,7 +47,7 @@ const REPORT_RESPONSE_HOURS = 24;
 /** Who blocked: the traveller (blocks the gym) or the gym (blocks the traveller). */
 const BlockSide = Object.freeze({
   USER: 'USER',
-  TENANT: 'TENANT',
+  ORGANIZATION: 'ORGANIZATION', // R-120 NEW-307 (p034): was TENANT
 });
 
 /**

@@ -34,9 +34,9 @@ let tenant2Plan;
 let otherBranch;
 let seq = 0;
 
-const T1 = () => personas.owner.tenantId;
+const T1 = () => personas.owner.organizationId;
 
-const makeSub = async ({ status = 'ACTIVE', planRow = plan, branch = ctx.branch1, db = db1, tenantId = T1(), user = null } = {}) => {
+const makeSub = async ({ status = 'ACTIVE', planRow = plan, branch = ctx.branch1, db = db1, organizationId = T1(), user = null } = {}) => {
   const member = user || await factories.createUser({ email: `n250-${++seq}@new250.test`, fullName: `N250 Member ${seq}`, role: 'MEMBER' });
   const sub = await db.models.MemberSubscription.create({
     userId: member.id,
@@ -46,18 +46,18 @@ const makeSub = async ({ status = 'ACTIVE', planRow = plan, branch = ctx.branch1
     startDate: daysFromToday(-1),
     endDate: daysFromToday(29),
   });
-  const listing = await GymListing.findOne({ where: { tenantId } });
+  const listing = await GymListing.findOne({ where: { organizationId } });
   await UserGymMembership.create({
-    userId: member.id, tenantId, gymListingId: listing.id, subscriptionId: sub.id,
-    gymName: listing.title, planName: planRow.name, startDate: sub.startDate, endDate: sub.endDate, status,
+    userId: member.id, organizationId, businessId: listing.id, subscriptionId: sub.id,
+    businessName: listing.name, planName: planRow.name, startDate: sub.startDate, endDate: sub.endDate, status,
   });
   return { sub, member };
 };
 
-const staff = (persona, path, body = {}, tenantId = T1()) =>
+const staff = (persona, path, body = {}, organizationId = T1()) =>
   request(app).post(`/api/v1/subscriptions/staff/${path}`)
     .set('Authorization', `Bearer ${persona.token}`)
-    .set('X-Tenant-Id', tenantId)
+    .set('X-Organization-Id', organizationId)
     .send(body);
 
 const freezeBody = () => ({ freezeFrom: daysFromToday(1), freezeTo: daysFromToday(8) });
@@ -72,15 +72,15 @@ beforeAll(async () => {
   app = await startTestServer();
 
   plan = await db1.models.MembershipPlan.create({
-    gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'Standard 250', price: 3000,
+    businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'Standard 250', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', freezeLimitDays: 14,
   });
   noFreezePlan = await db1.models.MembershipPlan.create({
-    gymId: ctx.branch1.gymId, branchId: ctx.branch1.id, name: 'No Freeze 250', price: 3000,
+    businessId: ctx.branch1.businessId, branchId: ctx.branch1.id, name: 'No Freeze 250', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', freezeLimitDays: 0,
   });
   tenant2Plan = await ctx.tenant2Db.models.MembershipPlan.create({
-    gymId: ctx.branch2.gymId, branchId: ctx.branch2.id, name: 'Tenant2 250', price: 3000,
+    businessId: ctx.branch2.businessId, branchId: ctx.branch2.id, name: 'Tenant2 250', price: 3000,
     durationType: 'MONTHLY', durationValue: 1, status: 'ACTIVE', freezeLimitDays: 14,
   });
   otherBranch = await factories.createBranch(db1, ctx.listing1.id, { name: 'N250 Other Branch' });
@@ -119,7 +119,7 @@ describe('NEW-250: staff Cancel', () => {
   });
 
   test('another tenant\'s subscription: 404 with the caller\'s own tenant, and the row is untouched', async () => {
-    const { sub } = await makeSub({ db: ctx.tenant2Db, branch: ctx.branch2, planRow: tenant2Plan, tenantId: ctx.tenant2.id });
+    const { sub } = await makeSub({ db: ctx.tenant2Db, branch: ctx.branch2, planRow: tenant2Plan, organizationId: ctx.tenant2.id });
     const res = await staff(personas.owner, `${sub.id}/cancel`);
     expect(res.status).toBe(404);
     const viaOtherTenantHeader = await staff(personas.owner, `${sub.id}/cancel`, {}, ctx.tenant2.id);
@@ -160,7 +160,7 @@ describe('NEW-250: staff Cancel', () => {
     const { sub } = await makeSub();
     const send = () => request(app).post(`/api/v1/subscriptions/staff/${sub.id}/cancel`)
       .set('Authorization', `Bearer ${personas.frontDesk.token}`)
-      .set('X-Tenant-Id', T1())
+      .set('X-Organization-Id', T1())
       .set('Idempotency-Key', `n250-cancel-${sub.id}`)
       .send({});
     const first = await send();
@@ -185,7 +185,7 @@ describe('NEW-250: staff Cancel', () => {
 
   test('cancel queues the device sync for the member (member removed from the access devices)', async () => {
     await registry.createDevice({
-      tenantId: T1(), tenantDb: db1, branchId: ctx.branch1.id, organizationId: ctx.branch1.gymId || null,
+      organizationId: T1(), tenantDb: db1, branchId: ctx.branch1.id, businessId: ctx.branch1.businessId || null,
       name: 'N250 Door', direction: 'in', importFirst: false, createdBy: personas.owner.user.id,
     });
     expect(await triggers.hasDevices(db1.sequelize)).toBe(true);
@@ -220,7 +220,7 @@ describe('NEW-250: staff Freeze', () => {
 
   test('wrong id 404; other tenant 404', async () => {
     expect((await staff(personas.owner, '7f1a2b3c-4d5e-4f60-8a7b-9c0d1e2f3a4b/freeze', freezeBody())).status).toBe(404);
-    const { sub } = await makeSub({ db: ctx.tenant2Db, branch: ctx.branch2, planRow: tenant2Plan, tenantId: ctx.tenant2.id });
+    const { sub } = await makeSub({ db: ctx.tenant2Db, branch: ctx.branch2, planRow: tenant2Plan, organizationId: ctx.tenant2.id });
     expect((await staff(personas.owner, `${sub.id}/freeze`, freezeBody())).status).toBe(404);
     expect((await reload(sub)).status).toBe('ACTIVE');
   });

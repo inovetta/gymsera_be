@@ -26,9 +26,9 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants",
+   "path": "/api/v1/admin/organizations",
    "clientKeys": [
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "ownerEmail",
@@ -40,26 +40,26 @@
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/admin/tenants/:p/branches/:p/status",
+   "path": "/api/v1/admin/organizations/:p/branches/:p/status",
    "clientKeys": [
     "status"
    ]
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/branches/:p/suspend",
+   "path": "/api/v1/admin/organizations/:p/branches/:p/suspend",
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/reject",
+   "path": "/api/v1/admin/organizations/:p/reject",
    "clientKeys": [
     "reason"
    ]
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/subscriptions",
+   "path": "/api/v1/admin/organizations/:p/subscriptions",
    "clientKeys": [
     "amount",
     "autoRenew",
@@ -71,12 +71,12 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/subscriptions/:p/verify-payment",
+   "path": "/api/v1/admin/organizations/:p/subscriptions/:p/verify-payment",
    "clientKeys": []
   },
   {
    "method": "POST",
-   "path": "/api/v1/admin/tenants/:p/suspend",
+   "path": "/api/v1/admin/organizations/:p/suspend",
    "clientKeys": [
     "reason"
    ]
@@ -99,7 +99,7 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/gyms/branches/:p/staff",
+   "path": "/api/v1/organizations/me/branches/:p/staff",
    "clientKeys": [
     "designation",
     "userId"
@@ -107,7 +107,7 @@
   },
   {
    "method": "DELETE",
-   "path": "/api/v1/gyms/branches/:p/staff/:p",
+   "path": "/api/v1/organizations/me/branches/:p/staff/:p",
    "clientKeys": []
   },
   {
@@ -196,16 +196,16 @@
   },
   {
    "method": "POST",
-   "path": "/api/v1/tenants/:p/select-package",
+   "path": "/api/v1/organizations/:p/select-package",
    "clientKeys": [
     "packageId"
    ]
   },
   {
    "method": "PATCH",
-   "path": "/api/v1/tenants/me",
+   "path": "/api/v1/organizations/me",
    "clientKeys": [
-    "businessName",
+    "organizationName",
     "cityId",
     "email",
     "phone"

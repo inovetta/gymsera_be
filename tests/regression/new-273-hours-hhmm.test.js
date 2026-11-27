@@ -17,7 +17,7 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   const personas = await setupPersonas(h);
   tenantDb = h.tenant1;
-  const listing = await GymListing.findOne({ where: { tenantId: personas.owner.tenantId } });
+  const listing = await GymListing.findOne({ where: { organizationId: personas.owner.organizationId } });
   branch = await factories.createBranch(tenantDb, listing.id, { name: 'Hours branch' });
   await branch.update({ openingTime: '06:00', closingTime: '22:30' });
   await factories.makeBranchLive(tenantDb, branch);
@@ -38,9 +38,9 @@ describe('NEW-273: branch hours are HH:MM, never HH:MM:SS', () => {
   });
 
   test('gym detail (travellers)', async () => {
-    const res = await asPersona('anonymous').get(`/discovery/gyms/${branch.id}`);
+    const res = await asPersona('anonymous').get(`/discovery/branches/${branch.id}`);
     expect(res.status).toBe(200);
-    const b = (res.body.data.gym.branches || res.body.data.branches).find((x) => x.id === branch.id);
+    const b = [res.body.data.branch].find((x) => x.id === branch.id);
     expect(b.openingTime).toBe('06:00');
     expect(b.closingTime).toBe('22:30');
   });

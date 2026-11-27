@@ -10,7 +10,7 @@ const q = require('../src/services/subscription-quota.service');
     if (!t) { console.log('NO SUCH TENANT'); process.exit(1); }
 
     console.log('\n=== TENANT ===');
-    console.log('name             :', t.businessName);
+    console.log('name             :', t.organizationName);
     console.log('status           :', t.status);
     console.log('selectedPackageId:', t.selectedPackageId || '(none)');
     if (t.selectedPackageId) {
@@ -20,7 +20,7 @@ const q = require('../src/services/subscription-quota.service');
 
     console.log('\n=== SUBSCRIPTION ROWS (newest first) ===');
     const subs = await TenantSubscription.findAll({
-      where: { tenantId: id },
+      where: { organizationId: id },
       include: [{ model: PlatformPackage, as: 'package', attributes: ['name', 'maxBranches'] }],
       order: [['createdAt', 'DESC']],
     });
@@ -52,10 +52,10 @@ const q = require('../src/services/subscription-quota.service');
       const used = await q.getUsedCapacity(id, db);
       const active = await db.models.Branch.count({ where: { status: 'ACTIVE' } });
       console.log('\n=== ORGANIZATIONS ===');
-      const ls = await GymListing.findAll({ where: { tenantId: id }, attributes: ['id', 'title', 'status', 'reservedSlots'] });
+      const ls = await GymListing.findAll({ where: { organizationId: id }, attributes: ['id', 'name', 'status', 'reservedSlots'] });
       for (const l of ls) {
-        const b = await db.models.Branch.count({ where: { status: 'ACTIVE', gymListingId: l.id } });
-        console.log(' ', (l.title || l.id), '|', l.status, '| activeBranches=' + b, '| reservedSlots=' + l.reservedSlots);
+        const b = await db.models.Branch.count({ where: { status: 'ACTIVE', businessId: l.id } });
+        console.log(' ', (l.name || l.id), '|', l.status, '| activeBranches=' + b, '| reservedSlots=' + l.reservedSlots);
       }
       console.log('\n=== VERDICT ===');
       console.log('maxBranches      :', max);

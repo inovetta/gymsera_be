@@ -84,17 +84,17 @@ describe('gymsera-rbac09-stale-branch-assignments-check.js', () => {
     // 2. Register tenant in platform DB with encrypted connection string
     const connStr = `mysql://${dbUser}:${dbPass}@${dbHost}:${testPort}/${SCRATCH_DB}`;
     testTenant = await factories.createTenant({
-      businessName: 'RBAC09 Test Gym',
-      tenantCode: 'RBAC09-CHK',
+      organizationName: 'RBAC09 Test Gym',
+      organizationCode: 'RBAC09-CHK',
       status: 'ACTIVE',
       connectionStringEncrypted: encrypt(connStr),
       dbName: SCRATCH_DB,
     });
 
     // 3. Seed gym and branches
-    const gymId = uuidv4();
+    const businessId = uuidv4();
     await models.Gym.create({
-      id: gymId,
+      id: businessId,
       name: 'Main Test Gym Org',
     });
 
@@ -103,14 +103,14 @@ describe('gymsera-rbac09-stale-branch-assignments-check.js', () => {
 
     await models.Branch.create({
       id: activeBranchId,
-      gymId,
+      businessId,
       branchName: 'Main Active Branch',
       status: 'ACTIVE',
     });
 
     await models.Branch.create({
       id: inactiveBranchId,
-      gymId,
+      businessId,
       branchName: 'Closed Inactive Branch',
       status: 'INACTIVE',
     });

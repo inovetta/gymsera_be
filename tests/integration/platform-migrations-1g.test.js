@@ -39,7 +39,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
   const columns = async () =>
     (await seq.query(
       "SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS " +
-        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME LIKE 'provisioning%'",
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'organizations' AND COLUMN_NAME LIKE 'provisioning%'",
       { type: QueryTypes.SELECT }
     )).sort((a, b) => (a.name < b.name ? -1 : 1)); // byte order, not the collation's
 
@@ -66,9 +66,9 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
       });
     }
     await seq.query(`
-      CREATE TABLE tenants (
+      CREATE TABLE organizations (
         id CHAR(36) NOT NULL PRIMARY KEY,
-        tenant_code VARCHAR(50) NOT NULL,
+        organization_code VARCHAR(50) NOT NULL,
         status ENUM('DRAFT','PENDING_REVIEW','UNDER_REVIEW','APPROVED','ACTIVE','SUSPENDED','REJECTED') NOT NULL DEFAULT 'DRAFT',
         db_name VARCHAR(100) NULL,
         payment_details_json JSON NULL,
@@ -78,7 +78,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await seq.query(`
-      INSERT INTO tenants (id, tenant_code, status, db_name, created_at, updated_at) VALUES
+      INSERT INTO organizations (id, organization_code, status, db_name, created_at, updated_at) VALUES
         ('aaaaaaaa-0000-4000-8000-000000000001', 'GYM-ACTIVE', 'ACTIVE', 'gymsera_gym_active', NOW(), NOW()),
         ('aaaaaaaa-0000-4000-8000-000000000002', 'GYM-STUCK', 'APPROVED', NULL, NOW(), NOW()),
         ('aaaaaaaa-0000-4000-8000-000000000003', 'GYM-PENDING', 'PENDING_REVIEW', NULL, NOW(), NOW())
@@ -113,8 +113,8 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
 
   test('a conflicting column (other type) → skipped, not recorded, table unchanged', async () => {
     await createPlatformDbBefore1G();
-    await seq.query('ALTER TABLE tenants ADD COLUMN provisioning_state INT NULL');
-    await seq.query("UPDATE tenants SET provisioning_state = 7 WHERE tenant_code = 'GYM-STUCK'");
+    await seq.query('ALTER TABLE organizations ADD COLUMN provisioning_state INT NULL');
+    await seq.query("UPDATE organizations SET provisioning_state = 7 WHERE organization_code = 'GYM-STUCK'");
     const before = await snapshot();
 
     await runPlatformMigrations(seq, { targetVersion: 13 });
@@ -126,7 +126,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
 
   test('a conflicting NOT NULL column → skipped too', async () => {
     await createPlatformDbBefore1G();
-    await seq.query("ALTER TABLE tenants ADD COLUMN provisioning_error VARCHAR(500) NOT NULL DEFAULT ''");
+    await seq.query("ALTER TABLE organizations ADD COLUMN provisioning_error VARCHAR(500) NOT NULL DEFAULT ''");
     const before = await snapshot();
     await runPlatformMigrations(seq, { targetVersion: 13 });
     expect(await snapshot()).toEqual(before);
@@ -134,7 +134,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
 
   test('apply adds four nullable columns, keeps every row, is recorded; re-run is a no-op', async () => {
     await createPlatformDbBefore1G();
-    const rowsBefore = await seq.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id', { type: QueryTypes.SELECT });
+    const rowsBefore = await seq.query('SELECT id, organization_code, status, db_name FROM organizations ORDER BY id', { type: QueryTypes.SELECT });
 
     const res = await runPlatformMigrations(seq, { targetVersion: 13 });
     expect(res.applied).toEqual([P013]);
@@ -144,8 +144,8 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
       { name: 'provisioning_locked_until', type: 'datetime', nullable: 'YES' },
       { name: 'provisioning_state', type: 'varchar(32)', nullable: 'YES' },
     ]);
-    expect(await seq.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id', { type: QueryTypes.SELECT })).toEqual(rowsBefore);
-    const states = await seq.query(`SELECT ${COLUMNS.join(', ')} FROM tenants`, { type: QueryTypes.SELECT });
+    expect(await seq.query('SELECT id, organization_code, status, db_name FROM organizations ORDER BY id', { type: QueryTypes.SELECT })).toEqual(rowsBefore);
+    const states = await seq.query(`SELECT ${COLUMNS.join(', ')} FROM organizations`, { type: QueryTypes.SELECT });
     expect(states.every((r) => COLUMNS.every((c) => r[c] === null))).toBe(true); // no backfill
 
     const afterApply = await snapshot();
@@ -157,7 +157,7 @@ describe('Prompt 1G migration p013 (tenants provisioning state)', () => {
   test('columns added by hand with the right types → recorded without changes', async () => {
     await createPlatformDbBefore1G();
     await seq.query(
-      'ALTER TABLE tenants ADD COLUMN provisioning_state VARCHAR(32) NULL, ADD COLUMN provisioning_lock_token CHAR(36) NULL'
+      'ALTER TABLE organizations ADD COLUMN provisioning_state VARCHAR(32) NULL, ADD COLUMN provisioning_lock_token CHAR(36) NULL'
     );
     const res = await runPlatformMigrations(seq, { targetVersion: 13 });
     expect(res.applied).toEqual([P013]);

@@ -35,10 +35,10 @@ const RUN = crypto.randomBytes(2).toString('hex').toUpperCase();
 
 beforeAll(async () => {
   w = await createWorld();
-  branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Feed Time Branch', timezone: 'Asia/Karachi' });
+  branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Feed Time Branch', timezone: 'Asia/Karachi' });
   member = await w.member('Feed Time Member', { email: `feed-time-${crypto.randomBytes(3).toString('hex')}@gymseratest.com` });
   const { device } = await registry.createDevice({
-    tenantId: w.db1.tenantId, tenantDb: w.db1, branchId: branch.id, organizationId: branch.gymId, name: 'Feed Door', direction: 'in',
+    organizationId: w.db1.organizationId, tenantDb: w.db1, branchId: branch.id, businessId: branch.businessId, name: 'Feed Door', direction: 'in',
     importFirst: false, createdBy: w.owner.user.id,
   });
   dev = device;

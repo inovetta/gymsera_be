@@ -12,7 +12,7 @@ const { GymListing, CapacityEvent } = require('../../src/models/platform');
 
 describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
   let dbHarness;
-  let tenantId;
+  let organizationId;
   let personas;
   let tenantDb;
   let hostUser;
@@ -20,7 +20,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
   beforeAll(async () => {
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
+    organizationId = personas.owner.organizationId;
     tenantDb = dbHarness.tenant1;
     hostUser = personas.owner.user;
   });
@@ -33,27 +33,26 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     const { Branch, CapacityOutbox } = tenantDb.models;
 
     // Create an organization and an active branch
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Outbox Test Org 1',
       status: 'ACTIVE',
       reservedSlots: 0,
     });
 
     const gym = await tenantDb.models.Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Outbox Gym 1',
     });
 
     const branch = await Branch.create({
-      gymId: gym.id,
-      gymListingId: listing.id,
+      businessId: gym.id,
       branchName: 'Outbox Normal Branch',
       status: 'ACTIVE',
     });
 
     // Also need an initial membership plan so delete cascades cleanly
     await tenantDb.models.MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'Plan 1',
       price: 50,
@@ -63,7 +62,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     });
 
     // Delete the branch
-    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmOrganizationDeletion: true });
+    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmBusinessDeletion: true });
 
     // Verify tenant DB
     await branch.reload();
@@ -97,26 +96,25 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     const { Branch, CapacityOutbox } = tenantDb.models;
 
     // Create an organization and an active branch
-    const listing = await factories.createGymListing(tenantId, {
+    const listing = await factories.createGymListing(organizationId, {
       title: 'Outbox Test Org 2',
       status: 'ACTIVE',
       reservedSlots: 0,
     });
 
     const gym = await tenantDb.models.Gym.create({
-      gymListingId: listing.id,
+      id: listing.id,
       name: 'Outbox Gym 2',
     });
 
     const branch = await Branch.create({
-      gymId: gym.id,
-      gymListingId: listing.id,
+      businessId: gym.id,
       branchName: 'Outbox Crash Branch',
       status: 'ACTIVE',
     });
 
     await tenantDb.models.MembershipPlan.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchId: branch.id,
       name: 'Plan 2',
       price: 50,
@@ -140,7 +138,7 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
       });
 
     // Execute deleteBranch
-    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmOrganizationDeletion: true });
+    await gymService.deleteBranch(tenantDb, branch.id, hostUser.id, { confirmBusinessDeletion: true });
 
     // Restore spy
     processSpy.mockRestore();
@@ -186,8 +184,8 @@ describe('CAP-02: Cross-Database Capacity Credit Outbox and Durability', () => {
     expect(listing.reservedSlots).toBe(1);
 
     // 8. Verify auditCapacity reports no drift
-    const audit = await subscriptionQuotaService.auditCapacity(tenantId, tenantDb);
-    expect(audit.driftedListings.filter(l => l.listingId === listing.id)).toHaveLength(0);
+    const audit = await subscriptionQuotaService.auditCapacity(organizationId, tenantDb);
+    expect(audit.driftedBusinesses.filter(l => l.businessId === listing.id)).toHaveLength(0);
     expect(audit.totalDrift).toBe(0);
   });
 });

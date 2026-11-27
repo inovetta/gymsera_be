@@ -1,7 +1,7 @@
 /**
  * refusePlatformAdmin(code, message): answers a platform admin 403 with `code`, before tenant
  * context, body validation and re-authentication, so the answer is the same with or without
- * X-Tenant-Id and with any body. Everyone else passes through unchanged.
+ * X-Organization-Id and with any body. Everyone else passes through unchanged.
  *
  * For the owner's money routes a platform admin must never use, even with a gym selected
  * (`hasAllBranches` lets an admin through `can()` everywhere else): NEW-228 payout account

@@ -23,8 +23,8 @@ beforeAll(async () => {
   h = await setupTestDatabases();
   app = await startTestServer();
   admin = await factories.createUser({ email: 'admin-n126@gymsera.test', role: 'PLATFORM_ADMIN' });
-  tenantA = await factories.createTenant({ tenantCode: 'GYM-N126A', status: 'ACTIVE', connectionStringEncrypted: h.tenant1.encryptedConnStr });
-  await factories.createTenant({ tenantCode: 'GYM-N126B', status: 'SUSPENDED', connectionStringEncrypted: h.tenant2.encryptedConnStr });
+  tenantA = await factories.createTenant({ organizationCode: 'GYM-N126A', status: 'ACTIVE', connectionStringEncrypted: h.tenant1.encryptedConnStr });
+  await factories.createTenant({ organizationCode: 'GYM-N126B', status: 'SUSPENDED', connectionStringEncrypted: h.tenant2.encryptedConnStr });
 });
 
 beforeEach(() => {
@@ -91,7 +91,7 @@ describe('a tenant below the target', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.data.tenantSchema).toEqual(expect.objectContaining({ status: 'behind', behindCount: 1, failedCount: 0, targetVersion: TARGET_SCHEMA_VERSION }));
     expect(JSON.stringify(res.body)).not.toContain('GYM-N126A');
-    expect(JSON.stringify(res.body)).not.toContain(tenantA.gymName);
+    expect(JSON.stringify(res.body)).not.toContain(tenantA.firstBusinessName);
 
     expect((await request(app).get('/api/v1/health')).status).toBe(200);
   });
@@ -117,7 +117,7 @@ test('a tenant with no schema_migrations is named with the repair command', asyn
 
 test('an unreadable tenant database counts: 503 and UNCHECKED', async () => {
   const broken = await factories.createTenant({
-    tenantCode: 'GYM-N126C',
+    organizationCode: 'GYM-N126C',
     status: 'ACTIVE',
     connectionStringEncrypted: encrypt('mysql://nobody:wrong@127.0.0.1:3308/gymsera_test_no_such_db'),
   });

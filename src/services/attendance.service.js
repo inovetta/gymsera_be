@@ -37,7 +37,7 @@ const isCheckinValid = (subscription, today = new Date().toISOString().split('T'
 const subscriptionCoversBranch = async (models, subscription, branch) => {
   if (!subscription.branchId || subscription.branchId === branch.id) return true;
   const subBranch = await models.Branch.findByPk(subscription.branchId);
-  return Boolean(subBranch && (!subBranch.gymId || subBranch.gymId === branch.gymId));
+  return Boolean(subBranch && (!subBranch.businessId || subBranch.businessId === branch.businessId));
 };
 
 // ── POST /attendance/qr-scan ──────────────────────────────────────────────────

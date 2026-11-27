@@ -163,10 +163,10 @@ const _verifyAndConsumeOtp = async (userId, submittedCode, type) => {
 };
 
 /**
- * Build the JWT payload for a user, resolving tenantId for GymHost accounts.
+ * Build the JWT payload for a user, resolving organizationId for GymHost accounts.
  */
 const _buildTokenPayload = async (user) => {
-  let tenantId = null;
+  let organizationId = null;
 
   if (user.role === UserRole.GYM_HOST) {
     try {
@@ -175,9 +175,9 @@ const _buildTokenPayload = async (user) => {
         attributes: ['id'],
         order: [['createdAt', 'DESC']],
       });
-      tenantId = tenant ? tenant.id : null;
+      organizationId = tenant ? tenant.id : null;
     } catch (err) {
-      console.warn('[Auth] Error resolving tenantId for GYM_HOST:', err.message);
+      console.warn('[Auth] Error resolving organizationId for GYM_HOST:', err.message);
     }
   }
 
@@ -187,7 +187,7 @@ const _buildTokenPayload = async (user) => {
     role: user.role,
     isVerified: user.isVerified,
     isHost: !!user.isHost,
-    tenantId,
+    organizationId,
     branchId: null,
     ver: user.permissionVersion || 1,
     // AUTH-07: inside the 30-day undo window the token only reaches the undo/profile
@@ -223,13 +223,13 @@ const _issueTokenPair = async (user, ipAddress, userAgent, existingFamilyId = nu
     console.warn('[Auth] Failed to store refresh token record:', rfErr.message);
   }
 
-  return { accessToken, refreshToken, user: _sanitizeUser(user, payload.tenantId) };
+  return { accessToken, refreshToken, user: _sanitizeUser(user, payload.organizationId) };
 };
 
 /**
  * Strip sensitive fields before returning user data in responses.
  */
-const _sanitizeUser = (user, tenantId = null) => ({
+const _sanitizeUser = (user, organizationId = null) => ({
   id: user.id,
   fullName: user.fullName,
   email: user.email,
@@ -237,7 +237,7 @@ const _sanitizeUser = (user, tenantId = null) => ({
   isVerified: user.isVerified,
   isHost: !!user.isHost,
   profileImageUrl: user.profileImageUrl || null,
-  tenantId,
+  organizationId,
   ...(user.status === 'PENDING_DELETION' && {
     deletionPending: { requestedAt: user.deletionRequestedAt, scheduledFor: user.deletionScheduledFor },
   }),
@@ -1005,14 +1005,14 @@ const getMe = async (userId) => {
 
   if (!user) throw createError('User not found', 404);
 
-  let tenantId = null;
+  let organizationId = null;
   if (user.role === UserRole.GYM_HOST) {
     const tenant = await Tenant.findOne({
       where: { ownerUserId: user.id },
       attributes: ['id'],
       order: [['createdAt', 'DESC']],
     });
-    tenantId = tenant ? tenant.id : null;
+    organizationId = tenant ? tenant.id : null;
   }
 
   let provider = 'LOCAL';
@@ -1030,7 +1030,7 @@ const getMe = async (userId) => {
     isHost: !!user.isHost,
     profileImageUrl: user.profileImageUrl || null,
     provider,
-    tenantId,
+    organizationId,
     lastLoginAt: user.lastLoginAt || null,
     memberSince: user.createdAt,
   };
@@ -1139,7 +1139,7 @@ const verifyTenantInvitation = async (rawToken) => {
       id: invitation.id,
       ownerEmail: invitation.ownerEmail,
       ownerFullName: invitation.ownerFullName,
-      businessName: invitation.businessName,
+      organizationName: invitation.organizationName,
       email: invitation.email,
       phone: invitation.phone,
       expiresAt: invitation.expiresAt,
@@ -1216,12 +1216,11 @@ const acceptTenantInvitation = async ({ token, password, fullName, phone }, auth
   }
 
   // Create the Tenant
-  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase();
-  const tenantCode = `GYM-${suffix}`;
+  const organizationCode = require('../utils/organization-code.utils').generateOrganizationCode(); // R-120 NEW-307: one generator (F8)
 
   const tenant = await Tenant.create({
-    tenantCode,
-    businessName: invitation.businessName,
+    organizationCode,
+    organizationName: invitation.organizationName,
     email: invitation.email,
     phone: invitation.phone || null,
     cityId: invitation.cityId || null,
@@ -1236,7 +1235,7 @@ const acceptTenantInvitation = async ({ token, password, fullName, phone }, auth
   await invitation.update({
     status: 'ACCEPTED',
     acceptedAt: new Date(),
-    tenantId: tenant.id,
+    organizationId: tenant.id,
   });
 
   // Audit the acceptance
@@ -1248,8 +1247,8 @@ const acceptTenantInvitation = async ({ token, password, fullName, phone }, auth
       targetId: tenant.id,
       details: {
         ownerEmail: invitation.ownerEmail,
-        tenantCode: tenant.tenantCode,
-        businessName: tenant.businessName,
+        organizationCode: tenant.organizationCode,
+        organizationName: tenant.organizationName,
         invitationId: invitation.id,
       },
       createdAt: new Date(),

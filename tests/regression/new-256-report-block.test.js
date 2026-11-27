@@ -27,7 +27,7 @@ const { STARTER_WORDS } = require('../../src/constants/moderation');
 
 let personas;
 let ctx;
-let tenantId;
+let organizationId;
 
 const tokenFor = (user) =>
   signToken({ sub: user.id, id: user.id, email: user.email, role: 'MEMBER', isVerified: true });
@@ -44,14 +44,14 @@ const asUser = (user) => {
   };
 };
 
-const newConversation = (userId, tid = tenantId) =>
-  Conversation.create({ id: uuidv4(), tenantId: tid, branchId: ctx.branch1.id, userId, type: 'INQUIRY' });
+const newConversation = (userId, tid = organizationId) =>
+  Conversation.create({ id: uuidv4(), organizationId: tid, branchId: ctx.branch1.id, userId, type: 'INQUIRY' });
 
 const newReview = (userId, status = 'APPROVED', extra = {}) =>
   GymReview.create({
-    gymListingId: ctx.listing1.id,
+    businessId: ctx.listing1.id,
     branchId: ctx.branch1.id,
-    tenantId,
+    organizationId,
     userId,
     rating: 2,
     title: 'Not great',
@@ -66,7 +66,7 @@ beforeAll(async () => {
   const h = await setupTestDatabases();
   personas = await setupPersonas(h);
   ctx = require('../harness/personas').personaManager.context;
-  tenantId = personas.owner.tenantId;
+  organizationId = personas.owner.organizationId;
 });
 
 afterAll(async () => {
@@ -95,10 +95,10 @@ describe('POST /reports', () => {
     expect(again.body.data.report.id).toBe(res.body.data.report.id);
 
     const row = await ContentReport.findByPk(res.body.data.report.id);
-    expect(row).toMatchObject({ reporterUserId: personas.member.user.id, targetUserId: author.id, tenantId, reason: 'HARASSMENT', note: 'rude' });
+    expect(row).toMatchObject({ reporterUserId: personas.member.user.id, targetUserId: author.id, organizationId, reason: 'HARASSMENT', note: 'rude' });
     expect(row.snapshotText).toBe('Not great\nCrowded at night');
 
-    const path = `/discovery/gyms/${ctx.listing1.id}/reviews`;
+    const path = `/discovery/businesses/${ctx.listing1.id}/reviews`;
     expect(reviewIdsIn(await asPersona('member').get(path))).not.toContain(review.id);
     expect(reviewIdsIn(await asPersona('anonymous').get(path))).toContain(review.id);
     expect(reviewIdsIn(await asUser(bystander).get(path))).toContain(review.id);
@@ -142,12 +142,12 @@ describe('POST /reports', () => {
   test('a message: the gym reports the traveller, the traveller reports the gym; outsiders get 404; own message 400', async () => {
     const conv = await newConversation(personas.member.user.id);
     const fromMember = await inbox.replyAsUser(conv.id, personas.member.user.id, 'please call me back');
-    const fromGym = await inbox.replyToInquiry(conv.id, personas.owner.user.id, 'we are closed today', tenantId);
+    const fromGym = await inbox.replyToInquiry(conv.id, personas.owner.user.id, 'we are closed today', organizationId);
 
     const byGym = await asPersona('owner').post('/reports', { targetType: 'MESSAGE', targetId: fromMember.id, reason: 'SPAM' });
     expect(byGym.status).toBe(201);
     const row = await ContentReport.findByPk(byGym.body.data.report.id);
-    expect(row).toMatchObject({ targetUserId: personas.member.user.id, conversationId: conv.id, tenantId, snapshotText: 'please call me back' });
+    expect(row).toMatchObject({ targetUserId: personas.member.user.id, conversationId: conv.id, organizationId, snapshotText: 'please call me back' });
 
     const byMember = await asPersona('member').post('/reports', { targetType: 'MESSAGE', targetId: fromGym.id, reason: 'OTHER', note: 'wrong info' });
     expect(byMember.status).toBe(201);
@@ -184,7 +184,7 @@ describe('blocking in chat', () => {
   /** The lists link the newest conversation of the blocked pair (a block is per gym, not per conversation). */
   const expectPairConversation = async (conversationId, userId, tid) => {
     const c = await Conversation.findByPk(conversationId);
-    expect(c).toMatchObject({ userId, tenantId: tid });
+    expect(c).toMatchObject({ userId, organizationId: tid });
   };
 
   test('the traveller blocks the gym: no messages either way, hidden for the traveller only, unblock restores', async () => {
@@ -211,8 +211,8 @@ describe('blocking in chat', () => {
     expect(hostView.body.data.block).toEqual({ blockedByMe: false, blockedByOther: true, canSend: false });
 
     const list = await asPersona('member').get('/me/blocks');
-    expect(list.body.data.blocks).toEqual([expect.objectContaining({ tenantId, name: expect.any(String) })]);
-    await expectPairConversation(list.body.data.blocks[0].conversationId, personas.member.user.id, tenantId);
+    expect(list.body.data.blocks).toEqual([expect.objectContaining({ organizationId, name: expect.any(String) })]);
+    await expectPairConversation(list.body.data.blocks[0].conversationId, personas.member.user.id, organizationId);
 
     const unblocked = await asPersona('member').delete(`/me/inbox/${conv.id}/block`);
     expect(unblocked.body.data.block).toEqual({ blockedByMe: false, blockedByOther: false, canSend: true });
@@ -229,7 +229,7 @@ describe('blocking in chat', () => {
     expect((await asPersona('member').post(`/me/inbox/${conv.id}/reply`, { text: 'hi' })).status).toBe(403);
     expect((await asPersona('owner').post(`/host/inbox/inquiries/${conv.id}/reply`, { text: 'hi' })).status).toBe(403);
     // A gym opening a conversation with a message, to a traveller it blocked, is refused.
-    await expect(inbox.findOrCreateHostConversation(tenantId, personas.member.user.id, ctx.branch1.id, 'promo'))
+    await expect(inbox.findOrCreateHostConversation(organizationId, personas.member.user.id, ctx.branch1.id, 'promo'))
       .rejects.toMatchObject({ statusCode: 403 });
 
     expect(await hostInbox()).not.toContain(conv.id);
@@ -239,7 +239,7 @@ describe('blocking in chat', () => {
 
     const list = await asPersona('owner').get('/host/inbox/blocks');
     expect(list.body.data.blocks).toEqual([expect.objectContaining({ userId: personas.member.user.id, name: 'Gym Member' })]);
-    await expectPairConversation(list.body.data.blocks[0].conversationId, personas.member.user.id, tenantId);
+    await expectPairConversation(list.body.data.blocks[0].conversationId, personas.member.user.id, organizationId);
 
     await asPersona('owner').delete(`/host/inbox/inquiries/${conv.id}/block`);
     expect((await asPersona('owner').post(`/host/inbox/inquiries/${conv.id}/reply`, { text: 'sorry' })).status).toBe(201);
@@ -252,7 +252,7 @@ describe('blocking in chat', () => {
     await asPersona('member').delete(`/me/inbox/${conv.id}/block`);
     const view = await asPersona('member').get(`/me/inbox/${conv.id}`);
     expect(view.body.data.block).toEqual({ blockedByMe: false, blockedByOther: true, canSend: false });
-    expect(await UserBlock.count({ where: { userId: personas.member.user.id, tenantId } })).toBe(1);
+    expect(await UserBlock.count({ where: { userId: personas.member.user.id, organizationId } })).toBe(1);
   });
 
   test('only a party to the conversation can block it', async () => {
@@ -369,7 +369,7 @@ describe('admin report queue', () => {
     expect((await GymReview.findByPk(review.id)).status).toBe('REJECTED');
     expect(await ContentReport.count({ where: { targetId: review.id, status: 'OPEN' } })).toBe(0);
     expect(await ContentReport.count({ where: { targetId: review.id, status: 'ACTIONED', action: 'HIDE_REVIEW' } })).toBe(2);
-    expect(reviewIdsIn(await asPersona('anonymous').get(`/discovery/gyms/${ctx.listing1.id}/reviews`))).not.toContain(review.id);
+    expect(reviewIdsIn(await asPersona('anonymous').get(`/discovery/businesses/${ctx.listing1.id}/reviews`))).not.toContain(review.id);
 
     const again = await asPersona('platformAdmin').patch(`/admin/reports/${r1.id}`, { action: 'DISMISS' });
     expect(again.status).toBe(409);
@@ -378,7 +378,7 @@ describe('admin report queue', () => {
 
   test('delete the message: the row is gone, the report keeps the text, the conversation preview is replaced', async () => {
     const conv = await newConversation(personas.member.user.id);
-    const msg = await inbox.replyToInquiry(conv.id, personas.owner.user.id, 'nasty words here', tenantId);
+    const msg = await inbox.replyToInquiry(conv.id, personas.owner.user.id, 'nasty words here', organizationId);
     const report = (await asPersona('member').post('/reports', { targetType: 'MESSAGE', targetId: msg.id, reason: 'HARASSMENT' })).body.data.report;
 
     const wrong = await asPersona('platformAdmin').patch(`/admin/reports/${report.id}`, { action: 'HIDE_REVIEW' });

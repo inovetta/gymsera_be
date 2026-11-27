@@ -36,7 +36,7 @@ describe('SEC-12: Platform DB Audit Log Persistence', () => {
     const req = {
       method: 'POST',
       originalUrl: '/api/v1/test-mutation',
-      user: { id: '00000000-0000-0000-0000-000000000001', tenantId: null },
+      user: { id: '00000000-0000-0000-0000-000000000001', organizationId: null },
       ip: '127.0.0.1',
       get: (header) => (header === 'user-agent' ? 'Jest-Test-Agent' : null),
     };

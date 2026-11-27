@@ -26,11 +26,11 @@ describe('P9d: purchase-intent is the server check before every store purchase (
   let plan3;
   let plan3b; // another catalog plan with the same branch limit as plan3
   let plan5;
-  const tenantId = () => ctx.tenant1.id;
+  const organizationId = () => ctx.tenant1.id;
 
   const reset = async (rows = []) => {
-    await TenantSubscription.destroy({ where: { tenantId: tenantId() } });
-    for (const r of rows) await createTenantSubscription(tenantId(), r);
+    await TenantSubscription.destroy({ where: { organizationId: organizationId() } });
+    for (const r of rows) await createTenantSubscription(organizationId(), r);
   };
   const ask = (plan, platform, extra = {}) =>
     asPersona('owner').post('/billing/purchase-intent', { planId: plan ? plan.id : undefined, platform, ...extra });
@@ -196,7 +196,7 @@ describe('P9d: purchase-intent is the server check before every store purchase (
     });
 
     test('a legacy package row (paid, no branchCount) compares on the package limit', async () => {
-      const pkg = await PlatformPackage.create({ name: 'Starter', price: 4999, billingCycle: 'MONTHLY', maxBranches: 1, maxOrganizations: 1 });
+      const pkg = await PlatformPackage.create({ name: 'Starter', price: 4999, billingCycle: 'MONTHLY', maxBranches: 1, maxBusinesses: 1 });
       await reset([bank(plan1, { billingPlanId: null, branchCount: null, platformPackageId: pkg.id })]);
       expect((await ask(plan1, 'ios')).status).toBe(409);
       const bigger = await ask(plan3, 'ios');

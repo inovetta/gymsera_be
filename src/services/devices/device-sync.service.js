@@ -18,7 +18,7 @@
  *     branch-billing-lock.service#assertBranchCheckinAllowed): no adds or updates, removals only.
  *
  * Templates are decrypted only when a command is handed to the device (renderCommands).
- * `db` = a tenant connection { sequelize, models, tenantId? }.
+ * `db` = a tenant connection { sequelize, models, organizationId? }.
  */
 const { utc } = require('./sql-time');
 const crypto = require('crypto');
@@ -68,7 +68,7 @@ async function devicesOf(db, { deviceId = null, branchId = null, includeHeld = f
   if (branchId) { where.push('d.branch_id = ?'); rep.push(branchId); }
   const rows = await select(
     db,
-    `SELECT d.*, b.gym_id AS branch_gym_id, b.timezone AS branch_timezone, b.status AS branch_status, b.billing_locked_at AS branch_billing_locked_at
+    `SELECT d.*, b.business_id AS branch_gym_id, b.timezone AS branch_timezone, b.status AS branch_status, b.billing_locked_at AS branch_billing_locked_at
        FROM access_device_details d JOIN branches b ON b.id = d.branch_id WHERE ${where.join(' AND ')}`,
     rep
   );
@@ -113,7 +113,7 @@ async function desiredFor(db, device, memberIds, { now = new Date(), noPins = fa
   if (only && !only.length) return new Map();
 
   const sameOrg = device.branch_gym_id
-    ? (await select(db, 'SELECT id FROM branches WHERE gym_id = ?', [device.branch_gym_id])).map((b) => b.id)
+    ? (await select(db, 'SELECT id FROM branches WHERE business_id = ?', [device.branch_gym_id])).map((b) => b.id)
     : [device.branch_id];
   const subs = await select(
     db,

@@ -424,7 +424,7 @@ router.post(
  *                           type: string
  *                         role:
  *                           type: string
- *                         tenantId:
+ *                         organizationId:
  *                           type: string
  *                           nullable: true
  *                         isVerified:
@@ -451,7 +451,7 @@ router.delete('/sessions/:id', authenticate, validate.allowBody([]), authControl
 router.delete('/sessions', authenticate, validate.allowBody([]), authController.revokeAllSessions);
 
 // ── Tenant Invitations (AUTH-09) ──────────────────────────────────────────────
-router.get('/tenant-invitations/verify', authController.verifyTenantInvitation);
-router.post('/tenant-invitations/accept', validate.allowBody(['token', 'password', 'fullName', 'phone']), authController.acceptTenantInvitation);
+router.get('/organization-invitations/verify', authController.verifyTenantInvitation);
+router.post('/organization-invitations/accept', validate.allowBody(['token', 'password', 'fullName', 'phone']), authController.acceptTenantInvitation);
 
 module.exports = router;

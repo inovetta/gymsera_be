@@ -23,14 +23,14 @@ const authorize = (...roles) => {
           return next();
         }
         const userId = req.user?.id || req.user?.sub;
-        const tenantId = req.user?.tenantId || req.tenantDb?.tenantId || req.tenantId;
-        if (userId && tenantId) {
+        const organizationId = req.user?.organizationId || req.tenantDb?.organizationId || req.organizationId;
+        if (userId && organizationId) {
           const membershipService = require('../services/membership.service');
           const owned = await membershipService.listOwnedTenants(userId, {
             statuses: ['ACTIVE', 'SUSPENDED'],
             attributes: ['id'],
           });
-          if (owned.some((t) => t.id === tenantId)) {
+          if (owned.some((t) => t.id === organizationId)) {
             if (req.user) req.user.isOwner = true;
             return next();
           }

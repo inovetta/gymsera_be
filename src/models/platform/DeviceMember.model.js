@@ -24,7 +24,7 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
         comment: 'Denormalized for fast lookup without joining devices table',
@@ -52,7 +52,7 @@ module.exports = (sequelize) => {
       indexes: [
         { name: 'device_members_device_pin_unique', unique: true, fields: ['device_id', 'zk_pin'] },
         { name: 'device_members_device_user_unique', unique: true, fields: ['device_id', 'user_id'] },
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['user_id'] },
       ],
     }

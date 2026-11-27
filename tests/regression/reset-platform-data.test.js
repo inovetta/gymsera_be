@@ -43,6 +43,7 @@ async function seed() {
   await conn.query('CREATE TABLE platform_packages (id INT PRIMARY KEY)');
   await conn.query('CREATE TABLE cities (id INT PRIMARY KEY)');
   await conn.query('CREATE TABLE areas (id INT PRIMARY KEY)');
+  await conn.query('CREATE TABLE moderation_words (id INT PRIMARY KEY, word VARCHAR(50))');
   await conn.query('CREATE TABLE notifications (id INT PRIMARY KEY)');
   await conn.query('CREATE TABLE refresh_tokens (id INT PRIMARY KEY, user_id INT)');
   await conn.query('CREATE TABLE users (id INT PRIMARY KEY, email VARCHAR(100), role VARCHAR(30))');
@@ -53,6 +54,7 @@ async function seed() {
   for (const t of ['billing_plans', 'billing_plan_prices', 'platform_packages', 'cities', 'areas']) {
     await conn.query(`INSERT INTO ${t} VALUES (1),(2),(3)`);
   }
+  await conn.query('INSERT INTO moderation_words VALUES (1,\'spam\'),(2,\'scam\')');
   await conn.query('INSERT INTO notifications VALUES (1),(2)');
   await conn.query('INSERT INTO refresh_tokens VALUES (1,1),(2,2),(3,3)');
   await conn.query(
@@ -119,6 +121,7 @@ describe('reset-platform-data', () => {
     for (const t of ['billing_plans', 'billing_plan_prices', 'platform_packages', 'cities', 'areas']) {
       expect(await count(t)).toBe(3);
     }
+    expect(await count('moderation_words')).toBe(2);
     expect(await count('notifications')).toBe(0);
     expect(await count('refresh_tokens')).toBe(0);
     expect(await count('tenants')).toBe(0);
@@ -142,8 +145,8 @@ describe('reset-platform-data', () => {
   test('the plan lists each tenant_code with the db_name read from tenants (NEW-136)', async () => {
     const r = await run();
     expect(r.plan.tenants).toEqual([
-      { id: 1, tenantCode: 'GYM-RESETA', status: 'ACTIVE', dbName: TENANT_A },
-      { id: 2, tenantCode: 'GYM-RESETB', status: 'PROVISIONING_FAILED', dbName: TENANT_B },
+      { id: 1, organizationCode: 'GYM-RESETA', status: 'ACTIVE', dbName: TENANT_A },
+      { id: 2, organizationCode: 'GYM-RESETB', status: 'PROVISIONING_FAILED', dbName: TENANT_B },
     ]);
   });
 
@@ -171,5 +174,44 @@ describe('reset-platform-data', () => {
     expect(text).toContain('"event":"emptied"');
     expect(text).toContain('"event":"tenant_database_dropped"');
     expect(text).not.toMatch(/@gymsera\.test/);
+  });
+
+  test('supports p033-p038 renamed tables (organizations, business_listings, organization_*, member_subscription_index)', async () => {
+    await conn.query('RENAME TABLE tenants TO organizations');
+    await conn.query('ALTER TABLE organizations CHANGE COLUMN tenant_code organization_code VARCHAR(50)');
+    await conn.query('CREATE TABLE organization_subscriptions (id INT PRIMARY KEY)');
+    await conn.query('CREATE TABLE organization_invitations (id INT PRIMARY KEY)');
+    await conn.query('CREATE TABLE user_organization_index (id INT PRIMARY KEY)');
+    await conn.query('CREATE TABLE business_listings (id INT PRIMARY KEY)');
+    await conn.query('CREATE TABLE business_reviews (id INT PRIMARY KEY)');
+    await conn.query('CREATE TABLE saved_businesses (id INT PRIMARY KEY)');
+    await conn.query('CREATE TABLE member_subscription_index (id INT PRIMARY KEY)');
+    for (const t of [
+      'organization_subscriptions',
+      'organization_invitations',
+      'user_organization_index',
+      'business_listings',
+      'business_reviews',
+      'saved_businesses',
+      'member_subscription_index',
+    ]) {
+      await conn.query(`INSERT INTO ${t} VALUES (1)`);
+    }
+
+    const dry = await run({ dropTenantDatabases: true });
+    expect(dry.plan.tenants).toEqual([
+      { id: 1, organizationCode: 'GYM-RESETA', status: 'ACTIVE', dbName: TENANT_A },
+      { id: 2, organizationCode: 'GYM-RESETB', status: 'PROVISIONING_FAILED', dbName: TENANT_B },
+    ]);
+
+    const applied = await run({ confirm: true, db: PLATFORM, host: HOST, dropTenantDatabases: true });
+    expect(applied.droppedDatabases.sort()).toEqual([TENANT_A, TENANT_B]);
+    expect(await count('organizations')).toBe(0);
+    expect(await count('business_listings')).toBe(0);
+    expect(await count('organization_subscriptions')).toBe(0);
+    expect(await count('member_subscription_index')).toBe(0);
+    expect(await count('moderation_words')).toBe(2);
+    expect(await dbExists(TENANT_A)).toBe(false);
+    expect(await dbExists(TENANT_B)).toBe(false);
   });
 });

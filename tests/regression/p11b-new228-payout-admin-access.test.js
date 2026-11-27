@@ -1,7 +1,7 @@
 /**
  * P11b, NEW-228 (P1, security). Owner decision 2026-11-07 (spec §14 R-97).
  *
- * Before: a platform admin who sent X-Tenant-Id passed `can('payouts.bank.manage')` because
+ * Before: a platform admin who sent X-Organization-Id passed `can('payouts.bank.manage')` because
  * `hasAllBranches` is true for PLATFORM_ADMIN (`branchAccess.utils.js`), so
  * GET /host/payout-account answered 200 with the full account number, and PUT replaced the
  * host's bank details with only the admin's own password. The permission's own note says
@@ -11,7 +11,7 @@
  *  - read: a platform admin sees the account masked (numbers as their last four digits, no free
  *    text), never the full number; the payout list masks each payout's destination the same way;
  *  - write: a platform admin gets 403 `payout_account_owner_only` on every payout-account write,
- *    with or without X-Tenant-Id, with the correct password, and before any body validation;
+ *    with or without X-Organization-Id, with the correct password, and before any body validation;
  *  - audit: every platform-admin read of a payout account writes a platform audit entry with the
  *    admin's id and the gym (tenant); no entry, no answer.
  * The owner and team members without the owner role are unchanged.
@@ -36,14 +36,14 @@ const OLD = new Date(Date.now() - 3 * 86400000);
 let ctx;
 let PayoutAccount;
 let PlatformAuditLog;
-const asAdminIn = () => ({ 'X-Tenant-Id': ctx.tenant1.id });
+const asAdminIn = () => ({ 'X-Organization-Id': ctx.tenant1.id });
 
 const resetAccount = async () => {
   await PayoutAccount.destroy({ where: {} });
-  await PayoutAccount.create({ tenantId: ctx.tenant1.id, organizationId: null, detailsJson: DETAILS, detailsUpdatedAt: OLD });
+  await PayoutAccount.create({ organizationId: ctx.tenant1.id, businessId: null, detailsJson: DETAILS, detailsUpdatedAt: OLD });
 };
 const storedDetails = async () =>
-  (await PayoutAccount.findOne({ where: { tenantId: ctx.tenant1.id, organizationId: null } })).detailsJson;
+  (await PayoutAccount.findOne({ where: { organizationId: ctx.tenant1.id, businessId: null } })).detailsJson;
 const noFullNumber = (body) => {
   const text = JSON.stringify(body);
   for (const n of FULL_NUMBERS) expect(text).not.toContain(n);
@@ -67,7 +67,7 @@ afterAll(async () => {
 });
 
 describe('NEW-228 read: a platform admin sees the payout account masked, and the read is audited', () => {
-  test('GET /host/payout-account with X-Tenant-Id → 200, numbers as last four digits only', async () => {
+  test('GET /host/payout-account with X-Organization-Id → 200, numbers as last four digits only', async () => {
     const res = await asPersona('platformAdmin', asAdminIn()).get('/host/payout-account');
     expect(res.status).toBe(200);
     const { account } = res.body.data;
@@ -93,7 +93,7 @@ describe('NEW-228 read: a platform admin sees the payout account masked, and the
     expect(last.actorUserId).toBe(ctx.platformAdmin.id);
     expect(last.targetType).toBe('tenant');
     expect(last.targetId).toBe(ctx.tenant1.id);
-    expect(last.details).toEqual(expect.objectContaining({ tenantId: ctx.tenant1.id, gymName: ctx.tenant1.gymName }));
+    expect(last.details).toEqual(expect.objectContaining({ organizationId: ctx.tenant1.id, firstBusinessName: ctx.tenant1.firstBusinessName }));
     noFullNumber(last.details);
   });
 
@@ -109,7 +109,7 @@ describe('NEW-228 read: a platform admin sees the payout account masked, and the
     }
   });
 
-  test('GET /host/payouts with X-Tenant-Id: each payout destination is masked for the admin', async () => {
+  test('GET /host/payouts with X-Organization-Id: each payout destination is masked for the admin', async () => {
     const { Payout } = ctx.tenant1Db.models;
     await Payout.destroy({ where: {} });
     await Payout.create({ amount: 500, currency: 'PKR', status: 'PENDING', destinationJson: DETAILS, requestedBy: ctx.tenant1.ownerUserId });
@@ -124,8 +124,8 @@ describe('NEW-228 read: a platform admin sees the payout account masked, and the
     await Payout.destroy({ where: {} });
   });
 
-  test('GET /gyms/profile with X-Tenant-Id: the admin gets no bank details', async () => {
-    const res = await asPersona('platformAdmin', asAdminIn()).get('/gyms/profile');
+  test('GET /organizations/me/businesses/{businessId}/profile with X-Organization-Id: the admin gets no bank details', async () => {
+    const res = await asPersona('platformAdmin', asAdminIn()).get('/organizations/me/businesses/{businessId}/profile');
     expect([200, 403]).toContain(res.status);
     noFullNumber(res.body);
   });
@@ -133,8 +133,8 @@ describe('NEW-228 read: a platform admin sees the payout account masked, and the
 
 describe('NEW-228 write: a platform admin gets 403 on every payout-account write', () => {
   test.each([
-    ['with X-Tenant-Id and the correct password', true, { details: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD }],
-    ['without X-Tenant-Id', false, { details: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD }],
+    ['with X-Organization-Id and the correct password', true, { details: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD }],
+    ['without X-Organization-Id', false, { details: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD }],
     ['with a body that would fail validation (403, not 400)', true, { details: { cardNumber: '4242424242424242' }, password: PASSWORD, extra: 1 }],
     ['with no password (403, not 401)', true, { details: { bankName: 'Hacker Bank' } }],
   ])('PUT /host/payout-account %s → 403 payout_account_owner_only, nothing changed', async (_label, withTenant, body) => {
@@ -146,9 +146,9 @@ describe('NEW-228 write: a platform admin gets 403 on every payout-account write
     expect(await storedDetails()).toEqual(DETAILS);
   });
 
-  test('PATCH /gyms/profile bank details with X-Tenant-Id and the correct password → 403, nothing changed', async () => {
+  test('PATCH /organizations/me/businesses/{businessId}/profile bank details with X-Organization-Id and the correct password → 403, nothing changed', async () => {
     const res = await asPersona('platformAdmin', asAdminIn())
-      .patch('/gyms/profile', { paymentDetailsJson: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD });
+      .patch('/organizations/me/businesses/{businessId}/profile', { paymentDetailsJson: { bankName: 'Hacker Bank', accountNumber: '6660006660' }, password: PASSWORD });
     expect(res.status).toBe(403);
     expect(await storedDetails()).toEqual(DETAILS);
   });

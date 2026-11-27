@@ -33,7 +33,7 @@ describe('Step 2.9: Repair script for payments on the wrong day', () => {
     const { Gym, Branch } = models;
     gym = await Gym.create({ name: 'Repair Test Gym' });
     branch = await Branch.create({
-      gymId: gym.id,
+      businessId: gym.id,
       branchName: 'Main Branch',
       timezone: 'Asia/Karachi',
     });
@@ -94,7 +94,7 @@ describe('Step 2.9: Repair script for payments on the wrong day', () => {
     // 3. Execute PREVIEW (apply: false)
     const previewResult = await processTenantPaymentRepair(
       tenantSeq,
-      { tenantId: 'test-tenant-1', gymName: 'Test Gym' },
+      { organizationId: 'test-tenant-1', gymName: 'Test Gym' },
       { apply: false, quiet: true }
     );
 
@@ -137,7 +137,7 @@ describe('Step 2.9: Repair script for payments on the wrong day', () => {
     // Run in APPLY mode
     const applyResult = await processTenantPaymentRepair(
       tenantSeq,
-      { tenantId: 'test-tenant-1', gymName: 'Test Gym' },
+      { organizationId: 'test-tenant-1', gymName: 'Test Gym' },
       { apply: true, quiet: true }
     );
 
@@ -191,7 +191,7 @@ describe('Step 2.9: Repair script for payments on the wrong day', () => {
     // Second run
     const secondResult = await processTenantPaymentRepair(
       tenantSeq,
-      { tenantId: 'test-tenant-1', gymName: 'Test Gym' },
+      { organizationId: 'test-tenant-1', gymName: 'Test Gym' },
       { apply: true, quiet: true }
     );
 
@@ -232,7 +232,7 @@ describe('Step 2.9: Repair script for payments on the wrong day', () => {
 
     const previewResult = await processTenantPaymentRepair(
       tenantSeq,
-      { tenantId: 'test-tenant-1', gymName: 'Test Gym' },
+      { organizationId: 'test-tenant-1', gymName: 'Test Gym' },
       { apply: false, quiet: true }
     );
 

@@ -11,7 +11,7 @@ const approvalService = require('../../src/services/approval.service');
 describe('RBAC-04: Approval execution re-checks and atomicity (spec §12.5, §8.3)', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let appServer;
   let listing;
   let branch;
@@ -21,10 +21,10 @@ describe('RBAC-04: Approval execution re-checks and atomicity (spec §12.5, §8.
     const { GymListing } = require('../../src/models/platform');
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
-    listing = await GymListing.findOne({ where: { tenantId } });
+    organizationId = personas.owner.organizationId;
+    listing = await GymListing.findOne({ where: { organizationId } });
     const { Branch, ExpenseCategory } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await Branch.findOne({ where: { businessId: listing.id } });
     category = await ExpenseCategory.create({
       branchId: branch.id,
       name: 'Operations Category',
@@ -81,7 +81,7 @@ describe('RBAC-04: Approval execution re-checks and atomicity (spec §12.5, §8.
 
     const ctx = {
       tenantDb: dbHarness.tenant1,
-      tenantId,
+      organizationId,
       userId: personas.manager.user.id,
     };
 
@@ -132,7 +132,7 @@ describe('RBAC-04: Approval execution re-checks and atomicity (spec §12.5, §8.
 
     const ctx = {
       tenantDb: dbHarness.tenant1,
-      tenantId,
+      organizationId,
       userId: personas.owner.user.id,
     };
 
@@ -181,7 +181,7 @@ describe('RBAC-04: Approval execution re-checks and atomicity (spec §12.5, §8.
 
     const ctx = {
       tenantDb: dbHarness.tenant1,
-      tenantId,
+      organizationId,
       userId: personas.owner.user.id,
     };
 
@@ -227,7 +227,7 @@ describe('RBAC-04: Approval execution re-checks and atomicity (spec §12.5, §8.
 
     const ctx = {
       tenantDb: dbHarness.tenant1,
-      tenantId,
+      organizationId,
       userId: personas.owner.user.id,
     };
 

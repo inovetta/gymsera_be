@@ -53,7 +53,7 @@ describe('BILL-03: deferred downgrade with a branch choice', () => {
     }
     plan6 = await factories.createBillingPlan({ branchCount: 6, sortOrder: 6 });
     plan3 = await factories.createBillingPlan({ branchCount: 3, sortOrder: 3 });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   const maxBranches = async () => {
@@ -207,7 +207,7 @@ describe('BILL-03: deferred downgrade with a branch choice', () => {
     });
 
     test('only the account owner can choose (a staff token is refused)', async () => {
-      const staffToken = signToken({ sub: 'staff-1', id: 'staff-1', role: 'STAFF', isVerified: true, tenantId: tenant.id });
+      const staffToken = signToken({ sub: 'staff-1', id: 'staff-1', role: 'STAFF', isVerified: true, organizationId: tenant.id });
       const res = await request(app).put('/api/v1/billing/downgrade-choice').set('Authorization', `Bearer ${staffToken}`)
         .send({ billingPlanId: plan3.id, keepBranchIds: branches.slice(0, 3).map((b) => b.id) });
       expect(res.status).toBe(403);
@@ -217,7 +217,7 @@ describe('BILL-03: deferred downgrade with a branch choice', () => {
   describe('Google Play (downgrade with DEFERRED replacement)', () => {
     test('the current plan stays until Play switches it; the keep-list moves to the replacement row', async () => {
       const { truth } = fakes.installGoogleFakes({ 'tok-6': fakes.googlePurchase({ productId: plan6.androidProductId }) });
-      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-6', tenantId: tenant.id });
+      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-6', organizationId: tenant.id });
       const keep = [branches[0].id, branches[1].id, branches[2].id];
       await choose({ billingPlanId: plan3.id, keepBranchIds: keep });
 
@@ -225,7 +225,7 @@ describe('BILL-03: deferred downgrade with a branch choice', () => {
       const withDeferred = fakes.googlePurchase({ productId: plan6.androidProductId });
       withDeferred.lineItems[0].deferredItemReplacement = { productId: plan3.androidProductId };
       truth['tok-6'] = withDeferred;
-      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-6', tenantId: tenant.id });
+      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-6', organizationId: tenant.id });
       let old = await rowFor('tok-6');
       expect(old.branchCount).toBe(6);
       expect(old.pendingChange).toMatchObject({ billingPlanId: plan3.id, branchCount: 3, keepBranchIds: keep, confirmedByProvider: true });
@@ -236,14 +236,14 @@ describe('BILL-03: deferred downgrade with a branch choice', () => {
       future.startTime = new Date(Date.now() + 20 * fakes.DAY).toISOString();
       future.linkedPurchaseToken = 'tok-6';
       truth['tok-3'] = future;
-      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-3', tenantId: tenant.id });
+      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-3', organizationId: tenant.id });
       expect(await rowFor('tok-3')).toBeNull();
       expect(await maxBranches()).toBe(6);
 
       // At renewal Play switches: the replacement is in effect.
       truth['tok-3'] = { ...future, startTime: new Date(Date.now() - 1000).toISOString() };
       truth['tok-6'] = fakes.googlePurchase({ productId: plan6.androidProductId, state: 'SUBSCRIPTION_STATE_EXPIRED', expiresInDays: 0 });
-      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-3', tenantId: tenant.id });
+      await googlePlayBilling.syncFromGoogle({ purchaseToken: 'tok-3', organizationId: tenant.id });
       const replacement = await rowFor('tok-3');
       expect(replacement.status).toBe('ACTIVE');
       expect(replacement.branchCount).toBe(3);

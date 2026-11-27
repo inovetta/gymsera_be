@@ -50,13 +50,13 @@ const paidBankDaysLeft = (current, today) => {
 /** The branch limit the current plan grants: the snapshotted catalog count, or a legacy package's. */
 const currentLimit = (current) => current.branchCount ?? current.package?.maxBranches ?? 0;
 
-const evaluate = async ({ tenantId, planId = null, platform, billingCycle = null, today = isoDate(new Date()) }) => {
+const evaluate = async ({ organizationId, planId = null, platform, billingCycle = null, today = isoDate(new Date()) }) => {
   const target = String(platform).toUpperCase();
   const targetPlan = planId ? await BillingPlan.findByPk(planId) : null;
   if (planId && !targetPlan) throw refuse(404, 'plan_not_found', 'This plan is no longer offered. Close this screen and choose again.');
 
-  const base = { appAccountToken: tenantId, replacementMode: null, blocker: null, warning: null, requiresConfirmation: false };
-  const current = await subscriptionQuotaService.getActiveSubscription(tenantId);
+  const base = { appAccountToken: organizationId, replacementMode: null, blocker: null, warning: null, requiresConfirmation: false };
+  const current = await subscriptionQuotaService.getActiveSubscription(organizationId);
   if (!current) return { ...base, action: 'new', mechanism: 'new' };
 
   const renews = current.autoRenew !== false;
@@ -77,7 +77,7 @@ const evaluate = async ({ tenantId, planId = null, platform, billingCycle = null
         currentPlatform: current.platform,
         manageUrl,
         blocker: { provider: current.platform, manageUrl },
-        appAccountToken: tenantId,
+        appAccountToken: organizationId,
       }
     );
   }
@@ -90,7 +90,7 @@ const evaluate = async ({ tenantId, planId = null, platform, billingCycle = null
       mechanism: 'blocked',
       reason: 'same_plan_active',
       platform: current.platform,
-      appAccountToken: tenantId,
+      appAccountToken: organizationId,
     });
   }
 
@@ -115,7 +115,7 @@ const evaluate = async ({ tenantId, planId = null, platform, billingCycle = null
           unusedDays,
           endDate,
           currentBranchCount: limit,
-          appAccountToken: tenantId,
+          appAccountToken: organizationId,
         }
       );
     }

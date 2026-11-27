@@ -46,13 +46,13 @@ const _push = (kind, { storeName, branchCount }) =>
   })[kind];
 
 /**
- * @param {string} tenantId
+ * @param {string} organizationId
  * @param {'on_hold'|'refunded'|'expired'|'downgraded'} kind
  * @param {object} subscription - the TenantSubscription just written.
  */
-const notifyHostOfPlanChange = async (tenantId, kind, subscription) => {
+const notifyHostOfPlanChange = async (organizationId, kind, subscription) => {
   try {
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'ownerUserId', 'businessName', 'gymName'] });
+    const tenant = await Tenant.findByPk(organizationId, { attributes: ['id', 'ownerUserId', 'organizationName', 'firstBusinessName'] });
     const owner = tenant?.ownerUserId ? await User.findByPk(tenant.ownerUserId, { attributes: ['id', 'email', 'fullName'] }) : null;
     if (!owner) return;
     const storeName = STORE_NAME[subscription.platform] || null;
@@ -60,7 +60,7 @@ const notifyHostOfPlanChange = async (tenantId, kind, subscription) => {
     const endedAt = subscription.entitlementEndedAt ? new Date(subscription.entitlementEndedAt) : null;
     const branchesLockAt =
       kind !== 'downgraded' && endedAt ? new Date(endedAt.getTime() + overquotaGraceDays() * 24 * 60 * 60 * 1000) : null;
-    const businessName = tenant.businessName || tenant.gymName || 'your business';
+    const organizationName = tenant.organizationName || tenant.firstBusinessName || 'your business';
 
     const notificationsService = require('./notifications.service');
     await notificationsService
@@ -73,26 +73,26 @@ const notifyHostOfPlanChange = async (tenantId, kind, subscription) => {
         deepLink: '/host/subscriptions',
         metadataJson: { event: `host_plan_${kind}`, subscriptionId: subscription.id, status: subscription.status },
       })
-      .catch((err) => console.warn(`[HostPlanNotice] ${kind} notification failed for tenant ${tenantId}:`, err.message));
+      .catch((err) => console.warn(`[HostPlanNotice] ${kind} notification failed for tenant ${organizationId}:`, err.message));
 
     const emailService = require('./email.service');
     const send =
       kind === 'expired'
         ? emailService.sendTenantSubscriptionExpiredEmail(owner.email, owner.fullName, {
-            businessName,
+            organizationName,
             endDate: subscription.endDate,
             branchesLockAt,
           })
         : emailService.sendTenantPlanChangedEmail(owner.email, owner.fullName, {
             kind,
-            businessName,
+            organizationName,
             storeName,
             branchCount,
             branchesLockAt,
           });
-    await Promise.resolve(send).catch((err) => console.warn(`[HostPlanNotice] ${kind} email failed for tenant ${tenantId}:`, err.message));
+    await Promise.resolve(send).catch((err) => console.warn(`[HostPlanNotice] ${kind} email failed for tenant ${organizationId}:`, err.message));
   } catch (err) {
-    console.warn(`[HostPlanNotice] ${kind} notice failed for tenant ${tenantId}:`, err.message);
+    console.warn(`[HostPlanNotice] ${kind} notice failed for tenant ${organizationId}:`, err.message);
   }
 };
 

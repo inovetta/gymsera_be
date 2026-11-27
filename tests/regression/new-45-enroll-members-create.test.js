@@ -1,5 +1,5 @@
 /**
- * NEW-45 (a) — POST /gyms/members/enroll goes through members.create and the
+ * NEW-45 (a) — POST /organizations/me/members/enroll goes through members.create and the
  * approval engine (approvalService.perform), like every other approvable action.
  *
  * Before: no permission check and no approval tier. Any team member (a Trainer, a
@@ -25,7 +25,7 @@ beforeAll(async () => {
   app = await startTestServer();
 
   plan = await dbHarness.tenant1.models.MembershipPlan.create({
-    gymId: team.branchA.gymId,
+    businessId: team.branchA.businessId,
     branchId: team.branchA.id,
     name: 'Standard Monthly',
     price: 3000,
@@ -34,7 +34,7 @@ beforeAll(async () => {
     status: 'ACTIVE',
   });
 
-  const base = { tenantDb: dbHarness.tenant1, tenantId: team.tenantId, scopeType: 'BRANCH', branchIds: [team.branchA.id] };
+  const base = { tenantDb: dbHarness.tenant1, organizationId: team.organizationId, scopeType: 'BRANCH', branchIds: [team.branchA.id] };
   trainer = await teamMember({ ...base, email: 'trainer@new45.test', roleKey: 'TRAINER' });
   branchAdmin = await teamMember({ ...base, email: 'bradmin@new45.test', roleKey: 'BR_ADMIN' });
 });
@@ -47,7 +47,7 @@ afterAll(async () => {
 const enroll = (token, over = {}) => {
   seq += 1;
   const body = { email: `walkin${seq}@new45.test`, fullName: 'Walk In', planId: plan.id, branchId: team.branchA.id, ...over };
-  return { body, call: request(app).post('/api/v1/gyms/members/enroll').set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', team.tenantId).send(body) };
+  return { body, call: request(app).post('/api/v1/organizations/me/members/enroll').set('Authorization', `Bearer ${token}`).set('X-Organization-Id', team.organizationId).send(body) };
 };
 
 const subscriptionsFor = async (email) => {
@@ -86,7 +86,7 @@ describe('NEW-45: member enrolment follows members.create', () => {
     const approve = await request(app)
       .post(`/api/v1/approvals/${pending.body.data.approvalRequestId}/approve`)
       .set('Authorization', `Bearer ${team.orgAdmin.token}`)
-      .set('X-Tenant-Id', team.tenantId)
+      .set('X-Organization-Id', team.organizationId)
       .send({});
     expect(approve.status).toBe(200);
     expect((await subscriptionsFor(body.email)).count).toBe(1);

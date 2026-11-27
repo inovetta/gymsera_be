@@ -208,8 +208,8 @@ const _refreshSync = (s) => {
   s.topInUse.reset();
   s.topWaiting.reset();
   for (const t of TenantDbManager.getTopMetrics(TOP_TENANTS)) {
-    s.topInUse.set({ tenant_id: t.tenantId }, t.inUse);
-    s.topWaiting.set({ tenant_id: t.tenantId }, t.waiting);
+    s.topInUse.set({ tenant_id: t.organizationId }, t.inUse);
+    s.topWaiting.set({ tenant_id: t.organizationId }, t.waiting);
   }
 
   try {

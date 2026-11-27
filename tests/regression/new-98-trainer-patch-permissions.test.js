@@ -15,7 +15,7 @@ const { GymListing } = require('../../src/models/platform');
 let app;
 let dbHarness;
 let personas;
-let tenantId;
+let organizationId;
 let branchA;
 let branchB;
 let trainers; // { a, b, none }
@@ -29,9 +29,9 @@ beforeAll(async () => {
   personas = await setupPersonas(dbHarness);
   app = await startTestServer();
   const tenantDb = dbHarness.tenant1;
-  tenantId = personas.owner.tenantId;
-  const listing = await GymListing.findOne({ where: { tenantId } });
-  branchA = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+  organizationId = personas.owner.organizationId;
+  const listing = await GymListing.findOne({ where: { organizationId } });
+  branchA = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
   branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B' });
 
   const { Trainer } = tenantDb.models;
@@ -42,7 +42,7 @@ beforeAll(async () => {
   trainers = { a: await mk('a', branchA.id), b: await mk('b', branchB.id), none: await mk('none', null) };
 
   const make = (email, roleKey, scopeType, branchIds, allow) =>
-    teamMember({ tenantDb, tenantId, email, roleKey, scopeType, branchIds, allow });
+    teamMember({ tenantDb, organizationId, email, roleKey, scopeType, branchIds, allow });
   people = {
     managerA: await make('mgr-a@new98.test', 'MANAGER', 'BRANCH', [branchA.id]),
     orgAdmin: await make('orgadmin@new98.test', 'ORG_ADMIN', 'ORG', []),

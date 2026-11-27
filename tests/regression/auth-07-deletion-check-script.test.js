@@ -80,8 +80,8 @@ describe('the script itself', () => {
     legacyOwner = await factories.createUser({ role: 'GYM_HOST', status: 'INACTIVE', email: 'legacy.owner@gymseratest.com', fullName: 'Legacy Person' });
     legacy = await factories.createTenant({ ownerUserId: legacyOwner.id, status: 'ACTIVE' });
     for (const db of DBS) await conn.query(`CREATE DATABASE IF NOT EXISTS \`${db}\``);
-    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 100 * DAY), tenantCode: 'A07CHK-OLD', dbName: DBS[0] });
-    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 5 * DAY), tenantCode: 'A07CHK-NEW', dbName: DBS[1] });
+    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 100 * DAY), organizationCode: 'A07CHK-OLD', dbName: DBS[0] });
+    await factories.createTenant({ status: 'REJECTED', rejectedAt: new Date(Date.now() - 5 * DAY), organizationCode: 'A07CHK-NEW', dbName: DBS[1] });
   });
 
   afterAll(async () => {
@@ -104,7 +104,7 @@ describe('the script itself', () => {
   test('lists the legacy request, the live-gym owner and the orphan databases — changes NOTHING and prints no personal data', async () => {
     const snapshot = async () => JSON.stringify([
       (await conn.query(`SELECT * FROM \`${process.env.PLATFORM_DB_NAME}\`.users ORDER BY id`))[0],
-      (await conn.query(`SELECT * FROM \`${process.env.PLATFORM_DB_NAME}\`.tenants ORDER BY id`))[0],
+      (await conn.query(`SELECT * FROM \`${process.env.PLATFORM_DB_NAME}\`.organizations ORDER BY id`))[0],
       (await conn.query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'gymsera%' ORDER BY SCHEMA_NAME"))[0],
       (await conn.query(`SELECT COUNT(*) AS n FROM \`${process.env.PLATFORM_DB_NAME}\`.platform_audit_logs`).catch(() => [[0]]))[0],
     ]);

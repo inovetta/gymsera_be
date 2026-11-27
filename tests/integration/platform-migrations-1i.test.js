@@ -97,9 +97,9 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
         ('bbbbbbbb-0000-4000-8000-000000000003', 'c@x.test', 'SUSPENDED', NOW(), NOW())
     `);
     await seq.query(`
-      CREATE TABLE tenants (
+      CREATE TABLE organizations (
         id CHAR(36) NOT NULL PRIMARY KEY,
-        tenant_code VARCHAR(50) NOT NULL,
+        organization_code VARCHAR(50) NOT NULL,
         status ENUM('DRAFT','PENDING_REVIEW','UNDER_REVIEW','APPROVED','REJECTED','SUSPENDED','ACTIVE') NOT NULL DEFAULT 'DRAFT',
         db_name VARCHAR(100) NULL,
         created_at DATETIME NOT NULL,
@@ -107,7 +107,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await seq.query(`
-      INSERT INTO tenants (id, tenant_code, status, db_name, created_at, updated_at) VALUES
+      INSERT INTO organizations (id, organization_code, status, db_name, created_at, updated_at) VALUES
         ('aaaaaaaa-0000-4000-8000-000000000001', 'GYM-ACTIVE', 'ACTIVE', 'gymsera_gym_active', NOW(), NOW()),
         ('aaaaaaaa-0000-4000-8000-000000000002', 'GYM-REJECTED', 'REJECTED', 'gymsera_gym_rejected', NOW(), NOW()),
         ('aaaaaaaa-0000-4000-8000-000000000003', 'GYM-PENDING', 'PENDING_REVIEW', NULL, NOW(), NOW())
@@ -156,7 +156,7 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
 
   test('a conflicting NOT NULL tenants column → p015 skipped, nothing changed by it', async () => {
     await createPlatformDbBefore1I();
-    await seq.query("ALTER TABLE tenants ADD COLUMN status_before_deletion VARCHAR(20) NOT NULL DEFAULT ''");
+    await seq.query("ALTER TABLE organizations ADD COLUMN status_before_deletion VARCHAR(20) NOT NULL DEFAULT ''");
     await runPlatformMigrations(seq, { targetVersion: 14 }); // p014 may apply; p015 is what we test
     const before = await snapshot();
 
@@ -170,30 +170,30 @@ describe('Prompt 1I migrations p014 / p015 (account deletion columns and statuse
   test('apply widens both enums (old values keep their order), adds nullable columns, keeps every row; re-run is a no-op', async () => {
     await createPlatformDbBefore1I();
     const usersBefore = await seq.query('SELECT id, email, status FROM users ORDER BY id', { type: QueryTypes.SELECT });
-    const tenantsBefore = await seq.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id', { type: QueryTypes.SELECT });
+    const tenantsBefore = await seq.query('SELECT id, organization_code, status, db_name FROM organizations ORDER BY id', { type: QueryTypes.SELECT });
 
     const res = await runPlatformMigrations(seq, { targetVersion: 16 });
     expect(res.applied).toEqual([P014, P015, P016]);
 
     expect(await enumOf('users')).toEqual(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'PENDING_DELETION', 'DELETED']);
-    expect(await enumOf('tenants')).toEqual([
+    expect(await enumOf('organizations')).toEqual([
       'DRAFT', 'PENDING_REVIEW', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED', 'ACTIVE', 'PENDING_DELETION', 'DELETED',
     ]);
     expect(await columns('users', 'deletion%')).toEqual(
       DELETION_COLUMNS.map((name) => ({ name, type: 'datetime', nullable: 'YES' }))
     );
-    expect(await columns('tenants', 'deletion%')).toEqual(
+    expect(await columns('organizations', 'deletion%')).toEqual(
       DELETION_COLUMNS.map((name) => ({ name, type: 'datetime', nullable: 'YES' }))
     );
     const [sbd] = await seq.query(
       "SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() " +
-        "AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'status_before_deletion'",
+        "AND TABLE_NAME = 'organizations' AND COLUMN_NAME = 'status_before_deletion'",
       { type: QueryTypes.SELECT }
     );
     expect(sbd).toEqual({ type: 'varchar(20)', nullable: 'YES' });
 
     expect(await seq.query('SELECT id, email, status FROM users ORDER BY id', { type: QueryTypes.SELECT })).toEqual(usersBefore);
-    expect(await seq.query('SELECT id, tenant_code, status, db_name FROM tenants ORDER BY id', { type: QueryTypes.SELECT })).toEqual(tenantsBefore);
+    expect(await seq.query('SELECT id, organization_code, status, db_name FROM organizations ORDER BY id', { type: QueryTypes.SELECT })).toEqual(tenantsBefore);
     const filled = await seq.query(
       'SELECT COUNT(*) AS n FROM users WHERE deleted_at IS NOT NULL OR deletion_requested_at IS NOT NULL OR deletion_scheduled_for IS NOT NULL',
       { type: QueryTypes.SELECT }

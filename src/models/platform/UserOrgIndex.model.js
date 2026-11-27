@@ -29,11 +29,11 @@ module.exports = (sequelize) => {
         primaryKey: true,
         field: 'user_id',
       },
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
         primaryKey: true,
-        field: 'tenant_id',
+        field: 'organization_id',
       },
       // Highest role the user holds in this tenant, denormalized so the app shell
       // can render a context switcher without opening any tenant database.
@@ -69,12 +69,12 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'user_org_index',
+      tableName: 'user_organization_index', // R-120 NEW-307 (p034)
       underscored: true,
       timestamps: true,
       indexes: [
         { fields: ['user_id', 'status'] },
-        { fields: ['tenant_id', 'status'] },
+        { fields: ['organization_id', 'status'] },
       ],
     }
   );

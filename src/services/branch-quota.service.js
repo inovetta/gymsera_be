@@ -9,11 +9,11 @@ const { Tenant, GymListing } = require('../models/platform');
 const { createError } = require('../utils/response.utils');
 const subscriptionQuotaService = require('./subscription-quota.service');
 
-const getBranchQuota = async (tenantId, { organizationId = null } = {}) => {
-  const tenant = await Tenant.findByPk(tenantId);
+const getBranchQuota = async (organizationId, { businessId = null } = {}) => {
+  const tenant = await Tenant.findByPk(organizationId);
   if (!tenant) throw createError('Tenant not found', 404);
 
-  const activeSub = await subscriptionQuotaService.getActiveSubscription(tenantId);
+  const activeSub = await subscriptionQuotaService.getActiveSubscription(organizationId);
   const maxBranches = await subscriptionQuotaService.resolveMaxBranches(tenant, activeSub);
 
   // usedBranches/remainingBranches are always tenant-wide — the branch-
@@ -21,32 +21,32 @@ const getBranchQuota = async (tenantId, { organizationId = null } = {}) => {
   // includes every organization's reservedSlots (paid, unbuilt) alongside
   // real ACTIVE branches, since a reservation already counts as used the
   // moment it's made (subscription-quota.service.js#getUsedCapacity).
-  // organizationBranches/organizationReservedSlots (only present with
-  // ?organizationId=) are additive: what THIS specific organization holds,
+  // businessBranches/businessReservedSlots (only present with
+  // ?businessId=) are additive: what THIS specific organization holds,
   // for the Gyms tab's per-organization "N branches, M unbuilt slots" view
   // — a real number now, not a generic slice of tenant-wide leftovers.
   let usedBranches = 0;
   let activeBranches = 0;
-  let organizationBranches = 0;
-  let organizationReservedSlots = 0;
+  let businessBranches = 0;
+  let businessReservedSlots = 0;
 
   // NEW-114: a failed read is an error, never zeros. "0 of N used" from a database
   // that could not be reached reads as real capacity (UX-08). GET /me/bootstrap
   // already turns a failure into `quota: null`; the host routes answer the error.
   if (tenant.status === 'ACTIVE' && tenant.connectionStringEncrypted) {
-    const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
-    usedBranches = await subscriptionQuotaService.getUsedCapacity(tenantId, tenantDb);
+    const tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
+    usedBranches = await subscriptionQuotaService.getUsedCapacity(organizationId, tenantDb);
     activeBranches = await tenantDb.models.Branch.count({ where: { status: 'ACTIVE' } });
 
-    if (organizationId) {
-      organizationBranches = await tenantDb.models.Branch.count({
-        where: { status: 'ACTIVE', gymListingId: organizationId },
+    if (businessId) {
+      businessBranches = await tenantDb.models.Branch.count({
+        where: { status: 'ACTIVE', businessId: businessId },
       });
       const orgListing = await GymListing.findOne({
-        where: { id: organizationId, tenantId },
+        where: { id: businessId, organizationId },
         attributes: ['reservedSlots'],
       });
-      organizationReservedSlots = orgListing ? orgListing.reservedSlots : 0;
+      businessReservedSlots = orgListing ? orgListing.reservedSlots : 0;
     }
   }
 
@@ -74,7 +74,7 @@ const getBranchQuota = async (tenantId, { organizationId = null } = {}) => {
     overQuotaGraceDays: graceDays,
     overQuotaGraceRemainingDays,
     isOverQuotaGraceExpired,
-    ...(organizationId ? { organizationBranches, organizationReservedSlots } : {}),
+    ...(businessId ? { businessBranches, businessReservedSlots } : {}),
   };
 };
 

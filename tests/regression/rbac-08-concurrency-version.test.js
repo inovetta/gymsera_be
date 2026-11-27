@@ -10,7 +10,7 @@ const request = require('supertest');
 describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant edits (spec §12.5, §8.3)', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let appServer;
   let listing;
   let branch;
@@ -21,10 +21,10 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     const { GymListing, User } = require('../../src/models/platform');
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
-    listing = await GymListing.findOne({ where: { tenantId } });
+    organizationId = personas.owner.organizationId;
+    listing = await GymListing.findOne({ where: { organizationId } });
     const { Branch, RoleAssignment } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await Branch.findOne({ where: { businessId: listing.id } });
     appServer = await startTestServer();
 
     deskMemberUser = await User.create({
@@ -56,7 +56,7 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     const res = await request(appServer)
       .get(`/api/v1/team/${assignment.id}`)
       .set('Authorization', `Bearer ${personas.owner.token}`)
-      .set('X-Tenant-Id', tenantId);
+      .set('X-Organization-Id', organizationId);
 
     expect(res.status).toBe(200);
     expect(res.body.data.version).toBe(1);
@@ -66,7 +66,7 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     const res = await request(appServer)
       .patch(`/api/v1/team/${assignment.id}`)
       .set('Authorization', `Bearer ${personas.owner.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         jobTitle: 'Desk Lead',
         expectedVersion: 1,
@@ -84,7 +84,7 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     const res = await request(appServer)
       .patch(`/api/v1/team/${assignment.id}`)
       .set('Authorization', `Bearer ${personas.owner.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         jobTitle: 'Desk Supervisor',
         expectedVersion: 1,
@@ -103,7 +103,7 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     const res = await request(appServer)
       .put(`/api/v1/team/${assignment.id}/permissions`)
       .set('Authorization', `Bearer ${personas.owner.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         overrides: [
           {
@@ -122,7 +122,7 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     const res = await request(appServer)
       .put(`/api/v1/team/${assignment.id}/permissions`)
       .set('Authorization', `Bearer ${personas.owner.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         overrides: [
           {
@@ -143,7 +143,7 @@ describe('RBAC-08: Optimistic concurrency control via expectedVersion on grant e
     const res = await request(appServer)
       .patch(`/api/v1/team/${assignment.id}`)
       .set('Authorization', `Bearer ${personas.owner.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         jobTitle: 'Front Desk Head',
       });

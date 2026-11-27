@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  return sequelize.define(
+  const GymListing = sequelize.define(
     'GymListing',
     {
       id: {
@@ -10,12 +10,13 @@ module.exports = (sequelize) => {
         primaryKey: true,
       },
       // References the approved tenant
-      tenantId: {
+      organizationId: {
         type: DataTypes.UUID,
         allowNull: false,
       },
       // References the primary branch in the tenant DB (stored as value — cross-DB reference)
-      branchId: {
+      primaryBranchId: {
+        field: 'primary_branch_id', // R-120 NEW-306 (p033)
         type: DataTypes.UUID,
         allowNull: true,
       },
@@ -37,11 +38,13 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      title: {
+      name: {
+        field: 'name', // R-120 NEW-306 (p033)
         type: DataTypes.STRING(200),
         allowNull: false,
       },
-      shortDescription: {
+      description: {
+        field: 'description', // R-120 NEW-306 (p033)
         type: DataTypes.TEXT,
         allowNull: true,
       },
@@ -139,6 +142,24 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 0,
       },
+      // A complete first branch is held here while the business awaits approval.
+      firstBranchDraft: {
+        field: 'first_branch_draft_json',
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
+      kycStatus: {
+        field: 'kyc_status',
+        type: DataTypes.ENUM('NOT_SUBMITTED', 'PENDING', 'APPROVED', 'REJECTED'),
+        allowNull: false,
+        defaultValue: 'NOT_SUBMITTED',
+      },
+      kycDocumentsJson: { field: 'kyc_documents_json', type: DataTypes.JSON, allowNull: true },
+      kycSubmittedAt: { field: 'kyc_submitted_at', type: DataTypes.DATE, allowNull: true },
+      approvedAt: { field: 'approved_at', type: DataTypes.DATE, allowNull: true },
+      approvedBy: { field: 'approved_by', type: DataTypes.UUID, allowNull: true },
+      verifiedAt: { field: 'verified_at', type: DataTypes.DATE, allowNull: true },
+      verifiedBy: { field: 'verified_by', type: DataTypes.UUID, allowNull: true },
       rejectionReason: {
         type: DataTypes.TEXT,
         allowNull: true,
@@ -153,15 +174,33 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: 'gym_listings',
+      tableName: 'business_listings', // R-120 NEW-306 (p033); attribute names change with the API (NEW-309)
       underscored: true,
       timestamps: true,
       indexes: [
         { fields: ['city_id', 'area_id', 'status'] },
-        { fields: ['tenant_id'] },
+        { fields: ['organization_id'] },
         { fields: ['is_featured'] },
         { fields: ['gender_type'] },
       ],
     }
   );
+
+  // NEW-303 M2 (A2 H3, D11): the private document list never leaves the server with its storage keys. Clients
+  // get `kycDocuments` (id, type, status, dates, reason) and the derived flags; `verifiedBy` stays internal.
+  GymListing.prototype.toJSON = function toJSON() {
+    const values = { ...this.get({ plain: true }) };
+    if (!Object.prototype.hasOwnProperty.call(values, 'kycDocumentsJson')) return values;
+    const kyc = require('../../services/business-kyc.service');
+    delete values.kycDocumentsJson;
+    delete values.verifiedBy;
+    delete values.approvedBy;
+    values.kycDocuments = kyc.publicDocuments(this);
+    values.businessVerified = !!this.verifiedAt;
+    values.missingForApproval = kyc.isApproved(this) ? [] : kyc.missingForApproval(this);
+    values.heldFirstBranch = !!this.firstBranchDraft;
+    return values;
+  };
+
+  return GymListing;
 };

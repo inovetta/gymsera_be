@@ -17,6 +17,23 @@ const strongPassword = () =>
     .matches(/[^A-Za-z0-9]/)
     .withMessage('Password must contain at least one special character');
 
+/**
+ * NEW-302: the email of every auth body. A space inside an address is never valid, but it is what a "+"
+ * becomes when a client puts the address in a URL query without encoding it (builds 27 / 28 open
+ * `/auth/otp-verify?email=a+b@x.com`, and `Uri.queryParameters` decodes "+" as a space). So, after
+ * trimming, each space inside the address is read as "+" before the format check and every lookup.
+ */
+const plusFromSpaces = (value) => (typeof value === 'string' ? value.trim().replace(/ /g, '+') : value);
+
+const emailField = () =>
+  body('email')
+    .customSanitizer(plusFromSpaces)
+    .toLowerCase()
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('A valid email address is required');
+
 const authValidators = {
   register: [
     body('fullName')
@@ -26,13 +43,7 @@ const authValidators = {
       .isLength({ max: 100 })
       .withMessage('Full name must be 100 characters or fewer'),
 
-    body('email')
-      .trim()
-      .toLowerCase()
-      .notEmpty()
-      .withMessage('Email is required')
-      .isEmail()
-      .withMessage('A valid email address is required'),
+    emailField(),
 
     strongPassword(),
 
@@ -43,25 +54,13 @@ const authValidators = {
   ],
 
   login: [
-    body('email')
-      .trim()
-      .toLowerCase()
-      .notEmpty()
-      .withMessage('Email is required')
-      .isEmail()
-      .withMessage('A valid email address is required'),
+    emailField(),
 
     body('password').notEmpty().withMessage('Password is required'),
   ],
 
   verifyOtp: [
-    body('email')
-      .trim()
-      .toLowerCase()
-      .notEmpty()
-      .withMessage('Email is required')
-      .isEmail()
-      .withMessage('A valid email address is required'),
+    emailField(),
 
     body('code')
       .trim()
@@ -72,13 +71,7 @@ const authValidators = {
   ],
 
   resendOtp: [
-    body('email')
-      .trim()
-      .toLowerCase()
-      .notEmpty()
-      .withMessage('Email is required')
-      .isEmail()
-      .withMessage('A valid email address is required'),
+    emailField(),
   ],
 
   googleLogin: [
@@ -97,23 +90,11 @@ const authValidators = {
   ],
 
   passwordResetRequest: [
-    body('email')
-      .trim()
-      .toLowerCase()
-      .notEmpty()
-      .withMessage('Email is required')
-      .isEmail()
-      .withMessage('A valid email address is required'),
+    emailField(),
   ],
 
   passwordResetConfirm: [
-    body('email')
-      .trim()
-      .toLowerCase()
-      .notEmpty()
-      .withMessage('Email is required')
-      .isEmail()
-      .withMessage('A valid email address is required'),
+    emailField(),
 
     body('code')
       .trim()
@@ -127,3 +108,4 @@ const authValidators = {
 };
 
 module.exports = authValidators;
+module.exports.plusFromSpaces = plusFromSpaces;

@@ -1,7 +1,7 @@
 /**
  * Phase 7 P8, NEW-168 (P3): an organization is never created empty.
  *
- * Before: `POST /host/listings` with `branchSource: 'none'` created an organization with no
+ * Before: `POST /host/businesses` with `branchSource: 'none'` created an organization with no
  * branch and no reserved slot (host.controller.js createListing). It existed for "create, then
  * move a branch in"; P5b removed moving (R-81), so 'none' only left an empty organization behind
  * (CAP-07: an organization is never empty).
@@ -25,12 +25,12 @@ describe('NEW-168: no organization without a branch', () => {
     await teardownTestDatabases();
   });
 
-  test("branchSource 'none': 422 organization_needs_branch and no organization is created", async () => {
-    const before = await GymListing.count({ where: { tenantId: personas.owner.tenantId } });
-    const res = await asPersona('owner').post('/host/listings', { gymName: 'Empty Org', branchSource: 'none', cityId: 1 });
+  test('A2 H2: a business without its required firstBranch is refused before creation', async () => {
+    const before = await GymListing.count({ where: { organizationId: personas.owner.organizationId } });
+    const res = await asPersona('owner').post('/host/businesses', { businessName: 'Empty Org' });
     expect(res.status).toBe(422);
-    expect(res.body.code).toBe('organization_needs_branch');
-    expect(await GymListing.count({ where: { tenantId: personas.owner.tenantId } })).toBe(before);
+    expect(res.body.code).toBe('validation_error');
+    expect(await GymListing.count({ where: { organizationId: personas.owner.organizationId } })).toBe(before);
   });
 
   test('the code has user-facing copy in every language', () => {

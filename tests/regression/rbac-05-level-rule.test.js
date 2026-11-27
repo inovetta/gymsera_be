@@ -13,7 +13,7 @@ const gymService = require('../../src/services/gym.service');
 describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
   let dbHarness;
   let personas;
-  let tenantId;
+  let organizationId;
   let appServer;
   let listing;
   let branch;
@@ -22,10 +22,10 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     const { GymListing } = require('../../src/models/platform');
     dbHarness = await setupTestDatabases();
     personas = await setupPersonas(dbHarness);
-    tenantId = personas.owner.tenantId;
-    listing = await GymListing.findOne({ where: { tenantId } });
+    organizationId = personas.owner.organizationId;
+    listing = await GymListing.findOne({ where: { organizationId } });
     const { Branch } = dbHarness.tenant1.models;
-    branch = await Branch.findOne({ where: { gymListingId: listing.id } });
+    branch = await Branch.findOne({ where: { businessId: listing.id } });
     appServer = await startTestServer();
   });
 
@@ -38,7 +38,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     const res = await request(appServer)
       .post('/api/v1/team/invites')
       .set('Authorization', `Bearer ${personas.orgAdmin.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         email: 'orgadmin.escalation@example.test',
         fullName: 'Escalation Target',
@@ -54,7 +54,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     const res = await request(appServer)
       .post('/api/v1/team/invites')
       .set('Authorization', `Bearer ${personas.orgAdmin.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         email: 'owner.escalation@example.test',
         fullName: 'Superior Target',
@@ -66,7 +66,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     expect(res.body.message).toMatch(/cannot be assigned|at or above your own level/i);
   });
 
-  test('Manager (level 60) assigning an Org Admin via legacy POST /gyms/branches/:branchId/staff is rejected with 403', async () => {
+  test('Manager (level 60) assigning an Org Admin via legacy POST /organizations/me/branches/:branchId/staff is rejected with 403', async () => {
     const { User } = require('../../src/models/platform');
     const targetUser = await User.create({
       fullName: 'Legacy Staff Assignee',
@@ -77,9 +77,9 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     });
 
     const res = await request(appServer)
-      .post(`/api/v1/gyms/branches/${branch.id}/staff`)
+      .post(`/api/v1/organizations/me/branches/${branch.id}/staff`)
       .set('Authorization', `Bearer ${personas.manager.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         userId: targetUser.id,
         designation: 'admin',
@@ -112,7 +112,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     const res = await request(appServer)
       .patch(`/api/v1/team/${deskAssignment.id}`)
       .set('Authorization', `Bearer ${personas.manager.token}`)
-      .set('X-Tenant-Id', tenantId)
+      .set('X-Organization-Id', organizationId)
       .send({
         roleKey: 'ORG_ADMIN',
       });
@@ -137,7 +137,7 @@ describe('RBAC-05: Strictly-below level rule (spec §12.5, §8.3)', () => {
     await expect(
       teamService.acceptStaffInvite({
         tenantDb: dbHarness.tenant1,
-        tenantId,
+        organizationId,
         userId: inviteeUser.id,
         email: inviteeUser.email,
         branchId: branch.id,

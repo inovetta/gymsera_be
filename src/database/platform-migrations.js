@@ -202,7 +202,7 @@ const PLATFORM_MIGRATIONS = [
       // untouched and re-running is a no-op. Previously widened at every boot
       // in platform.js#connect (PENDING_MIGRATION/PENDING_CANCEL/SCHEDULED).
       await sequelize.query(
-        'ALTER TABLE `tenant_subscriptions` MODIFY COLUMN `status` ' +
+        'ALTER TABLE `organization_subscriptions` MODIFY COLUMN `status` ' +
           'ENUM(\'ACTIVE\',\'EXPIRED\',\'CANCELLED\',\'PENDING_MIGRATION\',\'PENDING_CANCEL\',\'SCHEDULED\',\'REVOKED\') ' +
           'NOT NULL DEFAULT \'ACTIVE\''
       );
@@ -219,28 +219,28 @@ const PLATFORM_MIGRATIONS = [
       // migration is skipped (not recorded) and they are listed for a human.
       const existing = await sequelize.query(
         'SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() ' +
-          'AND TABLE_NAME = \'tenant_subscriptions\' AND INDEX_NAME = \'tenant_subscriptions_platform_external_unique\' LIMIT 1',
+          'AND TABLE_NAME = \'organization_subscriptions\' AND INDEX_NAME = \'organization_subscriptions_platform_external_unique\' LIMIT 1',
         { type: QueryTypes.SELECT }
       );
       if (existing.length > 0) return;
 
       const duplicates = await sequelize.query(
         'SELECT platform, external_original_transaction_id AS externalId, COUNT(*) AS n ' +
-          'FROM tenant_subscriptions WHERE external_original_transaction_id IS NOT NULL ' +
+          'FROM organization_subscriptions WHERE external_original_transaction_id IS NOT NULL ' +
           'GROUP BY platform, external_original_transaction_id HAVING COUNT(*) > 1',
         { type: QueryTypes.SELECT }
       );
       if (duplicates.length > 0) {
         console.warn(
           `[PlatformMigration] SKIPPING p003: ${duplicates.length} store subscription id(s) appear on more than one ` +
-            `tenant_subscriptions row: ${duplicates.map((d) => `${d.platform}:${d.externalId} (${d.n})`).join(', ')}. ` +
+            `organization_subscriptions row: ${duplicates.map((d) => `${d.platform}:${d.externalId} (${d.n})`).join(', ')}. ` +
             'Resolve them by hand, then re-run.'
         );
         return { skipped: true, reason: 'duplicate_external_ids', duplicates };
       }
 
       await sequelize.query(
-        'ALTER TABLE `tenant_subscriptions` ADD UNIQUE INDEX `tenant_subscriptions_platform_external_unique` ' +
+        'ALTER TABLE `organization_subscriptions` ADD UNIQUE INDEX `organization_subscriptions_platform_external_unique` ' +
           '(`platform`, `external_original_transaction_id`)'
       );
     },
@@ -253,7 +253,7 @@ const PLATFORM_MIGRATIONS = [
       // Adds GRACE, ON_HOLD, PAUSED (BILL-04, spec §7.4), appended after the
       // p002 list so existing values keep their positions.
       return _widenEnumColumn(sequelize, {
-        table: 'tenant_subscriptions',
+        table: 'organization_subscriptions',
         column: 'status',
         values: [
           'ACTIVE', 'EXPIRED', 'CANCELLED', 'PENDING_MIGRATION', 'PENDING_CANCEL', 'SCHEDULED', 'REVOKED',
@@ -272,7 +272,7 @@ const PLATFORM_MIGRATIONS = [
       // Currency of `amount`, from the provider's actual charge (BILL-05).
       // Existing rows stay NULL (= the catalog's PKR); no data is rewritten.
       return _addNullableColumn(sequelize, {
-        table: 'tenant_subscriptions',
+        table: 'organization_subscriptions',
         column: 'currency',
         type: 'CHAR(3)',
         expectedType: 'char(3)',
@@ -288,7 +288,7 @@ const PLATFORM_MIGRATIONS = [
       // Deferred plan change + the host's keep-list (BILL-03). New rows only;
       // no existing data is rewritten.
       return _addNullableColumn(sequelize, {
-        table: 'tenant_subscriptions',
+        table: 'organization_subscriptions',
         column: 'pending_change',
         type: 'JSON',
         expectedType: 'json',
@@ -311,8 +311,9 @@ const PLATFORM_MIGRATIONS = [
           'SLOT_TRIMMED_DOWNGRADE',
           'SLOT_ATTRIBUTED_UPGRADE',
           'SLOT_CONSUMED_BUILD',
-          'ORG_DELETED',
-          'ORG_BRANCHES_MOVED',
+          // R-120: ORG_DELETED / ORG_BRANCHES_MOVED until p033 renamed them (they are business events).
+          'BUSINESS_DELETED',
+          'BUSINESS_BRANCHES_MOVED',
           'BRANCH_BILLING_LOCKED',
           'BRANCH_BILLING_UNLOCKED',
         ],
@@ -430,31 +431,31 @@ const PLATFORM_MIGRATIONS = [
 
       const [invCol] = await sequelize.query(
         'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-        { replacements: ['tenant_invitations', 'token_hash'], type: QueryTypes.SELECT }
+        { replacements: ['organization_invitations', 'token_hash'], type: QueryTypes.SELECT }
       );
       const [tableExists] = await sequelize.query(
         'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-        { replacements: ['tenant_invitations'], type: QueryTypes.SELECT }
+        { replacements: ['organization_invitations'], type: QueryTypes.SELECT }
       );
       if (tableExists && !invCol) {
         console.warn(
-          '[PlatformMigration] SKIPPING p010: tenant_invitations table exists without token_hash column. Resolve it by hand, then re-run.'
+          '[PlatformMigration] SKIPPING p010: organization_invitations table exists without token_hash column. Resolve it by hand, then re-run.'
         );
         return {
           skipped: true,
           reason: 'table_exists_with_other_schema',
-          table: 'tenant_invitations',
+          table: 'organization_invitations',
         };
       }
 
       await sequelize.query(`
-        CREATE TABLE IF NOT EXISTS \`tenant_invitations\` (
+        CREATE TABLE IF NOT EXISTS \`organization_invitations\` (
           \`id\` CHAR(36) NOT NULL,
           \`token_hash\` VARCHAR(64) NOT NULL,
           \`owner_email\` VARCHAR(150) NOT NULL,
           \`owner_full_name\` VARCHAR(150) NOT NULL,
           \`owner_phone\` VARCHAR(25) NULL,
-          \`business_name\` VARCHAR(200) NOT NULL,
+          \`organization_name\` VARCHAR(200) NOT NULL,
           \`email\` VARCHAR(150) NOT NULL,
           \`phone\` VARCHAR(25) NULL,
           \`city_id\` INT NULL,
@@ -467,9 +468,9 @@ const PLATFORM_MIGRATIONS = [
           \`created_at\` DATETIME NOT NULL,
           \`updated_at\` DATETIME NOT NULL,
           PRIMARY KEY (\`id\`),
-          UNIQUE KEY \`idx_tenant_invitations_token_hash\` (\`token_hash\`),
-          KEY \`idx_tenant_invitations_owner_email\` (\`owner_email\`),
-          KEY \`idx_tenant_invitations_status\` (\`status\`)
+          UNIQUE KEY \`idx_organization_invitations_token_hash\` (\`token_hash\`),
+          KEY \`idx_organization_invitations_owner_email\` (\`owner_email\`),
+          KEY \`idx_organization_invitations_status\` (\`status\`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
@@ -544,12 +545,12 @@ const PLATFORM_MIGRATIONS = [
 
       const [tableExists] = await sequelize.query(
         'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-        { replacements: ['tenants'], type: QueryTypes.SELECT }
+        { replacements: ['organizations'], type: QueryTypes.SELECT }
       );
       if (!tableExists) return null;
 
       const [col] = await sequelize.query(
-        'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenants\' AND COLUMN_NAME = \'payment_details_updated_at\'',
+        'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'organizations\' AND COLUMN_NAME = \'payment_details_updated_at\'',
         { type: QueryTypes.SELECT }
       );
       if (col) {
@@ -560,14 +561,14 @@ const PLATFORM_MIGRATIONS = [
           return {
             skipped: true,
             reason: 'column_exists_with_other_type',
-            table: 'tenants',
+            table: 'organizations',
           };
         }
         return null;
       }
 
       await sequelize.query(`
-        ALTER TABLE \`tenants\`
+        ALTER TABLE \`organizations\`
         ADD COLUMN \`payment_details_updated_at\` DATETIME NULL
         AFTER \`payment_details_json\`;
       `);
@@ -590,7 +591,7 @@ const PLATFORM_MIGRATIONS = [
       ];
       const [tableExists] = await sequelize.query(
         'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-        { replacements: ['tenants'], type: QueryTypes.SELECT }
+        { replacements: ['organizations'], type: QueryTypes.SELECT }
       );
       if (!tableExists) return null;
 
@@ -598,7 +599,7 @@ const PLATFORM_MIGRATIONS = [
       // table exactly as it was (like _addNullableColumn, but all-or-nothing).
       const existing = await sequelize.query(
         'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS ' +
-          'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenants\' AND COLUMN_NAME IN (?)',
+          'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'organizations\' AND COLUMN_NAME IN (?)',
         { replacements: [columns.map((c) => c.column)], type: QueryTypes.SELECT }
       );
       const toAdd = [];
@@ -618,7 +619,7 @@ const PLATFORM_MIGRATIONS = [
       }
       if (toAdd.length === 0) return null;
       await sequelize.query(
-        `ALTER TABLE \`tenants\` ${toAdd.map((c) => `ADD COLUMN \`${c.column}\` ${c.type} NULL`).join(', ')}`
+        `ALTER TABLE \`organizations\` ${toAdd.map((c) => `ADD COLUMN \`${c.column}\` ${c.type} NULL`).join(', ')}`
       );
       return null;
     },
@@ -646,7 +647,7 @@ const PLATFORM_MIGRATIONS = [
       if (context?.dryRun === true) return null;
       // Same for tenants (AUTH-07, R-28); `status_before_deletion` is what undo restores.
       return _addAccountDeletionSchema(sequelize, {
-        table: 'tenants',
+        table: 'organizations',
         extraColumns: [{ column: 'status_before_deletion', type: 'VARCHAR(20)', expectedType: 'varchar(20)' }],
         addStatuses: ['PENDING_DELETION', 'DELETED'],
         defaultStatus: 'DRAFT',
@@ -685,11 +686,11 @@ const PLATFORM_MIGRATIONS = [
       // as auto-renewing / billing. Prompts a banner to the host with a manage link.
       const [tableExists] = await sequelize.query(
         'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-        { replacements: ['tenant_subscriptions'], type: QueryTypes.SELECT }
+        { replacements: ['organization_subscriptions'], type: QueryTypes.SELECT }
       );
       if (!tableExists) return null;
       return _addNullableColumn(sequelize, {
-        table: 'tenant_subscriptions',
+        table: 'organization_subscriptions',
         column: 'duplicate_billing',
         type: 'TINYINT(1) DEFAULT 0',
         expectedType: 'tinyint(1)',
@@ -1031,7 +1032,7 @@ const PLATFORM_MIGRATIONS = [
     version: 26,
     name: 'p026_tenant_subscriptions_entitlement_ended_at',
     description:
-      'tenant_subscriptions.entitlement_ended_at DATETIME NULL (no backfill): when a plan stopped entitling, so a lapsed plan locks branches after the 7-day over-quota grace (P7c, R-82, NEW-170). Safe to re-run.',
+      'organization_subscriptions.entitlement_ended_at DATETIME NULL (no backfill): when a plan stopped entitling, so a lapsed plan locks branches after the 7-day over-quota grace (P7c, R-82, NEW-170). Safe to re-run.',
     // BACKUP before applying live:  mysqldump <platform_db> tenant_subscriptions > tenant_subscriptions_pre_p026.sql
     // ROLLBACK (deploy the previous app build FIRST: the TenantSubscription model selects this column):
     //   ALTER TABLE `tenant_subscriptions` DROP COLUMN `entitlement_ended_at`;
@@ -1041,12 +1042,12 @@ const PLATFORM_MIGRATIONS = [
     up: async (sequelize, context = {}) => {
       if (context?.dryRun === true) return null;
       const [hasTable] = await sequelize.query(
-        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'tenant_subscriptions\' LIMIT 1',
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'organization_subscriptions\' LIMIT 1',
         { type: QueryTypes.SELECT }
       );
       if (!hasTable) return null; // created later with the column (model sync)
       const added = await _addNullableColumn(sequelize, {
-        table: 'tenant_subscriptions',
+        table: 'organization_subscriptions',
         column: 'entitlement_ended_at',
         type: 'DATETIME',
         expectedType: 'datetime',
@@ -1074,7 +1075,7 @@ const PLATFORM_MIGRATIONS = [
         `CREATE TABLE IF NOT EXISTS \`payout_accounts\` (
           \`id\` CHAR(36) BINARY NOT NULL,
           \`tenant_id\` CHAR(36) BINARY NOT NULL,
-          \`organization_id\` CHAR(36) BINARY NULL,
+          \`business_id\` CHAR(36) BINARY NULL,
           \`scope_key\` VARCHAR(36) NOT NULL,
           \`provider\` VARCHAR(32) NOT NULL DEFAULT 'BANK_TRANSFER',
           \`status\` VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
@@ -1087,7 +1088,7 @@ const PLATFORM_MIGRATIONS = [
           \`updated_at\` DATETIME NOT NULL,
           PRIMARY KEY (\`id\`),
           UNIQUE KEY \`payout_accounts_tenant_scope_provider\` (\`tenant_id\`, \`scope_key\`, \`provider\`),
-          KEY \`payout_accounts_organization_id\` (\`organization_id\`)
+          KEY \`payout_accounts_business_id\` (\`business_id\`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
       );
       const plan = await planPayoutAccountBackfill(sequelize);
@@ -1126,7 +1127,7 @@ const PLATFORM_MIGRATIONS = [
           \`reviewed_by_user_id\` CHAR(36) BINARY NULL,
           \`reviewed_at\` DATETIME NULL,
           \`rejection_reason\` VARCHAR(500) NULL,
-          \`tenant_subscription_id\` CHAR(36) BINARY NULL,
+          \`organization_subscription_id\` CHAR(36) BINARY NULL,
           \`period_start\` DATE NULL,
           \`period_end\` DATE NULL,
           \`created_at\` DATETIME NOT NULL,
@@ -1157,7 +1158,7 @@ const PLATFORM_MIGRATIONS = [
           \`serial_number\` VARCHAR(32) NULL,
           \`previous_serial_number\` VARCHAR(32) NULL,
           \`tenant_id\` CHAR(36) BINARY NOT NULL,
-          \`organization_id\` CHAR(36) BINARY NULL,
+          \`business_id\` CHAR(36) BINARY NULL,
           \`branch_id\` CHAR(36) BINARY NOT NULL,
           \`link_mode\` VARCHAR(8) NOT NULL,
           \`comm_key\` VARCHAR(8) NULL,
@@ -1322,18 +1323,23 @@ const PLATFORM_MIGRATIONS = [
         { table: 'areas', column: 'latitude', type: 'DECIMAL(10,8)', accept: ['decimal(10,8)'] },
         { table: 'areas', column: 'longitude', type: 'DECIMAL(11,8)', accept: ['decimal(11,8)'] },
         { table: 'areas', column: 'radius_m', type: 'INT', accept: ['int', 'int(11)'] },
-        { table: 'tenants', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
-        { table: 'tenants', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
-        { table: 'gym_listings', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
-        { table: 'gym_listings', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
+        { table: 'organizations', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
+        { table: 'organizations', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
+        // R-120: `gym_listings` until p033 renamed it; a database before p033 still has the old name.
+        { table: 'business_listings', legacyTable: 'gym_listings', column: 'area_status', type: 'VARCHAR(20)', accept: ['varchar(20)'] },
+        { table: 'business_listings', legacyTable: 'gym_listings', column: 'area_request_id', type: 'INT', accept: ['int', 'int(11)'] },
       ];
       const toAdd = [];
       for (const c of columns) {
         // A table this database does not have is left alone (same rule as the older migrations).
-        const [table] = await sequelize.query(
-          'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-          { replacements: [c.table], type: QueryTypes.SELECT }
-        );
+        let table = null;
+        for (const name of [c.table, c.legacyTable].filter(Boolean)) {
+          [table] = await sequelize.query(
+            'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+            { replacements: [name], type: QueryTypes.SELECT }
+          );
+          if (table) { c.table = name; break; }
+        }
         if (!table) continue;
         const [col] = await sequelize.query(
           'SELECT COLUMN_TYPE AS type, IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
@@ -1409,6 +1415,241 @@ const PLATFORM_MIGRATIONS = [
       return null;
     },
   },
+  {
+    version: 33,
+    name: 'p033_business_naming',
+    description:
+      'R-120 NEW-306 (docs/NAMING_AND_DATA_DICTIONARY.md §3.6): business tables and columns get their names. gym_listings → business_listings (title → name, branch_id → primary_branch_id, short_description → description); saved_gyms → saved_businesses, gym_reviews → business_reviews, user_gym_memberships → member_subscription_index (gym_listing_id → business_id, gym_name → business_name); payout_accounts.organization_id, access_devices.organization_id, capacity_events.listing_id → business_id; platform_packages.max_organizations → max_businesses; capacity_events.action ORG_DELETED / ORG_BRANCHES_MOVED → BUSINESS_DELETED / BUSINESS_BRANCHES_MOVED. Indexes renamed; foreign keys follow. Metadata only except the two enum values. Safe to re-run.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run (lists p033, writes nothing).
+    // BACKUP: mysqldump of the platform database first (the enum step rewrites two values in capacity_events).
+    // DEPLOY: run it BEFORE the API build that reads these names (the models select them).
+    // CONFLICT: a table or column present under both names with data in both is reported (skipped, not
+    //   recorded) and nothing more is changed for that step; every other step is idempotent, so re-run.
+    // ROLLBACK (deploy the previous API build FIRST): the reverse RENAME TABLE / CHANGE COLUMN / RENAME INDEX
+    //   of every step below, the enum values back, then DELETE FROM `schema_migrations` WHERE `version` = 33;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const col = (table, from, to, comment) => [r.renameColumn, { table, from, to, comment }];
+      // R-120 NEW-309: `organization_id` meant the business on these two tables until this step. A database built from the models
+      // already has `organization_id` for the ORGANIZATION (renamed from tenant_id by p035), so the rename only runs on a table that
+      // still has `tenant_id` (the old shape).
+      const oldShape = (table, _t, from, to, comment) => [async (seq, args) => ((await r.columnInfo(seq, table, 'tenant_id')) ? r.renameColumn(seq, args) : { statements: [] }), { table, from, to, comment }];
+      const idx = (table, from, to) => [r.renameIndex, { table, from, to }];
+      const out = await r.applyAll(sequelize, [
+        [r.renameTable, { from: 'gym_listings', to: 'business_listings', comment: 'One row per business: its public, traveller-facing half (name, photos, area, approval, reserved branch units). Same id as the tenant businesses row.' }],
+        [r.renameTable, { from: 'saved_gyms', to: 'saved_businesses', comment: 'A business a traveller saved.' }],
+        [r.renameTable, { from: 'gym_reviews', to: 'business_reviews', comment: 'A traveller review of a business (optionally one branch), moderated by platform admins.' }],
+        [r.renameTable, { from: 'user_gym_memberships', to: 'member_subscription_index', comment: 'Index of a member\'s subscriptions across tenant databases; the real record is the tenant member_subscriptions row.' }],
+        col('business_listings', 'title', 'name', 'Business name shown to travellers. Same value as businesses.name.'),
+        col('business_listings', 'branch_id', 'primary_branch_id', 'Primary branch of the business (tenant branches.id), for the card and chat; NULL until a branch exists.'),
+        col('business_listings', 'short_description', 'description', 'Business description shown to travellers.'),
+        idx('business_listings', 'gym_listings_city_id_area_id_status', 'business_listings_city_id_area_id_status'),
+        idx('business_listings', 'gym_listings_tenant_id', 'business_listings_tenant_id'),
+        idx('business_listings', 'gym_listings_is_featured', 'business_listings_is_featured'),
+        idx('business_listings', 'gym_listings_gender_type', 'business_listings_gender_type'),
+        col('saved_businesses', 'gym_listing_id', 'business_id', 'The business saved.'),
+        idx('saved_businesses', 'saved_gyms_user_id_gym_listing_id', 'saved_businesses_user_id_business_id'),
+        idx('saved_businesses', 'saved_gyms_user_id', 'saved_businesses_user_id'),
+        col('business_reviews', 'gym_listing_id', 'business_id', 'The business reviewed.'),
+        idx('business_reviews', 'gym_reviews_gym_listing_id_status', 'business_reviews_business_id_status'),
+        idx('business_reviews', 'gym_reviews_branch_id_status', 'business_reviews_branch_id_status'),
+        idx('business_reviews', 'gym_reviews_user_id', 'business_reviews_user_id'),
+        idx('business_reviews', 'gym_reviews_branch_user_unique', 'business_reviews_branch_user_unique'),
+        col('member_subscription_index', 'gym_listing_id', 'business_id', 'The business, for display without opening the tenant database.'),
+        col('member_subscription_index', 'gym_name', 'business_name', 'Business name at subscription time (copy).'),
+        idx('member_subscription_index', 'user_gym_memberships_user_id_status', 'member_subscription_index_user_id_status'),
+        idx('member_subscription_index', 'user_gym_memberships_tenant_id', 'member_subscription_index_tenant_id'),
+        idx('member_subscription_index', 'user_gym_memberships_subscription_id', 'member_subscription_index_subscription_id'),
+        idx('member_subscription_index', 'user_gym_memberships_gym_listing_id', 'member_subscription_index_business_id'),
+        oldShape('payout_accounts', 'payout_accounts', 'organization_id', 'business_id', 'The business this account is for; NULL = organization-wide.'),
+        idx('payout_accounts', 'payout_accounts_organization_id', 'payout_accounts_business_id'),
+        oldShape('access_devices', 'access_devices', 'organization_id', 'business_id', 'The business of the device\'s branch.'),
+        col('capacity_events', 'listing_id', 'business_id', 'The business whose reserved_slots changed; NULL for organization-wide events.'),
+        idx('capacity_events', 'capacity_events_listing_id', 'capacity_events_business_id'),
+        col('platform_packages', 'max_organizations', 'max_businesses', 'Businesses allowed on this legacy package.'),
+        [r.renameEnumValues, {
+          table: 'capacity_events',
+          column: 'action',
+          rename: { ORG_DELETED: 'BUSINESS_DELETED', ORG_BRANCHES_MOVED: 'BUSINESS_BRANCHES_MOVED' },
+          values: [
+            'BRANCH_DELETED', 'BRANCH_RESTORED', 'SLOT_TRANSFERRED', 'SLOT_TRIMMED_DOWNGRADE', 'SLOT_ATTRIBUTED_UPGRADE',
+            'SLOT_CONSUMED_BUILD', 'BUSINESS_DELETED', 'BUSINESS_BRANCHES_MOVED', 'BRANCH_BILLING_LOCKED', 'BRANCH_BILLING_UNLOCKED',
+          ],
+        }],
+      ]);
+      if (out.skipped.length) {
+        console.warn(`[PlatformMigration] SKIPPING p033_business_naming (not recorded): ${JSON.stringify(out.skipped)}. Resolve by hand, then re-run.`);
+        return { skipped: true, reason: 'rename_conflict', conflicts: out.skipped };
+      }
+      return null;
+    },
+  },
+  {
+    version: 34,
+    name: 'p034_organization_naming',
+    description:
+      'R-120 NEW-307 (docs/NAMING_AND_DATA_DICTIONARY.md §3.6): organization tables and columns get their names. tenants → organizations (tenant_code → organization_code, business_name → organization_name, gym_name → first_business_name, gym_description → first_business_description, main_branch_data_json → first_branch_draft_json); tenant_subscriptions → organization_subscriptions; tenant_invitations → organization_invitations (business_name → organization_name); user_org_index → user_organization_index; plan_payment_requests / platform_invoices tenant_subscription_id → organization_subscription_id; area_request_links.target tenant / main_branch / listing → organization / first_branch_draft / business; user_blocks.blocked_by TENANT → ORGANIZATION (column widened to 16, F6); payout_accounts.scope_key TENANT → ORGANIZATION. Indexes renamed; foreign keys follow. tenant_id columns are renamed by p035 (NEW-311). Safe to re-run.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run (lists p034, writes nothing).
+    // BACKUP: mysqldump of the platform database first (three value renames: area_request_links.target, user_blocks.blocked_by, payout_accounts.scope_key).
+    // DEPLOY: after p033, BEFORE the API build that reads these names. The launch-wipe tools read either name.
+    // CONFLICT: a table or column present under both names with data in both is reported (skipped, not recorded); re-run after fixing.
+    // ROLLBACK (deploy the previous API build FIRST): the reverse RENAME TABLE / CHANGE COLUMN / RENAME INDEX of every
+    //   step below, the three value renames back, then DELETE FROM `schema_migrations` WHERE `version` = 34;
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const col = (table, from, to, comment) => [r.renameColumn, { table, from, to, comment }];
+      const idx = (table, from, to) => [r.renameIndex, { table, from, to }];
+      const out = await r.applyAll(sequelize, [
+        [r.renameTable, { from: 'tenants', to: 'organizations', comment: 'One row per organization: the host company that owns businesses and pays the plan; also the Become a Host draft and the name of its tenant database.' }],
+        [r.renameTable, { from: 'tenant_subscriptions', to: 'organization_subscriptions', comment: 'The organization\'s GymsEra plans (store, Stripe or manual); at most one entitling row (ACTIVE or GRACE); branch_count is the capacity.' }],
+        [r.renameTable, { from: 'tenant_invitations', to: 'organization_invitations', comment: 'An invitation from a platform admin to a new host to create an organization.' }],
+        [r.renameTable, { from: 'user_org_index', to: 'user_organization_index', comment: 'Routing index: which organizations a user holds a role in; never an authorization source.' }],
+        col('organizations', 'tenant_code', 'organization_code', 'Short human code of the organization (ORG-xxxxxxxx), unique.'),
+        col('organizations', 'business_name', 'organization_name', 'The organization\'s own name; private (host Profile and CMS only).'),
+        col('organizations', 'gym_name', 'first_business_name', 'Become a Host draft: name of the first business; copied at provisioning.'),
+        col('organizations', 'gym_description', 'first_business_description', 'Become a Host draft: description of the first business; copied at provisioning.'),
+        col('organizations', 'main_branch_data_json', 'first_branch_draft_json', 'Become a Host draft of the first branch; built at provisioning.'),
+        idx('organizations', 'tenants_tenant_code_unique', 'organizations_organization_code_unique'),
+        idx('organizations', 'tenants_owner_user_id', 'organizations_owner_user_id'),
+        idx('organizations', 'tenants_status', 'organizations_status'),
+        idx('organizations', 'tenants_city_id', 'organizations_city_id'),
+        col('organization_invitations', 'business_name', 'organization_name', 'Organization name proposed in the invitation.'),
+        idx('organization_invitations', 'tenant_invitations_token_hash', 'organization_invitations_token_hash'),
+        idx('organization_invitations', 'tenant_invitations_owner_email', 'organization_invitations_owner_email'),
+        idx('organization_invitations', 'tenant_invitations_status', 'organization_invitations_status'),
+        idx('organization_invitations', 'idx_tenant_invitations_token_hash', 'organization_invitations_token_hash'),
+        idx('organization_invitations', 'idx_tenant_invitations_owner_email', 'organization_invitations_owner_email'),
+        idx('organization_invitations', 'idx_tenant_invitations_status', 'organization_invitations_status'),
+        idx('organization_subscriptions', 'tenant_subscriptions_tenant_id', 'organization_subscriptions_tenant_id'),
+        idx('organization_subscriptions', 'tenant_subscriptions_status', 'organization_subscriptions_status'),
+        idx('organization_subscriptions', 'tenant_subscriptions_end_date', 'organization_subscriptions_end_date'),
+        idx('organization_subscriptions', 'tenant_subscriptions_external_original_transaction_id', 'organization_subscriptions_external_original_transaction_id'),
+        idx('organization_subscriptions', 'tenant_subscriptions_platform_external_unique', 'organization_subscriptions_platform_external_unique'),
+        col('plan_payment_requests', 'tenant_subscription_id', 'organization_subscription_id', 'Subscription created when the request was approved.'),
+        col('platform_invoices', 'tenant_subscription_id', 'organization_subscription_id', 'The plan this invoice is for.'),
+        idx('platform_invoices', 'platform_invoices_tenant_subscription_id', 'platform_invoices_organization_subscription_id'),
+        idx('user_organization_index', 'user_org_index_user_id_status', 'user_organization_index_user_id_status'),
+        idx('user_organization_index', 'user_org_index_tenant_id_status', 'user_organization_index_tenant_id_status'),
+        [r.renameEnumValues, {
+          table: 'area_request_links',
+          column: 'target',
+          rename: { tenant: 'organization', main_branch: 'first_branch_draft', listing: 'business' },
+          values: ['organization', 'first_branch_draft', 'business', 'branch'],
+        }],
+        [r.widenVarchar, { table: 'user_blocks', column: 'blocked_by', length: 16 }],
+        [r.renameStringValues, { table: 'user_blocks', column: 'blocked_by', rename: { TENANT: 'ORGANIZATION' } }],
+        [r.renameStringValues, { table: 'payout_accounts', column: 'scope_key', rename: { TENANT: 'ORGANIZATION' } }],
+      ]);
+      if (out.skipped.length) {
+        console.warn(`[PlatformMigration] SKIPPING p034_organization_naming (not recorded): ${JSON.stringify(out.skipped)}. Resolve by hand, then re-run.`);
+        return { skipped: true, reason: 'rename_conflict', conflicts: out.skipped };
+      }
+      return null;
+    },
+  },
+  {
+    version: 35,
+    name: 'p035_organization_id_columns',
+    description:
+      'R-120 NEW-309 (docs/NAMING_AND_DATA_DICTIONARY.md B2): tenant_id is organization_id in every platform table that holds the organization foreign key; the indexes that carried tenant in their name follow. Metadata-only CHANGE COLUMN / RENAME INDEX, the definition is kept.',
+    // PREVIEW: node src/scripts/run-platform-migrations.js --dry-run. BACKUP: mysqldump of the platform database first.
+    // DEPLOY: after p034, BEFORE the API build that reads organization_id.
+    // ROLLBACK (previous API build FIRST): the reverse CHANGE COLUMN / RENAME INDEX of every step, then DELETE FROM `schema_migrations` WHERE `version` = 35.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      const tables = [
+        'area_request_links', 'audit_logs', 'billing_events', 'capacity_events', 'content_reports', 'conversations',
+        'devices', 'device_members', 'business_listings', 'business_reviews', 'payout_accounts', 'plan_payment_requests',
+        'platform_invoices', 'organization_invitations', 'organization_subscriptions', 'user_blocks',
+        'member_subscription_index', 'user_organization_index', 'access_devices',
+      ];
+      const steps = tables.map((table) => [r.renameColumn, { table, from: 'tenant_id', to: 'organization_id', comment: 'The organization (organizations.id).' }]);
+      const idx = (table, from, to) => [r.renameIndex, { table, from, to }];
+      steps.push(
+        idx('organization_subscriptions', 'organization_subscriptions_tenant_id', 'organization_subscriptions_organization_id'),
+        idx('platform_invoices', 'platform_invoices_tenant_id', 'platform_invoices_organization_id'),
+        idx('business_listings', 'business_listings_tenant_id', 'business_listings_organization_id'),
+        idx('member_subscription_index', 'member_subscription_index_tenant_id', 'member_subscription_index_organization_id'),
+        idx('devices', 'devices_tenant_id', 'devices_organization_id'),
+        idx('device_members', 'device_members_tenant_id', 'device_members_organization_id'),
+        idx('conversations', 'conversations_tenant_id', 'conversations_organization_id'),
+        idx('user_organization_index', 'user_organization_index_tenant_id_status', 'user_organization_index_organization_id_status'),
+        idx('capacity_events', 'capacity_events_tenant_id', 'capacity_events_organization_id'),
+        idx('billing_events', 'billing_events_tenant_status', 'billing_events_organization_status'),
+        idx('audit_logs', 'audit_logs_tenant_id', 'audit_logs_organization_id'),
+        idx('payout_accounts', 'payout_accounts_tenant_scope_provider', 'payout_accounts_organization_scope_provider'),
+        idx('plan_payment_requests', 'plan_payment_requests_tenant_id_status', 'plan_payment_requests_organization_id_status'),
+        idx('user_blocks', 'user_blocks_tenant_id', 'user_blocks_organization_id'),
+      );
+      const out = await r.applyAll(sequelize, steps);
+      if (out.skipped.length) {
+        console.warn(`[PlatformMigration] SKIPPING p035_organization_id_columns (not recorded): ${JSON.stringify(out.skipped)}. Resolve by hand, then re-run.`);
+        return { skipped: true, reason: 'rename_conflict', conflicts: out.skipped };
+      }
+      return null;
+    },
+  },
+  {
+    version: 36,
+    name: 'p036_member_index_branch_id',
+    description:
+      'R-120 NEW-309 (API contract v2 A3 J3): member_subscription_index.branch_id, the branch of the subscription, written with the row. No backfill (R-120): rows made before it keep NULL.',
+    // ROLLBACK: ALTER TABLE `member_subscription_index` DROP COLUMN `branch_id`; DELETE FROM `schema_migrations` WHERE `version` = 36.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      if (!(await r.tableExists(sequelize, 'member_subscription_index'))) return null;
+      if (!(await r.columnInfo(sequelize, 'member_subscription_index', 'branch_id'))) {
+        await sequelize.query('ALTER TABLE `member_subscription_index` ADD COLUMN `branch_id` CHAR(36) BINARY NULL COMMENT \'The branch of the subscription.\', ALGORITHM=INPLACE, LOCK=NONE');
+      }
+      return null;
+    },
+  },
+  {
+    version: 37,
+    name: 'p037_held_first_branch',
+    description: 'NEW-303 M1: hold the submitted first branch on a business until approval.',
+    // ROLLBACK: after reverting the API, ALTER TABLE `business_listings` DROP COLUMN `first_branch_draft_json`;
+    // DELETE FROM `schema_migrations` WHERE `version` = 37.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      if (!(await r.tableExists(sequelize, 'business_listings'))) return null;
+      if (!(await r.columnInfo(sequelize, 'business_listings', 'first_branch_draft_json'))) {
+        await sequelize.query('ALTER TABLE `business_listings` ADD COLUMN `first_branch_draft_json` JSON NULL COMMENT \'Submitted first branch, built only after business approval.\', ALGORITHM=INPLACE, LOCK=NONE');
+      }
+      return null;
+    },
+  },
+  {
+    version: 38,
+    name: 'p038_business_kyc_verification',
+    description: 'NEW-303 M2: business KYC, approval and verified-badge columns on business_listings. No backfill (R-120).',
+    // ROLLBACK: after reverting the API, drop the seven columns below and delete schema_migrations version 38.
+    up: async (sequelize, context = {}) => {
+      if (context?.dryRun === true) return null;
+      const r = require('./rename-helpers');
+      if (!(await r.tableExists(sequelize, 'business_listings'))) return null;
+      const columns = [
+        ['kyc_status', 'ENUM(\'NOT_SUBMITTED\',\'PENDING\',\'APPROVED\',\'REJECTED\') NOT NULL DEFAULT \'NOT_SUBMITTED\''],
+        ['kyc_documents_json', 'JSON NULL'],
+        ['kyc_submitted_at', 'DATETIME NULL'],
+        ['approved_at', 'DATETIME NULL'],
+        ['approved_by', 'CHAR(36) BINARY NULL'],
+        ['verified_at', 'DATETIME NULL'],
+        ['verified_by', 'CHAR(36) BINARY NULL'],
+      ];
+      for (const [column, definition] of columns) {
+        if (!(await r.columnInfo(sequelize, 'business_listings', column))) {
+          await sequelize.query(`ALTER TABLE \`business_listings\` ADD COLUMN \`${column}\` ${definition}, ALGORITHM=INPLACE, LOCK=NONE`);
+        }
+      }
+      return null;
+    },
+  },
 ];
 
 const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length - 1].version;
@@ -1419,7 +1660,7 @@ const PLATFORM_TARGET_VERSION = PLATFORM_MIGRATIONS[PLATFORM_MIGRATIONS.length -
  */
 const runPlatformMigrations = (sequelize, options = {}) =>
   runTenantMigrations(sequelize, {
-    tenantId: 'platform',
+    organizationId: 'platform',
     gymName: 'Platform DB',
     migrations: PLATFORM_MIGRATIONS,
     targetVersion: options.targetVersion,

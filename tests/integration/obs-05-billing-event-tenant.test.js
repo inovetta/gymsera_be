@@ -37,7 +37,7 @@ describe('OBS-05: billing events carry the tenant', () => {
     tenant = await factories.createTenant({ connectionStringEncrypted: dbHarness.tenant1.encryptedConnStr });
     await factories.createGymListing(tenant.id);
     plan3 = await factories.createBillingPlan({ branchCount: 3, sortOrder: 3 });
-    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: tenant.id });
+    token = signToken({ sub: tenant.ownerUserId, id: tenant.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: tenant.id });
   });
 
   test('Apple: a processed notification is stored with the tenant that owns the transaction', async () => {
@@ -51,7 +51,7 @@ describe('OBS-05: billing events carry the tenant', () => {
 
     const event = await BillingEvent.findOne({ where: { provider: 'APPLE', providerEventId: 'uuid-1' } });
     expect(event.status).toBe('PROCESSED');
-    expect(event.tenantId).toBe(tenant.id);
+    expect(event.organizationId).toBe(tenant.id);
   });
 
   test('Apple: a FAILED event is attributed too', async () => {
@@ -66,7 +66,7 @@ describe('OBS-05: billing events carry the tenant', () => {
 
     const event = await BillingEvent.findOne({ where: { providerEventId: 'uuid-2' } });
     expect(event.status).toBe('FAILED');
-    expect(event.tenantId).toBe(tenant.id);
+    expect(event.organizationId).toBe(tenant.id);
   });
 
   test('Google: the tenant holding the purchase token', async () => {
@@ -81,12 +81,12 @@ describe('OBS-05: billing events carry the tenant', () => {
     await request(app).post('/api/v1/billing/webhooks/google').set('Authorization', fakes.rtdnAuthHeader()).send(body);
 
     const event = await BillingEvent.findOne({ where: { providerEventId: 'pubsub-1' } });
-    expect(event.tenantId).toBe(tenant.id);
+    expect(event.organizationId).toBe(tenant.id);
   });
 
   test('Stripe: the tenant holding the subscription id, even when the sync then fails', async () => {
     await plan3.update({ stripeMonthlyPriceId: 'price_3m' });
-    const live = fakes.stripeSubscription({ id: 'sub_1', priceId: 'price_3m', tenantId: tenant.id });
+    const live = fakes.stripeSubscription({ id: 'sub_1', priceId: 'price_3m', organizationId: tenant.id });
     const { retrieve } = fakes.installStripeFakes({ subscriptions: { sub_1: live } });
     const first = { id: 'evt_a', type: 'customer.subscription.updated', data: { object: live } };
     await request(app).post('/api/v1/billing/webhooks/stripe').send(first);
@@ -94,10 +94,10 @@ describe('OBS-05: billing events carry the tenant', () => {
     const second = { id: 'evt_b', type: 'customer.subscription.updated', data: { object: live } };
     await request(app).post('/api/v1/billing/webhooks/stripe').send(second);
 
-    expect((await BillingEvent.findOne({ where: { providerEventId: 'evt_a' } })).tenantId).toBe(tenant.id);
+    expect((await BillingEvent.findOne({ where: { providerEventId: 'evt_a' } })).organizationId).toBe(tenant.id);
     const failed = await BillingEvent.findOne({ where: { providerEventId: 'evt_b' } });
     expect(failed.status).toBe('FAILED');
-    expect(failed.tenantId).toBe(tenant.id);
+    expect(failed.organizationId).toBe(tenant.id);
   });
 
   test('an event no tenant owns stays unattributed (null), not guessed', async () => {
@@ -107,21 +107,21 @@ describe('OBS-05: billing events carry the tenant', () => {
       .post('/api/v1/billing/webhooks/apple')
       .send(fakes.appleNotificationBody({ notificationUUID: 'uuid-9', transaction: tx }));
     const event = await BillingEvent.findOne({ where: { providerEventId: 'uuid-9' } });
-    expect(event.tenantId).toBeNull();
+    expect(event.organizationId).toBeNull();
   });
 
-  test('an unreadable payload never breaks processing and leaves tenantId null', async () => {
+  test('an unreadable payload never breaks processing and leaves organizationId null', async () => {
     const { event } = await billingEvents.recordEvent({ provider: 'APPLE', providerEventId: 'bad-1', rawPayload: '{"signedPayload": 5' });
     await billingEvents.processEvent(event);
     const row = await BillingEvent.findOne({ where: { providerEventId: 'bad-1' } });
     expect(row.status).toBe('FAILED');
-    expect(row.tenantId).toBeNull();
+    expect(row.organizationId).toBeNull();
   });
 
   test('an attributed tenant is never overwritten by a later attempt, and old rows are not backfilled by the migration', async () => {
     const { event } = await billingEvents.recordEvent({ provider: 'STRIPE', providerEventId: 'keep-1', rawPayload: '{"id":"keep-1","type":"other"}' });
-    await event.update({ tenantId: tenant.id });
+    await event.update({ organizationId: tenant.id });
     await billingEvents.processEvent(event);
-    expect((await BillingEvent.findOne({ where: { providerEventId: 'keep-1' } })).tenantId).toBe(tenant.id);
+    expect((await BillingEvent.findOne({ where: { providerEventId: 'keep-1' } })).organizationId).toBe(tenant.id);
   });
 });

@@ -16,7 +16,7 @@ beforeAll(async () => { w = await createWorld(); });
 afterAll(async () => { await w.settled(); await require('../harness').teardownTestDatabases(); });
 
 test('a device seen now reads back as now (last_seen_at, registered_at), whatever the server time zone', async () => {
-  const branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+  const branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
   const d = await w.device(w.db1, { branch });
   const [row] = await platformDb.query('SELECT last_seen_at, registered_at FROM access_devices WHERE id = ?', { replacements: [d.id], type: QueryTypes.SELECT });
   expect(Math.abs(new Date(row.last_seen_at).getTime() - Date.now())).toBeLessThan(5000);

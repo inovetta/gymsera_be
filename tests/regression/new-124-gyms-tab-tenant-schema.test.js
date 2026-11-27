@@ -3,7 +3,7 @@
  * reference 5bf8b433-bb37-4802-98ff-10baf60168c4).
  *
  * The Gyms tab calls, for an approved host: /host/status (or the /me/bootstrap seed),
- * /host/listings, /host/branches, /host/branch-quota (+ ?organizationId=),
+ * /host/businesses, /host/branches, /host/branch-quota (+ ?businessId=),
  * /subscriptions/staff?status=PENDING, /notifications/unread-count and, per branch card,
  * /host/branches/:id/dashboard. Only /host/branches and the dashboard read whole `branches`
  * rows from the tenant database; Branch.findAll selects every model column, including
@@ -44,10 +44,10 @@ const get = (path) => request(app).get(`/api/v1${path}`).set('Authorization', `B
 const gymsTabCalls = () => [
   '/host/status',
   '/me/bootstrap',
-  '/host/listings',
+  '/host/businesses',
   '/host/branches',
   '/host/branch-quota',
-  `/host/branch-quota?organizationId=${team.branchA.gymListingId}`,
+  `/host/branch-quota?businessId=${team.branchA.businessId}`,
   '/subscriptions/staff?status=PENDING&limit=1',
   '/notifications/unread-count',
   `/host/branches/${team.branchA.id}/dashboard`,
@@ -75,11 +75,11 @@ describe('NEW-124: the Gyms tab on a tenant database below schema v19', () => {
 
     // Why the "1 of 1 used" and the unpaid host kept working: no full branch row is read.
     expect((await get('/host/branch-quota')).status).toBe(200);
-    expect((await get('/host/listings')).status).toBe(200);
+    expect((await get('/host/businesses')).status).toBe(200);
   });
 
   test('after the tenant migration runner, every Gyms tab call answers 200 with the real branches', async () => {
-    const res = await runTenantMigrations(h.tenant1.sequelize, { tenantId: team.tenantId });
+    const res = await runTenantMigrations(h.tenant1.sequelize, { organizationId: team.organizationId });
     expect(res.applied).toContain('019_add_branch_currency');
     expect(res.finalVersion).toBe(TARGET_SCHEMA_VERSION);
 

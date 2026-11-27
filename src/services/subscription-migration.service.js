@@ -68,7 +68,7 @@ const _entitling = (status) => ENTITLING_STATUSES.includes(status);
 const _activationStatus = (values) => (values.status === 'GRACE' ? 'GRACE' : 'ACTIVE');
 
 /**
- * @param {string} tenantId
+ * @param {string} organizationId
  * @param {object} params
  * @param {'IOS'|'ANDROID'|'STRIPE'} params.newPlatform
  * @param {object} params.newSubscriptionValues - the full row to create for the new provider (same shape each provider's own sync function already builds).
@@ -81,7 +81,7 @@ const _activationStatus = (values) => (values.status === 'GRACE' ? 'GRACE' : 'AC
  * @returns {Promise<{subscription: object, migratedFrom: object|null, isMigration: boolean}>} `subscription` is never null — this function always either creates or migrates.
  */
 const requestProviderChange = async (
-  tenantId,
+  organizationId,
   { newPlatform, newSubscriptionValues, supersededExternalId = null },
   { transaction, tenantDb, originListingId = null, idempotencyPrefix, actorUserId = null, actorType = 'SYSTEM' }
 ) => {
@@ -91,14 +91,14 @@ const requestProviderChange = async (
   // this tenant — regardless of which provider — blocks here until whichever
   // one got there first finishes and commits. See the file header for why
   // this has to happen before the ACTIVE-row check below, not after.
-  const tenant = await Tenant.findByPk(tenantId, { transaction, lock: true });
-  if (!tenant) throw new Error(`Tenant ${tenantId} not found`);
+  const tenant = await Tenant.findByPk(organizationId, { transaction, lock: true });
+  if (!tenant) throw new Error(`Tenant ${organizationId} not found`);
   const isSuspended = tenant.status === 'SUSPENDED';
 
   // ACTIVE or GRACE — a row in grace is still the tenant's one entitlement,
   // so a new purchase supersedes it like an ACTIVE one (BILL-04).
   const currentActive = await TenantSubscription.findOne({
-    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
+    where: { organizationId, status: { [Op.in]: ENTITLING_STATUSES } },
     transaction,
     lock: true,
   });
@@ -106,12 +106,12 @@ const requestProviderChange = async (
   if (!currentActive) {
     // No entitlement to migrate away from — a fresh first-ever subscription.
     const subscription = await TenantSubscription.create(
-      { ...newSubscriptionValues, tenantId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
+      { ...newSubscriptionValues, organizationId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
       { transaction }
     );
 
     if (tenantDb && !isSuspended) {
-      await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, newSubscriptionValues.branchCount, {
+      await subscriptionQuotaService.reconcileCapacity(organizationId, tenantDb, newSubscriptionValues.branchCount, {
         transaction,
         previousMaxBranches: null,
         originListingId,
@@ -148,12 +148,12 @@ const requestProviderChange = async (
   await currentActive.update({ status: 'PENDING_MIGRATION' }, { transaction });
 
   const newSubscription = await TenantSubscription.create(
-    { ...newSubscriptionValues, tenantId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
+    { ...newSubscriptionValues, organizationId, platform: newPlatform, status: _activationStatus(newSubscriptionValues) },
     { transaction }
   );
 
   if (tenantDb && !isSuspended) {
-    await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, newSubscriptionValues.branchCount, {
+    await subscriptionQuotaService.reconcileCapacity(organizationId, tenantDb, newSubscriptionValues.branchCount, {
       transaction,
       previousMaxBranches,
       originListingId,
@@ -289,14 +289,14 @@ const requestProviderChange = async (
  * entitlement left. That case is let through untouched; refusing it would
  * leave a tenant who is genuinely paying with no active entitlement at all.
  *
- * @param {string} tenantId
+ * @param {string} organizationId
  * @param {object} existingRow - the TenantSubscription row about to be updated (Sequelize instance, already locked by the caller).
  * @param {object} incomingValues - the values object the caller is about to pass to existingRow.update(...).
  * @param {object} opts
  * @param {import('sequelize').Transaction} opts.transaction - REQUIRED, the same transaction existingRow was locked and will be updated under.
  * @returns {Promise<object>} incomingValues, unmodified — or with status/statusNote overridden to keep this row in its superseded state.
  */
-const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { transaction }) => {
+const reconcileRenewalStatus = async (organizationId, existingRow, incomingValues, { transaction }) => {
   if (!transaction) throw new Error('reconcileRenewalStatus requires a platform-DB transaction');
 
   // "ACTIVE" here means the entitling set (ACTIVE or GRACE, BILL-04).
@@ -312,10 +312,10 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   // uses, and for the identical reason: two renewal events for two
   // different superseded rows of the same tenant must not both
   // independently conclude "no other ACTIVE row exists" and both resurrect.
-  await Tenant.findByPk(tenantId, { transaction, lock: true });
+  await Tenant.findByPk(organizationId, { transaction, lock: true });
 
   const otherActive = await TenantSubscription.findOne({
-    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES }, id: { [Op.ne]: existingRow.id } },
+    where: { organizationId, status: { [Op.in]: ENTITLING_STATUSES }, id: { [Op.ne]: existingRow.id } },
     transaction,
     lock: true,
   });
@@ -333,7 +333,7 @@ const reconcileRenewalStatus = async (tenantId, existingRow, incomingValues, { t
   // its own; it needs a human to cancel one at the store.
   console.warn(
     `[subscription-migration] Refused to resurrect superseded TenantSubscription ${existingRow.id} ` +
-    `(tenant ${tenantId}, platform ${existingRow.platform}) to ACTIVE — TenantSubscription ${otherActive.id} ` +
+    `(tenant ${organizationId}, platform ${existingRow.platform}) to ACTIVE — TenantSubscription ${otherActive.id} ` +
     'is already this tenant\'s active entitlement. The provider still reports this subscription as live, ' +
     'which likely means both are genuinely billing at the store and a human needs to cancel one.'
   );
@@ -403,7 +403,7 @@ const _nextPendingChange = (existing, billingPlanId, upcoming) => {
  * transaction as the row write, and the Stripe cancel-at-period-end call for a
  * migration away from Stripe happens only after commit.
  *
- * @param {string} tenantId - the tenant the subscription belongs to.
+ * @param {string} organizationId - the tenant the subscription belongs to.
  * @param {object} values - the row as the provider reports it. `chargedAmount`
  *   / `chargedCurrency` (the provider's actual price, when it reports one) are
  *   written as amount/currency on every sync (BILL-05). Otherwise the catalog
@@ -419,14 +419,14 @@ const _nextPendingChange = (existing, billingPlanId, upcoming) => {
  * @param {string} [opts.logLabel]
  * @returns {Promise<object>} the persisted TenantSubscription.
  */
-const applyVerifiedSubscription = async (tenantId, values, opts = {}) => {
+const applyVerifiedSubscription = async (organizationId, values, opts = {}) => {
   // Two tenants verifying the same brand-new transaction at the same moment
   // both find no row; the UNIQUE (platform, external id) index (or InnoDB's
   // deadlock detection on the gap lock) stops the second. One retry then
   // finds the winner's row and answers with the ownership check below.
   for (let attempt = 1; ; attempt++) {
     try {
-      return await _applyVerifiedSubscriptionOnce(tenantId, values, opts);
+      return await _applyVerifiedSubscriptionOnce(organizationId, values, opts);
     } catch (err) {
       const raced = err instanceof UniqueConstraintError || err.original?.code === 'ER_LOCK_DEADLOCK';
       if (!raced || attempt >= 2) throw err;
@@ -450,7 +450,7 @@ const _ownedByOtherAccount = () => {
 };
 
 const _applyVerifiedSubscriptionOnce = async (
-  tenantId,
+  organizationId,
   values,
   {
     originListingId = null,
@@ -487,10 +487,10 @@ const _applyVerifiedSubscriptionOnce = async (
     // NEW-276: the other tenant may no longer exist (launch wipe, account deletion). Then nobody
     // can use the plan but the caller, so the caller takes it over; the takeover is audited below.
     let takeover = null;
-    if (existing && existing.tenantId !== tenantId) {
-      if (!(await _tenantGone(existing.tenantId, platformTx))) {
+    if (existing && existing.organizationId !== organizationId) {
+      if (!(await _tenantGone(existing.organizationId, platformTx))) {
         mismatch(
-          `TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}; tenant ${tenantId} tried to ` +
+          `TenantSubscription ${existing.id} is owned by tenant ${existing.organizationId}; tenant ${organizationId} tried to ` +
             'use it (same store account) and was refused (409). It stays with its owner.'
         );
         throw _ownedByOtherAccount();
@@ -502,24 +502,24 @@ const _applyVerifiedSubscriptionOnce = async (
           externalOriginalTransactionId: `released:${existing.id}`,
           externalTransactionId: `released:${existing.id}`,
           status: _entitling(existing.status) ? 'CANCELLED' : existing.status,
-          statusNote: `Store subscription taken over by tenant ${tenantId} on ${new Date().toISOString().split('T')[0]} (this tenant was deleted).`,
+          statusNote: `Store subscription taken over by tenant ${organizationId} on ${new Date().toISOString().split('T')[0]} (this tenant was deleted).`,
         },
         { transaction: platformTx }
       );
-      takeover = { fromTenantId: existing.tenantId, reason: 'owner_tenant_deleted', releasedSubscriptionId: existing.id };
+      takeover = { fromTenantId: existing.organizationId, reason: 'owner_tenant_deleted', releasedSubscriptionId: existing.id };
       existing = null;
     }
     if (existing) {
-      if (bound && bound !== String(existing.tenantId).toLowerCase()) {
+      if (bound && bound !== String(existing.organizationId).toLowerCase()) {
         mismatch(
-          `TenantSubscription ${existing.id} is owned by tenant ${existing.tenantId}, but the store says ` +
+          `TenantSubscription ${existing.id} is owned by tenant ${existing.organizationId}, but the store says ` +
             `tenant ${bound} made the purchase (same store account). Left with its current owner; needs a human look.`
         );
       }
-    } else if (bound && bound !== String(tenantId).toLowerCase() && !(takeover && bound === String(takeover.fromTenantId).toLowerCase())) {
+    } else if (bound && bound !== String(organizationId).toLowerCase() && !(takeover && bound === String(takeover.fromTenantId).toLowerCase())) {
       if (!(await _tenantGone(bound, platformTx))) {
         mismatch(
-          `purchase is bound by the store to tenant ${bound}; tenant ${tenantId} tried to use it (same store account) ` +
+          `purchase is bound by the store to tenant ${bound}; tenant ${organizationId} tried to use it (same store account) ` +
             'and was refused (409). No row was written.'
         );
         throw _ownedByOtherAccount();
@@ -529,7 +529,7 @@ const _applyVerifiedSubscriptionOnce = async (
     if (takeover) {
       console.warn(
         `[${logLabel}] ownership takeover: ${values.platform} tenant ${takeover.fromTenantId} no longer exists ` +
-          `(${takeover.reason}); tenant ${tenantId} takes the subscription over.`
+          `(${takeover.reason}); tenant ${organizationId} takes the subscription over.`
       );
     }
 
@@ -539,12 +539,12 @@ const _applyVerifiedSubscriptionOnce = async (
     // billingCycle or fall back to the catalog price.
     const planChanged = !existing || existing.billingPlanId !== values.billingPlanId;
     const { chargedAmount = null, chargedCurrency = null, upcomingChange, ...providerValues } = values;
-    const rowValues = { ...providerValues, tenantId };
+    const rowValues = { ...providerValues, organizationId };
     // Deferred plan change as the provider reports it (BILL-03). The current
     // plan (branchCount) is always the one the provider says is in effect now.
     rowValues.pendingChange = _nextPendingChange(existing, values.billingPlanId, upcomingChange);
     // The owner of an existing row is never rewritten by a sync.
-    if (existing) delete rowValues.tenantId;
+    if (existing) delete rowValues.organizationId;
     // Subscriber price (BILL-05, spec §7.2): what the provider actually charges
     // — a store price increase, another storefront's price, a Stripe price
     // migration — on every verified sync. Only when the provider reports no
@@ -560,9 +560,9 @@ const _applyVerifiedSubscriptionOnce = async (
     if (!planChanged) delete rowValues.billingCycle;
 
     const tenantDbFor = async () => {
-      const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
+      const tenant = await Tenant.findByPk(organizationId, { transaction: platformTx });
       if (!tenant?.connectionStringEncrypted || tenant.status === 'SUSPENDED') return null;
-      return TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+      return TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
     };
 
     let subscription;
@@ -592,7 +592,7 @@ const _applyVerifiedSubscriptionOnce = async (
       // A renewal/resync for an external id already on file — never a
       // migration decision. reconcileRenewalStatus refuses to resurrect a
       // superseded row to ACTIVE while another row is this tenant's entitlement.
-      const reconciledValues = await reconcileRenewalStatus(tenantId, existing, rowValues, { transaction: platformTx });
+      const reconciledValues = await reconcileRenewalStatus(organizationId, existing, rowValues, { transaction: platformTx });
       await existing.update(reconciledValues, { transaction: platformTx });
       subscription = existing;
     } else if (!_entitling(rowValues.status)) {
@@ -604,7 +604,7 @@ const _applyVerifiedSubscriptionOnce = async (
       subscription = await TenantSubscription.create(rowValues, { transaction: platformTx });
     } else {
       const activation = await requestProviderChange(
-        tenantId,
+        organizationId,
         { newPlatform: values.platform, newSubscriptionValues: rowValues, supersededExternalId },
         {
           transaction: platformTx,
@@ -638,7 +638,7 @@ const _applyVerifiedSubscriptionOnce = async (
     if (!reconciledByActivation && _entitling(subscription.status) && values.branchCount != null) {
       const tenantDb = await tenantDbFor();
       if (tenantDb) {
-        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, values.branchCount, {
+        await subscriptionQuotaService.reconcileCapacity(organizationId, tenantDb, values.branchCount, {
           transaction: platformTx,
           previousMaxBranches,
           originListingId,
@@ -655,10 +655,10 @@ const _applyVerifiedSubscriptionOnce = async (
     if (_entitling(previousStatus) && ENDED_STATUSES.includes(subscription.status)) {
       const tenantDb = await tenantDbFor();
       if (tenantDb) {
-        const tenant = await Tenant.findByPk(tenantId, { transaction: platformTx });
-        const stillActive = await subscriptionQuotaService.getActiveSubscription(tenantId, { transaction: platformTx });
+        const tenant = await Tenant.findByPk(organizationId, { transaction: platformTx });
+        const stillActive = await subscriptionQuotaService.getActiveSubscription(organizationId, { transaction: platformTx });
         const entitled = await subscriptionQuotaService.resolveMaxBranches(tenant, stillActive, { transaction: platformTx });
-        await subscriptionQuotaService.reconcileCapacity(tenantId, tenantDb, entitled, {
+        await subscriptionQuotaService.reconcileCapacity(organizationId, tenantDb, entitled, {
           transaction: platformTx,
           previousMaxBranches,
           // A revoke happens once per subscription. A hold/pause can recur
@@ -680,7 +680,7 @@ const _applyVerifiedSubscriptionOnce = async (
           action: 'billing.store_subscription_taken_over',
           targetType: 'TenantSubscription',
           targetId: subscription.id,
-          details: { platform: values.platform, tenantId, ...takeover },
+          details: { platform: values.platform, organizationId, ...takeover },
           createdAt: new Date(),
         },
         { transaction: platformTx }
@@ -698,7 +698,7 @@ const _applyVerifiedSubscriptionOnce = async (
       status: subscription.status,
       branchCount: subscription.branchCount,
     });
-    if (notice) await hostPlanNotice.notifyHostOfPlanChange(tenantId, notice, subscription);
+    if (notice) await hostPlanNotice.notifyHostOfPlanChange(organizationId, notice, subscription);
 
     // A real Stripe API call must never happen inside a DB transaction that
     // might still roll back — done here, only after commit, only when this
@@ -730,9 +730,9 @@ const _applyVerifiedSubscriptionOnce = async (
 const resolveSubscriptionOwner = async (platform, externalId, boundTenantId = null) => {
   const row = await TenantSubscription.findOne({
     where: { platform, externalOriginalTransactionId: String(externalId) },
-    attributes: ['tenantId'],
+    attributes: ['organizationId'],
   });
-  if (row) return row.tenantId;
+  if (row) return row.organizationId;
   if (!boundTenantId) return null;
   const tenant = await Tenant.findByPk(String(boundTenantId).toLowerCase(), { attributes: ['id'] });
   return tenant ? tenant.id : null;
@@ -750,25 +750,25 @@ const resolveSubscriptionOwner = async (platform, externalId, boundTenantId = nu
  * Never replaces a plan the tenant already has (FLOW-03).
  */
 const PAY_LATER_ID_PREFIX = 'pay-later:';
-const _payLaterId = (tenantId) => `${PAY_LATER_ID_PREFIX}${tenantId}`;
+const _payLaterId = (organizationId) => `${PAY_LATER_ID_PREFIX}${organizationId}`;
 const _isoDate = (d) => d.toISOString().split('T')[0];
 
-const startPayLaterGrace = async (tenantId) => {
+const startPayLaterGrace = async (organizationId) => {
   const { BillingPlan } = require('../models/platform');
   const { payLaterGraceDays } = require('../config/billing.config');
 
-  const existingPlan = await subscriptionQuotaService.getActiveSubscription(tenantId);
+  const existingPlan = await subscriptionQuotaService.getActiveSubscription(organizationId);
   if (existingPlan) return existingPlan;
 
   const onePlan = await BillingPlan.findOne({ where: { branchCount: 1 }, order: [['sortOrder', 'ASC']] });
   const now = new Date();
   const endsAt = new Date(now.getTime() + payLaterGraceDays() * 24 * 60 * 60 * 1000);
   return applyVerifiedSubscription(
-    tenantId,
+    organizationId,
     {
       platform: 'MANUAL',
-      externalOriginalTransactionId: _payLaterId(tenantId),
-      externalTransactionId: _payLaterId(tenantId),
+      externalOriginalTransactionId: _payLaterId(organizationId),
+      externalTransactionId: _payLaterId(organizationId),
       billingPlanId: onePlan ? onePlan.id : null,
       branchCount: 1,
       productId: null,
@@ -782,7 +782,7 @@ const startPayLaterGrace = async (tenantId) => {
       autoRenew: false,
       paymentStatus: 'PENDING',
     },
-    { idempotencyPrefix: `${_payLaterId(tenantId)}:approve`, logLabel: 'Pay later' }
+    { idempotencyPrefix: `${_payLaterId(organizationId)}:approve`, logLabel: 'Pay later' }
   );
 };
 
@@ -800,7 +800,7 @@ const startPayLaterGrace = async (tenantId) => {
  */
 const planForApproval = async (tenant) => {
   const providerRow = await TenantSubscription.findOne({
-    where: { tenantId: tenant.id, platform: { [Op.in]: ['IOS', 'ANDROID', 'STRIPE'] } },
+    where: { organizationId: tenant.id, platform: { [Op.in]: ['IOS', 'ANDROID', 'STRIPE'] } },
     order: [['updatedAt', 'DESC']],
   });
   if (providerRow) {
@@ -823,10 +823,10 @@ const planForApproval = async (tenant) => {
  * pay-later row while it is in GRACE (a lapsed one is reactivated through the
  * normal admin assign path). Audited in the tenant's own trail.
  */
-const verifyPayLaterPayment = async (tenantId, subscriptionId, { adminUserId, bankTransferRef = null, req = null }) => {
-  const row = await TenantSubscription.findOne({ where: { id: subscriptionId, tenantId } });
+const verifyPayLaterPayment = async (organizationId, subscriptionId, { adminUserId, bankTransferRef = null, req = null }) => {
+  const row = await TenantSubscription.findOne({ where: { id: subscriptionId, organizationId } });
   if (!row) throw createError('Subscription not found', 404);
-  if (row.platform !== 'MANUAL' || row.externalOriginalTransactionId !== _payLaterId(tenantId) || row.status !== 'GRACE') {
+  if (row.platform !== 'MANUAL' || row.externalOriginalTransactionId !== _payLaterId(organizationId) || row.status !== 'GRACE') {
     const err = createError('Only a pay-later plan that is waiting for payment can be verified.', 409);
     err.code = 'not_pay_later_grace';
     throw err;
@@ -836,7 +836,7 @@ const verifyPayLaterPayment = async (tenantId, subscriptionId, { adminUserId, ba
   const paidUntil = new Date(now);
   paidUntil.setMonth(paidUntil.getMonth() + 1);
   const subscription = await applyVerifiedSubscription(
-    tenantId,
+    organizationId,
     {
       platform: 'MANUAL',
       externalOriginalTransactionId: row.externalOriginalTransactionId,
@@ -851,13 +851,13 @@ const verifyPayLaterPayment = async (tenantId, subscriptionId, { adminUserId, ba
       bankTransferRef: bankTransferRef || row.bankTransferRef,
       lastVerifiedAt: now,
     },
-    { idempotencyPrefix: `${_payLaterId(tenantId)}:verify`, logLabel: 'Pay later' }
+    { idempotencyPrefix: `${_payLaterId(organizationId)}:verify`, logLabel: 'Pay later' }
   );
 
-  const tenant = await Tenant.findByPk(tenantId);
+  const tenant = await Tenant.findByPk(organizationId);
   if (tenant?.connectionStringEncrypted) {
     const TenantDbManager = require('../database/TenantDbManager');
-    const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+    const tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
     await require('./audit.service').record(
       { tenantDb, userId: adminUserId, roleKey: 'PLATFORM_ADMIN', req },
       {
@@ -874,7 +874,7 @@ const verifyPayLaterPayment = async (tenantId, subscriptionId, { adminUserId, ba
       }
     );
   } else {
-    console.error(`[Pay later] Verified payment for tenant ${tenantId} could not be audited: tenant database not ready`);
+    console.error(`[Pay later] Verified payment for tenant ${organizationId} could not be audited: tenant database not ready`);
   }
   return subscription;
 };
@@ -886,7 +886,7 @@ const verifyPayLaterPayment = async (tenantId, subscriptionId, { adminUserId, ba
  */
 const expirePayLaterGrace = async (row) =>
   applyVerifiedSubscription(
-    row.tenantId,
+    row.organizationId,
     {
       platform: 'MANUAL',
       externalOriginalTransactionId: row.externalOriginalTransactionId,
@@ -905,13 +905,13 @@ const expirePayLaterGrace = async (row) =>
  * `newBranchCount`; unbuilt reserved slots are trimmed first; when the real
  * ACTIVE branches alone are more than that, the host must choose which to keep.
  */
-const _downgradeContext = async (tenantId, billingPlanId, { transaction = null, lock = false } = {}) => {
+const _downgradeContext = async (organizationId, billingPlanId, { transaction = null, lock = false } = {}) => {
   const { BillingPlan, GymListing } = require('../models/platform');
   const TenantDbManager = require('../database/TenantDbManager');
   const plan = billingPlanId ? await BillingPlan.findByPk(billingPlanId, { transaction }) : null;
   if (!plan) throw createError('Billing plan not found', 404);
   const current = await TenantSubscription.findOne({
-    where: { tenantId, status: { [Op.in]: ENTITLING_STATUSES } },
+    where: { organizationId, status: { [Op.in]: ENTITLING_STATUSES } },
     order: [['createdAt', 'DESC']],
     transaction,
     lock,
@@ -922,22 +922,22 @@ const _downgradeContext = async (tenantId, billingPlanId, { transaction = null, 
   if (plan.branchCount >= current.branchCount) {
     throw createError('This plan is not a downgrade — no branch choice is needed.', 400);
   }
-  const tenant = await Tenant.findByPk(tenantId, { transaction });
+  const tenant = await Tenant.findByPk(organizationId, { transaction });
   if (!tenant?.connectionStringEncrypted) throw createError('Tenant database is not ready', 409);
-  const tenantDb = await TenantDbManager.getConnection(tenantId, tenant.connectionStringEncrypted);
+  const tenantDb = await TenantDbManager.getConnection(organizationId, tenant.connectionStringEncrypted);
   const branches = await tenantDb.models.Branch.findAll({
     where: { status: 'ACTIVE' },
-    attributes: ['id', 'branchName', 'gymListingId', 'createdAt'],
+    attributes: ['id', 'branchName', 'businessId', 'createdAt'],
     order: [['createdAt', 'ASC']],
   });
   const reservedSlots =
-    (await GymListing.sum('reservedSlots', { where: { tenantId, status: { [Op.ne]: 'INACTIVE' } }, transaction })) || 0;
+    (await GymListing.sum('reservedSlots', { where: { organizationId, status: { [Op.ne]: 'INACTIVE' } }, transaction })) || 0;
   const mustChooseBranches = branches.length > plan.branchCount;
   return { plan, current, tenantDb, branches, reservedSlots, mustChooseBranches };
 };
 
-const previewDowngrade = async (tenantId, billingPlanId) => {
-  const { plan, current, branches, reservedSlots, mustChooseBranches } = await _downgradeContext(tenantId, billingPlanId);
+const previewDowngrade = async (organizationId, billingPlanId) => {
+  const { plan, current, branches, reservedSlots, mustChooseBranches } = await _downgradeContext(organizationId, billingPlanId);
   return {
     currentBranchCount: current.branchCount,
     newBranchCount: plan.branchCount,
@@ -947,7 +947,7 @@ const previewDowngrade = async (tenantId, billingPlanId) => {
     keepCount: mustChooseBranches ? plan.branchCount : 0,
     // The provider applies a downgrade at the end of the paid period.
     effectiveAt: current.endDate,
-    branches: branches.map((b) => ({ id: b.id, name: b.branchName, organizationId: b.gymListingId })),
+    branches: branches.map((b) => ({ id: b.id, name: b.branchName, businessId: b.businessId })),
     pendingChange: current.pendingChange || null,
   };
 };
@@ -960,12 +960,12 @@ const previewDowngrade = async (tenantId, billingPlanId) => {
  * Made before the store purchase it is kept as an unconfirmed request; the
  * provider's confirmation of the same plan keeps it (_nextPendingChange).
  */
-const recordDowngradeChoice = async (tenantId, { billingPlanId, keepBranchIds = null }, { actorUserId = null, req = null } = {}) => {
+const recordDowngradeChoice = async (organizationId, { billingPlanId, keepBranchIds = null }, { actorUserId = null, req = null } = {}) => {
   const { sequelize } = require('../database/platform');
   const tx = await sequelize.transaction();
   try {
-    await Tenant.findByPk(tenantId, { transaction: tx, lock: true });
-    const { plan, current, tenantDb, branches, mustChooseBranches } = await _downgradeContext(tenantId, billingPlanId, {
+    await Tenant.findByPk(organizationId, { transaction: tx, lock: true });
+    const { plan, current, tenantDb, branches, mustChooseBranches } = await _downgradeContext(organizationId, billingPlanId, {
       transaction: tx,
       lock: true,
     });

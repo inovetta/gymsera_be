@@ -40,7 +40,7 @@ describe('declared fields per route (fixture)', () => {
     const found = routes.filter((x) => x.key === key);
     expect(found.length).toBeGreaterThan(0);
     for (const f of found) {
-      expect(f.stage).toBe(2);
+      expect(f.stage).toBe(r.stage || 2); // J10 first-business rejects removed flat fields at stage 1
       expect([...f.allowed].sort()).toEqual(r.allowed);
       expect(r.clientKeys.filter((k) => !f.allowed.includes(k))).toEqual([]);
     }
@@ -48,7 +48,7 @@ describe('declared fields per route (fixture)', () => {
 
   test('the fixture covers all 25 tier-1 routes', () => {
     const tier1 = fixture.routes.filter((r) =>
-      /\/(auth\/(logout|sessions|tenant-invitations)|payments\/:p\/(action|printed|refund)|payments\/collection-action|billing\/(purchase-intent|ios\/sync|android\/sync|downgrade-choice|stripe\/(checkout-session|change-plan|portal-session))|team|approvals|ledger)/.test(r.path)
+      /\/(auth\/(logout|sessions|organization-invitations)|payments\/:p\/(action|printed|refund)|payments\/collection-action|billing\/(purchase-intent|ios\/sync|android\/sync|downgrade-choice|stripe\/(checkout-session|change-plan|portal-session))|team|approvals|ledger)/.test(r.path)
     );
     expect(tier1.length).toBeGreaterThanOrEqual(25);
   });
@@ -57,11 +57,11 @@ describe('declared fields per route (fixture)', () => {
 describe('validate.allowBody on a real route', () => {
   test('POST /billing/purchase-intent: an undeclared field is logged and the call still works', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const res = await asPersona('owner').post('/billing/purchase-intent', { platform: 'ios', tenantId: 'x', evil: 1 });
+    const res = await asPersona('owner').post('/billing/purchase-intent', { platform: 'ios', organizationId: 'x', evil: 1 });
     expect(res.status).toBe(200);
     const logged = warn.mock.calls.flat().join(' ');
     expect(logged).toContain('[unknown-fields]');
-    expect(logged).toContain('tenantId');
+    expect(logged).toContain('organizationId');
     expect(logged).toContain('evil');
     warn.mockRestore();
   });
@@ -89,11 +89,11 @@ describe('PATCH /trainers/:id moving a trainer needs the permission at the targe
   let trainerAtA;
 
   beforeAll(async () => {
-    const tenantId = personas.owner.tenantId;
-    const listing = await GymListing.findOne({ where: { tenantId } });
-    branchA = await tenantDb.models.Branch.findOne({ where: { gymListingId: listing.id } });
+    const organizationId = personas.owner.organizationId;
+    const listing = await GymListing.findOne({ where: { organizationId } });
+    branchA = await tenantDb.models.Branch.findOne({ where: { businessId: listing.id } });
     branchB = await factories.createBranch(tenantDb, listing.id, { name: 'Branch B (stage2b)' });
-    managerA = await teamMember({ tenantDb, tenantId, email: 'mgr-a@stage2b.test', roleKey: 'MANAGER', scopeType: 'BRANCH', branchIds: [branchA.id] });
+    managerA = await teamMember({ tenantDb, organizationId, email: 'mgr-a@stage2b.test', roleKey: 'MANAGER', scopeType: 'BRANCH', branchIds: [branchA.id] });
     const u = await factories.createUser({ email: 'trainer@stage2b.test', role: 'MEMBER', fullName: 'Trainer' });
     trainerAtA = (await tenantDb.models.Trainer.create({ userId: u.id, branchId: branchA.id, status: 'ACTIVE' })).id;
   });

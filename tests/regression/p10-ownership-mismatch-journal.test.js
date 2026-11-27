@@ -35,7 +35,7 @@ describe('P10 item 5: an ownership mismatch names both tenants in the log', () =
     await factories.createGymListing(tenantA.id);
     await factories.createGymListing(tenantB.id);
     plan = await factories.createBillingPlan({ branchCount: 3, sortOrder: 3 });
-    const tokenFor = (t) => signToken({ sub: t.ownerUserId, id: t.ownerUserId, role: 'GYM_HOST', isVerified: true, tenantId: t.id });
+    const tokenFor = (t) => signToken({ sub: t.ownerUserId, id: t.ownerUserId, role: 'GYM_HOST', isVerified: true, organizationId: t.id });
     tokenA = tokenFor(tenantA);
     tokenB = tokenFor(tenantB);
     warnings = [];
@@ -61,7 +61,7 @@ describe('P10 item 5: an ownership mismatch names both tenants in the log', () =
     const res = await iosSync(tokenB, '5100001');
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('subscription_owned_by_other_account');
-    expect((await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '5100001' } })).tenantId).toBe(tenantA.id);
+    expect((await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '5100001' } })).organizationId).toBe(tenantA.id);
 
     const lines = mismatchLines();
     expect(lines).toHaveLength(1);
@@ -88,7 +88,7 @@ describe('P10 item 5: an ownership mismatch names both tenants in the log', () =
       5100003: fakes.appleTransaction({ originalTransactionId: '5100003', productId: plan.iosMonthlyProductId, appAccountToken: tenantB.id }),
     });
     expect((await iosSync(tokenA, '5100003')).status).toBe(200);
-    expect((await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '5100003' } })).tenantId).toBe(tenantA.id);
+    expect((await TenantSubscription.findOne({ where: { externalOriginalTransactionId: '5100003' } })).organizationId).toBe(tenantA.id);
     const lines = mismatchLines();
     expect(lines).toHaveLength(1);
     expectNamesBoth(lines[0]);

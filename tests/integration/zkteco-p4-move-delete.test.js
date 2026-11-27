@@ -34,8 +34,8 @@ const platformRow = async (id) => (await platformDb.query('SELECT * FROM access_
 describe('move a device to another branch', () => {
   let a; let b; let door; let onlyA; let onlyB;
   beforeAll(async () => {
-    a = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Move From' });
-    b = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Move To' });
+    a = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Move From' });
+    b = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Move To' });
     onlyA = await w.member('Only A');
     onlyB = await w.member('Only B');
     await w.subscribe(w.db1, { user: onlyA, branch: a });
@@ -63,7 +63,7 @@ describe('move a device to another branch', () => {
     expect(res.body.data.device.branchName).toBe('Move To');
     const row = await platformRow(door.id);
     expect(row.branch_id).toBe(b.id);
-    expect(row.organization_id).toBe(b.gymId);
+    expect(row.business_id).toBe(b.businessId); // R-120: column renamed by p033
     const [det] = await w.q(w.db1, 'SELECT branch_id FROM access_device_details WHERE id = ?', [door.id]);
     expect(det.branch_id).toBe(b.id);
     await door.sim.drain();
@@ -76,7 +76,7 @@ describe('move a device to another branch', () => {
 describe('delete one template', () => {
   let branch; let door; let user; const ids = {};
   beforeAll(async () => {
-    branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id, name: 'Template Branch' });
+    branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id, name: 'Template Branch' });
     user = await w.member('Two Fingers');
     await w.subscribe(w.db1, { user, branch });
     await biometrics.recordConsent(w.db1, { memberId: user.id, method: 'in_person' });
@@ -140,11 +140,11 @@ describe('delete one template', () => {
 
 describe('capacity counts what the device holds', () => {
   test('9 users GymsEra did not put there on a 10-user device: one 90% alert', async () => {
-    const branch = await w.branch(w.db1, { gymId: (await w.gym(w.db1)).id });
+    const branch = await w.branch(w.db1, { businessId: (await w.gym(w.db1)).id });
     const door = await w.device(w.db1, { branch, registryBody: REG, name: 'Full Door' });
     await Notification.destroy({ where: { userId: w.owner.user.id, type: 'device_capacity' } });
     await door.sim.upload('options', 'UserCount=9,FPCount=0,FaceCount=0');
-    await jobs.deviceAlerts({ tenantId: w.db1.tenantId, db: w.db1 });
+    await jobs.deviceAlerts({ organizationId: w.db1.organizationId, db: w.db1 });
     const sent = await Notification.findAll({ where: { userId: w.owner.user.id, type: 'device_capacity' }, raw: true });
     expect(sent).toHaveLength(1);
     expect(sent[0].message).toMatch(/Full Door is at 90% of its user capacity \(9 of 10\)/);
