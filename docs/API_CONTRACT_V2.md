@@ -80,9 +80,9 @@ Never sent: `dbName`, `connectionStringEncrypted`, `provisioningLockToken`. `kyc
 
 #### Business (host and admin view: `/host/businesses…`, `/admin/businesses…`)
 
-`id`, `organizationId` (was `tenantId`), `primaryBranchId` (was `branchId`), `cityId`, `areaId`, `areaStatus`, `areaRequestId`, `name` (was `title`), `description` (was `shortDescription`), `logoUrl`, `coverImageUrl`, `genderType`, `averageRating`, `latitude`, `longitude`, `isFeatured`, `contactPhone`, `website`, `facilitiesJson`, `imagesJson`, `category`, `establishedYear`, `floorArea`, `postalCode`, `country`, `minPrice`, `status`, `reservedSlots`, `rejectionReason`, `rejectedAt`, `rejectedBy`, `createdAt`, `updatedAt`, `kycStatus` (new), `kycDocuments` (new), `kycSubmittedAt` (new), `approvedAt` (new), `verifiedAt` (new), `businessVerified` (new), `canReceiveBranches` (new), `travellerVisible` (new), `branchCount` (new), `heldFirstBranch` (new), `missingForApproval` (new), `firstBranchDraft` (new), `pendingArea` (computed)
+`id`, `organizationId` (was `tenantId`), `primaryBranchId` (was `branchId`), `cityId`, `areaId`, `areaStatus`, `areaRequestId`, `name` (was `title`), `description` (was `shortDescription`), `logoUrl`, `coverImageUrl`, `genderType`, `averageRating`, `latitude`, `longitude`, `isFeatured`, `contactPhone`, `website`, `facilitiesJson`, `imagesJson`, `category`, `establishedYear`, `floorArea`, `postalCode`, `country`, `minPrice`, `status`, `reservedSlots`, `rejectionReason`, `rejectedAt`, `rejectedBy`, `createdAt`, `updatedAt`, `kycStatus` (new), `kycDocuments` (new), `kycSubmittedAt` (new), `approvedAt` (new), `verifiedAt` (new), `businessVerified` (new), `canReceiveBranches` (new), `branchCount` (new, list/detail only), `heldFirstBranch` (new), `missingForApproval` (new), `firstBranchDraft` (new), `pendingArea` (computed, host list/detail and admin detail only)
 
-`id` is the one business id (option S): the same value names the tenant-database row. Removed: `gymListingId`, `gymId`.
+`id` is the one business id (option S): the same value names the tenant-database row. Removed: `gymListingId`, `gymId`, `travellerVisible` (unused by clients). Route-scoped keys: `branchCount` is sent on `GET /host/businesses` and `GET /host/businesses/:businessId`; `pendingArea` is sent on `GET /host/businesses`, `GET /host/businesses/:businessId`, and `GET /admin/businesses/:businessId`.
 
 #### BusinessProfile (staff view of the tenant-database row: `/organizations/me/businesses/:businessId/profile`)
 
@@ -979,7 +979,7 @@ not accepted anywhere. `GET /admin/organizations/:organizationId` has one `gymLi
 ### G2. Organization detail
 
 `GET /admin/organizations/:organizationId` → `{ organization: Organization & { businesses: [Business], ... } }`: the
-organization's businesses are listed under **`organization.businesses`** (each with `id`, `name`, `status`, `kycStatus`, `businessVerified`, `activeBranches`, `reservedSlots`, `createdAt`).
+organization's businesses are listed under **`organization.businesses`** (summary keys: `id`, `name`, `status`, `kycStatus`, `businessVerified`, `activeBranches`, `reservedSlots`, `createdAt`, `canReceiveBranches`).
 
 ### G3. Admin business wrapper
 
@@ -1290,3 +1290,4 @@ route** and no server draft: the server first sees the business when `POST /host
 | 2026-11-26 | M3e fixes: `GET /admin/review-queue` honours `kind` and returns `{ items, page, total }`; `GET /admin/organizations/:organizationId` lists businesses under `organization.businesses` (F7 note corrected); `GET /discovery/businesses/:id` includes `businessVerified`; `POST /organizations/:organizationId/first-business` accepts `genderType`, `logoUrl`, `coverImageUrl`; `organization_approved` links to `/host/businesses/<businessId>/documents` when first business awaits proof of premises and `business_approved` links to `/host/businesses/<businessId>`. | Antigravity |
 | 2026-11-26 | S4: `GET /host/businesses` (and `GET /host/businesses/:businessId`) includes `branchCount` (§3 Business). | Antigravity |
 | 2026-11-26 | `DELETE /admin/businesses/:businessId/verify` also rejects `BUSINESS_REGISTRATION` document(s) with `rejectionReason: "Verification revoked"` (§4, §10 G4). | Antigravity |
+| 2026-11-27 | Reconciled §3 Business keys with server: `canReceiveBranches` sent on every host/admin Business response and §10 G2 `organization.businesses[]`; `branchCount` scoped to `GET /host/businesses` and `GET /host/businesses/:businessId`; `pendingArea` scoped to host list/detail and `GET /admin/businesses/:businessId`; removed unused `travellerVisible`. | Antigravity |
