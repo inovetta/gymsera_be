@@ -1,17 +1,18 @@
 /**
  * Platform data reset (launch preparation; spec §16 "Before adding real data").
  *
- * Empties the PLATFORM database down to an allow-list and, only on request, drops the per-tenant databases named in
- * the `tenants` table. DESTRUCTIVE: the CLI (src/scripts/reset-platform-data.js) is a dry run unless it is given
- * --confirm together with the database name and host it is about to change. Tested only on the local Docker MySQL.
+ * Empties the PLATFORM database down to an allow-list and, only on request, drops the per-organization
+ * databases named in `organizations.db_name` (or `tenants.db_name` pre-p034). DESTRUCTIVE: the CLI
+ * (src/scripts/reset-platform-data.js) is a dry run unless given --confirm together with --db and --host.
  *
  * Kept:   schema_migrations, billing_plans, billing_plan_prices, platform_packages, cities, areas,
- *         and the platform admin users named with --keep-admin.
+ *         moderation_words, and the platform admin users named with --keep-admin.
  * Emptied: every other base table in the platform database.
- * Tenant databases: dropped only with dropTenantDatabases, only the names found in `tenants.db_name`, each one logged.
- *   A tenant with no db_name is skipped; a name is never worked out from tenant_code (R-79).
+ * Organization databases: dropped only with dropTenantDatabases, only the names found in
+ *   `organizations.db_name` (or `tenants.db_name`), each one logged.
+ *   An organization with no db_name is skipped; a name is never worked out from organization_code (R-79).
  *
- * Not covered here (the day-of runbook lists them): object storage (R2), Redis, push tokens held by Firebase.
+ * Not covered here (the day-of runbook lists them): object storage (R2), Redis, local disk uploads/logs.
  */
 const fs = require('fs');
 const path = require('path');
@@ -23,6 +24,7 @@ const KEEP_TABLES = Object.freeze([
   'platform_packages',
   'cities',
   'areas',
+  'moderation_words',
 ]);
 const USERS_TABLE = 'users';
 const SYSTEM_SCHEMAS = Object.freeze(['mysql', 'information_schema', 'performance_schema', 'sys']);
