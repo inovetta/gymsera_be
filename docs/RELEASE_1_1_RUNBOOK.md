@@ -72,7 +72,7 @@ Compare `origin/main` (`e966d2e`) → `feat/naming-v2-r2` (`fb47422`):
    [client]
    host=<platform or tenant DB host>
    user=<backup user with SELECT, LOCK TABLES, SHOW VIEW, TRIGGER, EVENT>
-   password=<password>
+   # add `password=` line with restricted file permissions only on the server
    default-character-set=utf8mb4
    ```
    (Create a second `dump-tenant.cnf` if `TENANT_DB_HOST` differs from `PLATFORM_DB_HOST`.)

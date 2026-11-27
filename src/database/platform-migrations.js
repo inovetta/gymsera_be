@@ -1634,7 +1634,7 @@ const PLATFORM_MIGRATIONS = [
       const r = require('./rename-helpers');
       if (!(await r.tableExists(sequelize, 'business_listings'))) return null;
       const columns = [
-        ['kyc_status', "ENUM('NOT_SUBMITTED','PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'NOT_SUBMITTED'"],
+        ['kyc_status', 'ENUM(\'NOT_SUBMITTED\',\'PENDING\',\'APPROVED\',\'REJECTED\') NOT NULL DEFAULT \'NOT_SUBMITTED\''],
         ['kyc_documents_json', 'JSON NULL'],
         ['kyc_submitted_at', 'DATETIME NULL'],
         ['approved_at', 'DATETIME NULL'],
