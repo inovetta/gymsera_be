@@ -2,7 +2,7 @@
 
 > **Scope:** Coordinating backend release `1.1.0` (`feat/naming-v2-r2` → `main`), platform migrations `p031`–`p038`, and organization (tenant) migrations `028`–`032`.
 > **Rule D14 (no old-build compatibility):** Old mobile/CMS/web clients are incompatible once `p033`–`p035` and `030`–`032` land. Release API, CMS, website, and mobile builds together and raise the force-update gate (`MIN_APP_VERSION_IOS`, `MIN_APP_VERSION_ANDROID`) at cut-over.
-> **Missing fix check:** `fix/email-plus-space` (`7f9dc17`, NEW-302) is **NOT** in `feat/naming-v2-r2`. Merge or cherry-pick it separately if `+` email alias handling is required on sign-up/verify/login.
+> **NEW-302 (`+` email aliases):** Cherry-picked from `fix/email-plus-space` (`7f9dc17`) into `feat/naming-v2-r2` (`emailField()` in `src/validators/auth.validator.js`).
 
 Target host: Windows / IIS (`iisnode`) with MySQL 5.7. Run commands in an elevated **Command Prompt (`cmd.exe`)** inside the production API checkout (for example `C:\inetpub\gymsera_be`) unless noted otherwise. Never run `iisreset`, and never use PowerShell `>` / `<` for `mysqldump` or `mysql` (UTF-16 mangling).
 

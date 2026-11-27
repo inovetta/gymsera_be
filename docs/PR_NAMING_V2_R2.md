@@ -6,7 +6,7 @@ Clean **Organization › Business › Branch** domain naming refactor (R-120 / `
 
 > **Important cut-over & branch notes:**
 > - **No old-build compatibility (D14):** Release 1.1.0 breaks legacy `/tenants*`, `/gyms*`, `/listings*`, `X-Tenant-Id`, and `tenantId` token claims. Coordinate deploy with CMS, website, and mobile builds and raise the force-update gate (`MIN_APP_VERSION_IOS` / `MIN_APP_VERSION_ANDROID`).
-> - **`fix/email-plus-space` (`7f9dc17`, NEW-302) is NOT in this branch.** Merge or cherry-pick `fix/email-plus-space` separately if the `+` email alias space-normalization fix in `src/validators/auth.validator.js` is required for this release.
+> - **`NEW-302` (`+` email space normalization) included:** Cherry-picked only the NEW-302 commit (`7f9dc17`, `emailField()` in `src/validators/auth.validator.js` + `tests/regression/new-302-email-plus-space.test.js`) from `fix/email-plus-space` onto `feat/naming-v2-r2` (without merging `fix/email-plus-space`).
 > - **Runbook:** Follow [docs/RELEASE_1_1_RUNBOOK.md](RELEASE_1_1_RUNBOOK.md) for backup, exact migration order (platform first, then per-organization), restarting solely via touching `web.config`, smoke tests, and rollback.
 
 ---
