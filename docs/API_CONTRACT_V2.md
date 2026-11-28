@@ -231,10 +231,10 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 43 | GET | `/tenants/me` | **`/organizations/me`** |  |  |
 | 44 | PATCH | `/tenants/me` | **`/organizations/me`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` |  |
 | 45 | POST | `/tenants/register` | **`/organizations/register`** | `areaId`, `areaRequestId`, `organizationName` (was `businessName`), `cityId`, `email`, `phone` | new organization codes `ORG-` (D-5, F8) |
-| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (was `gymDescription`), `genderType`, `logoUrl`, `coverImageUrl`, `firstBranch` (`FirstBranch`, A2 H2 / A3 J10) |  |
+| 46 | POST | `/tenants/:id/gym-profile` | **`/organizations/:organizationId/first-business`** | `organizationName` (was `businessName`), `firstBusinessName` (was `gymName`), `firstBusinessDescription` (optional; was `gymDescription`), `firstBranch` (`FirstBranch`, A2 H2 / A3 J10), `genderType` (optional), `logoUrl` (optional), `coverImageUrl` (optional) | `kycDocumentsJson` removed (A3 J14) |
 | 47 | POST | `/tenants/:id/select-package` | **`/organizations/:organizationId/select-package`** | `packageId` |  |
-| 48 | POST | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** |  |  |
-| 49 | PUT | `/tenants/:id/onboarding-images` | **`/organizations/:organizationId/first-business/images`** | `imagesJson` |  |
+| 48 | POST | `/tenants/:id/onboarding-images` | **removed** (A3 J16) |  | A first-time host uploads photos through `POST /host/staging-images` (J13) and sends the URLs as `firstBranch.imagesJson` |
+| 49 | PUT | `/tenants/:id/onboarding-images` | **removed** (A3 J16) |  | Photos are part of `firstBranch.imagesJson` (replace by sending the whole list in the first-business body) |
 | 50 | POST | `/tenants/:id/reapply` | **`/organizations/:organizationId/reapply`** |  |  |
 | 51 | POST | `/tenants/:id/finalize` | **`/organizations/:organizationId/finalize`** | `bankTransferRef`, `paymentMethod` |  |
 | 52 | POST | `/tenants/:id/kyc-documents` | **`/organizations/:organizationId/kyc-documents`** | `documentType` |  |
@@ -475,7 +475,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 286 | GET | `/host/inbox/inquiries` | (same) |  |  |
 | 287 | POST | `/host/inbox/conversations` | (same) | `branchId`, `initialMessage`, `userId` |  |
 | 288 | GET | `/host/inbox/inquiries/:inquiryId` | (same) |  |  |
-| 289 | POST | `/host/inbox/inquiries/:inquiryId/reply` | (same) | `clientMessageId`, `client_message_id`, `text` |  |
+| 289 | POST | `/host/inbox/inquiries/:inquiryId/reply` | (same) | `clientMessageId` (optional), `text` |  |
 | 290 | PATCH | `/host/inbox/inquiries/:inquiryId/read` | (same) |  |  |
 | 291 | POST | `/host/inbox/inquiries/:inquiryId/block` | (same) |  |  |
 | 292 | DELETE | `/host/inbox/inquiries/:inquiryId/block` | (same) |  |  |
@@ -546,7 +546,7 @@ another way (its validator file). Query parameters follow §2 (`?gymListingId=` 
 | 357 | POST | `/me/cancel-deletion` | (same) |  |  |
 | 358 | GET | `/me/inbox` | (same) |  |  |
 | 359 | GET | `/me/inbox/:conversationId` | (same) |  |  |
-| 360 | POST | `/me/inbox/:conversationId/reply` | (same) | `clientMessageId`, `client_message_id`, `text` |  |
+| 360 | POST | `/me/inbox/:conversationId/reply` | (same) | `clientMessageId` (optional), `text` |  |
 | 361 | PATCH | `/me/inbox/:conversationId/read` | (same) |  |  |
 | 362 | POST | `/me/inbox/:conversationId/block` | (same) |  |  |
 | 363 | DELETE | `/me/inbox/:conversationId/block` | (same) |  |  |
@@ -1111,7 +1111,7 @@ being created or the one in the path). Used as `firstBranch` in `POST /host/busi
 | `googlePlaceId` | string | optional |
 | `latitude`, `longitude` | number | required (map pin) |
 | `phone` | string | required |
-| `hours` | WeeklyHours (R-113) | optional; default every day 06:00–22:00. `openingTime` / `closingTime` accepted as the one-slot form |
+| `hours` | WeeklyHours (A3 J15) | optional; default every day 06:00–22:00. `openingTime` / `closingTime` accepted as the one-slot form |
 | `timezone`, `currency` | string | optional (server defaults) |
 | `tagline`, `description`, `category` | string | optional |
 | `establishedYear`, `floorArea` | int | optional |
@@ -1277,6 +1277,60 @@ route** and no server draft: the server first sees the business when `POST /host
 - **Stateless:** the server stores the files (under the caller's own folder) and returns the URLs. It saves **nothing** about a business, an organization or a draft: no row, no link. The client keeps the URLs on the phone and sends them as `imagesJson` of `firstBranch` (A2 H2) or as `logoUrl` / `coverImageUrl` when it submits.
 - `POST /host/businesses/staging-images` (§4 row 254) is unchanged: the same upload for an existing organization (stored under its folder).
 
+### J14. First-business body (replaces key notes in J10 and §4 row 46)
+
+`POST /organizations/:organizationId/first-business` body: `organizationName`, `firstBusinessName`, optional
+`firstBusinessDescription`, `firstBranch` (`FirstBranch`, A2 H2), and optional `genderType`, `logoUrl`,
+`coverImageUrl`. **`kycDocumentsJson` is removed** from this body (and from the Organization object's writable keys):
+a business's documents go only through `POST /host/businesses/:businessId/kyc-documents` (A2 H3). Any other key is
+refused (`422` `validation_error` / `unknown_field`).
+
+### J15. WeeklyHours (the `hours` value; R-113 H2, H3, H5, H6, written here because §3 only named it)
+
+**Write shape** (`hours` on `POST /host/branches`, branch edits, admin branch routes and `firstBranch`, A2 H2):
+
+```json
+{ "v": 1,
+  "days": {
+    "mon": { "closed": false, "slots": [ { "open": "06:00", "close": "22:00", "for": "all" } ] },
+    "tue": { "closed": false, "slots": [ ... ] },
+    "wed": ..., "thu": ..., "fri": ..., "sat": ...,
+    "sun": { "closed": true, "slots": [] }
+  } }
+```
+
+| Part | Rule |
+|---|---|
+| `v` | the number `1` (anything else: `422 hours_invalid`, path `v`) |
+| `days` | an object with **all seven keys**, lower-case: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. A missing day, or any other key, is refused (path `days.<key>`) |
+| `days.<d>.closed` | boolean. `true` means closed all day: `slots` must then be `[]` |
+| `days.<d>.slots` | an array; **1 to 4** slots on an open day. Sent sorted or not; the server returns them sorted by `open` |
+| slot `open` | string `HH:MM`, 24-hour clock, two digits each, `00:00` to `23:59` (not `6:00`, not `6:00 AM`) |
+| slot `close` | string `HH:MM`, `00:00` to `23:59`, or `24:00` (end of that day). A `close` that is not after `open` means after midnight (`22:00` to `02:00`): allowed only on the **last** slot of a day, and up to `12:00` the next day |
+| slot `for` | `all` (default when omitted), `men` or `women` |
+| times | local to the branch's `timezone` (IANA name, e.g. `Asia/Karachi`); no seconds, no offset |
+| overlap | slots of one day may not overlap, and a slot that runs past midnight may not overlap the next day's first slot (`sun` into `mon` included) |
+| open and close equal | refused (`00:00` to `24:00` is the one allowed "open all day") |
+
+**One slot on all seven days** (the website wizard's form) is valid: the same `{ "open", "close", "for": "all" }` slot under each of the seven days, e.g. `06:00` to `22:00`. `for` may be omitted. The server stores it as a uniform week.
+
+**Old pair** (`openingTime`, `closingTime`, both `HH:MM`) is accepted instead of `hours` on create and on edit while the stored week is empty or uniform; it stands for the one-slot form on all seven days. Sending `hours` **and** the pair: `422 hours_invalid`. The pair on a branch that holds a weekly (non-uniform) schedule: `409 hours_schedule_newer`. `hours: null` clears the schedule. The same pair sent back unchanged is no change. When `hours` is sent the server writes `openingTime` (the week's earliest open) and `closingTime` (the latest close, `23:59` for a close at `24:00`) as a summary.
+
+**Errors:** `422 hours_invalid` with `errors: [{ path, message }]` (`path` like `days.mon.slots[0].open`); `409 hours_schedule_newer`.
+
+**Read shape** (every branch object, §3 Branch and BranchCard): `hours` is the same object as above (a branch with only the old pair reads as the uniform week; no hours at all reads `null`); the raw stored column is not sent. Computed beside it: `timezone`, `utcOffsetMinutes`, `hoursToday` `{ day, closed, slots }` (slots may include yesterday's after-midnight slot with `startsYesterday: true`), `openNow` (boolean), `openNowFor` (`all` / `men` / `women` / null) and `nextChange` `{ at (ISO UTC), kind ("opens" | "closes"), for }` or `null` (`null` when open 24 hours every day).
+
+### J16. Admin organization list, and the removed onboarding-images routes
+
+- `GET /admin/organizations` answers `data: { organizations: [Organization], page, total }`. `page` and `total` are inside `data`; the response has **no** envelope `pagination` object and no `limit` / `totalPages` (the client knows the `limit` it sent: `pages = ceil(total / limit)`). Compound-id business rows are excluded (F7; businesses waiting for approval live in `GET /admin/review-queue`).
+- `POST` and `PUT /organizations/:organizationId/first-business/images` (was `/tenants/:id/onboarding-images`, §4 rows 48 and 49) are **removed**, not renamed: the server answers `404`. Photos are uploaded with the stateless `POST /host/staging-images` (J13) and sent as `firstBranch.imagesJson` in the first-business body; sending the first-business body again with a new `imagesJson` replaces the list and keeps the other draft keys.
+
+### J17. `clientMessageId` (owner decision)
+
+`POST /host/inbox/inquiries/:inquiryId/reply` (§4 row 289) and `POST /me/inbox/:conversationId/reply` (row 360) take an **optional `clientMessageId`** (string, 1 to 64 characters): the idempotency guard. A retry with the same value in the same conversation by the same sender answers the first message and creates no second one. The snake_case spelling `client_message_id` is **not accepted** (`422 unknown_field`), here or in the chat socket's `message:send` payload.
+
+> **Note on J18 (`businessVerified`):** In `origin/docs/naming-and-contract`, J18 marked `businessVerified` as deferred to `NEW-303`. Since `NEW-303` is now shipped on `main`, `businessVerified` is actively returned on discovery payloads (`BranchCard`, `BusinessPublic`, `BranchDetail`, `TopBusiness`).
+
 ## 9. Change log
 
 | Date | Change | By |
@@ -1291,3 +1345,4 @@ route** and no server draft: the server first sees the business when `POST /host
 | 2026-11-26 | S4: `GET /host/businesses` (and `GET /host/businesses/:businessId`) includes `branchCount` (§3 Business). | Antigravity |
 | 2026-11-26 | `DELETE /admin/businesses/:businessId/verify` also rejects `BUSINESS_REGISTRATION` document(s) with `rejectionReason: "Verification revoked"` (§4, §10 G4). | Antigravity |
 | 2026-11-27 | Reconciled §3 Business keys with server: `canReceiveBranches` sent on every host/admin Business response and §10 G2 `organization.businesses[]`; `branchCount` scoped to `GET /host/businesses` and `GET /host/businesses/:businessId`; `pendingArea` scoped to host list/detail and `GET /admin/businesses/:businessId`; removed unused `travellerVisible`. | Antigravity |
+| 2026-11-28 | Ported J14–J17 from `docs/naming-and-contract` where `main` lacked them: first-business body (`kycDocumentsJson` removed), exact `WeeklyHours` v1 schema/read shape (H2/J15), `GET /admin/organizations` pagination shape & removed `onboarding-images` routes (rows 48–49), and `clientMessageId` camelCase-only rule (rows 289, 360); J18 omitted as `businessVerified` is live on `main`. | Antigravity |
