@@ -2,7 +2,7 @@
 
 > **Scope:** Deploy Release `1.1.0` (`origin/main` `e966d2e` → `feat/naming-v2-r2` via PR #247), apply platform migrations `p033`–`p038` (`v32` → `v38`) and per-organization migrations `030`–`032` (`v29` → `v32`), wipe all pre-release test data, and re-create clean demo + Apple/Google review accounts through the real 1.1.0 onboarding flow.
 > **Rule D14:** Old mobile/CMS/web clients are incompatible once `p033`–`p035` and `030`–`032` land. Release CMS and website alongside the API at cut-over; keep `MIN_APP_VERSION_IOS` and `MIN_APP_VERSION_ANDROID` unchanged during cut-over and raise each one **only later once 1.1.0 is live in that store**.
-> **Target host:** Windows Server / IIS (`iisnode`) + MySQL 5.7. Run commands in an elevated **Command Prompt (`cmd.exe`)** inside `C:\inetpub\gymsera_be` unless noted otherwise. **Owner rule:** never stop or recycle IIS application pools and never run `iisreset`; restart only our API app by touching `web.config`. Never use PowerShell `>` / `<` for `mysqldump` or `mysql` (UTF-16 mangling).
+> **Target host:** Windows Server / IIS (`iisnode`) + MySQL 5.7. Run commands in an elevated **Command Prompt (`cmd.exe`)** inside `C:\HostingSpaces\admin\api.gymsera.com\wwwroot` unless noted otherwise. **Owner rule:** never stop or recycle IIS application pools and never run `iisreset`; restart only our API app by touching `web.config`. Never use PowerShell `>` / `<` for `mysqldump` or `mysql` (UTF-16 mangling).
 
 ---
 
@@ -11,14 +11,14 @@
 1. Run local rehearsal first against a throwaway local MySQL copy (§9): `node src\scripts\dry-run-release-1-1-backup.js --platform-db gymsera_local_walk`.
 2. Check environment safety and disk space (free space ≥ 2× DB size):
    ```cmd
-   cd C:\inetpub\gymsera_be
+   cd C:\HostingSpaces\admin\api.gymsera.com\wwwroot
    node src\scripts\check-environment.js
    git rev-parse HEAD
    ```
 3. Disable GymsEra scheduled tasks before backups, migrations, and wipe (stopping **only our IIS site** is optional if you want zero HTTP traffic during backup/migration — never stop or recycle the app pool):
    ```cmd
    schtasks /Query /FO TABLE | findstr /I GymsEra
-   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
+   for %T in (daily-job billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
    REM Optional (our site only — never touch app pools):
    REM %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
    ```
@@ -52,15 +52,17 @@
    "%MYSQL_BIN%\mysql.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf -N -B gymsera -e "SELECT DISTINCT db_name FROM tenants WHERE db_name IS NOT NULL AND db_name <> '' ORDER BY db_name;" > "%BK%\org-dbs.txt"
    type "%BK%\org-dbs.txt"
    ```
-4. **Dump the platform database AND every organization database:**
+4. **Dump the platform database, `moderation_words`, AND every organization database:**
    ```cmd
    set OPTS=--single-transaction --quick --routines --triggers --events --hex-blob --set-gtid-purged=OFF
 
    "%MYSQL_BIN%\mysqldump.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf %OPTS% gymsera --result-file="%BK%\platform.sql"
+   "%MYSQL_BIN%\mysqldump.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf %OPTS% gymsera moderation_words --result-file="%BK%\moderation_words.sql"
 
    for /f "usebackq delims=" %D in ("%BK%\org-dbs.txt") do ^
      "%MYSQL_BIN%\mysqldump.exe" --defaults-extra-file=C:\gymsera-secure\dump-tenant.cnf %OPTS% %D --result-file="%BK%\org-%D.sql"
    ```
+   (`moderation_words.sql` guarantees fast restoration of CMS moderation words if an older pre-1.1 reset script emptied `moderation_words`.)
 5. Verify completion markers and checksums, then copy `%BK%` off-server (if R2 backups are desired prior to wipe, `rclone copy` buckets into `%BK%` too per [runbooks/launch-wipe.md](runbooks/launch-wipe.md) §4.6):
    ```cmd
    dir "%BK%\*.sql"
@@ -70,27 +72,31 @@
 
 ---
 
-### 2. Deploy (`git status`, `git pull`, `npm ci --omit=dev`)
+### 2. Deploy (`git status`, touch `web.config` + wait 15 s, `git pull`, `npm ci --omit=dev`)
 
-From `C:\inetpub\gymsera_be` (after PR #247 merges `feat/naming-v2-r2` into `main`):
+From `C:\HostingSpaces\admin\api.gymsera.com\wwwroot` (after PR #247 merges into `main`):
+
+> **Windows `bcrypt.node` lock note:** Always touch `web.config` and wait **15 seconds** right before `npm ci --omit=dev` so the running `iisnode` worker exits and releases native `.node` binaries (`bcrypt.node`); otherwise `npm ci` fails with `EPERM`.
 
 ```cmd
-cd C:\inetpub\gymsera_be
+cd C:\HostingSpaces\admin\api.gymsera.com\wwwroot
 git status
 git fetch origin
 git checkout main
 git pull --ff-only origin main
 git rev-parse HEAD
+powershell -NoProfile -Command "(Get-Item 'C:\HostingSpaces\admin\api.gymsera.com\wwwroot\web.config').LastWriteTime = Get-Date"
+timeout /t 15 /nobreak
 npm ci --omit=dev
 node src\scripts\check-environment.js
 ```
-(If deploying directly from `feat/naming-v2-r2` before PR #247 merges, substitute `feat/naming-v2-r2` for `main` above.) Confirm `check-environment.js` exits `0` and `PLACES_PROVIDER` / `TEST_LOCAL_UPLOAD_DIR` remain **unset** in production.
+Confirm `check-environment.js` exits `0` and `PLACES_PROVIDER` / `TEST_LOCAL_UPLOAD_DIR` remain **unset** in production.
 
 ---
 
 ### 3. Migrate (CLI Scripts Only — Order: Platform FIRST, Organization SECOND)
 
-> **How migrations get applied:** Migrations do **NOT** run automatically at server start-up. `server.js` runs only read-only checks (`checkPlatformSchemaVersion()`, `runTenantSchemaCheck()`), which log `[Deploy Warning]` / return `503` on `/api/v1/health/tenant-schema` if behind. Run the CLI scripts below **after** backup and **before** restarting IIS or running the wipe.
+> **How migrations get applied:** Migrations do **NOT** run automatically at server start-up. `server.js` runs only read-only checks (`checkPlatformSchemaVersion()`, `runTenantSchemaCheck()`), which log `[Deploy Warning]` and return `503` on `/api/v1/health/tenant-schema` if behind. Run the CLI scripts below **after** backup and **before** restarting IIS or running the wipe.
 > **Strict order:** Platform `p033`–`p038` **first**, then per-organization `030`–`032` **second** (`run-tenant-migrations.js` reads `organizations.db_name`, created by `p034`).
 
 1. **Platform migrations (`v32` → `v38`: `p033`–`p038`):**
@@ -129,10 +135,16 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
    - **KEPT (`7` tables + named admins):** `schema_migrations`, `billing_plans`, `billing_plan_prices`, `platform_packages`, `cities`, `areas`, `moderation_words`, plus ONLY the `PLATFORM_ADMIN` rows listed in `--keep-admin` (`KEEP_ADMINS_ONLY`).
    - **EMPTIED (`33` tables):** all other platform tables including `organizations`, `organization_subscriptions`, `organization_invitations`, `user_organization_index`, `business_listings`, `business_reviews`, `saved_businesses`, `member_subscription_index`, `area_requests`/`area_request_links`/`area_aliases`, `content_reports`, `user_blocks`, `billing_events`, `billing_offers`, `billing_plan_price_checks`, `capacity_events`, `payout_accounts`, `plan_payment_requests`, `platform_invoices`, `access_devices`/`devices`/`device_members`/`unclaimed_device_contacts`, `conversations`, `messages`, `notifications`, `device_tokens`, `otps`, `refresh_tokens`, `audit_logs`, `platform_audit_logs`, `idempotency_records`, and all non-admin `users`.
    - **Organization DBs (`organizations.db_name`):** listed under `tenantDatabases` (`droppable: true`).
+   - **Pre-1.1 tool warning:** an **old** `reset-platform-data.js` from a pre-1.1 checkout empties `moderation_words`; always run the post-pull 1.1 script and confirm `moderation_words` stayed `KEEP`.
 
 2. **Execute live wipe (`--confirm --db ... --host ... --drop-tenant-databases`):**
    ```cmd
    node src\scripts\reset-platform-data.js --keep-admin <admin1@domain>,<admin2@domain> --drop-tenant-databases --confirm --db <platform db> --host <platform host>
+   "%MYSQL_BIN%\mysql.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf -N -B gymsera -e "SELECT COUNT(*) FROM moderation_words;"
+   ```
+   If the count is `0` (e.g., an older pre-1.1 wipe tool was run), restore `moderation_words` immediately from Step 1's dump:
+   ```cmd
+   "%MYSQL_BIN%\mysql.exe" --defaults-extra-file=C:\gymsera-secure\dump.cnf gymsera < "%BK%\moderation_words.sql"
    ```
    - **What happens to organization DBs:** every mapped database in `organizations.db_name` is **DROPPED** (`DROP DATABASE IF EXISTS`, not truncated table-by-table); orphan schemas not referenced by `organizations` stay untouched unless dropped manually per `inventory-before.txt` list (3).
 
@@ -149,8 +161,8 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
    ```cmd
    REM If you optionally stopped ONLY our site in Pre-Cut-Over Step 3, start our site again:
    REM %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
-   powershell -NoProfile -Command "(Get-Item 'C:\inetpub\gymsera_be\web.config').LastWriteTime = Get-Date"
-   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
+   powershell -NoProfile -Command "(Get-Item 'C:\HostingSpaces\admin\api.gymsera.com\wwwroot\web.config').LastWriteTime = Get-Date"
+   for %T in (daily-job billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
    ```
    Deploy matching `gymsera_cms` and `gymsera_web` builds. Leave `MIN_APP_VERSION_IOS` and `MIN_APP_VERSION_ANDROID` alone until Step 7 (`Later Step`).
 
@@ -169,11 +181,12 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
    - **Host & organization onboarding:** register demo host (`<alias>+host@gmail.com`) via app → Become a Host (`POST /organizations/register`, `first-business` with `firstBranch` + ≥3 photos, `select-package`, owner ID KYC, `finalize`).
    - **Approve organization:** platform admin approves organization in CMS → verify fresh organization DB provisioned at `v32` (`run-tenant-migrations.js --check` exits `0`) and first business exists in `PENDING` with `heldFirstBranch: true`.
    - **Upload proof & approve business:** demo host uploads `PROOF_OF_PREMISES` (and optional `BUSINESS_REGISTRATION` for verified badge) via `/host/businesses/:businessId/kyc-documents` → admin approves business (`POST /admin/businesses/:id/approve`) → confirm first branch is built (`canReceiveBranches`, `branchCount: 1`).
-   - **Activate subscription & public plan:** activate plan for the demo organization and ensure ≥1 public membership plan is active on the demo branch (`why-not-live.js --branch "<demo branch>"` passes).
+   - **Activate non-sandbox subscription & public membership plan:**
+     > **Public visibility rule (R-87):** A gym appears in public discovery **ONLY** with a **non-sandbox (`MANUAL` or `PRODUCTION`)** entitling subscription (`SANDBOX_PURCHASES_GO_LIVE` stays unset on production). A **TestFlight / Apple Sandbox (`SANDBOX`)** purchase entitles the host inside the host app, **never** makes the branch public. To make a demo or App Review gym live in discovery, use **`Admin CMS > Organization > Subscription > Assign Subscription`** (`MANUAL`), then ensure ≥1 public membership plan is active on the demo branch (`why-not-live.js --branch "<demo branch>"` passes).
 
 3. **Post-demo smoke & cron checks:**
    - **Discovery live:** `GET /api/v1/discovery/businesses` and `GET /api/v1/discovery/branches` now show the demo branch (`displayName`, `businessVerified`, zero `organizationName`/`tenant` keys).
-   - **Cron jobs:** run `node src\scripts\run-scheduled-job.js daily` → exit `0`; confirm all 6 `GymsEra\*` scheduled tasks show enabled (`0x0` after next run).
+   - **Cron jobs:** run `node src\scripts\run-scheduled-job.js daily` → exit `0`; confirm all 6 `GymsEra\*` scheduled tasks (`daily-job`, `billing-inbox`, `device-watchdog`, `device-sync`, `device-audit`, `device-retention`) are enabled and `GymsEra\daily-job` reports `0x0` after running.
    - **iOS / Store Review Accounts (kept ready cleanly with fake names & `+` alias emails, passwords stored only in password manager):**
      - **Host review account (`<alias>+reviewhost@gmail.com`):** verified sign-in via `+` alias, owns the approved demo organization/business/branch, can access `/host/status`, `/host/businesses`, and branch management.
      - **Traveller review account (`<alias>+reviewmember@gmail.com`):** `MEMBER` account registered/verified via `+` alias, able to browse discovery and subscribe/check in to the live demo branch.
@@ -186,13 +199,15 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
 
 1. Disable scheduled tasks (and optionally stop **only our IIS site** during restore — never stop or recycle any app pool):
    ```cmd
-   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
+   for %T in (daily-job billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /DISABLE
    REM Optional (our site only — never touch app pools):
    REM %windir%\system32\inetsrv\appcmd stop site /site.name:"<GymsEra API site>"
    ```
-2. Revert code and dependencies:
+2. Touch `web.config` and wait 15 s (so `iisnode` releases `bcrypt.node`), revert code, and reinstall dependencies:
    ```cmd
-   cd C:\inetpub\gymsera_be
+   cd C:\HostingSpaces\admin\api.gymsera.com\wwwroot
+   powershell -NoProfile -Command "(Get-Item 'C:\HostingSpaces\admin\api.gymsera.com\wwwroot\web.config').LastWriteTime = Get-Date"
+   timeout /t 15 /nobreak
    set /p PREV_SHA=<"%BK%\pre-cutover-sha.txt"
    git checkout %PREV_SHA%
    npm ci --omit=dev
@@ -215,8 +230,8 @@ node src\scripts\run-sql-check.js docs\sql\launch-wipe-inventory.sql > "%BK%\inv
    ```cmd
    REM If you optionally stopped our site above, start our site first:
    REM %windir%\system32\inetsrv\appcmd start site /site.name:"<GymsEra API site>"
-   powershell -NoProfile -Command "(Get-Item 'C:\inetpub\gymsera_be\web.config').LastWriteTime = Get-Date"
-   for %T in (daily billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
+   powershell -NoProfile -Command "(Get-Item 'C:\HostingSpaces\admin\api.gymsera.com\wwwroot\web.config').LastWriteTime = Get-Date"
+   for %T in (daily-job billing-inbox device-watchdog device-sync device-audit device-retention) do schtasks /Change /TN "GymsEra\%T" /ENABLE
    curl -fsS https://api.gymsera.com/api/v1/health
    ```
 
